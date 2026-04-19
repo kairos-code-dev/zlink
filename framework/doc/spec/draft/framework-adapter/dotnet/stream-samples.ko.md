@@ -71,19 +71,19 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
 
-    options.AddStreamNode("gateway.stream", stream =>
+    options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.AddPacket<GatewayPacketHandler>();
+        stream.AddPacket<ClientPacketHandler>();
     });
 });
 
-public sealed class GatewayPacketHandler
+public sealed class ClientPacketHandler
     : IZLinkStreamPacketHandler<RouteHeader>
 {
     private readonly IZLinkClient _client;
 
-    public GatewayPacketHandler(IZLinkClient client)
+    public ClientPacketHandler(IZLinkClient client)
     {
         _client = client;
     }
@@ -192,14 +192,14 @@ public static class JsonMessageExtensions
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddStreamNode("gateway.raw", stream =>
+    options.AddStreamNode("client.raw", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9200");
-        stream.AddRaw<GatewayRawHandler>();
+        stream.AddRaw<ClientRawHandler>();
     });
 });
 
-public sealed class GatewayRawHandler : IZLinkStreamRawHandler
+public sealed class ClientRawHandler : IZLinkStreamRawHandler
 {
     public ValueTask HandleAsync(
         Message payload,

@@ -47,7 +47,15 @@ def wait_for_socket_event(sock, events, timeout_ms):
         try:
             ready = poller.poll(timeout_ms)
         except zlink.ZlinkError as exc:
-            if exc.errno == 11:
+            if exc.internal_errno == 11:
                 return False
             raise
     return bool(ready)
+
+
+def wait_connected(*monitors, timeout_s=5.0):
+    del timeout_s
+    for monitor in monitors:
+        event = monitor.recv()
+        if int(event.event) != int(zlink.MonitorEventMask.CONNECTION_READY):
+            raise AssertionError(f"unexpected monitor event: {event.event!r}")

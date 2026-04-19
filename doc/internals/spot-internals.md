@@ -228,7 +228,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Sender as spot_send_spot()
+    participant Sender as spot_send_router()
     participant RouteIn as route_ingress (ROUTER)
     participant DP as data_plane_loop
     participant NodeRouter as node_router (ROUTER)
@@ -248,7 +248,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Sender as spot_send_spot()
+    participant Sender as spot_send_router()
     participant RouteIn as route_ingress (ROUTER)
     participant DP1 as Data Plane (Node 1)
     participant Net as ROUTER-ROUTER Transport
@@ -379,8 +379,8 @@ Default internal data-plane HWM: `1000`
 
 Topic and routed HWM can be configured independently via
 `zlink_set_spot_node_option()`:
-- `ZLINK_SPOT_NODE_OPT_TOPIC_SNDHWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RCVHWM`
-- `ZLINK_SPOT_NODE_OPT_ROUTED_SNDHWM` / `ZLINK_SPOT_NODE_OPT_ROUTED_RCVHWM`
+- `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`
+- `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`
 
 ## 10. Dispatch Event Threading Model
 
@@ -566,118 +566,117 @@ This is the core reason the user-facing guide recommends
 `zlink_spot_dispatch_event_handler` as the unified consumption pattern
 when timer, routed recv, and subscribe all live on one Spot handle.
 
-## 11. Service Attachment Topology
+## 11. Channel Topology Internals
 
-Service-aware SPOT rides on top of the existing SpotNode data plane. It
-introduces a per-node service attachment table that maps `service_name` to a
-set of external ROUTER / PUB / SUB attachments, plus a unified service event
-queue that the public Spot facade drains.
+Channel-aware SPOT rides on top of the existing SpotNode data plane. The key
+additions are a single SPOT Discovery view for mesh auto-connect, a channel
+dealer map for cross-channel calls, and an external publish ingress path.
 
 ```text
 +------------------------------------------------------------------+
 |                          SpotNode Runtime                        |
 |------------------------------------------------------------------|
-| service attachment map                                           |
-|  service -> { router set, pub/sub pair }                         |
-|  per entry: { manual sources, discovery sources }                |
+| SPOT discovery view (one active view per node)                   |
+|  channel_name, channel_type = SPOT                               |
+|  -> determines peer mesh auto-connect scope                      |
 |------------------------------------------------------------------|
-| service router selector                                          |
-|  round-robin over active + send-ready ROUTER candidates          |
-|  0 candidates -> NOT_CONNECTED                                   |
+| channel dealer map                                               |
+|  channel_name -> { DEALER, source: auto | manual }               |
+|  one DEALER per channel_name (auto + manual combined)            |
 |------------------------------------------------------------------|
-| service subscribe ingress                                        |
-|  attach service_name to each inbound SUB delivery                |
+| pub ingress (one per node)                                       |
+|  external PUB -> hidden ingress receiver -> topic path           |
 |------------------------------------------------------------------|
-| unified service event queue                                      |
-|  item = { kind, service_name, source_rid, topic, request_seq,    |
-|           spot_rid, payload }                                    |
+| routed data plane                                                |
+|  peer ROUTER mesh (between SpotNodes in same channel)            |
+|  channel DEALER -> ROUTER(server) path (channel calls)           |
 |------------------------------------------------------------------|
-| unified service monitor queue                                    |
-|  item = { service_name, role, monitor_event }                    |
+| service monitor                                                  |
+|  peer state, admission, topology change events                   |
 +------------------------------------------------------------------+
 ```
 
-### 11.1 Attachment map
+### 11.1 SPOT Discovery view
 
-- One entry per `service_name` with the combined set of ROUTER, PUB, and
-  SUB attachments, regardless of whether they came from manual attach APIs
-  or from a Discovery handle.
-- Discovery-supplied providers are tagged with their Discovery source so
-  that Discovery destroy removes only that source's automatic attachments
-  without touching manual attachments or attachments supplied by other
-  Discovery handles.
-- Same-service Discovery duplicate attach is rejected at admission; the
-  map never holds more than one Discovery source per `service_name`.
-- A node that already hosts any service-aware entry admits at most one
-  public `Spot` facade. The facade admission check and the attach
-  admission check share the same gate.
+- A `SpotNode` accepts at most one Discovery with a
+  `ZLINK_CHANNEL_TYPE_SPOT` view. This view determines the mesh
+  auto-connect scope.
+- The peer set supplied by this view includes only other `SpotNode` peers
+  in the same `channel_name`. Generic `ROUTER`, `PUB`, and `SUB` providers
+  in the same channel are not mesh auto-connect targets.
+- A second SPOT channel Discovery attach is rejected with `EBUSY`.
+- Destroying the attached Discovery removes the automatic peer set it
+  supplied.
+- A `SpotNode` without Discovery can only wire its mesh manually via
+  `connect_peer()` / `disconnect_peer()`. Discovery attach and manual peer
+  connect cannot be mixed on the same node.
 
-### 11.2 Service router selector
+### 11.2 Channel dealer map
 
-- The selector pulls candidates from the ROUTER set of a single
-  `service_name` entry.
-- Inactive attachments and attachments that are not currently send-ready
-  are filtered out before selection.
-- Selection is round-robin; a request pins to whatever ROUTER the selector
-  returned, and its eventual reply reuses that ingress path without a
-  fresh round-robin.
-- When zero candidates remain after filtering, the submit path normalizes
-  the result to `NOT_CONNECTED` rather than pretending the submission is
-  just queued. HWM backpressure on a chosen candidate is still reported as
-  `BACKPRESSURED`.
+- Channel calls (`zlink_spot_send_channel()` /
+  `zlink_spot_request_channel()`) look up the attached `DEALER` by
+  `channel_name` in this map.
+- The automatic path (`attach_channel_dealer`) registers a `DEALER`
+  together with a Discovery that has a `ZLINK_CHANNEL_TYPE_SOCKET` view.
+  Discovery manages the peer set.
+- The manual path (`attach_channel_dealer_manual`) registers a
+  caller-connected `DEALER` under the given `channel_name`.
+- At most one `DEALER` may be registered per `channel_name`, counting
+  both automatic and manual attach together. Duplicates are rejected
+  with `EBUSY`.
+- Attached dealers are dedicated to the `SpotNode`. The caller keeps
+  ownership, but the socket must not be reused as a generic client
+  elsewhere.
+- When no `DEALER` is found for a `channel_name`, channel calls fail
+  with `ENOENT`.
 
-### 11.3 Service subscribe ingress
+### 11.3 Pub ingress
 
-- Every service SUB attachment feeds a service-aware ingress stage that
-  tags each inbound topic delivery with its `service_name` before pushing
-  it onto the unified service event queue. The local fanout path is not
-  reused for service-aware SUB traffic; it would lose the service tag.
-- Subscription filters are unioned across the facade. A filter addition
-  fans out to every attached SUB; a filter removal removes only when no
-  remaining subscriber wants it. A newly attached SUB (or a SUB that comes
-  back after discovery churn) replays the current filter set before it is
-  admitted into the active set.
-- `source_rid` on pub/sub deliveries is normalized to an empty routing id
-  when the underlying SUB has no reliable source. Applications treat
-  `service_name` + `topic_id` as the primary metadata.
+- `zlink_spot_node_attach_pub_ingress()` connects an external `PUB` to
+  the `SpotNode` input path.
+- On attach, the library creates a node-private hidden ingress receiver.
+  This hidden receiver is not exposed through any public API.
+- Topics published on the external `PUB` flow through the hidden receiver
+  into the local `SpotNode` topic path. This path is not the same as the
+  peer mesh pub/sub connection; it is a one-way input path for an external
+  publisher to inject topics into the local runtime.
+- Ingress topics reach the local `Spot` receive path and, when mesh peers
+  are present, may also be forwarded to same-channel peers.
+- Only one ingress `PUB` may be attached per node. A second attach is
+  rejected with `EBUSY`.
+- Attach does not take socket ownership. Destroy responsibility stays with
+  the caller.
 
-### 11.4 Unified service event queue
+### 11.4 Channel call routing
 
-- The queue is owned by the single public `Spot` facade attached to the
-  node. All subscribe, routed-reply, and routed-request-delivery items
-  land here tagged with their `kind`, `service_name`, source metadata,
-  and payload.
-- `zlink_spot_subscribe()`, `zlink_spot_subscription_event()`, and
-  `zlink_spot_recv()` drain matching items from the queue. Drain is
-  serialized per facade through the same dispatch-event machinery
-  described in §10.
-- Dispatch readable events notify the facade that the queue (or the
-  routed/timer planes) has drainable content. The user handler is invoked
-  by the shared dispatch executor, not by the I/O thread directly, so a
-  slow user handler cannot stall attachment I/O.
-- The dispatch executor runs on Spot-specific worker runtimes. The worker
-  count follows the context option `ZLINK_SPOT_WORKER_THREADS`; a value of `0`
-  means auto-select (`min(visible logical cores, 8)`, fallback `1`).
+- Channel calls always go through attached `DEALER` paths. The
+  `SpotNode` routed topology is not reused for channel calls.
+- The model is `DEALER(client) -> ROUTER(server)`. A channel call means
+  "send to one of this channel's handlers", not "target a specific
+  server".
+- A channel request's reply returns through the same `DEALER` path used
+  to submit it. The reply path does not re-resolve the `channel_name`.
+- When a `DEALER` exists but has no reachable peer, the result is
+  normalized to `ENOTCONN`.
 
-### 11.5 Node-owned monitor fan-in
+### 11.5 Service monitor
 
-- Each attachment has its own socket-level monitor. The node collects all
-  attachment monitor events into a unified service monitor queue tagged
-  with `service_name` and the attachment `role`.
-- `zlink_spot_node_monitor_recv()` is the only public drain for this
-  queue. Service-aware monitor events are never multiplexed into the Spot
-  dispatch readable plane; the facade is not the owner of monitor traffic.
+- `SpotNode` observability uses `zlink_service_monitor_open()` /
+  `zlink_service_monitor_recv()` and the snapshot/query APIs.
+- Peer state, admission changes, and topology events are surfaced
+  through the monitor.
+- Monitor events are never multiplexed into the Spot dispatch readable
+  plane.
 
 ### 11.6 Active set maintenance
 
-- Discovery churn that breaks a pub/sub pair removes that pair from the
-  active set immediately. Routed submits on the same service keep working
-  if a ROUTER is still active.
-- When a broken pair is restored, the runtime replays the current
-  subscription filter set before the pair re-enters the active set.
-- Manual attachments do not participate in pair-break detection the same
-  way; they are active as long as the socket is healthy, per the normal
-  socket state machine.
+- Discovery churn that disconnects a mesh peer removes it from the active
+  set immediately.
+- When a peer is restored, the runtime replays the current subscription
+  filter set before the peer re-enters the active set.
+- For channel dealers, Discovery-managed peer set changes automatically
+  update the dealer's effective candidates.
+- Manual attachments stay active as long as the socket is healthy.
 
 ### 11.7 Admission state propagation
 

@@ -120,10 +120,9 @@ Service monitors are opened against one of the targets in
 `zlink_monitor_target_kind_t`: `ZLINK_MONITOR_TARGET_DISCOVERY` and
 `ZLINK_MONITOR_TARGET_SPOT_NODE`. The `ZLINK_MONITOR_TARGET_SPOT` value is
 reserved; the `Spot` facade is not a public service-monitor target. SpotNode
-service-aware monitor events are not delivered through the generic service
-monitor surface. Instead, call `zlink_spot_node_monitor_recv()`, which
-returns each event together with its `service_name` and attachment role
-(`ROUTER` / `PUB` / `SUB`).
+monitor events are drained through `zlink_service_monitor_recv()` on a
+monitor opened against the `SpotNode`. There is no dedicated SpotNode-specific
+monitor recv API.
 
 ## Examples
 

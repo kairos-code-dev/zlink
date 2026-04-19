@@ -454,7 +454,7 @@ class base_socket_t : public socket_handle_t
     }
 
   protected:
-    ZLINK_CPP_NODISCARD int try_send (send_result_t &result_,
+    ZLINK_CPP_NODISCARD int send_no_wait_result (send_result_t &result_,
                                       message_t &part_)
     {
         if (!part_.valid ()) {
@@ -494,7 +494,7 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    try_send (send_result_t &result_, std::vector<message_t> &parts_)
+    send_no_wait_result (send_result_t &result_, std::vector<message_t> &parts_)
     {
         std::vector<zlink_msg_t> native_parts;
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
@@ -521,7 +521,7 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    try_send (send_result_t &result_,
+    send_no_wait_result (send_result_t &result_,
               const routing_id_t &target_rid_,
               message_t &part_)
     {
@@ -563,7 +563,7 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    try_send (send_result_t &result_,
+    send_no_wait_result (send_result_t &result_,
               const routing_id_t &target_rid_,
               std::vector<message_t> &parts_)
     {
@@ -646,20 +646,20 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    try_publish (send_result_t &result_,
+    publish_no_wait_result (send_result_t &result_,
                  const std::string &topic_id_,
                  message_t &part_)
     {
         std::vector<message_t> parts (1);
         parts[0] = std::move (part_);
-        const int rc = try_publish (result_, topic_id_, parts);
+        const int rc = publish_no_wait_result (result_, topic_id_, parts);
         if (rc != 0 || result_ != send_result_t::sent)
             part_ = std::move (parts[0]);
         return rc;
     }
 
     ZLINK_CPP_NODISCARD int
-    try_publish (send_result_t &result_,
+    publish_no_wait_result (send_result_t &result_,
                  const std::string &topic_id_,
                  std::vector<message_t> &parts_)
     {

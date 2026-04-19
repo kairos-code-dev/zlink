@@ -187,7 +187,7 @@ try_send_stream_message (stream_session_t *session,
 
     zlink::send_result_t send_result = zlink::send_result_t::sent;
     const int rc =
-      session->server_socket->try_send (send_result, message->rid, message->payload);
+      session->server_socket->send_no_wait_result (send_result, message->rid, message->payload);
     if (rc != 0) {
         const int err = errno;
         if (err == EINTR || err == EAGAIN || err == ENOTCONN

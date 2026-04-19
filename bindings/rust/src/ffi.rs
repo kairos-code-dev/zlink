@@ -1093,50 +1093,18 @@ unsafe extern "C" {
         peer_endpoint: *const c_char,
     ) -> c_int;
     pub fn zlink_spot_node_attach_discovery(node: *mut c_void, discovery: *mut c_void) -> c_int;
-    pub fn zlink_spot_node_attach_router(
+    pub fn zlink_spot_node_attach_channel_dealer(
         node: *mut c_void,
-        service_name: *const c_char,
-        router: *mut c_void,
+        discovery: *mut c_void,
+        dealer: *mut c_void,
     ) -> c_int;
-    pub fn zlink_spot_node_attach_pubsub(
+    pub fn zlink_spot_node_attach_channel_dealer_manual(
         node: *mut c_void,
-        service_name: *const c_char,
-        pub_socket: *mut c_void,
-        sub_socket: *mut c_void,
+        channel_name: *const c_char,
+        dealer: *mut c_void,
     ) -> c_int;
-    pub fn zlink_spot_node_service_attachment_count(
-        node: *mut c_void,
-        count_out: *mut usize,
-    ) -> c_int;
-    pub fn zlink_spot_node_service_attachment_at(
-        node: *mut c_void,
-        index: usize,
-        out: *mut zlink_spot_service_attachment_stats_t,
-    ) -> c_int;
-    pub fn zlink_spot_node_monitor_recv(
-        node: *mut c_void,
-        out: *mut zlink_spot_service_monitor_event_t,
-        flags: zlink_recv_flags_t,
-    ) -> c_int;
-    pub fn zlink_spot_send_spot(
-        spot: *mut c_void,
-        dest_node_rid: *const zlink_routing_id_t,
-        dest_spot_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        flags: zlink_send_flags_t,
-    ) -> c_int;
-    pub fn zlink_spot_request_spot(
-        spot: *mut c_void,
-        dest_node_rid: *const zlink_routing_id_t,
-        dest_spot_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        handler: zlink_reply_handler_fn,
-        userdata: *mut c_void,
-        flags: zlink_send_flags_t,
-        timeout_ms: u32,
-    ) -> c_int;
+    pub fn zlink_spot_node_attach_pub_ingress(node: *mut c_void, pub_socket: *mut c_void)
+        -> c_int;
     pub fn zlink_spot_reply_spot(
         spot: *mut c_void,
         dest_node_rid: *const zlink_routing_id_t,
@@ -1169,16 +1137,16 @@ unsafe extern "C" {
         parts: *mut zlink_msg_t,
         part_count: usize,
     ) -> c_int;
-    pub fn zlink_spot_send_service(
+    pub fn zlink_spot_send_channel(
         spot: *mut c_void,
-        service_name: *const c_char,
+        channel_name: *const c_char,
         parts: *mut zlink_msg_t,
         part_count: usize,
         flags: zlink_send_flags_t,
     ) -> c_int;
-    pub fn zlink_spot_request_service(
+    pub fn zlink_spot_request_channel(
         spot: *mut c_void,
-        service_name: *const c_char,
+        channel_name: *const c_char,
         parts: *mut zlink_msg_t,
         part_count: usize,
         handler: zlink_reply_handler_fn,
@@ -1196,7 +1164,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_spot_subscribe(
         spot: *mut c_void,
-        source_rid_out: *mut *const zlink_routing_id_t,
+        source_rid_out: *mut zlink_routing_id_t,
         parts_out: *mut *mut zlink_msg_t,
         part_count_out: *mut usize,
         service_name_out: *mut c_char,
@@ -1207,7 +1175,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_spot_subscription_event(
         spot: *mut c_void,
-        source_rid_out: *mut *const zlink_routing_id_t,
+        source_rid_out: *mut zlink_routing_id_t,
         subscribed_out: *mut c_int,
         service_name_out: *mut c_char,
         service_name_len_out: *mut usize,

@@ -54,6 +54,24 @@ zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_)
         ->copy (*reinterpret_cast<zlink::msg_t *> (src_)));
 }
 
+zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_)
+{
+    if (!dest_ || !src_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+
+    zlink::msg_t *dest = reinterpret_cast<zlink::msg_t *> (dest_);
+    zlink::msg_t *src = reinterpret_cast<zlink::msg_t *> (src_);
+    if (unlikely (!src->check ())) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+
+    *dest = *src;
+    return zlink::config_result_internal::from_rc (src->init ());
+}
+
 void *zlink_msg_data (zlink_msg_t *msg_)
 {
     return (reinterpret_cast<zlink::msg_t *> (msg_))->data ();

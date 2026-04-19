@@ -9,6 +9,23 @@ namespace zlink
 {
 namespace spot_reqrep_internal
 {
+namespace
+{
+size_t hash_combine (size_t seed_, size_t value_)
+{
+    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6)
+                    + (seed_ >> 2));
+}
+}
+
+bool pending_spot_key_t::operator== (const pending_spot_key_t &other_) const
+{
+    return request_seq == other_.request_seq
+           && source_class == other_.source_class
+           && source_rid == other_.source_rid
+           && source_spot_rid == other_.source_spot_rid;
+}
+
 bool pending_spot_key_t::operator< (const pending_spot_key_t &other_) const
 {
     if (request_seq != other_.request_seq)
@@ -18,6 +35,15 @@ bool pending_spot_key_t::operator< (const pending_spot_key_t &other_) const
     if (source_rid != other_.source_rid)
         return source_rid < other_.source_rid;
     return source_spot_rid < other_.source_spot_rid;
+}
+
+size_t pending_spot_key_hash_t::operator() (const pending_spot_key_t &key_) const
+{
+    size_t seed = std::hash<uint64_t> () (key_.request_seq);
+    seed = hash_combine (seed, std::hash<uint8_t> () (key_.source_class));
+    seed = hash_combine (seed, std::hash<std::string> () (key_.source_rid));
+    return hash_combine (seed,
+                         std::hash<std::string> () (key_.source_spot_rid));
 }
 
 spot_dispatch_state_t::spot_dispatch_state_t () :

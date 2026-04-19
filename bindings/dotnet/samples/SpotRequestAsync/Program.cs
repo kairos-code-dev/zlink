@@ -7,31 +7,29 @@ if (!SampleSupport.IsNativeAvailable())
 
 using var ctx = new Context();
 using var requesterNode = new SpotNode(ctx);
-using var responderNode = new SpotNode(ctx);
+using var requesterDealer = new DealerSocket(ctx);
+using var responderRouter = new RouterSocket(ctx);
 using var requester = requesterNode.CreateSpot();
-using var responder = responderNode.CreateSpot();
 string endpoint = SampleSupport.NewEndpoint("tcp", "spot-request-async");
-requesterNode.SetRoutingId(RoutingId.FromBytes("spot-requester-node"u8.ToArray()));
-responderNode.SetRoutingId(RoutingId.FromBytes("spot-responder-node"u8.ToArray()));
-requester.SetRoutingId(RoutingId.FromBytes("spot-requester"u8.ToArray()));
-responder.SetRoutingId(RoutingId.FromBytes("spot-responder"u8.ToArray()));
-responderNode.Bind(endpoint);
-requesterNode.ConnectPeer(endpoint);
-SampleSupport.WaitSpotPeerConnected(requesterNode);
+const string channelName = "orders";
+responderRouter.Bind(endpoint);
+requesterDealer.Connect(endpoint);
+requesterNode.AttachChannelDealerManual(channelName, requesterDealer);
 
 Task responderTask = Task.Run(() =>
 {
-    using Received received = responder.RecvRouted();
+    using Received received = responderRouter.Recv();
+    RoutingId routingId = received.RoutingId
+        ?? throw new InvalidOperationException("missing routing id");
     using Message requestPart = received.Parts[0];
     SampleSupport.EnsureEqual("spot-ping", requestPart.GetString(), "request");
     using var reply = Message.FromString("spot-pong");
-    received.Reply(reply);
+    responderRouter.Reply(routingId, received.RequestSeq ?? 0UL, reply);
 });
 
 using var request = Message.FromString("spot-ping");
-var replyParts = await requester.RequestToSpotAsync(
-    responderNode.RoutingId,
-    responder.RoutingId,
+var replyParts = await requester.RequestChannelAsync(
+    channelName,
     request,
     TimeSpan.FromSeconds(2));
 using Message replyPart = replyParts[0];

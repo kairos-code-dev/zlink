@@ -159,7 +159,7 @@ internal static class PerfRouterRouter
         {
             if (!WaitForInput(poller, events, 10))
                 continue;
-            if (!receiver.TryRecv(out Received? received) || received == null)
+            if (!receiver.RecvNoWait(out Received? received) || received == null)
                 continue;
             using (received)
             {
@@ -204,7 +204,7 @@ internal static class PerfRouterRouter
                     {
                         while (true)
                         {
-                            if (!receiver.TryRecv(out Received? receivedMessage)
+                            if (!receiver.RecvNoWait(out Received? receivedMessage)
                                 || receivedMessage == null)
                                 break;
                             using (receivedMessage)

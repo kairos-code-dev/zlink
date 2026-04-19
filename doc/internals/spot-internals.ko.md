@@ -227,7 +227,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Sender as spot_send_spot()
+    participant Sender as spot_send_router()
     participant RouteIn as route_ingress (ROUTER)
     participant DP as data_plane_loop
     participant NodeRouter as node_router (ROUTER)
@@ -247,7 +247,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Sender as spot_send_spot()
+    participant Sender as spot_send_router()
     participant RouteIn as route_ingress (ROUTER)
     participant DP1 as Data Plane (Node 1)
     participant Net as ROUTER-ROUTER Transport
@@ -377,8 +377,8 @@ Unified handle은 SpotNode를 빌린다. 여러 handle이 하나의 node를 공�
 기본 내부 data-plane HWM: `1000`
 
 Topic과 routed HWM은 `zlink_set_spot_node_option()`으로 독립 설정 가능:
-- `ZLINK_SPOT_NODE_OPT_TOPIC_SNDHWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RCVHWM`
-- `ZLINK_SPOT_NODE_OPT_ROUTED_SNDHWM` / `ZLINK_SPOT_NODE_OPT_ROUTED_RCVHWM`
+- `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`
+- `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`
 
 ## 10. Dispatch Event 스레딩 모델
 
@@ -562,106 +562,105 @@ timer) 만 접근한다.
 handle 위에 공존할 때 `zlink_spot_dispatch_event_handler` 를 통합
 소비 패턴으로 권장하는 근본 이유다.
 
-## 11. Service Attachment 토폴로지
+## 11. Channel Topology 내부 구조
 
-service-aware SPOT은 기존 SpotNode data plane 위에 올라간다. 핵심 추가 구조는
-`service_name` 별 외부 ROUTER/PUB/SUB attachment를 모아 두는 node 수준 테이블
-하나와, 공개 `Spot` facade가 drain하는 통합 service event queue다.
+channel-aware SPOT은 기존 SpotNode data plane 위에 올라간다. 핵심 추가 구조는
+SPOT mesh용 Discovery view 하나, channel 호출용 `DEALER` map, 외부 publish
+ingress 경로다.
 
 ```text
 +------------------------------------------------------------------+
 |                          SpotNode Runtime                        |
 |------------------------------------------------------------------|
-| service attachment map                                           |
-|  service -> { router set, pub/sub pair }                         |
-|  per entry: { manual sources, discovery sources }                |
+| SPOT discovery view (active view 1개)                            |
+|  channel_name, channel_type = SPOT                               |
+|  -> peer mesh auto-connect 범위 결정                              |
 |------------------------------------------------------------------|
-| service router selector                                          |
-|  round-robin over active + send-ready ROUTER candidates          |
-|  0 candidates -> NOT_CONNECTED                                   |
+| channel dealer map                                               |
+|  channel_name -> { DEALER, source: auto | manual }               |
+|  같은 channel_name에 auto/manual 합쳐 DEALER 1개                  |
 |------------------------------------------------------------------|
-| service subscribe ingress                                        |
-|  attach service_name to each inbound SUB delivery                |
+| pub ingress (node당 1개)                                          |
+|  external PUB -> hidden ingress receiver -> topic path            |
 |------------------------------------------------------------------|
-| unified service event queue                                      |
-|  item = { kind, service_name, source_rid, topic, request_seq,    |
-|           spot_rid, payload }                                    |
+| routed data plane                                                |
+|  peer ROUTER mesh (같은 channel SpotNode 사이)                    |
+|  channel DEALER -> ROUTER(server) 경로 (channel 호출)             |
 |------------------------------------------------------------------|
-| unified service monitor queue                                    |
-|  item = { service_name, role, monitor_event }                    |
+| service monitor                                                  |
+|  peer state, admission, topology 변경 이벤트                      |
 +------------------------------------------------------------------+
 ```
 
-### 11.1 Attachment map
+### 11.1 SPOT Discovery view
 
-- `service_name` 하나에 ROUTER, PUB, SUB attachment를 모두 모아 둔다. 수동
-  attach와 Discovery가 공급한 자동 attach가 같은 엔트리를 공유한다.
-- Discovery가 공급한 provider는 source 태그로 구분해 둔다. Discovery destroy는
-  그 Discovery가 공급하던 자동 attach만 제거하고, 수동 attachment나 다른
-  Discovery source의 attachment는 그대로 둔다.
-- 같은 `service_name` Discovery 중복 attach는 admission 단계에서 거절되므로
-  map에는 `service_name` 당 Discovery source가 둘 이상 들어오지 않는다.
-- service-aware entry가 하나라도 있는 node는 공개 facade `Spot`을 하나만
-  허용한다. attach admission과 facade admission이 같은 gate를 공유한다.
+- `SpotNode`에는 `ZLINK_CHANNEL_TYPE_SPOT` view를 가진 Discovery를 하나만
+  attach할 수 있다. 이 view가 node의 mesh auto-connect 범위를 결정한다.
+- view가 공급하는 peer set은 같은 `channel_name`의 다른 `SpotNode`뿐이다.
+  같은 `channel_name`의 일반 `ROUTER`, `PUB`, `SUB` provider는 mesh peer
+  자동 연결 대상이 아니다.
+- 두 번째 SPOT channel Discovery attach는 `EBUSY`로 거부된다.
+- attach된 Discovery를 destroy하면 그 view가 공급하던 automatic peer set도
+  함께 빠진다.
+- Discovery가 없는 `SpotNode`는 수동 `connect_peer()` / `disconnect_peer()`로만
+  mesh를 구성할 수 있다. discovery attach와 수동 peer connect는 같은 node에서
+  동시에 사용할 수 없다.
 
-### 11.2 Service router selector
+### 11.2 Channel dealer map
 
-- selector는 하나의 `service_name` 엔트리가 보유한 ROUTER 집합에서 후보를
-  고른다.
-- 비활성 attachment와 send-ready가 아닌 attachment는 필터링으로 제외한다.
-- 선택 규칙은 round-robin이며, 한 request는 고른 ROUTER에 귀속된다. reply는
-  해당 ingress ROUTER 경로를 그대로 재사용하며 새로운 round-robin을 돌리지
-  않는다.
-- 필터링 후 후보가 0개면 submit 결과는 `NOT_CONNECTED`로 정규화된다. 선택된
-  ROUTER가 HWM에 걸린 경우는 여전히 `BACKPRESSURED`다.
+- channel 호출(`zlink_spot_send_channel()` / `zlink_spot_request_channel()`)은
+  이 map에서 `channel_name`으로 attach된 `DEALER`를 찾아 전송한다.
+- 자동 경로(`attach_channel_dealer`)는 `ZLINK_CHANNEL_TYPE_SOCKET` view를 가진
+  Discovery와 함께 `DEALER`를 등록한다. Discovery가 peer set을 관리한다.
+- 수동 경로(`attach_channel_dealer_manual`)는 호출자가 직접 connect를 끝낸
+  `DEALER`를 `channel_name` 아래에 등록한다.
+- 같은 `channel_name`에 자동 attach와 수동 attach를 합쳐서 `DEALER` 하나만
+  등록할 수 있다. 중복은 `EBUSY`로 거부된다.
+- attach된 `DEALER`는 `SpotNode` 전용 자원으로 취급한다. 소유권은 호출자가
+  유지하지만, 다른 owner가 같은 socket을 일반 용도로 함께 써서는 안 된다.
+- `channel_name`에 대응하는 `DEALER`가 없을 때 channel 호출은 `ENOENT`로
+  실패한다.
 
-### 11.3 Service subscribe ingress
+### 11.3 Pub ingress
 
-- service SUB attachment에서 들어온 inbound delivery는 service-aware ingress
-  단계에서 `service_name`을 붙인 뒤 통합 queue로 푸시한다. 로컬 fanout 경로를
-  그대로 재사용하지 않는다. 그렇게 하면 service 태그가 사라진다.
-- subscription filter는 facade 보유 집합의 합집합으로 계산된다. filter 추가는
-  attach된 모든 SUB에 반영되고, filter 제거는 다른 subscriber가 여전히 그
-  filter를 원할 때는 실제로 제거하지 않는다. 새 SUB가 attach되거나 churn 후
-  다시 살아난 SUB가 active 집합으로 돌아올 때는 현재 filter 집합을 replay해야
-  한다.
-- pub/sub 경로의 `source_rid`는 신뢰할 수 있는 값이 없으면 빈 routing id로
-  정규화된다. 응용은 `service_name`과 `topic_id`를 주요 메타데이터로 다룬다.
+- `zlink_spot_node_attach_pub_ingress()`로 외부 일반 `PUB`를 `SpotNode` 입력
+  경로에 연결한다.
+- attach 시 라이브러리는 node 전용 hidden ingress receiver를 내부 생성한다.
+  이 hidden receiver는 공개 API에 노출되지 않는다.
+- 외부 `PUB`에서 publish한 topic은 hidden receiver를 거쳐 local `SpotNode`의
+  topic path로 올라간다. 이 경로는 mesh peer pub/sub 연결과 같은 의미가 아니라,
+  외부 publisher가 local runtime으로 topic을 주입하는 단방향 입력 경로다.
+- ingress로 들어온 topic은 local `Spot` 수신 경로로 올라가며, mesh peer가
+  있으면 같은 channel peer로도 forward될 수 있다.
+- ingress `PUB`는 node당 하나만 등록할 수 있다. 두 번째 등록은 `EBUSY`다.
+- attach는 socket 소유권을 가져오지 않는다. destroy 책임은 호출자에게 남는다.
 
-### 11.4 통합 service event queue
+### 11.4 Channel 호출 라우팅
 
-- queue의 소유자는 node에 attach된 단일 공개 `Spot` facade다. subscribe,
-  routed reply, routed request delivery 아이템이 모두 `kind`, `service_name`,
-  source 메타데이터, payload를 태그로 붙인 형태로 이 queue에 들어온다.
-- `zlink_spot_subscribe()`, `zlink_spot_subscription_event()`,
-  `zlink_spot_recv()`가 이 queue에서 아이템을 drain한다. drain은 §10에서
-  설명한 dispatch event 기계를 공유하며, facade 단위로 직렬화된다.
-- dispatch readable event는 facade에 "queue(또는 routed/timer plane)가 비어
-  있지 않다"를 알린다. user handler는 I/O 스레드가 직접 호출하지 않고 공용
-  dispatch executor가 실행한다. 느린 user handler 때문에 attachment I/O가
-  멈추는 일이 없도록 하기 위함이다.
-- dispatch executor는 Spot 전용 worker runtime 위에서 돈다. worker 수는
-  context 옵션 `ZLINK_SPOT_WORKER_THREADS`를 따르며, 값 `0`은 자동 선택
-  (`min(visible logical cores, 8)`, 실패 시 `1`)이다.
+- channel 호출은 항상 attach된 `DEALER` 경로로만 나간다. `SpotNode.router`
+  경로를 channel 호출에 재사용하지 않는다.
+- `DEALER(client) -> ROUTER(server)` 모델이다. channel 처리자 집합 중 하나에
+  보내는 의미이지, 특정 server를 직접 지목하는 의미가 아니다.
+- channel request의 reply는 요청을 보낸 같은 `DEALER` 경로로만 돌아온다.
+  reply를 다시 `channel_name`으로 재탐색하지 않는다.
+- `DEALER`가 있으나 현재 전송 가능한 peer가 없으면 `ENOTCONN`으로 정규화된다.
 
-### 11.5 Node 소유 monitor fan-in
+### 11.5 Service monitor
 
-- attachment별 socket monitor가 올리는 이벤트는 node 단에서 통합 service
-  monitor queue로 모아지며, 각 아이템은 `service_name`과 attachment `role`을
-  태그로 같이 싣는다.
-- 이 queue의 공개 drain은 `zlink_spot_node_monitor_recv()` 하나다. service
-  monitor event는 Spot dispatch readable plane에 섞이지 않는다. monitor는
-  facade의 책임이 아니다.
+- `SpotNode` 상태 관찰은 `zlink_service_monitor_open()` /
+  `zlink_service_monitor_recv()`와 snapshot/query API를 사용한다.
+- peer state, admission 변경, topology 이벤트가 monitor를 통해 노출된다.
+- monitor event는 Spot dispatch readable plane에 섞이지 않는다.
 
 ### 11.6 Active set 유지
 
-- Discovery churn으로 pub/sub 짝이 깨지면 해당 pair는 즉시 active 집합에서
-  제외된다. 같은 서비스에 ROUTER가 여전히 active이면 routed submit은 계속
-  허용된다.
-- pair가 복구되면 현재 subscription filter 집합을 replay한 뒤 active 집합에
+- Discovery churn으로 mesh peer가 끊기면 해당 peer는 즉시 active 집합에서
+  제외된다.
+- peer가 복구되면 현재 subscription filter 집합을 replay한 뒤 active 집합에
   재진입시킨다.
-- 수동 attachment는 위와 같은 pair-break 판정을 따로 받지 않는다. socket
-  상태가 정상인 동안 active로 유지된다. (일반 socket 상태 기계에 따른다.)
+- channel dealer의 경우, Discovery가 관리하는 peer set이 변경되면 `DEALER`의
+  유효 후보가 자동으로 갱신된다.
+- 수동 attachment는 socket 상태가 정상인 동안 active로 유지된다.
 
 ### 11.7 Admission state 전파
 

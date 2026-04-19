@@ -31,7 +31,7 @@ Options:
   --duration N          Override single duration seconds (default: 5).
   --warmup N            Override single warmup seconds (default: 2).
   --msg-sizes LIST      Comma-separated sizes (default: 64,256,1024,65536,131072,262144).
-  --transports LIST     Comma-separated transports (default: inproc).
+  --transports LIST     Comma-separated transports (default: policy transport set).
 
 Notes:
   - result is saved under perf/results/single/report/ as
@@ -49,9 +49,6 @@ async function main() {
     if (options.helpRequested) {
         usage();
         return;
-    }
-    if (options.transports.some((transport) => transport !== 'inproc' && transport !== 'tcp')) {
-        throw new Error('single perf currently supports only --transports inproc,tcp');
     }
     const names = resolveSinglePatternNames(options.pattern);
     const resultLines = [];
@@ -74,7 +71,11 @@ async function main() {
             console.log('');
         }
         console.log(`## PATTERN: ${name}`);
-        for (const transport of options.transports) {
+        const supportedTransports = name === 'SPOT'
+            ? ['tcp']
+            : ['tcp', 'inproc'];
+        const activeTransports = options.transports.filter((transport) => supportedTransports.includes(transport));
+        for (const transport of activeTransports) {
             const patternRows = [];
             for (const msgSize of options.msgSizes) {
                 const latenciesNs = await runner(msgSize, { ...options, transport });

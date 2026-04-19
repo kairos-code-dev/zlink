@@ -16,6 +16,10 @@ import java.util.concurrent.CountDownLatch;
 
 final class PerfMultiDealerDealer {
     private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EINTR = 4;
+    private static final int ERRNO_ETIMEDOUT = 110;
+    private static final int ERRNO_ETIMEDOUT_WIN = 10060;
 
     private PerfMultiDealerDealer() {
     }
@@ -44,7 +48,11 @@ final class PerfMultiDealerDealer {
                         metrics.recordNanos(header.latencyNanos());
                     }
                 } catch (ZlinkException ex) {
-                    if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
+                    int errno = ex.getInternalErrno();
+                    if (errno == ERRNO_EAGAIN
+                        || errno == ERRNO_EINTR
+                        || errno == ERRNO_ETIMEDOUT
+                        || errno == ERRNO_ETIMEDOUT_WIN) {
                         continue;
                     }
                     throw ex;

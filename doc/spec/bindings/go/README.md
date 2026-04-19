@@ -6,6 +6,11 @@ This document defines the complete public API surface of the zlink Go binding.
 Every type, method, and function listed here is part of the contract that the
 binding must expose. Unexported methods and internal helpers are omitted.
 
+Only exported identifiers from the public `zlink` package are part of the
+contract. Go `internal/` packages, cgo bridge helpers, and source-tree-only
+utilities are internal. Perf, samples, and tests must import the public
+`zlink` package only and must not rely on internal packages.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -264,12 +269,17 @@ func (s *DealerSocket) TryRecv() (*Received, bool, error)
 // Returns *SubmitError on submit failure, *RequestError on reply failure
 // (e.g. timeout, protocol error).
 func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) ([]*Message, error)
-// RequestCallback performs a callback-based request — submit may fail
-// (returned as error). timeout = 0 uses the socket default timeout.
+// RequestCallback performs a callback-based request with blocking submit.
+// timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure; the callback receives a
 // RequestResult which maps to *RequestError for failures.
 // The reply parts slice is nil/empty on failure.
-func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) error
+func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) error
+// TryRequestCallback performs a callback-based request with nonblocking submit.
+// Returns (false, nil) only for temporary backpressure. timeout = 0 uses the
+// socket default timeout. Submit errors other than temporary backpressure are
+// returned as *SubmitError. The callback receives RequestResult for the reply phase.
+func (s *DealerSocket) TryRequestCallback(parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) (bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnSendReady(handler func()) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
@@ -311,12 +321,17 @@ func (s *RouterSocket) TryRecv() (*Received, bool, error)
 // Returns *SubmitError on submit failure, *RequestError on reply failure
 // (e.g. timeout, protocol error).
 func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.Duration) ([]*Message, error)
-// RequestCallback performs a callback-based request to a specific peer —
-// submit may fail (returned as error). timeout = 0 uses the socket default
-// timeout. Returns *SubmitError on submit failure; the callback receives a
-// RequestResult which maps to *RequestError for failures.
+// RequestCallback performs a callback-based request to a specific peer with
+// blocking submit. timeout = 0 uses the socket default timeout.
+// Returns *SubmitError on submit failure; the callback receives a RequestResult
+// which maps to *RequestError for failures.
 // The reply parts slice is nil/empty on failure.
-func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) error
+func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) error
+// TryRequestCallback performs a callback-based request to a specific peer with
+// nonblocking submit. Returns (false, nil) only for temporary backpressure.
+// timeout = 0 uses the socket default timeout. Submit errors other than
+// temporary backpressure are returned as *SubmitError.
+func (s *RouterSocket) TryRequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) (bool, error)
 // Reply submits a reply to a request from peer rid. Returns *SubmitError on failure.
 func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -329,12 +344,17 @@ func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error
 func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID,
     flags SendFlags, parts ...*Message) error
 
-// --- router → spot routed request (callback) ---
+// --- router → spot routed request (callback, blocking submit) ---
 // RequestToSpot submits a routed request. Returns *SubmitError on submit failure;
 // callback receives RequestResult (maps to *RequestError on completion failure).
 func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback, flags SendFlags,
+    callback RequestReplyCallback,
     timeout time.Duration, parts ...*Message) error
+// TryRequestToSpot submits a routed request with nonblocking submit.
+// Returns (false, nil) only for temporary backpressure.
+func (s *RouterSocket) TryRequestToSpot(destNodeRid, destSpotRid RoutingID,
+    callback RequestReplyCallback,
+    timeout time.Duration, parts ...*Message) (bool, error)
 
 // --- router → spot routed reply ---
 // ReplyToSpot submits a routed reply. Returns *SubmitError on failure.
@@ -1115,13 +1135,18 @@ func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64
 // SendToRouter submits parts routed to a router peer. Returns *SubmitError on failure.
 func (s *Spot) SendToRouter(peerRid RoutingID, flags SendFlags, parts ...*Message) error
 
-// --- routed request (spot → router, callback) ---
+// --- routed request (spot → router, callback, blocking submit) ---
 // timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure; the callback receives a
 // RequestResult which maps to *RequestError for failures.
 func (s *Spot) RequestToRouter(peerRid RoutingID,
-    callback RequestReplyCallback, flags SendFlags,
+    callback RequestReplyCallback,
     timeout time.Duration, parts ...*Message) error
+// TryRequestToRouter performs a callback-based routed request with nonblocking submit.
+// Returns (false, nil) only for temporary backpressure.
+func (s *Spot) TryRequestToRouter(peerRid RoutingID,
+    callback RequestReplyCallback,
+    timeout time.Duration, parts ...*Message) (bool, error)
 
 // --- routed reply (spot → router) ---
 // ReplyToRouter submits a routed reply. Returns *SubmitError on failure.

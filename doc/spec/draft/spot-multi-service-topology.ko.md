@@ -13,6 +13,12 @@
 모델"을 버리고, 더 단순한 방향으로 SPOT과 channel socket 토폴로지를 다시
 정리한다.
 
+현재 구현은 channel 호출 표면에는 `channel` 용어를 쓰지만, Discovery 생성자,
+SPOT topic publish/subscribe, topology snapshot 구조체처럼 기존 공개 계약이 이미
+널리 쓰이던 영역은 아직 `service_name` 필드 이름을 그대로 유지한다. 이 문서는
+새로 정리한 SPOT channel topology의 의미를 설명하는 초안이며, 공개 헤더에 남아
+있는 `service_name` 표기는 "현재 구현 이름"으로 읽어야 한다.
+
 이번 초안의 목표는 아래와 같다.
 
 - `SpotNode`가 아니라 attach된 `Discovery`가 channel view를 소유하게 한다.
@@ -921,7 +927,7 @@ App -> Spot publish -> local SpotNode pub mesh
 
 guide에는 아래를 넣는다.
 
-- 언제 `Spot` direct를 쓰는지
+- 언제 `Spot` publish/subscribe를 쓰는지
 - 언제 channel client `DEALER`를 쓰는지
 - 왜 channel API에서 특정 server 지정이 기본 기능이 아닌지
 - 디버깅 관찰은 왜 monitor/tap으로 분리하는지

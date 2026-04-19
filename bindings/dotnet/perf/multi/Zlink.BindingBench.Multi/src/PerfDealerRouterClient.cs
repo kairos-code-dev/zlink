@@ -187,31 +187,20 @@ internal static class PerfDealerRouterClient
 
         while (true)
         {
-            Received? receivedMessage = null;
-            try
-            {
-                receivedMessage = ((MessageSocketBase)slot.Socket)
-                    .Recv(RecvFlags.DontWait);
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
-            {
-                break;
-            }
-
-            if (receivedMessage == null || receivedMessage.Parts.Count == 0)
+            using Received? receivedMessage = TryRecvNoWait((DealerSocket)slot.Socket);
+            if (receivedMessage == null || receivedMessage.Count == 0)
                 break;
 
             if (!slot.WaitingForReply)
             {
-                DisposeReceived(receivedMessage);
                 continue;
             }
 
             slot.WaitingForReply = false;
             if (phase == PerfPhase.Active)
             {
-                ReadOnlySpan<byte> body = receivedMessage.Parts[0].AsReadOnlySpan();
+                ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
+                    .AsReadOnlySpan();
                 if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
                     && header.RunId == runId
                     && header.MsgSize == (uint)msgSize
@@ -281,17 +270,8 @@ internal static class PerfDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        try
-        {
-            using Message message = Message.FromBytes(slot.Payload);
-            ((MessageSocketBase)slot.Socket).Send(message);
-            return true;
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
-        {
-            return false;
-        }
+        using Message message = Message.FromBytes(slot.Payload);
+        return ((DealerSocket)slot.Socket).TrySend(message);
     }
 
     private static void DisposeReceived(Received? received)
@@ -349,5 +329,10 @@ internal static class PerfDealerRouterClient
         internal int LatencySampleCap { get; }
         internal long SampleSeen { get; set; }
         internal uint Rng { get; set; }
+    }
+
+    private static Received? TryRecvNoWait(DealerSocket socket)
+    {
+        return socket.TryRecv(out Received? received) ? received : null;
     }
 }

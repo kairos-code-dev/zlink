@@ -38,6 +38,7 @@ class SpotRequestAsyncTests(unittest.TestCase):
             self.ctx.close()
 
     def test_request_to_spot_async_completes_via_routed_receive_callback(self):
+        self.skipTest("spot direct request surface was removed from the canonical Python binding")
         endpoint = _tcp_endpoint()
         requester_node = zlink.SpotNode(self.ctx)
         responder_node = zlink.SpotNode(self.ctx)

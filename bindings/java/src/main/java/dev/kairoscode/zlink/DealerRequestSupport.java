@@ -91,8 +91,8 @@ final class DealerRequestSupport implements AutoCloseable {
         Objects.requireNonNull(parts, "parts");
         List<Message> payload = RequestReplySupport.clonePayload(parts);
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        return RequestReplySupport.startRequestExecution(
-            () -> submitRequest(payload, timeoutMs, flags));
+        return RequestReplySupport.startTimedRequestExecution(
+            () -> submitRequest(payload, timeoutMs, flags), timeoutMs);
     }
 
     @Override
@@ -151,7 +151,8 @@ final class DealerRequestSupport implements AutoCloseable {
                     RequestResult.fromValue(reply.requestResult()),
                     reply.requestResult());
             }
-            return new Received(null,
+            RequestReplySupport.closeAll(payload);
+            return new Received((RoutingId) null,
                 Message.fromMsgVector(reply.replyParts(), reply.replyPartCount()),
                 true);
         } catch (Throwable error) {

@@ -345,7 +345,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Sender as spot_send_spot()
+    participant Sender as spot_send_router()
     participant RouteIn as route_ingress (ROUTER)
     participant DP as Data Plane Loop
     participant NodeRouter as node_router (ROUTER)
@@ -368,7 +368,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant App as Application
-    participant API as spot_request_spot()
+    participant API as spot_request_router()
     participant State as spot_request_reply_state
     participant Sched as Timeout Scheduler
     participant DP as Data Plane

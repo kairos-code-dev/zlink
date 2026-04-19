@@ -5,12 +5,12 @@
 
 #include <zlink.h>
 
-#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <stdint.h>
+#include <unordered_map>
 #include <vector>
 
 #include "api/internal_pair_queue_internal.hpp"
@@ -30,7 +30,13 @@ struct pending_spot_key_t
     std::string source_spot_rid;
     uint64_t request_seq;
 
+    bool operator== (const pending_spot_key_t &other_) const;
     bool operator< (const pending_spot_key_t &other_) const;
+};
+
+struct pending_spot_key_hash_t
+{
+    size_t operator() (const pending_spot_key_t &key_) const;
 };
 
 struct pending_reply_t
@@ -75,7 +81,10 @@ struct spot_request_reply_state_t
     uint32_t default_timeout_ms;
     uint64_t next_request_seq;
     std::set<uint64_t> pending_sequences;
-    std::map<pending_spot_key_t, pending_reply_t> pending_replies;
+    std::unordered_map<pending_spot_key_t,
+                       pending_reply_t,
+                       pending_spot_key_hash_t>
+      pending_replies;
     zlink::internal_pair_queue::queue_t subscribe_queue;
     zlink::internal_pair_queue::queue_t recv_queue;
     zlink_spot_handler_fn request_handler;
@@ -93,12 +102,12 @@ struct router_spot_request_reply_state_t
     uint32_t default_timeout_ms;
     uint64_t next_request_seq;
     std::set<uint64_t> pending_sequences;
-    std::map<uint64_t, pending_reply_t> pending_replies;
+    std::unordered_map<uint64_t, pending_reply_t> pending_replies;
 };
 
-typedef std::map<std::string, std::weak_ptr<spot_request_reply_state_t> >
+typedef std::unordered_map<std::string, std::weak_ptr<spot_request_reply_state_t> >
   spot_state_identity_index_t;
-typedef std::map<std::string, std::weak_ptr<router_spot_request_reply_state_t> >
+typedef std::unordered_map<std::string, std::weak_ptr<router_spot_request_reply_state_t> >
   router_state_identity_index_t;
 
 extern std::mutex g_spot_request_reply_index_mutex;

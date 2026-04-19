@@ -11,11 +11,34 @@
 
 #include <algorithm>
 #include <cstring>
+#include <unordered_map>
 
 namespace zlink
 {
 namespace
 {
+struct subject_snapshot_key_t
+{
+    uint32_t subject_kind;
+    std::string subject;
+
+    bool operator== (const subject_snapshot_key_t &other_) const
+    {
+        return subject_kind == other_.subject_kind && subject == other_.subject;
+    }
+};
+
+struct subject_snapshot_key_hash_t
+{
+    size_t operator() (const subject_snapshot_key_t &key_) const
+    {
+        size_t seed = std::hash<uint32_t> () (key_.subject_kind);
+        seed ^= std::hash<std::string> () (key_.subject) + 0x9e3779b9
+                + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
 static void copy_text_field_local (char *dst_,
                                    size_t dst_size_,
                                    const std::string &src_)
@@ -69,6 +92,25 @@ static std::string spot_subject_snapshot_key_local (
     char prefix[16];
     snprintf (prefix, sizeof (prefix), "%u:", subject_kind_);
     return std::string (prefix) + subject_;
+}
+
+static uint32_t unique_peer_count_local (const std::set<std::string> &manual_,
+                                         const std::set<std::string> &discovery_)
+{
+    const std::set<std::string> *smaller = &manual_;
+    const std::set<std::string> *larger = &discovery_;
+    if (smaller->size () > larger->size ())
+        std::swap (smaller, larger);
+
+    size_t overlap = 0;
+    for (std::set<std::string>::const_iterator it = smaller->begin ();
+         it != smaller->end (); ++it) {
+        if (larger->count (*it) != 0)
+            ++overlap;
+    }
+
+    return static_cast<uint32_t> (manual_.size () + discovery_.size ()
+                                  - overlap);
 }
 }
 
@@ -167,6 +209,8 @@ void spot_node_t::submit_stopped_summaries ()
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
+        pubs.reserve (_pubs.size ());
+        subs.reserve (_subs.size ());
         pubs.assign (_pubs.begin (), _pubs.end ());
         subs.assign (_subs.begin (), _subs.end ());
     }
@@ -184,6 +228,8 @@ void spot_node_t::refresh_existing_summaries ()
     bool bound = false;
     {
         scoped_lock_t lock (_sync);
+        pubs.reserve (_pubs.size ());
+        subs.reserve (_subs.size ());
         pubs.assign (_pubs.begin (), _pubs.end ());
         subs.assign (_subs.begin (), _subs.end ());
         bound = !_bound_endpoint.empty ();
@@ -207,6 +253,7 @@ void spot_node_t::refresh_sub_peer_summaries (bool has_active_peers,
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
+        subs.reserve (_subs.size ());
         subs.assign (_subs.begin (), _subs.end ());
     }
 
@@ -231,6 +278,7 @@ void spot_node_t::snapshot_raw_subscription_filters (
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        subs.reserve (_subs.size ());
         subs.assign (_subs.begin (), _subs.end ());
     }
 
@@ -247,6 +295,7 @@ void spot_node_t::snapshot_subscription_subjects (
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        subs.reserve (_subs.size ());
         subs.assign (_subs.begin (), _subs.end ());
     }
 
@@ -270,15 +319,8 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
         service_name = _discovery_service;
         local_endpoint =
           !_advertise_endpoint.empty () ? _advertise_endpoint : _bound_endpoint;
-        out_->configured_peer_count =
-          static_cast<uint32_t> (_peer_state.manual_endpoints.size ()
-                                 + _peer_state.discovery_endpoints.size ());
-        {
-            std::set<std::string> union_peers = _peer_state.manual_endpoints;
-            union_peers.insert (_peer_state.discovery_endpoints.begin (),
-                                _peer_state.discovery_endpoints.end ());
-            out_->configured_peer_count = static_cast<uint32_t> (union_peers.size ());
-        }
+        out_->configured_peer_count = unique_peer_count_local (
+          _peer_state.manual_endpoints, _peer_state.discovery_endpoints);
         out_->active_peer_count =
           static_cast<uint32_t> (_peer_state.active_endpoints.size ());
         out_->connected_peer_count =
@@ -360,10 +402,9 @@ int spot_node_t::snapshot_peers (
         admission_by_endpoint = _peer_state.peer_admission_by_endpoint;
     }
 
-    std::set<std::string> universe = manual;
-    universe.insert (discovery.begin (), discovery.end ());
-    for (std::set<std::string>::const_iterator it = universe.begin ();
-         it != universe.end (); ++it) {
+    out_->reserve (manual.size () + discovery.size ());
+    for (std::set<std::string>::const_iterator it = manual.begin ();
+         it != manual.end (); ++it) {
         zlink_spot_node_peer_entry_t entry;
         memset (&entry, 0, sizeof (entry));
         copy_text_field_local (entry.service_name, sizeof (entry.service_name),
@@ -380,6 +421,42 @@ int spot_node_t::snapshot_peers (
             entry.source = ZLINK_SPOT_PEER_SOURCE_MANUAL;
         else
             entry.source = ZLINK_SPOT_PEER_SOURCE_DISCOVERY;
+        std::map<std::string, zlink_admission_state_t>::const_iterator ait =
+          admission_by_endpoint.find (*it);
+        entry.admission_state =
+          ait != admission_by_endpoint.end () ? ait->second
+                                              : ZLINK_ADMISSION_SERVING;
+
+        if (connected.count (*it) != 0)
+            entry.state = ZLINK_SPOT_PEER_STATE_CONNECTED;
+        else if (active.count (*it) != 0)
+            entry.state = ZLINK_SPOT_PEER_STATE_CONNECTING;
+        else
+            entry.state = ZLINK_SPOT_PEER_STATE_CONFIGURED;
+        std::map<std::string, spot_peer_observation_t>::const_iterator oit =
+          observations.find (*it);
+        if (oit != observations.end ()) {
+            entry.connected_since_ms = oit->second.connected_since_ms;
+            entry.last_changed_ms = oit->second.last_changed_ms;
+        }
+
+        if (spot_peer_filter_match_local (entry, filter_))
+            out_->push_back (entry);
+    }
+    for (std::set<std::string>::const_iterator it = discovery.begin ();
+         it != discovery.end (); ++it) {
+        if (manual.count (*it) != 0)
+            continue;
+
+        zlink_spot_node_peer_entry_t entry;
+        memset (&entry, 0, sizeof (entry));
+        copy_text_field_local (entry.service_name, sizeof (entry.service_name),
+                               service_name);
+        copy_text_field_local (entry.local_endpoint, sizeof (entry.local_endpoint),
+                               local_endpoint);
+        copy_text_field_local (entry.peer_endpoint, sizeof (entry.peer_endpoint),
+                               *it);
+        entry.source = ZLINK_SPOT_PEER_SOURCE_DISCOVERY;
         std::map<std::string, zlink_admission_state_t>::const_iterator ait =
           admission_by_endpoint.find (*it);
         entry.admission_state =
@@ -428,20 +505,25 @@ int spot_node_t::snapshot_subjects (
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
         active_peer_count = static_cast<uint32_t> (_peer_state.active_endpoints.size ());
+        subs.reserve (_subs.size ());
         subs.assign (_subs.begin (), _subs.end ());
         subject_last_changed = _subject_last_changed_ms;
     }
 
-    std::map<std::pair<uint32_t, std::string>, zlink_spot_node_subject_entry_t>
+    std::unordered_map<subject_snapshot_key_t,
+                       zlink_spot_node_subject_entry_t,
+                       subject_snapshot_key_hash_t>
       grouped;
+    grouped.reserve (subs.size () * 2);
     for (size_t i = 0; i < subs.size (); ++i) {
         if (!subs[i])
             continue;
         scoped_lock_t sub_lock (subs[i]->_sync);
         for (std::set<std::string>::const_iterator it = subs[i]->_topics.begin ();
              it != subs[i]->_topics.end (); ++it) {
-            const std::pair<uint32_t, std::string> key (
-              ZLINK_SERVICE_EVENT_SUBJECT_TOPIC, *it);
+            subject_snapshot_key_t key;
+            key.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+            key.subject = *it;
             zlink_spot_node_subject_entry_t &entry = grouped[key];
             if (entry.role == 0) {
                 memset (&entry, 0, sizeof (entry));
@@ -468,8 +550,9 @@ int spot_node_t::snapshot_subjects (
                subs[i]->_patterns.begin ();
              it != subs[i]->_patterns.end (); ++it) {
             const std::string pattern = *it + "*";
-            const std::pair<uint32_t, std::string> key (
-              ZLINK_SERVICE_EVENT_SUBJECT_PATTERN, pattern);
+            subject_snapshot_key_t key;
+            key.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
+            key.subject = pattern;
             zlink_spot_node_subject_entry_t &entry = grouped[key];
             if (entry.role == 0) {
                 memset (&entry, 0, sizeof (entry));
@@ -495,8 +578,10 @@ int spot_node_t::snapshot_subjects (
         }
     }
 
-    for (std::map<std::pair<uint32_t, std::string>,
-                  zlink_spot_node_subject_entry_t>::const_iterator it =
+    out_->reserve (grouped.size ());
+    for (std::unordered_map<subject_snapshot_key_t,
+                            zlink_spot_node_subject_entry_t,
+                            subject_snapshot_key_hash_t>::const_iterator it =
            grouped.begin ();
          it != grouped.end (); ++it) {
         const zlink_spot_node_subject_entry_t &entry = it->second;

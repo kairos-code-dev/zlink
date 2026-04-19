@@ -75,25 +75,30 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. 서비스가 
 자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md) 및
 [Registry 가이드](07-4-registry.ko.md)를 참고.
 
-### 3.2 SPOT — service 중심 routed + PUB/SUB 허브
+### 3.2 SPOT — channel 기반 routed + PUB/SUB 허브
 
-`SpotNode`는 service attachment table을 소유하는 허브다. 각 엔트리는
-`service_name`마다 ROUTER 집합과 선택적 PUB/SUB 쌍을 담는다. 그 위에 공개
-`Spot` facade 하나가 올라가 서비스별 routed send/request와 publish/subscribe
-를 함께 수행한다.
+`SpotNode`는 SPOT 토폴로지의 핵심 런타임이다. 하나의 SPOT channel Discovery
+view를 attach해서 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
+channel을 호출해야 할 때는 `DEALER`를 별도로 attach한다. 그 위에 공개
+`Spot` facade 하나가 올라가 channel send/request, peer routed 통신,
+publish/subscribe를 함께 수행한다.
 
-- 수동 attach: `zlink_spot_node_attach_router()` /
-  `zlink_spot_node_attach_pubsub()` (PUB+SUB는 한 쌍으로만 등록 가능)
-- 자동 attach: `zlink_spot_node_attach_discovery()` — `service_name`별로
-  서로 다른 Discovery를 여러 개 붙일 수 있고, pub/sub 짝 검증을 함께 수행
-- service-aware data plane:
-  `zlink_spot_send_service()` / `zlink_spot_request_service()` /
+- SPOT mesh: `zlink_spot_node_attach_discovery()` — SPOT channel view를
+  가진 Discovery 하나를 attach하면 같은 channel의 다른 `SpotNode`와 자동 연결
+- channel 호출용 DEALER:
+  `zlink_spot_node_attach_channel_dealer()` (자동 연결) /
+  `zlink_spot_node_attach_channel_dealer_manual()` (수동 연결) —
+  다른 channel의 `ROUTER(server)` 집합에 요청을 보내는 `DEALER` 등록
+- 외부 publish ingress: `zlink_spot_node_attach_pub_ingress()` —
+  일반 `PUB`에서 SPOT topic plane으로 publish를 넣는 전용 입력 경로
+- data plane:
+  `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
+  `zlink_spot_send_router()` / `zlink_spot_request_router()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /
   `zlink_spot_subscription_event()`
 - readable 알림은 한 콜백 surface로 통합:
   `zlink_spot_dispatch_event_handler()`
-- service-aware 모니터링은 `zlink_spot_node_monitor_recv()`로만 drain하며
-  Spot dispatch plane에 섞이지 않음
+- 모니터링은 service monitor와 snapshot/query API로 관찰
 - **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 여러 스레드가
   operational API를 동시에 호출 가능
 

@@ -177,7 +177,7 @@ sequenceDiagram
     participant DP2 as Data Plane (Node 2)
     participant SB as Spot B (Node 2)
 
-    SA->>DP1: spot_send_spot(dest_node, dest_spot, payload)
+    SA->>DP1: spot_send_router(peer_rid, payload)
     DP1->>DP1: SPOT envelope 생성 [0x02, 0x01, src, ..., dst, ...]
     DP1->>DP2: [transport routing_id] + [8 control parts] + [payload]
     DP2->>DP2: SPOT envelope 파싱 → 로컬 Spot B 식별
@@ -212,7 +212,7 @@ sequenceDiagram
     participant DP2 as Data Plane 2
     participant SB as Spot B
 
-    SA->>DP1: spot_request_spot(dest_node, dest_spot, payload, timeout)
+    SA->>DP1: spot_request_router(peer_rid, payload, timeout)
     DP1->>DP1: SPOT envelope (8) + RR envelope (4) 생성
     DP1->>DP1: pending[key] 등록 + timeout 스케줄링
     DP1->>DP2: [12 control parts] + [payload]
@@ -233,7 +233,7 @@ sequenceDiagram
     participant API as API Layer
     participant Sched as Timeout Scheduler
 
-    App->>API: spot_request_spot(..., timeout_ms, handler)
+    App->>API: spot_request_router(..., timeout_ms, handler)
     API->>Sched: schedule(deadline, on_timeout)
     API->>API: pending[key] 등록
 

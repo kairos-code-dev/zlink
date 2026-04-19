@@ -4,6 +4,7 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.service.spot.Spot;
@@ -22,6 +23,7 @@ public final class SpotRequestAsyncSample {
         try (Context ctx = new Context();
              SpotNode requesterNode = new SpotNode(ctx);
              SpotNode responderNode = new SpotNode(ctx);
+             RouterSocket requesterRouter = new RouterSocket(ctx);
              Spot requester = requesterNode.createSpot();
              Spot responderSpot = responderNode.createSpot()) {
             requesterNode.setRoutingId(RoutingId.fromBytes("spot-requester-node".getBytes()));
@@ -29,8 +31,7 @@ public final class SpotRequestAsyncSample {
             requester.setRoutingId(RoutingId.fromBytes("spot-requester".getBytes()));
             responderSpot.setRoutingId(RoutingId.fromBytes("spot-responder".getBytes()));
             responderNode.bind(endpoint);
-            requesterNode.connectPeer(endpoint);
-            SampleSupport.waitSpotPeerConnected(requesterNode);
+            requesterRouter.connect(endpoint);
 
             Thread responder = new Thread(() -> {
                 try (var received = responderSpot.recvRouted(RecvFlags.NONE)) {
@@ -47,7 +48,7 @@ public final class SpotRequestAsyncSample {
             CountDownLatch replyLatch = new CountDownLatch(1);
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
-            requester.requestToSpot(
+            requesterRouter.requestToSpot(
                 responderNode.routingId(),
                 responderSpot.routingId(),
                 List.of(Message.copyOfUtf8("spot-ping")),

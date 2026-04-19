@@ -300,7 +300,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
     {
         EnsureValid();
         if (_managedBytes != null)
-            return FromBytes(_managedBytes.AsSpan(0, _managedLength));
+            MaterializeManagedBytes();
         var copy = new Message(false);
         CopyTo(ref copy._msg);
         copy._valid = true;
@@ -555,6 +555,24 @@ public sealed class Message : IDisposable, IAsyncDisposable
         }
     }
 
+    internal static Message MoveFromNative(ref ZlinkMsg source)
+    {
+        var result = new Message(false);
+        result.Init();
+        try
+        {
+            int rc = NativeMethods.zlink_msg_move(ref result._msg, ref source);
+            if (rc != 0)
+                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+            return result;
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
+    }
+
     internal static unsafe Message CopyFromNativeSingle(IntPtr message)
     {
         if (message == IntPtr.Zero)
@@ -647,6 +665,40 @@ public sealed class Message : IDisposable, IAsyncDisposable
         _managedBytes = data.ToArray();
         _managedLength = data.Length;
         _valid = true;
+    }
+
+    private unsafe void MaterializeManagedBytes()
+    {
+        if (_managedBytes == null)
+            return;
+
+        ZlinkMsg native = default;
+        int initRc = NativeMethods.zlink_msg_init_size(ref native,
+            (nuint)_managedLength);
+        if (initRc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+
+        try
+        {
+            if (_managedLength != 0)
+            {
+                IntPtr destPtr = NativeMethods.zlink_msg_data(ref native);
+                if (destPtr == IntPtr.Zero)
+                    throw new InvalidOperationException("Message data is null.");
+
+                _managedBytes.AsSpan(0, _managedLength).CopyTo(
+                    new Span<byte>((void*)destPtr, _managedLength));
+            }
+
+            _msg = native;
+            _managedBytes = null;
+            _managedLength = 0;
+        }
+        catch
+        {
+            NativeMethods.zlink_msg_close(ref native);
+            throw;
+        }
     }
 
     private void ReleaseManagedBytes()

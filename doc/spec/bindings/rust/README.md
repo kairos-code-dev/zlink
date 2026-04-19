@@ -6,6 +6,11 @@ This document defines the complete public API surface of the zlink Rust binding.
 Every struct, method, and function listed here is part of the contract that the
 binding must expose. Private/internal items are omitted.
 
+Only the items re-exported as public crate API are part of the contract.
+Private modules, `pub(crate)` helpers, FFI modules, and source-tree-only
+support code are internal. Perf, samples, and tests must use the public crate
+surface only and must not rely on internal modules.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -334,13 +339,19 @@ impl DealerSocket {
     pub async fn request(&self, parts: &[&[u8]], timeout: Option<Duration>)
         -> Result<Vec<Message>, RequestError>;
 
-    // --- dealer request (callback) ---
+    // --- dealer request (callback, blocking submit) ---
     // `timeout = None` uses the socket default request timeout.
     // The callback receives Result<Vec<Message>, RequestError>.
     /// # Errors: SubmitError on submit; callback receives Result<Vec<Message>, RequestError>
     pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
-        &self, parts: &[&[u8]], cb: F, flags: SendFlags, timeout: Option<Duration>)
+        &self, parts: &[&[u8]], cb: F, timeout: Option<Duration>)
         -> Result<(), SubmitError>;
+    // --- dealer request (callback, nonblocking submit) ---
+    // `timeout = None` uses the socket default request timeout.
+    // Returns Ok(false) only for temporary backpressure.
+    pub fn try_request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
+        &self, parts: &[&[u8]], cb: F, timeout: Option<Duration>)
+        -> Result<bool, SubmitError>;
 
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
@@ -398,13 +409,19 @@ impl RouterSocket {
     pub async fn request(&self, peer_rid: &RoutingId, parts: &[&[u8]],
         timeout: Option<Duration>) -> Result<Vec<Message>, RequestError>;
 
-    // --- router request (callback) ---
+    // --- router request (callback, blocking submit) ---
     // `timeout = None` uses the socket default request timeout.
     // The callback receives Result<Vec<Message>, RequestError>.
     /// # Errors: SubmitError on submit; callback receives Result<Vec<Message>, RequestError>
     pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
         &self, peer_rid: &RoutingId, parts: &[&[u8]], cb: F,
-        flags: SendFlags, timeout: Option<Duration>) -> Result<(), SubmitError>;
+        timeout: Option<Duration>) -> Result<(), SubmitError>;
+    // --- router request (callback, nonblocking submit) ---
+    // `timeout = None` uses the socket default request timeout.
+    // Returns Ok(false) only for temporary backpressure.
+    pub fn try_request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
+        &self, peer_rid: &RoutingId, parts: &[&[u8]], cb: F,
+        timeout: Option<Duration>) -> Result<bool, SubmitError>;
 
     // --- router reply ---
     /// # Errors: SubmitError

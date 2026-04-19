@@ -901,7 +901,7 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
-    try_publish_impl (send_result_t &result_out_,
+    publish_no_wait_result_impl (send_result_t &result_out_,
                       const char *service_name_,
                       const char *topic_,
                       std::vector<message_t> &parts_)
@@ -948,7 +948,7 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
-    try_publish_impl (send_result_t &result_out_,
+    publish_no_wait_result_impl (send_result_t &result_out_,
                       const char *service_name_,
                       const char *topic_,
                       message_t &part_)

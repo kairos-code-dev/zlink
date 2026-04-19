@@ -5,8 +5,8 @@
 
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
-#define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 30
+#define ZLINK_VERSION_MINOR 3
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -81,6 +81,22 @@ typedef unsigned __int8 uint8_t;
 #ifdef ZLINK_HAVE_AIX
 #include <poll.h>
 #endif
+
+/**
+ * @brief Public declarations for the helper substrate and C binding layers.
+ *
+ * The helper substrate layer exposes the `*_part` primitives. These entry
+ * points are the low-level building blocks intended for bindings
+ * implementations that need part-by-part control over send and recv paths.
+ *
+ * The C binding convenience layer exposes short-named aggregate APIs such as
+ * `zlink_send`, `zlink_recv`, `zlink_publish`, `zlink_router_*`, and
+ * `zlink_spot_*`. These calls are thin wrappers on top of the helper
+ * substrate and are intended for direct use by human C callers.
+ *
+ * Both layers live in this header for now. A future refactor may split the C
+ * binding convenience layer into a separate header.
+ */
 
 /**
  * @brief Return the errno for the current thread.
@@ -166,6 +182,7 @@ ZLINK_EXPORT int zlink_ctx_get (void *context_, zlink_ctx_option_t option_,
 /******************************************************************************/
 /*  0MQ message definition.                                                   */
 /******************************************************************************/
+/* ========== Message type and helpers ========== */
 typedef struct zlink_msg_t
 {
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
@@ -241,6 +258,19 @@ ZLINK_EXPORT zlink_config_result_t zlink_msg_move (zlink_msg_t *dest_, zlink_msg
  * reference count rather than duplicating the payload buffer.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
+
+/**
+ * @brief Adopt ownership from src_ into dest_ without an extra init+move step.
+ *
+ * This is intended for bindings that already have storage for @p dest_ and
+ * need to take ownership of a freshly received native message efficiently.
+ * Unlike @ref zlink_msg_move, @p dest_ must not currently own an initialized
+ * message.
+ *
+ * On success, @p dest_ owns the original content and @p src_ becomes an empty
+ * initialized message.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_);
 
 /** @brief Return a pointer to the message data buffer. */
 ZLINK_EXPORT void *zlink_msg_data (zlink_msg_t *msg_);
@@ -333,6 +363,12 @@ typedef void (*zlink_spot_dispatch_event_handler_fn) (
   void *spot_,
   zlink_spot_dispatch_event_t event_,
   void *userdata_);
+
+typedef enum zlink_part_flag_t
+{
+    ZLINK_PART_FINAL = 0,
+    ZLINK_PART_MORE = 1
+} zlink_part_flag_t;
 
 /**
  * @brief Create a socket.
@@ -531,6 +567,7 @@ ZLINK_EXPORT zlink_connect_result_t zlink_disconnect (void *s_, const char *addr
 ZLINK_EXPORT zlink_config_result_t zlink_socket_attach_discovery (void *socket_,
                                                  void *discovery_);
 
+/* ========== C binding convenience layer (aggregate) ========== */
 /**
  * @brief Send a multipart message on a socket or handle.
  *
@@ -547,6 +584,14 @@ ZLINK_EXPORT zlink_submit_result_t zlink_send (void *s_,
                                                size_t part_count_,
                                                zlink_send_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_send_part (
+  void *s_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 /**
  * @brief Send a multipart message to a specific peer routing id.
  *
@@ -561,6 +606,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_send_rid (
   size_t part_count_,
   zlink_send_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_send_part_rid (
+  void *s_,
+  const zlink_routing_id_t *target_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request (
   void *dealer_,
   zlink_msg_t *parts_,
@@ -570,6 +624,17 @@ ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request_part (
+  void *dealer_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_request (
   void *router_,
   const zlink_routing_id_t *peer_rid_,
@@ -580,6 +645,18 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_request (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_router_request_part (
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_reply (
   void *router_,
   const zlink_routing_id_t *peer_rid_,
@@ -587,6 +664,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_reply (
   zlink_msg_t *parts_,
   size_t part_count_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_part (
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_recv_result_t zlink_router_recv (void *router_,
                                     const zlink_routing_id_t **source_node_rid_out_,
                                     const zlink_routing_id_t **source_spot_rid_out_,
@@ -595,6 +681,17 @@ ZLINK_EXPORT zlink_recv_result_t zlink_router_recv (void *router_,
                                     size_t *part_count_out_,
                                     zlink_recv_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_recv_result_t zlink_router_recv_part (
+  void *router_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t *part_out_,
+  int *has_more_out_,
+  zlink_recv_flags_t flags_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_router (
   void *spot_,
   const zlink_routing_id_t *peer_rid_,
@@ -602,6 +699,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_router (
   size_t part_count_,
   zlink_send_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_channel (
   void *spot_,
   const char *channel_name_,
@@ -609,6 +715,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_channel (
   size_t part_count_,
   zlink_send_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_channel_part (
+  void *spot_,
+  const char *channel_name_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish (
   void *spot_,
   const char *service_name_,
@@ -617,6 +732,16 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish (
   size_t part_count_,
   zlink_send_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish_part (
+  void *spot_,
+  const char *service_name_,
+  const char *topic_id_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe (
   void *spot_,
   zlink_routing_id_t *source_rid_out_,
@@ -628,6 +753,21 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe (
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe_part (
+  void *spot_,
+  const zlink_routing_id_t **source_rid_out_,
+  char *service_name_buf_,
+  size_t service_name_capacity_,
+  size_t *service_name_len_out_,
+  char *topic_id_buf_,
+  size_t topic_id_capacity_,
+  size_t *topic_id_len_out_,
+  zlink_msg_t *part_out_,
+  int *has_more_out_,
+  zlink_recv_flags_t flags_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscription_event (
   void *spot_,
   zlink_routing_id_t *source_rid_out_,
@@ -648,6 +788,18 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_channel (
   void *spot_,
   const char *channel_name_,
@@ -658,6 +810,18 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_channel (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_channel_part (
+  void *spot_,
+  const char *channel_name_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_spot (
   void *spot_,
   const zlink_routing_id_t *dest_node_rid_,
@@ -666,6 +830,16 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_spot (
   zlink_msg_t *parts_,
   size_t part_count_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_router (
   void *spot_,
   const zlink_routing_id_t *peer_rid_,
@@ -673,6 +847,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_router (
   zlink_msg_t *parts_,
   size_t part_count_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_handler_result_t zlink_spot_handler (
   void *spot_, zlink_spot_handler_fn handler_, void *userdata_);
 
@@ -689,6 +872,17 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv (void *spot_,
                                   size_t *part_count_out_,
                                   zlink_recv_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_part (
+  void *spot_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t *part_out_,
+  int *has_more_out_,
+  zlink_recv_flags_t flags_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_request_spot (
   void *router_,
   const zlink_routing_id_t *dest_node_rid_,
@@ -700,6 +894,19 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_request_spot (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_router_request_spot_part (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_spot (
   void *router_,
   const zlink_routing_id_t *dest_node_rid_,
@@ -708,6 +915,16 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_spot (
   zlink_msg_t *parts_,
   size_t part_count_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_spot_part (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_send_spot (
   void *router_,
   const zlink_routing_id_t *dest_node_rid_,
@@ -715,6 +932,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_send_spot (
   zlink_msg_t *parts_,
   size_t part_count_,
   zlink_send_flags_t flags_);
+
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_router_send_spot_part (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
 
 /**
  * @brief Receive a multipart message from a socket or handle.
@@ -730,18 +956,37 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_send_spot (
  * on `parts_out_`, and must not retain the view across the next recv-like call
  * on the same thread.
  */
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_recv_result_t zlink_recv (void *s_,
                               zlink_routing_id_t *source_rid_out_,
                               zlink_msg_t **parts_out_,
                               size_t *part_count_out_,
                               zlink_recv_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_recv_result_t zlink_recv_part (
+  void *s_,
+  const zlink_routing_id_t **source_rid_out_,
+  zlink_msg_t *part_out_,
+  int *has_more_out_,
+  zlink_recv_flags_t flags_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_publish (void *subject_,
                                                   const char *topic_id_,
                                                   zlink_msg_t *parts_,
                                                   size_t part_count_,
                                                   zlink_send_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_publish_part (
+  void *subject_,
+  const char *topic_id_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_config_result_t zlink_set_subscription (void *handle_,
                                           const char *filter_);
 ZLINK_EXPORT zlink_config_result_t zlink_unset_subscription (void *handle_,
@@ -760,6 +1005,18 @@ ZLINK_EXPORT zlink_recv_result_t zlink_subscribe (void *subject_,
                                    size_t *topic_id_len_out_,
                                    zlink_recv_flags_t flags_);
 
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_recv_result_t zlink_subscribe_part (
+  void *sub_,
+  const zlink_routing_id_t **source_rid_out_,
+  char *topic_id_buf_,
+  size_t topic_id_capacity_,
+  size_t *topic_id_len_out_,
+  zlink_msg_t *part_out_,
+  int *has_more_out_,
+  zlink_recv_flags_t flags_);
+
+/* ========== C binding convenience layer (aggregate) ========== */
 ZLINK_EXPORT zlink_recv_result_t zlink_subscription_event (
   void *subject_,
   zlink_routing_id_t *source_rid_out_,
@@ -1014,7 +1271,7 @@ ZLINK_EXPORT zlink_bind_result_t zlink_spot_node_bind (void *node, const char *e
 /**
  * @brief Connect to a peer SPOT node endpoint (mesh topology).
  *
- * Returns EFSM if discovery is already attached.
+ * Returns EBUSY if discovery is already attached.
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
                                                const char *peer_endpoint);
@@ -1022,7 +1279,7 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
 /**
  * @brief Disconnect from a peer SPOT node endpoint.
  *
- * Returns EFSM if discovery is already attached.
+ * Returns EBUSY if discovery is already attached.
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
   void *node, const char *peer_endpoint);

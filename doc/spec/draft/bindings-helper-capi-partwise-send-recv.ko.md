@@ -281,6 +281,116 @@ request 계열은 일반 send보다 submit 경계를 더 엄격하게 적어야 
 이 규칙은 현재 aggregate request 구현이 내부 multipart send transaction과
 rollback에 의존하는 방식과도 맞는다.
 
+### 5.5 spot/router 계열 `_part` 시그니처
+
+이 helper는 현재 aggregate spot/router 변종과 1:1로 대응한다. 각 aggregate 변종의
+마지막 payload 인자 쌍(`zlink_msg_t *parts_, size_t part_count_`)을 `zlink_msg_t
+*part_, zlink_part_flag_t part_flag_`로 치환한 형태다. caller가 마지막 호출에서
+`ZLINK_PART_FINAL`을 넘기기 전까지 각 호출은 같은 논리 메시지의 한 part만 제출
+한다.
+
+```c
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_channel_part (
+  void *spot_,
+  const char *channel_name_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish_part (
+  void *spot_,
+  const char *service_name_,
+  const char *topic_id_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_channel_part (
+  void *spot_,
+  const char *channel_name_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_part (
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_router_request_spot_part (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_spot_part (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_router_send_spot_part (
+  void *router_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+```
+
+요청/응답 계열 helper(`*_request_*_part`, `*_reply_*_part`)는 §5.4.1의 실패 규칙을
+그대로 따른다. 일반 send 계열 helper(`*_send_*_part`, `*_publish_part`)는
+§5.1.1의 열린 시퀀스 규칙을 따른다.
+
+구독 설정(`zlink_set_subscription` / `zlink_unset_subscription`)과 event 계열
+(`zlink_spot_subscription_event`)은 multipart payload를 운반하지 않으므로 `_part`
+helper 대상이 아니다. `STREAM` family는 별도 helper family를 두지 않고, 기본
+`zlink_send_part` / `zlink_recv_part`가 그대로 적용 대상이다.
+
 ## 6. recv helper 초안
 
 ### 6.1 기본 recv helper
@@ -293,7 +403,7 @@ helper recv는 "part 하나를 caller가 준 `zlink_msg_t`에 받는다"는 모�
 ```c
 ZLINK_EXPORT zlink_recv_result_t zlink_recv_part (
   void *s_,
-  zlink_routing_id_t *source_rid_out_,
+  const zlink_routing_id_t **source_rid_out_,
   zlink_msg_t *part_out_,
   int *has_more_out_,
   zlink_recv_flags_t flags_);
@@ -302,9 +412,14 @@ ZLINK_EXPORT zlink_recv_result_t zlink_recv_part (
 - 성공 시 `part_out_`에 현재 논리 메시지의 한 part가 들어간다.
 - `has_more_out_ != 0`이면 같은 논리 메시지에 아직 다음 part가 더 남았다는 뜻이다.
 - `has_more_out_ == 0`이면 현재 part가 마지막 part다.
-- `source_rid_out_`는 현재 메시지의 source routing id를 돌려준다.
+- `source_rid_out_`는 현재 메시지의 source routing id를 돌려준다. routing 개념이
+  없는 socket family(`PAIR` 등)에서는 구현이 `NULL`을 돌려줄 수 있다.
 
 `recv_more`는 별도 flag로 다시 넣지 않는다. recv는 결과로 받는 것이 더 맞다.
+
+basic recv의 `source_rid_out_`도 routed variant(§6.3)와 동일한 포인터-view 모델을
+따른다. 즉 caller storage가 아니라 내부 view를 가리키며, lifetime은 §6.3.1과 같은
+규칙("다음 recv-like 호출 전까지 유효")을 따른다.
 
 ### 6.2 subscribe helper
 
@@ -313,8 +428,9 @@ topic 계열 helper는 추가 metadata를 함께 준다.
 ```c
 ZLINK_EXPORT zlink_recv_result_t zlink_subscribe_part (
   void *sub_,
-  zlink_routing_id_t *source_rid_out_,
-  char *topic_id_out_,
+  const zlink_routing_id_t **source_rid_out_,
+  char *topic_id_buf_,
+  size_t topic_id_capacity_,
   size_t *topic_id_len_out_,
   zlink_msg_t *part_out_,
   int *has_more_out_,
@@ -322,15 +438,26 @@ ZLINK_EXPORT zlink_recv_result_t zlink_subscribe_part (
 
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe_part (
   void *spot_,
-  zlink_routing_id_t *source_rid_out_,
-  char *service_name_out_,
+  const zlink_routing_id_t **source_rid_out_,
+  char *service_name_buf_,
+  size_t service_name_capacity_,
   size_t *service_name_len_out_,
-  char *topic_id_out_,
+  char *topic_id_buf_,
+  size_t topic_id_capacity_,
   size_t *topic_id_len_out_,
   zlink_msg_t *part_out_,
   int *has_more_out_,
   zlink_recv_flags_t flags_);
 ```
+
+- `*_buf_`는 caller가 제공하는 저장 공간이고, `*_capacity_`는 그 크기(byte)다.
+- `*_len_out_`는 현재 metadata의 실제 길이를 돌려준다(null-terminator는 포함하지
+  않는다).
+- 실제 길이가 capacity보다 크면 **helper는 `EMSGSIZE`로 실패하며 buffer에 부분
+  복사를 남기지 않는다**. caller는 더 큰 buffer로 다시 호출해야 한다.
+- `*_capacity_`가 0이면 helper는 buffer에 쓰지 않고 필요한 길이를
+  `*_len_out_`에만 적은 뒤 성공으로 돌려준다(크기 질의용).
+- `source_rid_out_`의 lifetime은 §6.3.1과 같은 포인터-view 규칙을 따른다.
 
 ### 6.3 routed recv helper
 
@@ -449,6 +576,15 @@ bindings는 아래 중 하나를 선택할 수 있다.
 - 더 낮은 수준 public API를 추가해서 `Message 하나 + hasMore` 모델을 노출한다.
 - 특정 hot path에서만 helper를 직접 써서 aggregate materialization을 줄인다.
 
+request/reply public shape도 helper 도입만으로 흔들지 않는다.
+
+- coroutine / await request 는 계속 `request(...)` 로 둔다.
+- callback completion request 는 submit 단계가 따로 있으므로
+  `request(..., callback, timeout)` 와 `tryRequest(..., callback, timeout)` 쌍으로
+  정리하는 쪽을 기본 방향으로 둔다.
+- 단, C binding 은 public `try_*` request family 를 만들지 않고 기존
+  `zlink_*_request(..., flags, timeout)` 형태를 유지한다.
+
 즉 helper 계층은 아래를 한 번에 단순화하기 위한 것이다.
 
 - `send(List<Message>)`
@@ -473,38 +609,77 @@ bindings는 아래 중 하나를 선택할 수 있다.
 즉 이 초안의 핵심은 "단일 part만 빠르게 하자"가 아니라, **multipart를 유지한 채
 bindings aggregate 생성 시점을 뒤로 미루자**는 데 있다.
 
-## 10. open question
+## 10. 확정된 결정
 
-### 10.1 recv metadata 반복 여부
+이 초안의 이전 open question들은 구현 착수 전에 모두 고정됐다.
 
-같은 논리 메시지의 각 part recv 호출에서 routed metadata를 매번 같은 값으로 돌려줄
-지, 첫 part에서만 의미 있게 채울지는 구현 전에 결정해야 한다.
+### 10.1 recv metadata 반복 여부 (확정)
 
-현재 초안은 **매 part마다 같은 값으로 돌려줘도 된다** 쪽을 기본으로 둔다.
+같은 논리 메시지의 각 part recv 호출에서 routed metadata는 **매 part마다 같은
+값으로 반복 반환한다**.
 
 이유는 아래와 같다.
 
 - bindings 구현이 단순하다.
 - part-by-part API를 직접 쓰는 caller도 state machine을 더 적게 가진다.
 
-### 10.2 helper 노출 범위
+### 10.2 helper 노출 범위 (확정)
 
-이 helper를 일반 C 사용자 1차 표면으로 보지 않고, bindings 구현을 위한 stable
-helper layer로 둘지가 구현 전략 문제다.
+helper는 "기존 공개 C API를 대체하는 새 주 표면"이 아니라, **existing C API 옆에
+두는 bindings 구현용 substrate layer**다.
 
-이 초안의 기본 방향은 "기존 공개 C API를 대체하는 새 주 표면"이 아니라,
-"existing C API 옆에 bindings용 helper를 추가한다" 쪽이다.
+### 10.3 callback 모델과의 관계 (확정)
 
-### 10.3 callback 모델과의 관계
+callback 재설계는 **이번 루프 범위 밖**이다. 이 초안은 send/recv helper만 다루고,
+callback은 별도 draft에서 처리한다. helper 도입으로 기존 aggregate callback 의미는
+바뀌지 않는다.
 
-현재 callback도 multipart aggregate를 한 번에 넘기는 모델이 많다.
+### 10.4 구현 범위·플랫폼·버전 (확정)
 
-part-by-part helper가 들어오면 callback도 아래 둘 중 하나를 택해야 한다.
+- 1차 구현 스코프: **C / .NET / Java**. C++/Go/Rust/Python/Node bindings는 후속
+  적용 대상으로 남기고, 비적용 사유/순서를 문서에 기록한다.
+- 플랫폼: **Linux만**. 네이티브 바이너리도 Linux부터 최신화한다.
+- 버전: helper가 실제 `core/include/zlink.h`에 들어가는 커밋에서 **5.2.5 →
+  5.3.0**으로 bump하고 changelog를 갱신한다. draft 문서만 수정하는 단계에서는
+  bump하지 않는다.
 
-- 지금처럼 aggregate callback 유지
-- low-level callback은 part-by-part로 두고, 상위 callback은 bindings가 구성
+### 10.5 계약 위반 에러 코드 (확정)
 
-이 초안은 send/recv helper가 먼저이며, callback 재설계는 별도 draft로 넘긴다.
+1차 구현은 새 errno/result 코드를 늘리지 않고 기존 코드를 재사용한다.
+
+- multipart interleave 위반: `EINVAL`
+- moved-from/invalid handle 재사용: 기존 invalid handle 규칙을 그대로 따른다.
+- request 시퀀스 실패(`MORE`/`FINAL` 어느 단계든): 해당 호출의 기존
+  `zlink_submit_result_t` 실패값을 그대로 돌려주고, 내부에서 열린 요청 시퀀스를
+  폐기한다.
+
+### 10.6 aggregate 재정리 방향 (확정)
+
+기존 공개 aggregate C API(`zlink_send`, `zlink_recv`, `zlink_router_recv`,
+`zlink_publish`, `zlink_*_request`, `zlink_*_reply`, `zlink_spot_*` 계열)는 **helper
+위에 얇은 wrapper**로 다시 올린다. 즉 helper가 진짜 primitive고, aggregate는
+for-loop 수준의 convenience wrapper다.
+
+### 10.7 perf 기준선 (확정)
+
+helper 적용 전 **현재 HEAD에서 baseline을 먼저 측정**해 저장하고, helper 적용 후
+같은 조건으로 재측정해 비교한다. 1차 합격선은 "regression 없음 + 수치 기록" 수준
+이며, 수치 목표치 강제는 후속으로 미룬다.
+
+### 10.8 테스트 최소선 (확정)
+
+- helper 단위 테스트(성공/실패/경계)
+- 기존 aggregate 호환성 테스트 통과
+- 각 binding contract test 통과
+- interleave/ownership 음성 테스트
+- "MORE 상태에서 잘못된 send 시도" 회귀 테스트
+
+fuzz는 후순위로 둔다.
+
+### 10.9 문서 승격 (확정)
+
+이 draft의 정식 spec 위치 승격은 **이번 루프 범위 밖**이다. 구현 안정화 이후 별도
+작업으로 진행한다.
 
 ## 11. 후속 작업
 
@@ -515,8 +690,10 @@ part-by-part helper가 들어오면 callback도 아래 둘 중 하나를 택해�
 3. C binding 계층 계획 문서인
    [c-binding-layer-plan.ko.md](c-binding-layer-plan.ko.md)를 기준으로 C binding
    표면을 정의한다.
-4. `.NET`, `Java` bindings가 helper를 실제로 쓰도록 recv/send hot path를
-   다시 구현한다.
+4. bindings 작업에 들어가기 전에, 각 언어 binding의 native 디렉토리에 들어 있는
+   core 라이브러리를 helper C API가 반영된 최신 산출물로 먼저 갱신한다.
+5. 모든 지원 bindings가 helper를 실제로 쓰도록 recv/send hot path를 다시
+   구현한다.
 
 위 순서는 선택 사항이 아니다. 이 문서의 작성 완료를 구현 시작 신호로 본다면,
 helper 구현만 하고 멈추는 것이 아니라 아래 연결 작업까지 이어서 수행해야 한다.
@@ -524,7 +701,11 @@ helper 구현만 하고 멈추는 것이 아니라 아래 연결 작업까지 �
 - helper `*_part` C API 추가
 - 기존 aggregate 공개 C API를 helper 위로 재정리
 - C binding 계층 계획 문서 반영
-- `.NET`, `Java` bindings hot path 재구성
+- 각 binding native 디렉토리의 core 라이브러리 최신화
+- `CPP`, `.NET`, `Java`, `Go`, `Rust`, `Python`, `Node` 전부에 대해
+  helper 기반 hot path 적용 여부 검토
+- 적용 가능한 recv/send/request/reply 경로 실제 반영
+- 각 binding spec, 샘플, perf, contract test 동기화
 - helper 기반 경로로 성능 재측정
 - helper 적용 이후 남는 POSD 기반 리팩터링 항목 정리 및 반영
 
@@ -561,7 +742,9 @@ send/recv helper 자체의 기본 계약은 이 문서로 충분하다고 본다
 - helper C API 헤더/구현 작업 시작
 - aggregate C API 재정리 시작
 - C binding 계층 문서/구현 작업 시작
-- `.NET`, `Java` helper 기반 경로 적용 작업 시작
+- 각 binding native 디렉토리의 core 라이브러리 최신화 작업 시작
+- `CPP`, `.NET`, `Java`, `Go`, `Rust`, `Python`, `Node` 전부에 대해
+  helper 기반 적용 검토/반영 작업 시작
 - helper 적용 이후 POSD 기반 구조 정리 작업 시작
 
 따라서 이후 작업자는 "문서는 끝났지만 실제 코드는 다음 턴에 별도 검토"처럼
@@ -576,10 +759,16 @@ send/recv helper 자체의 기본 계약은 이 문서로 충분하다고 본다
 3. helper 계약에 맞춰 필요한 errno/result/ownership 테스트를 추가한다.
 4. [c-binding-layer-plan.ko.md](c-binding-layer-plan.ko.md)를 기준으로 C binding
    계층을 정리한다.
-5. `.NET`, `Java` bindings hot path를 helper 기반으로 재구성한다.
-6. helper 경로 적용 후 binding perf를 다시 측정하고, 기존 aggregate 경로와
+5. bindings 작업에 들어가기 전에, 각 언어 binding의 native 디렉토리에서 사용하는
+   core 라이브러리를 최신 helper 구현 기준으로 갱신한다.
+6. `CPP`, `.NET`, `Java`, `Go`, `Rust`, `Python`, `Node` 전부에 대해 helper
+   기반 hot path 적용 여부를 검토한다.
+7. 적용 가능한 recv/send/request/reply 경로를 각 binding에 실제 반영한다.
+8. 각 binding spec, 샘플, perf, contract test를 helper 기반 public contract에 맞게
+   다시 동기화한다.
+9. helper 경로 적용 후 binding perf를 다시 측정하고, 기존 aggregate 경로와
    비교한다.
-7. helper 적용 뒤에도 남아 있는 POSD 위반 요소를 다시 검토하고, 더 이상
+10. helper 적용 뒤에도 남아 있는 POSD 위반 요소를 다시 검토하고, 더 이상
    진행할 POSD 기반 리팩터링 항목이 없을 때까지 구조를 정리한다.
 
 즉 이 문서는 단독 설계 메모가 아니라, 실제 구현 순서를 여는 문서다.
@@ -595,8 +784,8 @@ helper C API 적용만으로 작업이 끝난 것으로 보지 않는다. helper
 - helper와 aggregate convenience의 책임이 명확히 분리돼 있는지 확인
 - bindings hot path가 불필요한 wrapper, 중복 aggregate, 얕은 pass-through 표면을
   계속 들고 있지 않은지 확인
-- C binding, `.NET`, `Java`가 같은 substrate 위에서 설명 가능한 구조로
-  정리됐는지 확인
+- C binding, `C++`, `.NET`, `Java`, `Go`, `Rust`, `Python`, `Node`가 같은
+  substrate 위에서 설명 가능한 구조로 정리됐는지 확인
 - 변경 파급이 한 모듈 안에서 끝나야 할 규칙이 여러 계층에 흩어져 있지 않은지
   확인
 
@@ -604,9 +793,16 @@ helper C API 적용만으로 작업이 끝난 것으로 보지 않는다. helper
 
 1. helper C API가 구현돼 있다.
 2. aggregate C API와 C binding 계층이 helper 위로 재정리돼 있다.
-3. `.NET`, `Java` bindings hot path가 helper 기반으로 재구성돼 있다.
-4. helper 적용 후 binding perf 재측정이 끝나 있다.
-5. 남아 있는 POSD 기반 리팩터링 항목을 다시 검토했을 때, 더 이상 진행해야 할
+3. bindings 작업 전에 각 언어 native 디렉토리의 core 라이브러리가 최신
+   helper 구현 기준으로 갱신돼 있다.
+4. `CPP`, `.NET`, `Java`, `Go`, `Rust`, `Python`, `Node` 전부에 대해 helper
+   기반 hot path 적용 여부가 검토돼 있다.
+5. 적용 가능한 recv/send/request/reply 경로는 각 binding에 실제 반영돼 있다.
+6. 비적용 경로가 있다면 그 사유가 binding별로 명확히 정리돼 있다.
+7. 각 binding spec, 샘플, perf, contract test가 helper 기반 public contract에
+   맞게 동기화돼 있다.
+8. helper 적용 후 binding perf 재측정이 끝나 있다.
+9. 남아 있는 POSD 기반 리팩터링 항목을 다시 검토했을 때, 더 이상 진행해야 할
    구조 정리 항목이 없다고 판단할 수 있다.
 
 즉 "기능 구현 완료"가 아니라 "helper 적용 후 남은 POSD 리팩터링 backlog가 더

@@ -41,10 +41,12 @@
 - 호출자는 응답을 기다린다.
 - timeout, correlation, deadline이 중요하다.
 - HTTP 호출이나 gRPC unary와 가장 비슷한 경험을 제공한다.
-- 현재 framework 초안의 기본 서버 간 request/reply 토대는
-  `ROUTER <-> ROUTER`다.
-- 같은 모델을 `SPOT`의 routed request/reply 위에 올려 설명해야 하는 경우도
-  있다.
+- 현재 framework 초안의 기본 channel 요청 토대는
+  `DEALER(client) -> ROUTER(server)`다.
+- node 간 직접 경로가 꼭 필요할 때만 `ROUTER <-> ROUTER`를 별도 내부 경로로
+  둔다.
+- 다만 같은 SPOT mesh 안의 `spot-to-spot` request/reply는
+  `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - 다만 최신 SPOT topology 초안에서는 high-level public surface에서
   `targetRid + spotRid` direct addressing을 기본으로 두지 않는다. current SPOT
   channel 안의 상호작용과 다른 channel 호출은 분리해서 설명하는 편이 더
@@ -54,7 +56,14 @@
 
 - 호출자는 성공적으로 전송됐는지만 확인하거나, 그마저도 느슨하게 다룰 수 있다.
 - 작업 위임, 후처리 트리거, 간단한 signal에 적합하다.
-- 현재 framework 초안의 기본 서버 간 send 토대는 `ROUTER <-> ROUTER`다.
+- 현재 framework 초안의 기본 channel send 토대는
+  `DEALER(client) -> ROUTER(server)`다.
+- 다른 channel에 접근할 때는 그 channel에 붙은 `DEALER(client)`를 통해 보내는
+  구조를 기본으로 본다.
+- node 간 직접 send가 꼭 필요할 때만 `ROUTER <-> ROUTER`를 별도 내부 경로로
+  둔다.
+- 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
+  `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - SPOT 쪽은 direct addressing보다 attach된 channel client를 통한
   `SendChannelAsync(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 

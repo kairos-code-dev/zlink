@@ -62,6 +62,22 @@ int zlink::socket_base_t::send_routed_scoped (
     return send_direct_with_retry (target_rid_, msg_, flags_, send_scope);
 }
 
+std::unique_ptr<zlink::socket_public_send_scope_t>
+zlink::socket_base_t::begin_public_send_scope (bool force_sync_)
+{
+    const bool needs_sync = force_sync_ || direct_send_needs_public_api_sync ();
+    std::unique_ptr<socket_public_send_scope_t> send_scope (
+      new (std::nothrow)
+        socket_public_send_scope_t (lifecycle_coordinator (), needs_sync));
+    if (!send_scope) {
+        errno = ENOMEM;
+        return std::unique_ptr<socket_public_send_scope_t> ();
+    }
+    if (!send_scope->acquired ())
+        return std::unique_ptr<socket_public_send_scope_t> ();
+    return send_scope;
+}
+
 bool zlink::socket_base_t::direct_send_needs_public_api_sync () const
 {
     return options.type != ZLINK_CORE_SOCKET_PAIR;

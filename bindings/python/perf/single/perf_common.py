@@ -30,6 +30,7 @@ from perf_metrics import (
 
 def parse_single_args(argv, *, pattern):
     parser = argparse.ArgumentParser(prog=f"perf_{pattern.lower()}.py")
+    parser.add_argument("--transport", default="tcp")
     parser.add_argument("--duration", type=float, default=2.0)
     parser.add_argument("--warmup", type=float, default=1.0)
     parser.add_argument("--msg-size", type=int, default=256)
@@ -55,11 +56,7 @@ def recv_nonblocking(sock, *, method="recv"):
 
 
 def attach_spot_service_pair(ctx, node, service_name):
-    zlink_mod = _require_zlink()
-    pub_sock = zlink_mod.PubSocket(ctx)
-    sub_sock = zlink_mod.SubSocket(ctx)
-    endpoint = tcp_endpoint()
-    pub_sock.bind(endpoint)
-    sub_sock.connect(endpoint)
-    node.attach_pubsub(service_name, pub_sock, sub_sock)
-    return pub_sock, sub_sock
+    _ = ctx
+    _ = node
+    _ = service_name
+    return None, None

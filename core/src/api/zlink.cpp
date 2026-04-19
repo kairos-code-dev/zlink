@@ -31,6 +31,7 @@ struct iovec
 #include "sockets/proxy.hpp"
 #include "sockets/socket_base.hpp"
 #include "api/monitor_api_internal.hpp"
+#include "api/part_helper_internal.hpp"
 #include "api/poller_api_internal.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
@@ -142,6 +143,7 @@ zlink_close_result_t zlink_close (void *s_)
     }
 
     unregister_monitor_handlers (handle.socket);
+    zlink::part_helper_internal::cleanup_handle (s_);
 
     if (handle.socket->api_sync_mutex ()) {
         if (handle.socket->socket_msg_dispatch_active ()) {

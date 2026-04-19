@@ -69,38 +69,22 @@ function trySpotPublish(spot, serviceName, topic, payload) {
 
 async function runSpotBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
-  const pubNode = new zlink.SpotNode(ctx);
-  const subNode = new zlink.SpotNode(ctx);
-  const pubSendSocket = new zlink.PubSocket(ctx);
-  const pubRecvSocket = new zlink.SubSocket(ctx);
-  const subSendSocket = new zlink.PubSocket(ctx);
-  const subRecvSocket = new zlink.SubSocket(ctx);
-  let pubSpot = null;
-  let subSpot = null;
+  const node = new zlink.SpotNode(ctx);
+  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+  let spot = null;
   const poller = new zlink.Poller();
-  const serviceEndpoint = await reserveTcpEndpoint();
-  const peerEndpoint = `inproc://perf-spot-peer-${process.pid}`;
 
   try {
-    pubNode.attachPubSub(SERVICE_NAME, pubSendSocket, pubRecvSocket);
-    subNode.attachPubSub(SERVICE_NAME, subSendSocket, subRecvSocket);
-    pubSpot = pubNode.createSpot();
-    subSpot = subNode.createSpot();
-    pubSendSocket.bind(serviceEndpoint);
-    subRecvSocket.connect(serviceEndpoint);
-    pubNode.bind(peerEndpoint);
-    subNode.connectPeer(peerEndpoint);
+    node.attachDiscovery(discovery);
+    spot = node.createSpot();
     if (DEBUG) {
       console.error('spot setup start');
     }
-    if (DEBUG) {
-      console.error('spot node peer connected');
-    }
-    subSpot.setSubscription(TOPIC);
+    spot.setSubscription(TOPIC);
     if (DEBUG) {
       console.error('spot subscription set');
     }
-    poller.addSocket(subSpot, POLLIN);
+    poller.addSocket(spot, POLLIN);
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const startedAtNs = process.hrtime.bigint();
@@ -117,11 +101,11 @@ async function runSpotBenchmark(msgSize, options) {
         msgSize,
         seq
       });
-      if (trySpotPublish(pubSpot, SERVICE_NAME, TOPIC, payload)) {
+      if (trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
         seq += 1n;
       }
       while (true) {
-        const received = trySpotSubscribe(subSpot);
+        const received = trySpotSubscribe(spot);
         if (!received) {
           break;
         }
@@ -155,7 +139,7 @@ async function runSpotBenchmark(msgSize, options) {
           msgSize,
           seq
         });
-        if (!trySpotPublish(pubSpot, SERVICE_NAME, TOPIC, payload)) {
+        if (!trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
           break;
         }
         seq += 1n;
@@ -173,7 +157,7 @@ async function runSpotBenchmark(msgSize, options) {
       }
       if (readySockets.length !== 0) {
         while (true) {
-          const received = trySpotSubscribe(subSpot);
+          const received = trySpotSubscribe(spot);
           if (!received) {
             break;
           }
@@ -192,7 +176,7 @@ async function runSpotBenchmark(msgSize, options) {
 
     for (let i = 0; i < 4; i += 1) {
       while (true) {
-        const received = trySpotSubscribe(subSpot);
+        const received = trySpotSubscribe(spot);
         if (!received) {
           break;
         }
@@ -212,18 +196,10 @@ async function runSpotBenchmark(msgSize, options) {
     return result.latenciesNs;
   } finally {
     poller.close();
-    if (pubSpot) {
-      pubSpot.close();
+    if (spot) {
+      spot.close();
     }
-    if (subSpot) {
-      subSpot.close();
-    }
-    pubNode.close();
-    subNode.close();
-    subRecvSocket.close();
-    subSendSocket.close();
-    pubRecvSocket.close();
-    pubSendSocket.close();
+    discovery.close();
     ctx.close();
   }
 }

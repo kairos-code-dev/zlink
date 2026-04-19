@@ -96,7 +96,7 @@ C binding 계층은 helper를 직접 노출하지 않고, 현재와 비슷한 ag
 
 ## 5. 이름과 헤더 방향
 
-이 초안은 helper 이름과 C binding 이름을 아래처럼 정리하는 방향을 권장한다.
+현재 공개 헤더는 helper 이름과 C binding 이름을 아래처럼 정리해 두고 있다.
 
 - helper:
   - `zlink_send_part`
@@ -112,12 +112,16 @@ C binding 계층은 helper를 직접 노출하지 않고, 현재와 비슷한 ag
 즉 `_part` suffix가 helper 계층을 뜻하고, 짧은 기존 이름은 C binding convenience를
 뜻한다.
 
+두 계층은 현재 `core/include/zlink.h` 하나에 함께 두고, section comment로 경계를
+표시한다. 별도 헤더 분리는 `bindings/c/` 디렉터리가 실제로 도입될 때까지 미룬다.
+
 ## 6. 구현 순서 초안
 
-이 방향은 한 번에 뒤집는 것보다 아래 순서로 가는 게 맞다.
+이 방향은 한 번에 뒤집는 것보다 아래 순서로 진행하는 방식으로 잡았고, 현재
+1단계와 2단계는 반영됐다.
 
-1. helper C API를 먼저 추가한다.
-2. 기존 aggregate 공개 API 구현을 helper 위로 다시 정리한다.
+1. helper C API를 먼저 추가했다.
+2. 기존 aggregate 공개 API 구현을 helper 위로 다시 정리했다.
 3. `.NET`, `Java` bindings가 helper를 실제로 쓰도록 hot path를 재구성한다.
 4. 마지막에 C 계층 문서와 구조를 "C binding" 관점으로 다시 정리한다.
 
@@ -128,6 +132,20 @@ C binding 계층은 helper를 직접 노출하지 않고, 현재와 비슷한 ag
 [bindings-helper-capi-partwise-send-recv.ko.md](bindings-helper-capi-partwise-send-recv.ko.md)
 의 `MORE/FINAL`, request 실패 규칙, routed metadata lifetime이 먼저 고정돼 있어야
 안전하게 진행할 수 있다.
+
+### 6.1 구현 현황
+
+helper substrate인 `*_part` 계열은 현재 `core/include/zlink.h`에 반영돼 있다.
+
+aggregate convenience 계열도 같은 헤더에 남아 있으며, 구현은 helper 위에 올라가는
+얇은 wrapper로 정리돼 있다.
+
+[bindings-helper-capi-partwise-send-recv.ko.md](bindings-helper-capi-partwise-send-recv.ko.md)
+§10.9에 따라, §8.2의 문서 승격 작업은 아직 미뤄 둔다.
+
+현재 헤더 구조는 Option A인 단일 헤더 구분 방식을 따른다. helper와 C binding
+convenience 경계는 section comment로 표시하고, 별도 헤더 분리는 `bindings/c/`
+디렉터리가 실제로 도입될 때까지 보류한다.
 
 ## 7. 후속 작업
 
@@ -177,6 +195,16 @@ C binding 계층은 helper를 직접 노출하지 않고, 현재와 비슷한 ag
    - 내용: 각 언어의 `Message`, `Received`, `trySend`, `tryRecv`,
      request/reply, callback 규칙
    - 위치: 기존 `doc/spec/bindings/<language>/`
+
+이때 request/reply 공개 형태는 아래처럼 정리하는 쪽을 기본으로 둔다.
+
+- coroutine / await request: `request(...)`
+- callback completion request:
+  - 오버로드 가능한 언어: `request(..., callback, ...)` 와
+    `tryRequest(..., callback, ...)`
+  - 오버로드가 어려운 언어: 같은 의미의 callback pair
+  - C binding: 예외적으로 기존 `zlink_*_request(... flags ..., timeout ...)`
+    형태 유지
 
 ### 8.1 무엇을 `doc/spec/bindings`에 쓰지 않을 것인가
 

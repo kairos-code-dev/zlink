@@ -64,7 +64,7 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
         throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
     }
 
-    internal bool TryRecv(out ServiceEvent? monitorEvent)
+    internal bool RecvNoWait(out ServiceEvent? monitorEvent)
     {
         monitorEvent = Recv(true);
         return monitorEvent != null;

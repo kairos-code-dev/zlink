@@ -18,9 +18,9 @@ public sealed class XPubSocket : PublisherSocketBase
         return Kernel.ReceiveSubscriptionEvent(flags);
     }
 
-    internal bool TryReceiveSubscriptionEvent(out SubscriptionEvent? subscriptionEvent)
+    internal bool ReceiveSubscriptionEventNoWait(out SubscriptionEvent? subscriptionEvent)
     {
-        subscriptionEvent = Kernel.TryReceiveSubscriptionEvent();
+        subscriptionEvent = Kernel.ReceiveSubscriptionEventNoWait();
         return subscriptionEvent != null;
     }
 }

@@ -81,12 +81,8 @@ internal static class PerfRouterRouterClient
         {
             var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
             Array.Fill(payload, (byte)'a');
-            var routingId = new byte[256];
-            var recv = new byte[Math.Max(256, Math.Max(msgSize, MultiStopToken.Length))];
-            byte[] serverRoutingIdBytes = new byte[serverRoutingId.Length];
-            serverRoutingId.CopyTo(serverRoutingIdBytes);
             slots[i] = new RouterRouterClientSlot(activeClients[i],
-                serverRoutingIdBytes, payload, routingId, recv);
+                RoutingId.FromBytes(serverRoutingId), payload);
         }
 
         return slots;
@@ -159,17 +155,19 @@ internal static class PerfRouterRouterClient
         {
             int slotIndex = (startIndex + i) % slots.Length;
             RouterRouterClientSlot slot = slots[slotIndex];
-            if (slot.WaitingForReply || slot.PendingStage != RouterSendStage.None)
+            if (slot.WaitingForReply || slot.WaitingForWritable)
                 continue;
 
             PreparePayload(slot, msgSize, runId, phase, ref seq);
             if (TrySend(slot))
             {
                 slot.WaitingForReply = true;
+                slot.WaitingForWritable = false;
                 UpdatePollMask(slot, eventMasks, slotIndex);
                 continue;
             }
 
+            slot.WaitingForWritable = true;
             UpdatePollMask(slot, eventMasks, slotIndex);
         }
 
@@ -186,12 +184,13 @@ internal static class PerfRouterRouterClient
         RouterRouterClientSlot slot = slots[slotIndex];
 
         if (IsSocketWriteReady(pollManager, slotIndex)
-            && slot.PendingStage != RouterSendStage.None
+            && slot.WaitingForWritable
             && !slot.WaitingForReply)
         {
             if (TrySend(slot))
             {
                 slot.WaitingForReply = true;
+                slot.WaitingForWritable = false;
                 UpdatePollMask(slot, eventMasks, slotIndex);
             }
         }
@@ -200,15 +199,20 @@ internal static class PerfRouterRouterClient
         if (!readReady && !slot.WaitingForReply)
             return;
 
-        while (TryReceiveReply(slot, out int received) && received > 0)
+        while (true)
         {
+            using Received? receivedMessage = TryRecvNoWait((RouterSocket)slot.Socket);
+            if (receivedMessage == null || receivedMessage.Count == 0)
+                break;
+
             if (!slot.WaitingForReply)
                 continue;
 
             slot.WaitingForReply = false;
             if (phase == PerfPhase.Active)
             {
-                ReadOnlySpan<byte> body = slot.Recv.AsSpan(0, received);
+                ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
+                    .AsReadOnlySpan();
                 if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
                     && header.RunId == runId
                     && header.MsgSize == (uint)msgSize
@@ -223,8 +227,9 @@ internal static class PerfRouterRouterClient
                             double sampleLatencyNs = nowNs - header.SentTsNs;
                             long sampleSeen = metrics.SampleSeen;
                             uint rng = metrics.Rng;
-                            ReservoirSample(metrics.LatencySamples, sampleLatencyNs,
-                                ref sampleSeen, metrics.LatencySampleCap, ref rng);
+                            ReservoirSample(metrics.LatencySamples,
+                                sampleLatencyNs, ref sampleSeen,
+                                metrics.LatencySampleCap, ref rng);
                             metrics.SampleSeen = sampleSeen;
                             metrics.Rng = rng;
                         }
@@ -235,7 +240,7 @@ internal static class PerfRouterRouterClient
             if (!allowSend)
                 continue;
 
-            slot.PendingStage = RouterSendStage.None;
+            slot.WaitingForWritable = false;
             UpdatePollMask(slot, eventMasks, slotIndex);
         }
     }
@@ -260,7 +265,7 @@ internal static class PerfRouterRouterClient
         PollEvents[] eventMasks, int index)
     {
         PollEvents events = SocketPollIn;
-        if (slot.PendingStage != RouterSendStage.None && !slot.WaitingForReply)
+        if (slot.WaitingForWritable && !slot.WaitingForReply)
             events |= SocketPollOut;
         eventMasks[index] = events;
     }
@@ -270,53 +275,13 @@ internal static class PerfRouterRouterClient
     {
         StampMetricHeader(slot.Payload.AsSpan(), runId, phase, msgSize,
             seq++, EpochNs());
-        slot.PendingStage = RouterSendStage.RoutingId;
+        slot.WaitingForWritable = false;
     }
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        if (slot.PendingStage == RouterSendStage.RoutingId)
-        {
-            if (!slot.Socket.TrySend(slot.ServerRoutingId.AsSpan(),
-                    PerfSendFlags.SendMore | PerfSendFlags.DontWait,
-                    out int ridWritten)
-                || ridWritten <= 0)
-            {
-                return false;
-            }
-            slot.PendingStage = RouterSendStage.Payload;
-        }
-
-        if (slot.PendingStage == RouterSendStage.Payload)
-        {
-            if (!slot.Socket.TrySend(slot.Payload.AsSpan(), PerfSendFlags.DontWait,
-                    out int payloadWritten)
-                || payloadWritten <= 0)
-            {
-                return false;
-            }
-            slot.PendingStage = RouterSendStage.None;
-        }
-
-        return true;
-    }
-
-    private static bool TryReceiveReply(RouterRouterClientSlot slot,
-        out int payloadLength)
-    {
-        payloadLength = 0;
-        int ridLen = ReceiveRetry(slot.Socket, slot.RoutingId.AsSpan(),
-            ReceiveFlags.DontWait);
-        if (ridLen <= 0)
-            return false;
-
-        int n = ReceiveRetry(slot.Socket, slot.Recv.AsSpan(),
-            ReceiveFlags.DontWait);
-        if (n <= 0)
-            return false;
-
-        payloadLength = n;
-        return true;
+        using Message message = Message.FromBytes(slot.Payload);
+        return ((RouterSocket)slot.Socket).TrySend(slot.ServerRoutingId, message);
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)
@@ -343,16 +308,10 @@ internal static class PerfRouterRouterClient
         {
             try
             {
-                if (!activeClients[i].TrySend(serverRoutingId,
-                        PerfSendFlags.SendMore | PerfSendFlags.DontWait,
-                        out int sentRid)
-                    || sentRid <= 0)
-                {
-                    continue;
-                }
-
-                _ = activeClients[i].TrySend(MultiStopToken.AsSpan(),
-                    PerfSendFlags.DontWait, out _);
+                using Message stop = Message.FromBytes(MultiStopToken);
+                ((RouterSocket)activeClients[i]).Send(
+                    RoutingId.FromBytes(serverRoutingId), stop,
+                    SendFlags.DontWait);
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno)
@@ -365,31 +324,20 @@ internal static class PerfRouterRouterClient
         }
     }
 
-    private enum RouterSendStage
-    {
-        None = 0,
-        RoutingId = 1,
-        Payload = 2,
-    }
-
     private sealed class RouterRouterClientSlot
     {
-        internal RouterRouterClientSlot(SocketBase socket, byte[] serverRoutingId,
-            byte[] payload, byte[] routingId, byte[] recv)
+        internal RouterRouterClientSlot(SocketBase socket, RoutingId serverRoutingId,
+            byte[] payload)
         {
             Socket = socket;
             ServerRoutingId = serverRoutingId;
             Payload = payload;
-            RoutingId = routingId;
-            Recv = recv;
         }
 
         internal SocketBase Socket { get; }
-        internal byte[] ServerRoutingId { get; }
+        internal RoutingId ServerRoutingId { get; }
         internal byte[] Payload { get; }
-        internal byte[] RoutingId { get; }
-        internal byte[] Recv { get; }
-        internal RouterSendStage PendingStage { get; set; }
+        internal bool WaitingForWritable { get; set; }
         internal bool WaitingForReply { get; set; }
     }
 
@@ -409,5 +357,10 @@ internal static class PerfRouterRouterClient
         internal int LatencySampleCap { get; }
         internal long SampleSeen { get; set; }
         internal uint Rng { get; set; }
+    }
+
+    private static Received? TryRecvNoWait(RouterSocket socket)
+    {
+        return socket.TryRecv(out Received? received) ? received : null;
     }
 }

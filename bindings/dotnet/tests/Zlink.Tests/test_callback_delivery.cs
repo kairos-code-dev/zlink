@@ -61,7 +61,7 @@ public sealed class test_callback_delivery
 
         callbackContext.Invoke(() =>
         {
-            stream.OnPacket((routingId, payload) =>
+            stream.OnPacket((StreamPacketHandler)((routingId, payload) =>
             {
                 callbackThreadId = Environment.CurrentManagedThreadId;
                 observedPayload = payload;
@@ -75,7 +75,7 @@ public sealed class test_callback_delivery
                     callbackSignal.Set();
                 }
                 return 0;
-            });
+            }));
         });
 
         using var client = ConnectRawClient(port);

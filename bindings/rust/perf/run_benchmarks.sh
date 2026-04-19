@@ -10,7 +10,7 @@ source "$HOME/.cargo/env" 2>/dev/null || true
 PATTERN="ALL"
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
-TRANSPORTS="${PERF_TRANSPORTS:-tcp}"
+TRANSPORTS="${PERF_TRANSPORTS:-}"
 RUNS="${PERF_RUNS:-1}"
 RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/single/report}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
@@ -62,6 +62,22 @@ case "$(uname -s)" in
     *)       PLATFORM="linux" ;;
 esac
 
+default_transports_for_pattern() {
+    local pattern="$1"
+    case "${pattern}" in
+        SPOT)
+            printf '%s' "tcp,tls,ws,wss"
+            ;;
+        *)
+            if [[ "${PLATFORM}" == "windows" ]]; then
+                printf '%s' "tcp,tls,ws,wss,inproc"
+            else
+                printf '%s' "tcp,tls,ws,wss,inproc,ipc"
+            fi
+            ;;
+    esac
+}
+
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
@@ -94,7 +110,6 @@ SINGLE_DIR="${SCRIPT_DIR}/single/target/release"
 export LD_LIBRARY_PATH="${PROJECT_DIR}/native/linux-x86_64:${LD_LIBRARY_PATH:-}"
 
 IFS=',' read -ra SIZE_LIST <<< "${MSG_SIZES}"
-IFS=',' read -ra TRANSPORT_LIST <<< "${TRANSPORTS}"
 
 if [[ "${PATTERN}" == "ALL" ]]; then
     PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
@@ -119,6 +134,8 @@ for pat in "${PATTERNS[@]}"; do
         SPOT)            BIN="${SINGLE_DIR}/perf_spot" ;;
         *)               continue ;;
     esac
+    current_transports="${TRANSPORTS:-$(default_transports_for_pattern "${pat}")}"
+    IFS=',' read -ra TRANSPORT_LIST <<< "${current_transports}"
     for transport in "${TRANSPORT_LIST[@]}"; do
         for size in "${SIZE_LIST[@]}"; do
             case_status="success"

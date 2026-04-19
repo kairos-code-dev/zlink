@@ -28,7 +28,9 @@ def sampleMainClasses = [
     runStreamPacketCallback: 'dev.kairoscode.zlink.samples.StreamPacketCallbackSample',
     runMonitorRecv: 'dev.kairoscode.zlink.samples.MonitorRecvSample',
     runSpotRecv: 'dev.kairoscode.zlink.samples.SpotRecvSample',
-    runSpotRequestAsync: 'dev.kairoscode.zlink.samples.SpotRequestAsyncSample'
+    runSpotRequestAsync: 'dev.kairoscode.zlink.samples.SpotRequestAsyncSample',
+    runDiscoveryRegistry: 'dev.kairoscode.zlink.samples.DiscoveryRegistrySample',
+    runRegistryQuery: 'dev.kairoscode.zlink.samples.RegistryQuerySample'
 ]
 
 sampleMainClasses.each { taskName, mainClassName ->

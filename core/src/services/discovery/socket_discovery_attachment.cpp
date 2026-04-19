@@ -302,17 +302,17 @@ void socket_discovery_attachment_t::refresh_peers (
     }
 
     if (!advertise_endpoint_.empty ()) {
-        std::set<std::string> current_active_endpoints;
+        size_t ready_count = 0;
         {
             scoped_lock_t lock (_sync);
             if (_discovery != discovery_)
                 return;
-            current_active_endpoints = _active_peer_endpoints;
+            ready_count = _active_peer_endpoints.size ();
         }
         report_topology (discovery_, local_role_, advertise_endpoint_,
                          ZLINK_TOPOLOGY_STATE_READY,
                          static_cast<uint32_t> (target_endpoints.size ()),
-                         static_cast<uint32_t> (current_active_endpoints.size ()),
+                         static_cast<uint32_t> (ready_count),
                          0, false);
     }
 }

@@ -41,12 +41,12 @@ public sealed class test_callback_contract
 
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
-        stream.OnPacket((_, payload) =>
+        stream.OnPacket((StreamPacketHandler)((_, payload) =>
         {
             owned = payload;
             receivedSignal.Set();
             return 0;
-        });
+        }));
 
         using var client = ConnectRawClient(port);
         SendAll(client.GetStream(), "callback-owned"u8);
@@ -83,11 +83,11 @@ public sealed class test_callback_contract
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            stream.OnPacket((_, payload) =>
+            stream.OnPacket((StreamPacketHandler)((_, payload) =>
             {
                 payload.Dispose();
                 throw new InvalidOperationException("stream-packet-fail");
-            });
+            }));
 
             using var client = ConnectRawClient(port);
             SendAll(client.GetStream(), "stream-packet-fail"u8);

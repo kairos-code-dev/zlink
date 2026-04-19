@@ -77,13 +77,13 @@ is not exposed as a public `StreamSocket` method.
 - `new SpotNode(ctx)`
 - `new Spot(node)`
 
-`SpotNode` also exposes `attachRouter(serviceName, router)`,
-`attachPubSub(serviceName, pub, sub)`, `serviceAttachmentCount()`,
-`serviceAttachmentAt(index)`, and `nodeMonitorRecv(flags?)`.
+`SpotNode` also exposes `attachChannelDealer(discovery, dealer)`,
+`attachChannelDealerManual(channelName, dealer)`,
+`attachPubIngress(pub)`.
 
 `Spot` is service-aware and uses explicit service names on the data plane:
-`publish(serviceName, topic, ...)`, `sendService(serviceName, ...)`,
-`requestService(serviceName, ...)`, `setSubscription()` /
+`publish(serviceName, topic, ...)`, `sendChannel(channelName, ...)`,
+`requestChannel(channelName, ...)`, `setSubscription()` /
 `unsetSubscription()`, `subscribe(flags?)`,
 `receiveSubscriptionEvent()`, `onRoutedReceive()`, `onDispatchEvent()`, and
 `onSendReady()`.

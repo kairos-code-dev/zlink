@@ -10,7 +10,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <map>
+#include <unordered_map>
 
 namespace zlink
 {
@@ -52,6 +52,17 @@ static bool wait_socket_event_local (void *socket_,
 
 typedef std::pair<uint16_t, std::string> peer_admission_key_t;
 
+struct peer_admission_key_hash_t
+{
+    size_t operator() (const peer_admission_key_t &key_) const
+    {
+        size_t seed = std::hash<uint16_t> () (key_.first);
+        seed ^= std::hash<std::string> () (key_.second) + 0x9e3779b9
+                + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
 static void append_peer_admission_events_local (
   const std::vector<provider_info_t> &before_,
   const std::vector<provider_info_t> &after_,
@@ -61,7 +72,11 @@ static void append_peer_admission_events_local (
     if (!events_out_)
         return;
 
-    std::map<peer_admission_key_t, provider_info_t> before_map;
+    std::unordered_map<peer_admission_key_t,
+                       provider_info_t,
+                       peer_admission_key_hash_t>
+      before_map;
+    before_map.reserve (before_.size ());
     for (size_t i = 0; i < before_.size (); ++i)
         before_map[peer_admission_key_t (before_[i].service_role,
                                          before_[i].endpoint)] = before_[i];
@@ -69,7 +84,9 @@ static void append_peer_admission_events_local (
     for (size_t i = 0; i < after_.size (); ++i) {
         const provider_info_t &provider = after_[i];
         const peer_admission_key_t key (provider.service_role, provider.endpoint);
-        std::map<peer_admission_key_t, provider_info_t>::const_iterator it =
+        std::unordered_map<peer_admission_key_t,
+                           provider_info_t,
+                           peer_admission_key_hash_t>::const_iterator it =
           before_map.find (key);
         if (it == before_map.end ()
             || it->second.admission_state == provider.admission_state) {
@@ -136,6 +153,7 @@ void discovery_t::tick ()
             break;
 
         std::vector<zlink_msg_t> frames;
+        frames.reserve (8);
         while (true) {
             zlink_msg_t frame;
             zlink_msg_init (&frame);
@@ -199,6 +217,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
     }
 
     std::vector<provider_info_t> updated;
+    updated.reserve (service_count);
 
     size_t index = 4;
     for (uint32_t i = 0; i < service_count && index < frames_.size (); ++i) {
@@ -214,6 +233,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             break;
 
         std::vector<provider_info_t> service_providers;
+        service_providers.reserve (receiver_count);
         for (uint32_t p = 0; p < receiver_count && index + 5 < frames_.size ();
              ++p) {
             provider_info_t info;
@@ -255,6 +275,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
 
     std::set<std::string> changed;
     std::vector<zlink_service_event_t> events;
+    events.reserve (updated.size () + 1);
     {
         scoped_lock_t lock (_sync);
         std::vector<provider_info_t> previous;

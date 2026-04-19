@@ -60,9 +60,8 @@ function debugSpot(message) {
 
 function createAttachedSpotNode(ctx) {
   const node = new zlink.SpotNode(ctx);
-  const pubSend = new zlink.PubSocket(ctx);
-  const pubRecv = new zlink.SubSocket(ctx);
-  return { node, pubSend, pubRecv };
+  const dealer = new zlink.DealerSocket(ctx);
+  return { node, dealer };
 }
 
 async function main() {
@@ -128,18 +127,16 @@ async function main() {
     for (let i = 0; i < options.clients; i += 1) {
       const {
         node,
-        pubSend,
-        pubRecv
+        dealer
       } = createAttachedSpotNode(ctx);
-      slots.push({ node, pubSend, pubRecv, spot: null });
+      slots.push({ node, dealer, spot: null });
     }
     debugSpot(`create slots done count=${slots.length}`);
 
     debugSpot('connect data slots begin');
     for (const slot of slots) {
-      slot.node.attachPubSub(SERVICE_NAME, slot.pubSend, slot.pubRecv);
+      slot.node.attachChannelDealerManual(SERVICE_NAME, slot.dealer);
       slot.spot = slot.node.createSpot();
-      slot.pubRecv.connect(options.endpoint);
       slot.node.connectPeer(options.peerEndpoint);
       slot.spot.setSubscription(TOPIC);
     }
@@ -209,9 +206,8 @@ async function main() {
       if (slot.spot) {
         slot.spot.close();
       }
+      slot.dealer.close();
       slot.node.close();
-      slot.pubRecv.close();
-      slot.pubSend.close();
     }
     debugSpot('close ctx');
     ctx.close();

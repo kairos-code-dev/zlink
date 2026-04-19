@@ -115,6 +115,8 @@ class socket_base_t : public own_t,
                             zlink::msg_t *msg_,
                             int flags_,
                             socket_public_send_scope_t &scope_);
+    std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (
+      bool force_sync_);
     int rollback ();
     int rollback_scoped (socket_public_send_scope_t &scope_);
     int recv (zlink::msg_t *msg_, int flags_);

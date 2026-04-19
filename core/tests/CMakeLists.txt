@@ -38,6 +38,12 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_backpressure_matrix
   ${INTEGRATION_TEST_ROOT}/test_backpressure_oneway_matrix
   ${INTEGRATION_TEST_ROOT}/test_public_inproc_multipart_send
+  ${INTEGRATION_TEST_ROOT}/test_helper_send_part_basic
+  ${INTEGRATION_TEST_ROOT}/test_helper_recv_part_basic
+  ${INTEGRATION_TEST_ROOT}/test_helper_ownership
+  ${INTEGRATION_TEST_ROOT}/test_helper_interleave
+  ${INTEGRATION_TEST_ROOT}/test_helper_more_bad_send
+  ${INTEGRATION_TEST_ROOT}/test_helper_request_sequence_failure
   ${INTEGRATION_TEST_ROOT}/test_pubsub
   ${INTEGRATION_TEST_ROOT}/test_reconnect_ivl
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options

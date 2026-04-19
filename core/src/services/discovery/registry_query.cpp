@@ -12,6 +12,33 @@
 
 namespace
 {
+struct summary_key_t
+{
+    uint16_t service_kind;
+    uint16_t service_role;
+    std::string service_name;
+
+    bool operator== (const summary_key_t &other_) const
+    {
+        return service_kind == other_.service_kind
+               && service_role == other_.service_role
+               && service_name == other_.service_name;
+    }
+};
+
+struct summary_key_hash_t
+{
+    size_t operator() (const summary_key_t &key_) const
+    {
+        size_t seed = std::hash<uint16_t> () (key_.service_kind);
+        seed ^= std::hash<uint16_t> () (key_.service_role) + 0x9e3779b9
+                + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<std::string> () (key_.service_name) + 0x9e3779b9
+                + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
 bool topology_filter_match (
   const zlink_registry_topology_entry_t &entry_,
   const zlink_registry_topology_filter_t *filter_)
@@ -174,6 +201,7 @@ void zlink::registry_t::collect_topology_entries_locked (
     if (!out_)
         return;
     out_->clear ();
+    out_->reserve (_topology.size ());
 
     std::vector<zlink_registry_topology_entry_t> matched;
     collect_matching_topology_entries_locked (filter_, &matched);
@@ -197,6 +225,7 @@ void zlink::registry_t::collect_matching_topology_entries_locked (
     if (!out_)
         return;
     out_->clear ();
+    out_->reserve (_topology.size ());
 
     for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
            _topology.begin ();
@@ -268,19 +297,21 @@ int zlink::registry_t::service_summary_snapshot (
 
     out_->clear ();
 
-    typedef std::pair<std::pair<uint16_t, uint16_t>, std::string> summary_key_t;
-    std::map<summary_key_t, zlink_registry_service_summary_entry_t> grouped;
+    std::unordered_map<summary_key_t,
+                       zlink_registry_service_summary_entry_t,
+                       summary_key_hash_t>
+      grouped;
     {
         scoped_lock_t lock (_sync);
+        grouped.reserve (_topology.size ());
         for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
                _topology.begin ();
              it != _topology.end (); ++it) {
             const zlink_registry_topology_entry_t &row = it->second.entry;
-            const summary_key_t key (
-              std::make_pair (
-                std::make_pair (static_cast<uint16_t> (row.service_kind),
-                                static_cast<uint16_t> (row.service_role)),
-                std::string (row.service_name)));
+            summary_key_t key;
+            key.service_kind = static_cast<uint16_t> (row.service_kind);
+            key.service_role = static_cast<uint16_t> (row.service_role);
+            key.service_name = row.service_name;
             zlink_registry_service_summary_entry_t &entry = grouped[key];
             if (entry.service_kind == 0) {
                 memset (&entry, 0, sizeof (entry));
@@ -313,8 +344,10 @@ int zlink::registry_t::service_summary_snapshot (
         }
     }
 
-    for (std::map<summary_key_t,
-                  zlink_registry_service_summary_entry_t>::const_iterator it =
+    out_->reserve (grouped.size ());
+    for (std::unordered_map<summary_key_t,
+                            zlink_registry_service_summary_entry_t,
+                            summary_key_hash_t>::const_iterator it =
            grouped.begin ();
          it != grouped.end (); ++it) {
         if (registry_service_summary_filter_match (it->second, filter_))
@@ -348,6 +381,7 @@ int zlink::registry_t::member_peers (zlink_service_type_t service_type_,
         key.service_name = service_name_;
         service_map_t::const_iterator sit = _services.find (key);
         if (sit != _services.end ()) {
+            matched.reserve (sit->second.providers.size ());
             for (provider_map_t::const_iterator pit = sit->second.providers.begin ();
                  pit != sit->second.providers.end (); ++pit) {
                 zlink_member_peer_entry_t entry;

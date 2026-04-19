@@ -68,8 +68,6 @@ from ._spot import (
     SpotNodePeerFilter,
     SpotNodeSubjectEntry,
     SpotNodeSubjectFilter,
-    SpotServiceAttachmentStats,
-    SpotServiceMonitorEvent,
 )
 from ._utils import (
     AtomicCounter,
@@ -188,8 +186,6 @@ __all__ = [
     "SpotNodePeerFilter",
     "SpotNodeSubjectEntry",
     "SpotNodeSubjectFilter",
-    "SpotServiceAttachmentStats",
-    "SpotServiceMonitorEvent",
     "ZlinkError",
     "SubmitError",
     "RequestError",

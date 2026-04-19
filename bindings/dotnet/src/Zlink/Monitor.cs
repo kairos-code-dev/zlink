@@ -65,7 +65,7 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
     }
 
-    internal bool TryRecv(out MonitorEvent? monitorEvent)
+    internal bool RecvNoWait(out MonitorEvent? monitorEvent)
     {
         monitorEvent = Recv(true);
         return monitorEvent != null;

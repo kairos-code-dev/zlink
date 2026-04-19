@@ -240,8 +240,8 @@ flowchart TD
 `zlink_discovery_resolve_spot(discovery, spot_rid, &owner_node_rid_out)`
 maps a **logical SPOT routing id** to the **current owner SpotNode
 routing id**, so that the caller can pair `(owner_node_rid, spot_rid)`
-for `zlink_spot_send_spot()` / `zlink_spot_request_spot()` or the
-router-side equivalents. The lookup is scoped to the Discovery's current
+for the ROUTER-side direct functions (`zlink_router_send_spot()` /
+`zlink_router_request_spot()`). The lookup is scoped to the Discovery's current
 service view.
 
 The helper is for **send/request destination lookup only**. Reply paths

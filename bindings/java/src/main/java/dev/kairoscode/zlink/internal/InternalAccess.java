@@ -43,6 +43,19 @@ public final class InternalAccess {
         method(Message.class, "copyTo", MemorySegment.class);
     private static final Method MESSAGE_MOVE_TO =
         method(Message.class, "moveTo", MemorySegment.class);
+    private static final Method MESSAGE_NATIVE_HANDLE =
+        method(Message.class, "nativeHandle");
+    private static final Method MESSAGE_SET_MORE =
+        method(Message.class, "setMore", boolean.class);
+    private static final Method MESSAGE_MORE =
+        method(Message.class, "more");
+    private static final Method MESSAGE_FINISH_RECEIVE =
+        method(Message.class, "finishReceive", boolean.class);
+    private static final Method MESSAGE_TRANSFER_TO =
+        method(Message.class, "transferTo", MemorySegment.class);
+    private static final Method MESSAGE_RESTORE_FROM_NATIVE =
+        method(Message.class, "restoreFromNative", MemorySegment.class,
+            boolean.class, Object.class);
     private static final Method MESSAGE_SHARED_COPY_OF =
         method(Message.class, "sharedCopyOf", Message.class);
     private static final Method MESSAGE_FROM_MSG_VECTOR =
@@ -57,6 +70,12 @@ public final class InternalAccess {
         constructor(Received.class, dev.kairoscode.zlink.RoutingId.class,
             dev.kairoscode.zlink.RoutingId.class, Message[].class,
             boolean.class, long.class, boolean.class, BiConsumer.class);
+    private static final Constructor<Received> RECEIVED_LAZY_CTOR =
+        constructor(Received.class, byte[].class, byte[].class, Message.class,
+            Received.PartCursor.class, long.class, boolean.class,
+            BiConsumer.class, Runnable.class);
+    private static final Method RECEIVED_FORCE_MATERIALIZE =
+        method(Received.class, "forceMaterialize");
     private static final Method SOCKET_CORE_IN_CALLBACK =
         method(classForName("dev.kairoscode.zlink.SocketCore"), "inCallback");
     private static final Method SOCKET_CORE_ENTER_CALLBACK =
@@ -114,6 +133,34 @@ public final class InternalAccess {
         invoke(MESSAGE_MOVE_TO, message, destination);
     }
 
+    public static MemorySegment messageNativeHandle(Message message) {
+        return (MemorySegment) invoke(MESSAGE_NATIVE_HANDLE, message);
+    }
+
+    public static void messageSetMore(Message message, boolean more) {
+        invoke(MESSAGE_SET_MORE, message, more);
+    }
+
+    public static boolean messageMore(Message message) {
+        return (boolean) invoke(MESSAGE_MORE, message);
+    }
+
+    public static void messageFinishReceive(Message message, boolean more) {
+        invoke(MESSAGE_FINISH_RECEIVE, message, more);
+    }
+
+    public static Object messageTransferTo(Message message,
+                                           MemorySegment destination) {
+        return invoke(MESSAGE_TRANSFER_TO, message, destination);
+    }
+
+    public static void messageRestoreFromNative(Message message,
+                                                MemorySegment source,
+                                                boolean moreFlag,
+                                                Object anchor) {
+        invoke(MESSAGE_RESTORE_FROM_NATIVE, message, source, moreFlag, anchor);
+    }
+
     public static Message messageSharedCopyOf(Message message) {
         return (Message) invoke(MESSAGE_SHARED_COPY_OF, null, message);
     }
@@ -155,6 +202,28 @@ public final class InternalAccess {
             throw new IllegalStateException(
                 "failed to create trusted Received", ex);
         }
+    }
+
+    public static Received receivedLazy(byte[] routingIdBytes,
+                                        byte[] spotRidBytes,
+                                        Message firstPart,
+                                        Received.PartCursor cursor,
+                                        long requestSeq,
+                                        boolean hasRequestSeq,
+                                        BiConsumer<List<Message>, SendFlags> replySender,
+                                        Runnable onTerminalState) {
+        try {
+            return RECEIVED_LAZY_CTOR.newInstance(routingIdBytes, spotRidBytes,
+                firstPart, cursor, requestSeq, hasRequestSeq, replySender,
+                onTerminalState);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(
+                "failed to create lazy Received", ex);
+        }
+    }
+
+    public static void receivedForceMaterialize(Received received) {
+        invoke(RECEIVED_FORCE_MATERIALIZE, received);
     }
 
     public static boolean inCallback() {

@@ -380,12 +380,11 @@ handle에 대해서만 정의된다. 모니터 대상 식별자는
 | `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4` | `zlink_service_monitor_recv()` |
 | `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_service_monitor_recv()` |
 
-service-aware `SpotNode` attachment monitor event는
-`zlink_service_monitor_open()`이 아니라 `zlink_spot_node_monitor_recv()`로만
-꺼냅니다. 이 recv는 `zlink_spot_service_monitor_event_t`에 `service_name`과
-attachment role을 함께 실어 돌려줍니다. `Spot` / `SpotNode` generic
-service monitor는 SPOT pub/sub runtime에서 바로 브리지할 수 있는
-운영형 이벤트만 노출합니다.
+`Spot`과 `SpotNode`는 generic service monitor surface를 통해 운영형 이벤트를
+노출합니다. `SpotNode`를 대상으로 `zlink_service_monitor_open()`을 열고
+`zlink_service_monitor_recv()`로 이벤트를 꺼냅니다. 반환되는
+`zlink_service_monitor_event_t`에 표준 monitor event 필드가 담깁니다.
+`SpotNode` 전용 별도 monitor recv API는 없습니다.
 
 ### 서비스 종류 상수
 
@@ -453,11 +452,10 @@ monitor bridge가 제공하는 운영형 이벤트만 지원합니다.
 | `pub queue full` (`1u << 15`) | 지원 | 지원 | pub queue 포화 |
 | `pub queue drained` (`1u << 16`) | 지원 | 지원 | pub queue 회복 |
 
-`SpotNode`의 service attachment 상세는 계속
-`zlink_spot_node_monitor_recv()` 전용입니다. 이 전용 recv는
-`service_name`, attachment `role`, nested raw socket monitor event를
-돌려주며, generic service monitor는 이 attachment 상세를 평탄화하지
-않습니다.
+`SpotNode` monitor event는 generic `zlink_service_monitor_recv()`
+surface로 꺼냅니다. 반환되는 이벤트에 표준 monitor 필드가 담기며,
+peer 수준 상세는 snapshot/query API(`zlink_spot_node_peers_snapshot()`,
+`zlink_spot_node_peers_query()`)에서 별도로 확인합니다.
 
 ### Detail 플래그 상수
 

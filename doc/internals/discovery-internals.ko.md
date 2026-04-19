@@ -240,8 +240,9 @@ flowchart TD
 `zlink_discovery_resolve_spot(discovery, spot_rid, &owner_node_rid_out)`
 는 **논리적 SPOT routing id** 를 **현재 소유 SpotNode 의 routing id** 로
 매핑한다. 호출자가 `(owner_node_rid, spot_rid)` 쌍을 만들어
-`zlink_spot_send_spot()` / `zlink_spot_request_spot()` 또는 router 쪽
-동일 계열 API 의 destination 으로 사용할 수 있게 해주는 헬퍼다. 이 조회는
+ROUTER 쪽 direct 함수(`zlink_router_send_spot()` /
+`zlink_router_request_spot()`)의 destination 으로 사용할 수 있게 해주는
+헬퍼다. 이 조회는
 해당 Discovery 의 현재 서비스 뷰 범위에서만 유효하다.
 
 이 API 는 **send/request destination lookup 전용**이다. reply 경로는

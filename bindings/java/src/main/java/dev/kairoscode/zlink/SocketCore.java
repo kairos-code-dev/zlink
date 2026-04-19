@@ -88,6 +88,7 @@ final class SocketCore {
     private final ConcurrentHashMap<Integer, RoutingId> routingIdCache =
       new ConcurrentHashMap<>();
     private volatile RuntimeException callbackFailure;
+    private volatile boolean discoveryAttached;
 
     SocketCore(Socket socket) {
         this.socket = socket;
@@ -103,6 +104,7 @@ final class SocketCore {
     }
 
     void connect(String endpoint) {
+        failIfDiscoveryAttached("zlink_connect");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.connect(socket.handle(), addr);
@@ -112,6 +114,7 @@ final class SocketCore {
     }
 
     void unbind(String endpoint) {
+        failIfDiscoveryAttached("zlink_unbind");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.unbind(socket.handle(), addr);
@@ -121,6 +124,7 @@ final class SocketCore {
     }
 
     void disconnect(String endpoint) {
+        failIfDiscoveryAttached("zlink_disconnect");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.disconnect(socket.handle(), addr);
@@ -135,6 +139,7 @@ final class SocketCore {
             InternalAccess.discoveryHandle(discovery));
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_socket_attach_discovery");
+        discoveryAttached = true;
     }
 
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert) {
@@ -574,6 +579,10 @@ final class SocketCore {
         socket.closeInternal();
     }
 
+    boolean discoveryAttached() {
+        return discoveryAttached;
+    }
+
     MemorySegment ensureSendScratch(int length) {
         if (length <= 0)
             return MemorySegment.NULL;
@@ -608,6 +617,7 @@ final class SocketCore {
         streamUInt32FramedPacketHandler = null;
         streamUInt32FramedNativeHandler = null;
         callbackFailure = null;
+        discoveryAttached = false;
         shutdownExecutor(callbackExecutor);
         callbackExecutor = null;
         closeArena(receiveCallbackArena);
@@ -623,6 +633,12 @@ final class SocketCore {
         closeArena(sendScratchArena);
         sendScratchArena = null;
         sendScratch = MemorySegment.NULL;
+    }
+
+    private void failIfDiscoveryAttached(String operation) {
+        if (discoveryAttached) {
+            throw ZlinkException.fromErrno(operation, ErrorCode.EFSM.getValue());
+        }
     }
 
     private MethodHandle callbackHandle(String name, MethodType type) {

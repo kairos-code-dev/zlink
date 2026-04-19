@@ -175,8 +175,8 @@ ROUTER가 모두 `DRAINING`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
 
 `SpotNode`에서는 같은 변화를 service monitor의
 `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로 받는다.
-SpotNode service-aware 경로는 `zlink_spot_node_monitor_recv()`에서 같은
-이벤트를 `service_name`/role과 함께 꺼낸다.
+`SpotNode`를 대상으로 `zlink_service_monitor_open()`을 열고
+`zlink_service_monitor_recv()`로 이벤트를 꺼낸다.
 
 ## 5. 이벤트 흐름 다이어그램
 

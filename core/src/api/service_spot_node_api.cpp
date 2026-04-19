@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/monitor_api_internal.hpp"
+#include "api/part_helper_internal.hpp"
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/zlink_testing.hpp"
@@ -101,6 +102,7 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
         return ZLINK_CLOSE_BUSY;
     }
 
+    zlink::part_helper_internal::cleanup_handle (spot);
     zlink_spot_request_reply_cleanup_spot (spot);
     zlink_timer_cleanup_spot (spot);
     zlink::spot_node_access_t::unregister_spot_facade (node, spot);

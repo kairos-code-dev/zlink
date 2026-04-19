@@ -552,7 +552,7 @@ def _recv_native_parts(handle, flags):
     )
 
 
-def _try_recv_native_parts(handle):
+def _recv_native_parts_no_wait(handle):
     try:
         return _recv_native_parts(handle, 1)
     except ZlinkError as exc:

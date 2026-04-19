@@ -33,7 +33,7 @@ async function benchmarkEndpoint(transport, token) {
     }
     throw new Error(`unsupported single transport: ${transport}`);
 }
-function tryRecv(socket) {
+function recvNoWait(socket) {
     try {
         return socket.recv(RecvFlags.DontWait);
     }
@@ -44,7 +44,7 @@ function tryRecv(socket) {
         throw error;
     }
 }
-function trySubscribe(socket) {
+function subscribeNoWait(socket) {
     try {
         return socket.subscribe(RecvFlags.DontWait);
     }
@@ -132,7 +132,7 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
             }
             if (typeof socket.subscribe === 'function') {
                 while (true) {
-                    const received = trySubscribe(socket);
+                    const received = subscribeNoWait(socket);
                     if (!received) {
                         break;
                     }
@@ -141,7 +141,7 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
             }
             else {
                 while (true) {
-                    const received = tryRecv(socket);
+                    const received = recvNoWait(socket);
                     if (!received) {
                         break;
                     }
@@ -157,7 +157,7 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
 function drainRecvNow(socket, onMessage) {
     if (typeof socket.subscribe === 'function') {
         while (true) {
-            const received = trySubscribe(socket);
+            const received = subscribeNoWait(socket);
             if (!received) {
                 return;
             }
@@ -166,7 +166,7 @@ function drainRecvNow(socket, onMessage) {
         return;
     }
     while (true) {
-        const received = tryRecv(socket);
+        const received = recvNoWait(socket);
         if (!received) {
             break;
         }

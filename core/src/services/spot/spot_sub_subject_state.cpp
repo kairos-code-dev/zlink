@@ -329,6 +329,7 @@ void spot_sub_t::append_subjects_for_raw_filter (
         return;
 
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    out_->reserve (out_->size () + 2);
     if (_topics.count (raw_filter_) != 0) {
         subject_descriptor_t subject;
         subject.subject = raw_filter_;
@@ -423,6 +424,7 @@ void spot_sub_t::send_ready_ack_lost_for_endpoint (const char *endpoint_)
     std::vector<std::string> raw_filters;
     {
         scoped_lock_t lock (_sync);
+        raw_filters.reserve (_ready_ack_endpoints.size ());
         for (std::map<std::string, std::set<std::string> >::const_iterator it =
                _ready_ack_endpoints.begin ();
              it != _ready_ack_endpoints.end (); ++it) {
@@ -652,6 +654,7 @@ void spot_sub_t::release_ready_ack_endpoints (
     if (it == _ready_ack_endpoints.end ())
         return;
 
+    out_->reserve (it->second.size ());
     out_->insert (out_->end (), it->second.begin (), it->second.end ());
     _ready_ack_endpoints.erase (it);
 }
@@ -664,6 +667,12 @@ void spot_sub_t::release_all_ready_ack_endpoints (
 
     out_->clear ();
     scoped_lock_t lock (_sync);
+    size_t ready_ack_count = 0;
+    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+           _ready_ack_endpoints.begin ();
+         it != _ready_ack_endpoints.end (); ++it)
+        ready_ack_count += it->second.size ();
+    out_->reserve (ready_ack_count);
     for (std::map<std::string, std::set<std::string> >::const_iterator it =
            _ready_ack_endpoints.begin ();
          it != _ready_ack_endpoints.end (); ++it) {

@@ -38,8 +38,8 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 ```
 
 On success, the caller combines `owner_node_rid_out` with the original
-`spot_rid` and passes them to the existing
-`zlink_spot_send_spot()` or `zlink_spot_request_spot()` functions. That
+`spot_rid` and passes them to the ROUTER-side direct functions
+(`zlink_router_send_spot()` or `zlink_router_request_spot()`). That
 lookup result is scoped to the current Discovery `service_name`.
 
 ### Cache model
@@ -108,32 +108,32 @@ For Discovery-attached services, the current Discovery `service_name` is the
 auto-connect boundary. Managed auto-connect operates only inside that service
 scope and never crosses into a different `service_name`.
 
-### SpotNode socket-service Discovery attach
+### SpotNode Discovery attach
 
-`zlink_spot_node_attach_discovery()` accepts both `ZLINK_SERVICE_TYPE_SPOT`
-and `ZLINK_SERVICE_TYPE_SOCKET` Discovery handles. For a socket-service
-Discovery, the attach semantics are "reflect the socket provider view of
-this `service_name` into the SpotNode's service attachment table as an
-automatic source," not "auto-connect to peer SpotNode endpoints."
+`zlink_spot_node_attach_discovery()` accepts only
+`ZLINK_SERVICE_TYPE_SPOT` Discovery handles. This Discovery provides the
+SPOT channel view that determines the node's mesh auto-connect scope.
 
-- A Discovery still has exactly one fixed `service_name` view.
-- One `SpotNode` can host several socket-service Discovery handles, one
-  per distinct `service_name`.
+- A node may have at most one active SPOT Discovery view.
+- A second SPOT Discovery attach is rejected with `EBUSY`.
+- Destroying the attached Discovery removes the automatic peer set it
+  supplied.
+
+### SpotNode channel dealer attach
+
+To call another channel from a `SpotNode`, the caller attaches a `DEALER`
+via `zlink_spot_node_attach_channel_dealer()`. This function takes a
+`ZLINK_SERVICE_TYPE_SOCKET` Discovery together with the `DEALER` socket.
+The Discovery manages the peer set for that channel.
+
+- A Discovery has exactly one fixed `service_name` (channel name) view.
+- The same `channel_name` may have at most one `DEALER` (automatic and
+  manual attach combined). Duplicates fail with `EBUSY`.
 - The same Discovery handle must not be attached to more than one owner.
-- A node must not have more than one Discovery for the same `service_name`.
-- A node with any service-aware attachment accepts only one public `Spot`
-  facade.
-- Destroying a Discovery removes only the automatic attachments that this
-  Discovery was supplying. Manual attachments and attachments from other
-  Discovery sources are left alone.
-- Providers supplied by a socket-service Discovery are visible through the
-  service attachment snapshot and through the node monitor recv surface.
-
-At attach time, Discovery view shape is validated. A service that has only
-`pub`, only `sub`, `router + pub`, or `router + sub` is rejected because
-pub/sub must be paired. A service that has `router` only, or the full
-`router + pub + sub`, is accepted. See the attach_discovery failure table
-in [spot.md](spot.md) for the exact result codes.
+- Attached dealers are dedicated to the `SpotNode`. The caller keeps
+  ownership, but the socket must not be reused elsewhere.
+- For manual channel dealer attach without Discovery, use
+  `zlink_spot_node_attach_channel_dealer_manual()`.
 
 ### SPOT Node
 
@@ -375,8 +375,8 @@ Discovery queries Registry again before returning the owner.
 
 On success, `owner_node_rid_out` receives the current owner node routing id.
 The caller then combines that node id with the original `spot_rid` and passes
-them to `zlink_spot_send_spot()`, `zlink_spot_request_spot()`,
-`zlink_router_send_spot()`, or `zlink_router_request_spot()`.
+them to the ROUTER-side direct functions (`zlink_router_send_spot()` or
+`zlink_router_request_spot()`).
 
 This function is for send/request destination lookup. It is not used for
 reply. Reply paths must use the concrete source address that came with the
@@ -390,8 +390,7 @@ diagnostics.
 **Thread safety:** Safe to call concurrently on the same Discovery handle
 subject to the normal runtime lifecycle constraints.
 
-**See also:** `zlink_spot_send_spot`, `zlink_spot_request_spot`,
-`zlink_router_send_spot`, `zlink_router_request_spot`
+**See also:** `zlink_router_send_spot`, `zlink_router_request_spot`
 
 ---
 

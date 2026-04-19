@@ -4,6 +4,19 @@ set -euo pipefail
 
 SAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SAMPLES_DIR/.." && pwd)"
+CORE_LIB="${ROOT_DIR}/../core/build/lib/libzlink.so"
+if [[ -f "${CORE_LIB}" ]]; then
+  export ZLINK_LIBRARY_PATH="${CORE_LIB}"
+  for native_dir in \
+    "${ROOT_DIR}/src/main/resources/native/linux-x86_64" \
+    "${ROOT_DIR}/build/resources/main/native/linux-x86_64"; do
+    if [[ -d "${native_dir}" ]]; then
+      cp -f "${CORE_LIB}" "${native_dir}/libzlink.so"
+      cp -f "${ROOT_DIR}/../core/build/lib/libzlink.so.5.3.0" "${native_dir}/libzlink.so.5.3.0"
+      ln -sfn libzlink.so.5.3.0 "${native_dir}/libzlink.so.5"
+    fi
+  done
+fi
 TASKS=(
   ":samples:runRequestReplyAsync"
   ":samples:runPairRecv"
@@ -14,6 +27,8 @@ TASKS=(
   ":samples:runMonitorRecv"
   ":samples:runSpotRecv"
   ":samples:runSpotRequestAsync"
+  ":samples:runDiscoveryRegistry"
+  ":samples:runRegistryQuery"
 )
 
 failures=0

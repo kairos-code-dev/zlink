@@ -534,8 +534,10 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
         usleep ((backoff_msec << i) * 1000);
     }
 
-    if (rc != 0 && ((errno == EINVAL) || (errno == EOPNOTSUPP))) {
+    if (rc != 0 && ((errno == EINVAL) || (errno == EOPNOTSUPP)
+                    || (errno == EPERM) || (errno == EACCES))) {
         // Windows Subsystem for Linux compatibility
+        // Some restricted Linux sandboxes also block interface enumeration.
         errno = ENODEV;
         return -1;
     }

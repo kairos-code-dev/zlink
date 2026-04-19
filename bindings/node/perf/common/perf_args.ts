@@ -4,8 +4,8 @@
 
 const STANDARD_MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144];
 const STREAM_MSG_SIZES = [64, 256, 1024, 65536];
-const DEFAULT_SINGLE_TRANSPORTS = ['inproc'];
-const DEFAULT_MULTI_TRANSPORTS = ['tcp'];
+const DEFAULT_SINGLE_TRANSPORTS = ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'];
+const DEFAULT_MULTI_TRANSPORTS = ['tcp', 'tls', 'ws', 'wss'];
 
 function parseSizeList(value, fallback) {
   if (!value) {

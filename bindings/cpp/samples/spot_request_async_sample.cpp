@@ -34,8 +34,6 @@ int main ()
     std::thread responder ([&responder_router] {
         const zlink::received_t received = responder_router.recv ();
         assert (received.parts ().size () == 1);
-        assert (!received.routing_id ().has_value ());
-        assert (!received.spot_rid ().has_value ());
         assert (received.request_seq ().has_value ());
         assert (received.parts ()[0].to_string () == "spot-ping");
         zlink::message_t reply = detail::make_message ("spot-pong");

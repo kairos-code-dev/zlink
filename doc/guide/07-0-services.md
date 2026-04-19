@@ -67,25 +67,30 @@ A service registration/discovery system based on a Registry cluster. When a serv
 
 See the [Service Discovery Guide](07-1-discovery.md) and the [Registry Guide](07-4-registry.md) for details.
 
-### 3.2 SPOT -- Service-Centric Routed + PUB/SUB Hub
+### 3.2 SPOT -- Channel-Based Routed + PUB/SUB Hub
 
-A `SpotNode` is the hub that owns a service attachment table. It holds one
-or more `service_name` entries, each with its own ROUTER set and optional
-PUB/SUB pair. A single public `Spot` facade sits on top of the node and
-drives routed send/request and publish/subscribe per service.
+A `SpotNode` is the core runtime of the SPOT topology. It attaches one SPOT
+channel Discovery view to form a mesh with other `SpotNode` peers in the same
+channel, and attaches `DEALER` sockets separately when it needs to call other
+channels. A single public `Spot` facade sits on top of the node and drives
+channel send/request, peer routed communication, and publish/subscribe.
 
-- Manual attachments via `zlink_spot_node_attach_router()` and
-  `zlink_spot_node_attach_pubsub()` (PUB+SUB is required together).
-- Automatic attachments via `zlink_spot_node_attach_discovery()`, which
-  accepts one Discovery per `service_name` and validates pub/sub pairing.
-- Service-aware data plane:
-  `zlink_spot_send_service()` / `zlink_spot_request_service()` /
+- SPOT mesh: `zlink_spot_node_attach_discovery()` attaches one Discovery
+  with a SPOT channel view; peers in the same channel auto-connect.
+- Channel-call dealers:
+  `zlink_spot_node_attach_channel_dealer()` (automatic) /
+  `zlink_spot_node_attach_channel_dealer_manual()` (manual) register a
+  `DEALER` that sends requests to a channel's `ROUTER(server)` set.
+- External publish ingress: `zlink_spot_node_attach_pub_ingress()` feeds
+  an external `PUB` into the SPOT topic plane.
+- Data plane:
+  `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
+  `zlink_spot_send_router()` / `zlink_spot_request_router()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /
   `zlink_spot_subscription_event()`.
 - Readable notifications share one callback surface:
   `zlink_spot_dispatch_event_handler()`.
-- Service-aware monitoring goes through `zlink_spot_node_monitor_recv()`,
-  not the Spot dispatch plane.
+- Monitoring uses the generic service monitor plus snapshot/query APIs.
 - **Thread-safe** -- a single `spot` / `spot_node` handle admits concurrent
   operational API calls from multiple threads.
 

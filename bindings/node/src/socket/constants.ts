@@ -6,7 +6,7 @@ export const SocketType = Object.freeze({
 } as const);
 
 export type MonitorEventMask = number;
-export const SOCKET_MONITOR_EVENT_ALL = 0x7FFF;
+export const SOCKET_MONITOR_EVENT_ALL = 0xFFFF;
 
 export const SocketOption = Object.freeze({
   AFFINITY: 0x3001, RATE: 0x3003, RECOVERY_IVL: 0x3004,

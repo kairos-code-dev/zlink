@@ -247,16 +247,16 @@ memcpy(zlink_msg_data(&msg), text, len);
 
 zlink_discovery_resolve_spot(discovery, &room_spot_rid, &room_node_rid);
 
-zlink_spot_send_spot(session_spot,
-                     &room_node_rid,
-                     &room_spot_rid,
-                     &msg,
-                     1,
-                     0);
+zlink_router_send_spot(router,
+                       &room_node_rid,
+                       &room_spot_rid,
+                       &msg,
+                       1,
+                       0);
 ```
 
 세션은 논리 채널 이름인 `room:123`만 알고 있어도 된다. 실제 owner node는
-discovery로 찾고, 전송은 기존 routed send 경로를 사용한다.
+discovery로 찾고, 전송은 ROUTER direct 경로를 사용한다.
 
 ## 확장 아이디어
 

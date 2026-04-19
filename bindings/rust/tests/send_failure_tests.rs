@@ -136,7 +136,7 @@ fn try_publish_backpressure_or_not_ready() {
 #[test]
 fn try_send_non_eagain_error_not_swallowed() {
     // Verify that errors other than EAGAIN propagate as Err, not as
-    // a SendResult variant. Close socket then try_send → must error.
+    // a SendResult variant. Close socket then send_no_wait_result → must error.
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://sf-try-send-non-eagain").unwrap();

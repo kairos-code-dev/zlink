@@ -35,63 +35,88 @@ public final class Message implements AutoCloseable {
         ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
     private static final ValueLayout.OfLong LONG_LE =
         ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+    private static final boolean NATIVE_LITTLE_ENDIAN =
+        ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
+    private static final long MSG_LAYOUT_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
 
     private final Arena arena;
+    private final long ownedMsgSlotAddress;
     private final MemorySegment msg;
     private boolean valid;
     private boolean closed;
     private boolean recvArmed;
     private boolean more;
+    private int cachedSize;
+    private long cachedAddress;
     private Object zeroCopyAnchor;
 
     private Message(Arena arena, boolean raw) {
         this.arena = Objects.requireNonNull(arena, "arena");
+        this.ownedMsgSlotAddress = 0L;
         this.msg = arena.allocate(NativeLayouts.MSG_LAYOUT);
         this.valid = false;
         this.closed = false;
         this.recvArmed = false;
         this.more = false;
+        this.cachedSize = 0;
+        this.cachedAddress = 0L;
         this.zeroCopyAnchor = null;
     }
 
     private Message(MemorySegment adoptedMsg) {
         this.arena = null;
+        this.ownedMsgSlotAddress = 0L;
         this.msg = Objects.requireNonNull(adoptedMsg, "adoptedMsg");
         this.valid = true;
         this.closed = false;
         this.recvArmed = false;
         this.more = false;
+        cachePayload((int) NativeMsg.msgSize(adoptedMsg));
+        this.zeroCopyAnchor = null;
+    }
+
+    private Message(long ownedMsgSlotAddress) {
+        this.arena = null;
+        this.ownedMsgSlotAddress = ownedMsgSlotAddress;
+        this.msg = MemorySegment.ofAddress(ownedMsgSlotAddress)
+            .reinterpret(MSG_LAYOUT_SIZE);
+        this.valid = false;
+        this.closed = false;
+        this.recvArmed = false;
+        this.more = false;
+        this.cachedSize = 0;
+        this.cachedAddress = 0L;
         this.zeroCopyAnchor = null;
     }
 
     private Message(boolean raw) {
-        this(Arena.ofConfined(), raw);
+        this(allocateOwnedMsgSlot());
     }
 
     public Message() {
         this(true);
         int rc = NativeMsg.msgInit(msg);
         if (rc != 0) {
-            arena.close();
-            closed = true;
+            releaseOwnedResources();
             throw ZlinkException.fromLastError("zlink_msg_init");
         }
         valid = true;
         recvArmed = true;
         more = false;
+        clearPayloadCache();
     }
 
     public Message(int size) {
         this(true);
         int rc = NativeMsg.msgInitSize(msg, size);
         if (rc != 0) {
-            arena.close();
-            closed = true;
+            releaseOwnedResources();
             throw ZlinkException.fromLastError("zlink_msg_init_size");
         }
         valid = true;
         recvArmed = false;
         more = false;
+        cachePayload(size);
     }
 
     /** Copies the full byte array into a new message-owned frame. */
@@ -105,11 +130,43 @@ public final class Message implements AutoCloseable {
         validateRange(data.length, offset, length, "data");
         Message msg = new Message(length);
         if (length > 0) {
-            MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
             UNSAFE.copyMemory(data, BYTE_ARRAY_BASE + offset, null,
-                dst.address(), length);
+                msg.cachedAddress, length);
         }
         return msg;
+    }
+
+    /** Copies the full source message into a new message-owned frame. */
+    public static Message copyOf(Message source) {
+        Objects.requireNonNull(source, "source");
+        int size = source.size();
+        Message msg = new Message(size);
+        if (size > 0) {
+            UNSAFE.copyMemory(null, source.cachedAddress, null,
+                msg.cachedAddress, size);
+        }
+        msg.more = source.more;
+        return msg;
+    }
+
+    /** Moves this message into a new owned message instance. */
+    public Message move() {
+        if (closed || !valid)
+            throw new IllegalStateException("message is closed");
+        Message target = new Message(true);
+        boolean moreFlag = more;
+        int size = cachedSize;
+        Object anchor = transferTo(target.msg);
+        target.valid = true;
+        target.recvArmed = false;
+        target.more = moreFlag;
+        if (size > 0) {
+            target.cachePayload(size);
+        } else {
+            target.clearPayloadCache();
+        }
+        target.zeroCopyAnchor = anchor;
+        return target;
     }
 
     /** Encodes the string as UTF-8 and copies it into a new frame. */
@@ -135,10 +192,10 @@ public final class Message implements AutoCloseable {
         msg.valid = true;
         msg.recvArmed = false;
         msg.more = false;
+        msg.cachePayload(length);
         if (length > 0) {
-            MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
             UNSAFE.copyMemory(data, BYTE_ARRAY_BASE + offset, null,
-                dst.address(), length);
+                msg.cachedAddress, length);
         }
         return msg;
     }
@@ -165,6 +222,7 @@ public final class Message implements AutoCloseable {
         msg.valid = true;
         msg.recvArmed = false;
         msg.more = source.more;
+        msg.cachePayload(source.cachedSize);
         return msg;
     }
 
@@ -175,8 +233,8 @@ public final class Message implements AutoCloseable {
         Message msg = new Message(length);
         if (length > 0) {
             ByteBuffer src = data.slice();
-            MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
-            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, dst, 0, length);
+            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, msg.dataSegment(length), 0,
+                length);
         }
         return msg;
     }
@@ -189,23 +247,24 @@ public final class Message implements AutoCloseable {
         if (length <= 0)
             return msg;
         int readerIndex = buf.readerIndex();
-        MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
         if (buf.hasMemoryAddress()) {
             MemorySegment src = MemorySegment.ofAddress(buf.memoryAddress() + readerIndex)
                 .reinterpret(length);
-            MemorySegment.copy(src, 0, dst, 0, length);
+            MemorySegment.copy(src, 0, msg.dataSegment(length), 0, length);
             return msg;
         }
         try {
             ByteBuffer src = buf.nioBufferCount() == 1
                 ? buf.internalNioBuffer(readerIndex, length)
                 : buf.nioBuffer(readerIndex, length);
-            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, dst, 0, length);
+            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, msg.dataSegment(length), 0,
+                length);
             return msg;
         } catch (UnsupportedOperationException ex) {
             byte[] tmp = new byte[length];
             buf.getBytes(readerIndex, tmp);
-            MemorySegment.copy(MemorySegment.ofArray(tmp), 0, dst, 0, length);
+            MemorySegment.copy(MemorySegment.ofArray(tmp), 0, msg.dataSegment(length), 0,
+                length);
             return msg;
         }
     }
@@ -230,8 +289,7 @@ public final class Message implements AutoCloseable {
             throw new IllegalArgumentException("length too large: " + length);
         Message msg = new Message((int) length);
         if (length > 0) {
-            MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
-            MemorySegment.copy(data, offset, dst, 0, length);
+            MemorySegment.copy(data, offset, msg.dataSegment((int) length), 0, length);
         }
         return msg;
     }
@@ -255,6 +313,7 @@ public final class Message implements AutoCloseable {
         msg.valid = true;
         msg.recvArmed = false;
         msg.more = false;
+        msg.cacheBorrowedPayload(seg, length);
         msg.zeroCopyAnchor = data;
         return msg;
     }
@@ -283,6 +342,7 @@ public final class Message implements AutoCloseable {
         msg.valid = true;
         msg.recvArmed = false;
         msg.more = false;
+        msg.cacheBorrowedPayload(slice, (int) length);
         msg.zeroCopyAnchor = data;
         return msg;
     }
@@ -308,6 +368,7 @@ public final class Message implements AutoCloseable {
             msg.valid = true;
             msg.recvArmed = false;
             msg.more = false;
+            msg.cacheBorrowedPayload(seg, length);
             msg.zeroCopyAnchor = buf;
             return msg;
         }
@@ -327,6 +388,7 @@ public final class Message implements AutoCloseable {
         msg.valid = true;
         msg.recvArmed = false;
         msg.more = false;
+        msg.cacheBorrowedPayload(MemorySegment.ofBuffer(nio), length);
         msg.zeroCopyAnchor = buf;
         return msg;
     }
@@ -340,7 +402,7 @@ public final class Message implements AutoCloseable {
     }
 
     public int size() {
-        return (int) NativeMsg.msgSize(msg);
+        return valid && !closed ? cachedSize : 0;
     }
 
     boolean more() {
@@ -352,28 +414,74 @@ public final class Message implements AutoCloseable {
     }
 
     MemorySegment dataSegment() {
-        int size = size();
-        if (size <= 0)
-            return MemorySegment.NULL;
-        return NativeMsg.msgData(msg).reinterpret(size);
+        return valid && !closed && cachedAddress != 0
+            ? MemorySegment.ofAddress(cachedAddress).reinterpret(cachedSize)
+            : MemorySegment.NULL;
     }
 
     MemorySegment dataSegment(int knownSize) {
-        if (knownSize <= 0)
+        if (!valid || closed || knownSize <= 0 || cachedAddress == 0)
             return MemorySegment.NULL;
-        return NativeMsg.msgData(msg).reinterpret(knownSize);
+        return MemorySegment.ofAddress(cachedAddress).reinterpret(knownSize);
+    }
+
+    MemorySegment nativeHandle() {
+        return msg;
     }
 
     public int readIntLe(int offset) {
         int size = size();
         validateRange(size, offset, Integer.BYTES, "offset");
-        return NativeMsg.msgData(msg).reinterpret(size).get(INT_LE, offset);
+        int value = UNSAFE.getInt(null, cachedAddress + offset);
+        return NATIVE_LITTLE_ENDIAN ? value : Integer.reverseBytes(value);
+    }
+
+    public int readIntBe(int offset) {
+        int size = size();
+        validateRange(size, offset, Integer.BYTES, "offset");
+        int value = UNSAFE.getInt(null, cachedAddress + offset);
+        return NATIVE_LITTLE_ENDIAN ? Integer.reverseBytes(value) : value;
+    }
+
+    public byte readByte(int offset) {
+        int size = size();
+        validateRange(size, offset, 1, "offset");
+        return UNSAFE.getByte(null, cachedAddress + offset);
+    }
+
+    public short readShortBe(int offset) {
+        int size = size();
+        validateRange(size, offset, Short.BYTES, "offset");
+        short value = UNSAFE.getShort(null, cachedAddress + offset);
+        return NATIVE_LITTLE_ENDIAN ? Short.reverseBytes(value) : value;
+    }
+
+    public boolean contentEquals(byte[] expected) {
+        Objects.requireNonNull(expected, "expected");
+        int size = size();
+        if (size != expected.length)
+            return false;
+        int i = 0;
+        for (; i + Long.BYTES <= size; i += Long.BYTES) {
+            long actual = UNSAFE.getLong(null, cachedAddress + i);
+            long wanted = UNSAFE.getLong(expected, BYTE_ARRAY_BASE + i);
+            if (actual != wanted)
+                return false;
+        }
+        for (; i < size; i++) {
+            if (UNSAFE.getByte(null, cachedAddress + i)
+                != UNSAFE.getByte(expected, BYTE_ARRAY_BASE + i)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public long readLongLe(int offset) {
         int size = size();
         validateRange(size, offset, Long.BYTES, "offset");
-        return NativeMsg.msgData(msg).reinterpret(size).get(LONG_LE, offset);
+        long value = UNSAFE.getLong(null, cachedAddress + offset);
+        return NATIVE_LITTLE_ENDIAN ? value : Long.reverseBytes(value);
     }
 
     public ByteBuffer dataBuffer() {
@@ -403,9 +511,8 @@ public final class Message implements AutoCloseable {
         int size = size();
         if (size <= 0)
             return new byte[0];
-        MemorySegment data = dataSegment();
         byte[] out = new byte[size];
-        UNSAFE.copyMemory(null, data.address(), out, BYTE_ARRAY_BASE, size);
+        UNSAFE.copyMemory(null, cachedAddress, out, BYTE_ARRAY_BASE, size);
         return out;
     }
 
@@ -419,9 +526,22 @@ public final class Message implements AutoCloseable {
         validateRange(destination.length, offset, size, "destination");
         if (size == 0)
             return 0;
-        UNSAFE.copyMemory(null, dataSegment().address(), destination,
+        UNSAFE.copyMemory(null, cachedAddress, destination,
             BYTE_ARRAY_BASE + offset, size);
         return size;
+    }
+
+    public int copyTo(byte[] destination, int sourceOffset, int destinationOffset,
+                      int length) {
+        Objects.requireNonNull(destination, "destination");
+        int size = size();
+        validateRange(size, sourceOffset, length, "source");
+        validateRange(destination.length, destinationOffset, length, "destination");
+        if (length == 0)
+            return 0;
+        UNSAFE.copyMemory(null, cachedAddress + sourceOffset, destination,
+            BYTE_ARRAY_BASE + destinationOffset, length);
+        return length;
     }
 
     public int copyTo(ByteBuffer destination) {
@@ -480,13 +600,58 @@ public final class Message implements AutoCloseable {
         valid = true;
         recvArmed = false;
         more = false;
+        if (size == 0) {
+            clearPayloadCache();
+        } else {
+            cachePayload(size);
+        }
         zeroCopyAnchor = null;
     }
 
     public void writeByte(int offset, byte value) {
         int size = size();
         validateRange(size, offset, 1, "offset");
-        dataSegment(size).set(ValueLayout.JAVA_BYTE, offset, value);
+        UNSAFE.putByte(null, cachedAddress + offset, value);
+    }
+
+    public void fill(byte value) {
+        fill(value, 0, size());
+    }
+
+    public void fill(byte value, int offset, int length) {
+        int size = size();
+        validateRange(size, offset, length, "offset");
+        if (length == 0)
+            return;
+        UNSAFE.setMemory(null, cachedAddress + offset, length, value);
+    }
+
+    public void writeIntLe(int offset, int value) {
+        int size = size();
+        validateRange(size, offset, Integer.BYTES, "offset");
+        int encoded = NATIVE_LITTLE_ENDIAN ? value : Integer.reverseBytes(value);
+        UNSAFE.putInt(null, cachedAddress + offset, encoded);
+    }
+
+    public void writeLongLe(int offset, long value) {
+        int size = size();
+        validateRange(size, offset, Long.BYTES, "offset");
+        long encoded = NATIVE_LITTLE_ENDIAN ? value : Long.reverseBytes(value);
+        UNSAFE.putLong(null, cachedAddress + offset, encoded);
+    }
+
+    public void writeShortBe(int offset, short value) {
+        int size = size();
+        validateRange(size, offset, Short.BYTES, "offset");
+        short encoded = NATIVE_LITTLE_ENDIAN ? Short.reverseBytes(value) : value;
+        UNSAFE.putShort(null, cachedAddress + offset, encoded);
+    }
+
+    public void writeIntBe(int offset, int value) {
+        int size = size();
+        validateRange(size, offset, Integer.BYTES, "offset");
+        int encoded = NATIVE_LITTLE_ENDIAN ? Integer.reverseBytes(value) : value;
+        UNSAFE.putInt(null, cachedAddress + offset, encoded);
     }
 
     public int copyFrom(byte[] source, int sourceOffset, int destinationOffset,
@@ -497,8 +662,8 @@ public final class Message implements AutoCloseable {
         validateRange(size, destinationOffset, length, "destination");
         if (length == 0)
             return 0;
-        MemorySegment.copy(MemorySegment.ofArray(source), sourceOffset,
-            dataSegment(size), destinationOffset, length);
+        UNSAFE.copyMemory(source, BYTE_ARRAY_BASE + sourceOffset, null,
+            cachedAddress + destinationOffset, length);
         return length;
     }
 
@@ -511,8 +676,8 @@ public final class Message implements AutoCloseable {
         validateRange(size, destinationOffset, length, "destination");
         if (length == 0)
             return 0;
-        MemorySegment.copy(source.dataSegment(sourceSize), sourceOffset,
-            dataSegment(size), destinationOffset, length);
+        UNSAFE.copyMemory(null, source.cachedAddress + sourceOffset, null,
+            cachedAddress + destinationOffset, length);
         return length;
     }
 
@@ -528,6 +693,7 @@ public final class Message implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_msg_move");
         valid = false;
         recvArmed = false;
+        clearPayloadCache();
         zeroCopyAnchor = null;
     }
 
@@ -544,6 +710,7 @@ public final class Message implements AutoCloseable {
         valid = false;
         recvArmed = false;
         more = false;
+        clearPayloadCache();
         zeroCopyAnchor = null;
         return anchor;
     }
@@ -557,13 +724,14 @@ public final class Message implements AutoCloseable {
         valid = true;
         recvArmed = false;
         more = moreFlag;
+        cachePayload((int) NativeMsg.msgSize(msg));
         zeroCopyAnchor = anchor;
     }
 
     void resetForReuse() {
-        if (arena == null)
+        if (arena == null && ownedMsgSlotAddress == 0L)
             throw new IllegalStateException("message is not reusable");
-        if (closed || !arena.scope().isAlive())
+        if (closed || (arena != null && !arena.scope().isAlive()))
             throw new IllegalStateException("message is closed");
         if (valid) {
             int rc = NativeMsg.msgClose(msg);
@@ -577,11 +745,13 @@ public final class Message implements AutoCloseable {
         valid = true;
         recvArmed = true;
         more = false;
+        clearPayloadCache();
         zeroCopyAnchor = null;
     }
 
     boolean isReusable() {
-        return arena != null && !closed && arena.scope().isAlive();
+        return !closed && (ownedMsgSlotAddress != 0
+            || (arena != null && arena.scope().isAlive()));
     }
 
     static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
@@ -595,6 +765,15 @@ public final class Message implements AutoCloseable {
 
     static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
         return fromOwnedMsgVector(partsAddr, count, null);
+    }
+
+    static Message fromOwnedMsgSingle(MemorySegment partsAddr) {
+        if (partsAddr == null || partsAddr.address() == 0) {
+            throw new IllegalArgumentException("partsAddr is null");
+        }
+        MemorySegment src = MemorySegment.ofAddress(partsAddr.address())
+            .reinterpret(MSG_LAYOUT_SIZE);
+        return new Message(src);
     }
 
     static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
@@ -639,16 +818,16 @@ public final class Message implements AutoCloseable {
                 MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
                 Message msg = out[i];
                 if (msg == null || !msg.isReusable()) {
-                    msg = new Message(Arena.ofShared(), false);
+                    msg = new Message(true);
                     int initRc = NativeMsg.msgInit(msg.msg);
                     if (initRc != 0) {
-                        msg.arena.close();
-                        msg.closed = true;
+                        msg.releaseOwnedResources();
                         throw ZlinkException.fromLastError("zlink_msg_init");
                     }
                     msg.valid = true;
                     msg.recvArmed = true;
                     msg.more = false;
+                    msg.clearPayloadCache();
                     msg.zeroCopyAnchor = null;
                     out[i] = msg;
                 }
@@ -659,6 +838,7 @@ public final class Message implements AutoCloseable {
                 msg.valid = true;
                 msg.recvArmed = false;
                 msg.more = i + 1 < count;
+                msg.cachePayload((int) NativeMsg.msgSize(msg.msg));
                 msg.zeroCopyAnchor = null;
                 built++;
             }
@@ -746,10 +926,16 @@ public final class Message implements AutoCloseable {
         target.valid = true;
         target.recvArmed = false;
         target.more = moreFlag;
+        if (cachedSize > 0) {
+            target.cachePayload(cachedSize);
+        } else {
+            target.clearPayloadCache();
+        }
         target.zeroCopyAnchor = zeroCopyAnchor;
         valid = false;
         recvArmed = false;
         more = false;
+        clearPayloadCache();
         zeroCopyAnchor = null;
         return target.size();
     }
@@ -758,11 +944,20 @@ public final class Message implements AutoCloseable {
         valid = false;
         recvArmed = false;
         more = false;
+        clearPayloadCache();
         zeroCopyAnchor = null;
     }
 
     void setMore(boolean moreFlag) {
         more = moreFlag;
+    }
+
+    void finishReceive(boolean moreFlag) {
+        valid = true;
+        recvArmed = false;
+        more = moreFlag;
+        cachePayload((int) NativeMsg.msgSize(msg));
+        zeroCopyAnchor = null;
     }
 
     @Override
@@ -775,16 +970,45 @@ public final class Message implements AutoCloseable {
         }
         recvArmed = false;
         more = false;
+        clearPayloadCache();
         zeroCopyAnchor = null;
-        if (arena != null && arena.scope().isAlive())
-            arena.close();
-        closed = true;
+        releaseOwnedResources();
     }
 
     private void prepareForReceive() {
         if (!recvArmed) {
             resetForReuse();
         }
+    }
+
+    private void cachePayload(int size) {
+        cachedSize = size;
+        cachedAddress = size > 0 ? NativeMsg.msgDataAddr(msg) : 0L;
+    }
+
+    private void cacheBorrowedPayload(MemorySegment data, int size) {
+        cachedSize = size;
+        cachedAddress = size > 0 ? data.address() : 0L;
+    }
+
+    private void clearPayloadCache() {
+        cachedSize = 0;
+        cachedAddress = 0L;
+    }
+
+    private void releaseOwnedResources() {
+        if (arena != null && arena.scope().isAlive()) {
+            arena.close();
+        } else if (ownedMsgSlotAddress != 0L) {
+            UNSAFE.freeMemory(ownedMsgSlotAddress);
+        }
+        closed = true;
+    }
+
+    private static long allocateOwnedMsgSlot() {
+        long address = UNSAFE.allocateMemory(MSG_LAYOUT_SIZE);
+        UNSAFE.setMemory(address, MSG_LAYOUT_SIZE, (byte) 0);
+        return address;
     }
 
     private static void validateRange(int total, int offset, int length, String name) {

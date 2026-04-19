@@ -39,6 +39,20 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
     for (std::map<std::string, service_attachment_t>::const_iterator it =
            _service_attachments.begin ();
          it != _service_attachments.end (); ++it) {
+        service_attachment_t &attachment =
+          const_cast<service_attachment_t &> (it->second);
+        attachment.router_cache.clear ();
+        attachment.router_cache.reserve (attachment.manual.routers.size ()
+                                         + attachment.discovered.routers.size ());
+        attachment.router_cache.insert (attachment.router_cache.end (),
+                                        attachment.manual.routers.begin (),
+                                        attachment.manual.routers.end ());
+        for (std::map<std::string, socket_base_t *>::const_iterator router_it =
+               attachment.discovered.routers.begin ();
+             router_it != attachment.discovered.routers.end (); ++router_it) {
+            attachment.router_cache.push_back (router_it->second);
+        }
+
         if (it->second.has_manual_pubsub ()) {
             service_attachment_state_t::service_sub_cache_entry_t entry;
             entry.service_name = it->first;

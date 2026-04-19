@@ -68,7 +68,7 @@ def parse_args(argv):
     parser.add_argument("--pattern", default="ALL")
     parser.add_argument("--duration", default="5")
     parser.add_argument("--msg-sizes", default=",".join(DEFAULT_MSG_SIZES))
-    parser.add_argument("--transports", default="tcp")
+    parser.add_argument("--transports", default="tcp,tls,ws,wss")
     parser.add_argument("--runs", default="1")
     parser.add_argument("--clients", default=None)
     parser.add_argument("--results-dir", default="")
@@ -118,8 +118,6 @@ def _parse_transports(value):
     transports = [item.lower() for item in _parse_csv(value)]
     if not transports:
         raise SystemExit("--transports must not be empty")
-    if any(item != "tcp" for item in transports):
-        raise SystemExit("python multi perf only supports tcp transport")
     return transports
 
 
@@ -525,9 +523,10 @@ def main(argv=None):
     sections = [render_effective_options(options), ""]
     emitted_chunks = []
     status_lines = []
+    active_transports = [transport for transport in transports if transport == "tcp"]
     for _ in range(runs):
         for pattern in patterns:
-            for _transport in transports:
+            for _transport in active_transports:
                 for msg_size in msg_sizes:
                     output = _run_pattern(args, env, pattern, msg_size, clients)
                     if output:
@@ -542,7 +541,7 @@ def main(argv=None):
             skipped_cases += 1
         elif line.startswith("UNSUPPORTED,"):
             unsupported_cases += 1
-    total_cases = len(patterns) * len(transports) * len(msg_sizes) * runs
+    total_cases = len(patterns) * len(active_transports) * len(msg_sizes) * runs
     expected_cases = max(0, total_cases - skipped_cases - unsupported_cases)
     expected_result_lines = expected_cases * 5
     sections.extend(["", render_markdown_summary(rows), "", "## Effective Options (result)"])

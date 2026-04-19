@@ -157,7 +157,7 @@ internal static class PerfDealerRouter
         {
             if (!WaitForInput(poller, events, 10))
                 continue;
-            if (!receiver.TryRecv(out Received? received) || received == null)
+            if (!receiver.RecvNoWait(out Received? received) || received == null)
                 continue;
             using (received)
             {
@@ -202,7 +202,7 @@ internal static class PerfDealerRouter
                     {
                         while (true)
                         {
-                            if (!receiver.TryRecv(out Received? receivedMessage)
+                            if (!receiver.RecvNoWait(out Received? receivedMessage)
                                 || receivedMessage == null)
                                 break;
                             using (receivedMessage)

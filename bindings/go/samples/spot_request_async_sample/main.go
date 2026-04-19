@@ -16,75 +16,55 @@ func main() {
 	requesterNode, err := ctx.SpotNode()
 	samplecommon.MustStep("requesterNode", err)
 	defer func() { samplecommon.MustStep("requesterNode.Close", requesterNode.Close()) }()
-	responderNode, err := ctx.SpotNode()
-	samplecommon.MustStep("responderNode", err)
-	defer func() { samplecommon.MustStep("responderNode.Close", responderNode.Close()) }()
-
 	requester, err := requesterNode.Spot()
 	samplecommon.MustStep("requester", err)
 	defer func() { samplecommon.MustStep("requester.Close", requester.Close()) }()
-	responder, err := responderNode.Spot()
-	samplecommon.MustStep("responder", err)
-	defer func() { samplecommon.MustStep("responder.Close", responder.Close()) }()
+	requesterDealer, err := ctx.DealerSocket()
+	samplecommon.MustStep("requesterDealer", err)
+	defer func() { samplecommon.MustStep("requesterDealer.Close", requesterDealer.Close()) }()
+	responderRouter, err := ctx.RouterSocket()
+	samplecommon.MustStep("responderRouter", err)
+	defer func() { samplecommon.MustStep("responderRouter.Close", responderRouter.Close()) }()
 
-	const serviceName = "sample"
+	const channelName = "orders"
 	const requestPayload = "spot-ping"
 	const replyPayload = "spot-pong"
-	_ = serviceName
-	samplecommon.MustStep(
-		"requesterNode.SetRoutingID",
-		requesterNode.SetRoutingID(zlink.NewRoutingID([]byte("spot-requester-node"))),
-	)
-	samplecommon.MustStep(
-		"responderNode.SetRoutingID",
-		responderNode.SetRoutingID(zlink.NewRoutingID([]byte("spot-responder-node"))),
-	)
-	samplecommon.MustStep(
-		"requester.SetRoutingID",
-		requester.SetRoutingID(zlink.NewRoutingID([]byte("spot-requester"))),
-	)
-	samplecommon.MustStep(
-		"responder.SetRoutingID",
-		responder.SetRoutingID(zlink.NewRoutingID([]byte("spot-responder"))),
-	)
-
 	endpoint := samplecommon.UniqueTCP("spot-request-async")
-	samplecommon.MustStep("responderNode.Bind", responderNode.Bind(endpoint))
-	samplecommon.MustStep("requesterNode.ConnectPeer", requesterNode.ConnectPeer(endpoint))
-	samplecommon.WaitSpotPeerConnected(requesterNode, 5*time.Second)
-	samplecommon.WaitUntil(5*time.Second, "spot peer metadata", func() bool {
-		peers, err := requesterNode.PeersSnapshot()
-		if err != nil || len(peers) == 0 {
-			return false
-		}
-		for _, peer := range peers {
-			if peer.State == zlink.SpotPeerStateConnected {
-				return true
-			}
-		}
-		return false
-	})
-	responderNodeRID, err := responderNode.RoutingID()
-	samplecommon.MustStep("responderNode.RoutingID", err)
-	responderSpotRID, err := responder.RoutingID()
-	samplecommon.MustStep("responder.RoutingID", err)
+	samplecommon.MustStep("responderRouter.Bind", responderRouter.Bind(endpoint))
+	samplecommon.MustStep("requesterDealer.Connect", requesterDealer.Connect(endpoint))
+	samplecommon.MustStep(
+		"requesterNode.AttachChannelDealerManual",
+		requesterNode.AttachChannelDealerManual(channelName, requesterDealer),
+	)
 
 	serverDone := make(chan error, 1)
-	samplecommon.MustStep("responder.OnRoutedReceive", responder.OnRoutedReceive(
-		func(sourceNodeRID zlink.RoutingID, sourceSpotRID zlink.RoutingID, requestSeq uint64, parts []*zlink.Message) {
-			if len(parts) != 1 || !bytes.Equal(parts[0].Data(), []byte(requestPayload)) {
-				serverDone <- fmt.Errorf("unexpected spot request payload")
-				return
-			}
-			serverDone <- responder.ReplyToSpot(
-				sourceNodeRID,
-				sourceSpotRID,
-				requestSeq,
-				zlink.SendFlagsNone,
-				samplecommon.Message(replyPayload),
-			)
-		},
-	))
+	go func() {
+		received, err := responderRouter.Recv(zlink.RecvFlagsNone)
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer received.Close()
+		part, err := received.SinglePartOrError()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		if !received.HasRequestSeq() {
+			serverDone <- fmt.Errorf("missing request sequence")
+			return
+		}
+		if len(received.Parts()) != 1 || !bytes.Equal(part.Data(), []byte(requestPayload)) {
+			serverDone <- fmt.Errorf("unexpected spot request payload")
+			return
+		}
+		serverDone <- responderRouter.Reply(
+			received.RoutingID(),
+			received.RequestSeq(),
+			zlink.SendFlagsNone,
+			samplecommon.Message(replyPayload),
+		)
+	}()
 
 	type result struct {
 		requestResult zlink.RequestResult
@@ -92,10 +72,9 @@ func main() {
 	}
 	replyCh := make(chan result, 1)
 	samplecommon.MustStep(
-		"requester.RequestToSpot",
-		requester.RequestToSpot(
-			responderNodeRID,
-			responderSpotRID,
+		"requester.RequestChannel",
+		requester.RequestChannel(
+			channelName,
 			func(requestResult zlink.RequestResult, replyParts []*zlink.Message) {
 				replyCh <- result{requestResult: requestResult, replyParts: replyParts}
 			},

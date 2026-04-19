@@ -47,7 +47,9 @@ void on_spot_request_timeout (void *userdata_)
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (ctx->state->mutex);
-        std::map<pending_spot_key_t, pending_reply_t>::iterator it =
+        std::unordered_map<pending_spot_key_t,
+                           pending_reply_t,
+                           zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
           ctx->state->pending_replies.find (ctx->key);
         if (it == ctx->state->pending_replies.end ())
             return;
@@ -73,7 +75,7 @@ void on_router_spot_request_timeout (void *userdata_)
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (ctx->state->mutex);
-        std::map<uint64_t, pending_reply_t>::iterator it =
+        std::unordered_map<uint64_t, pending_reply_t>::iterator it =
           ctx->state->pending_replies.find (ctx->request_seq);
         if (it == ctx->state->pending_replies.end ())
             return;
@@ -186,11 +188,12 @@ void zlink::spot_reqrep_internal::erase_spot_pending_request (
 
     std::lock_guard<std::mutex> lock (state_->mutex);
     state_->pending_sequences.erase (key_.request_seq);
-    std::map<pending_spot_key_t, pending_reply_t>::iterator it =
+    std::unordered_map<pending_spot_key_t,
+                       pending_reply_t,
+                       zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
       state_->pending_replies.find (key_);
     if (it == state_->pending_replies.end ())
         return;
     zlink::request_timeout::cancel (it->second.timeout_task);
     state_->pending_replies.erase (it);
 }
-

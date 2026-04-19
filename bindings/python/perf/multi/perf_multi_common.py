@@ -130,12 +130,6 @@ def wait_for_command_line(stream, *, deadline):
 
 
 def attach_spot_service_pair(ctx, node, service_name):
-    zlink_mod = _require_zlink()
-    pub_sock = zlink_mod.PubSocket(ctx)
-    sub_sock = zlink_mod.SubSocket(ctx)
-    endpoint = tcp_endpoint()
-    pub_sock.bind(endpoint)
-    sub_sock.connect(endpoint)
-    sub_sock.set_subscription(b"")
-    node.attach_pubsub(service_name, pub_sock, sub_sock)
-    return pub_sock, sub_sock
+    dealer = _require_zlink().DealerSocket(ctx)
+    node.attach_channel_dealer_manual(service_name, dealer)
+    return dealer, None

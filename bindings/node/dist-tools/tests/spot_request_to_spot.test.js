@@ -24,17 +24,15 @@ async function waitForPeer(node) {
     }
     throw new Error('spot peer connection timed out');
 }
-test('spot requestToSpot promise resolves through routed reply', async () => {
+test('router requestToSpot promise resolves through spot routed reply', async () => {
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const ctx = new zlink.Context();
-    const requesterNode = new zlink.SpotNode(ctx);
     const responderNode = new zlink.SpotNode(ctx);
-    const requester = requesterNode.createSpot();
+    const requester = new zlink.RouterSocket(ctx);
     const responder = responderNode.createSpot();
     try {
         responderNode.bind(endpoint);
-        requesterNode.connectPeer(endpoint);
-        await waitForPeer(requesterNode);
+        requester.connect(endpoint);
         const handled = new Promise((resolve, reject) => {
             const deadline = Date.now() + 5000;
             const poll = () => {
@@ -42,7 +40,7 @@ test('spot requestToSpot promise resolves through routed reply', async () => {
                     const received = responder.recvRouted(zlink.RecvFlags.DontWait);
                     try {
                         assert.ok(received.routingId);
-                        assert.ok(received.spotRid);
+                        assert.equal(received.spotRid, null);
                         assert.notEqual(received.requestSeq, null);
                         assert.equal(received.parts.length, 1);
                         assert.equal(received.parts[0].data().toString(), 'spot-ping');
@@ -72,7 +70,6 @@ test('spot requestToSpot promise resolves through routed reply', async () => {
         responder.close();
         requester.close();
         responderNode.close();
-        requesterNode.close();
         ctx.close();
     }
 });

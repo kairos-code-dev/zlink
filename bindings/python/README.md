@@ -66,15 +66,14 @@ Examples of policy-enforced capability boundaries:
   `receive_subscription_event`
 - `StreamSocket` keeps routed send/receive but does not expose generic
   `connect` / `disconnect`
-- `SpotNode` is the service attachment owner. It exposes
-  `attach_router`, `attach_pubsub`, `service_attachment_count`,
-  `service_attachment_at`, and `node_monitor_recv` on top of discovery and
-  topology management.
+- `SpotNode` owns SPOT topology and channel call attachments. It exposes
+  `attach_channel_dealer`, `attach_channel_dealer_manual`, and
+  `attach_pub_ingress` on top of discovery and topology management.
 - `Spot` is a service-aware pub/sub and routed facade on top of `SpotNode`;
-  it exposes `publish(service_name, topic, ...)`, `send_service`,
-  `request_service`, `subscribe`, `receive_subscription_event`,
+  it exposes `publish(service_name, topic, ...)`, `send_channel`,
+  `request_channel`, `subscribe`, `receive_subscription_event`,
   `set_subscription`, `unset_subscription`, `on_send_ready`,
-  `send_to_spot`, `request_to_spot`, `reply_to_spot`, `send_to_router`,
+  `reply_to_spot`, `send_to_router`,
   `request_to_router`, `reply_to_router`, `recv_routed`,
   `on_routed_receive`, and `on_dispatch_event`, but not direct `recv` / `send`
 - `attach_discovery()` is only available on the discovery-aware socket subset,
@@ -112,8 +111,6 @@ Service and topology helpers are also surfaced as domain objects:
 - `RegistryServiceSummaryEntry`
 - `RegistryTopologyFilter`
 - `RegistryServiceSummaryFilter`
-- `SpotServiceAttachmentStats`
-- `SpotServiceMonitorEvent`
 
 `TopicMessage` and `SubscriptionEvent` carry `service_name` for service-aware
 SPOT flows. Raw `SUB` / `XSUB` results leave that field empty.

@@ -33,9 +33,9 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase
         return Kernel.Subscribe(flags);
     }
 
-    internal bool TrySubscribe(out TopicMessage? subscribed)
+    internal bool SubscribeNoWait(out TopicMessage? subscribed)
     {
-        subscribed = Kernel.TrySubscribe();
+        subscribed = Kernel.SubscribeNoWait();
         return subscribed != null;
     }
 }

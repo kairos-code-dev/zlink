@@ -6,6 +6,11 @@ This document defines the complete public API surface of the zlink Python bindin
 Every class, method, and type listed here is part of the contract that the binding
 must expose. Internal/private methods are omitted.
 
+Only names re-exported from the public `zlink` package are part of the
+contract. Modules such as `_core`, `_ffi`, `_native`, and other underscore
+prefixed helpers are internal implementation details. Perf, samples, and tests
+must import from `zlink` only and must not rely on private underscore modules.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -213,14 +218,21 @@ class DealerSocket:
     async def request(self, payload: Message | bytes | list,
                       *, timeout: int = 0) -> list[Message]: ...
 
-    # --- request (callback) — raises on submit failure ---
+    # --- request (callback, blocking submit) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
     # Callback receives an empty list on failure.
     def request(self, payload: Message | bytes | list,
                 callback: Callable[[RequestResult, list[Message]], None],
-                *, flags: int = 0, timeout: int = 0) -> None: ...
+                *, timeout: int = 0) -> None: ...
+    # --- request (callback, nonblocking submit) ---
+    # timeout = 0 uses the socket default timeout.
+    # Returns False only for temporary backpressure.
+    # Raises: SubmitError on submit failure other than temporary backpressure.
+    def try_request(self, payload: Message | bytes | list,
+                    callback: Callable[[RequestResult, list[Message]], None],
+                    *, timeout: int = 0) -> bool: ...
 
     def close(self) -> None: ...                                                   # Raises: CloseError
 ```
@@ -255,7 +267,7 @@ class RouterSocket:
                       payload: Message | bytes | list,
                       *, timeout: int = 0) -> list[Message]: ...
 
-    # --- request (callback) — raises on submit failure ---
+    # --- request (callback, blocking submit) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
@@ -263,7 +275,15 @@ class RouterSocket:
     def request(self, peer_rid: RoutingId,
                 payload: Message | bytes | list,
                 callback: Callable[[RequestResult, list[Message]], None],
-                *, flags: int = 0, timeout: int = 0) -> None: ...
+                *, timeout: int = 0) -> None: ...
+    # --- request (callback, nonblocking submit) ---
+    # timeout = 0 uses the socket default timeout.
+    # Returns False only for temporary backpressure.
+    # Raises: SubmitError on submit failure other than temporary backpressure.
+    def try_request(self, peer_rid: RoutingId,
+                    payload: Message | bytes | list,
+                    callback: Callable[[RequestResult, list[Message]], None],
+                    *, timeout: int = 0) -> bool: ...
 
     # --- reply ---
     def reply(self, routing_id: RoutingId, request_seq: int,
@@ -281,7 +301,7 @@ class RouterSocket:
                               payload: Message | bytes | list,
                               *, timeout: int = 0) -> list[Message]: ...
 
-    # --- router → spot routed request (callback) — raises on submit failure ---
+    # --- router → spot routed request (callback, blocking submit) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
@@ -290,7 +310,14 @@ class RouterSocket:
                         dest_spot_rid: RoutingId,
                         payload: Message | bytes | list,
                         callback: Callable[[RequestResult, list[Message]], None],
-                        *, flags: int = 0, timeout: int = 0) -> None: ...
+                        *, timeout: int = 0) -> None: ...
+    # --- router → spot routed request (callback, nonblocking submit) ---
+    # Returns False only for temporary backpressure.
+    def try_request_to_spot(self, dest_node_rid: RoutingId,
+                            dest_spot_rid: RoutingId,
+                            payload: Message | bytes | list,
+                            callback: Callable[[RequestResult, list[Message]], None],
+                            *, timeout: int = 0) -> bool: ...
 
     # --- router → spot routed reply ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
@@ -1106,7 +1133,7 @@ class Spot:
                                 payload: Message | bytes | list,
                                 *, timeout: int = 0) -> list[Message]: ...
 
-    # --- routed request (spot → router, callback) — raises on submit failure ---
+    # --- routed request (spot → router, callback, blocking submit) — raises on submit failure ---
     # timeout = 0 uses the socket default timeout.
     # Raises: SubmitError on submit failure. Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
@@ -1114,7 +1141,13 @@ class Spot:
     def request_to_router(self, peer_rid: RoutingId,
                           payload: Message | bytes | list,
                           callback: Callable[[RequestResult, list[Message]], None],
-                          *, flags: int = 0, timeout: int = 0) -> None: ...
+                          *, timeout: int = 0) -> None: ...
+    # --- routed request (spot → router, callback, nonblocking submit) ---
+    # Returns False only for temporary backpressure.
+    def try_request_to_router(self, peer_rid: RoutingId,
+                              payload: Message | bytes | list,
+                              callback: Callable[[RequestResult, list[Message]], None],
+                              *, timeout: int = 0) -> bool: ...
 
     # --- routed reply (spot → router) ---
     def reply_to_router(self, peer_rid: RoutingId, request_seq: int,

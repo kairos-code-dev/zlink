@@ -301,48 +301,44 @@ zlink_discovery_destroy(&discovery);
 `unbind`, and `close` calls fail. Destroying the Discovery instance
 terminates all attached sockets.
 
-## 4.2 Attaching Multiple Service Discoveries to One SpotNode
+## 4.2 Attaching Channel Dealers to a SpotNode
 
-A single Discovery still watches one `service_name`. What changed is that
-one `SpotNode` can host several Discovery handles at the same time, each
-watching a **different** `service_name`. The ROUTER/PUB/SUB providers
-supplied by each Discovery land in the node's service attachment table as
-automatic sources.
+A `SpotNode` uses one SPOT Discovery for its own mesh wiring
+(see the [SPOT Guide](07-3-spot.md)). When the node needs to call
+**other channels**, it attaches a `DEALER` per channel.
 
 ```c
-void *orders_discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
-void *prices_discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
-
-zlink_discovery_connect_registry(orders_discovery, "tcp://registry1:5551");
-zlink_discovery_connect_registry(prices_discovery, "tcp://registry1:5551");
-
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* The same SpotNode hosts attachments for two different services. */
-zlink_spot_node_attach_discovery(node, orders_discovery);
-zlink_spot_node_attach_discovery(node, prices_discovery);
+/* SPOT mesh — this node's own channel */
+void *spot_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SPOT, "alpha");
+zlink_discovery_connect_registry(spot_disc, "tcp://registry1:5551");
+zlink_spot_node_attach_discovery(node, spot_disc);
+
+/* Channel call to "orders-exec" via automatic dealer */
+void *orders_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+zlink_discovery_connect_registry(orders_disc, "tcp://registry1:5551");
+
+void *orders_dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_socket_attach_discovery(orders_dealer, orders_disc);
+
+zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
 ```
 
 Rules to keep in mind:
 
-- **No same-service duplicates.** Attaching two Discovery handles for the
-  same `service_name` on one node fails with `EBUSY`.
-- **pub/sub must be paired.** If a Discovery view contains a service with
-  only `pub`, only `sub`, or a half-pair like `router + pub`, the attach is
-  rejected with `EINVAL`. Accepted shapes are `router only` or
-  `router + pub + sub`.
-- **At most one public `Spot` facade.** A node with any service-aware
-  attachment admits exactly one `zlink_spot_new(node)` facade. If two or
-  more facades already exist, the attach fails with `EBUSY`.
-- **Discovery destroy removes only that source.** Destroying one Discovery
-  removes only the automatic attachments it was supplying. Manual
-  attachments and attachments from other Discovery sources remain.
-
-See the attach_discovery failure table in the
-[SPOT spec](../spec/core/service/spot.md) for the full matrix.
+- **One SPOT Discovery per node.** `zlink_spot_node_attach_discovery()`
+  accepts only `ZLINK_SERVICE_TYPE_SPOT`. A second attach is `EBUSY`.
+- **One DEALER per channel name.** Automatic and manual attach share the
+  same namespace. Attaching a second `DEALER` for the same channel fails
+  with `EBUSY`.
+- **Attached dealers are dedicated.** The caller keeps socket ownership,
+  but must not reuse the socket elsewhere after attach.
+- **Discovery destroy removes its peer set.** Destroying a Discovery
+  removes only the automatic connections it was supplying.
 
 ## 5. Liveness and Summary Updates
 

@@ -70,8 +70,7 @@ async function main() {
   }
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
-  const nodePubSend = new zlink.PubSocket(ctx);
-  const nodePubRecv = new zlink.SubSocket(ctx);
+  const dealer = new zlink.DealerSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
   let spot = null;
   const warmupPayload = createPayload(options.msgSize);
@@ -176,8 +175,7 @@ async function main() {
   };
 
   try {
-    node.attachPubSub(SERVICE_NAME, nodePubSend, nodePubRecv);
-    nodePubSend.bind(options.endpoint);
+    node.attachChannelDealerManual(SERVICE_NAME, dealer);
     node.bind(options.peerEndpoint);
     spot = node.createSpot();
     controlSub.setSubscription(CONTROL_TOPIC);
@@ -210,10 +208,9 @@ async function main() {
     if (spot) {
       spot.close();
     }
+    dealer.close();
     node.close();
     controlSub.close();
-    nodePubRecv.close();
-    nodePubSend.close();
     debugSpot('close ctx');
     ctx.close();
     debugSpot('finally done');

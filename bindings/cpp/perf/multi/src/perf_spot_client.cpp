@@ -352,12 +352,13 @@ struct client_slot_t
 {
     class spot_client_bench_t *owner;
     std::unique_ptr<zlink::service::spot_node_t> node;
+    std::unique_ptr<zlink::dealer_socket_t> dealer;
     std::unique_ptr<zlink::service::spot_t> spot;
     callback_slot_t callback;
     std::atomic<bool> synced;
 
     client_slot_t ()
-        : owner (NULL), node (), spot (), callback (), synced (false)
+        : owner (NULL), node (), dealer (), spot (), callback (), synced (false)
     {
     }
 };
@@ -528,6 +529,19 @@ class spot_client_bench_t
                   _ctx.ctx (), _transport, _server_endpoint, k_topic, _settings,
                   slot.get ())) {
                 debug_log ("slot init failed");
+                return false;
+            }
+            slot->dealer.reset (new zlink::dealer_socket_t (_ctx.ctx ()));
+            if (!slot->dealer || !slot->dealer->valid ()) {
+                debug_log ("slot dealer init failed");
+                return false;
+            }
+            try {
+                slot->node->attach_channel_dealer_manual ("spot-bench",
+                                                          *slot->dealer);
+            }
+            catch (const std::exception &) {
+                debug_log ("slot attach_channel_dealer_manual failed");
                 return false;
             }
             slot->owner = this;

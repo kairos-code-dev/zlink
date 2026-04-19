@@ -234,6 +234,7 @@ void spot_node_t::notify_service_subscribe_readable ()
     {
         scoped_lock_t lock (_sync);
         poller = _service_attachment_state.readable_sub_poller;
+        facades.reserve (_facades.size ());
         facades.assign (_facades.begin (), _facades.end ());
     }
 
@@ -264,6 +265,7 @@ void spot_node_t::emit_pending_subscription_replays ()
             return;
         if (_peer_state.active_endpoints.empty ())
             return;
+        subs.reserve (_subs.size ());
         subs.assign (_subs.begin (), _subs.end ());
     }
 
@@ -362,6 +364,8 @@ void spot_node_t::refresh_discovery_peers ()
     {
         scoped_lock_t lock (_sync);
         old_active_count = _peer_state.active_endpoints.size ();
+        to_connect.reserve (new_endpoints.size ());
+        to_disconnect.reserve (_peer_state.discovery_endpoints.size ());
         for (std::set<std::string>::const_iterator it = new_endpoints.begin ();
              it != new_endpoints.end (); ++it) {
             if (_peer_state.discovery_endpoints.count (*it) == 0
@@ -455,8 +459,6 @@ void spot_node_t::refresh_connected_peer_endpoints ()
 
     bool changed = false;
     std::vector<spot_sub_t *> subs;
-    std::vector<spot_pub_t *> pubs;
-    std::vector<std::pair<std::string, uint32_t> > pub_ready_updates;
     bool became_empty = false;
     {
         scoped_lock_t lock (_sync);
@@ -490,33 +492,15 @@ void spot_node_t::refresh_connected_peer_endpoints ()
                             previous_connected_count);
         _summary_last_changed_ms = now_ms;
         if (_peer_state.connected_endpoints.empty ()) {
+            subs.reserve (_subs.size ());
             subs.assign (_subs.begin (), _subs.end ());
-            pubs.assign (_pubs.begin (), _pubs.end ());
-            clear_peer_readiness_locked (&pub_ready_updates);
+            clear_peer_readiness_locked (NULL);
             became_empty = true;
         } else {
+            subs.reserve (_subs.size ());
             subs.assign (_subs.begin (), _subs.end ());
-            pubs.assign (_pubs.begin (), _pubs.end ());
-            const size_t connected_peer_count = _peer_state.connected_endpoints.size ();
-            if (connected_peer_count < previous_connected_count) {
-                const uint32_t max_ready =
-                  static_cast<uint32_t> (connected_peer_count);
-                for (std::map<std::string, std::set<std::string> >::iterator it =
-                       _peer_state.pub_delivery_ready_sources.begin ();
-                     it != _peer_state.pub_delivery_ready_sources.end (); ++it) {
-                    const uint32_t current_ready =
-                      static_cast<uint32_t> (it->second.size ());
-                    if (current_ready <= max_ready)
-                        continue;
-                    pub_ready_updates.push_back (
-                      std::make_pair (it->first, max_ready));
-                }
-            }
         }
     }
-
-    LIBZLINK_UNUSED (pubs);
-    LIBZLINK_UNUSED (pub_ready_updates);
 
     if (became_empty) {
         for (size_t i = 0; i < subs.size (); ++i)
@@ -645,6 +629,7 @@ void spot_node_t::queue_all_subscription_ready_filters ()
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
+        subs.reserve (_subs.size ());
         subs.assign (_subs.begin (), _subs.end ());
     }
 
@@ -717,6 +702,7 @@ void spot_node_t::emit_pending_subscription_ready_events ()
             if (!active_endpoints.empty ())
                 ready_endpoint = *active_endpoints.begin ();
         }
+        subs.reserve (_subs.size ());
         subs.assign (_subs.begin (), _subs.end ());
         raw_filters.swap (_peer_state.pending_subscription_ready_filters);
         _peer_state.subscription_ready_refresh_pending = false;
@@ -726,14 +712,15 @@ void spot_node_t::emit_pending_subscription_ready_events ()
     spot_control_diagf ("emit-sub-ready node=%p filters=%zu endpoint=%s subs=%zu",
                         this,
                         raw_filters.size (),
-                        ready_endpoint.empty () ? "-" : ready_endpoint.c_str (),
-                        subs.size ());
+            ready_endpoint.empty () ? "-" : ready_endpoint.c_str (),
+            subs.size ());
 
     for (std::set<std::string>::const_iterator filter_it =
            raw_filters.begin ();
          filter_it != raw_filters.end (); ++filter_it) {
         for (size_t i = 0; i < subs.size (); ++i) {
             std::vector<spot_sub_t::subject_descriptor_t> subjects;
+            subjects.reserve (2);
             subs[i]->append_subjects_for_raw_filter (*filter_it, &subjects);
             for (size_t j = 0; j < subjects.size (); ++j)
                 subs[i]->mark_subject_subscription_ready (
@@ -767,7 +754,9 @@ void spot_node_t::emit_pending_pub_delivery_ready_events ()
             _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
             return;
         }
+        pubs.reserve (_pubs.size ());
         pubs.assign (_pubs.begin (), _pubs.end ());
+        updates.reserve (_peer_state.pending_pub_delivery_ready_counts.size ());
         for (std::map<std::string, uint32_t>::const_iterator it =
                _peer_state.pending_pub_delivery_ready_counts.begin ();
              it != _peer_state.pending_pub_delivery_ready_counts.end (); ++it) {

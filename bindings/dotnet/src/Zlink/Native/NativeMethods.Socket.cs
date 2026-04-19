@@ -48,6 +48,10 @@ internal static partial class NativeMethods
     internal static extern int zlink_send(IntPtr socket, ref ZlinkMsg parts,
         nuint partCount, int flags);
 
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_send_part(IntPtr socket, ref ZlinkMsg part,
+        int flags, ZlinkPartFlag partFlag);
+
     [DllImport(LibraryName, EntryPoint = "zlink_send",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_send(IntPtr socket, IntPtr parts,
@@ -58,6 +62,11 @@ internal static partial class NativeMethods
         out ZlinkRoutingId sourceRoutingId, out IntPtr parts,
         out nuint partCount, int flags);
 
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_recv_part(IntPtr socket,
+        out IntPtr sourceRoutingId, ref ZlinkMsg part, out int hasMore,
+        int flags);
+
     [DllImport(LibraryName, EntryPoint = "zlink_recv",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_recv(IntPtr socket, IntPtr sourceRoutingId,
@@ -67,6 +76,12 @@ internal static partial class NativeMethods
     internal static extern int zlink_router_recv(IntPtr router,
         out IntPtr sourceNodeRoutingId, out IntPtr sourceSpotRoutingId,
         out ulong requestSequence, out IntPtr parts, out nuint partCount,
+        int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_recv_part(IntPtr router,
+        out IntPtr sourceNodeRoutingId, out IntPtr sourceSpotRoutingId,
+        out ulong requestSequence, ref ZlinkMsg part, out int hasMore,
         int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -96,6 +111,11 @@ internal static partial class NativeMethods
     internal static extern int zlink_send_rid(IntPtr handle,
         ref ZlinkRoutingId targetRoutingId, ref ZlinkMsg parts,
         nuint partCount, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_send_part_rid(IntPtr handle,
+        ref ZlinkRoutingId targetRoutingId, ref ZlinkMsg part, int flags,
+        ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, EntryPoint = "zlink_send_rid",
         CallingConvention = CallingConvention.Cdecl)]

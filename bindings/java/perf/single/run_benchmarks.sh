@@ -111,19 +111,12 @@ detect_platform() {
 
 default_transports() {
   case "$1" in
-    SPOT) echo "tcp" ;;
-    PAIR)
-      if [[ "$(uname -s)" == "Linux" ]]; then
-        echo "inproc,ipc"
-      else
-        echo "inproc"
-      fi
-      ;;
+    SPOT) echo "tcp,tls,ws,wss" ;;
     *)
       if [[ "$(uname -s)" == "Linux" ]]; then
-        echo "tcp,inproc,ipc"
+        echo "tcp,tls,ws,wss,inproc,ipc"
       else
-        echo "tcp,inproc"
+        echo "tcp,tls,ws,wss,inproc"
       fi
       ;;
   esac

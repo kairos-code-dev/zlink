@@ -23,7 +23,7 @@ struct monitor_wait_traits<zlink::monitor_handle_t>
 {
     typedef zlink::monitor_event_t event_t;
 
-    static zlink::maybe_t<event_t> try_recv (zlink::monitor_handle_t &monitor)
+    static zlink::maybe_t<event_t> recv_no_wait (zlink::monitor_handle_t &monitor)
     {
         return monitor.recv (zlink::non_blocking_t {});
     }
@@ -44,7 +44,7 @@ struct monitor_wait_traits<zlink::service_monitor_handle_t>
 {
     typedef zlink::service_event_t event_t;
 
-    static zlink::maybe_t<event_t> try_recv (zlink::service_monitor_handle_t &monitor)
+    static zlink::maybe_t<event_t> recv_no_wait (zlink::service_monitor_handle_t &monitor)
     {
         return monitor.recv (zlink::non_blocking_t {});
     }
@@ -82,7 +82,7 @@ inline bool wait_monitor_event (MonitorT &monitor,
 
     for (;;) {
         const zlink::maybe_t<typename traits_t::event_t> event =
-          traits_t::try_recv (monitor);
+          traits_t::recv_no_wait (monitor);
         if (!event)
             break;
         if (traits_t::event_type (*event) != event_type)
@@ -124,7 +124,7 @@ inline bool wait_monitor_event (MonitorT &monitor,
 
         for (;;) {
             const zlink::maybe_t<typename traits_t::event_t> event =
-              traits_t::try_recv (monitor);
+              traits_t::recv_no_wait (monitor);
             if (!event)
                 break;
             if (traits_t::event_type (*event) != event_type)

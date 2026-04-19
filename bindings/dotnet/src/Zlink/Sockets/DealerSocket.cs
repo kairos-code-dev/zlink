@@ -93,7 +93,6 @@ public sealed class DealerSocket : MessageSocketBase
             throw new ArgumentNullException(nameof(parts));
 
         Message[] cloned = RequestReplySupport.CloneParts(parts);
-        RequestReplySupport.MovePartsToNative(cloned, out ZlinkMsg[] nativeParts);
         uint timeoutMs = NormalizeRequestTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -123,21 +122,37 @@ public sealed class DealerSocket : MessageSocketBase
                     RequestResult.TimedOut, (int)ErrorCode.ETimedOut));
             }, handle, (int)timeoutMs, Timeout.Infinite));
 
-            fixed (ZlinkMsg* nativePtr = nativeParts)
+            for (int i = 0; i < cloned.Length; i++)
             {
-                int rc = NativeMethods.zlink_dealer_request(Handle,
-                    (IntPtr)nativePtr, (nuint)nativeParts.Length,
-                    RequestReplyHandler, userData, (int)flags, timeoutMs);
-                if (rc != 0)
-                    throw ZlinkException.FromLastError();
+                ZlinkMsg nativePart = default;
+                cloned[i].MoveTo(ref nativePart);
+                bool submitted = false;
+                try
+                {
+                    int rc = NativeMethods.zlink_dealer_request_part(Handle,
+                        ref nativePart, (int)flags,
+                        i + 1 < cloned.Length
+                            ? NativeMethods.ZlinkPartFlag.More
+                            : NativeMethods.ZlinkPartFlag.Final,
+                        i + 1 < cloned.Length ? 0u : timeoutMs,
+                        i + 1 < cloned.Length ? null : RequestReplyHandler,
+                        i + 1 < cloned.Length ? IntPtr.Zero : userData);
+                    submitted = true;
+                    if (rc != 0)
+                        throw ZlinkException.FromLastError();
+                }
+                finally
+                {
+                    if (!submitted)
+                        NativeMethods.zlink_msg_close(ref nativePart);
+                }
             }
 
             return completion.Task;
         }
         catch
         {
-            RequestReplySupport.RestoreManagedParts(cloned, nativeParts,
-                nativeParts.Length);
+            RequestReplySupport.DisposeParts(cloned);
             if (handle.IsAllocated)
                 handle.Free();
             throw;
@@ -172,7 +187,7 @@ public sealed class DealerSocket : MessageSocketBase
             Message[] replyParts = Message.FromNativeVector(parts, partCount);
             parts = IntPtr.Zero;
             partCount = 0;
-            Received received = new(null, replyParts);
+            Received received = Received.Create((RoutingId?)null, replyParts);
             if (!state.TrySetResult(received))
                 RequestReplySupport.DisposeParts(replyParts);
         }

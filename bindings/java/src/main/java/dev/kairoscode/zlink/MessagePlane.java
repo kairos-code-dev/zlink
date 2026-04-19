@@ -2,7 +2,6 @@
 
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.internal.Native;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -92,51 +91,11 @@ final class MessagePlane {
 
     Received recv(ReceiveFlag flags) {
         Objects.requireNonNull(flags, "flags");
-        while (true) {
-            Native.MultipartReceive received = Native.recvMultipart(socket.handle(),
-                flags.getValue());
-            if (received != null) {
-                byte[] ridBytes = received.routingId();
-                if (received.partCount() == 1) {
-                    Message part = Message.fromOwnedMsgSingle(received.parts());
-                    return new Received(ridBytes, null, part, 0L, false, null);
-                }
-                Message[] parts = Message.fromOwnedMsgVector(
-                    received.parts(), received.partCount());
-                return new Received(ridBytes, null, parts, true, 0L, false, null);
-            }
-
-            int errno = Native.errno();
-            if (errno == Socket.ERRNO_EINTR)
-                continue;
-            throw ZlinkException.fromLastError("zlink_recv");
-        }
+        return socket.recvLazy(flags);
     }
 
     Received recvNoWaitOrNull() {
-        while (true) {
-            Native.MultipartReceive received = Native.recvMultipart(socket.handle(),
-                ReceiveFlag.DONTWAIT.getValue());
-            if (received != null) {
-                byte[] ridBytes = received.routingId();
-                if (received.partCount() == 1) {
-                    Message part = Message.fromOwnedMsgSingle(received.parts());
-                    return new Received(ridBytes, null, part, 0L, false, null);
-                }
-                Message[] parts = Message.fromOwnedMsgVector(
-                    received.parts(), received.partCount());
-                return new Received(ridBytes, null, parts, true, 0L, false, null);
-            }
-
-            int errno = Native.errno();
-            if (errno == Socket.ERRNO_EINTR)
-                continue;
-            if (errno == Socket.ERRNO_EAGAIN
-                || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
-                return null;
-            }
-            throw ZlinkException.fromLastError("zlink_recv");
-        }
+        return socket.recvLazyNoWaitOrNull();
     }
 
     Optional<Received> recvNoWait() {

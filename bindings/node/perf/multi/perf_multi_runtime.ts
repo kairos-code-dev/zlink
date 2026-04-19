@@ -8,7 +8,7 @@ const { sleepImmediate } = require('../common/perf_metrics');
 const READY_EVENTS = new Set([MonitorEvent.CONNECTION_READY, MonitorEvent.CONNECTED]);
 const POLLIN = 1;
 
-function tryRecv(socket) {
+function recvNoWait(socket) {
   try {
     return socket.recv(RecvFlags.DontWait);
   } catch (error) {
@@ -19,7 +19,7 @@ function tryRecv(socket) {
   }
 }
 
-function trySubscribe(socket) {
+function subscribeNoWait(socket) {
   try {
     return socket.subscribe(RecvFlags.DontWait);
   } catch (error) {
@@ -75,7 +75,7 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
       }
       if (typeof socket.subscribe === 'function') {
         while (true) {
-          const received = trySubscribe(socket);
+          const received = subscribeNoWait(socket);
           if (!received) {
             break;
           }
@@ -83,7 +83,7 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
         }
       } else {
         while (true) {
-          const received = tryRecv(socket);
+          const received = recvNoWait(socket);
           if (!received) {
             break;
           }

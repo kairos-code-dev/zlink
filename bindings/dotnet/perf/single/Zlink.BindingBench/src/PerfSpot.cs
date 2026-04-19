@@ -22,6 +22,8 @@ internal static class PerfSpot
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
+        using var registry = new Registry(ctx);
+        using var discovery = new Discovery(ctx, ServiceType.Spot, ServiceName);
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
         using var spotPub = new Spot(pubNode);
@@ -50,9 +52,17 @@ internal static class PerfSpot
             ConfigureSpotTlsPublisherIfNeeded(pubNode, transport);
             ConfigureSpotTlsSubscriberIfNeeded(subNode, transport);
 
-            string endpoint = EndpointFor(transport, "spot");
-            pubNode.Bind(endpoint);
-            subNode.ConnectPeer(endpoint);
+            string registryPub = EndpointFor(transport, "spot-registry-pub");
+            string registryRouter = EndpointFor(transport, "spot-registry-router");
+            registry.Bind(registryPub, registryRouter);
+            discovery.ConnectRegistry(registryRouter);
+            pubNode.AttachDiscovery(discovery);
+            subNode.AttachDiscovery(discovery);
+
+            string publisherEndpoint = EndpointFor(transport, "spot-publisher");
+            string subscriberEndpoint = EndpointFor(transport, "spot-subscriber");
+            pubNode.Bind(publisherEndpoint);
+            subNode.Bind(subscriberEndpoint);
             spotSub.SetSubscription(Topic);
 
             int payloadSize = Math.Max(size, sizeof(long));
@@ -105,7 +115,7 @@ internal static class PerfSpot
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            if (TryPublishPayload(publisher, payload) != SendResult.Sent)
+            if (PublishNoWaitPayload(publisher, payload) != SendResult.Sent)
                 continue;
 
             if (TryReceiveSinglePayload(subscriber, recv, nonBlocking: true,
@@ -194,7 +204,7 @@ internal static class PerfSpot
             while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                if (TryPublishPayload(sender, payload) != SendResult.Sent)
+                if (PublishNoWaitPayload(sender, payload) != SendResult.Sent)
                 {
                     Thread.Yield();
                     continue;
@@ -207,7 +217,7 @@ internal static class PerfSpot
             for (int i = 0; i < warmupCount; i++)
             {
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                while (TryPublishPayload(sender, payload) != SendResult.Sent)
+                while (PublishNoWaitPayload(sender, payload) != SendResult.Sent)
                 {
                     Thread.Yield();
                 }
@@ -229,12 +239,13 @@ internal static class PerfSpot
         return received > 0 && (latCount == 0 || latencySamples.Count > 0);
     }
 
-    private static SendResult TryPublishPayload(Spot publisher, byte[] payload)
+    private static SendResult PublishNoWaitPayload(Spot publisher, byte[] payload)
     {
         if (payload.Length >= BorrowedPublishThreshold)
-            return publisher.TryPublishBorrowedSingle(ServiceName, Topic, payload);
+            return publisher.PublishBorrowedSingleNoWait(ServiceName, Topic,
+                payload);
 
-        return publisher.TryPublishRawSingle(ServiceName, Topic, payload);
+        return publisher.PublishRawSingleNoWait(ServiceName, Topic, payload);
     }
 
     private static bool TryReceiveSinglePayload(Spot subscriber, Span<byte> buffer,

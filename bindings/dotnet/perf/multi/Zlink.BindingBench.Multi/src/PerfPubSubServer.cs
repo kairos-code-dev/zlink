@@ -67,9 +67,9 @@ internal static class PerfPubSubServer
         return 0;
     }
 
-    private static bool TryPublish(SocketBase server, ReadOnlySpan<byte> payload)
+    private static bool PublishNoWait(SocketBase server, ReadOnlySpan<byte> payload)
     {
-        return server.TrySend(payload, PerfSendFlags.DontWait, out int written)
+        return server.SendNoWaitResult(payload, PerfSendFlags.DontWait, out int written)
             && written > 0;
     }
 
@@ -98,7 +98,7 @@ internal static class PerfPubSubServer
             {
                 StampMetricHeader(payload.AsSpan(), runId, phase, size, seq,
                     EpochNs());
-                if (TryPublish(server, payload.AsSpan()))
+                if (PublishNoWait(server, payload.AsSpan()))
                 {
                     seq++;
                     sent++;

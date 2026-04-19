@@ -14,7 +14,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 if [ -f "$REPO_ROOT/VERSION" ]; then
     LIBZLINK_VERSION=$(grep '^LIBZLINK_VERSION=' "$REPO_ROOT/VERSION" | cut -d'=' -f2)
 else
-    LIBZLINK_VERSION="4.3.5"
+    LIBZLINK_VERSION="5.3.0"
 fi
 
 # Parse arguments: ARCH RUN_TESTS

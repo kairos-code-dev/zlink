@@ -78,7 +78,7 @@ final class PerfMultiPubSub {
                 long finishDeadline = System.nanoTime()
                     + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
                 while (System.nanoTime() < finishDeadline) {
-                    Optional<dev.kairoscode.zlink.TopicMessage> maybe = PerfUtil.trySubscribe(sub);
+                    Optional<dev.kairoscode.zlink.TopicMessage> maybe = PerfUtil.subscribeNoWait(sub);
                     if (maybe.isEmpty()) {
                         Thread.onSpinWait();
                         continue;

@@ -23,12 +23,12 @@ DEFAULT_PATTERNS = (
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 SUPPORTED_TRANSPORTS = {
-    "PAIR": ("tcp",),
-    "PUBSUB": ("tcp",),
-    "DEALER_DEALER": ("inproc",),
-    "DEALER_ROUTER": ("inproc",),
-    "ROUTER_ROUTER": ("inproc",),
-    "SPOT": ("inproc",),
+    "PAIR": ("tcp", "inproc"),
+    "PUBSUB": ("tcp", "inproc"),
+    "DEALER_DEALER": ("tcp", "inproc"),
+    "DEALER_ROUTER": ("tcp", "inproc"),
+    "ROUTER_ROUTER": ("tcp", "inproc"),
+    "SPOT": ("tcp", "inproc"),
 }
 
 
@@ -39,7 +39,7 @@ def parse_args(argv):
     parser.add_argument("--duration", default="5")
     parser.add_argument("--warmup", default="2")
     parser.add_argument("--msg-sizes", default=",".join(DEFAULT_MSG_SIZES))
-    parser.add_argument("--transports", default="tcp,inproc")
+    parser.add_argument("--transports", default="tcp,tls,ws,wss,inproc,ipc")
     parser.add_argument("--runs", default="1")
     parser.add_argument("--results-dir", default="")
     parser.add_argument("--results-tag", default="")
@@ -94,21 +94,24 @@ def _selected_configs(patterns, transports, msg_sizes):
     return configs
 
 
-def _run_pattern(args, env, pattern, msg_size):
+def _run_pattern(args, env, pattern, transport, msg_size):
     entry = ROOT / f"perf_{pattern.lower()}.py"
     if not entry.exists():
         raise SystemExit(f"unsupported pattern: {pattern}")
+    cmd = [
+        sys.executable,
+        str(entry),
+        "--duration",
+        args.duration,
+        "--warmup",
+        args.warmup,
+        "--msg-size",
+        msg_size,
+    ]
+    if pattern == "SPOT":
+        cmd[2:2] = ["--transport", transport]
     result = subprocess.run(
-        [
-            sys.executable,
-            str(entry),
-            "--duration",
-            args.duration,
-            "--warmup",
-            args.warmup,
-            "--msg-size",
-            msg_size,
-        ],
+        cmd,
         cwd=str(ROOT.parent.parent),
         env=env,
         capture_output=True,
@@ -148,14 +151,14 @@ def main(argv=None):
     configs = _selected_configs(patterns, transports, msg_sizes)
 
     env = dict(os.environ)
-    env["PYTHONPATH"] = args.pythonpath
+    env["PYTHONPATH"] = str(Path(args.pythonpath).resolve())
 
     options = _build_options(args, patterns, transports, msg_sizes)
     sections = [render_effective_options(options), ""]
     emitted_chunks = []
     for _ in range(runs):
-        for pattern, _transport, msg_size in configs:
-            output = _run_pattern(args, env, pattern, msg_size)
+        for pattern, transport, msg_size in configs:
+            output = _run_pattern(args, env, pattern, transport, msg_size)
             if output:
                 emitted_chunks.append(output)
                 sections.append(output)

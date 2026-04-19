@@ -3,13 +3,10 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.RecvFlags;
-import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.AdmissionState;
+import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.PubSocket;
-import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
@@ -17,8 +14,6 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.service.discovery.Discovery;
-import dev.kairoscode.zlink.service.spot.SpotServiceAttachmentStats;
-import dev.kairoscode.zlink.service.spot.SpotServiceMonitorEvent;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -94,26 +89,42 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    /** Attaches one service-specific ROUTER socket to the node. */
-    public void attachRouter(String serviceName, RouterSocket router) {
-        Objects.requireNonNull(router, "router");
-        attachRouterInternal(serviceName, InternalAccess.socketHandle(router));
+    /** Attaches one discovery-managed channel DEALER to the node. */
+    public void attachChannelDealer(Discovery discovery, DealerSocket dealer) {
+        Objects.requireNonNull(discovery, "discovery");
+        Objects.requireNonNull(dealer, "dealer");
+        int rc = Native.spotNodeAttachChannelDealer(handle,
+          InternalAccess.discoveryHandle(discovery),
+          InternalAccess.socketHandle(dealer));
+        if (rc != 0) {
+            throw ZlinkException.fromLastError(
+              "zlink_spot_node_attach_channel_dealer");
+        }
     }
 
-    /** Attaches one service-specific PUB/SUB pair to the node. */
-    public void attachPubSub(String serviceName, PubSocket pub,
-                             SubSocket sub) {
-        Objects.requireNonNull(pub, "pub");
-        Objects.requireNonNull(sub, "sub");
+    /** Attaches one manually connected channel DEALER to the node. */
+    public void attachChannelDealerManual(String channelName,
+                                          DealerSocket dealer) {
+        Objects.requireNonNull(dealer, "dealer");
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeAttachPubSub(handle,
-              NativeHelpers.toCString(arena, requireServiceName(serviceName)),
-              InternalAccess.socketHandle(pub),
-              InternalAccess.socketHandle(sub));
+            int rc = Native.spotNodeAttachChannelDealerManual(handle,
+              NativeHelpers.toCString(arena, requireServiceName(channelName)),
+              InternalAccess.socketHandle(dealer));
             if (rc != 0) {
                 throw ZlinkException.fromLastError(
-                  "zlink_spot_node_attach_pubsub");
+                  "zlink_spot_node_attach_channel_dealer_manual");
             }
+        }
+    }
+
+    /** Attaches one dedicated publish ingress PUB socket to the node. */
+    public void attachPubIngress(PubSocket pub) {
+        Objects.requireNonNull(pub, "pub");
+        int rc = Native.spotNodeAttachPubIngress(handle,
+          InternalAccess.socketHandle(pub));
+        if (rc != 0) {
+            throw ZlinkException.fromLastError(
+              "zlink_spot_node_attach_pub_ingress");
         }
     }
 
@@ -273,43 +284,6 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    /** Returns how many service attachments are currently registered. */
-    public int serviceAttachmentCount() {
-        ensureOpen();
-        return Native.spotNodeServiceAttachmentCount(handle);
-    }
-
-    /** Returns one service attachment snapshot entry. */
-    public SpotServiceAttachmentStats serviceAttachmentAt(int index) {
-        ensureOpen();
-        if (index < 0) {
-            throw new IllegalArgumentException("index must be non-negative");
-        }
-        return Native.spotNodeServiceAttachmentAt(handle, index);
-    }
-
-    /** Receives the next service attachment monitor event. */
-    public SpotServiceMonitorEvent nodeMonitorRecv() {
-        return nodeMonitorRecv(RecvFlags.NONE);
-    }
-
-    /** Receives the next service attachment monitor event with flags. */
-    public SpotServiceMonitorEvent nodeMonitorRecv(RecvFlags flags) {
-        Objects.requireNonNull(flags, "flags");
-        ensureOpen();
-        try {
-            return Native.spotNodeMonitorRecv(handle,
-              flags == RecvFlags.DONT_WAIT ? RecvFlags.DONT_WAIT.value()
-                : RecvFlags.NONE.value());
-        } catch (RuntimeException ex) {
-            if (ex instanceof dev.kairoscode.zlink.RecvException recv
-                && recv.getResult() == RecvResult.NO_DATA) {
-                throw recv;
-            }
-            throw ex;
-        }
-    }
-
     @Override
     public void close() {
         List<Spot> ownedSpots;
@@ -391,18 +365,6 @@ public final class SpotNode implements AutoCloseable {
                   (long) i * stride, stride)));
             }
             return List.copyOf(out);
-        }
-    }
-
-    private void attachRouterInternal(String serviceName, MemorySegment router) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeAttachRouter(handle,
-              NativeHelpers.toCString(arena, requireServiceName(serviceName)),
-              router);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(
-                  "zlink_spot_node_attach_router");
-            }
         }
     }
 

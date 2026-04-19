@@ -12,11 +12,31 @@ namespace zlink
 {
 namespace socket_reqrep_internal
 {
+namespace
+{
+size_t hash_combine (size_t seed_, size_t value_)
+{
+    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6)
+                    + (seed_ >> 2));
+}
+}
+
+bool pending_key_t::operator== (const pending_key_t &other_) const
+{
+    return request_seq == other_.request_seq && peer_rid == other_.peer_rid;
+}
+
 bool pending_key_t::operator< (const pending_key_t &other_) const
 {
     if (request_seq != other_.request_seq)
         return request_seq < other_.request_seq;
     return peer_rid < other_.peer_rid;
+}
+
+size_t pending_key_hash_t::operator() (const pending_key_t &key_) const
+{
+    size_t seed = std::hash<uint64_t> () (key_.request_seq);
+    return hash_combine (seed, std::hash<std::string> () (key_.peer_rid));
 }
 
 socket_request_reply_state_t::socket_request_reply_state_t (
@@ -86,12 +106,15 @@ void on_socket_request_timeout (void *userdata_)
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (ctx->state->mutex);
-        std::map<pending_key_t, pending_request_t>::iterator it =
+        std::unordered_map<pending_key_t,
+                           pending_request_t,
+                           pending_key_hash_t>::iterator it =
           ctx->state->pending_requests.find (ctx->key);
         if (it == ctx->state->pending_requests.end ())
             return;
         pending = it->second;
         ctx->state->pending_sequences.erase (ctx->key.request_seq);
+        ctx->state->pending_request_keys_by_seq.erase (ctx->key.request_seq);
         ctx->state->pending_requests.erase (it);
         found = true;
     }
@@ -180,6 +203,7 @@ int start_request (socket_handle_t handle_,
         }
         state->pending_sequences.insert (request_seq);
         state->pending_requests[key] = pending;
+        state->pending_request_keys_by_seq[request_seq] = key;
     }
 
     const uint8_t message_type = zlink::request_reply::request_type;
@@ -190,6 +214,7 @@ int start_request (socket_handle_t handle_,
         std::lock_guard<std::mutex> lock (state->mutex);
         zlink::request_timeout::cancel (pending.timeout_task);
         state->pending_sequences.erase (key.request_seq);
+        state->pending_request_keys_by_seq.erase (key.request_seq);
         state->pending_requests.erase (key);
         return -1;
     }

@@ -5,7 +5,7 @@
 > request-reply 와 SPOT routed 구현 기준은
 > [`doc/plan/spot-refactor`](../../plan/spot-refactor) 아래 문서를 따른다.
 > 언어별 인터페이스 시그니처와 사용 예는
-> `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
+> `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 
 ## 목적
 이 문서는 `bindings/` 전체의 public API 정책을 정의한다.
@@ -14,7 +14,7 @@
 막고, `core/include/zlink.h`를 기준으로 설명 가능하고 일관된 공통 계약을
 강제하는 데 있다.
 
-`cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 아래 문서는
+`c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 아래 문서는
 각 바인딩 구현이 실제로 외부에 제공해야 하는 public API contract를 정의한다.
 이 문서들이 규정하는 것은 공개 타입, 메서드, 시그니처, 반환값, 오류 의미이며,
 바인딩 구현이 노출하는 public 인터페이스는 이 계약과 달라지면 안 된다.
@@ -44,6 +44,89 @@
 
 이 문서는 “각 언어가 어떻게 보일 수 있는가”보다 “각 언어가 무엇을 보장해야
 하는가”를 정의한다.
+
+## Substrate vs Public Binding Surface
+
+bindings 구현은 앞으로 core가 제공하는 더 낮은 수준의 helper substrate C API
+위에 올라갈 수 있다. 다만 bindings 사용자에게 노출되는 public API는 그 helper
+시그니처를 그대로 따라야 한다는 뜻이 아니다.
+
+이 문서는 아래 경계를 기준으로 해석한다.
+
+- `core/include/zlink.h` 와 그에 대응하는 helper substrate 계약은
+  bindings 구현을 위한 native substrate다.
+- `doc/spec/bindings/` 아래 문서는 각 언어 binding이 외부에 제공하는
+  **public convenience contract**만 정의한다.
+
+즉 binding public API는 helper substrate와 모양이 달라도 된다.
+
+예를 들면 아래가 허용된다.
+
+- core substrate는 `*_part`, `has_more`, caller-provided `zlink_msg_t`
+  같은 더 primitive한 표면을 가진다.
+- Java, `.NET`, `Go`, `Rust`, `Python`, `Node`, `C++`, C binding은 그 위에
+  `Received`, `Message`, collection, request/reply convenience 같은
+  언어 친화적 public API를 다시 올린다.
+
+다만 아래 조건은 반드시 지켜야 한다.
+
+- binding public API의 의미 계약은 core 계약으로 설명 가능해야 한다.
+- helper substrate에만 있는 low-level 세부사항을 binding 사용자에게 직접 노출하지
+  않는다.
+- `doc/spec/bindings/` 문서는 helper substrate 시그니처 자체를 public contract로
+  문서화하지 않는다.
+- helper substrate는 bindings 구현과 성능 최적화를 위한 기반 계층으로만 취급한다.
+
+즉 bindings 정책 문서의 기준은 "helper가 어떻게 생겼는가"가 아니라,
+"binding 사용자가 최종적으로 어떤 public contract를 보게 되는가"이다.
+
+## Public vs Internal API Boundary
+
+각 binding은 public contract와 internal implementation surface를 분리해야 한다.
+이 문서와 각 언어별 spec에 적힌 것만 public API다.
+
+아래 원칙은 모든 binding에 공통으로 적용한다.
+
+- public으로 문서화되지 않은 타입, 함수, 메서드, 모듈, 패키지, 네임스페이스는
+  모두 internal implementation detail로 본다.
+- internal API는 이름만 internal처럼 보이게 두면 충분하지 않다. 가능한 언어는
+  패키지 export, module export, assembly visibility, crate re-export,
+  package `exports`, `internal/` directory 같은 언어 고유 경계를 사용해
+  실제로 접근을 제한해야 한다.
+- perf, sample, test도 원칙적으로 public binding entrypoint만 사용해야 한다.
+  같은 저장소 안에 있다고 해서 internal helper를 직접 import하거나 참조하면
+  안 된다.
+- public contract 검증은 배포된 binding consumer가 보게 되는 entrypoint를
+  기준으로 한다. 소스 트리 내부에 internal symbol이 존재한다는 이유로 public으로
+  간주하지 않는다.
+- internal 구조를 리팩터링할 자유는 보장하되, 그 자유는 public contract를
+  유지하는 범위 안에서만 허용된다.
+
+즉 이 문서의 목적은 "public API를 문서화하는 것"일 뿐 아니라,
+"public이 아닌 API를 public처럼 사용하지 못하게 경계를 강제하는 것"까지
+포함한다.
+
+### Send/Recv Public Shape Is Fixed
+
+bindings의 `send/recv` 공개 형태는 substrate helper가 어떻게 생기느냐에 따라
+매번 다시 정하는 대상이 아니다. 이 문서와 각 언어별 binding spec이 정한
+public shape를 기준으로 고정한다.
+
+즉 helper substrate가 `*_part`, `has_more`, caller-provided message storage
+형태로 바뀌더라도, binding public API는 아래 원칙을 유지해야 한다.
+
+- binding 사용자는 언어 문서에 정의된 `send`, `trySend`, `recv`, `tryRecv`,
+  request/reply, callback 형태를 본다.
+- multipart는 각 언어 문서가 정한 aggregate convenience 모델로 계속 제공할 수
+  있다.
+- helper substrate 변경만을 이유로 binding public `send/recv` shape를 함께
+  흔들면 안 된다.
+- public shape를 바꾸려면 helper 도입과는 별도의 public API 변경으로 다뤄야
+  하며, `doc/spec/bindings/` 문서부터 먼저 갱신해야 한다.
+
+즉 앞으로 helper C API를 도입하더라도, bindings 쪽 `send/recv`는
+"구현 기반이 바뀌는 것"이지 "사용자에게 보이는 형태가 자동으로 바뀌는 것"이
+아니다.
 
 ## Core Alignment Overrides
 
@@ -263,11 +346,14 @@
      (`BindError`, `SubmitError` 등)를 쓰고, 여러 함수군이 섞이는 경계에서만
      `ZlinkError` 로 승격한다. 에러 값에는 `int` 코드가 포함된다.
      `?` 연산자로 호출측 전파를 쓴다.
-3. **데이터 plane primitive 는 canonical `Try*` 쌍을 둘 수 있다.**
+3. **데이터 plane primitive 와 callback request submit 은 canonical `Try*` 쌍을 둘 수 있다.**
    - 대상은 `send` / `recv` 계열 primitive operation 이다.
    - 공개 surface 는 `send` / `trySend`, `recv` / `tryRecv` 쌍으로 노출할 수 있다.
-   - `request`, `reply`, `publish`, `subscribe` 는 composite operation 이므로
-     `tryRequest`, `tryReply`, `tryPublish`, `trySubscribe` 를 추가하지 않는다.
+   - callback completion request 는 submit 단계가 따로 있으므로
+     `request(..., callback, ...)` / `tryRequest(..., callback, ...)` 쌍을 둘 수 있다.
+   - coroutine / await request 에는 `tryRequest` 를 두지 않는다.
+   - `reply`, `publish`, `subscribe` 는 composite operation 이므로
+     `tryReply`, `tryPublish`, `trySubscribe` 를 추가하지 않는다.
    - `sendNoWait`, `recvNoWait`, `publishNoWait` 같은 transport-style 이름은
      공개 surface 에 두지 않는다.
    - `trySend` 는 temporary backpressure 만 `false` 로 돌려주고,
@@ -1383,18 +1469,42 @@ core 가 request-reply dispatch 를 처리한다. 바인딩은 dispatch owner �
 
 #### Request API 변형
 
-request 는 coroutine 변형과 callback 변형 두 가지를 제공한다.
-**함수 이름은 둘 다 `request`** 이고 callback 파라미터 유무로 구분한다.
-별도 이름(`requestCallback`, `request_callback` 등)을 만들지 않는다.
-tryRequest / tryReply 는 제공하지 않는다.
+request 는 두 층으로 나눈다.
 
-| | `request(parts, timeout)` | `request(parts, callback, flags, timeout)` |
-|---|---|---|
-| submit | blocking (코루틴 대기) | flags 파라미터로 제어 |
-| reply 전달 | 반환값 `List<Message>` | callback |
-| submit 실패 시 | 예외 또는 에러 반환 | 예외 또는 에러 반환 (callback 등록 안 됨) |
-| reply 실패 시 | 예외 또는 에러 반환 (ETIMEDOUT 등) | callback (`result != OK`) |
-| flags | 없음 (항상 blocking) | 있음 (`DONTWAIT` 가능) |
+- coroutine / await request
+- callback completion request
+
+coroutine / await request 는 완성된 request-reply 연산으로 보고, 기본 이름은
+항상 `request` 로 둔다.
+
+callback completion request 는 submit 단계가 따로 있으므로, `send/trySend` 와 같은
+수준의 쌍을 가져야 한다.
+
+- blocking submit callback request
+- nonblocking submit callback request
+
+오버로드가 가능한 언어는 아래 형태를 권장한다.
+
+- `request(parts, timeout)`
+- `request(parts, callback, timeout)`
+- `tryRequest(parts, callback, timeout)`
+
+오버로드가 어려운 언어는 같은 의미를 아래처럼 짝으로 맞춘다.
+
+- `RequestCallback(...)`
+- `TryRequestCallback(...)`
+
+C binding 은 예외다. C 는 public `try_*` request family 를 만들지 않고, 기존
+`zlink_*_request(..., flags, timeout)` 형태를 유지한다. 즉 C 에서는 callback
+request submit 제어를 별도 함수명이 아니라 flags 로 표현한다.
+
+| | `request(parts, timeout)` | `request(parts, callback, timeout)` | `tryRequest(parts, callback, timeout)` |
+|---|---|---|---|
+| submit | blocking / suspending | blocking submit | nonblocking submit |
+| reply 전달 | 반환값 `List<Message>` | callback | callback |
+| submit 실패 시 | 예외 또는 에러 반환 | 예외 또는 에러 반환 (callback 등록 안 됨) | backpressure는 `false`/동등 표현, 그 외는 예외 또는 에러 |
+| reply 실패 시 | 예외 또는 에러 반환 (ETIMEDOUT 등) | callback (`result != OK`) | callback (`result != OK`) |
+| flags | 없음 | 없음 | 없음 |
 
 - 에러 처리는 Error Handling Policy 를 따른다.
   callback request 의 submit 실패도 언어 관용구를 그대로 적용한다:
@@ -2941,6 +3051,24 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - 정책은 확정됐지만 각 바인딩 구현에 아직 남아 있을 수 있는 대표 정리 항목을
   기록한다.
 - 항목은 바인딩별 리뷰와 리팩터링 backlog의 기본 체크리스트로 사용한다.
+
+### Public vs Internal Boundary Follow-Ups
+
+- Java:
+  - public package에 남아 있는 internal 성격 타입(`SocketCore`,
+    `MessagePlane`, request/reply support helper 등)을 internal package 또는
+    implementation package로 이동해야 한다.
+  - JPMS를 사용한다면 documented public package만 export 하도록 정리해야 한다.
+- .NET:
+  - `InternalsVisibleTo`는 test 지원 범위로만 제한해야 한다.
+  - perf 프로젝트가 internal surface에 접근하지 않도록 assembly visibility를
+    다시 닫아야 한다.
+- C:
+  - helper substrate와 public C binding header가 실제로 분리되면,
+    `core/include/zlink.h` 중심 설명을 public C binding header 기준으로 다시
+    정리해야 한다.
+  - 설치되는 public header와 private substrate header의 경계를 문서와 패키징에
+    함께 반영해야 한다.
 
 ### Value Validation Follow-Ups
 - `RoutingId`

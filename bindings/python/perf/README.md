@@ -66,10 +66,9 @@ Current transport matrix:
 
 SPOT measurements use the service-aware public surface:
 `publish(service_name, topic, ...)` on the sender and `subscribe()` on the
-receiver. Each benchmark node attaches a concrete service pair with
-`attach_pubsub(service_name, ...)` before the benchmark loop so the perf path
-follows the current core contract instead of inventing a synthetic publish
-path.
+receiver. The Python perf helpers no longer attach an external pub/sub pair to
+`SpotNode`; they drive the benchmark through the `Spot` facade directly so the
+perf path follows the current public contract.
 
 ## Multi Suite
 

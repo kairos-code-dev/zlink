@@ -31,8 +31,11 @@ final class PerfSpot {
             "single-spot-registry-pub");
         String registryRouter = PerfUtil.endpoint(config.transport(),
             "single-spot-registry-router");
-        String endpoint = normalizeSpotEndpoint(
-            PerfUtil.endpoint(config.transport(), "single-spot"),
+        String publisherEndpoint = normalizeSpotEndpoint(
+            PerfUtil.endpoint(config.transport(), "single-spot-pub"),
+            config.transport());
+        String subscriberEndpoint = normalizeSpotEndpoint(
+            PerfUtil.endpoint(config.transport(), "single-spot-sub"),
             config.transport());
         try (Context ctx = PerfUtil.newContext(config);
              Registry registry = new Registry(ctx);
@@ -50,10 +53,8 @@ final class PerfSpot {
             PerfUtil.applySpotOptions(subNode, config);
             PerfUtil.configureServerTls(pubNode, config.transport());
             PerfUtil.configureClientTls(subNode, config.transport());
-            pubNode.bind("tcp://127.0.0.1:0");
-            endpoint = normalizeSpotEndpoint(
-                pubNode.statusSnapshot().localEndpoint(), config.transport());
-            subNode.connectPeer(endpoint);
+            pubNode.bind(publisherEndpoint);
+            subNode.bind(subscriberEndpoint);
             subscriber.setSubscription(topic);
             waitForPeerConnected(pubNode);
             waitForPeerConnected(subNode);

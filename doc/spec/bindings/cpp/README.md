@@ -8,6 +8,11 @@ Internal helpers and implementation details are omitted.
 
 All types live in the `zlink` namespace. Service types live in `zlink::service`.
 
+Only installed public headers are part of the contract. Private helper headers,
+native bridge headers, and source-tree-only utilities are internal. Perf,
+samples, and tests must include the public C++ headers only and must not rely
+on non-installed internal headers.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -284,17 +289,23 @@ class dealer_socket_t : public message_socket_t {
     async_result_t<std::vector<message_t>> request(std::vector<message_t>& parts,
                                                    std::chrono::milliseconds timeout = {});
 
-    // --- request (callback; callback receives request_result_t) ---
+    // --- request (callback, blocking submit; callback receives request_result_t) ---
     /// @throws submit_error_t
     void request(message_t& part,
                  std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     void request(std::vector<message_t>& parts,
                  std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool try_request(message_t& part,
+                     std::function<void(request_result_t, std::vector<message_t>)> callback,
+                     std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool try_request(std::vector<message_t>& parts,
+                     std::function<void(request_result_t, std::vector<message_t>)> callback,
+                     std::chrono::milliseconds timeout = {});
 
     // --- request configuration ---
     /// @throws config_error_t
@@ -363,19 +374,27 @@ class router_socket_t : public routed_message_socket_t {
                                                    std::vector<message_t>& parts,
                                                    std::chrono::milliseconds timeout = {});
 
-    // --- request (callback; callback receives request_result_t) ---
+    // --- request (callback, blocking submit; callback receives request_result_t) ---
     /// @throws submit_error_t
     void request(const routing_id_t& peer_rid,
                  message_t& part,
                  std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     void request(const routing_id_t& peer_rid,
                  std::vector<message_t>& parts,
                  std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
                  std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool try_request(const routing_id_t& peer_rid,
+                     message_t& part,
+                     std::function<void(request_result_t, std::vector<message_t>)> callback,
+                     std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool try_request(const routing_id_t& peer_rid,
+                     std::vector<message_t>& parts,
+                     std::function<void(request_result_t, std::vector<message_t>)> callback,
+                     std::chrono::milliseconds timeout = {});
 
     // --- reply ---
     /// @throws submit_error_t

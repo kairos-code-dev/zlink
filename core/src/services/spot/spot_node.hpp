@@ -527,6 +527,7 @@ class spot_node_t : public discovery_observer_t
 
         manual_state_t manual;
         discovered_state_t discovered;
+        std::vector<socket_base_t *> router_cache;
         size_t next_router_index;
         std::set<std::string> applied_filters;
     };

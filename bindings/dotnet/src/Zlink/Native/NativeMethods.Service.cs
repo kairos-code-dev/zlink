@@ -20,6 +20,11 @@ internal static partial class NativeMethods
         nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_publish_part(IntPtr subject,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, ref ZlinkMsg part,
+        int flags, ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_subscription(IntPtr handle,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string filter);
 
@@ -31,6 +36,11 @@ internal static partial class NativeMethods
     internal static extern int zlink_subscribe(IntPtr subject,
         IntPtr sourceRoutingId, out IntPtr parts, out nuint partCount,
         byte[] topicIdOut, ref nuint topicIdLenOut, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_subscribe_part(IntPtr subject,
+        out IntPtr sourceRoutingId, byte[] topicIdBuffer, nuint topicIdCapacity,
+        out nuint topicIdLenOut, ref ZlinkMsg part, out int hasMore, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_subscription_event(IntPtr subject,
@@ -172,30 +182,21 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_attach_router(IntPtr node,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        IntPtr router);
+    internal static extern int zlink_spot_node_attach_channel_dealer(
+        IntPtr node, IntPtr discovery, IntPtr dealer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_attach_pubsub(IntPtr node,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        IntPtr pub, IntPtr sub);
+    internal static extern int zlink_spot_node_attach_channel_dealer_manual(
+        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        IntPtr dealer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_attach_discovery(IntPtr node,
         IntPtr discovery);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_service_attachment_count(
-        IntPtr node, ref nuint count);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_service_attachment_at(
-        IntPtr node, nuint index, out ZlinkSpotServiceAttachmentStats stats);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_monitor_recv(IntPtr node,
-        out ZlinkSpotServiceMonitorEvent @event, int flags);
+    internal static extern int zlink_spot_node_attach_pub_ingress(
+        IntPtr node, IntPtr pub);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_status_snapshot(IntPtr node,
@@ -214,15 +215,26 @@ internal static partial class NativeMethods
         IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_send_service(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName, IntPtr parts,
+    internal static extern int zlink_spot_send_channel(IntPtr spot,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName, IntPtr parts,
         nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_request_service(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName, IntPtr parts,
+    internal static extern int zlink_spot_send_channel_part(IntPtr spot,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_request_channel(IntPtr spot,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName, IntPtr parts,
         nuint partCount, ZlinkReplyHandlerDelegate handler, IntPtr userData,
         int flags, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_request_channel_part(IntPtr spot,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        ref ZlinkMsg part, ZlinkReplyHandlerDelegate? handler, IntPtr userData,
+        int flags, ZlinkPartFlag partFlag, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_publish(IntPtr spot,
@@ -231,10 +243,23 @@ internal static partial class NativeMethods
         nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_publish_part(IntPtr spot,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, ref ZlinkMsg part,
+        int flags, ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_subscribe(IntPtr spot,
         IntPtr sourceRoutingId, out IntPtr parts, out nuint partCount,
         byte[] serviceNameOut, ref nuint serviceNameLenOut,
         byte[] topicIdOut, ref nuint topicIdLenOut, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_subscribe_part(IntPtr spot,
+        out IntPtr sourceRoutingId, byte[] serviceNameBuffer,
+        nuint serviceNameCapacity, out nuint serviceNameLenOut,
+        byte[] topicIdBuffer, nuint topicIdCapacity, out nuint topicIdLenOut,
+        ref ZlinkMsg part, out int hasMore, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_subscription_event(IntPtr spot,

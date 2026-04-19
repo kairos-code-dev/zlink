@@ -39,9 +39,9 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 
 이 함수는 현재 Discovery의 `service_name` 범위 안에서 `spot_rid`에 대한 현재
 `SpotNode`의 `node_rid`를 구합니다. 성공하면 호출자는 반환된
-`owner_node_rid_out`과 원래의 `spot_rid`를 묶어
-`zlink_spot_send_spot()` 또는 `zlink_spot_request_spot()` 함수에 전달하면
-됩니다.
+`owner_node_rid_out`과 원래의 `spot_rid`를 묶어 ROUTER 쪽 direct 함수
+(`zlink_router_send_spot()` 또는 `zlink_router_request_spot()`)에 전달할 수
+있습니다.
 
 ### 캐시 모델
 
@@ -105,24 +105,32 @@ Discovery에 붙은 서비스의 자동 연결 범위는 현재 Discovery의 `se
 입니다. 즉 자동 연결은 같은 서비스 이름 안에서만 일어나며, 다른 서비스 이름으로
 넘어가지 않습니다.
 
-### SpotNode의 socket-service Discovery attach
+### SpotNode Discovery attach
 
-`zlink_spot_node_attach_discovery()`는 `ZLINK_SERVICE_TYPE_SPOT`과
-`ZLINK_SERVICE_TYPE_SOCKET` Discovery를 모두 받습니다. 이 경로는 "같은 서비스의
-다른 SpotNode endpoint를 자동 연결한다"가 아니라, 해당 `service_name`의 socket
-provider view를 `SpotNode`의 service attachment table에 자동 source로 반영하는
-계약입니다.
+`zlink_spot_node_attach_discovery()`는 `ZLINK_SERVICE_TYPE_SPOT` Discovery만
+받습니다. 이 Discovery가 node의 mesh auto-connect 범위를 결정하는 SPOT channel
+view를 제공합니다.
 
-- Discovery 하나는 하나의 고정 `service_name` view만 가집니다.
-- 대신 같은 `SpotNode`에는 서로 다른 `service_name`의 socket-service Discovery를
-  여러 개 attach할 수 있습니다.
+- node에는 active SPOT Discovery view를 하나만 둘 수 있습니다.
+- 두 번째 SPOT Discovery attach는 `EBUSY`로 실패합니다.
+- attach된 Discovery를 destroy하면 그 view가 공급하던 automatic peer set도
+  함께 빠집니다.
+
+### SpotNode channel dealer attach
+
+`SpotNode`에서 다른 channel을 호출하려면 호출자가
+`zlink_spot_node_attach_channel_dealer()`로 `DEALER`를 attach합니다. 이 함수는
+`ZLINK_SERVICE_TYPE_SOCKET` Discovery와 `DEALER` socket을 함께 받습니다.
+Discovery가 해당 channel의 peer set을 관리합니다.
+
+- Discovery 하나는 하나의 고정 `service_name`(channel 이름) view를 가집니다.
+- 같은 `channel_name`에는 자동 attach와 수동 attach를 합쳐서 `DEALER`
+  하나만 등록할 수 있습니다. 중복은 `EBUSY`로 실패합니다.
 - 같은 Discovery handle을 둘 이상의 owner에 attach할 수 없습니다.
-- 같은 node에 같은 `service_name` Discovery를 둘 이상 attach할 수 없습니다.
-- service-aware attachment가 붙은 node는 공개 facade `Spot` 하나만 허용합니다.
-- Discovery destroy는 그 Discovery source가 공급하던 automatic attachment만
-  제거합니다. 수동 attachment나 다른 Discovery source는 유지됩니다.
-- socket-service Discovery가 공급한 provider는 service attachment snapshot과
-  node monitor recv surface에서 관찰할 수 있어야 합니다.
+- attach된 `DEALER`는 `SpotNode` 전용 자원으로 취급합니다. 소유권은 호출자가
+  유지하지만, 다른 곳에서 같은 socket을 일반 용도로 함께 써서는 안 됩니다.
+- Discovery 없이 수동으로 channel dealer를 attach하려면
+  `zlink_spot_node_attach_channel_dealer_manual()`을 사용합니다.
 
 ### SPOT Node
 
@@ -359,9 +367,9 @@ row가 현재 service view와 같은 갱신 순번에서 검증된 값인지 확
 바뀌었거나 TTL이 지난 값이면 Registry에 다시 질의해서 owner를 새로 확인합니다.
 
 성공하면 `owner_node_rid_out`에 현재 owner node의 routing id가 채워집니다.
-호출자는 이 값을 원래 `spot_rid`와 함께
-`zlink_spot_send_spot()`, `zlink_spot_request_spot()`,
-`zlink_router_send_spot()`, `zlink_router_request_spot()`에 전달하면 됩니다.
+호출자는 이 값을 원래 `spot_rid`와 함께 ROUTER 쪽 direct 함수
+(`zlink_router_send_spot()` 또는 `zlink_router_request_spot()`)에 전달하면
+됩니다.
 
 이 함수는 send/request 시작 경로를 위한 조회 API입니다. reply 경로에는 쓰지
 않습니다. reply는 request 수신 시 함께 전달된 source 주소를 그대로 사용해야
@@ -374,8 +382,7 @@ errno 는 `zlink_errno()`에서 조회할 수 있습니다.
 **스레드 안전성:** 하나의 Discovery handle은 여러 스레드에서 동시에 사용할 수
 있습니다. 일반 조회 API처럼 다른 Discovery 작업과 함께 호출할 수 있습니다.
 
-**참고:** `zlink_spot_send_spot`, `zlink_spot_request_spot`,
-`zlink_router_send_spot`, `zlink_router_request_spot`
+**참고:** `zlink_router_send_spot`, `zlink_router_request_spot`
 
 ---
 

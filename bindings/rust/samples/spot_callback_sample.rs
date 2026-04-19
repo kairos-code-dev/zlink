@@ -10,21 +10,6 @@ use zlink::{Context, Message, SpotDispatchEvent, SpotNode};
 const SERVICE_NAME: &str = "spot-svc";
 const TOPIC: &str = "room:lobby";
 
-fn attach_service_pair(
-    ctx: &Context,
-    node: &SpotNode,
-    service_name: &str,
-) -> (zlink::PubSocket, zlink::SubSocket) {
-    let pub_sock = ctx.pub_socket().expect("pub socket failed");
-    let sub_sock = ctx.sub_socket().expect("sub socket failed");
-    let endpoint = sample_support::tcp_endpoint();
-    pub_sock.bind(&endpoint).expect("pub bind failed");
-    sub_sock.connect(&endpoint).expect("sub connect failed");
-    node.attach_pubsub(service_name, &pub_sock, &sub_sock)
-        .expect("attach_pubsub failed");
-    (pub_sock, sub_sock)
-}
-
 fn main() {
     let ctx = Context::new().expect("context creation failed");
 
@@ -35,9 +20,6 @@ fn main() {
         .create_spot()
         .expect("subscriber spot failed");
     let endpoint = sample_support::tcp_endpoint();
-
-    let _publisher_service = attach_service_pair(&ctx, &publisher_node, SERVICE_NAME);
-    let _subscriber_service = attach_service_pair(&ctx, &subscriber_node, SERVICE_NAME);
 
     let (tx, rx) = mpsc::channel();
     subscriber

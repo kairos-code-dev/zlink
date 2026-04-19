@@ -28,7 +28,7 @@ def wait_connected(*monitors, timeout_ms=5000):
 
     while remaining and time.monotonic() < deadline:
         for i in list(remaining):
-            event = monitors[i].try_recv()
+            event = monitors[i].recv(zlink.RecvFlags.DONT_WAIT)
             if event is not None and (event.event & event_mask):
                 remaining.discard(i)
         if remaining:

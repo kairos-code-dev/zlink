@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.internal.NativeRequestReplyBridge;
@@ -22,9 +23,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 
 final class RouterRequestSupport implements AutoCloseable {
+    private static final long BLOCKING_RECV_POLL_NANOS = 100_000L;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_ROUTER_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -39,6 +42,7 @@ final class RouterRequestSupport implements AutoCloseable {
     private Arena receiveCallbackArena;
     private boolean handlerRegistered;
     private volatile boolean closed;
+    private final ThreadLocal<Received> activeLazyReceive = new ThreadLocal<>();
 
     RouterRequestSupport(RouterSocket socket) {
         this(socket, true);
@@ -141,31 +145,19 @@ final class RouterRequestSupport implements AutoCloseable {
         Objects.requireNonNull(routingId, "routingId");
         Objects.requireNonNull(parts, "parts");
         RequestReplySupport.requireReplyFlagsSupported(flags);
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeRid = nativeRoutingId(arena, routingId);
-            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-            MemorySegment nativeParts = arena.allocate(msgSize * parts.size(),
-                NativeLayouts.MSG_LAYOUT.byteAlignment());
-            Object[] anchors = new Object[parts.size()];
-            boolean success = false;
-            try {
-                for (int i = 0; i < parts.size(); i++) {
-                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
-                        msgSize);
-                    anchors[i] = parts.get(i).transferTo(nativeMsg);
-                }
-                int rc = NativeMsg.routerReply(socket.handle(), nativeRid,
-                    requestSequence, nativeParts, parts.size());
-                success = rc == 0;
-                if (rc != 0) {
-                    throw new SubmitException(SubmitResult.fromValue(rc));
-                }
-            } finally {
-                if (!success) {
-                    restoreParts(parts, nativeParts, anchors);
-                }
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = routerReplyPartOnce(routingId, requestSequence,
+                    parts.get(i), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == Socket.ERRNO_EINTR)
+                    continue;
+                throw submitFailure("zlink_router_reply_part");
             }
-            RequestReplySupport.closeAll(parts);
         }
     }
 
@@ -361,8 +353,9 @@ final class RouterRequestSupport implements AutoCloseable {
         Objects.requireNonNull(parts, "parts");
         List<Message> payload = RequestReplySupport.clonePayload(parts);
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        return RequestReplySupport.startRequestExecution(
-            () -> submitRequest(routingId, payload, timeoutMs, flags));
+        return RequestReplySupport.startTimedRequestExecution(
+            () -> submitRequest(routingId, payload, timeoutMs, flags),
+            timeoutMs);
     }
 
     private Received submitRequest(RoutingId routingId,
@@ -385,7 +378,8 @@ final class RouterRequestSupport implements AutoCloseable {
                     RequestResult.fromValue(reply.requestResult()),
                     reply.requestResult());
             }
-            return new Received(null, null,
+            RequestReplySupport.closeAll(payload);
+            return new Received((RoutingId) null, (RoutingId) null,
                 Message.fromMsgVector(reply.replyParts(), reply.replyPartCount()),
                 true, 0L, false, null);
         } catch (Throwable error) {
@@ -426,25 +420,6 @@ final class RouterRequestSupport implements AutoCloseable {
         }
     }
 
-    private static void restoreParts(List<Message> parts,
-                                     MemorySegment nativeParts,
-                                     Object[] anchors) {
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        for (int i = 0; i < parts.size(); i++) {
-            MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
-                msgSize);
-            try {
-                parts.get(i).restoreFromNative(nativeMsg, i + 1 < parts.size(),
-                    anchors[i]);
-            } catch (RuntimeException ignored) {
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignoredClose) {
-                }
-            }
-        }
-    }
-
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {
         byte[] value = routingId.toBytes();
         MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
@@ -458,6 +433,11 @@ final class RouterRequestSupport implements AutoCloseable {
     }
 
     private Received recvDirect(RecvFlags flags) {
+        Received active = activeLazyReceive.get();
+        if (active != null) {
+            active.forceMaterialize();
+            activeLazyReceive.remove();
+        }
         return recvDirectOnce(flags);
     }
 
@@ -468,28 +448,240 @@ final class RouterRequestSupport implements AutoCloseable {
             MemorySegment requestSeqOut = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = NativeMsg.routerRecv(socket.handle(), sourceNodeRidOut,
+            int rc = Native.routerRecv(socket.handle(), sourceNodeRidOut,
                 sourceSpotRidOut, requestSeqOut, partsOut, partCountOut,
                 flags.value());
             if (rc != 0) {
                 throw new RecvException(RecvResult.fromValue(rc));
             }
+
+            AggregateRouterReceiveCursor cursor =
+                new AggregateRouterReceiveCursor(
+                    partsOut.get(ValueLayout.ADDRESS, 0),
+                    partCountOut.get(ValueLayout.JAVA_LONG, 0));
+            Message firstPart = cursor.nextPartOrNull();
+            if (firstPart == null) {
+                throw new RecvException(RecvResult.NO_DATA);
+            }
+
+            boolean hasMore = firstPart.more();
             RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
             RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
             long requestSequence = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
-            long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment parts = partsOut.get(ValueLayout.ADDRESS, 0);
-            return new Received(nodeRid, spotRid,
-                Message.fromOwnedMsgVector(parts, partCount), true,
-                requestSequence, requestSequence != 0L,
-                requestSequence == 0L ? null : (replyParts, sendFlags) -> {
+            byte[] nodeRidBytes = nodeRid == null ? null : nodeRid.toBytes();
+            byte[] spotRidBytes = spotRid == null ? null : spotRid.toBytes();
+            Received.PartCursor remainingCursor = hasMore ? cursor : null;
+            return registerLazyReceive(new Received(nodeRidBytes, spotRidBytes,
+                firstPart, remainingCursor, requestSequence,
+                requestSequence != 0L, requestSequence == 0L ? null
+                : (replyParts, sendFlags) -> {
                     if (spotRid != null) {
                         socket.replyToSpot(nodeRid, spotRid, requestSequence,
                             replyParts, sendFlags);
                     } else {
                         reply(nodeRid, requestSequence, replyParts, sendFlags);
                     }
-                });
+                }, lazyCompletion()), hasMore);
+        }
+    }
+
+    private Runnable lazyCompletion() {
+        return () -> {
+            Received active = activeLazyReceive.get();
+            if (active != null) {
+                activeLazyReceive.remove();
+            }
+        };
+    }
+
+    private Received registerLazyReceive(Received received, boolean hasMore) {
+        if (hasMore) {
+            activeLazyReceive.set(received);
+        }
+        return received;
+    }
+
+    private int routerReplyPartOnce(RoutingId routingId, long requestSequence,
+                                    Message part, int partFlag) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, routingId);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = part.transferTo(nativeMsg);
+            try {
+                int rc = Native.routerReplyPart(socket.handle(), nativeRid,
+                    requestSequence, nativeMsg, partFlag);
+                if (rc != 0) {
+                    part.restoreFromNative(nativeMsg, false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                part.restoreFromNative(nativeMsg, false, anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private SubmitException submitFailure(String apiName) {
+        int errno = Native.errno();
+        if (errno == Socket.ERRNO_EAGAIN
+            || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
+            return new SubmitException(SubmitResult.BACKPRESSURED, errno);
+        }
+        if (errno == Socket.ERRNO_ENOTCONN
+            || errno == Socket.ERRNO_ENOTCONN_WIN
+            || errno == Socket.ERRNO_EHOSTUNREACH
+            || errno == Socket.ERRNO_EHOSTUNREACH_WIN) {
+            return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
+        }
+        throw ZlinkException.fromLastError(apiName);
+    }
+
+    private final class RouterReceiveCursor implements Received.PartCursor {
+        private final Arena arena = Arena.ofConfined();
+        private final MemorySegment sourceNodeRidOut = arena.allocate(
+            ValueLayout.ADDRESS);
+        private final MemorySegment sourceSpotRidOut = arena.allocate(
+            ValueLayout.ADDRESS);
+        private final MemorySegment requestSeqOut = arena.allocate(
+            ValueLayout.JAVA_LONG);
+        private final MemorySegment hasMoreOut = arena.allocate(
+            ValueLayout.JAVA_INT);
+        private boolean hasMore = true;
+        private boolean closed;
+
+        @Override
+        public Message nextPartOrNull() {
+            if (closed || !hasMore)
+                return null;
+            while (true) {
+                Message next = new Message();
+                boolean success = false;
+                try {
+                    int rc = Native.routerRecvPart(socket.handle(),
+                        sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
+                        next.nativeHandle(), hasMoreOut,
+                        RecvFlags.DONT_WAIT.value());
+                    if (rc == 0) {
+                        success = true;
+                        hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                        next.finishReceive(hasMore);
+                        if (!hasMore) {
+                            closeArena();
+                        }
+                        return next;
+                    }
+                    if (rc == RecvResult.NO_DATA.value()) {
+                        LockSupport.parkNanos(BLOCKING_RECV_POLL_NANOS);
+                        continue;
+                    }
+                } finally {
+                    if (!success) {
+                        try {
+                            next.close();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
+
+                int errno = Native.errno();
+                if (errno == Socket.ERRNO_EINTR)
+                    continue;
+                closeArena();
+                throw ZlinkException.fromLastError("zlink_router_recv_part");
+            }
+        }
+
+        @Override
+        public void close() {
+            if (closed)
+                return;
+            while (hasMore) {
+                Message next = nextPartOrNull();
+                if (next == null)
+                    break;
+                try {
+                    next.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
+            closed = true;
+            closeArena();
+        }
+
+        private void closeArena() {
+            hasMore = false;
+            if (arena.scope().isAlive()) {
+                arena.close();
+            }
+        }
+    }
+
+    private final class AggregateRouterReceiveCursor
+      implements Received.PartCursor {
+        private final MemorySegment partsAddr;
+        private final long partCount;
+        private final MemorySegment parts;
+        private long nextIndex;
+        private boolean closed;
+        private boolean vectorClosed;
+
+        private AggregateRouterReceiveCursor(MemorySegment partsAddr,
+                                             long partCount) {
+            this.partsAddr = partsAddr;
+            this.partCount = Math.max(0L, partCount);
+            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            this.parts = this.partCount == 0 || partsAddr == null
+                || partsAddr.address() == 0
+                ? MemorySegment.NULL
+                : MemorySegment.ofAddress(partsAddr.address()).reinterpret(
+                    msgSize * this.partCount);
+        }
+
+        @Override
+        public Message nextPartOrNull() {
+            if (closed || nextIndex >= partCount)
+                return null;
+            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            Message next = new Message();
+            boolean success = false;
+            try {
+                MemorySegment src = parts.asSlice(nextIndex * msgSize, msgSize);
+                int rc = NativeMsg.msgMove(next.nativeHandle(), src);
+                if (rc != 0) {
+                    throw ZlinkException.fromLastError("zlink_msg_move");
+                }
+                nextIndex++;
+                next.finishReceive(nextIndex < partCount);
+                success = true;
+                if (nextIndex >= partCount) {
+                    closeVector();
+                }
+                return next;
+            } finally {
+                if (!success) {
+                    try {
+                        next.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            if (closed)
+                return;
+            closed = true;
+            closeVector();
+        }
+
+        private void closeVector() {
+            if (!vectorClosed && partsAddr != null && partsAddr.address() != 0) {
+                vectorClosed = true;
+                // zlink_router_recv() returns a library-owned thread-local view.
+                // Close the moved-from parts, but do not free the backing array.
+                NativeMsg.multipartClose(partsAddr, partCount);
+            }
         }
     }
 

@@ -286,21 +286,21 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        std::map<pending_key_t, pending_request_t>::iterator it =
+        std::unordered_map<pending_key_t,
+                           pending_request_t,
+                           pending_key_hash_t>::iterator it =
           state->pending_requests.find (key);
         if (it == state->pending_requests.end ()) {
-            for (std::map<pending_key_t, pending_request_t>::iterator probe_it =
-                   state->pending_requests.begin ();
-                 probe_it != state->pending_requests.end (); ++probe_it) {
-                if (probe_it->first.request_seq == key.request_seq) {
-                    it = probe_it;
-                    break;
-                }
+            std::unordered_map<uint64_t, pending_key_t>::iterator seq_it =
+              state->pending_request_keys_by_seq.find (key.request_seq);
+            if (seq_it != state->pending_request_keys_by_seq.end ()) {
+                it = state->pending_requests.find (seq_it->second);
             }
         }
         if (it != state->pending_requests.end ()) {
             pending = it->second;
             state->pending_sequences.erase (it->first.request_seq);
+            state->pending_request_keys_by_seq.erase (it->first.request_seq);
             state->pending_requests.erase (it);
             found = true;
         }
@@ -732,12 +732,15 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
         state->internal_dispatch_installed = false;
         queue_rx = state->recv_queue.rx;
         queue_tx = state->recv_queue.tx;
-        for (std::map<pending_key_t, pending_request_t>::iterator it =
+        for (std::unordered_map<pending_key_t,
+                                pending_request_t,
+                                pending_key_hash_t>::iterator it =
                state->pending_requests.begin ();
              it != state->pending_requests.end (); ++it) {
             timeout_tasks.push_back (it->second.timeout_task);
         }
         state->pending_requests.clear ();
+        state->pending_request_keys_by_seq.clear ();
         state->pending_sequences.clear ();
         zlink::internal_pair_queue::close (&state->recv_queue);
     }

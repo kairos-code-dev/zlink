@@ -119,7 +119,8 @@ final class RoutedRequestSupport {
                 Message[] frames = InternalAccess.messageFromOwnedMsgVectorShared(
                     parts, partCount);
                 RequestReplySupport.completeAsync(future,
-                    () -> new Received(null, null, frames, true, 0L, false,
+                    () -> new Received((RoutingId) null, (RoutingId) null,
+                        frames, true, 0L, false,
                         null));
             }
         } catch (Throwable error) {

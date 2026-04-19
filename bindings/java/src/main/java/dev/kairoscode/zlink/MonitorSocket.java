@@ -78,7 +78,7 @@ public final class MonitorSocket implements AutoCloseable {
         return Native.monitorRecv(handle, RecvFlags.NONE.value());
     }
 
-    Optional<MonitorEvent> tryRecv() {
+    Optional<MonitorEvent> recvNoWait() {
         ensureOpen();
         try {
             return Optional.of(Native.monitorRecv(handle,

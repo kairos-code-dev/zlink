@@ -31,14 +31,14 @@ public abstract class PublisherSocketBase : ConnectableSocketBase
         Kernel.Publish(topic, parts, flags);
     }
 
-    internal SendResult TryPublish(string topic, Message message)
+    internal SendResult PublishNoWaitResult(string topic, Message message)
     {
-        return Kernel.TryPublish(topic, message);
+        return Kernel.PublishNoWaitResult(topic, message);
     }
 
-    internal SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
+    internal SendResult PublishNoWaitResult(string topic, IReadOnlyList<Message> parts)
     {
-        return Kernel.TryPublish(topic, parts);
+        return Kernel.PublishNoWaitResult(topic, parts);
     }
 
     public void OnSendReady(Action handler)

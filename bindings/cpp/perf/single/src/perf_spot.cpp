@@ -120,6 +120,7 @@ void run_pattern_spot (const std::string &transport,
 
     zlink::service::spot_node_t pub_node (ctx.ctx ());
     zlink::service::spot_node_t sub_node (ctx.ctx ());
+    zlink::service::registry_t registry (ctx.ctx ());
     if (!pub_node.valid () || !sub_node.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "spot: invalid service topology" << std::endl;
@@ -128,15 +129,16 @@ void run_pattern_spot (const std::string &transport,
     }
 
     const std::string pub_service_name = "spot-bench";
-    zlink::service::discovery_t pub_discovery (
+    zlink::service::discovery_t discovery (
       ctx.ctx (), zlink::service_type::spot, pub_service_name);
-    if (!pub_discovery.valid ()) {
+    if (!registry.valid () || !discovery.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "spot: discovery setup failed" << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return;
     }
-    pub_node.attach_discovery (pub_discovery);
+    pub_node.attach_discovery (discovery);
+    sub_node.attach_discovery (discovery);
 
     zlink::service::spot_t pub_spot = pub_node.create_spot ();
     zlink::service::spot_t sub_spot = sub_node.create_spot ();
@@ -179,10 +181,15 @@ void run_pattern_spot (const std::string &transport,
     sub_spot.options ().recv_timeout (
       perf::single::resolve_single_recv_timeout_ms ());
 
-    const std::string endpoint = make_spot_endpoint (transport);
+    const std::string registry_pub_endpoint = make_spot_endpoint (transport);
+    const std::string registry_router_endpoint = make_spot_endpoint (transport);
+    const std::string publisher_endpoint = make_spot_endpoint (transport);
+    const std::string subscriber_endpoint = make_spot_endpoint (transport);
     try {
-        pub_node.bind (endpoint);
-        sub_node.connect_peer (endpoint);
+        registry.bind (registry_pub_endpoint, registry_router_endpoint);
+        discovery.connect_registry (registry_router_endpoint);
+        pub_node.bind (publisher_endpoint);
+        sub_node.bind (subscriber_endpoint);
         sub_spot.set_subscription (k_topic);
     }
     catch (const std::exception &) {

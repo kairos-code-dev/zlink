@@ -26,15 +26,9 @@ final class RouterSpotSupport {
         Objects.requireNonNull(destSpotRid, "destSpotRid");
         Objects.requireNonNull(flags, "flags");
         List<Message> payload = RequestReplySupport.clonePayload(parts);
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.routerSendSpot(socket.handle(),
-              nativeRoutingId(arena, destNodeRid),
-              nativeRoutingId(arena, destSpotRid),
-              RoutedRequestSupport.movePayloadToNative(arena, payload),
-              payload.size(), flags.value());
-            if (rc != 0) {
-                throw new SubmitException(SubmitResult.fromValue(rc));
-            }
+        try {
+            submitRouterSendSpot(destNodeRid, destSpotRid, payload,
+                flags.value());
         } finally {
             RequestReplySupport.closeAll(payload);
         }
@@ -49,20 +43,12 @@ final class RouterSpotSupport {
         List<Message> payload = RequestReplySupport.clonePayload(parts);
         CompletableFuture<Received> future = RoutedRequestSupport.registerPending(
           requestId, timeoutMs);
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.routerRequestSpot(socket.handle(),
-              nativeRoutingId(arena, Objects.requireNonNull(destNodeRid,
-                "destNodeRid")),
-              nativeRoutingId(arena, Objects.requireNonNull(destSpotRid,
-                "destSpotRid")),
-              RoutedRequestSupport.movePayloadToNative(arena, payload),
-              payload.size(), RoutedRequestSupport.replyCallback(),
-              RoutedRequestSupport.userData(requestId), SendFlags.NONE.value(),
-              RoutedRequestSupport.toTimeoutInt(timeoutMs));
-            if (rc != 0) {
-                RequestReplySupport.closeAll(payload);
-                throw new SubmitException(SubmitResult.fromValue(rc));
-            }
+        try {
+            submitRouterRequestSpot(destNodeRid, destSpotRid, payload,
+                RoutedRequestSupport.replyCallback(),
+                RoutedRequestSupport.userData(requestId), SendFlags.NONE.value(),
+                RoutedRequestSupport.toTimeoutInt(timeoutMs));
+            RequestReplySupport.closeAll(payload);
         } catch (RuntimeException ex) {
             RequestReplySupport.closeAll(payload);
             RoutedRequestSupport.removePending(requestId);
@@ -86,21 +72,13 @@ final class RouterSpotSupport {
         List<Message> payload = RequestReplySupport.clonePayload(parts);
         CompletableFuture<Received> future = RoutedRequestSupport.registerPending(
           requestId, timeoutMs);
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.routerRequestSpot(socket.handle(),
-              nativeRoutingId(arena, Objects.requireNonNull(destNodeRid,
-                "destNodeRid")),
-              nativeRoutingId(arena, Objects.requireNonNull(destSpotRid,
-                "destSpotRid")),
-              RoutedRequestSupport.movePayloadToNative(arena, payload),
-              payload.size(), RoutedRequestSupport.replyCallback(),
-              RoutedRequestSupport.userData(requestId),
-              Objects.requireNonNull(flags, "flags").value(),
-              RoutedRequestSupport.toTimeoutInt(timeoutMs));
-            if (rc != 0) {
-                RequestReplySupport.closeAll(payload);
-                throw new SubmitException(SubmitResult.fromValue(rc));
-            }
+        try {
+            submitRouterRequestSpot(destNodeRid, destSpotRid, payload,
+                RoutedRequestSupport.replyCallback(),
+                RoutedRequestSupport.userData(requestId),
+                Objects.requireNonNull(flags, "flags").value(),
+                RoutedRequestSupport.toTimeoutInt(timeoutMs));
+            RequestReplySupport.closeAll(payload);
         } catch (RuntimeException ex) {
             RequestReplySupport.closeAll(payload);
             RoutedRequestSupport.removePending(requestId);
@@ -125,18 +103,168 @@ final class RouterSpotSupport {
         Objects.requireNonNull(destSpotRid, "destSpotRid");
         RequestReplySupport.requireReplyFlagsSupported(flags);
         List<Message> payload = RequestReplySupport.clonePayload(parts);
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.routerReplySpot(socket.handle(),
-              nativeRoutingId(arena, destNodeRid),
-              nativeRoutingId(arena, destSpotRid), requestSeq,
-              RoutedRequestSupport.movePayloadToNative(arena, payload),
-              payload.size());
-            if (rc != 0) {
-                throw new SubmitException(SubmitResult.fromValue(rc));
-            }
+        try {
+            submitRouterReplySpot(destNodeRid, destSpotRid, requestSeq, payload);
         } finally {
             RequestReplySupport.closeAll(payload);
         }
+    }
+
+    private void submitRouterSendSpot(RoutingId destNodeRid,
+                                      RoutingId destSpotRid,
+                                      List<Message> payload,
+                                      int flags) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = routerSendSpotPartOnce(destNodeRid, destSpotRid,
+                    payload.get(i), flags, partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == Socket.ERRNO_EINTR)
+                    continue;
+                throw submitFailure("zlink_router_send_spot_part");
+            }
+        }
+    }
+
+    private void submitRouterRequestSpot(RoutingId destNodeRid,
+                                         RoutingId destSpotRid,
+                                         List<Message> payload,
+                                         MemorySegment handler,
+                                         MemorySegment userData,
+                                         int flags,
+                                         int timeoutMs) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = routerRequestSpotPartOnce(destNodeRid, destSpotRid,
+                    payload.get(i), i + 1 < payload.size()
+                        ? MemorySegment.NULL : handler,
+                    i + 1 < payload.size() ? MemorySegment.NULL : userData,
+                    flags, partFlag, i + 1 < payload.size() ? 0 : timeoutMs);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == Socket.ERRNO_EINTR)
+                    continue;
+                throw submitFailure("zlink_router_request_spot_part");
+            }
+        }
+    }
+
+    private void submitRouterReplySpot(RoutingId destNodeRid,
+                                       RoutingId destSpotRid,
+                                       long requestSeq,
+                                       List<Message> payload) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = routerReplySpotPartOnce(destNodeRid, destSpotRid,
+                    requestSeq, payload.get(i), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == Socket.ERRNO_EINTR)
+                    continue;
+                throw submitFailure("zlink_router_reply_spot_part");
+            }
+        }
+    }
+
+    private int routerSendSpotPartOnce(RoutingId destNodeRid,
+                                       RoutingId destSpotRid,
+                                       Message part,
+                                       int flags,
+                                       int partFlag) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
+            MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = part.transferTo(nativeMsg);
+            try {
+                int rc = Native.routerSendSpotPart(socket.handle(), nodeRid,
+                    spotRid, nativeMsg, flags, partFlag);
+                if (rc != 0) {
+                    part.restoreFromNative(nativeMsg, false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                part.restoreFromNative(nativeMsg, false, anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private int routerRequestSpotPartOnce(RoutingId destNodeRid,
+                                          RoutingId destSpotRid,
+                                          Message part,
+                                          MemorySegment handler,
+                                          MemorySegment userData,
+                                          int flags,
+                                          int partFlag,
+                                          int timeoutMs) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
+            MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = part.transferTo(nativeMsg);
+            try {
+                int rc = Native.routerRequestSpotPart(socket.handle(), nodeRid,
+                    spotRid, nativeMsg, handler, userData, flags, partFlag,
+                    timeoutMs);
+                if (rc != 0) {
+                    part.restoreFromNative(nativeMsg, false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                part.restoreFromNative(nativeMsg, false, anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private int routerReplySpotPartOnce(RoutingId destNodeRid,
+                                        RoutingId destSpotRid,
+                                        long requestSeq,
+                                        Message part,
+                                        int partFlag) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
+            MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = part.transferTo(nativeMsg);
+            try {
+                int rc = Native.routerReplySpotPart(socket.handle(), nodeRid,
+                    spotRid, requestSeq, nativeMsg, partFlag);
+                if (rc != 0) {
+                    part.restoreFromNative(nativeMsg, false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                part.restoreFromNative(nativeMsg, false, anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private SubmitException submitFailure(String apiName) {
+        int errno = Native.errno();
+        if (errno == Socket.ERRNO_EAGAIN
+            || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
+            return new SubmitException(SubmitResult.BACKPRESSURED, errno);
+        }
+        if (errno == Socket.ERRNO_ENOTCONN
+            || errno == Socket.ERRNO_ENOTCONN_WIN
+            || errno == Socket.ERRNO_EHOSTUNREACH
+            || errno == Socket.ERRNO_EHOSTUNREACH_WIN) {
+            return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
+        }
+        throw ZlinkException.fromLastError(apiName);
     }
 
     private static MemorySegment nativeRoutingId(Arena arena,

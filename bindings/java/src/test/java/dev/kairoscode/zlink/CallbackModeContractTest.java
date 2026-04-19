@@ -44,7 +44,7 @@ public class CallbackModeContractTest {
                     received.singlePartOrThrow().toByteArray());
                 assertTrue(received.isSinglePart());
             }
-            assertTrue(left.tryRecv().isEmpty());
+            assertTrue(left.recvNoWait().isEmpty());
         }
     }
 

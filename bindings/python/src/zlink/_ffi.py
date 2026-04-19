@@ -120,26 +120,6 @@ class ZlinkSpotNodeSubjectFilter(ctypes.Structure):
     ]
 
 
-class ZlinkSpotServiceAttachmentStats(ctypes.Structure):
-    _fields_ = [
-        ("service_name", ctypes.c_char * 256),
-        ("router_count", ctypes.c_uint32),
-        ("pub_count", ctypes.c_uint32),
-        ("sub_count", ctypes.c_uint32),
-        ("auto_router_count", ctypes.c_uint32),
-        ("auto_pub_count", ctypes.c_uint32),
-        ("auto_sub_count", ctypes.c_uint32),
-    ]
-
-
-class ZlinkSpotServiceMonitorEvent(ctypes.Structure):
-    _fields_ = [
-        ("service_name", ctypes.c_char * 256),
-        ("role", ctypes.c_uint32),
-        ("event", ZlinkMonitorEvent),
-    ]
-
-
 class ZlinkMemberPeerEntry(ctypes.Structure):
     _fields_ = [
         ("service_type", ctypes.c_uint16),
@@ -844,32 +824,18 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_attach_router",
+            "zlink_spot_node_attach_channel_dealer",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_attach_channel_dealer_manual",
             [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p],
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_attach_pubsub",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_service_attachment_count",
-            [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_service_attachment_at",
-            [
-                ctypes.c_void_p,
-                ctypes.c_size_t,
-                ctypes.POINTER(ZlinkSpotServiceAttachmentStats),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_monitor_recv",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkSpotServiceMonitorEvent), ctypes.c_uint32],
+            "zlink_spot_node_attach_pub_ingress",
+            [ctypes.c_void_p, ctypes.c_void_p],
             ctypes.c_int,
         )
         self._require(
@@ -908,27 +874,26 @@ class _Lib:
         )
 
         self._require(
-            "zlink_spot_request_spot",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkMsg),
-                ctypes.c_size_t,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.c_uint32,
-                ctypes.c_uint32,
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_send_service",
+            "zlink_spot_send_channel",
             [
                 ctypes.c_void_p,
                 ctypes.c_char_p,
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_size_t,
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_request_channel",
+            [
+                ctypes.c_void_p,
+                ctypes.c_char_p,
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
                 ctypes.c_uint32,
             ],
             ctypes.c_int,
@@ -975,18 +940,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_send_spot",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkMsg),
-                ctypes.c_size_t,
-                ctypes.c_uint32,
-            ],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_send_router",
             [
                 ctypes.c_void_p,
@@ -1002,20 +955,6 @@ class _Lib:
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkMsg),
-                ctypes.c_size_t,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.c_uint32,
-                ctypes.c_uint32,
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_request_service",
-            [
-                ctypes.c_void_p,
-                ctypes.c_char_p,
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_size_t,
                 ctypes.c_void_p,

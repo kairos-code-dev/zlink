@@ -76,17 +76,19 @@ internal static class PerfSpotClient
     private static SpotClientSlot CreateSlot(Context ctx,
         SpotClientConfig config, string serverEndpoint, PerfOptions options)
     {
+        var dealer = new DealerSocket(ctx);
         var node = new SpotNode(ctx);
         try
         {
             ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
             ApplySpotNodeSubscriberOptions(node, options);
+            node.AttachChannelDealerManual("bench-svc", dealer);
             var subscriber = new Spot(node);
             try
             {
                 node.ConnectPeer(serverEndpoint);
                 subscriber.SetSubscription("bench");
-                return new SpotClientSlot(node, subscriber);
+                return new SpotClientSlot(node, dealer, subscriber);
             }
             catch
             {
@@ -97,6 +99,7 @@ internal static class PerfSpotClient
         catch
         {
             node.Dispose();
+            dealer.Dispose();
             throw;
         }
     }
@@ -219,7 +222,7 @@ internal static class PerfSpotClient
     {
         try
         {
-            if (!subscriber.TrySubscribe(out TopicMessage? subscribed)
+            if (!subscriber.SubscribeNoWait(out TopicMessage? subscribed)
                 || subscribed == null)
                 return 0;
             return CopySubscribedPayload(subscribed, payloadBuffer);
@@ -403,19 +406,22 @@ internal static class PerfSpotClient
 
     private sealed class SpotClientSlot : IDisposable
     {
-        internal SpotClientSlot(SpotNode node, Spot subscriber)
+        internal SpotClientSlot(SpotNode node, DealerSocket dealer, Spot subscriber)
         {
             Node = node;
+            Dealer = dealer;
             Subscriber = subscriber;
         }
 
         internal SpotNode Node { get; }
+        internal DealerSocket Dealer { get; }
         internal Spot Subscriber { get; }
 
         public void Dispose()
         {
             Subscriber.Dispose();
             Node.Dispose();
+            Dealer.Dispose();
         }
     }
 }

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## 5.3.0 (2026-04-20)
+
+### Added
+- Helper C API (*_part family) on top of core/include/zlink.h. All multipart send/recv/publish/subscribe/request/reply entry points now have a _part variant that takes one part at a time with MORE/FINAL flags. Spec: doc/spec/draft/bindings-helper-capi-partwise-send-recv.ko.md (section 5, section 6).
+- Helper-layer tests: test_helper_send_part_basic, test_helper_recv_part_basic, test_helper_ownership, test_helper_interleave, test_helper_more_bad_send, test_helper_request_sequence_failure.
+- zlink_msg_adopt: efficient ownership transfer helper for bindings (introduced to support native Message materialization without re-init).
+
+### Changed
+- Core aggregate send/recv/publish/request/reply are now thin wrappers on top of the helper substrate. Helper is the real primitive; aggregate is a convenience layer.
+- .NET and Java bindings hot paths rewritten to use *_part helpers; Received / List<Message> materialization is now lazy in both bindings.
+- core/include/zlink.h reorganized with header banners distinguishing helper substrate from C-binding convenience aggregate (section 4 of c-binding-layer-plan.ko.md).
+
+### Known issues
+- 2 .NET tests hang under --blame-hang (test_stream_socket.stream_callback_echo_raw, test_callback_delivery.stream_packet_handler_hops_to_registered_context_and_send_semantics_hold) STREAM raw callback path still under investigation.
+- 1 Java perf-multi test fails (PerfMultiDealerDealerRegressionTest) dealer to dealer recv throws RecvException.
+- 2 core tests flaky under parallel load (test_multi_spot_benchmark_process, test_peer_admission).
+
+### Notes
+- Scope: Linux only. Native lib libzlink.so.5.3.0 shipped only for linux-x64. C++/Go/Rust/Python/Node bindings NOT updated in this release.
+
 ## [5.0.27] - 2026-04-03
 
 ### Changed

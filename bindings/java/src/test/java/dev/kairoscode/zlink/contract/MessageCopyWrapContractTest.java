@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MessageCopyWrapContractTest {
     @Test
@@ -29,6 +30,19 @@ public class MessageCopyWrapContractTest {
     @Test
     public void borrowedWrapApisAreNotPublic() {
         assertFalse(hasPublicMethod(Message.class, "wrapDirect", ByteBuffer.class));
+    }
+
+    @Test
+    public void moveTransfersPayloadToNewMessage() {
+        TestSupport.assumeNative();
+
+        try (Message source = Message.copyOfUtf8("alpha")) {
+            try (Message moved = source.move()) {
+                assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8),
+                    moved.toByteArray());
+                assertTrue(source.empty());
+            }
+        }
     }
 
     private static boolean hasPublicMethod(Class<?> type, String name,

@@ -54,7 +54,7 @@ final class PerfMultiDealerRouter {
                                 stops++;
                                 continue;
                             }
-                            try (Message reply = Message.copyOf(received.firstPart())) {
+                            try (Message reply = received.firstPart().move()) {
                                 server.send(received.routingIdOrThrow(), reply);
                             }
                         }

@@ -11,6 +11,18 @@ Service types live in `dev.kairoscode.zlink.service.registry`,
 `dev.kairoscode.zlink.service.discovery`, and
 `dev.kairoscode.zlink.service.spot`.
 
+Only the packages and types listed in this document are public contract.
+`dev.kairoscode.zlink.internal` and other implementation packages are internal.
+If the binding uses JPMS/module export control, only documented public packages
+may be exported. Perf, samples, and tests must use the public Java entrypoint
+only and must not import internal packages or helper classes.
+
+Implementation follow-up:
+- internal 성격 타입이 public package에 남아 있지 않도록 정리해야 한다.
+- `SocketCore`, `MessagePlane`, request/reply support helper 같은 구현 중심
+  타입은 internal 또는 implementation package로 이동하는 방향이 맞다.
+- JPMS를 도입하면 documented public package만 export 하도록 맞춰야 한다.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -230,21 +242,29 @@ public final class DealerSocket extends Socket {
     CompletableFuture<List<Message>> request(List<Message> parts);                    // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<List<Message>> request(List<Message> parts, Duration timeout);  // @throws SubmitException; future completes with RequestException on failure
 
-    // --- request (callback, has flags, throws on submit failure) ---
+    // --- request (callback, blocking submit) ---
     void request(Message part,
-                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
-    void request(Message part,
-                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void request(Message part,
                  BiConsumer<RequestResult, List<Message>> callback,
-                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
     void request(List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
-    void request(List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void request(List<Message> parts,
                  BiConsumer<RequestResult, List<Message>> callback,
-                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
+
+    // --- request (callback, nonblocking submit) ---
+    boolean tryRequest(Message part,
+                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequest(Message part,
+                       BiConsumer<RequestResult, List<Message>> callback,
+                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequest(List<Message> parts,
+                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequest(List<Message> parts,
+                       BiConsumer<RequestResult, List<Message>> callback,
+                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
 
     DealerSocketOptions options();
 }
@@ -285,21 +305,29 @@ public final class RouterSocket extends Socket {
     CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts);                   // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
 
-    // --- request to a specific peer (callback, has flags, throws on submit failure) ---
+    // --- request to a specific peer (callback, blocking submit) ---
     void request(RoutingId rid, Message part,
-                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId rid, Message part,
-                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, Message part,
                  BiConsumer<RequestResult, List<Message>> callback,
-                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback);                         // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId rid, List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback, SendFlags flags);        // @throws SubmitException; callback receives RequestResult
+                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
     void request(RoutingId rid, List<Message> parts,
                  BiConsumer<RequestResult, List<Message>> callback,
-                 SendFlags flags, Duration timeout);                                    // @throws SubmitException; callback receives RequestResult
+                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
+
+    // --- request to a specific peer (callback, nonblocking submit) ---
+    boolean tryRequest(RoutingId rid, Message part,
+                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequest(RoutingId rid, Message part,
+                       BiConsumer<RequestResult, List<Message>> callback,
+                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequest(RoutingId rid, List<Message> parts,
+                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequest(RoutingId rid, List<Message> parts,
+                       BiConsumer<RequestResult, List<Message>> callback,
+                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
 
     // --- reply to a received request ---
     void reply(RoutingId rid, long requestSeq, Message message);                        // @throws SubmitException
@@ -329,29 +357,35 @@ public final class RouterSocket extends Socket {
                                               RoutingId destSpotRid,
                                               List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
 
-    // --- router -> spot routed request (callback, has flags, throws on submit failure) ---
+    // --- router -> spot routed request (callback, blocking submit) ---
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
-                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message part,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
+                       BiConsumer<RequestResult, List<Message>> callback);               // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message part,
                        BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
+                       Duration timeout);                                                // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags);                                                 // @throws SubmitException; callback receives RequestResult
+                       BiConsumer<RequestResult, List<Message>> callback);               // @throws SubmitException; callback receives RequestResult
     void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
                        BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags, Duration timeout);                               // @throws SubmitException; callback receives RequestResult
+                       Duration timeout);                                                // @throws SubmitException; callback receives RequestResult
+    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                             Message part,
+                             BiConsumer<RequestResult, List<Message>> callback);         // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                             Message part,
+                             BiConsumer<RequestResult, List<Message>> callback,
+                             Duration timeout);                                          // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                             List<Message> parts,
+                             BiConsumer<RequestResult, List<Message>> callback);         // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                             List<Message> parts,
+                             BiConsumer<RequestResult, List<Message>> callback,
+                             Duration timeout);                                          // @throws SubmitException; false only on temporary backpressure
 
     // --- router -> spot routed reply ---
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -472,6 +506,7 @@ public final class Message implements AutoCloseable {
     // --- factories (copy) ---
     // All public input adapters copy into an owned zlink message.
     // Public borrowed external-wrap APIs are intentionally not exposed.
+    static Message copyOf(Message source);                          // @throws ConfigException
     static Message copyOf(byte[] data);                              // @throws ConfigException
     static Message copyOf(byte[] data, int offset, int length);      // @throws ConfigException
     static Message copyOfUtf8(String value);                         // @throws ConfigException
@@ -493,6 +528,14 @@ public final class Message implements AutoCloseable {
     int readIntLe(int offset);
     long readLongLe(int offset);
     String getProperty(String key);                                  // @throws ConfigException
+    Message move();                                                  // @throws ConfigException
+
+    // --- writable owned payload ---
+    void fill(byte value);                                           // @throws ConfigException
+    void fill(byte value, int offset, int length);                   // @throws ConfigException
+    void writeByte(int offset, byte value);                          // @throws ConfigException
+    void writeIntLe(int offset, int value);                          // @throws ConfigException
+    void writeLongLe(int offset, long value);                        // @throws ConfigException
 
     // --- copy to destination ---
     int copyTo(byte[] destination);
@@ -1188,23 +1231,27 @@ public final class Spot implements AutoCloseable {
     CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, List<Message> parts,
                                                 Duration timeout);                       // @throws SubmitException; future completes with RequestException on failure
 
-    // --- routed request (spot -> router, callback, has flags, throws on submit failure) ---
+    // --- routed request (spot -> router, callback, blocking submit) ---
     void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, List<Message>> callback);                  // @throws SubmitException; callback receives RequestResult
-    void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, List<Message>> callback,
-                         SendFlags flags);                                               // @throws SubmitException; callback receives RequestResult
+                         BiConsumer<RequestResult, List<Message>> callback);             // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, Message part,
                          BiConsumer<RequestResult, List<Message>> callback,
-                         SendFlags flags, Duration timeout);                             // @throws SubmitException; callback receives RequestResult
+                         Duration timeout);                                              // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, List<Message>> callback);                  // @throws SubmitException; callback receives RequestResult
-    void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, List<Message>> callback,
-                         SendFlags flags);                                               // @throws SubmitException; callback receives RequestResult
+                         BiConsumer<RequestResult, List<Message>> callback);             // @throws SubmitException; callback receives RequestResult
     void requestToRouter(RoutingId peerRid, List<Message> parts,
                          BiConsumer<RequestResult, List<Message>> callback,
-                         SendFlags flags, Duration timeout);                             // @throws SubmitException; callback receives RequestResult
+                         Duration timeout);                                              // @throws SubmitException; callback receives RequestResult
+    boolean tryRequestToRouter(RoutingId peerRid, Message part,
+                               BiConsumer<RequestResult, List<Message>> callback);       // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequestToRouter(RoutingId peerRid, Message part,
+                               BiConsumer<RequestResult, List<Message>> callback,
+                               Duration timeout);                                        // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequestToRouter(RoutingId peerRid, List<Message> parts,
+                               BiConsumer<RequestResult, List<Message>> callback);       // @throws SubmitException; false only on temporary backpressure
+    boolean tryRequestToRouter(RoutingId peerRid, List<Message> parts,
+                               BiConsumer<RequestResult, List<Message>> callback,
+                               Duration timeout);                                        // @throws SubmitException; false only on temporary backpressure
 
     // --- routed reply (spot -> router) ---
     void replyToRouter(RoutingId peerRid, long requestSeq, Message message);                  // @throws SubmitException

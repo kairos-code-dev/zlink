@@ -93,7 +93,7 @@ public final class ServiceMonitor implements AutoCloseable {
         }
     }
 
-    Optional<ServiceEvent> tryRecv() {
+    Optional<ServiceEvent> recvNoWait() {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);

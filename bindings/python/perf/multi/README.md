@@ -49,9 +49,9 @@ required by the perf policy and execution guide.
 The suite uses the recv path only.
 
 SPOT follows the same service-aware contract as the single-suite benchmark:
-each node attaches a concrete service pair with `attach_pubsub(service_name,
-...)`, the sender publishes with that explicit `service_name`, and the
-receiver drains with `subscribe()`.
+the sender publishes with the explicit `service_name`, and the receiver drains
+with `subscribe()`. The benchmark no longer attaches an external pub/sub pair
+to `SpotNode`.
 
 ## Verification
 

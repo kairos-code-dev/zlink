@@ -297,46 +297,43 @@ zlink_discovery_destroy(&discovery);
 수동 호출이 실패한다. Discovery 인스턴스를 파괴하면 모든 연결된 소켓이
 종료된다.
 
-## 4.2 SpotNode에 여러 서비스 Discovery 붙이기
+## 4.2 SpotNode에 Channel Dealer 붙이기
 
-Discovery 하나는 여전히 `service_name` 하나만 본다. 다만 하나의
-`SpotNode`에는 서로 다른 `service_name`을 보는 Discovery handle 여러 개를
-동시에 attach할 수 있다. 각 Discovery가 공급하는 ROUTER/PUB/SUB provider는
-node의 service attachment table에 자동 source로 들어온다.
+`SpotNode`는 자기 mesh 연결에 SPOT Discovery 하나를 사용한다
+([SPOT 가이드](07-3-spot.ko.md) 참고). 다른 channel을 호출해야 할 때는
+channel별로 `DEALER`를 attach한다.
 
 ```c
-void *orders_discovery   = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
-void *prices_discovery   = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "market-data");
-
-zlink_discovery_connect_registry(orders_discovery, "tcp://registry1:5551");
-zlink_discovery_connect_registry(prices_discovery, "tcp://registry1:5551");
-
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Same SpotNode hosts attachments for two different services. */
-zlink_spot_node_attach_discovery(node, orders_discovery);
-zlink_spot_node_attach_discovery(node, prices_discovery);
+/* SPOT mesh — 이 node 자신의 channel */
+void *spot_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SPOT, "alpha");
+zlink_discovery_connect_registry(spot_disc, "tcp://registry1:5551");
+zlink_spot_node_attach_discovery(node, spot_disc);
+
+/* "orders-exec" channel 호출용 자동 dealer */
+void *orders_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+zlink_discovery_connect_registry(orders_disc, "tcp://registry1:5551");
+
+void *orders_dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_socket_attach_discovery(orders_dealer, orders_disc);
+
+zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
 ```
 
 attach 시 지켜야 하는 규칙:
 
-- **같은 `service_name` Discovery 중복 금지.** 같은 node에 같은
-  `service_name` Discovery를 두 번 attach하면 `EBUSY`로 실패한다.
-- **pub/sub 짝 필요.** Discovery view 안의 한 서비스에 `pub`만 있거나
-  `sub`만 있으면 attach 자체가 `EINVAL`로 거절된다. 허용되는 구성은
-  `router only` 또는 `router + pub + sub`다.
-- **공개 facade는 하나만.** service-aware attachment가 붙은 node에는
-  `zlink_spot_new(node)`로 만드는 공개 `Spot` facade가 하나만 존재할 수
-  있다. 이미 두 개 이상 facade가 있는 node에 attach하면 `EBUSY`로 실패한다.
-- **Discovery destroy는 그 source만 내린다.** 특정 Discovery만 파괴하면 그
-  Discovery가 공급하던 자동 attachment만 제거되고, 수동 attachment나 다른
-  Discovery source의 attachment는 그대로 유지된다.
-
-자세한 attach 오류 표는 [SPOT spec](../spec/core/service/spot.ko.md) 의
-attach_discovery 실패 표를 참고한다.
+- **SPOT Discovery는 node당 하나.** `zlink_spot_node_attach_discovery()`는
+  `ZLINK_SERVICE_TYPE_SPOT`만 받는다. 두 번째 attach는 `EBUSY`로 실패한다.
+- **같은 channel에 DEALER 하나.** 자동 attach와 수동 attach가 같은 namespace를
+  공유한다. 같은 channel에 `DEALER`를 두 번 attach하면 `EBUSY`로 실패한다.
+- **attach된 DEALER는 전용 자원.** 소유권은 호출자가 유지하지만, attach 뒤에는
+  다른 용도로 같은 socket을 함께 쓰지 않는다.
+- **Discovery destroy는 그 peer set만 내린다.** 특정 Discovery만 파괴하면 그
+  Discovery가 공급하던 자동 연결만 제거된다.
 
 ## 5. Liveness 및 Summary 업데이트
 

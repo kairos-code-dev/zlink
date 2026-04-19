@@ -228,18 +228,18 @@ class socket_t : public base_socket_t
           handle (), routing_id_native (source_rid_out_), flags_, part_);
     }
 
-    int try_send (send_result_t &result_,
+    int send_no_wait_result (send_result_t &result_,
                   const routing_id_t &target_rid_,
                   message_t &part_)
     {
-        return base_socket_t::try_send (result_, target_rid_, part_);
+        return base_socket_t::send_no_wait_result (result_, target_rid_, part_);
     }
 
-    int try_send (send_result_t &result_,
+    int send_no_wait_result (send_result_t &result_,
                   const routing_id_t &target_rid_,
                   std::vector<message_t> &parts_)
     {
-        return base_socket_t::try_send (result_, target_rid_, parts_);
+        return base_socket_t::send_no_wait_result (result_, target_rid_, parts_);
     }
 
     int recv (zlink_routing_id_t &source_rid_out_,

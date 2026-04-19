@@ -3,14 +3,15 @@
 const zlink = require('../../dist/canonical');
 
 const TOPIC = 'spot:child';
-const SERVICE_TYPE_SPOT = 0x3002;
 const SERVICE_NAME = 'spot-child-service';
 
 function parseArgs(argv) {
-  const options = { endpoint: '' };
+  const options = { bindEndpoint: '', peerEndpoint: '' };
   for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '--endpoint') {
-      options.endpoint = argv[++i];
+    if (argv[i] === '--bind-endpoint') {
+      options.bindEndpoint = argv[++i];
+    } else if (argv[i] === '--peer-endpoint') {
+      options.peerEndpoint = argv[++i];
     }
   }
   return options;
@@ -20,15 +21,13 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
-  const pubSocket = new zlink.PubSocket(ctx);
-  const subSocket = new zlink.SubSocket(ctx);
   let spot = null;
 
   try {
-    node.attachPubSub(SERVICE_NAME, pubSocket, subSocket);
+    node.bind(options.bindEndpoint);
+    node.connectPeer(options.peerEndpoint);
     spot = node.createSpot();
-    pubSocket.bind(options.endpoint);
-    console.log(`READY,${options.endpoint}`);
+    console.log(`READY,${options.bindEndpoint}`);
 
     const deadline = Date.now() + 5000;
     let sent = 0;
@@ -49,8 +48,6 @@ async function main() {
       spot.close();
     }
     node.close();
-    subSocket.close();
-    pubSocket.close();
     ctx.close();
   }
 }

@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.discovery.Discovery;
@@ -30,6 +31,7 @@ final class PerfMultiSpot {
              Registry registry = new Registry(ctx);
              Discovery discovery = new Discovery(ctx, ServiceType.SPOT,
                  SERVICE_NAME);
+             DealerSocket channelDealer = new DealerSocket(ctx);
              SpotNode node = new SpotNode(ctx);
              Spot publisher = node.createSpot()) {
             String registryPub = PerfUtil.endpoint(config.transport(),
@@ -38,6 +40,7 @@ final class PerfMultiSpot {
                 "multi-spot-registry-router");
             registry.bind(registryPub, registryRouter);
             discovery.connectRegistry(registryRouter);
+            node.attachChannelDealerManual(SERVICE_NAME, channelDealer);
             node.attachDiscovery(discovery);
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
@@ -83,10 +86,12 @@ final class PerfMultiSpot {
                                       PerfUtil.Metrics metrics,
                                       AtomicReference<Throwable> failure) {
         try (Context ctx = PerfUtil.newContext(config);
+             DealerSocket channelDealer = new DealerSocket(ctx);
              SpotNode node = new SpotNode(ctx);
              Spot subscriber = node.createSpot()) {
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureClientTls(node, config.transport());
+            node.attachChannelDealerManual(SERVICE_NAME, channelDealer);
             node.connectPeer(config.endpoint());
             subscriber.setSubscription(TOPIC);
             waitForPeerConnected(node);
@@ -101,7 +106,7 @@ final class PerfMultiSpot {
                 + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
             while (System.nanoTime() < finishDeadline) {
                 Optional<dev.kairoscode.zlink.TopicMessage> maybe =
-                    PerfUtil.trySubscribe(subscriber);
+                    PerfUtil.subscribeNoWait(subscriber);
                 if (maybe.isEmpty()) {
                     sleepQuietly(Duration.ofMillis(1));
                     continue;

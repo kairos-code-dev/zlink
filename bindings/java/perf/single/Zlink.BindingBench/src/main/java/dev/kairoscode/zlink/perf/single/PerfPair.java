@@ -6,25 +6,20 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
-import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.SubmitException;
-import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
-import java.util.Optional;
-import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfPair {
     private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
-    private static final int ERRNO_ETIMEDOUT = 110;
-    private static final int ERRNO_ETIMEDOUT_WIN = 10060;
 
     private PerfPair() {
     }
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-pair");
+        CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         try (Context ctx = PerfUtil.newContext(config);
@@ -45,31 +40,48 @@ final class PerfPair {
                 readyTimeout, "pair sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENTS, 1,
                 readyTimeout, "pair receiver ready");
+            try {
+                Thread.sleep(100L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("pair settle interrupted", ex);
+            }
 
-            try (Message primer = PerfUtil.payload(config.size(),
-                     (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                sender.send(List.of(primer));
-            }
-            long selfCheckDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-            boolean sawPrimer = false;
-            while (System.nanoTime() < selfCheckDeadline) {
-                Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(receiver);
-                if (maybe.isEmpty()) {
-                    Thread.onSpinWait();
-                    continue;
-                }
-                try (var received = maybe.orElseThrow()) {
-                    PerfUtil.Header header = PerfUtil.decodeHeader(
-                        received.firstPart(), config.size());
-                    if (header != null && header.phase() == PerfUtil.PHASE_WARMUP) {
-                        sawPrimer = true;
-                        break;
+            Thread receiverThread = new Thread(() -> {
+                try {
+                    while (finished.getCount() > 0L) {
+                        try (var received = receiver.recv()) {
+                            PerfUtil.Header header = PerfUtil.decodeHeader(
+                                received.firstPart(), config.size());
+                            if (header == null) {
+                                continue;
+                            }
+                            if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                                finished.countDown();
+                                return;
+                            }
+                            if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                metrics.recordNanos(header.latencyNanos());
+                            }
+                        } catch (dev.kairoscode.zlink.RecvException ex) {
+                            if (ex.getResult() == dev.kairoscode.zlink.RecvResult.NO_DATA
+                                || ex.getResult() == dev.kairoscode.zlink.RecvResult.BUSY) {
+                                if (failure.get() != null) {
+                                    finished.countDown();
+                                    return;
+                                }
+                                Thread.onSpinWait();
+                                continue;
+                            }
+                            throw ex;
+                        }
                     }
+                } catch (Throwable ex) {
+                    failure.compareAndSet(null, ex);
+                    finished.countDown();
                 }
-            }
-            if (!sawPrimer) {
-                throw new IllegalStateException("pair self-check timed out");
-            }
+            }, "single-pair-receiver");
+            receiverThread.start();
 
             Thread traffic = new Thread(() -> {
                 try {
@@ -77,87 +89,35 @@ final class PerfPair {
                     long activeEnd = System.nanoTime()
                         + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        try {
-                            sender.send(List.of(PerfUtil.payload(config.size(),
-                                (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())),
-                                SendFlags.DONT_WAIT);
-                        } catch (SubmitException ex) {
-                            if (!isTransient(ex)) {
-                                throw ex;
-                            }
-                            Thread.onSpinWait();
+                        try (Message active = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sender.send(active);
                         }
                     }
-                    while (true) {
-                        try {
-                            sender.send(List.of(PerfUtil.payload(config.size(),
-                                (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())),
-                                SendFlags.DONT_WAIT);
-                            return;
-                        } catch (SubmitException ex) {
-                            if (!isTransient(ex)) {
-                                throw ex;
-                            }
-                            Thread.onSpinWait();
+                    int sentCooldown = 0;
+                    while (sentCooldown < 8) {
+                        try (Message cooldown = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                            sender.send(cooldown);
+                            sentCooldown++;
                         }
+                        Thread.sleep(2L);
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
+                    finished.countDown();
                 }
             }, "single-pair-sender");
             traffic.start();
-            long deadline = System.nanoTime()
-                + Duration.ofSeconds(config.durationSeconds() + 10L).toNanos();
-            boolean sawCooldown = false;
-            dev.kairoscode.zlink.Received cooldown = null;
-            while (System.nanoTime() < deadline) {
-                Optional<dev.kairoscode.zlink.Received> maybe = PerfUtil.tryRecv(receiver);
-                if (maybe.isPresent()) {
-                    var received = maybe.orElseThrow();
-                    PerfUtil.Header header = PerfUtil.decodeHeader(
-                        received.firstPart(), config.size());
-                    if (header == null) {
-                        received.close();
-                        continue;
-                    }
-                    if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                        try {
-                            metrics.recordNanos(header.latencyNanos());
-                        } finally {
-                            received.close();
-                        }
-                        continue;
-                    }
-                    if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                        cooldown = received;
-                        sawCooldown = true;
-                        break;
-                    }
-                    received.close();
-                    continue;
-                }
-                if (failure.get() != null && !traffic.isAlive()) {
-                    throw new IllegalStateException("pair sender failed", failure.get());
-                }
-                Thread.onSpinWait();
-            }
+            PerfUtil.await(finished, "pair receiver",
+                Duration.ofSeconds(config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "pair sender", Duration.ofSeconds(10));
-            if (cooldown != null) {
-                cooldown.close();
-            }
+            PerfUtil.join(receiverThread, "pair receiver thread",
+                Duration.ofSeconds(10));
             if (failure.get() != null) {
                 throw new IllegalStateException("pair sender failed", failure.get());
             }
-            if (!sawCooldown) {
-                throw new IllegalStateException("pair receiver timed out");
-            }
             return metrics.finishSingle(config);
         }
-    }
-
-    private static boolean isTransient(SubmitException ex) {
-        return ex.getResult() == SubmitResult.BACKPRESSURED
-            || ex.getInternalErrno() == ERRNO_ETIMEDOUT
-            || ex.getInternalErrno() == ERRNO_ETIMEDOUT_WIN;
     }
 }

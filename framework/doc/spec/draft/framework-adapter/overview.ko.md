@@ -44,8 +44,8 @@ pub/sub, `SPOT`, `STREAM`, service discovery를 사용할 수 있게 하는 상�
 - 서버 간 `send`
 - 서버 간 `request`
 - pub/sub
-- `spot <-> spot`
-- `spot <-> server(router)`
+- `SPOT` 현재 channel 안의 publish/subscribe
+- attach된 channel client를 통한 cross-channel send/request
 - stream handler
 
 ## 3. 핵심 차별점
@@ -59,9 +59,9 @@ pub/sub, `SPOT`, `STREAM`, service discovery를 사용할 수 있게 하는 상�
 
 `ZLink Framework`는 이와 다른 방향을 기본으로 본다.
 
-- 호출자는 gateway 주소 대신 `service_name`을 기준으로 요청한다.
-- framework runtime이 service마다 별도 channel을 만든다.
-- Discovery가 그 service view 안의 provider 위치를 숨긴다.
+- 호출자는 gateway 주소 대신 `channel_name`을 기준으로 요청한다.
+- framework runtime이 channel마다 별도 outbound socket을 만든다.
+- Discovery가 그 channel view 안의 provider 위치를 숨긴다.
 - framework는 그 channel 안의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.
 - 요청은 중간 gateway 없이 provider로 직접 간다.
 

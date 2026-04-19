@@ -253,30 +253,6 @@ type RegistryTopologyFilter struct {
 	Source      *TopologySource
 }
 
-type SpotServiceAttachmentRole int
-
-const (
-	SpotServiceAttachmentRouter SpotServiceAttachmentRole = 1
-	SpotServiceAttachmentPub    SpotServiceAttachmentRole = 2
-	SpotServiceAttachmentSub    SpotServiceAttachmentRole = 3
-)
-
-type SpotServiceAttachmentStats struct {
-	ServiceName     string
-	RouterCount     uint32
-	PubCount        uint32
-	SubCount        uint32
-	AutoRouterCount uint32
-	AutoPubCount    uint32
-	AutoSubCount    uint32
-}
-
-type SpotServiceMonitorEvent struct {
-	ServiceName string
-	Role        SpotServiceAttachmentRole
-	Event       MonitorEventType
-}
-
 func (e *MemberPeerEntry) HasRoutingID() bool {
 	return e != nil && serviceEntryHasRoutingID(e.RoutingID)
 }

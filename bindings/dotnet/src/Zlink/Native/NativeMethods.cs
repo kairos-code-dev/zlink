@@ -7,6 +7,12 @@ internal static partial class NativeMethods
 {
     internal const string LibraryName = "zlink";
 
+    internal enum ZlinkPartFlag
+    {
+        Final = 0,
+        More = 1
+    }
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int ZlinkStreamOnRawDelegate(
         IntPtr routingId,

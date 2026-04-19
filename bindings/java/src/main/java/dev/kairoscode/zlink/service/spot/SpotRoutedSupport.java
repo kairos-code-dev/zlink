@@ -78,132 +78,172 @@ final class SpotRoutedSupport implements AutoCloseable {
     private Arena routedCallbackArena;
     private Arena dispatchCallbackArena;
     private volatile RuntimeException callbackFailure;
+    private final ThreadLocal<Received> activeLazyReceive = new ThreadLocal<>();
 
     SpotRoutedSupport(Spot spot) {
         this.spot = Objects.requireNonNull(spot, "spot");
     }
 
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                    List<Message> parts, SendFlags flags) {
-        sendViaNative(parts, (arena, payload) -> Native.spotSendSpot(handle(),
-          nativeRoutingId(arena, Objects.requireNonNull(destNodeRid,
-            "destNodeRid")),
-          nativeRoutingId(arena, Objects.requireNonNull(destSpotRid,
-            "destSpotRid")),
-          movePayloadToNative(arena, payload), payload.size(),
-          Objects.requireNonNull(flags, "flags").value()));
-    }
-
     void sendToRouter(RoutingId peerRid, List<Message> parts, SendFlags flags) {
-        sendViaNative(parts, (arena, payload) -> Native.spotSendRouter(handle(),
-          nativeRoutingId(arena, Objects.requireNonNull(peerRid, "peerRid")),
-          movePayloadToNative(arena, payload), payload.size(),
-          Objects.requireNonNull(flags, "flags").value()));
-    }
-
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                   RoutingId destSpotRid,
-                                                   List<Message> parts,
-                                                   Duration timeout) {
-        return requestViaNative(parts, timeout, (arena, payload, requestId,
-            timeoutMs) -> Native.spotRequestSpot(handle(),
-              nativeRoutingId(arena, Objects.requireNonNull(destNodeRid,
-                "destNodeRid")),
-              nativeRoutingId(arena, Objects.requireNonNull(destSpotRid,
-                "destSpotRid")),
-              movePayloadToNative(arena, payload), payload.size(),
-              REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
-              SendFlags.NONE.value(), toTimeoutInt(timeoutMs)));
-    }
-
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       SendFlags flags, Duration timeout) {
-        requestViaNativeCallback(parts, callback, timeout, (arena, payload,
-            requestId, timeoutMs) -> Native.spotRequestSpot(handle(),
-              nativeRoutingId(arena, Objects.requireNonNull(destNodeRid,
-                "destNodeRid")),
-              nativeRoutingId(arena, Objects.requireNonNull(destSpotRid,
-                "destSpotRid")),
-              movePayloadToNative(arena, payload), payload.size(),
-              REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
-              Objects.requireNonNull(flags, "flags").value(),
-              toTimeoutInt(timeoutMs)));
+        List<Message> payload = clonePayload(parts);
+        try {
+            submitSpotSendRouter(Objects.requireNonNull(peerRid, "peerRid"),
+                payload, Objects.requireNonNull(flags, "flags").value());
+        } finally {
+            closeAll(payload);
+        }
     }
 
     CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
                                                      List<Message> parts,
                                                      Duration timeout) {
-        return requestViaNative(parts, timeout, (arena, payload, requestId,
-            timeoutMs) -> Native.spotRequestToRouter(handle(),
-              nativeRoutingId(arena, Objects.requireNonNull(peerRid, "peerRid")),
-              movePayloadToNative(arena, payload), payload.size(),
-              REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
-              SendFlags.NONE.value(), toTimeoutInt(timeoutMs)));
+        Objects.requireNonNull(peerRid, "peerRid");
+        long timeoutMs = timeoutMillis(timeout);
+        long requestId = NEXT_REQUEST_ID.getAndIncrement();
+        List<Message> payload = clonePayload(parts);
+        CompletableFuture<Received> future = registerPending(requestId, timeoutMs);
+        try {
+            submitSpotRequestRouter(peerRid, payload, REPLY_CALLBACK,
+                MemorySegment.ofAddress(requestId), SendFlags.NONE.value(),
+                toTimeoutInt(timeoutMs));
+            closeAll(payload);
+        } catch (RuntimeException ex) {
+            closeAll(payload);
+            PENDING.remove(requestId);
+            future.cancel(false);
+            throw ex;
+        }
+        return future.thenApply(reply -> {
+            try (reply) {
+                return cloneReceivedParts(reply);
+            }
+        });
     }
 
     void requestToRouter(RoutingId peerRid, List<Message> parts,
                          BiConsumer<RequestResult, List<Message>> callback,
                          SendFlags flags, Duration timeout) {
-        requestViaNativeCallback(parts, callback, timeout, (arena, payload,
-            requestId, timeoutMs) -> Native.spotRequestToRouter(handle(),
-              nativeRoutingId(arena, Objects.requireNonNull(peerRid, "peerRid")),
-              movePayloadToNative(arena, payload), payload.size(),
-              REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
-              Objects.requireNonNull(flags, "flags").value(),
-              toTimeoutInt(timeoutMs)));
+        Objects.requireNonNull(callback, "callback");
+        long timeoutMs = timeoutMillis(timeout);
+        long requestId = NEXT_REQUEST_ID.getAndIncrement();
+        List<Message> payload = clonePayload(parts);
+        CompletableFuture<Received> future = registerPending(requestId, timeoutMs);
+        try {
+            submitSpotRequestRouter(Objects.requireNonNull(peerRid, "peerRid"),
+                payload, REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
+                Objects.requireNonNull(flags, "flags").value(),
+                toTimeoutInt(timeoutMs));
+            closeAll(payload);
+        } catch (RuntimeException ex) {
+            closeAll(payload);
+            PENDING.remove(requestId);
+            future.cancel(false);
+            throw ex;
+        }
+        future.whenComplete((reply, error) -> {
+            List<Message> response = List.of();
+            if (reply != null) {
+                try {
+                    response = cloneReceivedParts(reply);
+                } finally {
+                    reply.close();
+                }
+            }
+            callback.accept(error == null ? RequestResult.OK
+                : requestResult(error), response);
+        });
     }
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                      long requestSeq, List<Message> parts, SendFlags flags) {
         requireReplyFlagsSupported(flags);
-        sendViaNative(parts, (arena, payload) -> Native.spotReplySpot(handle(),
-          nativeRoutingId(arena, Objects.requireNonNull(destNodeRid,
-            "destNodeRid")),
-          nativeRoutingId(arena, Objects.requireNonNull(destSpotRid,
-            "destSpotRid")),
-          requestSeq, movePayloadToNative(arena, payload), payload.size()));
+        List<Message> payload = clonePayload(parts);
+        try {
+            submitSpotReplySpot(Objects.requireNonNull(destNodeRid,
+                "destNodeRid"), Objects.requireNonNull(destSpotRid,
+                "destSpotRid"), requestSeq, payload);
+        } finally {
+            closeAll(payload);
+        }
     }
 
     void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts,
                        SendFlags flags) {
         requireReplyFlagsSupported(flags);
-        sendViaNative(parts, (arena, payload) -> Native.spotReplyRouter(handle(),
-          nativeRoutingId(arena, Objects.requireNonNull(peerRid, "peerRid")),
-          requestSeq, movePayloadToNative(arena, payload), payload.size()));
+        List<Message> payload = clonePayload(parts);
+        try {
+            submitSpotReplyRouter(Objects.requireNonNull(peerRid, "peerRid"),
+                requestSeq, payload);
+        } finally {
+            closeAll(payload);
+        }
     }
 
     Received recvRouted(RecvFlags flags) {
         Objects.requireNonNull(flags, "flags");
         ensureOpen();
+        Received active = activeLazyReceive.get();
+        if (active != null) {
+            InternalAccess.receivedForceMaterialize(active);
+            activeLazyReceive.remove();
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment spotRidOut = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment requestSeqOut = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotRecv(handle(), sourceRidOut, spotRidOut, requestSeqOut,
-              partsOut, partCountOut, flags.value());
-            if (rc != 0) {
-                throw new RecvException(RecvResult.fromValue(rc));
+            MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
+            Message firstPart = new Message();
+            boolean success = false;
+            try {
+                int rc = Native.spotRecvPart(handle(), sourceRidOut, spotRidOut,
+                    requestSeqOut, InternalAccess.messageNativeHandle(firstPart),
+                    hasMoreOut, flags.value());
+                if (rc != 0) {
+                    throw new RecvException(RecvResult.fromValue(rc));
+                }
+                success = true;
+                boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                InternalAccess.messageFinishReceive(firstPart, hasMore);
+                RoutingId source = readRoutingIdOut(sourceRidOut);
+                RoutingId sourceSpot = readRoutingIdOut(spotRidOut);
+                long requestSeq = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
+                byte[] sourceBytes = source == null ? null : source.toBytes();
+                byte[] sourceSpotBytes = sourceSpot == null
+                    ? null : sourceSpot.toBytes();
+                Received.PartCursor cursor = hasMore
+                    ? new SpotReceiveCursor(flags.value()) : null;
+                Received[] ref = new Received[1];
+                Runnable onTerminal = () -> {
+                    Received pending = activeLazyReceive.get();
+                    if (pending == ref[0]) {
+                        activeLazyReceive.remove();
+                    }
+                };
+                Received received = InternalAccess.receivedLazy(sourceBytes,
+                    sourceSpotBytes, firstPart, cursor, requestSeq,
+                    requestSeq != 0L, requestSeq == 0L ? null
+                    : (replyParts, sendFlags) -> {
+                        if (sourceSpot != null) {
+                            replyToSpot(source, sourceSpot, requestSeq,
+                                replyParts, sendFlags);
+                        } else {
+                            replyToRouter(source, requestSeq, replyParts,
+                                sendFlags);
+                        }
+                    }, onTerminal);
+                ref[0] = received;
+                if (hasMore) {
+                    activeLazyReceive.set(received);
+                }
+                return received;
+            } finally {
+                if (!success) {
+                    try {
+                        firstPart.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
             }
-            RoutingId source = readRoutingIdOut(sourceRidOut);
-            RoutingId sourceSpot = readRoutingIdOut(spotRidOut);
-            long requestSeq = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
-            long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
-            Message[] parts = InternalAccess.messageFromOwnedMsgVector(
-              partsOut.get(ValueLayout.ADDRESS, 0), partCount);
-            return InternalAccess.received(source, sourceSpot, parts, requestSeq,
-              requestSeq != 0L,
-              requestSeq == 0L ? null : (replyParts, sendFlags) -> {
-                  if (sourceSpot != null) {
-                      replyToSpot(source, sourceSpot, requestSeq, replyParts,
-                        sendFlags);
-                  } else {
-                      replyToRouter(source, requestSeq, replyParts, sendFlags);
-                  }
-              });
         }
     }
 
@@ -418,6 +458,277 @@ final class SpotRoutedSupport implements AutoCloseable {
             }
         } finally {
             closeAll(payload);
+        }
+    }
+
+    private void submitSpotSendRouter(RoutingId peerRid,
+                                      List<Message> payload,
+                                      int flags) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = spotSendRouterPartOnce(peerRid, payload.get(i), flags,
+                    partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == 4)
+                    continue;
+                throw submitFailure("zlink_spot_send_router_part");
+            }
+        }
+    }
+
+    private void submitSpotRequestRouter(RoutingId peerRid,
+                                         List<Message> payload,
+                                         MemorySegment handler,
+                                         MemorySegment userData,
+                                         int flags,
+                                         int timeoutMs) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = spotRequestRouterPartOnce(peerRid, payload.get(i),
+                    i + 1 < payload.size() ? MemorySegment.NULL : handler,
+                    i + 1 < payload.size() ? MemorySegment.NULL : userData,
+                    flags, partFlag, i + 1 < payload.size() ? 0 : timeoutMs);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == 4)
+                    continue;
+                throw submitFailure("zlink_spot_request_router_part");
+            }
+        }
+    }
+
+    private void submitSpotReplySpot(RoutingId destNodeRid,
+                                     RoutingId destSpotRid,
+                                     long requestSeq,
+                                     List<Message> payload) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = spotReplySpotPartOnce(destNodeRid, destSpotRid,
+                    requestSeq, payload.get(i), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == 4)
+                    continue;
+                throw submitFailure("zlink_spot_reply_spot_part");
+            }
+        }
+    }
+
+    private void submitSpotReplyRouter(RoutingId peerRid, long requestSeq,
+                                       List<Message> payload) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = spotReplyRouterPartOnce(peerRid, requestSeq,
+                    payload.get(i), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == 4)
+                    continue;
+                throw submitFailure("zlink_spot_reply_router_part");
+            }
+        }
+    }
+
+    private int spotSendRouterPartOnce(RoutingId peerRid, Message part,
+                                       int flags, int partFlag) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+            try {
+                int rc = Native.spotSendRouterPart(handle(), nativeRid,
+                    nativeMsg, flags, partFlag);
+                if (rc != 0) {
+                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
+                        false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                    anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private int spotRequestRouterPartOnce(RoutingId peerRid, Message part,
+                                          MemorySegment handler,
+                                          MemorySegment userData,
+                                          int flags,
+                                          int partFlag,
+                                          int timeoutMs) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+            try {
+                int rc = Native.spotRequestRouterPart(handle(), nativeRid,
+                    nativeMsg, handler, userData, flags, partFlag, timeoutMs);
+                if (rc != 0) {
+                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
+                        false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                    anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private int spotReplySpotPartOnce(RoutingId destNodeRid,
+                                      RoutingId destSpotRid,
+                                      long requestSeq,
+                                      Message part,
+                                      int partFlag) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
+            MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+            try {
+                int rc = Native.spotReplySpotPart(handle(), nodeRid, spotRid,
+                    requestSeq, nativeMsg, partFlag);
+                if (rc != 0) {
+                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
+                        false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                    anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private int spotReplyRouterPartOnce(RoutingId peerRid,
+                                        long requestSeq,
+                                        Message part,
+                                        int partFlag) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+            try {
+                int rc = Native.spotReplyRouterPart(handle(), nativeRid,
+                    requestSeq, nativeMsg, partFlag);
+                if (rc != 0) {
+                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
+                        false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                    anchor);
+                throw ex;
+            }
+        }
+    }
+
+    private SubmitException submitFailure(String apiName) {
+        int errno = Native.errno();
+        if (errno == 11 || errno == 10035) {
+            return new SubmitException(SubmitResult.BACKPRESSURED, errno);
+        }
+        if (errno == 107 || errno == 10057 || errno == 113 || errno == 10065) {
+            return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
+        }
+        throw ZlinkException.fromLastError(apiName);
+    }
+
+    private final class SpotReceiveCursor implements Received.PartCursor {
+        private final int flags;
+        private final Arena arena = Arena.ofConfined();
+        private final MemorySegment sourceRidOut = arena.allocate(
+            ValueLayout.ADDRESS);
+        private final MemorySegment spotRidOut = arena.allocate(
+            ValueLayout.ADDRESS);
+        private final MemorySegment requestSeqOut = arena.allocate(
+            ValueLayout.JAVA_LONG);
+        private final MemorySegment hasMoreOut = arena.allocate(
+            ValueLayout.JAVA_INT);
+        private boolean hasMore = true;
+        private boolean closed;
+
+        private SpotReceiveCursor(int flags) {
+            this.flags = flags;
+        }
+
+        @Override
+        public Message nextPartOrNull() {
+            if (closed || !hasMore)
+                return null;
+            while (true) {
+                Message next = new Message();
+                boolean success = false;
+                try {
+                    int rc = Native.spotRecvPart(handle(), sourceRidOut,
+                        spotRidOut, requestSeqOut,
+                        InternalAccess.messageNativeHandle(next),
+                        hasMoreOut, flags);
+                    if (rc == 0) {
+                        success = true;
+                        hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                        InternalAccess.messageFinishReceive(next, hasMore);
+                        if (!hasMore) {
+                            closeArena();
+                        }
+                        return next;
+                    }
+                } finally {
+                    if (!success) {
+                        try {
+                            next.close();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
+
+                int errno = Native.errno();
+                if (errno == 4)
+                    continue;
+                closeArena();
+                throw ZlinkException.fromLastError("zlink_spot_recv_part");
+            }
+        }
+
+        @Override
+        public void close() {
+            if (closed)
+                return;
+            while (hasMore) {
+                Message next = nextPartOrNull();
+                if (next == null)
+                    break;
+                try {
+                    next.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
+            closed = true;
+            closeArena();
+        }
+
+        private void closeArena() {
+            hasMore = false;
+            if (arena.scope().isAlive()) {
+                arena.close();
+            }
         }
     }
 

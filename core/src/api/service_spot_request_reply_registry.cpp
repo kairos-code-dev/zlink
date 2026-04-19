@@ -2,10 +2,10 @@
 
 #include "utils/precompiled.hpp"
 
-#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_dispatch_context_internal.hpp"
@@ -34,7 +34,8 @@ struct routing_pair_t
     std::string spot_rid;
 };
 
-std::map<void *, std::shared_ptr<spot_request_reply_state_t> > g_spot_owner_states;
+std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
+  g_spot_owner_states;
 
 zlink::ctx_t *resolve_spot_ctx (void *spot_)
 {
@@ -226,7 +227,7 @@ zlink::spot_reqrep_internal::try_find_spot_state (void *spot_)
         return std::shared_ptr<spot_request_reply_state_t> ();
 
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
-    std::map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator it =
+    std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator it =
       g_spot_owner_states.find (spot_);
     return it != g_spot_owner_states.end ()
              ? it->second
@@ -322,7 +323,7 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     std::shared_ptr<spot_request_reply_state_t> state;
     {
         std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
-        std::map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
+        std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
           it = g_spot_owner_states.find (spot_);
         if (it != g_spot_owner_states.end ())
             state = it->second;

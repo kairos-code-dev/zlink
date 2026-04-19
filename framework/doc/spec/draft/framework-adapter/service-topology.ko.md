@@ -21,9 +21,11 @@
 - event subscriber
 - stream handler
 
-## 2. service grouping
+## 2. channel grouping
 
-현재 초안은 provider grouping의 기준을 `service_name`으로 본다.
+현재 초안은 provider grouping의 기준을 `channel_name`으로 본다. 현재 구현과
+공개 헤더에는 `service_name` 필드 이름이 남아 있는 영역이 있으나, 의미는
+channel 쪽에 더 가깝다.
 
 예를 들면 아래처럼 묶는다.
 
@@ -32,17 +34,18 @@
 - `api.payment`
 - `game.stage.sync`
 
-클라이언트는 endpoint 주소보다 `service_name`을 먼저 기준으로 삼는다.
+클라이언트는 endpoint 주소보다 `channel_name`을 먼저 기준으로 삼는다.
 현재 방향에서는 framework runtime도 이 기준을 그대로 따른다. 즉 outbound 요청
-경로는 "노드 하나에 모든 service를 합쳐 관리하는 연결"보다, "접근하려는
-service마다 별도 channel을 두는 구조"를 기본으로 본다.
+경로는 "노드 하나에 모든 channel을 합쳐 관리하는 연결"보다, "접근하려는
+channel마다 별도 outbound socket을 두는 구조"를 기본으로 본다.
 
 - `api.profile`에 처음 요청하면 `api.profile` 전용 channel을 만든다.
-- 이 channel은 그 service view에 묶인 `Discovery`와 outbound socket을 가진다.
-- 같은 `service_name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
-- framework는 그 service에 대한 `rid` 집합과 상태만 관리하면 된다.
+- 이 channel은 그 channel view에 묶인 `Discovery`와 `DEALER(client)` outbound
+  socket을 가진다.
+- 같은 `channel_name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
+- framework는 그 channel에 대한 `rid` 집합과 상태만 관리하면 된다.
 
-수동 연결을 쓰면 그 service의 provider 집합을 직접 설정한다. 운영 점검이나 제어
+수동 연결을 쓰면 그 channel의 provider 집합을 직접 설정한다. 운영 점검이나 제어
 plane에서는 Registry topology snapshot/query 또는 원격 `RegistryQueryClient`로
 전체 provider 집합을 읽을 수도 있다.
 
@@ -54,8 +57,8 @@ section 3을 참고한다.
 
 | 공용 모델 | 내부 기본 매핑 초안 |
 |-----------|---------------------|
-| `request-response` | `ROUTER <-> ROUTER`, 필요하면 routed `SPOT` request/reply |
-| `command` | `ROUTER <-> ROUTER` send 또는 `SPOT` routed send |
+| `request-response` | `DEALER(client) -> ROUTER(server)` channel 단위 요청; node 간 직접 경로가 필요하면 `ROUTER <-> ROUTER` |
+| `command` | `DEALER(client) -> ROUTER(server)` channel 단위 send; node 간 직접 send가 필요하면 `ROUTER <-> ROUTER` |
 | `publish-subscribe` | `PUB/SUB` 또는 같은 channel의 `SPOT` mesh |
 | `stream` | `STREAM` |
 | `worker-dispatch` | 별도 조합 모델 |
@@ -84,9 +87,9 @@ section 3을 참고한다.
 - `IZLinkClient`가 `api.inventory`에 요청하면 framework는 `api.inventory` channel을 쓴다.
 - api 서버는 각 service group에 대해 request handler를 제공한다.
 
-즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 service마다 별도
-channel과 socket을 가질 수 있다. 현재 초안은 이 service별 channel 구조를 기본
-방향으로 본다.
+즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 channel마다 별도
+outbound socket을 가질 수 있다. 현재 초안은 이 channel별 outbound socket 구조를
+기본 방향으로 본다.
 
 ## 5. Discovery와 수동 연결
 
@@ -95,9 +98,9 @@ channel과 socket을 가질 수 있다. 현재 초안은 이 service별 channel 
 ### 5.1 Discovery
 
 - 운영 환경 기본값으로 적합하다.
-- service_name 기준 provider grouping과 자동 갱신에 유리하다.
-- 각 service 전용 channel이 자기 service view를 독립적으로 유지하기에 적합하다.
-- 일반 요청 경로에서는 다른 service topology를 매번 조회하지 않고, 현재 service
+- channel_name 기준 provider grouping과 자동 갱신에 유리하다.
+- 각 channel이 자기 channel view를 독립적으로 유지하기에 적합하다.
+- 일반 요청 경로에서는 다른 channel topology를 매번 조회하지 않고, 현재 channel
   view와 `rid` 집합만 보면 된다.
 
 ### 5.2 수동 연결
@@ -108,12 +111,12 @@ channel과 socket을 가질 수 있다. 현재 초안은 이 service별 channel 
 ### 5.3 Registry topology query
 
 - 운영 점검, warm-up, 관리 화면, 디버깅에 유용하다.
-- Discovery가 지금 보고 있는 개별 service view 밖의 전체 상태를 읽을 수 있다.
-- 다만 일반 요청 경로의 service channel 생성과 실시간 요청 분산을 모두 topology
+- Discovery가 지금 보고 있는 개별 channel view 밖의 전체 상태를 읽을 수 있다.
+- 다만 일반 요청 경로의 channel 생성과 실시간 요청 분산을 모두 topology
   query에 의존하는 구조는 기본 방향으로 보지 않는다.
 
 즉 공용 표면은 "client/server 등록 방식"을 먼저 보이고, 내부 구현은
-"service별 Discovery + service별 outbound channel"을 기본으로 두는 편이 좋다.
+"channel별 Discovery + channel별 outbound socket"을 기본으로 두는 편이 좋다.
 
 ## 6. 범위 밖에 두는 것
 

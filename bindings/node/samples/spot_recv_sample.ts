@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('../dist/canonical');
+const SERVICE_TYPE_SPOT = 0x3002;
 
 const SERVICE_NAME = 'sample';
 
@@ -19,48 +20,64 @@ async function reservePort() {
 }
 
 async function main() {
-  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const ctx = new zlink.Context();
-  const node = new zlink.SpotNode(ctx);
-  const pubSocket = new zlink.PubSocket(ctx);
-  const subSocket = new zlink.SubSocket(ctx);
-  let spot = null;
+  const registry = new zlink.Registry(ctx);
+  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+  const publisherNode = new zlink.SpotNode(ctx);
+  const subscriberNode = new zlink.SpotNode(ctx);
+  let publisher = null;
+  let subscriber = null;
   const topic = 'room:lobby';
   const sent = 'hello-spot';
+  const registryPub = `tcp://127.0.0.1:${await reservePort()}`;
+  const registryRouter = `tcp://127.0.0.1:${await reservePort()}`;
+  const publisherEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const subscriberEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   try {
-    pubSocket.bind(endpoint);
-    subSocket.connect(endpoint);
-    node.attachPubSub(SERVICE_NAME, pubSocket, subSocket);
-    spot = node.createSpot();
-    spot.setSubscription(topic);
+    registry.bind(registryPub, registryRouter);
+    discovery.connectRegistry(registryRouter);
+    publisherNode.attachDiscovery(discovery);
+    subscriberNode.attachDiscovery(discovery);
+    publisherNode.bind(publisherEndpoint);
+    subscriberNode.bind(subscriberEndpoint);
+    publisher = publisherNode.createSpot();
+    subscriber = subscriberNode.createSpot();
+    subscriber.setSubscription(topic);
     const deadline = Date.now() + 5000;
     let received = null;
     while (Date.now() < deadline) {
-      spot.publish(SERVICE_NAME, topic, Buffer.from(sent));
+      publisher.publish(SERVICE_NAME, topic, Buffer.from(sent));
       try {
-        received = spot.subscribe(zlink.RecvFlags.DontWait);
+        received = subscriber.subscribe(zlink.RecvFlags.DontWait);
         break;
       } catch (error) {
-        if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+        if (!(error instanceof zlink.RecvError)) {
+          throw error;
+        }
+        if (error.result !== zlink.RecvResult.NoData && error.internalErrno !== 2) {
           throw error;
         }
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.notEqual(received, null);
-    assert.equal(received.topic, topic);
     assert.equal(received.serviceName, SERVICE_NAME);
+    assert.equal(received.topic, topic);
     const recv = received.parts[0].data().toString();
     assert.equal(recv, sent);
     console.log(`[spot/recv] service: "${SERVICE_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);
   } finally {
-    if (spot) {
-      spot.close();
+    if (subscriber) {
+      subscriber.close();
     }
-    node.close();
-    subSocket.close();
-    pubSocket.close();
+    if (publisher) {
+      publisher.close();
+    }
+    subscriberNode.close();
+    publisherNode.close();
+    discovery.close();
+    registry.close();
     ctx.close();
   }
 }

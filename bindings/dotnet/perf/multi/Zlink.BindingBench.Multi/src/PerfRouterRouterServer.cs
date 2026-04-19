@@ -44,26 +44,27 @@ internal static class PerfRouterRouterServer
         var events = new List<PollEvent>(1);
         poller.Add(server, PollEvents.PollIn);
 
-        while (true)
-        {
-            if (!WaitForEvents(poller, events, PollTimeoutMs))
-                continue;
-            if ((events[0].Revents & PollEvents.PollIn) == 0)
-                continue;
-
-            while (true)
+        bool stop = false;
+            while (!stop)
             {
-                Received? received = null;
-                try
+                if (!WaitForEvents(poller, events, PollTimeoutMs))
+                    continue;
+                if ((events[0].Revents & PollEvents.PollIn) == 0)
+                    continue;
+
+                while (true)
                 {
-                    received = server.TryReceiveRouted();
-                    if (received == null || received.Parts.Count == 0)
+                    using Received? received = TryRecvNoWait(server);
+                    if (received == null || received.Count == 0)
                         break;
 
-                    Message bodyMessage = received.Parts[0];
+                    Message bodyMessage = received.SinglePartOrThrow();
                     ReadOnlySpan<byte> body = bodyMessage.AsReadOnlySpan();
                     if (IsStopTokenPayload(body))
-                        goto Done;
+                    {
+                        stop = true;
+                        break;
+                    }
 
                     if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
                         && header.RunId == expectedRunId
@@ -85,29 +86,10 @@ internal static class PerfRouterRouterServer
 
                     if (received.RoutingId == null)
                         return 2;
-                    Message[] replies = CreateFreshParts(received.Parts);
-                    try
-                    {
-                        server.Send(received.RoutingId.Value, replies);
-                    }
-                    finally
-                    {
-                        DisposeAllQuietly(replies);
-                    }
-                }
-                catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                                || IsInterrupted(ex.InternalErrno))
-                {
-                    break;
-                }
-                finally
-                {
-                    DisposeReceived(received);
+                    using Message reply = bodyMessage.Move();
+                    server.Send(received.RoutingId.Value, reply);
                 }
             }
-        }
-
-Done:
         if (benchStartTicks > 0 && echoCount > 0)
         {
             double configuredSeconds = Math.Max(1.0,
@@ -126,29 +108,9 @@ Done:
         return 0;
     }
 
-    private static void DisposeReceived(Received? received)
+    private static Received? TryRecvNoWait(RouterSocket socket)
     {
-        if (received == null)
-            return;
-
-        for (int i = 0; i < received.Parts.Count; i++)
-            TryDisposeQuietly(received.Parts[i]);
+        return socket.TryRecv(out Received? received) ? received : null;
     }
 
-    private static Message[] CreateFreshParts(IReadOnlyList<Message> parts)
-    {
-        var fresh = new Message[parts.Count];
-        try
-        {
-            for (int i = 0; i < parts.Count; i++)
-                fresh[i] = Message.FromBytes(parts[i].AsReadOnlySpan());
-            return fresh;
-        }
-        catch
-        {
-            for (int i = 0; i < fresh.Length; i++)
-                TryDisposeQuietly(fresh[i]);
-            throw;
-        }
-    }
 }

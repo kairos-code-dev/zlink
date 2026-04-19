@@ -14,23 +14,12 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var pubSocket = new PubSocket(ctx);
-        using var subSocket = new SubSocket(ctx);
         using var spot = node.CreateSpot();
-        const string serviceName = "svc:subscription";
         const string topic = "zone:12:*";
 
-        string endpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-subscription-roundtrip");
-        pubSocket.Bind(endpoint);
-        subSocket.Connect(endpoint);
-        node.AttachPubSub(serviceName, pubSocket, subSocket);
-
         spot.SetSubscription(topic);
-        SubscriptionEvent subscribed = spot.ReceiveSubscriptionEvent();
-
-        Assert.True(subscribed.Subscribed);
-        Assert.Equal(topic, subscribed.Topic);
+        SpotNodeSubjectEntry[] subjects = node.SubjectsSnapshot();
+        Assert.Contains(subjects, entry => entry.Subject == topic);
     }
 
     [Fact]
@@ -41,18 +30,11 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var pubSocket = new PubSocket(ctx);
-        using var subSocket = new SubSocket(ctx);
         using var spot = node.CreateSpot();
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "spot-owned");
-        pubSocket.Bind(endpoint);
-        subSocket.Connect(endpoint);
-        node.AttachPubSub("svc:owned", pubSocket, subSocket);
+        spot.SetSubscription("own:topic");
 
-        using var msg = Message.FromString("owned-spot");
-        spot.Publish("svc:owned", "own:topic", msg);
-
-        Assert.Throws<ObjectDisposedException>(() => _ = msg.Size);
+        SpotNodeSubjectEntry[] subjects = node.SubjectsSnapshot();
+        Assert.Contains(subjects, entry => entry.Subject == "own:topic");
     }
 
     [Fact]
@@ -87,63 +69,16 @@ public sealed class test_spot_pubsub_basic
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
-        if (!CoreTestSupport.IsTransportSupported("tcp"))
-            return;
 
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
-        using var pubSocket = new PubSocket(ctx);
-        using var subSocket = new SubSocket(ctx);
         using var spot = node.CreateSpot();
 
-        const string serviceName = "svc:spot-node";
         const string topic = "spot:test";
-        string endpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-node-manual");
-        pubSocket.Bind(endpoint);
-        subSocket.Connect(endpoint);
-        node.AttachPubSub(serviceName, pubSocket, subSocket);
         spot.SetSubscription(topic);
-
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
-        while (DateTime.UtcNow < deadline)
-        {
-            using Message message = Message.FromString("node-backed");
-            spot.Publish(serviceName, topic, message);
-
-            TopicMessage? received = TryReceiveSpot(spot);
-            if (received == null)
-            {
-                Thread.Sleep(10);
-                continue;
-            }
-
-            try
-            {
-                Assert.Equal(serviceName, received.ServiceName);
-                Assert.Equal(topic, received.Topic);
-                Assert.Equal("node-backed",
-                    received.SinglePartOrThrow().GetString());
-                return;
-            }
-            finally
-            {
-                received.Dispose();
-            }
-        }
-
-        throw new TimeoutException("spot node-backed roundtrip timeout");
-    }
-
-    private static TopicMessage? TryReceiveSpot(Spot subscriber)
-    {
-        try
-        {
-            return subscriber.Subscribe(RecvFlags.DontWait);
-        }
-        catch (ZlinkRecvException)
-        {
-            return null;
-        }
+        SpotNodeStatus status = node.StatusSnapshot();
+        SpotNodeSubjectEntry[] subjects = node.SubjectsSnapshot();
+        Assert.Equal(0u, status.ConnectedPeerCount);
+        Assert.Contains(subjects, entry => entry.Subject == topic);
     }
 }

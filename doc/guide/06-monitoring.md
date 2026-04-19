@@ -171,8 +171,8 @@ submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
 
 `SpotNode` callers receive the same change through the service monitor
 event `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`, drained from
-`zlink_spot_node_monitor_recv()` together with the `service_name` and
-attachment role.
+`zlink_service_monitor_recv()` on a monitor opened against the
+`SpotNode`.
 
 ## 5. Event Flow Diagrams
 

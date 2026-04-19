@@ -51,6 +51,8 @@ public abstract class Socket implements AutoCloseable {
       ThreadLocal.withInitial(SendScratch::new);
     private final ThreadLocal<LegacyReceiveState> legacyReceiveState =
       ThreadLocal.withInitial(LegacyReceiveState::new);
+    private final ThreadLocal<Received> activeLazyReceive =
+      new ThreadLocal<>();
 
     private enum OptionFamily {
         COMMON, ROUTER, PUB, SUB, STREAM
@@ -274,14 +276,16 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
         ensureBlockingSendAllowed(flag);
-        int effectiveFlags = flag.getValue();
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeRoutingId = nativeRoutingId(scratch, routingId);
-        int rc = Native.sendMultipart(handle, nativeRoutingId,
-            message.nativeHandle(), 1, effectiveFlags);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_send_rid");
-        message.markTransferred();
+        while (true) {
+            int rc = sendPartOnce(message, routingId, flag.getValue(),
+                Native.PART_FINAL);
+            if (rc == 0)
+                return;
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throwPartSubmitFailure("zlink_send_part_rid");
+        }
     }
 
     void send(List<Message> parts) {
@@ -304,13 +308,14 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(routingId, "routingId");
         Objects.requireNonNull(message, "message");
         while (true) {
-            int rc = withNativeSendNoWaitFrame(message, routingId);
-            if (rc >= 0)
-                return SendResult.fromNativeValue(rc);
+            int rc = sendPartOnce(message, routingId,
+                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
+            if (rc == 0)
+                return SendResult.SENT;
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            throw ZlinkException.fromLastError("zlink_send_rid");
+            return classifyNonBlockingSendErrno("zlink_send_part_rid");
         }
     }
 
@@ -445,15 +450,15 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flags, "flags");
         ensureBlockingSendAllowed(flags);
-        int effectiveFlags = flags.getValue();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeTopic = arena.allocateFrom(topicId,
-                StandardCharsets.UTF_8);
-            int rc = Native.publish(handle, nativeTopic, message.nativeHandle(),
-                1, effectiveFlags);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_publish");
-            message.markTransferred();
+        while (true) {
+            int rc = publishPartOnce(topicId, message, flags.getValue(),
+                Native.PART_FINAL);
+            if (rc == 0)
+                return;
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throwPartSubmitFailure("zlink_publish_part");
         }
     }
 
@@ -475,13 +480,14 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(message, "message");
         while (true) {
-            int rc = withNativePublishNoWaitFrame(topicId, message);
-            if (rc >= 0)
-                return SendResult.fromNativeValue(rc);
+            int rc = publishPartOnce(topicId, message,
+                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
+            if (rc == 0)
+                return SendResult.SENT;
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            throw ZlinkException.fromLastError("zlink_publish");
+            return classifyNonBlockingSendErrno("zlink_publish_part");
         }
     }
 
@@ -515,6 +521,73 @@ public abstract class Socket implements AutoCloseable {
 
     Received tryRecv() {
         return recvNoWaitOrNull();
+    }
+
+    Received recvLazy(ReceiveFlag flags) {
+        Received received = recvLazyOrNull(flags, false);
+        if (received == null) {
+            throw new RecvException(RecvResult.NO_DATA, ERRNO_EAGAIN);
+        }
+        return received;
+    }
+
+    Received recvLazyNoWaitOrNull() {
+        return recvLazyOrNull(ReceiveFlag.DONTWAIT, true);
+    }
+
+    private Received recvLazyOrNull(ReceiveFlag flags, boolean allowNoData) {
+        Objects.requireNonNull(flags, "flags");
+        prepareRecvLikeOperation();
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
+                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
+                Message firstPart = new Message();
+                boolean success = false;
+                try {
+                    int rc = Native.recvPart(handle, sourceRidOut,
+                        firstPart.nativeHandle(), hasMoreOut, flags.getValue());
+                    if (rc == 0) {
+                        success = true;
+                        boolean hasMore =
+                            hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                        firstPart.finishReceive(hasMore);
+                        byte[] routingId = decodeRoutingIdPtr(
+                            sourceRidOut.get(ValueLayout.ADDRESS, 0));
+                        Received.PartCursor cursor = hasMore
+                            ? new BasicReceiveCursor(flags.getValue())
+                            : null;
+                        Received[] ref = new Received[1];
+                        Runnable onTerminal = () -> {
+                            Received active = activeLazyReceive.get();
+                            if (active == ref[0]) {
+                                activeLazyReceive.remove();
+                            }
+                        };
+                        Received received = new Received(routingId, null,
+                            firstPart, cursor, 0L, false, null, onTerminal);
+                        ref[0] = received;
+                        return registerLazyReceive(received, hasMore);
+                    }
+                } finally {
+                    if (!success) {
+                        try {
+                            firstPart.close();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            if (allowNoData
+                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                return null;
+            }
+            throw ZlinkException.fromLastError("zlink_recv_part");
+        }
     }
 
     /** Receives a topic-aware delivery from a SUB/XSUB-style socket. */
@@ -585,6 +658,81 @@ public abstract class Socket implements AutoCloseable {
 
     void onSendReady(SendReadyHandler handler) {
         socketCore.onSendReady(handler);
+    }
+
+    private final class BasicReceiveCursor implements Received.PartCursor {
+        private final int flags;
+        private final Arena arena = Arena.ofConfined();
+        private final MemorySegment sourceRidOut = arena.allocate(
+            ValueLayout.ADDRESS);
+        private final MemorySegment hasMoreOut = arena.allocate(
+            ValueLayout.JAVA_INT);
+        private boolean hasMore = true;
+        private boolean closed;
+
+        private BasicReceiveCursor(int flags) {
+            this.flags = flags;
+        }
+
+        @Override
+        public Message nextPartOrNull() {
+            if (closed || !hasMore)
+                return null;
+            while (true) {
+                Message next = new Message();
+                boolean success = false;
+                try {
+                    int rc = Native.recvPart(handle, sourceRidOut,
+                        next.nativeHandle(), hasMoreOut, flags);
+                    if (rc == 0) {
+                        success = true;
+                        hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                        next.finishReceive(hasMore);
+                        if (!hasMore) {
+                            closeArena();
+                        }
+                        return next;
+                    }
+                } finally {
+                    if (!success) {
+                        try {
+                            next.close();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
+
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                closeArena();
+                throw ZlinkException.fromLastError("zlink_recv_part");
+            }
+        }
+
+        @Override
+        public void close() {
+            if (closed)
+                return;
+            while (hasMore) {
+                Message next = nextPartOrNull();
+                if (next == null)
+                    break;
+                try {
+                    next.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
+            closed = true;
+            closeArena();
+        }
+
+        private void closeArena() {
+            hasMore = false;
+            if (arena.scope().isAlive()) {
+                arena.close();
+            }
+        }
     }
 
     int send(byte[] data, int offset, int length, int sendFlags) {
@@ -712,6 +860,10 @@ public abstract class Socket implements AutoCloseable {
     }
 
     void closeInternal() {
+        if (socketCore.discoveryAttached()) {
+            throw ZlinkException.fromErrno("zlink_close",
+                ErrorCode.EFSM.getValue());
+        }
         if (handle != null && handle.address() != 0) {
             if (own) {
                 int rc = Native.close(handle);
@@ -1033,35 +1185,31 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
         ensureBlockingSendAllowed(flag);
-        int effectiveFlags = flag.getValue();
-        withNativeSendFrame(message, null, (nativeMsg, nativeRoutingId) -> {
-            int rc = Native.sendMultipart(handle, nativeMsg, 1, effectiveFlags);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send");
-            if (rc != SendResult.SENT.nativeValue())
-                throw submitExceptionFromSendResult(rc);
-            return null;
-        });
+        while (true) {
+            int rc = sendPartOnce(message, null, flag.getValue(),
+                Native.PART_FINAL);
+            if (rc == 0)
+                return;
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throwPartSubmitFailure("zlink_send");
+        }
     }
 
     boolean sendMessageFrameNoWaitResult(Message message, SendFlag flag) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
         while (true) {
-            Integer rc = withNativeSendFrame(message, null,
-              (nativeMsg, nativeRoutingId) -> Native.sendMultipart(handle,
-                nativeMsg, 1, flag.getValue()));
-            if (rc >= 0) {
-                return rc == SendResult.SENT.nativeValue();
-            }
-
+            int rc = sendPartOnce(message, null, flag.getValue(),
+                Native.PART_FINAL);
+            if (rc == 0)
+                return true;
             int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
+            if (errno == ERRNO_EINTR)
                 continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
                 return false;
-            }
             throw ZlinkException.fromLastError("zlink_send");
         }
     }
@@ -1069,10 +1217,10 @@ public abstract class Socket implements AutoCloseable {
     SendResult sendMessageFrameNoWaitResult(Message message) {
         Objects.requireNonNull(message, "message");
         while (true) {
-            int rc = withNativeSendNoWaitFrame(message, null);
-            if (rc >= 0)
-                return SendResult.fromNativeValue(rc);
-
+            int rc = sendPartOnce(message, null, SendFlag.DONTWAIT.getValue(),
+                Native.PART_FINAL);
+            if (rc == 0)
+                return SendResult.SENT;
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
@@ -1080,62 +1228,49 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    private int withNativeSendNoWaitFrame(Message message, RoutingId routingId) {
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeRoutingId = routingId == null
-            ? MemorySegment.NULL
-            : nativeRoutingId(scratch, routingId);
-        int rc = nativeRoutingId.address() == 0
-            ? Native.sendMultipart(handle, message.nativeHandle(), 1,
-                SendFlag.DONTWAIT.getValue())
-            : Native.sendMultipart(handle, nativeRoutingId,
-                message.nativeHandle(), 1, SendFlag.DONTWAIT.getValue());
-        if (rc == SendResult.SENT.nativeValue())
-            message.markTransferred();
-        return rc;
-    }
-
-    private int withNativePublishNoWaitFrame(String topicId, Message message) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeTopic = arena.allocateFrom(topicId,
-                StandardCharsets.UTF_8);
-            int rc = Native.publish(handle, nativeTopic, message.nativeHandle(),
-                1, SendFlag.DONTWAIT.getValue());
-            if (rc == SendResult.SENT.nativeValue())
-                message.markTransferred();
-            return rc;
-        }
-    }
-
-    private <T> T withNativeSendFrame(Message message,
-                                      RoutingId routingId,
-                                      NativeFrameAction<T> action) {
+    private int sendPartOnce(Message message, RoutingId routingId, int flags,
+                             int partFlag) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
             MemorySegment nativeRoutingId = routingId == null
                 ? MemorySegment.NULL
                 : nativeRoutingId(arena, routingId);
             Object anchor = message.transferTo(nativeMsg);
-            boolean success = false;
             try {
-                T result = action.run(nativeMsg, nativeRoutingId);
-                success = true;
-                return result;
-            } finally {
-                if (!success) {
+                int rc = nativeRoutingId.address() == 0
+                    ? Native.sendPart(handle, nativeMsg, flags, partFlag)
+                    : Native.sendPartRid(handle, nativeRoutingId, nativeMsg,
+                        flags, partFlag);
+                if (rc != 0) {
                     message.restoreFromNative(nativeMsg, false, anchor);
-                    try {
-                        NativeMsg.msgClose(nativeMsg);
-                    } catch (RuntimeException ignored) {
-                    }
                 }
+                return rc;
+            } catch (RuntimeException ex) {
+                message.restoreFromNative(nativeMsg, false, anchor);
+                throw ex;
             }
         }
     }
 
-    @FunctionalInterface
-    private interface NativeFrameAction<T> {
-        T run(MemorySegment nativeMsg, MemorySegment nativeRoutingId);
+    private int publishPartOnce(String topicId, Message message, int flags,
+                                int partFlag) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeTopic = arena.allocateFrom(topicId,
+                StandardCharsets.UTF_8);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = message.transferTo(nativeMsg);
+            try {
+                int rc = Native.publishPart(handle, nativeTopic, nativeMsg,
+                    flags, partFlag);
+                if (rc != 0) {
+                    message.restoreFromNative(nativeMsg, false, anchor);
+                }
+                return rc;
+            } catch (RuntimeException ex) {
+                message.restoreFromNative(nativeMsg, false, anchor);
+                throw ex;
+            }
+        }
     }
 
     void recvMessageFrame(Message message, ReceiveFlag flag) {
@@ -1160,46 +1295,59 @@ public abstract class Socket implements AutoCloseable {
 
     Message nextRecvFrame(ReceiveFlag flags, boolean nonBlocking) {
         Objects.requireNonNull(flags, "flags");
+        prepareRecvLikeOperation();
         LegacyReceiveState state = legacyReceiveState.get();
         while (true) {
             if (state.hasPending()) {
                 return state.poll();
             }
-
-            Native.MultipartReceive received = Native.recvMultipart(handle,
-              flags.getValue());
-            if (received != null) {
-                state.replace(materializeFrames(received));
-                continue;
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
+                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
+                Message firstPart = new Message();
+                boolean success = false;
+                try {
+                    int rc = Native.recvPart(handle, sourceRidOut,
+                        firstPart.nativeHandle(), hasMoreOut, flags.getValue());
+                    if (rc == 0) {
+                        success = true;
+                        boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                        firstPart.finishReceive(hasMore);
+                        byte[] routingId = decodeRoutingIdPtr(
+                            sourceRidOut.get(ValueLayout.ADDRESS, 0));
+                        if (routingId == null || routingId.length == 0) {
+                            return firstPart;
+                        }
+                        if (hasMore) {
+                            firstPart.setMore(true);
+                            state.replace(new Message[] {
+                                firstPart
+                            });
+                        } else {
+                            state.replace(new Message[] {firstPart});
+                        }
+                        Message routingFrame = Message.copyOf(routingId);
+                        routingFrame.setMore(true);
+                        return routingFrame;
+                    }
+                } finally {
+                    if (!success) {
+                        try {
+                            firstPart.close();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
             }
-
             int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
+            if (errno == ERRNO_EINTR)
                 continue;
-            }
             if (nonBlocking
                 && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
                 return null;
             }
             throw ZlinkException.fromLastError("zlink_recv");
         }
-    }
-
-    private static Message[] materializeFrames(Native.MultipartReceive received) {
-        byte[] routingId = received.routingId();
-        Message[] payload = Message.fromOwnedMsgVector(received.parts(),
-          received.partCount());
-        int prefix = routingId == null || routingId.length == 0 ? 0 : 1;
-        if (payload.length == 0 && prefix == 0) {
-            return new Message[] {Message.copyOf(EMPTY_BYTES)};
-        }
-        if (prefix == 0) {
-            return payload;
-        }
-        Message[] frames = new Message[payload.length + 1];
-        frames[0] = Message.copyOf(routingId);
-        System.arraycopy(payload, 0, frames, 1, payload.length);
-        return frames;
     }
 
     void sendParts(RoutingId routingId, List<Message> parts,
@@ -1209,100 +1357,50 @@ public abstract class Socket implements AutoCloseable {
         ensureBlockingSendAllowed(flags);
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
-        while (true) {
-            int rc = sendNoWaitPartsOnce(routingId, parts, flags);
-            if (rc == SendResult.SENT.nativeValue())
-                return;
-            if (rc >= 0)
-                throw submitExceptionFromSendResult(rc);
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            if ((nonBlocking || explicitNonBlocking)
-                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                throw new SubmitException(SubmitResult.BACKPRESSURED, errno);
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = sendPartOnce(parts.get(i), routingId, flags.getValue(),
+                    partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                if ((nonBlocking || explicitNonBlocking)
+                    && (errno == ERRNO_EAGAIN
+                        || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                    throw new SubmitException(SubmitResult.BACKPRESSURED,
+                        errno);
+                }
+                throwPartSubmitFailure(
+                    routingId == null ? "zlink_send_part"
+                        : "zlink_send_part_rid");
             }
-            throw ZlinkException.fromLastError(
-                routingId == null ? "zlink_send" : "zlink_send_rid");
         }
     }
 
     SendResult sendNoWaitPartsResult(RoutingId routingId, List<Message> parts) {
         ensureOpen();
         validateParts(parts);
-        while (true) {
-            int rc = sendNoWaitPartsOnceResult(routingId, parts);
-            if (rc >= 0)
-                return SendResult.fromNativeValue(rc);
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            return classifyNonBlockingSendErrno(
-                routingId == null ? "zlink_send" : "zlink_send_rid");
-        }
-    }
-
-    private int sendNoWaitPartsOnce(RoutingId routingId, List<Message> parts,
-                                 SendFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            int count = parts.size();
-            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-            MemorySegment nativeParts = arena.allocate(msgSize * count,
-                NativeLayouts.MSG_LAYOUT.byteAlignment());
-            Object[] anchors = new Object[count];
-            boolean success = false;
-            try {
-                for (int i = 0; i < count; i++) {
-                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
-                        msgSize);
-                    anchors[i] = parts.get(i).transferTo(nativeMsg);
-                }
-                int effectiveFlags = flags.getValue();
-                int rc = routingId == null
-                    ? Native.sendMultipart(handle, nativeParts, count,
-                        effectiveFlags)
-                    : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
-                        nativeParts, count, effectiveFlags);
-                if (rc == SendResult.SENT.nativeValue()) {
-                    success = true;
-                }
-                return rc;
-            } finally {
-                if (!success) {
-                    restoreParts(parts, nativeParts, anchors);
-                }
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = sendPartOnce(parts.get(i), routingId,
+                    SendFlag.DONTWAIT.getValue(), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                return classifyNonBlockingSendErrno(
+                    routingId == null ? "zlink_send_part"
+                        : "zlink_send_part_rid");
             }
         }
-    }
-
-    private int sendNoWaitPartsOnceResult(RoutingId routingId, List<Message> parts) {
-        try (Arena arena = Arena.ofConfined()) {
-            int count = parts.size();
-            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-            MemorySegment nativeParts = arena.allocate(msgSize * count,
-                NativeLayouts.MSG_LAYOUT.byteAlignment());
-            Object[] anchors = new Object[count];
-            boolean success = false;
-            try {
-                for (int i = 0; i < count; i++) {
-                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
-                        msgSize);
-                    anchors[i] = parts.get(i).transferTo(nativeMsg);
-                }
-                int rc = routingId == null
-                    ? Native.sendMultipart(handle, nativeParts, count,
-                        SendFlag.DONTWAIT.getValue())
-                    : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
-                        nativeParts, count, SendFlag.DONTWAIT.getValue());
-                if (rc == SendResult.SENT.nativeValue())
-                    success = true;
-                return rc;
-            } finally {
-                if (!success) {
-                    restoreParts(parts, nativeParts, anchors);
-                }
-            }
-        }
+        return SendResult.SENT;
     }
 
     void publishParts(String topicId, List<Message> parts,
@@ -1312,96 +1410,46 @@ public abstract class Socket implements AutoCloseable {
         ensureBlockingSendAllowed(flags);
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
-        while (true) {
-            int rc = publishNoWaitPartsOnce(topicId, parts, flags);
-            if (rc == SendResult.SENT.nativeValue())
-                return;
-            if (rc >= 0)
-                throw submitExceptionFromSendResult(rc);
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            if ((nonBlocking || explicitNonBlocking)
-                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                throw new SubmitException(SubmitResult.BACKPRESSURED, errno);
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = publishPartOnce(topicId, parts.get(i),
+                    flags.getValue(), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                if ((nonBlocking || explicitNonBlocking)
+                    && (errno == ERRNO_EAGAIN
+                        || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                    throw new SubmitException(SubmitResult.BACKPRESSURED,
+                        errno);
+                }
+                throwPartSubmitFailure("zlink_publish_part");
             }
-            throw ZlinkException.fromLastError("zlink_publish");
         }
     }
 
     SendResult publishNoWaitPartsResult(String topicId, List<Message> parts) {
         ensureOpen();
         validateParts(parts);
-        while (true) {
-            int rc = publishNoWaitPartsOnceResult(topicId, parts);
-            if (rc >= 0)
-                return SendResult.fromNativeValue(rc);
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            return classifyNonBlockingSendErrno("zlink_publish");
-        }
-    }
-
-    private int publishNoWaitPartsOnce(String topicId, List<Message> parts,
-                                    SendFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            int count = parts.size();
-            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-            MemorySegment nativeTopic = arena.allocateFrom(topicId,
-                StandardCharsets.UTF_8);
-            MemorySegment nativeParts = arena.allocate(msgSize * count,
-                NativeLayouts.MSG_LAYOUT.byteAlignment());
-            Object[] anchors = new Object[count];
-            boolean success = false;
-            try {
-                for (int i = 0; i < count; i++) {
-                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
-                        msgSize);
-                    anchors[i] = parts.get(i).transferTo(nativeMsg);
-                }
-                int effectiveFlags = flags.getValue();
-                int rc = Native.publish(handle, nativeTopic, nativeParts, count,
-                    effectiveFlags);
-                if (rc == SendResult.SENT.nativeValue()) {
-                    success = true;
-                }
-                return rc;
-            } finally {
-                if (!success) {
-                    restoreParts(parts, nativeParts, anchors);
-                }
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = publishPartOnce(topicId, parts.get(i),
+                    SendFlag.DONTWAIT.getValue(), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                return classifyNonBlockingSendErrno("zlink_publish_part");
             }
         }
-    }
-
-    private int publishNoWaitPartsOnceResult(String topicId, List<Message> parts) {
-        try (Arena arena = Arena.ofConfined()) {
-            int count = parts.size();
-            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-            MemorySegment nativeTopic = arena.allocateFrom(topicId,
-                StandardCharsets.UTF_8);
-            MemorySegment nativeParts = arena.allocate(msgSize * count,
-                NativeLayouts.MSG_LAYOUT.byteAlignment());
-            Object[] anchors = new Object[count];
-            boolean success = false;
-            try {
-                for (int i = 0; i < count; i++) {
-                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
-                        msgSize);
-                    anchors[i] = parts.get(i).transferTo(nativeMsg);
-                }
-                int rc = Native.publish(handle, nativeTopic, nativeParts, count,
-                    SendFlag.DONTWAIT.getValue());
-                if (rc == SendResult.SENT.nativeValue())
-                    success = true;
-                return rc;
-            } finally {
-                if (!success) {
-                    restoreParts(parts, nativeParts, anchors);
-                }
-            }
-        }
+        return SendResult.SENT;
     }
 
     private SendResult classifyNonBlockingSendErrno(String apiName) {
@@ -1433,23 +1481,16 @@ public abstract class Socket implements AutoCloseable {
         };
     }
 
-    private static void restoreParts(List<Message> parts,
-                                     MemorySegment nativeParts,
-                                     Object[] anchors) {
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        for (int i = 0; i < parts.size(); i++) {
-            MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
-                msgSize);
-            try {
-                parts.get(i).restoreFromNative(nativeMsg, i + 1 < parts.size(),
-                    anchors[i]);
-            } catch (RuntimeException ignored) {
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignoredClose) {
-                }
-            }
+    private void throwPartSubmitFailure(String apiName) {
+        int errno = Native.errno();
+        if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+            throw new SubmitException(SubmitResult.BACKPRESSURED, errno);
         }
+        if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN
+            || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
+            throw new SubmitException(SubmitResult.NOT_CONNECTED, errno);
+        }
+        throw ZlinkException.fromLastError(apiName);
     }
 
     private static void validateParts(List<Message> parts) {
@@ -1480,6 +1521,14 @@ public abstract class Socket implements AutoCloseable {
         return RoutingId.fromTrusted(value);
     }
 
+    static byte[] decodeRoutingIdPtr(MemorySegment nativeRidPtr) {
+        if (nativeRidPtr == null || nativeRidPtr.address() == 0)
+            return null;
+        MemorySegment routingId = nativeRidPtr.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        return decodeRoutingId(routingId);
+    }
+
     static byte[] decodeRoutingId(MemorySegment nativeRid) {
         int size = nativeRid.get(ValueLayout.JAVA_BYTE,
             NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
@@ -1502,6 +1551,31 @@ public abstract class Socket implements AutoCloseable {
         if (bounded > 0 && topic.get(ValueLayout.JAVA_BYTE, bounded - 1) == 0)
             bounded--;
         return bounded;
+    }
+
+    void prepareRecvLikeOperation() {
+        legacyReceiveState.get().closeRemaining();
+        Received active = activeLazyReceive.get();
+        if (active != null) {
+            active.forceMaterialize();
+            activeLazyReceive.remove();
+        }
+    }
+
+    Runnable lazyReceiveCompletion(Received received) {
+        return () -> {
+            Received active = activeLazyReceive.get();
+            if (active == received) {
+                activeLazyReceive.remove();
+            }
+        };
+    }
+
+    Received registerLazyReceive(Received received, boolean hasMore) {
+        if (hasMore) {
+            activeLazyReceive.set(received);
+        }
+        return received;
     }
 
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {

@@ -168,6 +168,32 @@ final class RequestReplySupport {
             REQUEST_EXECUTIONS);
     }
 
+    static <T> CompletableFuture<T> startTimedRequestExecution(
+            Supplier<T> supplier,
+            long timeoutMs) {
+        CompletableFuture<T> future = new CompletableFuture<>();
+        ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
+            future.completeExceptionally(new RequestException(
+                RequestResult.TIMED_OUT));
+        }, timeoutMs, TimeUnit.MILLISECONDS);
+        REQUEST_EXECUTIONS.execute(() -> {
+            try {
+                T value = supplier.get();
+                if (!future.complete(value) && value instanceof AutoCloseable closeable) {
+                    try {
+                        closeable.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+            } catch (Throwable error) {
+                future.completeExceptionally(error);
+            } finally {
+                timeout.cancel(false);
+            }
+        });
+        return future;
+    }
+
     static <T> void completeAsync(CompletableFuture<T> future,
                                   Supplier<T> supplier) {
         callbackCompletions().execute(() -> {
@@ -198,8 +224,8 @@ final class RequestReplySupport {
     }
 
     @FunctionalInterface
-    interface ThrowingTrySend {
-        SendResult trySend(List<Message> parts);
+    interface ThrowingSendNoWaitResult {
+        SendResult sendNoWaitResult(List<Message> parts);
     }
 
     private static final class NamedDaemonThreadFactory implements ThreadFactory {

@@ -11,10 +11,8 @@ RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
   TRANSPORTS="${PERF_TRANSPORTS}"
-elif [[ "$(uname -s)" == "Linux" ]]; then
-  TRANSPORTS="tcp,ipc"
 else
-  TRANSPORTS="tcp"
+  TRANSPORTS="tcp,tls,ws,wss"
 fi
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"

@@ -8,15 +8,23 @@ namespace Zlink;
 
 public sealed class TopicMessage : IDisposable
 {
+    private readonly MultipartMessageCollection _parts;
     private int _closed;
 
     internal TopicMessage(RoutingId? routingId, string? serviceName, string topic,
         Message[] parts)
+        : this(routingId, serviceName, topic,
+            MultipartMessageCollection.FromMessages(parts))
+    {
+    }
+
+    internal TopicMessage(RoutingId? routingId, string? serviceName, string topic,
+        MultipartMessageCollection parts)
     {
         RoutingId = routingId;
         ServiceName = serviceName;
         Topic = topic ?? string.Empty;
-        Parts = parts ?? Array.Empty<Message>();
+        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
     }
 
     public RoutingId? RoutingId { get; }
@@ -25,37 +33,24 @@ public sealed class TopicMessage : IDisposable
 
     public string Topic { get; }
 
-    public IReadOnlyList<Message> Parts { get; }
+    public IReadOnlyList<Message> Parts => _parts;
 
-    public bool IsSinglePart => Parts.Count == 1;
+    public bool IsSinglePart => _parts.IsSinglePart;
 
     public Message FirstPart()
     {
-        if (Parts.Count == 0)
-        {
-            throw new ZlinkRecvException(RecvResult.NoData,
-                (int)ErrorCode.EAgain);
-        }
-
-        return Parts[0];
+        return _parts.First();
     }
 
     public Message SinglePartOrThrow()
     {
-        if (Parts.Count != 1)
-        {
-            throw new ZlinkRecvException(RecvResult.NotSupported,
-                (int)ErrorCode.ENotSup);
-        }
-
-        return Parts[0];
+        return _parts.Single();
     }
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)
             return;
-        foreach (Message part in Parts)
-            part.Dispose();
+        _parts.Dispose();
     }
 }

@@ -120,12 +120,24 @@ int zlink_java_dealer_request_sync(void *dealer,
     pthread_mutex_init(&state.mutex, NULL);
     pthread_cond_init(&state.cond, NULL);
 
-    submit_result = zlink_dealer_request(dealer, parts, part_count,
-      zlink_java_reqrep_complete, &state, (zlink_send_flags_t) flags, timeout_ms);
-    if (submit_result != ZLINK_SUBMIT_OK) {
+    if (parts == NULL || part_count == 0) {
         pthread_cond_destroy(&state.cond);
         pthread_mutex_destroy(&state.mutex);
-        return (int) submit_result;
+        return (int) ZLINK_SUBMIT_INVALID_STATE;
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        submit_result = zlink_dealer_request_part(
+          dealer, &parts[i], (zlink_send_flags_t) flags,
+          i + 1u < part_count ? ZLINK_PART_MORE : ZLINK_PART_FINAL,
+          i + 1u < part_count ? 0u : timeout_ms,
+          i + 1u < part_count ? NULL : zlink_java_reqrep_complete,
+          i + 1u < part_count ? NULL : &state);
+        if (submit_result != ZLINK_SUBMIT_OK) {
+            pthread_cond_destroy(&state.cond);
+            pthread_mutex_destroy(&state.mutex);
+            return (int) submit_result;
+        }
     }
 
     return zlink_java_reqrep_wait(&state, request_result_out,
@@ -148,12 +160,24 @@ int zlink_java_router_request_sync(void *router,
     pthread_mutex_init(&state.mutex, NULL);
     pthread_cond_init(&state.cond, NULL);
 
-    submit_result = zlink_router_request(router, peer_rid, parts, part_count,
-      zlink_java_reqrep_complete, &state, (zlink_send_flags_t) flags, timeout_ms);
-    if (submit_result != ZLINK_SUBMIT_OK) {
+    if (parts == NULL || part_count == 0) {
         pthread_cond_destroy(&state.cond);
         pthread_mutex_destroy(&state.mutex);
-        return (int) submit_result;
+        return (int) ZLINK_SUBMIT_INVALID_STATE;
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        submit_result = zlink_router_request_part(
+          router, peer_rid, &parts[i], (zlink_send_flags_t) flags,
+          i + 1u < part_count ? ZLINK_PART_MORE : ZLINK_PART_FINAL,
+          i + 1u < part_count ? 0u : timeout_ms,
+          i + 1u < part_count ? NULL : zlink_java_reqrep_complete,
+          i + 1u < part_count ? NULL : &state);
+        if (submit_result != ZLINK_SUBMIT_OK) {
+            pthread_cond_destroy(&state.cond);
+            pthread_mutex_destroy(&state.mutex);
+            return (int) submit_result;
+        }
     }
 
     return zlink_java_reqrep_wait(&state, request_result_out,
@@ -175,8 +199,19 @@ int zlink_java_send_u32(void *socket,
     rid.data[1] = (uint8_t) (routing_id >> 16);
     rid.data[2] = (uint8_t) (routing_id >> 8);
     rid.data[3] = (uint8_t) routing_id;
-    return zlink_send_rid(socket, &rid, parts, part_count,
-      (zlink_send_flags_t) flags);
+    if (parts == NULL || part_count == 0) {
+        return (int) ZLINK_SUBMIT_INVALID_STATE;
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        int rc = zlink_send_part_rid(socket, &rid, &parts[i],
+          (zlink_send_flags_t) flags,
+          i + 1u < part_count ? ZLINK_PART_MORE : ZLINK_PART_FINAL);
+        if (rc != ZLINK_SUBMIT_OK) {
+            return rc;
+        }
+    }
+    return (int) ZLINK_SUBMIT_OK;
 }
 
 uint64_t zlink_java_bench_noop_u64(uint64_t value) {

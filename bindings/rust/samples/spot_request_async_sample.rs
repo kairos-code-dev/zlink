@@ -1,75 +1,62 @@
-//! SPOT request async sample – demonstrates the dedicated spot request sample.
+//! SPOT request async sample – demonstrates Spot.request_channel async completion.
 
 #[path = "sample_support.rs"]
 mod sample_support;
 
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::mpsc;
-use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread;
 use std::time::Duration;
 
-use zlink::{Context, Message, SpotNode};
-
-fn noop_raw_waker() -> RawWaker {
-    fn clone(_: *const ()) -> RawWaker { noop_raw_waker() }
-    fn wake(_: *const ()) {}
-    fn wake_by_ref(_: *const ()) {}
-    fn drop(_: *const ()) {}
-
-    static VTABLE: RawWakerVTable =
-        RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-
-    RawWaker::new(std::ptr::null(), &VTABLE)
-}
-
-fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
-    let mut future = Box::pin(future);
-    let mut cx = TaskContext::from_waker(&waker);
-    loop {
-        match Pin::as_mut(&mut future).poll(&mut cx) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => thread::yield_now(),
-        }
-    }
-}
+use zlink::{Context, Message, SendFlags, SpotNode};
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
 
     let requester_node = SpotNode::new(&ctx).expect("requester node failed");
-    let responder_node = SpotNode::new(&ctx).expect("responder node failed");
     let requester = requester_node.create_spot().expect("requester spot failed");
-    let responder = responder_node.create_spot().expect("responder spot failed");
+    let requester_dealer = ctx.dealer_socket().expect("requester dealer failed");
+    let responder = ctx.router_socket().expect("responder router failed");
+    let channel_name = "orders";
 
     let endpoint = sample_support::tcp_endpoint();
-    responder_node.bind(&endpoint).expect("bind failed");
+    responder.bind(&endpoint).expect("bind failed");
+    requester_dealer
+        .connect(&endpoint)
+        .expect("connect failed");
     requester_node
-        .connect_peer(&endpoint)
-        .expect("connect_peer failed");
-    sample_support::wait_spot_peer_connected(&requester_node, Duration::from_secs(5));
-    let responder_node_rid = responder_node.routing_id().expect("responder node rid failed");
-    let responder_spot_rid = responder.routing_id().expect("responder spot rid failed");
+        .attach_channel_dealer_manual(channel_name, &requester_dealer)
+        .expect("attach_channel_dealer_manual failed");
 
     let (server_done_tx, server_done_rx) = mpsc::channel();
     thread::spawn(move || {
-        let received = responder.recv_routed().expect("spot recv failed");
+        let received = responder.recv().expect("router recv failed");
         assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "spot-ping");
-        received
-            .reply(vec![Message::copy_from(b"spot-pong").expect("reply message failed")])
+        responder
+            .reply(
+                received.routing_id().expect("missing routing id"),
+                received.request_seq().expect("missing request seq"),
+                vec![Message::copy_from(b"spot-pong").expect("reply message failed")],
+            )
             .expect("reply send failed");
         server_done_tx.send(()).expect("server done send failed");
     });
 
-    let reply = block_on(requester.request_to_spot(
-        responder_node_rid,
-        responder_spot_rid,
-        vec![Message::copy_from(b"spot-ping").expect("request message failed")],
-        Duration::from_secs(5),
-    ))
-    .expect("spot request failed");
+    let (reply_tx, reply_rx) = mpsc::channel();
+    requester
+        .request_channel_callback(
+            channel_name,
+            vec![Message::copy_from(b"spot-ping").expect("request message failed")],
+            move |result| {
+                let _ = reply_tx.send(result);
+            },
+            SendFlags::NONE,
+            Duration::from_secs(5),
+        )
+        .expect("spot request start failed");
+    let reply = reply_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("spot request callback timed out")
+        .expect("spot request failed");
     assert_eq!(reply[0].as_str().unwrap_or("?"), "spot-pong");
     server_done_rx
         .recv_timeout(Duration::from_secs(2))

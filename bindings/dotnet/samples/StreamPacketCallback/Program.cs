@@ -15,7 +15,7 @@ stream.Bind(endpoint);
 
 using var signal = new ManualResetEventSlim(false);
 string? callbackPayload = null;
-stream.OnPacket((routingId, payload) =>
+StreamPacketHandler handler = (string routingId, Message payload) =>
 {
     using (payload)
         callbackPayload = payload.GetString();
@@ -23,7 +23,8 @@ stream.OnPacket((routingId, payload) =>
     stream.Send(routingId, reply);
     signal.Set();
     return 0;
-});
+};
+stream.OnPacket(handler);
 
 using var client = SampleSupport.ConnectRawClient(port);
 SampleSupport.WaitMonitorEvent(monitor, 5000, SocketEvent.Accepted);

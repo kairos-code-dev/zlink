@@ -67,7 +67,7 @@ pub use service::{
     RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole, ServiceType, Spot,
     SpotDispatchEvent, SpotNode, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeState,
     SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState,
-    SpotRole, SpotServiceAttachmentRole, SpotServiceAttachmentStats, SpotServiceMonitorEvent,
+    SpotRole, SpotServiceAttachmentRole,
     TopologySource, TopologyState,
 };
 pub use socket::{

@@ -121,10 +121,9 @@ disconnect reason:
 service monitor는 `zlink_monitor_target_kind_t`의
 `ZLINK_MONITOR_TARGET_DISCOVERY`와 `ZLINK_MONITOR_TARGET_SPOT_NODE`를 대상으로
 받습니다. Spot facade(`ZLINK_MONITOR_TARGET_SPOT`)는 공개 monitor 대상이
-아닙니다. SpotNode 서비스-aware monitor event는 generic service monitor surface
-가 아니라 `zlink_spot_node_monitor_recv()`로만 꺼냅니다. 해당 recv는 이벤트에
-`service_name`과 attachment role(`ROUTER` / `PUB` / `SUB`)을 함께 실어
-돌려줍니다.
+아닙니다. SpotNode monitor event는 `SpotNode`를 대상으로
+`zlink_service_monitor_open()`을 연 뒤 `zlink_service_monitor_recv()`로
+꺼냅니다. SpotNode 전용 별도 monitor recv API는 없습니다.
 
 ## 예시
 

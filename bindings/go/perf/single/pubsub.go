@@ -18,6 +18,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	subscriber, err := ctx.SubSocket()
 	perfcommon.Must(err)
 	defer subscriber.Close()
+
 	pubMon := perfcommon.OpenMonitor(publisher)
 	defer pubMon.Close()
 	subMon := perfcommon.OpenMonitor(subscriber)
@@ -32,34 +33,45 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
 	perfcommon.WaitConnected(pubMon, subMon)
+
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 	_, err = publisher.ReceiveSubscriptionEvent(zlink.RecvFlagsNone)
 	perfcommon.Must(err)
+	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 
 	stats := perfcommon.NewStats()
-	stopAt := time.Now().Add(cfg.duration)
-	activeAt := time.Now()
-	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
-	go func() {
-		for time.Now().Before(stopAt) {
-			message, err := subscriber.Subscribe(zlink.RecvFlagsNone)
-			if err != nil {
+	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
+	payload := perfcommon.PreparePayload(cfg.msgSize)
+
+	for time.Now().Before(window.StopAt) {
+		perfcommon.StampPayload(payload)
+		err := publisher.Publish(
+			"bench.topic",
+			zlink.SendFlagsNone,
+			perfcommon.NewMessage(payload),
+		)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
 				continue
 			}
-			part, err := message.SinglePartOrError()
-			if err == nil {
-				if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-					stats.Add(sentAt)
-				}
-			}
-			_ = message.Close()
+			perfcommon.Must(err)
 		}
-	}()
 
-	payload := perfcommon.PreparePayload(cfg.msgSize)
-	for time.Now().Before(stopAt) {
-		perfcommon.StampPayload(payload)
-		perfcommon.Must(publisher.Publish("bench.topic", zlink.SendFlagsNone, perfcommon.NewMessage(payload)))
+		received, err := subscriber.Subscribe(zlink.RecvFlagsNone)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(err)
+		}
+		if received == nil {
+			continue
+		}
+		part, err := received.SinglePartOrError()
+		if err == nil {
+			perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
+		}
+		_ = received.Close()
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)

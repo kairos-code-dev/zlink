@@ -210,7 +210,7 @@ internal static class PerfDealerDealerClient
 
         try
         {
-            bool sent = slot.Socket.TrySend(slot.Payload.AsSpan(),
+            bool sent = slot.Socket.SendNoWaitResult(slot.Payload.AsSpan(),
                 PerfSendFlags.DontWait, out int written) && written > 0;
             if (sent)
             {

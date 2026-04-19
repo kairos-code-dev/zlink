@@ -50,7 +50,7 @@ internal static class PerfRawSocketCompat
         return GetState(socket).PendingSendFrames.Count > 0;
     }
 
-    internal static bool TrySend(SocketBase socket, ReadOnlySpan<byte> buffer,
+    internal static bool SendNoWaitResult(SocketBase socket, ReadOnlySpan<byte> buffer,
         PerfSendFlags flags, out int written)
     {
         SocketState state = GetState(socket);
@@ -127,7 +127,8 @@ internal static class PerfRawSocketCompat
             {
                 using Message message = Message.FromBytes(finalFrame);
                 PublisherSocketBase publisher = (PublisherSocketBase)socket;
-                SendResult result = publisher.TryPublish(string.Empty, message);
+                SendResult result = publisher.PublishNoWaitResult(string.Empty,
+                    message);
                 if (!nonBlocking && result != SendResult.Sent)
                 {
                     throw new ZlinkSubmitException(SubmitResult.Backpressured,
@@ -160,8 +161,8 @@ internal static class PerfRawSocketCompat
                     RoutedMessageSocketBase nonBlockingRoutedSocket =
                         (RoutedMessageSocketBase)socket;
                     SendResult result = payload.Length == 1
-                        ? nonBlockingRoutedSocket.TrySend(routingId, payload[0])
-                        : nonBlockingRoutedSocket.TrySend(routingId, payload);
+                        ? nonBlockingRoutedSocket.SendNoWaitResult(routingId, payload[0])
+                        : nonBlockingRoutedSocket.SendNoWaitResult(routingId, payload);
                     return result == SendResult.Sent;
                 }
                 finally
@@ -190,8 +191,8 @@ internal static class PerfRawSocketCompat
                 MessageSocketBase nonBlockingMessageSocket =
                     (MessageSocketBase)socket;
                 SendResult result = parts.Length == 1
-                    ? nonBlockingMessageSocket.TrySend(parts[0])
-                    : nonBlockingMessageSocket.TrySend(parts);
+                    ? nonBlockingMessageSocket.SendNoWaitResult(parts[0])
+                    : nonBlockingMessageSocket.SendNoWaitResult(parts);
                 return result == SendResult.Sent;
             }
             finally
@@ -267,7 +268,7 @@ internal static class PerfCompatExtensions
 
             if (type == SocketType.Pub || type == SocketType.XPub)
             {
-                SendResult pubResult = socket.Kernel.TryPublishBorrowedSingle(
+                SendResult pubResult = socket.Kernel.PublishBorrowedSingleNoWait(
                     string.Empty, buffer);
                 if (pubResult == SendResult.Sent)
                     return buffer.Length;
@@ -275,7 +276,7 @@ internal static class PerfCompatExtensions
                     (int)ErrorCode.EAgain);
             }
 
-            SendResult result = socket.Kernel.TrySendBorrowedSingle(buffer);
+            SendResult result = socket.Kernel.SendBorrowedSingleNoWaitResult(buffer);
             if (result == SendResult.Sent)
                 return buffer.Length;
             throw new ZlinkSubmitException(SubmitResult.Backpressured,
@@ -309,14 +310,15 @@ internal static class PerfCompatExtensions
             && !PerfRawSocketCompat.HasPendingSendFrames(socket)
             && (type == SocketType.Pub || type == SocketType.XPub))
         {
-            SendResult result = socket.Kernel.TryPublishRawSingle(string.Empty, buffer);
+            SendResult result = socket.Kernel.PublishRawSingleNoWait(
+                string.Empty, buffer);
             if (result != SendResult.Sent)
                 throw new ZlinkSubmitException(SubmitResult.Backpressured,
                     (int)ErrorCode.EAgain);
             return buffer.Length;
         }
 
-        if (!PerfRawSocketCompat.TrySend(socket, buffer, flags, out int written))
+        if (!PerfRawSocketCompat.SendNoWaitResult(socket, buffer, flags, out int written))
         {
             throw new ZlinkSubmitException(SubmitResult.Backpressured,
                 (int)ErrorCode.EAgain);
@@ -324,10 +326,10 @@ internal static class PerfCompatExtensions
         return written;
     }
 
-    internal static bool TrySend(this SocketBase socket, ReadOnlySpan<byte> buffer,
+    internal static bool SendNoWaitResult(this SocketBase socket, ReadOnlySpan<byte> buffer,
         PerfSendFlags flags, out int written)
     {
-        return PerfRawSocketCompat.TrySend(socket, buffer, flags, out written);
+        return PerfRawSocketCompat.SendNoWaitResult(socket, buffer, flags, out written);
     }
 
     internal static int Receive(this SocketBase socket, Span<byte> buffer,
@@ -408,7 +410,7 @@ internal static class PerfCompatExtensions
     {
         if ((flags & ReceiveFlags.DontWait) != 0)
         {
-            if (monitor.TryRecv(out MonitorEvent? evt))
+            if (monitor.RecvNoWait(out MonitorEvent? evt))
                 return evt!;
             throw new ZlinkRecvException(RecvResult.NoData,
                 (int)ErrorCode.EAgain);
@@ -421,7 +423,7 @@ internal static class PerfCompatExtensions
         ReadOnlySpan<byte> payload, PerfSendFlags flags)
     {
         using Message message = Message.FromBytes(payload);
-        SendResult result = ((RoutedMessageSocketBase)socket).TrySend(routingId,
+        SendResult result = ((RoutedMessageSocketBase)socket).SendNoWaitResult(routingId,
             message);
         if (result == SendResult.Sent)
             return payload.Length;
@@ -442,14 +444,26 @@ internal static class PerfCompatExtensions
         socket.Kernel.SendBorrowedSingle(routingId, payload, flags);
     }
 
+    internal static void SendBorrowedSingle(this SocketBase socket,
+        ReadOnlySpan<byte> routingId, byte[] payload, int flags)
+    {
+        socket.Kernel.SendBorrowedSingle(routingId, payload, flags);
+    }
+
     internal static PeerRecord[] GetPeers(this SocketBase socket)
     {
         return Array.Empty<PeerRecord>();
     }
 
-    internal static Received? TryReceiveRouted(this SocketBase socket)
+    internal static Received? ReceiveRoutedNoWait(this SocketBase socket)
     {
-        return socket.Kernel.TryReceiveRouted();
+        return socket.Kernel.ReceiveRoutedNoWait();
+    }
+
+    internal static SendResult SendBorrowedSingleNoWaitResult(this SocketBase socket,
+        ReadOnlySpan<byte> routingId, byte[] payload)
+    {
+        return socket.Kernel.SendBorrowedSingleNoWaitResult(routingId, payload);
     }
 
     internal static int? TryReceiveRawRoutedFrame(this SocketBase socket,
@@ -458,6 +472,14 @@ internal static class PerfCompatExtensions
     {
         return socket.Kernel.TryReceiveRawRoutedFrame(routingDestination,
             payloadDestination, flags, out pendingFrames);
+    }
+
+    internal static int? TryReceiveRawRoutedFrame(this SocketBase socket,
+        Span<byte> routingDestination, Span<byte> payloadDestination, int flags,
+        out int routingLength, out byte[][] pendingFrames)
+    {
+        return socket.Kernel.TryReceiveRawRoutedFrame(routingDestination,
+            payloadDestination, flags, out routingLength, out pendingFrames);
     }
 
     internal static int? TryReceiveRawSubscribedFrame(this SocketBase socket,

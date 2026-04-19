@@ -153,27 +153,26 @@ void discovery_service_state_t::snapshot_member_peers (
     if (!out_)
         return;
     out_->clear ();
+    out_->reserve (_providers.size ());
 
-    std::vector<provider_info_t> providers = _providers;
-    std::sort (providers.begin (), providers.end (), provider_less_local);
-
-    for (size_t i = 0; i < providers.size (); ++i) {
-        const discovery_member_key_t key (providers[i].service_role,
-                                          providers[i].endpoint);
+    for (size_t i = 0; i < _providers.size (); ++i) {
+        const provider_info_t &provider = _providers[i];
+        const discovery_member_key_t key (provider.service_role,
+                                          provider.endpoint);
         if (local_members_.count (key) != 0)
             continue;
 
         zlink_member_peer_entry_t entry;
         memset (&entry, 0, sizeof (entry));
         entry.service_type = public_service_type_;
-        entry.service_role = providers[i].service_role;
+        entry.service_role = provider.service_role;
         copy_text_field_local (entry.service_name, sizeof (entry.service_name),
-                               providers[i].service_name);
+                               provider.service_name);
         copy_text_field_local (entry.endpoint, sizeof (entry.endpoint),
-                               providers[i].endpoint);
-        entry.routing_id = providers[i].routing_id;
-        entry.admission_state = providers[i].admission_state;
-        entry.value = providers[i].value;
+                               provider.endpoint);
+        entry.routing_id = provider.routing_id;
+        entry.admission_state = provider.admission_state;
+        entry.value = provider.value;
         out_->push_back (entry);
     }
 }
@@ -232,14 +231,17 @@ void discovery_service_state_t::apply_provider_snapshot (
         return;
     _registry_seq[registry_id_] = list_seq_;
 
-    if (providers_equal_local (_providers, updated_)) {
-        _providers = updated_;
+    std::vector<provider_info_t> sorted_updated = updated_;
+    std::sort (sorted_updated.begin (), sorted_updated.end (), provider_less_local);
+
+    if (providers_equal_local (_providers, sorted_updated)) {
+        _providers.swap (sorted_updated);
         return;
     }
 
     const bool had_providers = !_providers.empty ();
     _service_seq = _update_seq + 1;
-    _providers = updated_;
+    _providers.swap (sorted_updated);
     ++_update_seq;
 
     if (!change_out_)

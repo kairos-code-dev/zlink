@@ -380,14 +380,12 @@ public service-monitor surface. Monitor targets are identified by
 | `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4` | `zlink_service_monitor_recv()` |
 | `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_service_monitor_recv()` |
 
-`Spot` and `SpotNode` expose the generic service-monitor surface only for
-the operational events that bridge directly from the pub/sub runtime
-without a separate event pipeline. Service-aware attachment monitor
-events on a `SpotNode` are drained only through
-`zlink_spot_node_monitor_recv()`, not through
-`zlink_service_monitor_open()`. That recv returns a
-`zlink_spot_service_monitor_event_t` that carries the `service_name` and
-attachment role together with the usual monitor event.
+`Spot` and `SpotNode` expose the generic service-monitor surface for
+operational events. A caller opens a monitor on the `SpotNode` target with
+`zlink_service_monitor_open()` and drains events with
+`zlink_service_monitor_recv()`. The returned
+`zlink_service_monitor_event_t` carries the usual monitor event fields.
+There is no dedicated `SpotNode`-specific monitor recv API.
 
 ### Service Kind Constants
 
@@ -448,11 +446,11 @@ operational events produced by the SPOT pub/sub monitor bridges.
 | `pub queue full` (`1u << 15`) | Yes | Yes | Pub queue saturated |
 | `pub queue drained` (`1u << 16`) | Yes | Yes | Pub queue recovered |
 
-`SpotNode` service-attachment detail remains dedicated to
-`zlink_spot_node_monitor_recv()`. That dedicated recv reports
-`service_name`, attachment `role`, and the nested raw socket monitor
-event. The generic service monitor does not flatten those attachment
-details.
+`SpotNode` monitor events are drained through the generic
+`zlink_service_monitor_recv()` surface. The returned event carries
+standard monitor fields; additional peer-level detail is available
+through snapshot/query APIs (`zlink_spot_node_peers_snapshot()`,
+`zlink_spot_node_peers_query()`).
 
 ### Detail Flag Constants
 

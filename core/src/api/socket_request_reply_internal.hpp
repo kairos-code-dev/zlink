@@ -5,11 +5,11 @@
 
 #include <zlink.h>
 
-#include <map>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "api/internal_pair_queue_internal.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
@@ -24,7 +24,13 @@ struct pending_key_t
     std::string peer_rid;
     uint64_t request_seq;
 
+    bool operator== (const pending_key_t &other_) const;
     bool operator< (const pending_key_t &other_) const;
+};
+
+struct pending_key_hash_t
+{
+    size_t operator() (const pending_key_t &key_) const;
 };
 
 struct pending_request_t
@@ -45,8 +51,10 @@ struct socket_request_reply_state_t
     std::mutex mutex;
     uint32_t default_timeout_ms;
     uint64_t next_request_seq;
-    std::set<uint64_t> pending_sequences;
-    std::map<pending_key_t, pending_request_t> pending_requests;
+    std::unordered_set<uint64_t> pending_sequences;
+    std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>
+      pending_requests;
+    std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;
     bool internal_dispatch_installed;
     zlink::internal_pair_queue::queue_t recv_queue;
 };

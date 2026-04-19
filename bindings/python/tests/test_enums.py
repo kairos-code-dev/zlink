@@ -36,7 +36,7 @@ class EnumValueTests(unittest.TestCase):
 
     def test_monitor_event_values(self):
         self.assertEqual(int(zlink.MonitorEventMask.CONNECTED), 0x0001)
-        self.assertEqual(int(zlink.MonitorEventMask.ALL), 0x7FFF)
+        self.assertEqual(int(zlink.MonitorEventMask.ALL), 0xFFFF)
 
     def test_error_code_values(self):
         self.assertEqual(int(zlink.ErrorCode.EFSM), 156384763)

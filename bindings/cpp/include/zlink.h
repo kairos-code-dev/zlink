@@ -5,8 +5,8 @@
 
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
-#define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 30
+#define ZLINK_VERSION_MINOR 3
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -241,6 +241,19 @@ ZLINK_EXPORT zlink_config_result_t zlink_msg_move (zlink_msg_t *dest_, zlink_msg
  * reference count rather than duplicating the payload buffer.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
+
+/**
+ * @brief Adopt ownership from src_ into dest_ without an extra init+move step.
+ *
+ * This is intended for bindings that already have storage for @p dest_ and
+ * need to take ownership of a freshly received native message efficiently.
+ * Unlike @ref zlink_msg_move, @p dest_ must not currently own an initialized
+ * message.
+ *
+ * On success, @p dest_ owns the original content and @p src_ becomes an empty
+ * initialized message.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_);
 
 /** @brief Return a pointer to the message data buffer. */
 ZLINK_EXPORT void *zlink_msg_data (zlink_msg_t *msg_);

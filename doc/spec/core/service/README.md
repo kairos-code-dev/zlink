@@ -13,8 +13,8 @@ how a caller can start from only `spot_rid` and obtain the destination
 
 ## Document Roles
 
-- [spot.md](spot.md): SPOT publish/subscribe and direct send/request/reply
-  function contracts
+- [spot.md](spot.md): SPOT publish/subscribe, channel send/request, and routed
+  send/request/reply function contracts
 - [registry.md](registry.md): the final rule for which `SpotNode` currently owns
   a `spot_rid`, plus register/unregister, overwrite, and expiration rules
 - [discovery.md](discovery.md): how cached lookup works close to the caller,
@@ -45,25 +45,36 @@ also the **service scope** used by managed auto-connect and logical lookup.
 - The same `spot_rid` may exist at the same time in different `service_name`
   scopes.
 
-## Two Addressing Modes
+## Addressing Modes
 
-SPOT direct routed messaging is easiest to understand as two modes.
+SPOT messaging offers three ways to specify a destination.
 
-- direct pair mode:
-  the caller already knows both `dest_node_rid` and `dest_spot_rid` and passes
-  them directly to the SPOT send/request functions
-- logical `spot_rid` mode:
-  the caller starts from only `spot_rid`, asks the current Discovery service
-  view which `SpotNode` currently owns it inside that `service_name`, then
-  passes that result to the same SPOT send/request functions
+- channel call mode:
+  the caller specifies only a `channel_name` and the attached `DEALER` sends
+  the request to one of that channel's `ROUTER(server)` set.
+  Uses `zlink_spot_send_channel()` / `zlink_spot_request_channel()` on the
+  `Spot` facade.
+- peer routed mode:
+  the caller specifies a concrete `peer_rid` to target a specific peer in the
+  same SPOT mesh.
+  Uses `zlink_spot_send_router()` / `zlink_spot_request_router()` on the
+  `Spot` facade.
+- ROUTER-side direct SPOT addressing:
+  the caller knows both `dest_node_rid` and `dest_spot_rid` and passes them
+  to the ROUTER socket functions `zlink_router_send_spot()` /
+  `zlink_router_request_spot()`.
+  This mode is available only on the low-level ROUTER API, not on the `Spot`
+  facade.
 
-The second mode is not a separate wire path. The final submit step always uses
-the `dest_node_rid + dest_spot_rid` pair. Internally, the flow is:
-resolve `spot_rid -> owner_node_rid`, then call the routed function.
+The public `Spot` surface no longer exposes direct send/request functions
+that take `dest_node_rid + dest_spot_rid`. Ordinary service calls should use
+channel mode or peer routed mode. Use ROUTER direct addressing only when a
+concrete destination is truly required.
 
-This spec does not require extra `send/request/reply` overloads for that flow.
-Instead, the caller first resolves the destination node with the following API
-and then calls the SPOT routed submit functions.
+### Logical spot_rid resolution
+
+When the caller starts from only a `spot_rid`, it can resolve the owner
+`node_rid` inside the current Discovery `service_name` scope:
 
 ```c
 zlink_config_result_t zlink_discovery_resolve_spot (
@@ -73,21 +84,22 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 ```
 
 If this call succeeds, the caller pairs `owner_node_rid_out` with the original
-`spot_rid` and uses `zlink_spot_send_spot()`,
-`zlink_spot_request_spot()`, or the equivalent router-side functions. That
-resolved result is valid only inside the current Discovery `service_name`
-scope. Replies are different: they must use the concrete source address
-delivered with the incoming request and must not perform a fresh lookup.
+`spot_rid` and uses the ROUTER-side direct functions
+(`zlink_router_send_spot()`, `zlink_router_request_spot()`). That resolved
+result is valid only inside the current Discovery `service_name` scope.
+Replies are different: they must use the concrete source address delivered with
+the incoming request and must not perform a fresh lookup.
 
 ## Manual and Managed Configurations
 
 - manual deployment: uses only manual peer connections without
-  Discovery/Registry ownership information. Only the base routed contract can
-  be used directly.
+  Discovery/Registry ownership information. For peer routed calls the caller
+  must know the `peer_rid`; for ROUTER direct calls the caller must know
+  both `dest_node_rid` and `dest_spot_rid`.
 - managed deployment: Registry manages authoritative ownership for
   `(service_name, spot_rid)` and Discovery provides resolve cache for that
-  current service view. This deployment can support the usage pattern that
-  starts from logical `spot_rid`.
+  current service view. The caller can use `zlink_discovery_resolve_spot()`
+  to obtain the `node_rid` and then send via ROUTER direct functions.
 
 ## Common Auto-Connect Rules
 

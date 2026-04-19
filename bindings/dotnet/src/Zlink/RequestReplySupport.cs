@@ -29,7 +29,7 @@ internal static class RequestReplySupport
         Message[] parts = new Message[source.Parts.Count];
         for (int i = 0; i < source.Parts.Count; i++)
             parts[i] = CloneMessage(source.Parts[i]);
-        return new Received(source.RoutingId, parts, source.RequestSeq,
+        return Received.Create(source.RoutingId, parts, source.RequestSeq,
             source.SpotRid);
     }
 
@@ -116,7 +116,7 @@ internal static class RequestReplySupport
         }
     }
 
-    internal static SendResult MapTrySendResult(ZlinkException error)
+    internal static SendResult MapSendNoWaitResult(ZlinkException error)
     {
         ErrorCode code = ZlinkException.MapErrorCode(error.InternalErrno);
         return code switch

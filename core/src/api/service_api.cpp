@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
+#include "api/part_helper_internal.hpp"
 #include "api/service_api_internal.hpp"
 
 #include "services/discovery/discovery_access.hpp"
@@ -104,6 +105,7 @@ void destroy_spot_handle_for_testing (void *spot_)
     }
 
     zlink_spot_request_reply_cleanup_spot (spot);
+    zlink::part_helper_internal::cleanup_handle (spot);
 
     if (spot->sub) {
         int rc = spot->sub->destroy ();

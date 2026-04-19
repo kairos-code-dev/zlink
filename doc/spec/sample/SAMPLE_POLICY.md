@@ -122,8 +122,9 @@
 - `monitor sample` 은 monitor `recv` 계열을 기본으로 사용한다.
 - 바인딩이 non-blocking monitor receive를 공개하면 `tryRecv` empty 경로를 함께
   보여 줄 수 있다.
-- `spot_recv_sample` 에서는 dispatcher event callback 안에서 `recv` 를 호출하는
-  흐름을 사용한다. 이 경우 수신의 본질은 recv 이므로 recv sample로 분류한다.
+- `spot_recv_sample` 은 `Spot` 의 canonical subscribe recv surface를 중심으로
+  설명한다. `dispatch_event` callback을 쓰는 바인딩은 activation signal로만
+  사용할 수 있다.
 - `spot_request_async_sample` 은 spot request/reply를 coroutine 또는 async
   completion 표면으로 설명한다.
 - 한 샘플 안에서 recv, packet callback, monitor 수신 모델을 섞지 않는다.
@@ -133,8 +134,8 @@
 ## Recv Sample Rules
 - `recv sample` 은 packet callback 등록 API를 사용하지 않는다.
 - `send/publish` 후 direct receive 결과를 직접 확인한다.
-- `spot_recv_sample` 은 dispatcher event callback이 호출되면 그 안에서
-  `recv` 를 수행해 데이터를 확인한다.
+- `spot_recv_sample` 은 `Spot.subscribe()` 또는 그와 동등한 canonical
+  subscribe recv surface로 데이터를 확인한다.
 - `spot_recv_sample` 은 다음 흐름을 함께 보여 줄 수 있다.
   - publish 후 subscribe 성격의 메시지 수신
   - send 후 direct recv
@@ -148,15 +149,15 @@
 - 따라서 한 파일 안에 publish, send, timer 흐름을 함께 둘 수 있다.
 - 다만 각 흐름은 순서대로 분리해서 보여야 한다.
   사용자가 어떤 호출이 어떤 결과를 만드는지 바로 따라갈 수 있어야 한다.
-- 수신 확인은 dispatcher event callback 안의 `recv` 로 일관되게 처리한다.
+- 수신 확인은 `Spot` 의 canonical recv surface로 일관되게 처리한다.
 - monitor event, packet callback, 별도 async completion 표면은 여기에 섞지
   않는다.
 - helper를 쓰더라도 본문에서 다음이 직접 보여야 한다.
   - publish 호출
   - send 호출
   - timer 등록 또는 시작
-  - dispatcher event callback 등록
-  - callback 안의 `recv`
+  - 필요하면 dispatch handler 등록
+  - 실제 수신 확인용 subscribe 또는 recv 호출
 - `spot` 의 request/reply는 `spot_recv_sample` 에 넣지 않는다.
   바인딩 샘플에서는 `spot_request_async_sample` 으로 분리해서 coroutine 또는
   async completion 흐름으로 설명한다.
@@ -190,8 +191,9 @@
 - `spot_request_async_sample` 의 request 흐름도 바깥에서 보이는 의미는
   requester -> responder 로 설명한다.
   이는 service-layer request 패턴이며 일반 socket request-reply와 같은 의미를
-  갖지만 토폴로지 표현은 `spot requester -> spotnode/router -> spot responder`
-  로 적을 수 있다.
+  갖지만 토폴로지 표현은 binding public surface에 맞춰
+  `router requester -> spotnode/router -> spot responder` 또는
+  `spot requester -> channel responder` 로 적을 수 있다.
 
 ## Packet Callback Sample Rules
 - packet callback sample은 STREAM에만 적용한다.
@@ -233,14 +235,18 @@
   크게 중요하지 않은 경우에만 예외적으로 허용한다.
 - 다중 프로세스 샘플은 canonical sample이 아니라 integration sample 또는
   end-to-end 검증 용도로만 둔다.
-- `spot_recv_sample` 도 기본적으로 프로세스 1개와 스레드 2개를 사용한다.
-  수신 측 스레드에서 dispatcher event callback을 받고, 그 callback 안에서
-  `recv` 를 호출해 데이터를 확인하는 구조를 사용한다.
-  필요한 경우 같은 샘플 안에서 publish, send, timer를 순서대로 트리거해도
-  된다.
+- `spot_recv_sample` 은 다른 canonical sample보다 단순한 local overview 예제로
+  유지한다.
+  기본적으로 프로세스 1개를 사용하고, 스레드는 1개 또는 2개를 사용할 수 있다.
+  이 샘플의 목적은 spot 표면에서 publish 후 subscribe 결과를 확인하는 흐름을
+  짧게 보여 주는 것이다.
+  바인딩이 `attach_pub_ingress()` 를 공개하면 전용 `PUB` source를 붙여도 되고,
+  그렇지 않으면 같은 `Spot` 표면의 `publish()` 를 직접 사용해도 된다.
+  `dispatch_event` callback은 필요할 때 activation signal로 사용할 수 있지만,
+  모든 바인딩에 강제하지 않는다.
 - `spot_request_async_sample` 도 기본적으로 프로세스 1개와 스레드 2개를
   사용한다.
-  한쪽은 spot requester, 다른 쪽은 spot responder 역할을 맡고 request/reply는
+  한쪽은 async requester, 다른 쪽은 responder 역할을 맡고 request/reply는
   coroutine 또는 async completion 표면으로 확인한다.
 - `stream_recv_sample` 과 `stream_packet_callback_sample` 도 기본적으로
   프로세스 1개와 스레드 2개를 사용한다.
@@ -284,7 +290,7 @@
   - expected topic 수신
   - expected routing id 수신
   - spot send 경로 실제 수신
-  - spot request/reply async 경로 실제 완료
+  - routed request -> spot reply async 경로 실제 완료
   - spot timer event 실제 발생
   - STREAM packet callback 실제 호출
   - spot dispatcher event callback 경유 recv 동작
@@ -441,22 +447,28 @@
 ### Spot Sample Profile
 - 대상 샘플: `spot_recv_sample`
 - topology:
-  - 프로세스 1개, 스레드 2개
-  - `spot -> spotnode -> pub/sub/router -> spotnode -> spot`
-- roles: 양 끝은 `spot`, 중간은 `spotnode` 와 내부 `pub/sub/router` 흐름이다.
+  - 프로세스 1개
+  - 기본 흐름은 local `spot publish -> spot subscribe`
+  - 바인딩이 `attach_pub_ingress()` 를 공개하면 `pub ingress -> spot subscribe`
+    형태를 사용할 수 있다.
+- roles:
+  - 하나의 `Spot` 이 publish 와 subscribe 양쪽을 담당한다.
+  - 전용 ingress `PUB` 를 붙이는 경우에도 수신 확인은 `Spot` 표면에서만 한다.
 - fixed content:
   - service id는 `"sample"`
   - topic은 `"room:lobby"`
   - publish payload는 `"hello-spot"`
   - send payload와 timer tick 값은 확장 예가 필요할 때만 추가한다.
 - execution order:
-  - dispatcher event callback 등록
+  - 필요하면 subscription 또는 dispatch handler 등록
   - `publish "room:lobby/hello-spot"`
-  - dispatcher event callback 안에서 `recv`
+  - `Spot.subscribe()` 또는 그와 동등한 canonical subscribe recv surface로 수신
   - 필요하면 같은 샘플 안에 `send` 또는 timer round를 확장 예로 추가할 수 있다.
 - verification:
   - publish 경로 payload가 `"hello-spot"` 이어야 한다.
-  - 수신 확인은 dispatcher event callback 경유 `recv` 로 일관되어야 한다.
+  - 수신 확인은 `Spot` 의 canonical subscribe recv surface에서 해야 한다.
+  - `dispatch_event` callback을 쓰는 바인딩은 activation signal로만 사용하고,
+    실제 payload 확인은 여전히 subscribe recv surface에서 해야 한다.
   - send 또는 timer를 넣으면 그 경로도 같은 규칙으로 별도 확인한다.
 - output example:
   - `[spot/recv] service: "sample" tick: 1 publish: "room:lobby/hello-spot" -> recv: "room:lobby/hello-spot"`
@@ -468,20 +480,22 @@
 - 대상 샘플: `spot_request_async_sample`
 - topology:
   - 프로세스 1개, 스레드 2개
-  - `spot requester -> spotnode/router -> spot responder`
+  - binding public surface에 맞춰
+    `router requester -> spotnode/router -> spot responder` 또는
+    `spot requester -> channel responder`
 - roles:
-  - 한쪽은 spot async requester
-  - 다른 쪽은 spot responder
+  - 한쪽은 async requester
+  - 다른 쪽은 request를 받아 reply를 돌려주는 responder
 - fixed content:
-  - service id는 `"sample"`
   - request payload는 `"spot-ping"`
   - reply payload는 `"spot-pong"`
 - execution order:
-  - peer connect
-  - 필요한 만큼만 service readiness 확인
-  - spot requester가 async request `"spot-ping"` 시작
-  - spot responder가 request 수신 후 `"spot-pong"` reply 전송
-  - spot requester가 coroutine 또는 async completion surface에서 결과 수신
+  - 필요한 endpoint 또는 channel 준비를 확인
+  - requester가 바인딩의 canonical async request surface
+    (`request_to_spot`, `request_channel`, 그와 동등한 공개 표면)로
+    `"spot-ping"` 시작
+  - responder가 request 수신 후 `"spot-pong"` reply 전송
+  - requester가 coroutine 또는 async completion surface에서 결과 수신
 - verification:
   - async completion 결과가 `"spot-pong"` 이어야 한다.
   - 결과 확인은 `await`, `future.get`, `Task` 같은 async surface로만 한다.
@@ -612,8 +626,8 @@
 - monitor 계열:
   - readiness/state event 확인 샘플
 - service/spot 계열이 있는 표면은 `spot_recv_sample` 을 canonical에 포함한다.
-- `spot_recv_sample` 은 dispatcher event callback 안에서 `recv` 를 호출하는
-  구조를 표준 패턴으로 사용한다.
+- `spot_recv_sample` 은 `Spot` 의 canonical recv surface를 사용해 local
+  publish/subscription 흐름을 확인한다.
 - `spot_recv_sample` 은 spot event and recv overview 샘플로서 publish, send,
   timer 흐름을 함께 포함할 수 있다.
 - `spot` request/reply async surface를 제공하는 바인딩 표면은

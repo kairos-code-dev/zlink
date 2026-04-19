@@ -1,4 +1,4 @@
-//! Service surface tests - verify service/query/introspection APIs exist.
+//! Service surface tests - verify channel/query/introspection APIs exist.
 
 use zlink::*;
 
@@ -31,9 +31,6 @@ fn spot_node_snapshot_surfaces_exist() {
     let _ = node.subjects_snapshot(None).unwrap();
     let _ = node.set_tls_server("cert", "key", false);
     let _ = node.set_tls_client("ca", "localhost", true);
-    let _ = node.service_attachment_count().unwrap();
-    let _ = node.service_attachment_at(0);
-    let _ = node.node_monitor_recv_with_flags(RecvFlags::DONT_WAIT);
     node.set_routing_id(&RoutingId::from_bytes(b"node-surface"))
         .unwrap();
     let _ = node.routing_id().unwrap();
@@ -56,14 +53,14 @@ fn spot_callback_surfaces_exist() {
         Message::copy_from(b"payload").unwrap(),
         SendFlags::DONT_WAIT,
     );
-    let _ = spot.send_service("svc-surface", Message::copy_from(b"payload").unwrap());
-    let _ = spot.send_service_with_flags(
+    let _ = spot.send_channel("svc-surface", Message::copy_from(b"payload").unwrap());
+    let _ = spot.send_channel_with_flags(
         "svc-surface",
         Message::copy_from(b"payload").unwrap(),
         SendFlags::DONT_WAIT,
     );
-    let _ = spot.request_service("svc-surface", Message::copy_from(b"payload").unwrap(), std::time::Duration::from_millis(1));
-    let _ = spot.request_service_callback(
+    let _ = spot.request_channel("svc-surface", Message::copy_from(b"payload").unwrap(), std::time::Duration::from_millis(1));
+    let _ = spot.request_channel_callback(
         "svc-surface",
         Message::copy_from(b"payload").unwrap(),
         |_result| {},

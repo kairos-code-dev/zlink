@@ -25,16 +25,12 @@ static inline int zlink_spot_dispatch_event_handler_go_local(void *s, uintptr_t 
     return zlink_spot_dispatch_event_handler(s, (zlink_spot_dispatch_event_handler_fn)goZlinkSpotDispatchEventTrampoline, (void *)userdata);
 }
 
-static inline int zlink_spot_request_spot_go_local(void *spot, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_spot_request_spot(spot, dest_node_rid, dest_spot_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
-}
-
 static inline int zlink_spot_request_router_go_local(void *spot, const zlink_routing_id_t *peer_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
     return zlink_spot_request_router(spot, peer_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 
-static inline int zlink_spot_request_service_go_local(void *spot, const char *service_name, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_spot_request_service(spot, service_name, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+static inline int zlink_spot_request_channel_go_local(void *spot, const char *channel_name, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_request_channel(spot, channel_name, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 
 static inline int zlink_spot_recv_go_local(void *spot, const zlink_routing_id_t **source_rid, const zlink_routing_id_t **spot_rid, uint64_t *request_seq, zlink_msg_t **parts, size_t *part_count, zlink_recv_flags_t flags) {
@@ -108,21 +104,36 @@ func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
 	return configErrorFromResult(C.zlink_spot_node_attach_discovery(handle, discovery.raw()))
 }
 
-func (n *SpotNode) AttachRouter(serviceName string, router *RouterSocket) error {
+func (n *SpotNode) AttachChannelDealer(discovery *Discovery, dealer *DealerSocket) error {
+	if discovery == nil || discovery.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
 	handle, err := n.handleOrError()
 	if err != nil {
 		return err
 	}
-	routerHandle, err := socketHandle(router)
+	dealerHandle, err := socketHandle(dealer)
 	if err != nil {
 		return err
 	}
-	return n.withCString(serviceName, func(cstr *C.char) error {
-		return configErrorFromResult(C.zlink_spot_node_attach_router(handle, cstr, routerHandle))
+	return configErrorFromResult(C.zlink_spot_node_attach_channel_dealer(handle, discovery.raw(), dealerHandle))
+}
+
+func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerSocket) error {
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
+	}
+	dealerHandle, err := socketHandle(dealer)
+	if err != nil {
+		return err
+	}
+	return n.withCString(channelName, func(cstr *C.char) error {
+		return configErrorFromResult(C.zlink_spot_node_attach_channel_dealer_manual(handle, cstr, dealerHandle))
 	})
 }
 
-func (n *SpotNode) AttachPubSub(serviceName string, pub *PubSocket, sub *SubSocket) error {
+func (n *SpotNode) AttachPubIngress(pub *PubSocket) error {
 	handle, err := n.handleOrError()
 	if err != nil {
 		return err
@@ -131,13 +142,7 @@ func (n *SpotNode) AttachPubSub(serviceName string, pub *PubSocket, sub *SubSock
 	if err != nil {
 		return err
 	}
-	subHandle, err := socketHandle(sub)
-	if err != nil {
-		return err
-	}
-	return n.withCString(serviceName, func(cstr *C.char) error {
-		return configErrorFromResult(C.zlink_spot_node_attach_pubsub(handle, cstr, pubHandle, subHandle))
-	})
+	return configErrorFromResult(C.zlink_spot_node_attach_pub_ingress(handle, pubHandle))
 }
 
 func (n *SpotNode) SetRoutingID(id RoutingID) error {
@@ -199,57 +204,6 @@ func (n *SpotNode) Spot() (*Spot, error) {
 	core := &spotCore{handle: handle, owner: n}
 	n.spots[core] = struct{}{}
 	return &Spot{core: core}, nil
-}
-
-func (n *SpotNode) ServiceAttachmentCount() (int, error) {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return 0, err
-	}
-	var count C.size_t
-	if err := configErrorFromResult(C.zlink_spot_node_service_attachment_count(handle, &count)); err != nil {
-		return 0, err
-	}
-	return int(count), nil
-}
-
-func (n *SpotNode) ServiceAttachmentAt(index int) (*SpotServiceAttachmentStats, error) {
-	if index < 0 {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	handle, err := n.handleOrError()
-	if err != nil {
-		return nil, err
-	}
-	var raw C.zlink_spot_service_attachment_stats_t
-	if err := configErrorFromResult(C.zlink_spot_node_service_attachment_at(handle, C.size_t(index), &raw)); err != nil {
-		return nil, err
-	}
-	return &SpotServiceAttachmentStats{
-		ServiceName:     C.GoString(&raw.service_name[0]),
-		RouterCount:     uint32(raw.router_count),
-		PubCount:        uint32(raw.pub_count),
-		SubCount:        uint32(raw.sub_count),
-		AutoRouterCount: uint32(raw.auto_router_count),
-		AutoPubCount:    uint32(raw.auto_pub_count),
-		AutoSubCount:    uint32(raw.auto_sub_count),
-	}, nil
-}
-
-func (n *SpotNode) NodeMonitorRecv(flags RecvFlags) (*SpotServiceMonitorEvent, error) {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return nil, err
-	}
-	var raw C.zlink_spot_service_monitor_event_t
-	if err := recvErrorFromResult(C.zlink_spot_node_monitor_recv(handle, &raw, C.zlink_recv_flags_t(flags))); err != nil {
-		return nil, err
-	}
-	return &SpotServiceMonitorEvent{
-		ServiceName: C.GoString(&raw.service_name[0]),
-		Role:        SpotServiceAttachmentRole(raw.role),
-		Event:       MonitorEventType(raw.event.event),
-	}, nil
 }
 
 func (n *SpotNode) Close() error {
@@ -536,13 +490,13 @@ func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Mes
 	return nil
 }
 
-func (s *Spot) SendService(serviceName string, flags SendFlags, parts ...*Message) error {
+func (s *Spot) SendChannel(channelName string, flags SendFlags, parts ...*Message) error {
 	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return err
 	}
-	err = s.core.withCString(serviceName, func(cstr *C.char) error {
-		return submitErrorFromResult(C.zlink_spot_send_service(s.raw(), cstr, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags)))
+	err = s.core.withCString(channelName, func(cstr *C.char) error {
+		return submitErrorFromResult(C.zlink_spot_send_channel(s.raw(), cstr, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags)))
 	})
 	if err != nil {
 		if restoreErr := prepared.restore(); restoreErr != nil {
@@ -554,11 +508,11 @@ func (s *Spot) SendService(serviceName string, flags SendFlags, parts ...*Messag
 	return nil
 }
 
-func (s *Spot) RequestService(serviceName string, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
+func (s *Spot) RequestChannel(channelName string, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
 	if callback == nil {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	resultCh, err := s.startServiceRequest(serviceName, flags, timeout, parts...)
+	resultCh, err := s.startChannelRequest(channelName, flags, timeout, parts...)
 	if err != nil {
 		return err
 	}
@@ -567,27 +521,6 @@ func (s *Spot) RequestService(serviceName string, callback RequestReplyCallback,
 		callback(result.result, result.parts)
 	}()
 	return nil
-}
-
-func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) error {
-	prepared, err := prepareMultipart(parts)
-	if err != nil {
-		return err
-	}
-	node := destNodeRid.toC()
-	spot := destSpotRid.toC()
-	if err := submitErrorFromResult(C.zlink_spot_send_spot(s.raw(), &node, &spot, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return restoreErr
-		}
-		return err
-	}
-	prepared.commit()
-	return nil
-}
-
-func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
-	return s.requestToSpot(destNodeRid, destSpotRid, callback, flags, timeout, parts...)
 }
 
 func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
@@ -763,21 +696,6 @@ func (s *Spot) OnDispatchEvent(handler func(event SpotDispatchEvent)) error {
 	return nil
 }
 
-func (s *Spot) requestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
-	if callback == nil {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	resultCh, err := s.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
-	if err != nil {
-		return err
-	}
-	go func() {
-		result := <-resultCh
-		callback(result.result, result.parts)
-	}()
-	return nil
-}
-
 func (s *Spot) requestToRouter(peerRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
 	if callback == nil {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
@@ -793,7 +711,7 @@ func (s *Spot) requestToRouter(peerRid RoutingID, callback RequestReplyCallback,
 	return nil
 }
 
-func (s *Spot) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
@@ -808,45 +726,8 @@ func (s *Spot) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFl
 	}
 	resultCh := make(chan requestResult, 1)
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
-	node := destNodeRid.toC()
-	spot := destSpotRid.toC()
-	if err := submitErrorFromResult(C.zlink_spot_request_spot_go_local(
-		s.raw(),
-		&node,
-		&spot,
-		prepared.ptr(),
-		prepared.count(),
-		C.zlink_send_flags_t(flags),
-		C.uint32_t(requestTimeoutMillis(timeout)),
-		C.uintptr_t(handle),
-	)); err != nil {
-		handle.Delete()
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return nil, restoreErr
-		}
-		return nil, err
-	}
-	prepared.commit()
-	return resultCh, nil
-}
-
-func (s *Spot) startServiceRequest(serviceName string, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
-	cloned, err := cloneParts(parts)
-	if err != nil {
-		return nil, err
-	}
-	prepared, err := prepareMultipart(cloned)
-	if err != nil {
-		closeMessageSlice(cloned)
-		return nil, err
-	}
-	resultCh := make(chan requestResult, 1)
-	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
-	if err := s.core.withCString(serviceName, func(cstr *C.char) error {
-		return submitErrorFromResult(C.zlink_spot_request_service_go_local(s.raw(), cstr, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(handle)))
+	if err := s.core.withCString(channelName, func(cstr *C.char) error {
+		return submitErrorFromResult(C.zlink_spot_request_channel_go_local(s.raw(), cstr, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(handle)))
 	}); err != nil {
 		handle.Delete()
 		if restoreErr := prepared.restore(); restoreErr != nil {

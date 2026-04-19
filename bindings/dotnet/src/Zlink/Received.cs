@@ -15,8 +15,7 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
     private readonly ReceivedReplyHandler? _replyHandler;
     private readonly byte[]? _routingIdBytes;
     private readonly byte[]? _spotRidBytes;
-    private Message[]? _parts;
-    private Message? _singlePart;
+    private readonly MultipartMessageCollection _parts;
     private int _closed;
     private RoutingId? _routingId;
     private RoutingId? _spotRid;
@@ -28,9 +27,25 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         return new Received(routingId, parts, requestSeq, spotRid, replyHandler);
     }
 
+    internal static Received Create(RoutingId? routingId,
+        MultipartMessageCollection parts, ulong? requestSeq = null,
+        RoutingId? spotRid = null, ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingId, parts, requestSeq, spotRid, replyHandler);
+    }
+
     internal static Received Create(byte[]? routingIdBytes, Message[] parts,
         bool adoptRoutingBytes, ulong? requestSeq = null,
         byte[]? spotRidBytes = null,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingIdBytes, parts, adoptRoutingBytes,
+            requestSeq, spotRidBytes, replyHandler);
+    }
+
+    internal static Received Create(byte[]? routingIdBytes,
+        MultipartMessageCollection parts, bool adoptRoutingBytes,
+        ulong? requestSeq = null, byte[]? spotRidBytes = null,
         ReceivedReplyHandler? replyHandler = null)
     {
         return new Received(routingIdBytes, parts, adoptRoutingBytes,
@@ -57,11 +72,19 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
     internal Received(RoutingId? routingId, Message[] parts,
         ulong? requestSeq = null, RoutingId? spotRid = null,
         ReceivedReplyHandler? replyHandler = null)
+        : this(routingId, MultipartMessageCollection.FromMessages(parts),
+            requestSeq, spotRid, replyHandler)
+    {
+    }
+
+    internal Received(RoutingId? routingId, MultipartMessageCollection parts,
+        ulong? requestSeq = null, RoutingId? spotRid = null,
+        ReceivedReplyHandler? replyHandler = null)
     {
         _routingId = routingId;
         _spotRid = spotRid;
         RequestSeq = requestSeq;
-        _parts = parts ?? Array.Empty<Message>();
+        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
         _replyHandler = replyHandler;
     }
 
@@ -69,27 +92,12 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         bool adoptRoutingBytes, ulong? requestSeq = null,
         byte[]? spotRidBytes = null,
         ReceivedReplyHandler? replyHandler = null)
+        : this(routingIdBytes, MultipartMessageCollection.FromMessages(parts),
+            adoptRoutingBytes, requestSeq, spotRidBytes, replyHandler)
     {
-        _ = adoptRoutingBytes;
-        _routingIdBytes = routingIdBytes;
-        _spotRidBytes = spotRidBytes;
-        RequestSeq = requestSeq;
-        _parts = parts ?? Array.Empty<Message>();
-        _replyHandler = replyHandler;
     }
 
-    internal Received(RoutingId? routingId, Message singlePart,
-        ulong? requestSeq = null, RoutingId? spotRid = null,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        _routingId = routingId;
-        _spotRid = spotRid;
-        RequestSeq = requestSeq;
-        _singlePart = singlePart ?? throw new ArgumentNullException(nameof(singlePart));
-        _replyHandler = replyHandler;
-    }
-
-    internal Received(byte[]? routingIdBytes, Message singlePart,
+    internal Received(byte[]? routingIdBytes, MultipartMessageCollection parts,
         bool adoptRoutingBytes, ulong? requestSeq = null,
         byte[]? spotRidBytes = null,
         ReceivedReplyHandler? replyHandler = null)
@@ -98,9 +106,24 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         _routingIdBytes = routingIdBytes;
         _spotRidBytes = spotRidBytes;
         RequestSeq = requestSeq;
-        _singlePart = singlePart ?? throw new ArgumentNullException(nameof(singlePart));
+        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
         _replyHandler = replyHandler;
     }
+
+    internal Received(RoutingId? routingId, Message singlePart,
+        ulong? requestSeq = null, RoutingId? spotRid = null,
+        ReceivedReplyHandler? replyHandler = null) : this(routingId,
+            MultipartMessageCollection.FromSingle(singlePart), requestSeq,
+            spotRid, replyHandler)
+    { }
+
+    internal Received(byte[]? routingIdBytes, Message singlePart,
+        bool adoptRoutingBytes, ulong? requestSeq = null,
+        byte[]? spotRidBytes = null,
+        ReceivedReplyHandler? replyHandler = null) : this(routingIdBytes,
+            MultipartMessageCollection.FromSingle(singlePart), adoptRoutingBytes,
+            requestSeq, spotRidBytes, replyHandler)
+    { }
 
     public RoutingId? RoutingId
     {
@@ -130,51 +153,20 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
 
     public IReadOnlyList<Message> Parts => this;
 
-    public int Count => _singlePart != null ? 1 : _parts?.Length ?? 0;
+    public int Count => _parts.Count;
 
-    public Message this[int index]
-    {
-        get
-        {
-            if (_singlePart != null)
-            {
-                if (index != 0)
-                    throw new ArgumentOutOfRangeException(nameof(index));
-                return _singlePart;
-            }
+    public Message this[int index] => _parts[index];
 
-            if (_parts == null || (uint)index >= (uint)_parts.Length)
-                throw new ArgumentOutOfRangeException(nameof(index));
-            return _parts[index];
-        }
-    }
-
-    public bool IsSinglePart => _singlePart != null || (_parts?.Length ?? 0) == 1;
+    public bool IsSinglePart => _parts.IsSinglePart;
 
     public Message FirstPart()
     {
-        if (_singlePart != null)
-            return _singlePart;
-        if (_parts == null || _parts.Length == 0)
-        {
-            throw new ZlinkRecvException(RecvResult.NoData,
-                (int)ErrorCode.EAgain);
-        }
-
-        return _parts[0];
+        return _parts.First();
     }
 
     public Message SinglePartOrThrow()
     {
-        if (_singlePart != null)
-            return _singlePart;
-        if (_parts == null || _parts.Length != 1)
-        {
-            throw new ZlinkRecvException(RecvResult.NotSupported,
-                (int)ErrorCode.ENotSup);
-        }
-
-        return _parts[0];
+        return _parts.Single();
     }
 
     public void Reply(Message part)
@@ -211,30 +203,12 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)
             return;
-        if (_singlePart != null)
-        {
-            _singlePart.Dispose();
-            return;
-        }
-        if (_parts == null)
-            return;
-        foreach (Message part in _parts)
-            part.Dispose();
+        _parts.Dispose();
     }
 
     public IEnumerator<Message> GetEnumerator()
     {
-        if (_singlePart != null)
-        {
-            yield return _singlePart;
-            yield break;
-        }
-
-        if (_parts == null)
-            yield break;
-
-        for (int i = 0; i < _parts.Length; i++)
-            yield return _parts[i];
+        return _parts.GetEnumerator();
     }
 
     IEnumerator IEnumerable.GetEnumerator()

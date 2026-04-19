@@ -16,9 +16,13 @@ internal static partial class NativeMethods
         "zlink_socket",
         "zlink_close",
         "zlink_send",
+        "zlink_send_part",
         "zlink_send_rid",
+        "zlink_send_part_rid",
         "zlink_recv",
+        "zlink_recv_part",
         "zlink_publish",
+        "zlink_publish_part",
         "zlink_set_admission_state",
         "zlink_get_admission_state",
         "zlink_errno",
@@ -29,36 +33,48 @@ internal static partial class NativeMethods
         "zlink_msg_close",
         "zlink_msg_move",
         "zlink_msg_copy",
+        "zlink_msg_adopt",
         "zlink_msg_data",
         "zlink_msg_size",
         "zlink_msg_refcnt",
         "zlink_msg_gets",
         "zlink_multipart_close",
         "zlink_dealer_request",
+        "zlink_dealer_request_part",
         "zlink_router_request",
+        "zlink_router_request_part",
         "zlink_router_reply",
+        "zlink_router_reply_part",
         "zlink_router_request_spot",
+        "zlink_router_request_spot_part",
         "zlink_router_reply_spot",
+        "zlink_router_reply_spot_part",
         "zlink_router_send_spot",
-        "zlink_spot_request_spot",
-        "zlink_spot_send_spot",
+        "zlink_router_send_spot_part",
         "zlink_spot_send_router",
+        "zlink_spot_send_router_part",
         "zlink_spot_request_router",
+        "zlink_spot_request_router_part",
         "zlink_spot_reply_spot",
+        "zlink_spot_reply_spot_part",
         "zlink_spot_reply_router",
+        "zlink_spot_reply_router_part",
         "zlink_spot_handler",
         "zlink_spot_dispatch_event_handler",
         "zlink_spot_recv",
-        "zlink_spot_send_service",
-        "zlink_spot_request_service",
+        "zlink_spot_recv_part",
+        "zlink_spot_send_channel",
+        "zlink_spot_send_channel_part",
+        "zlink_spot_request_channel",
+        "zlink_spot_request_channel_part",
         "zlink_spot_publish",
+        "zlink_spot_publish_part",
         "zlink_spot_subscribe",
+        "zlink_spot_subscribe_part",
         "zlink_spot_subscription_event",
-        "zlink_spot_node_attach_router",
-        "zlink_spot_node_attach_pubsub",
-        "zlink_spot_node_service_attachment_count",
-        "zlink_spot_node_service_attachment_at",
-        "zlink_spot_node_monitor_recv",
+        "zlink_spot_node_attach_channel_dealer",
+        "zlink_spot_node_attach_channel_dealer_manual",
+        "zlink_spot_node_attach_pub_ingress",
         "zlink_atomic_counter_new",
         "zlink_atomic_counter_set",
         "zlink_atomic_counter_inc",
@@ -127,6 +143,10 @@ internal static partial class NativeMethods
         ref ZlinkMsg src);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_adopt(ref ZlinkMsg dest,
+        IntPtr src);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_msg_data(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, EntryPoint = "zlink_msg_data",
@@ -169,15 +189,31 @@ internal static partial class NativeMethods
         IntPtr userData, int flags, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_dealer_request_part(IntPtr dealer,
+        ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag, uint timeoutMs,
+        ZlinkReplyHandlerDelegate? handler, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_request(IntPtr router,
         ref ZlinkRoutingId peerRoutingId, IntPtr parts, nuint partCount,
         ZlinkReplyHandlerDelegate handler, IntPtr userData, int flags,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_request_part(IntPtr router,
+        ref ZlinkRoutingId peerRoutingId, ref ZlinkMsg part, int flags,
+        ZlinkPartFlag partFlag, uint timeoutMs,
+        ZlinkReplyHandlerDelegate? handler, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_reply(IntPtr router,
         ref ZlinkRoutingId peerRoutingId, ulong requestSequence, IntPtr parts,
         nuint partCount);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_reply_part(IntPtr router,
+        ref ZlinkRoutingId peerRoutingId, ulong requestSequence,
+        ref ZlinkMsg part, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_request_spot(IntPtr router,
@@ -186,9 +222,22 @@ internal static partial class NativeMethods
         IntPtr userData, int flags, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_request_spot_part(IntPtr router,
+        ref ZlinkRoutingId destNodeRoutingId,
+        ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part,
+        ZlinkReplyHandlerDelegate? handler, IntPtr userData, int flags,
+        ZlinkPartFlag partFlag, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_reply_spot(IntPtr router,
         ref ZlinkRoutingId destNodeRoutingId, ref ZlinkRoutingId destSpotRoutingId,
         ulong requestSequence, IntPtr parts, nuint partCount);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_router_reply_spot_part(IntPtr router,
+        ref ZlinkRoutingId destNodeRoutingId,
+        ref ZlinkRoutingId destSpotRoutingId, ulong requestSequence,
+        ref ZlinkMsg part, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_send_spot(IntPtr router,
@@ -196,20 +245,20 @@ internal static partial class NativeMethods
         IntPtr parts, nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_request_spot(IntPtr spot,
-        ref ZlinkRoutingId destNodeRoutingId, ref ZlinkRoutingId destSpotRoutingId,
-        IntPtr parts, nuint partCount, ZlinkReplyHandlerDelegate handler,
-        IntPtr userData, int flags, uint timeoutMs);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_send_spot(IntPtr spot,
-        ref ZlinkRoutingId destNodeRoutingId, ref ZlinkRoutingId destSpotRoutingId,
-        IntPtr parts, nuint partCount, int flags);
+    internal static extern int zlink_router_send_spot_part(IntPtr router,
+        ref ZlinkRoutingId destNodeRoutingId,
+        ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part, int flags,
+        ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_send_router(IntPtr spot,
         ref ZlinkRoutingId peerRoutingId, IntPtr parts, nuint partCount,
         int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_send_router_part(IntPtr spot,
+        ref ZlinkRoutingId peerRoutingId, ref ZlinkMsg part, int flags,
+        ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_request_router(IntPtr spot,
@@ -218,14 +267,31 @@ internal static partial class NativeMethods
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_request_router_part(IntPtr spot,
+        ref ZlinkRoutingId peerRoutingId, ref ZlinkMsg part,
+        ZlinkReplyHandlerDelegate? handler, IntPtr userData, int flags,
+        ZlinkPartFlag partFlag, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_reply_spot(IntPtr spot,
         ref ZlinkRoutingId destNodeRoutingId, ref ZlinkRoutingId destSpotRoutingId,
         ulong requestSequence, IntPtr parts, nuint partCount);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_reply_spot_part(IntPtr spot,
+        ref ZlinkRoutingId destNodeRoutingId,
+        ref ZlinkRoutingId destSpotRoutingId, ulong requestSequence,
+        ref ZlinkMsg part, ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_reply_router(IntPtr spot,
         ref ZlinkRoutingId peerRoutingId, ulong requestSequence, IntPtr parts,
         nuint partCount);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_reply_router_part(IntPtr spot,
+        ref ZlinkRoutingId peerRoutingId, ulong requestSequence,
+        ref ZlinkMsg part, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_handler(IntPtr spot,
@@ -239,6 +305,12 @@ internal static partial class NativeMethods
     internal static extern int zlink_spot_recv(IntPtr spot,
         out IntPtr sourceRoutingId, out IntPtr spotRoutingId,
         out ulong requestSequence, out IntPtr parts, out nuint partCount,
+        int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_recv_part(IntPtr spot,
+        out IntPtr sourceRoutingId, out IntPtr spotRoutingId,
+        out ulong requestSequence, ref ZlinkMsg part, out int hasMore,
         int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

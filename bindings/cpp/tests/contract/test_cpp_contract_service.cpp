@@ -25,7 +25,7 @@ template<typename SpotT> class has_try_subscribe_result_t
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().try_subscribe (), std::true_type ());
+      -> decltype (std::declval<T &> ().subscribe_no_wait (), std::true_type ());
 
     template<typename> static std::false_type test (...);
 
@@ -38,7 +38,7 @@ template<typename SpotT> class has_try_publish_t
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().try_publish (
+      -> decltype (std::declval<T &> ().publish_no_wait_result (
                       std::declval<const std::string &> (),
                       std::declval<zlink::message_t &> ()),
                     std::true_type ());
@@ -296,9 +296,9 @@ template<typename T> class has_routing_id_getter_t
 static_assert (has_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must expose subscribe receive");
 static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value,
-               "spot_t must not expose try_subscribe");
+               "spot_t must not expose subscribe_no_wait");
 static_assert (!has_try_publish_t<zlink::service::spot_t>::value,
-               "spot_t must not expose try_publish");
+               "spot_t must not expose publish_no_wait_result");
 static_assert (has_service_publish_t<zlink::service::spot_t>::value,
                "spot_t must expose service-aware publish");
 static_assert (!has_topic_publish_t<zlink::service::spot_t>::value,

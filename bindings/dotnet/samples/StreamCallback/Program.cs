@@ -15,7 +15,7 @@ stream.Bind(endpoint);
 
 using var signal = new ManualResetEventSlim(false);
 string? callbackPayload = null;
-stream.OnPacket((routingId, payload) =>
+stream.OnPacket((string routingId, Message payload) =>
 {
     using (payload)
         callbackPayload = payload.GetString();

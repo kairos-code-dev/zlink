@@ -8,6 +8,18 @@ Internal helpers and implementation details are omitted.
 
 All types live in the `Zlink` namespace.
 
+Only the public types and members listed in this document are part of the
+contract. `internal` types, `Zlink.Sockets.Internal`, native interop helpers,
+and other assembly-private helpers are not public API. Perf, samples, and
+tests must use the public assembly surface only. `InternalsVisibleTo` may be
+used for tests during development, but it does not change the public contract.
+
+Implementation follow-up:
+- `InternalsVisibleTo` must not remain open for perf projects once the public
+  surface and perf harness are fully aligned.
+- Perf and sample projects must continue to compile against the public
+  assembly surface only.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -278,19 +290,25 @@ public sealed class DealerSocket : MessageSocketBase
     Task<IReadOnlyList<Message>> RequestAsync(IReadOnlyList<Message> parts, TimeSpan timeout,
                                               CancellationToken ct = default);
 
-    // --- request (callback, has flags) ---
+    // --- request (callback, blocking submit) ---
     // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void Request(Message part,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
-                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void Request(IReadOnlyList<Message> parts,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
-                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequest(Message part,
+                    Action<RequestResult, IReadOnlyList<Message>> callback,
+                    TimeSpan? timeout = null);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequest(IReadOnlyList<Message> parts,
+                    Action<RequestResult, IReadOnlyList<Message>> callback,
+                    TimeSpan? timeout = null);
 }
 ```
 
@@ -348,19 +366,25 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     Task<IReadOnlyList<Message>> RequestAsync(RoutingId peerRid, IReadOnlyList<Message> parts,
                                               TimeSpan timeout, CancellationToken ct = default);
 
-    // --- request (callback, has flags) ---
+    // --- request (callback, blocking submit) ---
     // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void Request(RoutingId peerRid, Message part,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
-                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void Request(RoutingId peerRid, IReadOnlyList<Message> parts,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
-                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequest(RoutingId peerRid, Message part,
+                    Action<RequestResult, IReadOnlyList<Message>> callback,
+                    TimeSpan? timeout = null);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequest(RoutingId peerRid, IReadOnlyList<Message> parts,
+                    Action<RequestResult, IReadOnlyList<Message>> callback,
+                    TimeSpan? timeout = null);
 
     // --- reply ---
     /// <exception cref="ZlinkSubmitException"/>
@@ -391,21 +415,29 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                                                     TimeSpan timeout = default,
                                                     CancellationToken ct = default);
 
-    // --- router -> spot routed request (callback, has flags) ---
+    // --- router -> spot routed request (callback, blocking submit) ---
     // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message message,
                        Action<RequestResult, IReadOnlyList<Message>> callback,
-                       SendFlags flags = SendFlags.None,
                        TimeSpan timeout = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        IReadOnlyList<Message> parts,
                        Action<RequestResult, IReadOnlyList<Message>> callback,
-                       SendFlags flags = SendFlags.None,
                        TimeSpan timeout = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message message,
+                          Action<RequestResult, IReadOnlyList<Message>> callback,
+                          TimeSpan timeout = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          IReadOnlyList<Message> parts,
+                          Action<RequestResult, IReadOnlyList<Message>> callback,
+                          TimeSpan timeout = default);
 
     // --- router -> spot routed reply ---
     /// <exception cref="ZlinkSubmitException"/>
@@ -1407,19 +1439,25 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                                                       TimeSpan timeout = default,
                                                       CancellationToken ct = default);
 
-    // --- routed request (spot -> router, callback, has flags) ---
+    // --- routed request (spot -> router, callback, blocking submit) ---
     // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void RequestToRouter(RoutingId peerRid, Message message,
                          Action<RequestResult, IReadOnlyList<Message>> callback,
-                         SendFlags flags = SendFlags.None,
                          TimeSpan timeout = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     void RequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
                          Action<RequestResult, IReadOnlyList<Message>> callback,
-                         SendFlags flags = SendFlags.None,
                          TimeSpan timeout = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequestToRouter(RoutingId peerRid, Message message,
+                            Action<RequestResult, IReadOnlyList<Message>> callback,
+                            TimeSpan timeout = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool TryRequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
+                            Action<RequestResult, IReadOnlyList<Message>> callback,
+                            TimeSpan timeout = default);
 
     // --- routed reply (spot -> router) ---
     /// <exception cref="ZlinkSubmitException"/>

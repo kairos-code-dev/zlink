@@ -12,8 +12,8 @@ Registry, Discovery는 각각 다른 공개 API를 가지지만, 세 문서는 �
 
 ## 문서별 역할
 
-- [spot.ko.md](spot.ko.md): SPOT publish/subscribe 와 direct send/request/reply
-  함수 계약
+- [spot.ko.md](spot.ko.md): SPOT publish/subscribe, channel send/request, routed
+  send/request/reply 함수 계약
 - [registry.ko.md](registry.ko.md): 어떤 `SpotNode`가 어떤 `spot_rid`를 현재 맡고
   있는지에 대한 최종 기준, 등록/해제, 덮어쓰기, 만료 규칙
 - [discovery.ko.md](discovery.ko.md): Registry 기준 정보를 가까운 곳에 저장해 두고
@@ -45,26 +45,32 @@ Registry, Discovery는 각각 다른 공개 API를 가지지만, 세 문서는 �
   이해해야 합니다.
 - 같은 `spot_rid`가 서로 다른 `service_name`에 동시에 존재할 수 있습니다.
 
-## 두 가지 주소 지정 방식
+## 주소 지정 방식
 
-SPOT direct routed 메시징은 크게 두 방식으로 생각하면 이해하기 쉽습니다.
+SPOT 메시징에서 목적지를 정하는 방식은 크게 세 가지입니다.
 
-- 직접 지정 방식:
-  호출자가 `dest_node_rid + dest_spot_rid`를 모두 알고 있고, 그 값을 그대로
-  SPOT send/request 함수에 넣는 방식입니다.
-- 논리 `spot_rid`에서 시작하는 방식:
-  호출자는 `spot_rid`만 알고 있고, 먼저 현재 Discovery가 보고 있는
-  `service_name` 안에서 "이 `spot_rid`를 지금 어느 `SpotNode`가 맡고 있는가"를
-  물어본 뒤, 그 결과를 동일한 SPOT send/request 함수에 넣는 방식입니다.
+- channel 호출 방식:
+  호출자가 `channel_name`만 지정하면, attach된 `DEALER`가 해당 channel의
+  `ROUTER(server)` 집합 중 하나에 요청을 보냅니다. `Spot` facade의
+  `zlink_spot_send_channel()` / `zlink_spot_request_channel()`을 사용합니다.
+- peer routed 방식:
+  호출자가 `peer_rid`를 직접 지정해 같은 SPOT mesh의 특정 peer에게 보냅니다.
+  `Spot` facade의 `zlink_spot_send_router()` / `zlink_spot_request_router()`를
+  사용합니다.
+- ROUTER 쪽 direct SPOT 주소 지정:
+  호출자가 `dest_node_rid + dest_spot_rid`를 모두 알고 있고, ROUTER socket의
+  `zlink_router_send_spot()` / `zlink_router_request_spot()`을 사용합니다.
+  이 방식은 `Spot` facade가 아니라 저수준 ROUTER API에서만 사용할 수 있습니다.
 
-두 번째 방식은 새로운 wire 형식을 뜻하지 않습니다. 최종 전송 단계에서는 항상
-`dest_node_rid + dest_spot_rid` 조합을 사용합니다. 즉 내부적으로는
-먼저 `spot_rid -> owner_node_rid`를 조회한 뒤, 동일한 routed 함수로 내려가는
-구조입니다.
+`Spot` public surface에서는 `dest_node_rid + dest_spot_rid`를 직접 받는
+direct send/request 함수가 제거되었습니다. 일반적인 서비스 호출은
+channel 방식이나 peer routed 방식으로 처리하고, concrete destination 직접
+지정이 정말 필요할 때만 ROUTER direct 경로를 사용합니다.
 
-이 문서 집합은 이 흐름을 위해 별도의 `send/request/reply` 함수 오버로드를
-추가로 요구하지 않습니다. 대신 아래 조회 함수를 사용해 목적지 `node_rid`를 먼저
-구한 뒤, 동일한 SPOT routed submit 함수를 그대로 사용합니다.
+### 논리 spot_rid 조회
+
+호출자가 `spot_rid`만 알고 있을 때, 아래 함수로 현재 Discovery의
+`service_name` 범위 안에서 owner `node_rid`를 구할 수 있습니다.
 
 ```c
 zlink_config_result_t zlink_discovery_resolve_spot (
@@ -74,21 +80,23 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 ```
 
 이 함수가 성공하면, 호출자는 반환된 `owner_node_rid_out`과 원래의 `spot_rid`를
-묶어 `zlink_spot_send_spot()`, `zlink_spot_request_spot()` 같은 SPOT routed
-함수에 전달하면 됩니다. 이 조회 결과는 현재 Discovery의 `service_name` 범위 안에서만
-유효합니다. reply는 예외입니다. reply는 새로 조회하지 않고, request를 받을 때
-함께 전달된 source 주소를 그대로 사용해야 합니다.
+묶어 ROUTER 쪽 direct 함수(`zlink_router_send_spot()`,
+`zlink_router_request_spot()`)에 전달할 수 있습니다. 이 조회 결과는 현재
+Discovery의 `service_name` 범위 안에서만 유효합니다. reply는 예외입니다.
+reply는 새로 조회하지 않고, request를 받을 때 함께 전달된 source 주소를 그대로
+사용해야 합니다.
 
 ## 수동 구성과 관리형 구성
 
 - 수동 구성:
-  Discovery나 Registry 없이 peer를 직접 연결해서 쓰는 방식입니다. 이 경우에는
+  Discovery나 Registry 없이 peer를 직접 연결해서 쓰는 방식입니다. peer
+  routed 경로에서는 `peer_rid`를 알고 있어야 하고, ROUTER direct 경로에서는
   `dest_node_rid + dest_spot_rid`를 모두 알고 있어야 합니다.
 - 관리형 구성:
   Registry가 "현재 `service_name` 안에서 어떤 `spot_rid`를 어느 `SpotNode`가
   맡고 있는가"를 관리하고, Discovery가 그 결과를 가까운 곳에서 빠르게 조회할 수
   있게 도와주는 방식입니다. 이 경우에는 `zlink_discovery_resolve_spot()`로
-  `node_rid`를 구한 뒤 보낼 수 있습니다.
+  `node_rid`를 구한 뒤 ROUTER direct 함수로 보낼 수 있습니다.
 
 ## 자동 연결 공통 원칙
 

@@ -20,13 +20,10 @@ from ._enums import (
     SpotNodeState,
     SpotPeerSource,
     SpotPeerState,
-    SpotServiceAttachmentRole,
 )
 from ._ffi import (
     ZlinkMsg,
     ZlinkRoutingId,
-    ZlinkSpotServiceAttachmentStats,
-    ZlinkSpotServiceMonitorEvent,
     ZlinkSpotNodePeerEntry,
     ZlinkSpotNodePeerFilter,
     ZlinkSpotNodeStatus,
@@ -34,7 +31,6 @@ from ._ffi import (
     ZlinkSpotNodeSubjectFilter,
     lib,
 )
-from ._monitor import MonitorEvent as SocketMonitorEvent
 from ._core import (
     BindError,
     BindResult,
@@ -300,24 +296,6 @@ class SpotNodeSubjectFilter:
     subject_kind: int | None = None
 
 
-@dataclass(frozen=True)
-class SpotServiceAttachmentStats:
-    service_name: str
-    router_count: int
-    pub_count: int
-    sub_count: int
-    auto_router_count: int
-    auto_pub_count: int
-    auto_sub_count: int
-
-
-@dataclass(frozen=True)
-class SpotServiceMonitorEvent:
-    service_name: str
-    role: SpotServiceAttachmentRole
-    event: SocketMonitorEvent
-
-
 class SpotNode:
     def __init__(self, ctx):
         self._handle = lib().zlink_spot_node_new(ctx._handle)
@@ -372,69 +350,26 @@ class SpotNode:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def attach_router(self, service_name, router):
-        rc = lib().zlink_spot_node_attach_router(
+    def attach_channel_dealer(self, discovery, dealer):
+        rc = lib().zlink_spot_node_attach_channel_dealer(
+            self._handle, discovery._handle, dealer._handle
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def attach_channel_dealer_manual(self, channel_name, dealer):
+        rc = lib().zlink_spot_node_attach_channel_dealer_manual(
             self._handle,
-            _validated_c_string_value(service_name, field="service_name", max_length=255),
-            router._handle,
+            _validated_c_string_value(channel_name, field="channel_name", max_length=255),
+            dealer._handle,
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def attach_pubsub(self, service_name, pub, sub):
-        rc = lib().zlink_spot_node_attach_pubsub(
-            self._handle,
-            _validated_c_string_value(service_name, field="service_name", max_length=255),
-            pub._handle,
-            sub._handle,
-        )
+    def attach_pub_ingress(self, pub):
+        rc = lib().zlink_spot_node_attach_pub_ingress(self._handle, pub._handle)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def service_attachment_count(self):
-        count = ctypes.c_size_t()
-        rc = lib().zlink_spot_node_service_attachment_count(
-            self._handle, ctypes.byref(count)
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return int(count.value)
-
-    def service_attachment_at(self, index):
-        native = ZlinkSpotServiceAttachmentStats()
-        rc = lib().zlink_spot_node_service_attachment_at(
-            self._handle, int(index), ctypes.byref(native)
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return SpotServiceAttachmentStats(
-            service_name=_decode_fixed(native.service_name),
-            router_count=int(native.router_count),
-            pub_count=int(native.pub_count),
-            sub_count=int(native.sub_count),
-            auto_router_count=int(native.auto_router_count),
-            auto_pub_count=int(native.auto_pub_count),
-            auto_sub_count=int(native.auto_sub_count),
-        )
-
-    def node_monitor_recv(self, *, flags=0):
-        native = ZlinkSpotServiceMonitorEvent()
-        rc = lib().zlink_spot_node_monitor_recv(
-            self._handle, ctypes.byref(native), int(flags)
-        )
-        if rc != 0:
-            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-        return SpotServiceMonitorEvent(
-            service_name=_decode_fixed(native.service_name),
-            role=SpotServiceAttachmentRole(int(native.role)),
-            event=SocketMonitorEvent(
-                event=int(native.event.event),
-                value=int(native.event.value),
-                routing_id=_routing_id_bytes(native.event.routing_id),
-                local_addr=_decode_fixed(native.event.local_addr),
-                remote_addr=_decode_fixed(native.event.remote_addr),
-            ),
-        )
 
     def create_spot(self):
         return Spot._create(self)
@@ -753,60 +688,60 @@ class Spot:
             _close_native_parts_array(parts_array, part_count)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
-    def send_service(self, service_name, payload, *, flags=0):
+    def send_channel(self, channel_name, payload, *, flags=0):
         _ensure_not_in_callback("blocking send")
-        service_bytes = _validated_c_string_value(
-            service_name, field="service_name", max_length=255
+        channel_bytes = _validated_c_string_value(
+            channel_name, field="channel_name", max_length=255
         )
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        rc = lib().zlink_spot_send_service(
-            self._handle, service_bytes, parts_array, part_count, int(flags)
+        rc = lib().zlink_spot_send_channel(
+            self._handle, channel_bytes, parts_array, part_count, int(flags)
         )
         if rc != 0:
             _close_native_parts_array(parts_array, part_count)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
-    def request_service(self, service_name, payload, *args, timeout=0, flags=_UNSET):
+    def request_channel(self, channel_name, payload, *args, timeout=0, flags=_UNSET):
         if len(args) > 1:
             raise TypeError(
-                "request_service() takes at most 3 positional arguments after self"
+                "request_channel() takes at most 3 positional arguments after self"
             )
-        service_bytes = _validated_c_string_value(
-            service_name, field="service_name", max_length=255
+        channel_bytes = _validated_c_string_value(
+            channel_name, field="channel_name", max_length=255
         )
         if not args:
             if flags is not _UNSET:
                 raise TypeError(
-                    "request_service() got an unexpected keyword argument 'flags'"
+                    "request_channel() got an unexpected keyword argument 'flags'"
                 )
-            return self._request_service_async(
-                service_bytes,
+            return self._request_channel_async(
+                channel_bytes,
                 payload,
                 timeout=timeout,
             )
         callback = args[0]
         callback_flags = 0 if flags is _UNSET else flags
-        return self._request_service_callback(
-            service_bytes,
+        return self._request_channel_callback(
+            channel_bytes,
             payload,
             callback,
             flags=callback_flags,
             timeout=timeout,
         )
 
-    def _request_service_async(self, service_bytes, payload, *, timeout=0):
+    def _request_channel_async(self, channel_bytes, payload, *, timeout=0):
         async def _run():
             loop = asyncio.get_running_loop()
             pending = _PendingRequest(loop=loop)
             handle = id(pending)
             self._request_pending[handle] = pending
             try:
-                self._start_service_request(
-                    service_bytes, payload, 0, timeout, handle
+                self._start_channel_request(
+                    channel_bytes, payload, 0, timeout, handle
                 )
             except Exception:
                 self._request_pending.pop(handle, None)
@@ -815,25 +750,25 @@ class Spot:
 
         return _run()
 
-    def _request_service_callback(self, service_bytes, payload, callback, *, flags=0, timeout=0):
+    def _request_channel_callback(self, channel_bytes, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
         handle = id(pending)
         self._request_pending[handle] = pending
         try:
-            self._start_service_request(service_bytes, payload, flags, timeout, handle)
+            self._start_channel_request(channel_bytes, payload, flags, timeout, handle)
         except Exception:
             self._request_pending.pop(handle, None)
             raise
 
-    def _start_service_request(self, service_bytes, payload, flags, timeout, handle):
+    def _start_channel_request(self, channel_bytes, payload, flags, timeout, handle):
         native_parts = self._native_parts_from_payload(payload)
         parts_array = (ZlinkMsg * len(native_parts))()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
         reply_handler = self._ensure_request_reply_handler()
-        rc = lib().zlink_spot_request_service(
+        rc = lib().zlink_spot_request_channel(
             self._handle,
-            service_bytes,
+            channel_bytes,
             parts_array,
             len(native_parts),
             reply_handler,
@@ -1096,51 +1031,6 @@ class Spot:
         if result == RequestResult.OK:
             received = _make_message_list(parts, part_count)
         pending.resolve(result, received, int(errnum))
-
-    def send_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
-        _ensure_not_in_callback("blocking send")
-        native_parts = _clone_payload(payload)
-        parts_array = _prepare_native_parts(native_parts)
-        native_node = _copy_routing_id(dest_node_rid)
-        native_spot = _copy_routing_id(dest_spot_rid)
-        rc = lib().zlink_spot_send_spot(
-            self._handle,
-            ctypes.byref(native_node),
-            ctypes.byref(native_spot),
-            parts_array,
-            len(native_parts),
-            int(flags),
-        )
-        if rc != 0:
-            _close_native_parts_array(parts_array, len(native_parts))
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-
-    def request_to_spot(self, dest_node_rid, dest_spot_rid, payload, *args, timeout=0, flags=_UNSET):
-        if len(args) > 1:
-            raise TypeError(
-                "request_to_spot() takes at most 4 positional arguments after self"
-            )
-        if not args:
-            if flags is not _UNSET:
-                raise TypeError(
-                    "request_to_spot() got an unexpected keyword argument 'flags'"
-                )
-            return self._request_with_native(
-                lib().zlink_spot_request_spot,
-                (dest_node_rid, dest_spot_rid),
-                payload,
-                timeout=timeout,
-            )
-        callback = args[0]
-        callback_flags = 0 if flags is _UNSET else flags
-        return self._request_with_native(
-            lib().zlink_spot_request_spot,
-            (dest_node_rid, dest_spot_rid),
-            payload,
-            callback=callback,
-            flags=callback_flags,
-            timeout=timeout,
-        )
 
     def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, payload, *, flags=0):
         native_parts = _clone_payload(payload)

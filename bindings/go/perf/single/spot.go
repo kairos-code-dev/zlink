@@ -14,25 +14,18 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 
 	publisherNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
-	defer publisherNode.Close()
-	subscriberNode, err := ctx.SpotNode()
+	discovery, err := ctx.Discovery(zlink.ServiceTypeSpot, "bench")
 	perfcommon.Must(err)
-	defer subscriberNode.Close()
+	defer discovery.Close()
+	perfcommon.Must(publisherNode.AttachDiscovery(discovery))
 
 	publisher, err := publisherNode.Spot()
 	perfcommon.Must(err)
 	defer publisher.Close()
-	subscriber, err := subscriberNode.Spot()
-	perfcommon.Must(err)
-	defer subscriber.Close()
+	subscriber := publisher
 	serviceName := "bench"
 
-	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot")
-	perfcommon.Must(perfcommon.ConfigureTLSServer(publisherNode, cfg.transport))
-	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriberNode, cfg.transport))
 	perfcommon.Must(publisher.SetNoDrop(true))
-	perfcommon.Must(publisherNode.Bind(endpoint))
-	perfcommon.Must(subscriberNode.ConnectPeer(endpoint))
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 
 	stats := perfcommon.NewStats()

@@ -5,6 +5,9 @@
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `ASP.NET Core`에서 `STREAM`을 어떤 handler 모델로
 > 올릴지 방향을 정리한다.
+>
+> 아직 닫지 않은 serializer, write, lifecycle 항목은
+> [stream-open-items.ko.md](./stream-open-items.ko.md)를 참고한다.
 
 ## 1. 목표
 
@@ -92,11 +95,11 @@ public interface IZLinkStreamRawHandler
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddStreamNode("gateway.stream", stream =>
+    options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.AddPacket<GatewayPacketHandler>();
-        stream.AddRaw<GatewayRawHandler>();
+        stream.AddPacket<ClientPacketHandler>();
+        stream.AddRaw<ClientRawHandler>();
     });
 });
 ```

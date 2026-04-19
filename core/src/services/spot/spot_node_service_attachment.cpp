@@ -38,17 +38,7 @@ socket_base_t *spot_node_t::select_service_router (
         return NULL;
     }
     service_attachment_t &attachment = it->second;
-    std::vector<socket_base_t *> candidates;
-    candidates.reserve (attachment.manual.routers.size ()
-                        + attachment.discovered.routers.size ());
-    candidates.insert (candidates.end (), attachment.manual.routers.begin (),
-                       attachment.manual.routers.end ());
-    for (std::map<std::string, socket_base_t *>::const_iterator router_it =
-           attachment.discovered.routers.begin ();
-         router_it != attachment.discovered.routers.end (); ++router_it) {
-        candidates.push_back (router_it->second);
-    }
-    const size_t candidate_count = candidates.size ();
+    const size_t candidate_count = attachment.router_cache.size ();
     if (candidate_count == 0) {
         errno = ENOTCONN;
         return NULL;
@@ -56,7 +46,7 @@ socket_base_t *spot_node_t::select_service_router (
     for (size_t attempt = 0; attempt < candidate_count; ++attempt) {
         if (attachment.next_router_index >= candidate_count)
             attachment.next_router_index = 0;
-        socket_base_t *router = candidates[attachment.next_router_index];
+        socket_base_t *router = attachment.router_cache[attachment.next_router_index];
         attachment.next_router_index =
           (attachment.next_router_index + 1) % candidate_count;
         if (router

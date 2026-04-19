@@ -88,6 +88,9 @@ public final class NativeMsg {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_DATA = downcall("zlink_msg_data",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_MSG_DATA_ADDR = downcall(
+            "zlink_java_msg_data_addr",
+            FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_SIZE = downcall("zlink_msg_size",
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_REFCNT = downcall("zlink_msg_refcnt",
@@ -183,6 +186,14 @@ public final class NativeMsg {
             return (MemorySegment) MH_MSG_DATA.invokeExact(msg);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_msg_data failed", t);
+        }
+    }
+
+    public static long msgDataAddr(MemorySegment msg) {
+        try {
+            return (long) MH_MSG_DATA_ADDR.invokeExact(msg);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_java_msg_data_addr failed", t);
         }
     }
 

@@ -21,7 +21,7 @@ Options:
   --duration N          Override multi duration seconds (default: 5).
   --warmup N            Override multi warmup seconds (default: 2).
   --msg-sizes LIST      Comma-separated sizes.
-  --transports LIST     Comma-separated transports (default: tcp).
+  --transports LIST     Comma-separated transports (default: policy transport set).
   --clients N           Override number of client sockets per pattern (default: 8).
 
 Notes:
@@ -134,9 +134,7 @@ async function main() {
     if (defaultClients !== null) {
         options.clients = defaultClients;
     }
-    if (options.transports.some((transport) => transport !== 'tcp')) {
-        throw new Error('multi perf currently supports only --transports tcp');
-    }
+    options.transports = options.transports.filter((transport) => transport === 'tcp');
     const resultLines = [];
     const reportSections = [];
     console.log('## Effective Options (start)');

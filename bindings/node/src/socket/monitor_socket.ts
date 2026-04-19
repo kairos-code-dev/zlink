@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { requireNative } from '../native';
+import { RecvFlags } from './constants';
+import { RecvError, RecvResult } from '../errors';
 import type {
   MonitorSnapshot,
   SocketMonitorEventValue,
@@ -15,12 +17,15 @@ export class MonitorSocket {
     this._native = handle;
   }
 
-  recv(): SocketMonitorEventValue {
+  recv(flags: RecvFlags = RecvFlags.None): SocketMonitorEventValue {
+    if ((flags | 0) & (RecvFlags.DontWait | 0)) {
+      const event = requireNative().monitorRecvNoWait(this._native) as SocketMonitorEventValue | null;
+      if (!event) {
+        throw new RecvError(RecvResult.NoData, 11, 'monitor recv failed');
+      }
+      return event;
+    }
     return requireNative().monitorRecv(this._native) as SocketMonitorEventValue;
-  }
-
-  tryRecv(): SocketMonitorEventValue | null {
-    return requireNative().monitorTryRecv(this._native) as SocketMonitorEventValue | null;
   }
 
   onEvent(handler: SocketMonitorHandler): void {

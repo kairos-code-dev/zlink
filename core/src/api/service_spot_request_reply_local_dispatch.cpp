@@ -221,7 +221,9 @@ int deliver_reply_to_spot (
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        std::map<pending_spot_key_t, pending_reply_t>::iterator it =
+        std::unordered_map<pending_spot_key_t,
+                           pending_reply_t,
+                           zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
           state->pending_replies.find (key);
         if (it != state->pending_replies.end ()) {
             pending = it->second;
@@ -268,7 +270,7 @@ int deliver_reply_to_router (
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        std::map<uint64_t, pending_reply_t>::iterator it =
+        std::unordered_map<uint64_t, pending_reply_t>::iterator it =
           state->pending_replies.find (rr_envelope_.request_seq);
         if (it != state->pending_replies.end ()) {
             pending = it->second;

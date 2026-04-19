@@ -2711,7 +2711,7 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
         || payload_type == napi_object) {
         parts.resize(1);
         if (!init_msg_from_value(env, argv[2], &parts[0]))
-            return throw_last_error(env, "tryPublish failed");
+            return throw_last_error(env, "publishNoWaitResult failed");
     } else if (!build_msg_vector(env, argv[2], &parts)) {
         return NULL;
     }
@@ -2729,7 +2729,7 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
     }
     if (rc < 0) {
         close_msg_vector(parts);
-        return throw_last_error(env, "tryPublish failed");
+        return throw_last_error(env, "publishNoWaitResult failed");
     }
     napi_value out;
     napi_create_int32(env, rc, &out);
@@ -2745,14 +2745,14 @@ napi_value socket_try_send(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
     zlink_msg_t msg;
     if (!init_msg_from_value(env, argv[1], &msg))
-        return throw_last_error(env, "trySend failed");
+        return throw_last_error(env, "sendNoWaitResult failed");
     int rc = zlink_send(sock, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
     if (rc == 0)
         rc = ZLINK_SUBMIT_OK;
     else
         rc = classify_try_send_errno();
     if (rc < 0)
-        return throw_last_error(env, "trySend failed");
+        return throw_last_error(env, "sendNoWaitResult failed");
     napi_value out;
     napi_create_int32(env, rc, &out);
     return out;
@@ -3060,7 +3060,7 @@ napi_value socket_try_subscribe_message(napi_env env, napi_callback_info info)
             return none;
         }
         if (err != EMSGSIZE)
-            return throw_last_error(env, "trySubscribe failed");
+            return throw_last_error(env, "subscribeNoWait failed");
         topic.assign(topic_len > 0 ? topic_len : 1, '\0');
     }
 }
@@ -3787,7 +3787,7 @@ napi_value router_try_recv_message(napi_env env, napi_callback_info info)
             napi_get_null(env, &none);
             return none;
         }
-        return throw_last_error(env, "routerTryRecvMessage failed");
+        return throw_last_error(env, "routerRecvMessageNoWait failed");
     }
 
     zlink_routing_id_t rid_copy;

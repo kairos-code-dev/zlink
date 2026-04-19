@@ -60,9 +60,9 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.Send(parts);
     }
 
-    public SendResult TrySend(Message message)
+    internal SendResult SendNoWaitResult(Message message)
     {
-        return Kernel.TrySend(message);
+        return Kernel.SendNoWaitResult(message);
     }
 
     internal void SendRawSingle(ReadOnlySpan<byte> payload, int flags)
@@ -70,9 +70,9 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.SendRawSingle(payload, flags);
     }
 
-    internal SendResult TrySendRawSingle(ReadOnlySpan<byte> payload)
+    internal SendResult SendRawSingleNoWaitResult(ReadOnlySpan<byte> payload)
     {
-        return Kernel.TrySendRawSingle(payload);
+        return Kernel.SendRawSingleNoWaitResult(payload);
     }
 
     internal void SendBorrowedSingle(byte[] payload, int flags)
@@ -80,14 +80,14 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.SendBorrowedSingle(payload, flags);
     }
 
-    internal SendResult TrySendBorrowedSingle(byte[] payload)
+    internal SendResult SendBorrowedSingleNoWaitResult(byte[] payload)
     {
-        return Kernel.TrySendBorrowedSingle(payload);
+        return Kernel.SendBorrowedSingleNoWaitResult(payload);
     }
 
-    public SendResult TrySend(IReadOnlyList<Message> parts)
+    internal SendResult SendNoWaitResult(IReadOnlyList<Message> parts)
     {
-        return Kernel.TrySend(parts);
+        return Kernel.SendNoWaitResult(parts);
     }
 
     public void Send(string routingId, Message message)
@@ -100,9 +100,9 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.Send(routingId, parts);
     }
 
-    public SendResult TrySend(string routingId, Message message)
+    internal SendResult SendNoWaitResult(string routingId, Message message)
     {
-        return Kernel.TrySend(routingId, message);
+        return Kernel.SendNoWaitResult(routingId, message);
     }
 
     internal void SendBorrowedSingle(string routingId, byte[] payload, int flags)
@@ -115,19 +115,31 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.SendBorrowedSingle(routingId, payload, flags);
     }
 
-    internal SendResult TrySendBorrowedSingle(string routingId, byte[] payload)
+    internal void SendBorrowedSingle(ReadOnlySpan<byte> routingId, byte[] payload,
+        int flags)
     {
-        return Kernel.TrySendBorrowedSingle(routingId, payload);
+        Kernel.SendBorrowedSingle(routingId, payload, flags);
     }
 
-    internal SendResult TrySendBorrowedSingle(RoutingId routingId, byte[] payload)
+    internal SendResult SendBorrowedSingleNoWaitResult(string routingId, byte[] payload)
     {
-        return Kernel.TrySendBorrowedSingle(routingId, payload);
+        return Kernel.SendBorrowedSingleNoWaitResult(routingId, payload);
     }
 
-    public SendResult TrySend(string routingId, IReadOnlyList<Message> parts)
+    internal SendResult SendBorrowedSingleNoWaitResult(RoutingId routingId, byte[] payload)
     {
-        return Kernel.TrySend(routingId, parts);
+        return Kernel.SendBorrowedSingleNoWaitResult(routingId, payload);
+    }
+
+    internal SendResult SendBorrowedSingleNoWaitResult(ReadOnlySpan<byte> routingId,
+        byte[] payload)
+    {
+        return Kernel.SendBorrowedSingleNoWaitResult(routingId, payload);
+    }
+
+    internal SendResult SendNoWaitResult(string routingId, IReadOnlyList<Message> parts)
+    {
+        return Kernel.SendNoWaitResult(routingId, parts);
     }
 
     public void Publish(string topic, Message message)
@@ -140,9 +152,9 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.Publish(topic, parts);
     }
 
-    public SendResult TryPublish(string topic, Message message)
+    internal SendResult PublishNoWaitResult(string topic, Message message)
     {
-        return Kernel.TryPublish(topic, message);
+        return Kernel.PublishNoWaitResult(topic, message);
     }
 
     internal void PublishRawSingle(string topic, ReadOnlySpan<byte> payload,
@@ -151,10 +163,10 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.PublishRawSingle(topic, payload, flags);
     }
 
-    internal SendResult TryPublishRawSingle(string topic,
+    internal SendResult PublishRawSingleNoWait(string topic,
         ReadOnlySpan<byte> payload)
     {
-        return Kernel.TryPublishRawSingle(topic, payload);
+        return Kernel.PublishRawSingleNoWait(topic, payload);
     }
 
     internal void PublishBorrowedSingle(string topic, byte[] payload, int flags)
@@ -162,14 +174,14 @@ internal sealed class Socket : ConnectableSocketBase
         Kernel.PublishBorrowedSingle(topic, payload, flags);
     }
 
-    internal SendResult TryPublishBorrowedSingle(string topic, byte[] payload)
+    internal SendResult PublishBorrowedSingleNoWait(string topic, byte[] payload)
     {
-        return Kernel.TryPublishBorrowedSingle(topic, payload);
+        return Kernel.PublishBorrowedSingleNoWait(topic, payload);
     }
 
-    public SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
+    internal SendResult PublishNoWaitResult(string topic, IReadOnlyList<Message> parts)
     {
-        return Kernel.TryPublish(topic, parts);
+        return Kernel.PublishNoWaitResult(topic, parts);
     }
 
     public void SetSubscription(string topicOrPattern)
@@ -192,9 +204,9 @@ internal sealed class Socket : ConnectableSocketBase
         return Kernel.Subscribe();
     }
 
-    public TopicMessage? TrySubscribe()
+    internal TopicMessage? SubscribeNoWait()
     {
-        return Kernel.TrySubscribe();
+        return Kernel.SubscribeNoWait();
     }
 
     internal byte[][]? TryReceiveRawSubscribedFrames(int flags)
@@ -219,9 +231,9 @@ internal sealed class Socket : ConnectableSocketBase
         return Kernel.ReceiveSubscriptionEvent();
     }
 
-    public SubscriptionEvent? TryReceiveSubscriptionEvent()
+    public SubscriptionEvent? ReceiveSubscriptionEventNoWait()
     {
-        return Kernel.TryReceiveSubscriptionEvent();
+        return Kernel.ReceiveSubscriptionEventNoWait();
     }
 
     public Received Recv()
@@ -229,9 +241,9 @@ internal sealed class Socket : ConnectableSocketBase
         return Kernel.Recv();
     }
 
-    public Received? TryRecv()
+    internal Received? RecvNoWait()
     {
-        return Kernel.TryRecv();
+        return Kernel.RecvNoWait();
     }
 
     public Received ReceiveRouted()
@@ -239,9 +251,9 @@ internal sealed class Socket : ConnectableSocketBase
         return Kernel.ReceiveRouted();
     }
 
-    public Received? TryReceiveRouted()
+    public Received? ReceiveRoutedNoWait()
     {
-        return Kernel.TryReceiveRouted();
+        return Kernel.ReceiveRoutedNoWait();
     }
 
     internal byte[][]? TryReceiveRawFrames(int flags)
@@ -260,6 +272,14 @@ internal sealed class Socket : ConnectableSocketBase
     {
         return Kernel.TryReceiveRawRoutedFrame(routingDestination,
             payloadDestination, flags, out pendingFrames);
+    }
+
+    internal int? TryReceiveRawRoutedFrame(Span<byte> routingDestination,
+        Span<byte> payloadDestination, int flags, out int routingLength,
+        out byte[][] pendingFrames)
+    {
+        return Kernel.TryReceiveRawRoutedFrame(routingDestination,
+            payloadDestination, flags, out routingLength, out pendingFrames);
     }
 
 }

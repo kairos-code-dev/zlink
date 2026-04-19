@@ -17,7 +17,9 @@ internal static class PerfSpotServer
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx, options);
+        using var channelDealer = new DealerSocket(ctx);
         using var nodePub = new SpotNode(ctx);
+        nodePub.AttachChannelDealerManual(ServiceName, channelDealer);
         using var spotPub = new Spot(nodePub);
 
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
@@ -135,7 +137,8 @@ internal static class PerfSpotServer
                 return false;
 
             using Message message = Message.FromBytes(payload);
-            SendResult result = spotPub.TryPublish(ServiceName, Topic, message);
+            SendResult result = spotPub.PublishNoWaitResult(ServiceName, Topic,
+                message);
             if (result == SendResult.Sent)
                 return true;
 

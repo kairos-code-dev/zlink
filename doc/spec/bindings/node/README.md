@@ -6,6 +6,12 @@ This document defines the complete public API surface of the zlink Node/TypeScri
 binding. Every class, method, and type listed here is part of the contract that
 the binding must expose. Internal/private members are omitted.
 
+Only symbols reachable through the package public entrypoint are part of the
+contract. Deep imports into source files, native bridge helpers, and other
+non-exported modules are internal. Package `exports` should expose only the
+documented public surface. Perf, samples, and tests must import the public
+package entrypoint only.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -274,21 +280,35 @@ class DealerSocket {
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     request(parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
 
-    // --- dealer request (callback) — throws on submit failure, timeout = 0 uses socket default ---
+    // --- dealer request (callback, blocking submit) — throws on submit failure, timeout = 0 uses socket default ---
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(message: MessageLike,
             callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
+            timeout?: number): void;
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(parts: readonly MessageLike[],
             callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
+            timeout?: number): void;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequest(message: MessageLike,
+               callback: RequestResultCallback,
+               timeout?: number): boolean;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequest(parts: readonly MessageLike[],
+               callback: RequestResultCallback,
+               timeout?: number): boolean;
 
     /** @throws {CloseError} */
     close(): void;
@@ -338,21 +358,31 @@ class RouterSocket {
     request(peerRid: RoutingId, parts: readonly MessageLike[],
             timeout?: number): Promise<Message[]>;
 
-    // --- router request (callback) — throws on submit failure, timeout = 0 uses socket default ---
+    // --- router request (callback, blocking submit) — throws on submit failure, timeout = 0 uses socket default ---
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(peerRid: RoutingId, message: MessageLike,
-            callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
+            callback: RequestResultCallback, timeout?: number): void;
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(peerRid: RoutingId, parts: readonly MessageLike[],
-            callback: RequestResultCallback,
-            flags?: SendFlags, timeout?: number): void;
+            callback: RequestResultCallback, timeout?: number): void;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequest(peerRid: RoutingId, message: MessageLike,
+               callback: RequestResultCallback, timeout?: number): boolean;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequest(peerRid: RoutingId, parts: readonly MessageLike[],
+               callback: RequestResultCallback, timeout?: number): boolean;
 
     // --- router reply ---
     /** @throws {SubmitError} */
@@ -378,23 +408,35 @@ class RouterSocket {
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
 
-    // --- router → spot routed request (callback) — throws on submit failure ---
+    // --- router → spot routed request (callback, blocking submit) — throws on submit failure ---
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike,
-                  callback: RequestResultCallback,
-                  flags?: SendFlags, timeout?: number): void;
+                  callback: RequestResultCallback, timeout?: number): void;
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[],
-                  callback: RequestResultCallback,
-                  flags?: SendFlags, timeout?: number): void;
+                  callback: RequestResultCallback, timeout?: number): void;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                     message: MessageLike,
+                     callback: RequestResultCallback, timeout?: number): boolean;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                     parts: readonly MessageLike[],
+                     callback: RequestResultCallback, timeout?: number): boolean;
 
     // --- router → spot routed reply ---
     /** @throws {SubmitError} */
@@ -1247,14 +1289,28 @@ class Spot {
      */
     requestChannel(channelName: string, message: MessageLike,
                    callback: RequestResultCallback,
-                   flags?: SendFlags, timeout?: number): void;
+                   timeout?: number): void;
     /**
      * @throws {SubmitError} on submit failure.
      * Callback receives `RequestResult` directly.
      */
     requestChannel(channelName: string, parts: readonly MessageLike[],
                    callback: RequestResultCallback,
-                   flags?: SendFlags, timeout?: number): void;
+                   timeout?: number): void;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequestChannel(channelName: string, message: MessageLike,
+                      callback: RequestResultCallback,
+                      timeout?: number): boolean;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only for temporary backpressure.
+     */
+    tryRequestChannel(channelName: string, parts: readonly MessageLike[],
+                      callback: RequestResultCallback,
+                      timeout?: number): boolean;
     /** @throws {ConfigError} */
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */

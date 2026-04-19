@@ -106,6 +106,16 @@ final class SampleSupport {
             () -> node.statusSnapshot().connectedPeerCount() > 0);
     }
 
+    static void closeQuietly(AutoCloseable resource) {
+        if (resource == null) {
+            return;
+        }
+        try {
+            resource.close();
+        } catch (Exception ignored) {
+        }
+    }
+
     static java.net.Socket connectRawTcp(String endpoint) {
         try {
             InetSocketAddress address = tcpAddress(endpoint);

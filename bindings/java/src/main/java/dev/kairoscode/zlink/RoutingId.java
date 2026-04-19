@@ -3,23 +3,53 @@
 package dev.kairoscode.zlink;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Objects;
 
 /** Immutable binary-safe routing id value object. */
 public final class RoutingId {
     public static final int MAX_LENGTH = 255;
+    private static final int THREAD_CACHE_MAX_ENTRIES = 256;
+    private static final ThreadLocal<HashMap<RouteCacheKey, List<RouteCacheEntry>>>
+        TRUSTED_CACHE = ThreadLocal.withInitial(HashMap::new);
 
     private final byte[] value;
+    private final int hash;
 
     private RoutingId(byte[] value) {
         this.value = value;
+        this.hash = Arrays.hashCode(value);
     }
 
     static RoutingId fromTrusted(byte[] value) {
         Objects.requireNonNull(value, "value");
         validateLength(value.length);
-        return new RoutingId(value);
+        RouteCacheKey key = RouteCacheKey.create(value);
+        HashMap<RouteCacheKey, List<RouteCacheEntry>> cache = TRUSTED_CACHE.get();
+        List<RouteCacheEntry> entries = cache.get(key);
+        if (entries != null) {
+            for (int i = 0; i < entries.size(); i++) {
+                RouteCacheEntry entry = entries.get(i);
+                if (Arrays.equals(value, entry.bytes)) {
+                    return entry.routingId;
+                }
+            }
+        }
+
+        RoutingId created = new RoutingId(value);
+        if (cache.size() >= THREAD_CACHE_MAX_ENTRIES) {
+            cache.clear();
+        }
+        entries = cache.get(key);
+        if (entries == null) {
+            entries = new ArrayList<>(1);
+            cache.put(key, entries);
+        }
+        entries.add(new RouteCacheEntry(value, created));
+        return created;
     }
 
     /** Copies the full routing id byte array. */
@@ -90,11 +120,33 @@ public final class RoutingId {
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof RoutingId rid && Arrays.equals(value, rid.value);
+        if (this == other)
+            return true;
+        if (!(other instanceof RoutingId rid))
+            return false;
+        if (hash != rid.hash || value.length != rid.value.length)
+            return false;
+        return Arrays.equals(value, rid.value);
     }
 
     @Override
     public int hashCode() {
-        return Arrays.hashCode(value);
+        return hash;
+    }
+
+    private record RouteCacheKey(int length, long hash) {
+        private static RouteCacheKey create(byte[] bytes) {
+            final long offset = 0xcbf29ce484222325L;
+            final long prime = 0x100000001b3L;
+            long hash = offset;
+            for (byte b : bytes) {
+                hash ^= (b & 0xFFL);
+                hash *= prime;
+            }
+            return new RouteCacheKey(bytes.length, hash);
+        }
+    }
+
+    private record RouteCacheEntry(byte[] bytes, RoutingId routingId) {
     }
 }

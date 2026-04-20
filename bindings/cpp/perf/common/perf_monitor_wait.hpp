@@ -9,85 +9,16 @@
 
 namespace perf {
 
-enum class value_compare
+inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
+                                       uint64_t event_type,
+                                       int timeout_ms)
 {
-    exact,
-    min_threshold
-};
-
-template<typename MonitorT>
-struct monitor_wait_traits;
-
-template<>
-struct monitor_wait_traits<zlink::monitor_handle_t>
-{
-    typedef zlink::monitor_event_t event_t;
-
-    static zlink::maybe_t<event_t> recv_no_wait (zlink::monitor_handle_t &monitor)
-    {
-        return monitor.recv (zlink::non_blocking_t {});
-    }
-
-    static uint64_t event_type (const event_t &event)
-    {
-        return static_cast<uint64_t> (event.event);
-    }
-
-    static int64_t value (const event_t &event)
-    {
-        return static_cast<int64_t> (event.value);
-    }
-};
-
-template<>
-struct monitor_wait_traits<zlink::service_monitor_handle_t>
-{
-    typedef zlink::service_event_t event_t;
-
-    static zlink::maybe_t<event_t> recv_no_wait (zlink::service_monitor_handle_t &monitor)
-    {
-        return monitor.recv (zlink::non_blocking_t {});
-    }
-
-    static uint64_t event_type (const event_t &event)
-    {
-        return static_cast<uint64_t> (event.event_type);
-    }
-
-    static int64_t value (const event_t &event)
-    {
-        return static_cast<int64_t> (event.value);
-    }
-};
-
-inline bool monitor_value_matches (int64_t observed,
-                                   int64_t expected,
-                                   value_compare cmp)
-{
-    if (expected < 0)
-        return true;
-    if (cmp == value_compare::min_threshold)
-        return observed >= expected;
-    return observed == expected;
-}
-
-template<typename MonitorT>
-inline bool wait_monitor_event (MonitorT &monitor,
-                                uint64_t event_type,
-                                int64_t value,
-                                value_compare cmp,
-                                int timeout_ms)
-{
-    typedef monitor_wait_traits<MonitorT> traits_t;
-
     for (;;) {
-        const zlink::maybe_t<typename traits_t::event_t> event =
-          traits_t::recv_no_wait (monitor);
+        const zlink::maybe_t<zlink::monitor_event_t> event =
+          monitor.recv (zlink::non_blocking_t {});
         if (!event)
             break;
-        if (traits_t::event_type (*event) != event_type)
-            continue;
-        if (!monitor_value_matches (traits_t::value (*event), value, cmp))
+        if (static_cast<uint64_t> (event->event) != event_type)
             continue;
         return true;
     }
@@ -123,13 +54,11 @@ inline bool wait_monitor_event (MonitorT &monitor,
             continue;
 
         for (;;) {
-            const zlink::maybe_t<typename traits_t::event_t> event =
-              traits_t::recv_no_wait (monitor);
+            const zlink::maybe_t<zlink::monitor_event_t> event =
+              monitor.recv (zlink::non_blocking_t {});
             if (!event)
                 break;
-            if (traits_t::event_type (*event) != event_type)
-                continue;
-            if (!monitor_value_matches (traits_t::value (*event), value, cmp))
+            if (static_cast<uint64_t> (event->event) != event_type)
                 continue;
             return true;
         }
@@ -137,27 +66,6 @@ inline bool wait_monitor_event (MonitorT &monitor,
 
     return false;
 }
-
-// Convenience wrappers that default to value_compare::exact.
-// A negative expected value matches any observed value.
-inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
-                                       uint64_t event_type,
-                                       int64_t value,
-                                       int timeout_ms)
-{
-    return wait_monitor_event (monitor, event_type, value,
-                               value_compare::exact, timeout_ms);
-}
-
-inline bool wait_service_monitor_event (zlink::service_monitor_handle_t &monitor,
-                                        uint64_t event_type,
-                                        int64_t value,
-                                        int timeout_ms)
-{
-    return wait_monitor_event (monitor, event_type, value,
-                               value_compare::exact, timeout_ms);
-}
-
 } // namespace perf
 
 #endif

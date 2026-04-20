@@ -62,7 +62,8 @@ void run_pattern_dealer_dealer (const std::string &transport,
                                 const std::string &lib_name)
 {
     if (!perf::single::transport_available (transport)) {
-        std::cout << "UNSUPPORTED,DEALER_DEALER," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",DEALER_DEALER,"
+                  << transport << std::endl;
         return;
     }
 
@@ -103,7 +104,7 @@ void run_pattern_dealer_dealer (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
 
-    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_ns ());
+    const uint32_t run_id = 1U;
     const int duration_s =
       std::max (1, perf::single::resolve_single_duration_seconds ());
     std::atomic<unsigned long long> sent_count (0);

@@ -72,7 +72,7 @@ class dealer_router_client_bench_t
           _socket_states (),
           _poller (),
           _poll_events (),
-          _run_id (static_cast<uint32_t> (perf_metric::now_ns ())),
+          _run_id (1U),
           _seq (1),
           _phase_cfg (),
           _result ()
@@ -419,7 +419,8 @@ bool perf_dealer_router_client (const std::string &transport,
     perf::multi::set_perf_pattern_env (k_pattern_env);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << k_pattern_result << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED,current," << k_pattern_result << ","
+                  << transport << std::endl;
         return true;
     }
 

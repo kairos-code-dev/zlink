@@ -114,7 +114,8 @@ bool perf_router_router_server (const std::string &transport, size_t msg_size)
     perf::multi::set_perf_pattern_env ("ROUTER_ROUTER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED,MULTI_ROUTER_ROUTER," << transport << std::endl;
+        std::cout << "UNSUPPORTED,current,MULTI_ROUTER_ROUTER," << transport
+                  << std::endl;
         return true;
     }
 

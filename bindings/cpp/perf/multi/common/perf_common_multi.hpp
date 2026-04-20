@@ -19,10 +19,7 @@ struct multi_bench_settings_t
     int hwm;
     int sndhwm;
     int rcvhwm;
-    int warmup_seconds;
-    int active_warmup;
     int duration_seconds;
-    int client_poll_timeout_ms;
     int connect_ready_timeout_ms;
     int sndtimeo_ms;
     int rcvtimeo_ms;
@@ -74,13 +71,8 @@ inline bool is_stream_pattern (const char *pattern)
 
 inline bool callback_supported_for_pattern (const char *pattern)
 {
-    if (!pattern || !*pattern)
-        return false;
-
-    return std::strcmp (pattern, "SPOT") == 0
-           || std::strcmp (pattern, "MULTI_SPOT") == 0
-           || std::strcmp (pattern, "STREAM") == 0
-           || std::strcmp (pattern, "MULTI_STREAM") == 0;
+    (void) pattern;
+    return false;
 }
 
 inline std::string resolve_multi_perf_recv_mode ()
@@ -131,12 +123,8 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
       "PERF_SNDHWM", "PERF_MULTI_SNDHWM", out.hwm, 1);
     out.rcvhwm = parse_positive_env_alias (
       "PERF_RCVHWM", "PERF_MULTI_RCVHWM", out.hwm, 1);
-    out.warmup_seconds = 0;
-    out.active_warmup = 0;
     out.duration_seconds = parse_positive_env_alias (
       "PERF_DURATION_SECONDS", "PERF_MULTI_DURATION_SECONDS", 5, 1);
-    out.client_poll_timeout_ms = parse_positive_env (
-      "PERF_CLIENT_POLL_TIMEOUT_MS", 0);
     out.connect_ready_timeout_ms = parse_positive_env_alias (
       "PERF_CONNECT_READY_TIMEOUT_MS",
       "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",

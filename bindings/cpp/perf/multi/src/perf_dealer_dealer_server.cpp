@@ -15,7 +15,8 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
     perf::multi::set_perf_pattern_env ("DEALER_DEALER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED,MULTI_DEALER_DEALER," << transport << std::endl;
+        std::cout << "UNSUPPORTED,current,MULTI_DEALER_DEALER," << transport
+                  << std::endl;
         return true;
     }
 

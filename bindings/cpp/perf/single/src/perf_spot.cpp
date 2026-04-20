@@ -106,7 +106,8 @@ void run_pattern_spot (const std::string &transport,
 {
     if (transport != "tcp" && transport != "tls" && transport != "ws"
         && transport != "wss") {
-        std::cout << "UNSUPPORTED,SPOT," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",SPOT," << transport
+                  << std::endl;
         return;
     }
 
@@ -202,7 +203,7 @@ void run_pattern_spot (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 's');
 
-    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_ns ());
+    const uint32_t run_id = 1U;
     const int duration_s =
       std::max (1, perf::single::resolve_single_duration_seconds ());
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();

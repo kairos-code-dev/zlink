@@ -55,6 +55,7 @@ size_t resolve_single_latency_sample_cap ();
 int resolve_single_send_timeout_ms ();
 int resolve_single_recv_timeout_ms ();
 int resolve_single_pubsub_recv_timeout_ms ();
+int resolve_single_pubsub_ready_settle_ms ();
 int resolve_single_socket_hwm (bool send_);
 
 bool bench_debug_enabled ();
@@ -85,10 +86,9 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
                            perf_socket_t &connect_socket_,
                            const std::string &transport_,
                            const std::string &id_);
-// Migrated to unified perf::wait_socket_monitor_event /
-// perf::wait_service_monitor_event in common/perf_monitor_wait.hpp.
+// Migrated to unified perf::wait_socket_monitor_event in
+// common/perf_monitor_wait.hpp.
 using ::perf::wait_socket_monitor_event;
-using ::perf::wait_service_monitor_event;
 
 void print_result (const std::string &lib_type,
                    const std::string &pattern,
@@ -109,7 +109,6 @@ typedef bool (*phase_send_fn_t) (void *userdata_,
                                  size_t size_);
 
 #include "perf_single_report.hpp"
-#include "perf_single_callback_receiver.hpp"
 
 } // namespace single
 } // namespace perf

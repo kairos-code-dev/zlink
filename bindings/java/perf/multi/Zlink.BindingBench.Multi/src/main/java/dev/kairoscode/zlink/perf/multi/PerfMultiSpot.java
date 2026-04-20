@@ -41,7 +41,9 @@ final class PerfMultiSpot {
              DealerSocket channelDealer = new DealerSocket(ctx);
              SpotNode node = new SpotNode(ctx);
              Spot publisher = node.createSpot();
-             RouterSocket control = new RouterSocket(ctx)) {
+             RouterSocket control = new RouterSocket(ctx);
+             Message active = PerfUtil.payloadTemplate(config.size());
+             Message cooldown = PerfUtil.payloadTemplate(config.size())) {
             String registryPub = PerfUtil.endpoint(config.transport(),
                 "multi-spot-registry-pub");
             String registryRouter = PerfUtil.endpoint(config.transport(),
@@ -63,16 +65,14 @@ final class PerfMultiSpot {
             broadcastControlStart(control, readyPeers, config.size());
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
-                try (Message message = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC, List.of(message));
-                }
+                PerfUtil.writePayload(active, config.size(),
+                    (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                publisher.publish(SERVICE_NAME, TOPIC, active);
             }
             for (int i = 0; i < Math.max(16, config.clients() * 8); i++) {
-                try (Message message = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC, List.of(message));
-                }
+                PerfUtil.writePayload(cooldown, config.size(),
+                    (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                publisher.publish(SERVICE_NAME, TOPIC, cooldown);
             }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
                 config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
@@ -89,7 +89,7 @@ final class PerfMultiSpot {
         CountDownLatch go = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        MultiSendLoops.runClients(config.clients(), (index, duration) ->
+        PerfMultiSendLoops.runClients(config.clients(), (index, duration) ->
             new Thread(() -> runClientSlot(config, dataEndpoint, controlEndpoint, duration,
                 ready, runnerStarted, controlStarted, go, metrics, failure),
                 "multi-spot-client-" + index),

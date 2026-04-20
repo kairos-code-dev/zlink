@@ -129,7 +129,7 @@ final class PerfMultiSpotReqRep {
         CountDownLatch go = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        MultiSendLoops.runClients(config.clients(), (index, duration) ->
+        PerfMultiSendLoops.runClients(config.clients(), (index, duration) ->
             new Thread(() -> runClientSlot(config, dataEndpoint, controlEndpoint, duration,
                 ready, runnerStarted, controlStarted, go, metrics, failure),
                 "multi-spot-reqrep-client-" + index),

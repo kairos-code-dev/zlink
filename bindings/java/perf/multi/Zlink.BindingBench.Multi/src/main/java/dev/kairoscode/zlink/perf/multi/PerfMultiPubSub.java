@@ -25,7 +25,9 @@ final class PerfMultiPubSub {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
-             PubSocket pub = new PubSocket(ctx)) {
+             PubSocket pub = new PubSocket(ctx);
+             Message active = PerfUtil.payloadTemplate(config.size());
+             Message cooldown = PerfUtil.payloadTemplate(config.size())) {
             PerfUtil.applySocketOptions(pub, config);
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
@@ -33,16 +35,14 @@ final class PerfMultiPubSub {
             PerfControl.awaitStart(config.size(), "pubsub server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
-                try (Message m = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    pub.publish(TOPIC, List.of(m));
-                }
+                PerfUtil.writePayload(active, config.size(),
+                    (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                pub.publish(TOPIC, active);
             }
             for (int i = 0; i < Math.max(3, config.clients() * 3); i++) {
-                try (Message m = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    pub.publish(TOPIC, List.of(m));
-                }
+                PerfUtil.writePayload(cooldown, config.size(),
+                    (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                pub.publish(TOPIC, cooldown);
             }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
                 config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
@@ -54,7 +54,7 @@ final class PerfMultiPubSub {
         CountDownLatch go = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
+        PerfMultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             try (Context ctx = PerfUtil.newContext(config);
                  SubSocket sub = new SubSocket(ctx)) {
                 PerfUtil.applySocketOptions(sub, config);

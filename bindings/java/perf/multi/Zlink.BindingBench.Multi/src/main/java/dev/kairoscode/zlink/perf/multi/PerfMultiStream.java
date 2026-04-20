@@ -69,7 +69,7 @@ final class PerfMultiStream {
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        return PerfUtil.Result.unsupported("shared_core_stream_client", config);
+        throw new IllegalStateException("MULTI_STREAM requires the shared raw stream client");
     }
 
     private static Thread startControlWatcher(AtomicBoolean stopRequested) {

@@ -90,10 +90,12 @@ final class PerfMultiDealerRouter {
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
+        PerfMultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             try (Context ctx = PerfUtil.newContext(config);
                  DealerSocket client = new DealerSocket(ctx);
-                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY)) {
+                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
+                 Message request = PerfUtil.payloadTemplate(config.size());
+                 Message stop = PerfUtil.payloadTemplate(config.size())) {
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(client, config);
                 PerfUtil.configureClientTls(client, config.transport());
@@ -112,10 +114,9 @@ final class PerfMultiDealerRouter {
                     List.of(client), PollEventType.POLLIN.getValue())) {
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        try (Message request = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sendUntilSent(client, pollSet, request);
-                        }
+                        PerfUtil.writePayload(request, config.size(),
+                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                        sendUntilSent(client, pollSet, request);
                         if (!awaitReadable(pollSet, activeEnd)) {
                             break;
                         }
@@ -134,10 +135,9 @@ final class PerfMultiDealerRouter {
                             }
                         }
                     }
-                    try (Message stop = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        sendUntilSent(client, pollSet, stop);
-                    }
+                    PerfUtil.writePayload(stop, config.size(),
+                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                    sendUntilSent(client, pollSet, stop);
                 }
             }
         }, "multi-dr-client-" + index), config.durationSeconds());

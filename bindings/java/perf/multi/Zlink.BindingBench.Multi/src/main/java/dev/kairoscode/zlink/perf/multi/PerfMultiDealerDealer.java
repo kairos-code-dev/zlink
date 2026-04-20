@@ -78,11 +78,13 @@ final class PerfMultiDealerDealer {
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
         Context ctx = PerfUtil.newContext(config);
-        MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
+        PerfMultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
                 try (DealerSocket client = new DealerSocket(ctx);
                      var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
                      PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                         java.util.List.of(client), PollEventType.POLLOUT.getValue())) {
+                         java.util.List.of(client), PollEventType.POLLOUT.getValue());
+                     Message active = PerfUtil.payloadTemplate(config.size());
+                     Message cooldown = PerfUtil.payloadTemplate(config.size())) {
                     PerfUtil.applyMonitorOptions(monitor, config);
                     PerfUtil.applySocketOptions(client, config);
                     client.options().linger(Duration.ZERO);
@@ -100,16 +102,14 @@ final class PerfMultiDealerDealer {
                     PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        try (Message m = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sendWhenWritable(client, pollSet, m, activeEnd);
-                        }
+                        PerfUtil.writePayload(active, config.size(),
+                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                        sendWhenWritable(client, pollSet, active, activeEnd);
                     }
-                    try (Message m = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        sendWhenWritable(client, pollSet, m,
-                            System.nanoTime() + Duration.ofSeconds(5).toNanos());
-                    }
+                    PerfUtil.writePayload(cooldown, config.size(),
+                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                    sendWhenWritable(client, pollSet, cooldown,
+                        System.nanoTime() + Duration.ofSeconds(5).toNanos());
                 }
             }, "multi-dd-client-" + index), config.durationSeconds());
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),

@@ -8,8 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-final class MultiSendLoops {
-    private MultiSendLoops() {
+final class PerfMultiSendLoops {
+    private PerfMultiSendLoops() {
     }
 
     static void runClients(int clientCount, ClientFactory factory,

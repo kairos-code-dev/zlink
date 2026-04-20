@@ -7,6 +7,18 @@ use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 use zlink::*;
 
+fn wait_for_writable(pollers: &[Poller], send_pending: &mut [bool]) {
+    for (index, poller) in pollers.iter().enumerate() {
+        let Some(event) = poller.wait(1).expect("poller wait") else {
+            continue;
+        };
+        if event.is_writable() {
+            send_pending[index] = false;
+            return;
+        }
+    }
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
@@ -104,7 +116,7 @@ fn main() {
             }
         }
         if !saw_writable {
-            std::thread::park_timeout(Duration::from_millis(1));
+            wait_for_writable(&pollers, &mut send_pending);
         }
     }
 }

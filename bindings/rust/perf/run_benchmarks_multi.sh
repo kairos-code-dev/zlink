@@ -18,8 +18,8 @@ TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 RUNS="1"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
-RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
-RESULTS_TAG=""
+RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/multi/report}"
+RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 OUTPUT_FILE=""
 PIN_CPU=0
 BUILD_DIR=""
@@ -317,7 +317,6 @@ if printf '%s\n' "${PATTERNS[@]}" | grep -qx 'MULTI_STREAM'; then
 fi
 
 IFS=',' read -ra TRANSPORT_LIST <<< "${TRANSPORTS}"
-CLIENT_TIMEOUT_SECONDS=$((DURATION + 10))
 ONE_WAY_CLIENT_READY_TIMEOUT=10
 SERVER_READY_TIMEOUT_SECONDS=$(( (SERVER_READY_TIMEOUT_MS + 999) / 1000 ))
 SERVER_SHUTDOWN_TIMEOUT_SECONDS=$(( (SERVER_SHUTDOWN_TIMEOUT_MS + 999) / 1000 ))
@@ -415,6 +414,45 @@ wait_for_ready_or_unsupported() {
     return 1
 }
 
+resolve_client_timeout_seconds() {
+    local pattern="$1"
+    local transport="$2"
+    local size="$3"
+    local duration="$4"
+    local override="${PERF_MULTI_TIMEOUT_SECONDS:-}"
+    local timeout_seconds=0
+
+    if [[ -n "${override}" ]]; then
+        printf '%s\n' "${override}"
+        return
+    fi
+
+    if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+        timeout_seconds=$(( duration * 3 + 20 ))
+        if (( timeout_seconds < 45 )); then
+            timeout_seconds=45
+        fi
+        printf '%s\n' "${timeout_seconds}"
+        return
+    fi
+
+    if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" ]] \
+        || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
+        timeout_seconds=$(( duration * 6 + 30 ))
+        if (( timeout_seconds < 90 )); then
+            timeout_seconds=90
+        fi
+        printf '%s\n' "${timeout_seconds}"
+        return
+    fi
+
+    timeout_seconds=$(( duration * 3 + 20 ))
+    if (( timeout_seconds < 45 )); then
+        timeout_seconds=45
+    fi
+    printf '%s\n' "${timeout_seconds}"
+}
+
 for run in $(seq 1 "${RUNS}"); do
     [[ "${RUNS}" -gt 1 ]] && echo "--- Run ${run}/${RUNS} ---"
     for pat_index in "${!PATTERNS[@]}"; do
@@ -456,6 +494,7 @@ for run in $(seq 1 "${RUNS}"); do
         for transport_index in "${!TRANSPORT_LIST[@]}"; do
             transport="${TRANSPORT_LIST[transport_index]}"
             for size in "${SIZE_LIST[@]}"; do
+                CLIENT_TIMEOUT_SECONDS="$(resolve_client_timeout_seconds "${pat}" "${transport}" "${size}" "${DURATION}")"
                 export PERF_MULTI_CLIENTS="${PATTERN_CLIENTS}"
                 pattern_default_io_threads="$(default_io_threads_for_pattern "${pat}")"
                 pattern_default_hwm="$(default_hwm_for_pattern "${pat}")"

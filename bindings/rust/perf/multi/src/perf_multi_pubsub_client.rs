@@ -7,6 +7,30 @@ use zlink::*;
 
 const TOPIC: &str = "perf.topic";
 
+fn drain_subscriber(
+    socket: &SubSocket,
+    msg_size: usize,
+    latency_stats: &mut common::LatencyStats,
+    active_count: &mut u64,
+) {
+    loop {
+        match socket.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+            Ok(topic_msg) => {
+                let data = common::message_payload(topic_msg.parts());
+                if !common::is_valid_active_message(data, msg_size) {
+                    continue;
+                }
+                let sent_ts_ns = common::decode_sent_ts_ns(data);
+                latency_stats
+                    .record_ns(common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64);
+                *active_count += 1;
+            }
+            Err(err) if err.code == RecvResult::NoData => break,
+            Err(err) => panic!("recv failed: {err}"),
+        }
+    }
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
@@ -69,26 +93,29 @@ fn main() {
                 continue;
             }
             saw_event = true;
-            loop {
-                match sockets[index].subscribe_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(topic_msg) => {
-                        let data = common::message_payload(topic_msg.parts());
-                        if !common::is_valid_active_message(data, args.msg_size) {
-                            continue;
-                        }
-                        let sent_ts_ns = common::decode_sent_ts_ns(data);
-                        latency_stats.record_ns(
-                            common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
-                        );
-                        active_count += 1;
-                    }
-                    Err(err) if err.code == RecvResult::NoData => break,
-                    Err(err) => panic!("recv failed: {err}"),
-                }
-            }
+            drain_subscriber(
+                &sockets[index],
+                args.msg_size,
+                &mut latency_stats,
+                &mut active_count,
+            );
         }
         if !saw_event {
-            std::thread::park_timeout(Duration::from_millis(1));
+            for (index, poller) in pollers.iter().enumerate() {
+                let Some(event) = poller.wait(1).expect("poller wait") else {
+                    continue;
+                };
+                if !event.is_readable() {
+                    continue;
+                }
+                drain_subscriber(
+                    &sockets[index],
+                    args.msg_size,
+                    &mut latency_stats,
+                    &mut active_count,
+                );
+                break;
+            }
         }
     }
 

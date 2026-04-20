@@ -4,6 +4,55 @@ mod common;
 use std::time::{Duration, Instant};
 use zlink::*;
 
+fn handle_socket_event(
+    index: usize,
+    poller: &Poller,
+    socket: &DealerSocket,
+    msg_size: usize,
+    latency: &mut common::LatencyStats,
+    waiting_reply: &mut [bool],
+    send_pending: &mut [bool],
+    timeout_ms: i64,
+) -> bool {
+    let Some(event) = poller.wait(timeout_ms).expect("poller wait") else {
+        return false;
+    };
+
+    if event.is_writable() {
+        send_pending[index] = false;
+        poller
+            .modify_socket(socket, POLLIN)
+            .expect("poller modify");
+    }
+
+    if event.is_readable() {
+        loop {
+            match socket.recv_with_flags(RecvFlags::DONT_WAIT) {
+                Ok(received) => {
+                    let data = common::message_payload(received.parts());
+                    if !common::is_valid_active_message(data, msg_size) {
+                        continue;
+                    }
+                    let sent_ts_ns = common::decode_sent_ts_ns(data);
+                    let latency_ns =
+                        common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
+                    latency.record_ns(latency_ns);
+                    waiting_reply[index] = false;
+                }
+                Err(err) if err.code() == RecvResult::NoData => break,
+                Err(err) => panic!("recv failed: {err}"),
+            }
+        }
+        if !send_pending[index] {
+            poller
+                .modify_socket(socket, POLLIN)
+                .expect("poller modify");
+        }
+    }
+
+    true
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
@@ -88,46 +137,34 @@ fn main() {
 
         let mut saw_event = false;
         for (index, poller) in pollers.iter().enumerate() {
-            let Some(event) = poller.wait(0).expect("poller wait") else {
-                continue;
-            };
-            saw_event = true;
-
-            if event.is_writable() {
-                send_pending[index] = false;
-                poller
-                    .modify_socket(&sockets[index], POLLIN)
-                    .expect("poller modify");
-            }
-
-            if event.is_readable() {
-                loop {
-                    match sockets[index].recv_with_flags(RecvFlags::DONT_WAIT) {
-                        Ok(received) => {
-                            let data = common::message_payload(received.parts());
-                            if !common::is_valid_active_message(data, args.msg_size) {
-                                continue;
-                            }
-                            let sent_ts_ns = common::decode_sent_ts_ns(data);
-                            let latency_ns =
-                                common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64
-                                    / 2.0;
-                            latency.record_ns(latency_ns);
-                            waiting_reply[index] = false;
-                        }
-                        Err(err) if err.code() == RecvResult::NoData => break,
-                        Err(err) => panic!("recv failed: {err}"),
-                    }
-                }
-                if !send_pending[index] {
-                    poller
-                        .modify_socket(&sockets[index], POLLIN)
-                        .expect("poller modify");
-                }
+            if handle_socket_event(
+                index,
+                poller,
+                &sockets[index],
+                args.msg_size,
+                &mut latency,
+                &mut waiting_reply,
+                &mut send_pending,
+                0,
+            ) {
+                saw_event = true;
             }
         }
         if !saw_event {
-            std::thread::park_timeout(Duration::from_millis(1));
+            for (index, poller) in pollers.iter().enumerate() {
+                if handle_socket_event(
+                    index,
+                    poller,
+                    &sockets[index],
+                    args.msg_size,
+                    &mut latency,
+                    &mut waiting_reply,
+                    &mut send_pending,
+                    1,
+                ) {
+                    break;
+                }
+            }
         }
     }
 

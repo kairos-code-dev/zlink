@@ -91,6 +91,7 @@ fn main() {
                     println!("CONTROL_CONNECTED,{endpoint}");
                     io::stdout().flush().ok();
                     let event_tx = event_tx.clone();
+                    let stop_reader = Arc::clone(&stop);
                     thread::spawn(move || {
                         for line in reader.lines() {
                             let line = line.unwrap_or_default();
@@ -111,7 +112,7 @@ fn main() {
                                 let _ = event_tx.send(ServerEvent::Stop);
                                 return;
                             }
-                            if stop.load(Ordering::Acquire) {
+                            if stop_reader.load(Ordering::Acquire) {
                                 return;
                             }
                         }

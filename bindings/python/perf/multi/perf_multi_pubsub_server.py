@@ -54,6 +54,7 @@ def main(argv=None):
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
             active_deadline = None
+            cooldown_sent = False
             with zlink.Poller() as poller:
                 poller.add_socket(publisher, zlink.PollEvent.POLLOUT)
                 while not stop_event.is_set():
@@ -62,7 +63,7 @@ def main(argv=None):
                         continue
                     if active_deadline is None:
                         active_deadline = time.perf_counter() + active_duration_s
-                    if time.perf_counter() >= active_deadline:
+                    if time.perf_counter() >= active_deadline and cooldown_sent:
                         stop_event.wait(0.01)
                         continue
                     events = safe_poll(poller, 100)
@@ -71,16 +72,17 @@ def main(argv=None):
                     for event in events:
                         if not (event["events"] & int(zlink.PollEvent.POLLOUT)):
                             continue
-                        while (
-                            time.perf_counter() < active_deadline
-                            and not stop_event.is_set()
-                        ):
+                        while not stop_event.is_set():
+                            phase = 1 if time.perf_counter() < active_deadline else 2
                             sent = publish_nonblocking(
                                 publisher,
                                 TOPIC,
-                                stamp_payload(payload, phase=1, run_id=run_id),
+                                stamp_payload(payload, phase=phase, run_id=run_id),
                             )
                             if not sent:
+                                break
+                            if phase == 2:
+                                cooldown_sent = True
                                 break
 
 

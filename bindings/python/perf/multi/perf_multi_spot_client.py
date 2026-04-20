@@ -53,7 +53,6 @@ def main(argv=None):
     control_settle_s = resolve_multi_spot_control_settle_s()
     ready_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
     recv_lock = threading.Lock()
-    runner_connected = threading.Event()
     runner_start = threading.Event()
     control_connected = threading.Event()
     started_event = threading.Event()
@@ -77,6 +76,7 @@ def main(argv=None):
         _parse_tcp_endpoint(control_endpoint), timeout=ready_timeout_s
     )
     start_file = start_reader.makefile("r", encoding="utf-8", newline="\n")
+    print(f"CONTROL_CONNECTED,{control_endpoint}", flush=True)
 
     def control_loop():
         for line in start_file:
@@ -97,9 +97,7 @@ def main(argv=None):
             text = line.strip()
             if not text:
                 continue
-            if text.startswith("CONTROL_CONNECTED,"):
-                runner_connected.set()
-            elif text == f"START,{args.msg_size}":
+            if text == f"START,{args.msg_size}":
                 runner_start.set()
             elif text in {"STOP", "QUIT"}:
                 return
@@ -153,10 +151,10 @@ def main(argv=None):
 
         deadline = time.perf_counter() + ready_timeout_s
         while time.perf_counter() < deadline:
-            if control_connected.is_set() and runner_connected.is_set():
+            if control_connected.is_set():
                 break
-            runner_connected.wait(WAIT_SLICE_S)
-        if not (control_connected.is_set() and runner_connected.is_set()):
+            control_connected.wait(WAIT_SLICE_S)
+        if not control_connected.is_set():
             raise RuntimeError("control connection handshake timeout")
 
         time.sleep(ready_settle_s)

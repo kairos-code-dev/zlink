@@ -7,6 +7,7 @@ import zlink
 from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_run_id,
+    extract_metric_payload,
     is_active_message,
     latency_ns_from_message,
     new_payload,
@@ -94,7 +95,7 @@ def main(argv=None):
                                 if received is None:
                                     break
                                 with received:
-                                    data = received.to_bytes_list()[0]
+                                    data = extract_metric_payload(received.to_bytes_list())
                                 waiting_reply[index] = False
                                 if time.perf_counter() < active_deadline:
                                     send_pending[index] = True

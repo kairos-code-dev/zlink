@@ -126,6 +126,8 @@ def main(argv=None):
                         )
                         if not reply_parts:
                             continue
+                        if time.monotonic() > active_end:
+                            continue
                         data = reply_parts[0]
                         if not is_active_message(
                             data,

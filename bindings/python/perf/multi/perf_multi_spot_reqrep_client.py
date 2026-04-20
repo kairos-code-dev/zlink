@@ -23,10 +23,6 @@ from perf_multi_common import (
 )
 
 
-READY_TIMEOUT_S = 15.0
-START_TIMEOUT_S = 15.0
-
-
 def _parse_args(argv):
     parser = argparse.ArgumentParser(prog="perf_multi_spot_reqrep_client.py")
     parser.add_argument("--endpoint", required=True)
@@ -69,12 +65,13 @@ def main(argv=None):
     latencies = []
     ready_settle_s = resolve_multi_spot_ready_settle_s()
     control_settle_s = resolve_multi_spot_control_settle_s()
+    ready_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
     recv_lock = threading.Lock()
-    runner_connected = threading.Event()
     runner_start = threading.Event()
     control_connected = threading.Event()
     started_event = threading.Event()
     started_size = [0]
+    active_deadline = [0.0]
 
     ready_listener = _listen_tcp()
     ready_host, ready_port = ready_listener.getsockname()
@@ -90,9 +87,10 @@ def main(argv=None):
     threading.Thread(target=accept_ready_sender, daemon=True).start()
 
     start_reader = socket.create_connection(
-        _parse_tcp_endpoint(control_endpoint), timeout=READY_TIMEOUT_S
+        _parse_tcp_endpoint(control_endpoint), timeout=ready_timeout_s
     )
     start_file = start_reader.makefile("r", encoding="utf-8", newline="\n")
+    print(f"CONTROL_CONNECTED,{control_endpoint}", flush=True)
 
     def control_loop():
         for line in start_file:
@@ -113,9 +111,7 @@ def main(argv=None):
             text = line.strip()
             if not text:
                 continue
-            if text.startswith("CONTROL_CONNECTED,"):
-                runner_connected.set()
-            elif text == f"START,{args.msg_size}":
+            if text == f"START,{args.msg_size}":
                 runner_start.set()
             elif text in {"STOP", "QUIT"}:
                 return
@@ -146,12 +142,12 @@ def main(argv=None):
                         timeout_ms=resolve_multi_connect_ready_timeout_ms(),
                     )
 
-                deadline = time.perf_counter() + READY_TIMEOUT_S
+                deadline = time.perf_counter() + ready_timeout_s
                 while time.perf_counter() < deadline:
-                    if control_connected.is_set() and runner_connected.is_set():
+                    if control_connected.is_set():
                         break
-                    time.sleep(0.01)
-                if not (control_connected.is_set() and runner_connected.is_set()):
+                    control_connected.wait(0.01)
+                if not control_connected.is_set():
                     raise RuntimeError("control connection handshake timeout")
 
                 time.sleep(ready_settle_s)
@@ -162,7 +158,7 @@ def main(argv=None):
                 )
                 print(f"CLIENT_READY,{args.msg_size}", flush=True)
 
-                start_deadline = time.perf_counter() + START_TIMEOUT_S
+                start_deadline = time.perf_counter() + ready_timeout_s
                 while time.perf_counter() < start_deadline:
                     if (
                         runner_start.is_set()
@@ -170,7 +166,7 @@ def main(argv=None):
                         and started_size[0] == args.msg_size
                     ):
                         break
-                    time.sleep(0.01)
+                    runner_start.wait(0.01)
                 if not (
                     runner_start.is_set()
                     and started_event.is_set()
@@ -188,6 +184,8 @@ def main(argv=None):
                                 run_id=run_id,
                             ):
                                 return
+                            if time.perf_counter() > active_deadline[0]:
+                                return
                             with recv_lock:
                                 latencies.append(
                                     latency_ns_from_message(data) / 2.0
@@ -198,8 +196,8 @@ def main(argv=None):
                         waiting[index] = False
                         pending_count[0] -= 1
 
-                active_deadline = time.perf_counter() + args.duration
-                while time.perf_counter() < active_deadline:
+                active_deadline[0] = time.perf_counter() + args.duration
+                while time.perf_counter() < active_deadline[0]:
                     for index, sock in enumerate(sockets):
                         if waiting[index]:
                             continue
@@ -233,7 +231,7 @@ def main(argv=None):
 
                 drain_deadline = time.perf_counter() + 2.0
                 while pending_count[0] > 0 and time.perf_counter() < drain_deadline:
-                    time.sleep(0.01)
+                    runner_start.wait(0.01)
 
                 with recv_lock:
                     collected = list(latencies)

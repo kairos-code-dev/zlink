@@ -1,21 +1,21 @@
 import sys
 import threading
 import time
+import socket
 
 import zlink
 
 from perf_multi_common import (
     benchmark_endpoint,
     parse_server_args,
+    resolve_multi_connect_ready_timeout_ms,
 )
 
 
 SERVICE_NAME = "spot-svc"
-CONNECT_TIMEOUT_S = 15.0
-
-
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
+    connect_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
     stop = threading.Event()
     start_runner = threading.Event()
     control_connected = threading.Event()
@@ -36,8 +36,6 @@ def main(argv=None):
                     conn, _addr = control_listener.accept()
                     start_sender[0] = conn
 
-                import socket
-
                 control_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 control_listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 control_listener.bind(("127.0.0.1", 0))
@@ -57,10 +55,9 @@ def main(argv=None):
                             host, port_text = host_port.rsplit(":", 1)
                             ready_reader[0] = socket.create_connection(
                                 (host, int(port_text)),
-                                timeout=CONNECT_TIMEOUT_S,
+                                timeout=connect_timeout_s,
                             )
                             control_connected.set()
-                            print(f"CONTROL_CONNECTED,{endpoint}", flush=True)
                         elif text == f"START,{args.msg_size}":
                             start_runner.set()
                         elif text in {"STOP", "QUIT"}:
@@ -68,13 +65,13 @@ def main(argv=None):
                             return
 
                 def recv_control():
-                    deadline = time.perf_counter() + CONNECT_TIMEOUT_S
+                    deadline = time.perf_counter() + connect_timeout_s
                     while (
                         time.perf_counter() < deadline
                         and ready_reader[0] is None
                         and not stop.is_set()
                     ):
-                        time.sleep(0.01)
+                        stop.wait(0.01)
                     if ready_reader[0] is None:
                         return
                     fileobj = ready_reader[0].makefile(
@@ -121,7 +118,7 @@ def main(argv=None):
                     flush=True,
                 )
 
-                deadline = time.perf_counter() + CONNECT_TIMEOUT_S
+                deadline = time.perf_counter() + connect_timeout_s
                 while time.perf_counter() < deadline:
                     with ready_lock:
                         ready_ok = ready_count[0] >= args.clients
@@ -134,7 +131,7 @@ def main(argv=None):
                         break
                     if stop.is_set():
                         return
-                    time.sleep(0.01)
+                    stop.wait(0.01)
                 with ready_lock:
                     ready_ok = ready_count[0] >= args.clients
                 if not (
@@ -147,7 +144,7 @@ def main(argv=None):
 
                 start_sender[0].sendall(f"START,{args.msg_size}\n".encode("utf-8"))
                 while not stop.is_set():
-                    time.sleep(0.05)
+                    stop.wait(0.05)
 
 
 if __name__ == "__main__":

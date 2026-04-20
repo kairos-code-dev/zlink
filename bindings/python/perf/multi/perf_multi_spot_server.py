@@ -14,6 +14,7 @@ from perf_multi_common import (
     benchmark_run_id,
     new_payload,
     parse_server_args,
+    resolve_multi_connect_ready_timeout_ms,
     safe_poll,
     spot_publish_nonblocking,
     stamp_payload,
@@ -21,9 +22,6 @@ from perf_multi_common import (
 
 
 SERVICE_NAME = "spot-svc"
-CONNECT_TIMEOUT_S = 15.0
-
-
 def _parse_tcp_endpoint(endpoint):
     host_port = endpoint.split("://", 1)[1]
     host, port_text = host_port.rsplit(":", 1)
@@ -46,6 +44,7 @@ def main(argv=None):
         1.0,
         float(os.environ.get("PERF_MULTI_DURATION_SECONDS", "5")),
     )
+    connect_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
     stop = threading.Event()
     start_runner = threading.Event()
     control_connected = threading.Event()
@@ -74,10 +73,9 @@ def main(argv=None):
                 control_peer_endpoint[0] = endpoint
                 ready_reader[0] = socket.create_connection(
                     _parse_tcp_endpoint(endpoint),
-                    timeout=CONNECT_TIMEOUT_S,
+                    timeout=connect_timeout_s,
                 )
                 control_connected.set()
-                print(f"CONTROL_CONNECTED,{endpoint}", flush=True)
             elif text == f"START,{args.msg_size}":
                 start_runner.set()
             elif text in {"STOP", "QUIT"}:
@@ -85,9 +83,9 @@ def main(argv=None):
                 return
 
     def recv_control():
-        deadline = time.perf_counter() + CONNECT_TIMEOUT_S
+        deadline = time.perf_counter() + connect_timeout_s
         while time.perf_counter() < deadline and ready_reader[0] is None and not stop.is_set():
-            time.sleep(0.01)
+            stop.wait(0.01)
         if ready_reader[0] is None:
             return
         fileobj = ready_reader[0].makefile("r", encoding="utf-8", newline="\n")
@@ -117,7 +115,7 @@ def main(argv=None):
         print(f"READY,{data_endpoint}", flush=True)
         print(f"CONTROL_READY,tcp://{start_host}:{start_port}", flush=True)
 
-        deadline = time.perf_counter() + CONNECT_TIMEOUT_S
+        deadline = time.perf_counter() + connect_timeout_s
         while time.perf_counter() < deadline:
             with ready_lock:
                 ready_ok = ready_count[0] >= args.clients
@@ -125,7 +123,7 @@ def main(argv=None):
                 break
             if stop.is_set():
                 return
-            time.sleep(0.01)
+            stop.wait(0.01)
         with ready_lock:
             ready_ok = ready_count[0] >= args.clients
         if not (control_connected.is_set() and start_runner.is_set() and ready_ok and start_sender[0] is not None):
@@ -133,10 +131,11 @@ def main(argv=None):
 
         start_sender[0].sendall(f"START,{args.msg_size}\n".encode("utf-8"))
         active_deadline = time.perf_counter() + active_duration_s
+        cooldown_sent = False
         with zlink.Poller() as poller:
             poller.add_socket(service_pair[0], zlink.PollEvent.POLLOUT)
             while not stop.is_set():
-                if time.perf_counter() >= active_deadline:
+                if time.perf_counter() >= active_deadline and cooldown_sent:
                     stop.wait(0.01)
                     continue
                 events = safe_poll(poller, 100)
@@ -145,17 +144,18 @@ def main(argv=None):
                 for event in events:
                     if not (event["events"] & int(zlink.PollEvent.POLLOUT)):
                         continue
-                    while (
-                        time.perf_counter() < active_deadline
-                        and not stop.is_set()
-                    ):
+                    while not stop.is_set():
+                        phase = 1 if time.perf_counter() < active_deadline else 2
                         sent = spot_publish_nonblocking(
                             data_spot,
                             SERVICE_NAME,
                             TOPIC,
-                            [stamp_payload(payload, phase=1, run_id=run_id)],
+                            [stamp_payload(payload, phase=phase, run_id=run_id)],
                         )
                         if not sent:
+                            break
+                        if phase == 2:
+                            cooldown_sent = True
                             break
         sys.stdout.flush()
         try:

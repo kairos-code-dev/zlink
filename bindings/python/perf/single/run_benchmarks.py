@@ -58,6 +58,8 @@ def parse_args(argv):
     parser.add_argument("--results-tag", default="")
     parser.add_argument("--output", default="")
     parser.add_argument("--build-dir", default="")
+    parser.add_argument("--reuse-build", action="store_true")
+    parser.add_argument("--clean-build", action="store_true")
     parser.add_argument("--io-threads", default="")
     parser.add_argument("--hwm", default="")
     parser.add_argument("--send-hwm", default="")

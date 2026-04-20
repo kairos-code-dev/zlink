@@ -483,16 +483,14 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 stdout_chunks=stdout_chunks,
             )
             client_control_endpoint = client_control.split(",", 1)[1]
-            server.stdin.write(f"CONNECT_CONTROL,{client_control_endpoint}\n")
-            server.stdin.flush()
-            control_connected = _wait_for_control_line(
-                server,
+            _wait_for_control_line(
+                client,
                 ("CONTROL_CONNECTED,",),
                 timeout_s=ready_timeout_s,
                 stdout_chunks=stdout_chunks,
             )
-            client.stdin.write(f"{control_connected}\n")
-            client.stdin.flush()
+            server.stdin.write(f"CONNECT_CONTROL,{client_control_endpoint}\n")
+            server.stdin.flush()
             client_ready = _wait_for_control_line(
                 client,
                 ("CLIENT_READY,", "UNSUPPORTED,", "SKIP,"),

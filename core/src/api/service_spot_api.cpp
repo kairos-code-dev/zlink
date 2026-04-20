@@ -286,8 +286,12 @@ zlink_submit_result_t zlink_spot_publish_part (
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_)
 {
-    if (!service_name_ || service_name_[0] == '\0'
-        || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
+        zlink::part_helper_internal::consume_send_part (part_);
+        return zlink::submit_result_internal::from_errno (errno);
+    }
+    if (zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || zlink::part_helper_internal::validate_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);

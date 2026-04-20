@@ -221,6 +221,9 @@ def resolve_required_binaries(current_bin, pattern_name):
 
 
 def collect_unsupported_patterns(pattern_names, recv_mode):
+    if not ALLOW_MULTI:
+        return []
+
     unsupported = []
     for pattern in pattern_names:
         normalized = normalize_multi_pattern_name(pattern)
@@ -264,18 +267,7 @@ def resolve_latency_triplet(latency, latency_p95, latency_p99):
 def resolve_linux_paths():
     """Return build/library paths rooted at the official repo core/build directory."""
     build_root = os.path.join(ROOT_DIR, "core", "build")
-    build_dir = os.path.join(build_root, "bin")
-    if IS_WINDOWS:
-        release_dir = os.path.join(build_dir, "Release")
-        if os.path.isdir(release_dir):
-            build_dir = release_dir
-    base = os.path.basename(build_root)
-    if base in BUILD_CONFIG_DIRS:
-        bin_root = os.path.dirname(build_root)
-        if os.path.basename(bin_root) == "bin":
-            build_root = os.path.dirname(bin_root)
-    elif base == "bin":
-        build_root = os.path.dirname(build_root)
+    build_dir = normalize_build_dir(build_root)
     current_lib_dir = os.path.abspath(os.path.join(build_root, "lib"))
     return build_dir, current_lib_dir
 
@@ -1480,7 +1472,9 @@ def run_sizes_test_stream_shared(
         close_server_sampler = lambda: None
 
         def maybe_send_size_start(size_value):
-            if not control_connected[0] or size_value is None:
+            if size_value is None:
+                return
+            if not use_control_plane and not control_connected[0]:
                 return
             try:
                 if server_proc.stdin:
@@ -1998,7 +1992,9 @@ def run_sizes_test_split(
         stop_requested_sizes = set()
 
         def maybe_send_size_start(size_value):
-            if not control_connected[0] or size_value is None:
+            if size_value is None:
+                return
+            if not use_control_plane and not control_connected[0]:
                 return
             try:
                 if server_proc.stdin:

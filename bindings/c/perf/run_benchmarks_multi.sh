@@ -318,6 +318,40 @@ public_multi_pattern() {
   printf 'MULTI_%s' "${pattern}"
 }
 
+resolve_multi_build_targets() {
+  local pattern_name=""
+  local targets=()
+
+  for pattern_name in "${RUN_PATTERNS[@]}"; do
+    case "${pattern_name}" in
+      DEALER_DEALER)
+        targets+=("comp_src_dealer_dealer_server" "comp_src_dealer_dealer_client")
+        ;;
+      DEALER_ROUTER)
+        targets+=("comp_src_dealer_router_server" "comp_src_dealer_router_client")
+        ;;
+      ROUTER_ROUTER)
+        targets+=("comp_src_router_router_server" "comp_src_router_router_client")
+        ;;
+      PUBSUB)
+        targets+=("comp_src_pubsub_server" "comp_src_pubsub_client")
+        ;;
+      SPOT)
+        targets+=("comp_src_spot_server" "comp_src_spot_client")
+        ;;
+      STREAM)
+        targets+=("comp_src_stream_server" "perf_stream_client")
+        ;;
+    esac
+  done
+
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  printf '%s\n' "${targets[@]}" | awk '!seen[$0]++'
+}
+
 expand_and_add_explicit_pattern() {
   local raw="${1:-}"
   raw="${raw#"${raw%%[![:space:]]*}"}"
@@ -981,6 +1015,9 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DCMAKE_BUILD_TYPE=Release \
       -DENABLE_LTO=OFF \
       -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_CPP_BINDINGS=OFF \
+      -DZLINK_BUILD_C_BINDINGS=ON \
+      -DZLINK_C_BUILD_BENCHMARKS=ON \
       -DZLINK_BUILD_TESTS=OFF \
       -DZLINK_BUILD_BENCH_ZMQ=OFF \
       -DZLINK_BUILD_BENCH_ZLINK=ON \
@@ -994,6 +1031,9 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
       -DENABLE_LTO=OFF \
       -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_CPP_BINDINGS=OFF \
+      -DZLINK_BUILD_C_BINDINGS=ON \
+      -DZLINK_C_BUILD_BENCHMARKS=ON \
       -DZLINK_BUILD_TESTS=OFF \
       -DZLINK_BUILD_BENCH_ZMQ=OFF \
       -DZLINK_BUILD_BENCH_ZLINK=ON \
@@ -1003,11 +1043,17 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DZLINK_CXX_STANDARD=17
   fi
 
+  mapfile -t BUILD_TARGETS < <(resolve_multi_build_targets)
+  if [[ "${#BUILD_TARGETS[@]}" -eq 0 ]]; then
+    echo "Error: failed to resolve multi benchmark build targets." >&2
+    exit 1
+  fi
+
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-    cmake --build "${BUILD_DIR}" --config Release
+    cmake --build "${BUILD_DIR}" --config Release --target "${BUILD_TARGETS[@]}"
   else
     bash "${NORMALIZE_TIMESTAMPS_SH}" "${BUILD_DIR}"
-    cmake --build "${BUILD_DIR}"
+    cmake --build "${BUILD_DIR}" --target "${BUILD_TARGETS[@]}"
   fi
 fi
 

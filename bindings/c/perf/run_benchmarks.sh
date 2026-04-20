@@ -287,6 +287,39 @@ for p in "${PATTERN_LIST[@]}"; do
   esac
 done
 
+resolve_single_build_targets() {
+  local pattern_name=""
+  local targets=()
+  for pattern_name in "${PATTERN_LIST[@]}"; do
+    case "${pattern_name}" in
+      PAIR)
+        targets+=("perf_pair")
+        ;;
+      PUBSUB)
+        targets+=("perf_pubsub")
+        ;;
+      DEALER_DEALER)
+        targets+=("perf_dealer_dealer")
+        ;;
+      DEALER_ROUTER)
+        targets+=("perf_dealer_router")
+        ;;
+      ROUTER_ROUTER)
+        targets+=("perf_router_router")
+        ;;
+      SPOT)
+        targets+=("perf_spot")
+        ;;
+    esac
+  done
+
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  printf '%s\n' "${targets[@]}" | awk '!seen[$0]++'
+}
+
 if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
   echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2
   exit 1
@@ -476,11 +509,17 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DZLINK_CXX_STANDARD=17
   fi
 
+  mapfile -t BUILD_TARGETS < <(resolve_single_build_targets)
+  if [[ "${#BUILD_TARGETS[@]}" -eq 0 ]]; then
+    echo "Error: failed to resolve single benchmark build targets." >&2
+    exit 1
+  fi
+
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-    cmake --build "${BUILD_DIR}" --config Release
+    cmake --build "${BUILD_DIR}" --config Release --target "${BUILD_TARGETS[@]}"
   else
     bash "${NORMALIZE_TIMESTAMPS_SH}" "${BUILD_DIR}"
-    cmake --build "${BUILD_DIR}"
+    cmake --build "${BUILD_DIR}" --target "${BUILD_TARGETS[@]}"
   fi
 fi
 

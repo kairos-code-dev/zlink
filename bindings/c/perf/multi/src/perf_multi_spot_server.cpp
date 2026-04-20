@@ -192,31 +192,43 @@ send_status_t try_publish_locked(spot_server_state_t *state,
 
     const size_t payload_size =
       std::max(state->msg_size, perf_multi_metric::header_size());
-    zlink_msg_t part;
-    if (zlink_msg_init_size(&part, payload_size) != 0) {
-        return send_status_fatal;
-    }
-    if (!perf_multi_metric::stamp_payload(
-          zlink_msg_data(&part),
-          payload_size,
-          state->run_id,
-          state->phase,
-          state->msg_size,
-          state->next_seq,
-          perf_multi_metric::now_ns())) {
-        zlink_msg_close(&part);
-        return send_status_fatal;
-    }
+    const auto publish_once = [&](zlink_send_flags_t flags,
+                                  int *saved_errno_out) -> int {
+        if (!saved_errno_out) {
+            errno = EFAULT;
+            return -1;
+        }
 
-    int rc = zlink_publish(
-      state->pub, k_topic, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT);
-    int saved_errno = rc == 0 ? 0 : errno;
+        zlink_msg_t part;
+        if (zlink_msg_init_size(&part, payload_size) != 0) {
+            *saved_errno_out = errno;
+            return -1;
+        }
+        if (!perf_multi_metric::stamp_payload(
+              zlink_msg_data(&part),
+              payload_size,
+              state->run_id,
+              state->phase,
+              state->msg_size,
+              state->next_seq,
+              perf_multi_metric::now_ns())) {
+            const int stamp_errno = errno != 0 ? errno : EFAULT;
+            (void) zlink_msg_close(&part);
+            *saved_errno_out = stamp_errno;
+            errno = stamp_errno;
+            return -1;
+        }
+
+        const int rc = zlink_publish(state->pub, k_topic, &part, 1, flags);
+        *saved_errno_out = rc == 0 ? 0 : errno;
+        return rc;
+    };
+
+    int saved_errno = 0;
+    int rc = publish_once(ZLINK_SEND_FLAGS_DONTWAIT, &saved_errno);
     if (rc != 0 && saved_errno == EAGAIN) {
-        rc = zlink_publish(
-          state->pub, k_topic, &part, 1, static_cast<zlink_send_flags_t>(0));
-        saved_errno = rc == 0 ? 0 : errno;
+        rc = publish_once(static_cast<zlink_send_flags_t>(0), &saved_errno);
     }
-    (void) zlink_msg_close(&part);
 
     if (rc == 0) {
         if (publish_ok_count)
@@ -372,6 +384,26 @@ bool run_server_loop(spot_server_state_t *state,
             }
             return false;
         }
+        if (!wait_for_ready_slots(state, msg_sizes[i], start_timeout_ms)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-server] ready count timeout"
+                          << " size=" << msg_sizes[i]
+                          << " expected=" << state->expected_ready_count
+                          << " got="
+                          << perf_multi_spot_handshake::ready_units(
+                               &state->ready_state, msg_sizes[i])
+                          << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+        if (!publish_control_start(state, msg_sizes[i])) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-server] control start publish failed"
+                          << " size=" << msg_sizes[i]
+                          << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
         if (!run_phase(state,
                        lib_name,
                        transport,
@@ -441,7 +473,8 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
     spot_server_state_t state;
-    state.expected_ready_count = std::max<size_t>(1, settings.clients);
+    state.expected_ready_count =
+      std::max<size_t>(1, resolve_multi_service_clients(settings.clients));
     g_server_state = &state;
     perf_multi_spot_control::prepare_server_runtime(
       &state,

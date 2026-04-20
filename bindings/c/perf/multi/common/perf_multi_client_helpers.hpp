@@ -164,67 +164,6 @@ inline int recv_one_message (void *socket,
     if (!socket)
         return -1;
 
-#if defined(ZLINK_PERF_STD_COMPAT)
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    const zlink_routing_id_t *router_source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
-    uint64_t request_seq = 0;
-    zlink_routing_id_t source_rid_storage;
-    std::memset (&source_rid_storage, 0, sizeof (source_rid_storage));
-
-    int rc = -1;
-    if (router_surface) {
-        rc = ::zlink_router_recv (
-          socket, &router_source_rid, &source_spot_rid, &request_seq, &parts,
-          &part_count, static_cast<zlink_recv_flags_t> (flags));
-    } else {
-        rc = ::zlink_recv (
-          socket, &source_rid_storage, &parts, &part_count,
-          static_cast<zlink_recv_flags_t> (flags));
-        router_source_rid =
-          source_rid_storage.size > 0 ? &source_rid_storage : NULL;
-    }
-    if (rc != 0) {
-        if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
-            return 0;
-        return -1;
-    }
-
-    if (!parts || part_count != 1) {
-        zlink_multipart_close (parts, part_count);
-        errno = EPROTO;
-        return -1;
-    }
-
-    if (router_surface
-        && ((router_source_rid && router_source_rid->size == 0)
-            || (source_spot_rid && source_spot_rid->size != 0)
-            || request_seq != 0)) {
-        zlink_multipart_close (parts, part_count);
-        errno = EPROTO;
-        return -1;
-    }
-
-    if (!router_surface && router_source_rid) {
-        zlink_multipart_close (parts, part_count);
-        errno = EPROTO;
-        return -1;
-    }
-
-    if (capture_bytes > 0 && !scratch.empty ()) {
-        const size_t copy_size =
-          std::min (std::min (capture_bytes, scratch.size ()),
-                    zlink_msg_size (&parts[0]));
-        if (copy_size > 0) {
-            std::memcpy (
-              scratch.data (), zlink_msg_data (&parts[0]), copy_size);
-        }
-    }
-
-    zlink_multipart_close (parts, part_count);
-    return 1;
-#else
     const zlink_routing_id_t *source_rid = NULL;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
@@ -276,14 +215,12 @@ inline int recv_one_message (void *socket,
           std::min (std::min (capture_bytes, scratch.size ()),
                     zlink_msg_size (&part));
         if (copy_size > 0) {
-            std::memcpy (
-              scratch.data (), zlink_msg_data (&part), copy_size);
+            std::memcpy (scratch.data (), zlink_msg_data (&part), copy_size);
         }
     }
 
     zlink_msg_close (&part);
     return 1;
-#endif
 }
 
 inline int recv_one_message (void *socket,
@@ -603,78 +540,6 @@ inline int recv_one_message_header (void *socket,
     if (!socket)
         return -1;
 
-#if defined(ZLINK_PERF_STD_COMPAT)
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    const zlink_routing_id_t *router_source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
-    uint64_t request_seq = 0;
-    zlink_routing_id_t source_rid_storage;
-    std::memset (&source_rid_storage, 0, sizeof (source_rid_storage));
-
-    int rc = -1;
-    if (router_surface) {
-        rc = ::zlink_router_recv (
-          socket, &router_source_rid, &source_spot_rid, &request_seq, &parts,
-          &part_count, static_cast<zlink_recv_flags_t> (flags));
-    } else {
-        rc = ::zlink_recv (
-          socket, &source_rid_storage, &parts, &part_count,
-          static_cast<zlink_recv_flags_t> (flags));
-        router_source_rid =
-          source_rid_storage.size > 0 ? &source_rid_storage : NULL;
-    }
-    if (rc != 0) {
-        if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
-            return 0;
-        return -1;
-    }
-
-    if (!parts || part_count != 1) {
-        zlink_multipart_close (parts, part_count);
-        errno = EPROTO;
-        return -1;
-    }
-
-    if (router_surface
-        && ((source_spot_rid && source_spot_rid->size != 0)
-            || request_seq != 0)) {
-        zlink_multipart_close (parts, part_count);
-        errno = EPROTO;
-        return -1;
-    }
-
-    if (!router_surface && router_source_rid) {
-        zlink_multipart_close (parts, part_count);
-        errno = EPROTO;
-        return -1;
-    }
-
-    bool decoded = false;
-    if (header_out) {
-        decoded = perf_multi_metric::decode_payload_header (
-          zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), header_out);
-        if (!decoded && capture_bytes > 0 && !scratch.empty ()) {
-            const size_t write_size =
-              std::min (std::min (capture_bytes, scratch.size ()),
-                        zlink_msg_size (&parts[0]));
-            if (write_size > 0) {
-                std::memcpy (
-                  scratch.data (), zlink_msg_data (&parts[0]), write_size);
-            }
-            if (write_size >= perf_multi_metric::header_size ()) {
-                decoded = decode_metric_header_from_capture (
-                  scratch.data (), write_size, header_out);
-            }
-        }
-    }
-
-    if (decoded_out)
-        *decoded_out = decoded;
-
-    zlink_multipart_close (parts, part_count);
-    return 1;
-#else
     const zlink_routing_id_t *source_rid = NULL;
     const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
@@ -724,16 +589,15 @@ inline int recv_one_message_header (void *socket,
         decoded = perf_multi_metric::decode_payload_header (
           zlink_msg_data (&part), zlink_msg_size (&part), header_out);
         if (!decoded && capture_bytes > 0 && !scratch.empty ()) {
-            const size_t write_offset =
+            const size_t write_size =
               std::min (std::min (capture_bytes, scratch.size ()),
                         zlink_msg_size (&part));
-            if (write_offset > 0) {
-                std::memcpy (
-                  scratch.data (), zlink_msg_data (&part), write_offset);
+            if (write_size > 0) {
+                std::memcpy (scratch.data (), zlink_msg_data (&part), write_size);
             }
-            if (write_offset >= perf_multi_metric::header_size ()) {
+            if (write_size >= perf_multi_metric::header_size ()) {
                 decoded = decode_metric_header_from_capture (
-                  scratch.data (), write_offset, header_out);
+                  scratch.data (), write_size, header_out);
             }
         }
     }
@@ -743,7 +607,6 @@ inline int recv_one_message_header (void *socket,
 
     zlink_msg_close (&part);
     return 1;
-#endif
 }
 
 inline bool drain_socket_non_blocking (

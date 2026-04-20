@@ -446,6 +446,9 @@ inline bool accept_reverse_connect_request(
   int timeout_ms,
   const std::atomic<int> *fatal_errno)
 {
+    (void) timeout_ms;
+    (void) fatal_errno;
+
     if (!node || !registry || endpoint.empty()) {
         errno = EINVAL;
         return false;
@@ -454,8 +457,7 @@ inline bool accept_reverse_connect_request(
         || !connect_peer(node, endpoint)) {
         return false;
     }
-    return wait_for_connected_peer_count(
-      node, registry->endpoints.size(), timeout_ms, fatal_errno);
+    return true;
 }
 
 inline void disconnect_peers(
@@ -494,15 +496,12 @@ inline bool publish_control_payload(void *control_pub,
             return false;
         std::memcpy(zlink_msg_data(&part), payload.data(), payload.size());
 
-        const int rc = zlink_spot_publish(
-          control_pub,
-          NULL,
-          topic,
-          &part,
-          1,
-          static_cast<zlink_send_flags_t>(0));
+        const int rc = zlink_publish(control_pub,
+                                     topic,
+                                     &part,
+                                     1,
+                                     static_cast<zlink_send_flags_t>(0));
         const int saved_errno = rc == 0 ? 0 : errno;
-        (void) zlink_msg_close(&part);
         if (rc == 0)
             return true;
 
@@ -557,17 +556,14 @@ inline bool receive_control_payload(void *control_sub,
     size_t part_count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
-    size_t service_name_len = 0;
     const int rc =
-      zlink_spot_subscribe(control_sub,
-                           NULL,
-                           &parts,
-                           &part_count,
-                           NULL,
-                           &service_name_len,
-                           topic,
-                           &topic_len,
-                           static_cast<zlink_recv_flags_t>(ZLINK_DONTWAIT));
+      zlink_subscribe(control_sub,
+                      NULL,
+                      &parts,
+                      &part_count,
+                      topic,
+                      &topic_len,
+                      static_cast<zlink_recv_flags_t>(ZLINK_DONTWAIT));
     if (rc != 0) {
         const int err = zlink_errno() != 0 ? zlink_errno() : errno;
         if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
@@ -614,6 +610,11 @@ inline bool publish_ready_count(void *control_pub,
         msg_size, ready_count));
 }
 
+inline bool publish_connected(void *control_pub, const char *topic)
+{
+    return publish_control_payload(control_pub, topic, "CONNECTED");
+}
+
 inline bool publish_start(void *control_pub,
                           const char *topic,
                           size_t msg_size)
@@ -650,6 +651,12 @@ inline bool wait_for_ready_units(
             return false;
 
         if (received && !payload.empty()) {
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-control] recv ts_ns="
+                          << perf_multi_metric::now_ns()
+                          << " topic=" << topic
+                          << " payload=" << payload << std::endl;
+            }
             size_t ready_size = 0;
             size_t slot_index = 0;
             size_t ready_count = 0;

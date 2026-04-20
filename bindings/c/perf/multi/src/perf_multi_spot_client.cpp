@@ -963,6 +963,14 @@ bool create_control_spot(ctx_guard_t &ctx,
         }
         return false;
     }
+    if (!perf_multi_spot_control::publish_connected(state->control_pub,
+                                                    k_topic)) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] control connected publish failed"
+                      << " err=" << zlink_errno() << std::endl;
+        }
+        return false;
+    }
     state->control_connected.store(true, std::memory_order_release);
 
     std::cout << k_control_ready_prefix << state->control_endpoint << std::endl;
@@ -1136,53 +1144,37 @@ bool wait_msg_size_start(spot_client_state_t *state,
                          size_t msg_size,
                          int timeout_ms)
 {
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
+    return perf_multi_spot_control::wait_for_started_size(
+      state, msg_size, timeout_ms, recv_one_control_message);
+}
 
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (perf_multi_handshake::wait_for_start(
-              &state->start_gate,
-              msg_size,
-              static_cast<int>(remaining_wait_ms(deadline)))) {
-            const uint64_t start_recv_ns =
-              bench_transition_debug_enabled() ? perf_multi_metric::now_ns() : 0;
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                state->control_started_msg_size.store(
-                  msg_size, std::memory_order_relaxed);
-                if (start_recv_ns != 0) {
-                    state->control_start_recv_ns.store(
-                      start_recv_ns, std::memory_order_relaxed);
-                }
-                state->seen_msg_size.store(msg_size, std::memory_order_relaxed);
-                state->seen_phase.store(
-                  static_cast<int>(perf_multi_metric::phase_active),
-                  std::memory_order_relaxed);
-            }
-            state->cv.notify_all();
-            return true;
-        }
-        if (state->fatal.load(std::memory_order_acquire)
-            || state->control_started_msg_size.load(std::memory_order_acquire)
-                 == msg_size) {
-            return true;
-        }
+bool wait_runner_start(spot_client_state_t *state,
+                       size_t msg_size,
+                       int timeout_ms)
+{
+    if (!state)
+        return false;
 
-        bool received = false;
-        if (!recv_one_control_message(state, &received))
-            return false;
-        if (state->fatal.load(std::memory_order_acquire)
-            || state->control_started_msg_size.load(std::memory_order_acquire)
-                 == msg_size) {
-            return true;
-        }
+    return perf_multi_handshake::wait_for_start(
+      &state->start_gate, msg_size, timeout_ms);
+}
 
-        if (!wait_for_control_activity(state, deadline))
-            return false;
+bool publish_client_ready_count(spot_client_state_t *state,
+                                size_t msg_size)
+{
+    if (!state || msg_size == 0 || state->slots.empty())
+        return false;
+
+    const int settle_ms = resolve_spot_control_settle_ms();
+    if (settle_ms > 0
+        && !idle_until(std::chrono::steady_clock::now()
+                       + std::chrono::milliseconds(settle_ms))) {
+        return false;
     }
 
-    return false;
+    return publish_control_ready_count(state,
+                                       msg_size,
+                                       state->slots.size());
 }
 
 bool wait_phase_start(spot_client_state_t *state,
@@ -1328,8 +1320,6 @@ bool run_single_size_case(spot_client_state_t *state,
         return false;
     }
 
-    std::cout << "CLIENT_READY," << msg_size << std::endl;
-
     state->expected_run_id.store(run_id, std::memory_order_release);
     reset_metrics(state, msg_size);
     state->active_duration_ns.store(
@@ -1341,6 +1331,26 @@ bool run_single_size_case(spot_client_state_t *state,
             std::cerr << "[multi-spot-client] ensure control connect failed"
                       << " size=" << msg_size
                       << " err=" << zlink_errno() << std::endl;
+        }
+        return false;
+    }
+
+    if (!publish_client_ready_count(state, msg_size)) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] ready count publish failed"
+                      << " size=" << msg_size
+                      << " count=" << state->slots.size()
+                      << " err=" << zlink_errno() << std::endl;
+        }
+        return false;
+    }
+
+    std::cout << "CLIENT_READY," << msg_size << std::endl;
+
+    if (!wait_runner_start(state, msg_size, phase_timeout_ms)) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] runner start timeout size="
+                      << msg_size << std::endl;
         }
         return false;
     }

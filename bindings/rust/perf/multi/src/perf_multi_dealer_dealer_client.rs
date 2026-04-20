@@ -4,6 +4,7 @@
 mod common;
 
 use std::io::{self, BufRead, Write};
+use std::hint::spin_loop;
 use std::time::{Duration, Instant};
 use zlink::*;
 
@@ -13,12 +14,12 @@ fn main() {
 
     let ctx = common::perf_client_context();
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
-    let poller = Poller::new().expect("poller");
+    let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
     let mut send_pending = vec![false; settings.clients];
-    let mut socket_keys = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
+        let poller = Poller::new().expect("poller");
         sock.common_options()
             .set_send_hwm(settings.send_hwm)
             .expect("sndhwm");
@@ -31,8 +32,8 @@ fn main() {
         }
         sock.connect(&args.endpoint).expect("connect");
         poller.add_socket(&sock, POLLOUT).expect("poller add");
-        socket_keys.push(common::raw_socket_handle_dealer(&sock) as usize);
         sockets.push(sock);
+        pollers.push(poller);
     }
 
     let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
@@ -93,18 +94,18 @@ fn main() {
             continue;
         }
 
-        let events = common::wait_native_poll_events(&poller, sockets.len(), 25)
-            .expect("poller wait all");
-        for event in events {
-            if event.events & POLLOUT == 0 {
+        let mut saw_writable = false;
+        for (index, poller) in pollers.iter().enumerate() {
+            let Some(event) = poller.wait(0).expect("poller wait") else {
                 continue;
-            }
-            if let Some(index) = socket_keys
-                .iter()
-                .position(|socket_key| *socket_key == event.socket as usize)
-            {
+            };
+            if event.is_writable() {
+                saw_writable = true;
                 send_pending[index] = false;
             }
+        }
+        if !saw_writable {
+            spin_loop();
         }
     }
 }

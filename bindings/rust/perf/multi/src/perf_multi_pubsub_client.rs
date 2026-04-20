@@ -2,6 +2,7 @@
 mod common;
 
 use std::io::{self, BufRead, Write};
+use std::hint::spin_loop;
 use std::time::{Duration, Instant};
 use zlink::*;
 
@@ -13,11 +14,11 @@ fn main() {
 
     let ctx = common::perf_client_context();
     let mut sockets: Vec<SubSocket> = Vec::with_capacity(settings.clients);
-    let poller = Poller::new().expect("poller");
-    let mut socket_keys = Vec::with_capacity(settings.clients);
+    let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let sub = ctx.sub_socket().expect("sub");
+        let poller = Poller::new().expect("poller");
         sub.common_options()
             .set_send_hwm(settings.send_hwm)
             .expect("sndhwm");
@@ -31,8 +32,8 @@ fn main() {
         sub.connect(&args.endpoint).expect("connect");
         sub.set_subscription(TOPIC).expect("subscribe");
         poller.add_socket(&sub, POLLIN).expect("poller add");
-        socket_keys.push(common::raw_socket_handle_sub(&sub) as usize);
         sockets.push(sub);
+        pollers.push(poller);
     }
 
     println!("CLIENT_READY,{}", args.msg_size);
@@ -60,18 +61,15 @@ fn main() {
     let mut active_count: u64 = 0;
 
     while Instant::now() < deadline {
-        let events =
-            common::wait_native_poll_events(&poller, sockets.len(), 25).expect("poller wait all");
-        for event in events {
-            let Some(index) = socket_keys
-                .iter()
-                .position(|socket_key| *socket_key == event.socket as usize)
-            else {
+        let mut saw_event = false;
+        for (index, poller) in pollers.iter().enumerate() {
+            let Some(event) = poller.wait(0).expect("poller wait") else {
                 continue;
             };
-            if event.events & POLLIN == 0 {
+            if !event.is_readable() {
                 continue;
             }
+            saw_event = true;
             loop {
                 match sockets[index].subscribe_with_flags(RecvFlags::DONT_WAIT) {
                     Ok(topic_msg) => {
@@ -89,6 +87,9 @@ fn main() {
                     Err(err) => panic!("recv failed: {err}"),
                 }
             }
+        }
+        if !saw_event {
+            spin_loop();
         }
     }
 

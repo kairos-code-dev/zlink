@@ -61,13 +61,15 @@ fn main() {
     common::wait_monitor_ready(&mut mon, ready_timeout, "dealer-dealer sender");
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let drain_receiver = || {
+    let drain_receiver = |collect_active| {
         let mut saw_message = false;
         loop {
             match receiver.recv_with_flags(RecvFlags::DONT_WAIT) {
                 Ok(received) => {
                     let data = common::message_payload(received.parts());
-                    common::handle_recv(data, config.size, &stats);
+                    if collect_active {
+                        common::handle_recv(data, config.size, &stats);
+                    }
                     saw_message = true;
                 }
                 Err(err) if err.code() == RecvResult::NoData => break,
@@ -79,18 +81,26 @@ fn main() {
 
     let active = Duration::from_secs(config.duration_seconds);
     let idle_drain = Duration::from_millis(common::resolve_single_idle_drain_ms());
-    let hard_deadline = std::time::Instant::now() + active + idle_drain + ready_timeout;
+    let active_deadline = std::time::Instant::now() + active;
+    let hard_deadline = active_deadline + idle_drain + ready_timeout;
     let poller = Poller::new().expect("poller");
     poller.add_socket(&receiver, POLLIN).expect("poller add");
     let done = common::CompletionSignal::new();
     let sender_done = done.clone();
     let send_thread = std::thread::spawn(move || {
-        common::send_loop(active, config.size, common::PHASE_ACTIVE, |msg| {
+        common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
             sender.send(msg).expect("active send");
         });
         sender_done.signal_done();
     });
-    common::run_single_recv_loop(&poller, hard_deadline, done, idle_drain, drain_receiver);
+    common::run_single_recv_loop(
+        &poller,
+        active_deadline,
+        hard_deadline,
+        done,
+        idle_drain,
+        drain_receiver,
+    );
     send_thread.join().expect("sender thread");
 
     let result = collector.finish();

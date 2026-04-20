@@ -9,6 +9,7 @@ use std::sync::{
     Arc,
 };
 use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
+use std::hint::spin_loop;
 use std::thread;
 use std::time::Duration;
 
@@ -34,7 +35,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
     loop {
         match future.as_mut().poll(&mut context) {
             Poll::Ready(value) => return value,
-            Poll::Pending => thread::yield_now(),
+            Poll::Pending => spin_loop(),
         }
     }
 }

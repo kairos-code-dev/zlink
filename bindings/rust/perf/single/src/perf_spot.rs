@@ -6,6 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
+use std::hint::spin_loop;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -108,7 +109,7 @@ fn main() {
                     SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
                 ) =>
             {
-                thread::yield_now();
+                spin_loop();
                 continue;
             }
             Err(err) => panic!("probe publish: {err}"),
@@ -121,16 +122,12 @@ fn main() {
     thread::sleep(common::resolve_single_spot_ready_settle());
 
     active_collect.store(true, Ordering::Release);
-    common::send_loop(
-        Duration::from_secs(config.duration_seconds),
-        config.size,
-        common::PHASE_ACTIVE,
-        |msg| {
-            publisher
-                .publish(SERVICE_NAME, TOPIC, msg)
-                .expect("active publish");
-        },
-    );
+    let active_deadline = Instant::now() + Duration::from_secs(config.duration_seconds);
+    common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
+        publisher
+            .publish(SERVICE_NAME, TOPIC, msg)
+            .expect("active publish");
+    });
     active_collect.store(false, Ordering::Release);
 
     let idle_drain = Duration::from_millis(common::resolve_single_idle_drain_ms());
@@ -145,7 +142,7 @@ fn main() {
         if idle_since.elapsed() >= idle_drain {
             break;
         }
-        thread::yield_now();
+        spin_loop();
     }
 
     let result = collector.finish();

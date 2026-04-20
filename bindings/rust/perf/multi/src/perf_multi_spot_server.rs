@@ -2,6 +2,7 @@
 mod common;
 
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
+use std::hint::spin_loop;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -114,7 +115,7 @@ fn main() {
                 guard.as_ref().and_then(|stream| stream.try_clone().ok())
             };
             let Some(stream) = stream else {
-                thread::yield_now();
+                spin_loop();
                 continue;
             };
 
@@ -180,7 +181,7 @@ fn main() {
         {
             break;
         }
-        thread::yield_now();
+        spin_loop();
     }
     if stop.load(Ordering::Acquire)
         || !runner_start.load(Ordering::Acquire)

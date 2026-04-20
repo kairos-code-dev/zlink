@@ -2,6 +2,7 @@
 mod common;
 
 use std::time::{Duration, Instant};
+use std::hint::spin_loop;
 use zlink::*;
 
 fn main() {
@@ -10,16 +11,16 @@ fn main() {
 
     let ctx = common::perf_client_context();
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
-    let poller = Poller::new().expect("poller");
+    let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
     let mut payloads: Vec<Vec<u8>> = Vec::with_capacity(settings.clients);
     let mut waiting_reply = vec![false; settings.clients];
     let mut send_pending = vec![false; settings.clients];
     let mut seqs = vec![1u64; settings.clients];
-    let mut socket_keys = Vec::with_capacity(settings.clients);
     let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
 
     for index in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
+        let poller = Poller::new().expect("poller");
         sock.common_options()
             .set_send_hwm(settings.send_hwm)
             .expect("sndhwm");
@@ -42,8 +43,8 @@ fn main() {
         sock.connect(&args.endpoint).expect("connect");
         poller.add_socket(&sock, POLLIN).expect("poller add");
         payloads.push(vec![0u8; args.msg_size.max(common::HEADER_SIZE)]);
-        socket_keys.push(common::raw_socket_handle_dealer(&sock) as usize);
         sockets.push(sock);
+        pollers.push(poller);
         monitors.push(mon);
     }
 
@@ -74,7 +75,7 @@ fn main() {
                 }
                 Ok(false) => {
                     send_pending[index] = true;
-                    poller
+                    pollers[index]
                         .modify_socket(&sockets[index], POLLIN | POLLOUT)
                         .expect("poller modify");
                 }
@@ -85,27 +86,21 @@ fn main() {
             continue;
         }
 
-        let events = common::wait_native_poll_events(&poller, sockets.len(), 25)
-            .expect("poller wait all");
-        for event in events {
-            let Some(index) = socket_keys
-                .iter()
-                .position(|socket_key| *socket_key == event.socket as usize)
-            else {
+        let mut saw_event = false;
+        for (index, poller) in pollers.iter().enumerate() {
+            let Some(event) = poller.wait(0).expect("poller wait") else {
                 continue;
             };
+            saw_event = true;
 
-            if event.events & POLLOUT != 0 {
+            if event.is_writable() {
                 send_pending[index] = false;
                 poller
-                    .modify_socket(
-                        &sockets[index],
-                        if waiting_reply[index] { POLLIN } else { POLLIN },
-                    )
+                    .modify_socket(&sockets[index], POLLIN)
                     .expect("poller modify");
             }
 
-            if event.events & POLLIN != 0 {
+            if event.is_readable() {
                 loop {
                     match sockets[index].recv_with_flags(RecvFlags::DONT_WAIT) {
                         Ok(received) => {
@@ -130,6 +125,9 @@ fn main() {
                         .expect("poller modify");
                 }
             }
+        }
+        if !saw_event {
+            spin_loop();
         }
     }
 

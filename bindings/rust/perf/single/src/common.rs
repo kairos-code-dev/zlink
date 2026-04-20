@@ -410,6 +410,8 @@ pub fn print_phase_result(key: &str, phase: &PhaseResult) {
     println!("{key},latency,{:.3}", phase.latency_mean_ns / 1_000_000.0);
     println!("{key},latency_p95,{:.3}", phase.latency_p95_ns / 1_000_000.0);
     println!("{key},latency_p99,{:.3}", phase.latency_p99_ns / 1_000_000.0);
+    use std::io::Write;
+    std::io::stdout().flush().ok();
 }
 
 pub fn print_result(
@@ -427,22 +429,24 @@ pub fn print_result(
 
 pub fn run_single_recv_loop<F>(
     poller: &Poller,
+    active_deadline: Instant,
     hard_deadline: Instant,
     done: CompletionSignal,
     idle_drain: Duration,
     mut drain: F,
 ) where
-    F: FnMut() -> bool,
+    F: FnMut(bool) -> bool,
 {
     let mut idle_since: Option<Instant> = None;
     loop {
-        if Instant::now() >= hard_deadline {
+        let now = Instant::now();
+        if now >= hard_deadline {
             break;
         }
 
         match poller.wait(50) {
             Ok(Some(event)) if event.is_readable() => {
-                if drain() {
+                if drain(now < active_deadline) {
                     idle_since = None;
                 }
             }
@@ -520,7 +524,7 @@ pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<L
 /// One-way send loop: active only.
 /// `send_fn` performs the blocking send (may be plain or routed).
 pub fn send_loop<S>(
-    active: Duration,
+    active_deadline: Instant,
     msg_size: usize,
     phase: u8,
     send_fn: S,
@@ -530,8 +534,7 @@ pub fn send_loop<S>(
     let mut seq: u64 = 0;
     let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
 
-    let active_end = Instant::now() + active;
-    while Instant::now() < active_end {
+    while Instant::now() < active_deadline {
         encode_header(&mut buf, phase, msg_size as u32, seq);
         let msg = Message::copy_from(&buf).expect("msg");
         send_fn(msg);

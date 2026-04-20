@@ -61,13 +61,15 @@ fn main() {
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let drain_sub = || {
+    let drain_sub = |collect_active| {
         let mut saw_message = false;
         loop {
             match sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT) {
                 Ok(topic_msg) => {
                     let data = common::message_payload(topic_msg.parts());
-                    common::handle_recv(data, config.size, &stats);
+                    if collect_active {
+                        common::handle_recv(data, config.size, &stats);
+                    }
                     saw_message = true;
                 }
                 Err(err) if err.code() == RecvResult::NoData => break,
@@ -79,18 +81,26 @@ fn main() {
 
     let active = Duration::from_secs(config.duration_seconds);
     let idle_drain = Duration::from_millis(common::resolve_single_pubsub_idle_drain_ms());
-    let hard_deadline = std::time::Instant::now() + active + idle_drain + ready_timeout;
+    let active_deadline = std::time::Instant::now() + active;
+    let hard_deadline = active_deadline + idle_drain + ready_timeout;
     let poller = Poller::new().expect("poller");
     poller.add_socket(&sub_sock, POLLIN).expect("poller add");
     let done = common::CompletionSignal::new();
     let sender_done = done.clone();
     let send_thread = std::thread::spawn(move || {
-        common::send_loop(active, config.size, common::PHASE_ACTIVE, |msg| {
+        common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
             pub_sock.publish("P", msg).expect("active publish");
         });
         sender_done.signal_done();
     });
-    common::run_single_recv_loop(&poller, hard_deadline, done, idle_drain, drain_sub);
+    common::run_single_recv_loop(
+        &poller,
+        active_deadline,
+        hard_deadline,
+        done,
+        idle_drain,
+        drain_sub,
+    );
     send_thread.join().expect("sender thread");
 
     let result = collector.finish();

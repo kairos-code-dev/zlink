@@ -2,6 +2,7 @@
 mod common;
 
 use std::io::{self, BufRead, BufReader, Write};
+use std::hint::spin_loop;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -158,7 +159,7 @@ fn main() {
         {
             break;
         }
-        thread::yield_now();
+        spin_loop();
     }
     if !runner_connected.load(Ordering::Acquire)
         || ready_sender.lock().expect("ready sender lock").is_none()
@@ -186,7 +187,7 @@ fn main() {
         if runner_start.load(Ordering::Acquire) && started.load(Ordering::Acquire) {
             break;
         }
-        thread::yield_now();
+        spin_loop();
     }
     if !runner_start.load(Ordering::Acquire) || !started.load(Ordering::Acquire) {
         panic!("spot client start handshake timeout");
@@ -195,7 +196,7 @@ fn main() {
     active_collect.store(true, Ordering::Release);
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     while Instant::now() < deadline {
-        thread::yield_now();
+        spin_loop();
     }
     active_collect.store(false, Ordering::Release);
 

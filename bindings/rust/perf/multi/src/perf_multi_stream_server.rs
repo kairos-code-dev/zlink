@@ -5,6 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use std::hint::spin_loop;
 use zlink::*;
 
 fn build_packet_frame(header: &[u8], body: &[u8]) -> Vec<u8> {
@@ -72,6 +73,6 @@ fn main() {
         stop_reader.store(true, Ordering::Release);
     });
     while !stop.load(Ordering::Acquire) {
-        std::thread::yield_now();
+        spin_loop();
     }
 }

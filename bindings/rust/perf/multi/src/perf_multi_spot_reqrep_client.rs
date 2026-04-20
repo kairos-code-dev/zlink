@@ -2,6 +2,7 @@
 mod common;
 
 use std::future::Future;
+use std::hint::spin_loop;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::pin::pin;
@@ -76,7 +77,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
     loop {
         match future.as_mut().poll(&mut context) {
             Poll::Ready(value) => return value,
-            Poll::Pending => thread::yield_now(),
+            Poll::Pending => spin_loop(),
         }
     }
 }
@@ -186,7 +187,7 @@ fn main() {
         {
             break;
         }
-        thread::yield_now();
+        spin_loop();
     }
     if !runner_connected.load(Ordering::Acquire)
         || ready_sender.lock().expect("ready sender lock").is_none()
@@ -213,7 +214,7 @@ fn main() {
         if runner_start.load(Ordering::Acquire) && started.load(Ordering::Acquire) {
             break;
         }
-        thread::yield_now();
+        spin_loop();
     }
     if !runner_start.load(Ordering::Acquire) || !started.load(Ordering::Acquire) {
         panic!("spot reqrep client start handshake timeout");

@@ -31,7 +31,6 @@ function parseCommonArgs(argv, defaults) {
   const options = {
     pattern: defaults.pattern,
     duration: defaults.duration,
-    warmup: defaults.warmup,
     msgSizes: defaults.msgSizes,
     resultsDir: defaults.resultsDir,
     resultsTag: '',
@@ -39,6 +38,7 @@ function parseCommonArgs(argv, defaults) {
     runs: 1,
     transports: defaults.transports || [],
     clients: defaults.clients,
+    pinCpu: false,
     msgSizesExplicit: false,
     transportsExplicit: false,
     clientsExplicit: false,
@@ -52,9 +52,6 @@ function parseCommonArgs(argv, defaults) {
       i += 1;
     } else if (arg === '--duration') {
       options.duration = Number(argv[i + 1]);
-      i += 1;
-    } else if (arg === '--warmup') {
-      options.warmup = Number(argv[i + 1]);
       i += 1;
     } else if (arg === '--msg-size') {
       options.msgSizes = parseSizeList(argv[i + 1], defaults.msgSizes).slice(0, 1);
@@ -80,6 +77,8 @@ function parseCommonArgs(argv, defaults) {
       options.transports = parseStringList(argv[i + 1], defaults.transports || []);
       options.transportsExplicit = true;
       i += 1;
+    } else if (arg === '--pin-cpu') {
+      options.pinCpu = true;
     } else if (arg === '--clients') {
       if (typeof defaults.clients === 'undefined') {
         throw new Error('--clients is not supported for this runner');
@@ -91,8 +90,8 @@ function parseCommonArgs(argv, defaults) {
       arg === '--build-dir'
       || arg === '--reuse-build'
       || arg === '--clean-build'
-    ) {
-      if (arg.startsWith('--') && argv[i + 1] && !argv[i + 1].startsWith('--')) {
+      ) {
+      if (arg === '--build-dir' && argv[i + 1] && !argv[i + 1].startsWith('--')) {
         i += 1;
       }
     } else if (arg === '--help' || arg === '-h') {

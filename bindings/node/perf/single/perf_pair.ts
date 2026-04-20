@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
   waitForConnectionReady,
@@ -25,10 +26,12 @@ async function runPairBenchmark(msgSize, options) {
   const endpoint = await benchmarkEndpoint(options.transport, `pair-${msgSize}`);
 
   try {
+    applySocketPolicy(server);
+    applySocketPolicy(client);
     server.bind(endpoint);
     await waitForConnectionReady(client, () => client.connect(endpoint));
 
-    const activeStartNs = process.hrtime.bigint();
+    const activeStartNs = currentEpochNs();
     const activeStopNs = activeStartNs
       + BigInt(Math.floor(options.duration * 1_000_000_000));
     const runId = createRunId(options.runId ?? 1);
@@ -36,7 +39,8 @@ async function runPairBenchmark(msgSize, options) {
       runId,
       msgSize,
       activeStartNs,
-      activeStopNs
+      activeStopNs,
+      sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
     });
     const payload = createPayload(msgSize);
     let seq = 1n;
@@ -51,8 +55,8 @@ async function runPairBenchmark(msgSize, options) {
       () => stop
     );
 
-    while (process.hrtime.bigint() < activeStopNs) {
-      for (let i = 0; i < 256 && process.hrtime.bigint() < activeStopNs; i += 1) {
+    while (currentEpochNs() < activeStopNs) {
+      for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
         stampPayload(payload, {
           phase: 1,
           runId,
@@ -62,12 +66,14 @@ async function runPairBenchmark(msgSize, options) {
         client.send(payload);
         seq += 1n;
       }
-      if ((Number(seq) & 0x03) === 0) {
+      if (currentEpochNs() < activeStopNs) {
         await sleepImmediate();
       }
     }
+    stampPayload(payload, { phase: 2, runId, msgSize, seq });
+    client.send(payload);
     const drainDeadlineNs = activeStopNs + 250_000_000n;
-    while (process.hrtime.bigint() < drainDeadlineNs) {
+    while (currentEpochNs() < drainDeadlineNs) {
       await sleepImmediate();
     }
     stop = true;

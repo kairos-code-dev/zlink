@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
   waitForPostReadySettle,
@@ -27,12 +28,22 @@ async function runPubSubBenchmark(msgSize, options) {
   const topic = 'perf:pubsub';
 
   try {
+    applySocketPolicy(pub, {
+      noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 1) !== 0
+    });
+    applySocketPolicy(sub, {
+      recvTimeout: Number(
+        process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
+        ?? process.env.PERF_SINGLE_RCVTIMEO_MS
+        ?? 200
+      )
+    });
     pub.bind(endpoint);
     sub.setSubscription(topic);
     await waitForConnectionReady(sub, () => sub.connect(endpoint));
     await waitForPostReadySettle(Number(process.env.PERF_SINGLE_PUBSUB_READY_SETTLE_MS ?? 1000));
 
-    const activeStartNs = process.hrtime.bigint();
+    const activeStartNs = currentEpochNs();
     const activeStopNs = activeStartNs
       + BigInt(Math.floor(options.duration * 1_000_000_000));
     const runId = createRunId(options.runId ?? 1);
@@ -40,7 +51,8 @@ async function runPubSubBenchmark(msgSize, options) {
       runId,
       msgSize,
       activeStartNs,
-      activeStopNs
+      activeStopNs,
+      sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
     });
     const payload = createPayload(msgSize);
     let seq = 1n;
@@ -55,8 +67,8 @@ async function runPubSubBenchmark(msgSize, options) {
       () => stop
     );
 
-    while (process.hrtime.bigint() < activeStopNs) {
-      for (let i = 0; i < 256 && process.hrtime.bigint() < activeStopNs; i += 1) {
+    while (currentEpochNs() < activeStopNs) {
+      for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
         stampPayload(payload, {
           phase: 1,
           runId,
@@ -66,12 +78,14 @@ async function runPubSubBenchmark(msgSize, options) {
         pub.publish(topic, payload);
         seq += 1n;
       }
-      if ((Number(seq) & 0x03) === 0) {
+      if (currentEpochNs() < activeStopNs) {
         await sleepImmediate();
       }
     }
+    stampPayload(payload, { phase: 2, runId, msgSize, seq });
+    pub.publish(topic, payload);
     const drainDeadlineNs = activeStopNs + 250_000_000n;
-    while (process.hrtime.bigint() < drainDeadlineNs) {
+    while (currentEpochNs() < drainDeadlineNs) {
       await sleepImmediate();
     }
     stop = true;

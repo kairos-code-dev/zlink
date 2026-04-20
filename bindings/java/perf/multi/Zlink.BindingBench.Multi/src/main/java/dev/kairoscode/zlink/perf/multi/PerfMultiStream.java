@@ -9,6 +9,7 @@ import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
+import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
@@ -41,6 +42,7 @@ final class PerfMultiStream {
             server.options().sendTimeout(java.time.Duration.ZERO);
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
+            PerfControl.emitReady(config.endpoint());
             server.onPacket((routingId, payload) ->
                 onPacket(server, routingId, payload, pending, pendingCount));
 

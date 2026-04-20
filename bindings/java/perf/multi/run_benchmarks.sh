@@ -18,7 +18,6 @@ MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RUNS=1
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
-WARMUP="${PERF_MULTI_WARMUP_SECONDS:-0}"
 RESULTS_TAG=""
 BUILD_DIR=""
 OUTPUT_PATH=""
@@ -61,7 +60,6 @@ Options:
   --clients N            Client count.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
-  --warmup N             Warmup duration seconds.
   --build-dir PATH       Build directory override.
   --reuse-build          Reuse existing installDist output.
   --clean-build          Delete build dir before installDist.
@@ -96,7 +94,6 @@ while [[ $# -gt 0 ]]; do
     --clients) CLIENTS="${2:-}"; explicit_clients=1; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
-    --warmup) WARMUP="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --clean-build) CLEAN_BUILD=1 ;;
@@ -133,11 +130,6 @@ fi
 
 if ! [[ "${CLIENTS}" =~ ^[0-9]+$ ]] || [[ "${CLIENTS}" -lt 1 ]]; then
   echo "--clients must be >= 1" >&2
-  exit 1
-fi
-
-if ! [[ "${WARMUP}" =~ ^[0-9]+$ ]]; then
-  echo "--warmup must be >= 0" >&2
   exit 1
 fi
 
@@ -226,35 +218,45 @@ PY
   printf '%s\n' "$((20000 + (RANDOM % 20000)))"
 }
 
-wait_for_tcp_endpoint() {
-  local endpoint="$1"
-  local timeout_ms="${2:-10000}"
-  python3 - "$endpoint" "$timeout_ms" <<'PY'
-import socket, sys, time
-endpoint = sys.argv[1]
-timeout_ms = int(sys.argv[2])
-host_port = endpoint.split("://", 1)[1]
-host, port = host_port.rsplit(":", 1)
-port = int(port)
-deadline = time.time() + (timeout_ms / 1000.0)
-while time.time() < deadline:
-    sock = socket.socket()
-    sock.settimeout(0.2)
-    try:
-        if sock.connect_ex((host, port)) == 0:
-            raise SystemExit(0)
-    finally:
-        sock.close()
-    time.sleep(0.05)
-raise SystemExit(1)
-PY
-}
-
 sleep_ms() {
   python3 - "$1" <<'PY'
 import sys, time
 time.sleep(int(sys.argv[1]) / 1000.0)
 PY
+}
+
+wait_for_log_token() {
+  local file="$1"
+  local token="$2"
+  local timeout_ms="$3"
+  python3 - "$file" "$token" "$timeout_ms" <<'PY'
+import os
+import sys
+import time
+
+path, token, timeout_ms = sys.argv[1], sys.argv[2], int(sys.argv[3])
+deadline = time.time() + (timeout_ms / 1000.0)
+position = 0
+while time.time() < deadline:
+    if os.path.exists(path):
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            handle.seek(position)
+            for raw in handle:
+                line = raw.rstrip("\n")
+                if line.startswith(token):
+                    print(line)
+                    raise SystemExit(0)
+            position = handle.tell()
+    time.sleep(0.05)
+raise SystemExit(1)
+PY
+}
+
+is_start_gated_pattern() {
+  case "$1" in
+    DEALER_DEALER|PUBSUB|SPOT) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 wait_for_pid_or_kill() {
@@ -538,11 +540,7 @@ case_status() {
   unsupported_line="$(awk -F',' -v pattern="${prefix}" -v transport="${transport}" \
     '$1=="UNSUPPORTED" && $3==pattern && $4==transport {print $0; exit}' "${source_file}")"
   if [[ -n "${unsupported_line}" ]]; then
-    printf 'unsupported,%s\n' "${unsupported_line##*,}"
-    return 0
-  fi
-  if grep -Eqi 'operation not permitted|address already in use|permission denied|protocol not supported|errno=1|errno=98' "${source_file}"; then
-    printf 'unsupported,transport_bind_failed\n'
+    printf 'unsupported,-\n'
     return 0
   fi
   local fail_line
@@ -643,20 +641,6 @@ append_metrics() {
   fi
 }
 
-early_server_status() {
-  local public_pattern="$1"
-  local transport="$2"
-  local size="$3"
-  local source_file="$4"
-  local server_pid="$5"
-  if kill -0 "${server_pid}" 2>/dev/null; then
-    printf 'running,-\n'
-    return 0
-  fi
-  wait "${server_pid}" 2>/dev/null || true
-  case_status "${public_pattern}" "${transport}" "${size}" "${source_file}"
-}
-
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
 if printf '%s\n' "${patterns[@]}" | grep -qx 'MULTI_STREAM'; then
   ensure_core_stream_client
@@ -686,11 +670,11 @@ for pattern in "${patterns[@]}"; do
   validate_pattern_mode "${bare_pattern}"
   pattern_clients="$(default_clients_for_pattern "${pattern}")"
   if ! ensure_nofile_limit "${pattern_clients}"; then
-    skip_entries+=("${pattern}: preflight_nofile_${NOFILE_SKIP_REASON}")
+    skip_entries+=("${pattern}: nofile_guard_${NOFILE_SKIP_REASON}")
     continue
   fi
   if ! ensure_memory_budget "${pattern_clients}"; then
-    skip_entries+=("${pattern}: preflight_memory_${MEMORY_SKIP_REASON}")
+    skip_entries+=("${pattern}: memory_guard_${MEMORY_SKIP_REASON}")
     continue
   fi
   run_patterns+=("${pattern}")
@@ -764,7 +748,7 @@ for pattern_index in "${!patterns[@]}"; do
           exec 3<>"${fifo}"
           stream_server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
             --endpoint "${endpoint}" --clients "${pattern_clients}" \
-            --duration "${DURATION}" --warmup "${WARMUP}" --control-port 0 \
+            --duration "${DURATION}" --control-port 0 \
             --io-threads "${pattern_server_io_threads}" \
             --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
             --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}" \
@@ -777,7 +761,13 @@ for pattern_index in "${!patterns[@]}"; do
           fi
           "${stream_server_cmd[@]}" <"${fifo}" >"${server_log}" 2>&1 &
           server_pid=$!
-          wait_for_tcp_endpoint "${endpoint}" "${SERVER_READY_TIMEOUT_MS}"
+          if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
+            wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
+            exec 3>&-
+            rm -f "${fifo}"
+            transport_failures=$((transport_failures + 1))
+            continue
+          fi
           "${stream_client_prefix[@]}" "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
             --sizes "${size}" --runs 1 --duration "${DURATION}" \
             --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}" \
@@ -809,10 +799,14 @@ for pattern_index in "${!patterns[@]}"; do
         fi
 
         endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
-        control_port="$(pick_port)"
+        server_fifo="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_server.fifo"
+        client_fifo="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_client.fifo"
+        rm -f "${server_fifo}" "${client_fifo}"
+        mkfifo "${server_fifo}" "${client_fifo}"
+        exec {server_fd}<>"${server_fifo}"
         server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
           --endpoint "${endpoint}" --clients "${pattern_clients}" \
-          --duration "${DURATION}" --warmup "${WARMUP}" --control-port "${control_port}" \
+          --duration "${DURATION}" --control-port 0 \
           --io-threads "${pattern_server_io_threads}" \
           --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
           --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}")
@@ -823,23 +817,19 @@ for pattern_index in "${!patterns[@]}"; do
           server_cmd+=(--recv-hwm "${RECV_HWM}")
         fi
         server_cmd+=(--connect-concurrency "${CONNECT_CONCURRENCY:-$( [[ "${pattern_clients}" -ge 10000 ]] && echo 1024 || echo 128 )}")
-        "${server_cmd[@]}" >"${server_log}" 2>&1 &
+        "${server_cmd[@]}" <"${server_fifo}" >"${server_log}" 2>&1 &
         server_pid=$!
-        sleep_ms 100
-        status_record="$(early_server_status "${pattern}" "${transport}" "${size}" "${server_log}" "${server_pid}")"
-        case "${status_record%%,*}" in
-          unsupported)
-            transport_unsupported=1
-            break
-            ;;
-          fail)
-            transport_failures=$((transport_failures + 1))
-            continue
-            ;;
-        esac
+        if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
+          wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+          exec {server_fd}>&-
+          rm -f "${server_fifo}" "${client_fifo}"
+          transport_failures=$((transport_failures + 1))
+          continue
+        fi
+        exec {client_fd}<>"${client_fifo}"
         client_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-client "${pattern}" "${transport}" "${size}" \
           --endpoint "${endpoint}" --clients "${pattern_clients}" \
-          --duration "${DURATION}" --warmup "${WARMUP}" --control-port "${control_port}" \
+          --duration "${DURATION}" --control-port 0 \
           --io-threads "${pattern_client_io_threads}" \
           --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
           --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}")
@@ -850,8 +840,26 @@ for pattern_index in "${!patterns[@]}"; do
           client_cmd+=(--recv-hwm "${RECV_HWM}")
         fi
         client_cmd+=(--connect-concurrency "${CONNECT_CONCURRENCY:-$( [[ "${pattern_clients}" -ge 10000 ]] && echo 1024 || echo 128 )}")
-        "${client_cmd[@]}" >"${client_log}" 2>&1
+        "${client_cmd[@]}" <"${client_fifo}" >"${client_log}" 2>&1 &
+        client_pid=$!
+        if is_start_gated_pattern "${bare_pattern}"; then
+          if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${CONNECT_READY_TIMEOUT_MS}" >/dev/null; then
+            wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
+            wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+            exec {client_fd}>&-
+            exec {server_fd}>&-
+            rm -f "${server_fifo}" "${client_fifo}"
+            transport_failures=$((transport_failures + 1))
+            continue
+          fi
+          printf 'START,%s\n' "${size}" >&${server_fd}
+          printf 'START,%s\n' "${size}" >&${client_fd}
+        fi
+        wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
+        exec {client_fd}>&-
         wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+        exec {server_fd}>&-
+        rm -f "${server_fifo}" "${client_fifo}"
         metric_log="${server_log}"
         if [[ "${bare_pattern}" == "DEALER_ROUTER" || "${bare_pattern}" == "ROUTER_ROUTER" \
            || "${bare_pattern}" == "PUBSUB" || "${bare_pattern}" == "SPOT" \
@@ -906,7 +914,7 @@ for pattern_index in "${!patterns[@]}"; do
 done
 
 python3 - "${tmp_metrics}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
-  "${display_clients}" "${RUNS}" "${DURATION}" "${WARMUP}" "${RESULTS_TAG}" \
+  "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
   "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
   "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
   "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" "${SERVER_BIND_PORT}" \
@@ -916,7 +924,7 @@ import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, warmup, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path = sys.argv[1:]
+metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
@@ -967,7 +975,7 @@ def fmt_bandwidth(value):
     return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
 
 def fmt_latency_ms(value):
-    return "N/A" if math.isnan(value) else f"{value / 1000.0:.2f} ms"
+    return "N/A" if math.isnan(value) else f"{value:.3f} ms"
 
 def fmt_size(size):
     return f"{size}B"
@@ -1000,7 +1008,6 @@ def emit_effective_options(section):
     emit(f"- connect_ready_timeout_ms: {connect_ready_timeout_ms}")
     emit(f"- monitor_hwm: {monitor_hwm}")
     emit(f"- server_bind_port: {server_bind_port}")
-    emit(f"- warmup_seconds: {warmup}")
     emit(f"- duration_seconds: {duration}")
     if results_tag:
         emit(f"- results_tag: {results_tag}")

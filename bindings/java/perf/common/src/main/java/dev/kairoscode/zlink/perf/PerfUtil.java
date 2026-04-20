@@ -10,7 +10,6 @@ import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RecvResult;
-import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
@@ -30,8 +29,6 @@ public final class PerfUtil {
     public static final int PHASE_WARMUP = 0;
     public static final int PHASE_ACTIVE = 1;
     public static final int PHASE_COOLDOWN = 2;
-    @Deprecated public static final int PHASE_STOP = PHASE_COOLDOWN;
-    @Deprecated public static final int PHASE_PROBE = PHASE_WARMUP;
     public static final int HEADER_SIZE = 29;
 
     private PerfUtil() {
@@ -42,8 +39,6 @@ public final class PerfUtil {
         String transport,
         int size,
         int durationSeconds,
-        int warmupSeconds,
-        String recvMode,
         String endpoint,
         int clients,
         int controlPort,
@@ -168,7 +163,6 @@ public final class PerfUtil {
     }
 
     public static void validateMultiRecvMode(Config config) {
-        PerfPolicy.validateMultiRecvMode(config);
     }
 
     public static Result classifyFailure(Config config, Throwable failure) {
@@ -221,10 +215,6 @@ public final class PerfUtil {
         return invokeOptionalNoArg(monitor, "recvNoWait");
     }
 
-    public static Optional<dev.kairoscode.zlink.service.registry.ServiceEvent> recvNoWait(ServiceMonitor monitor) {
-        return invokeOptionalNoArg(monitor, "recvNoWait");
-    }
-
     public static dev.kairoscode.zlink.Received recvNoWait(PairSocket socket) {
         return socket.tryRecv();
     }
@@ -253,14 +243,6 @@ public final class PerfUtil {
         PerfTransport.applyMonitorOptions(monitor, config);
     }
 
-    public static void waitForReadySignal(int port) {
-        PerfTransport.waitForReadySignal(port);
-    }
-
-    public static void sendReadySignal(int port) {
-        PerfTransport.sendReadySignal(port);
-    }
-
     public static Path ensureResultsDir(Path root, String suite, String leaf) {
         return PerfReport.ensureResultsDir(root, suite, leaf);
     }
@@ -276,10 +258,6 @@ public final class PerfUtil {
 
     public static long nowNs() {
         return PerfMeasurement.nowNs();
-    }
-
-    public static PerfCallbackMetrics callbackMetrics(String workerName) {
-        return new PerfCallbackMetrics(workerName);
     }
 
     private static <T> Optional<T> tryOptional(CheckedSupplier<T> supplier) {
@@ -314,5 +292,13 @@ public final class PerfUtil {
     @FunctionalInterface
     private interface CheckedSupplier<T> {
         T get();
+    }
+
+    public static int intEnv(String name, int fallback) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return Integer.parseInt(value);
     }
 }

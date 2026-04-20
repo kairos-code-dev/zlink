@@ -26,6 +26,9 @@ final class PerfMetricHeader {
         if (message.readIntLe(9) != expectedSize) {
             return null;
         }
+        if (message.readIntLe(4) != PerfUtil.runId()) {
+            return null;
+        }
         long sentTsNs = message.readLongLe(21);
         long latencyNanos = Math.max(0L, PerfUtil.nowNs() - sentTsNs);
         return new PerfUtil.Header((byte) phase, latencyNanos);

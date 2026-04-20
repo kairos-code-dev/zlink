@@ -9,7 +9,6 @@ import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -124,43 +123,6 @@ final class PerfTransport {
         if (failure[0] != null) {
             throw failure[0];
         }
-    }
-
-    static void waitForReadySignal(int port) {
-        if (port <= 0) {
-            return;
-        }
-        try (ServerSocket server = new ServerSocket(port);
-             java.net.Socket socket = server.accept()) {
-            socket.setSoTimeout(10_000);
-            if (socket.getInputStream().read() < 0) {
-                throw new IllegalStateException("ready signal closed");
-            }
-        } catch (java.io.IOException ex) {
-            throw new IllegalStateException("failed waiting for ready signal", ex);
-        }
-    }
-
-    static void sendReadySignal(int port) {
-        if (port <= 0) {
-            return;
-        }
-        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        while (System.nanoTime() < deadline) {
-            try (java.net.Socket socket = new java.net.Socket("127.0.0.1", port)) {
-                socket.getOutputStream().write(1);
-                socket.getOutputStream().flush();
-                return;
-            } catch (java.io.IOException ignored) {
-                try {
-                    Thread.sleep(25L);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("ready signal interrupted", ex);
-                }
-            }
-        }
-        throw new IllegalStateException("failed to send ready signal");
     }
 
     private static boolean isTlsTransport(String transport) {

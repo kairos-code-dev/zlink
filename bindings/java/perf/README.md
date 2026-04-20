@@ -42,7 +42,6 @@ no shared cross-binding runner.
 - `perf/single/Zlink.BindingBench/` single-suite sources
 - `perf/multi/Zlink.BindingBench.Multi/` multi-suite sources
 - `perf/results/single/report/`
-- `perf/results/multi/tmp/`
 - `perf/results/multi/report/`
 
 The runnable Gradle subprojects are:

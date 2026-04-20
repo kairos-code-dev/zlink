@@ -5,6 +5,7 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
@@ -20,9 +21,6 @@ import java.util.concurrent.atomic.AtomicReference;
 final class PerfMultiSpot {
     private static final String TOPIC = "perf.topic";
     private static final String SERVICE_NAME = "perf.spot.service";
-    private static final Duration STABILIZATION = Duration.ofSeconds(1);
-    private static final Duration CONTROL_SETTLE = Duration.ofMillis(25);
-
     private PerfMultiSpot() {
     }
 
@@ -45,8 +43,8 @@ final class PerfMultiSpot {
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
-            PerfUtil.waitForReadySignal(config.controlPort());
-            sleepQuietly(CONTROL_SETTLE);
+            PerfControl.emitReady(config.endpoint());
+            PerfControl.awaitStart(config.size(), "spot server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
                 try (Message m = PerfUtil.payload(config.size(),
@@ -94,11 +92,12 @@ final class PerfMultiSpot {
             node.attachChannelDealerManual(SERVICE_NAME, channelDealer);
             node.connectPeer(config.endpoint());
             subscriber.setSubscription(TOPIC);
-            waitForPeerConnected(node);
+            settleAfterConnect();
             ready.countDown();
             if (ready.getCount() == 0L) {
+                PerfControl.emitClientReady(config.size());
+                PerfControl.awaitStart(config.size(), "spot client");
                 metrics.startActiveWindow();
-                PerfUtil.sendReadySignal(config.controlPort());
                 go.countDown();
             }
             PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
@@ -108,7 +107,7 @@ final class PerfMultiSpot {
                 Optional<dev.kairoscode.zlink.TopicMessage> maybe =
                     PerfUtil.subscribeNoWait(subscriber);
                 if (maybe.isEmpty()) {
-                    sleepQuietly(Duration.ofMillis(1));
+                    Thread.onSpinWait();
                     continue;
                 }
                 try (var received = maybe.orElseThrow()) {
@@ -142,23 +141,16 @@ final class PerfMultiSpot {
         return false;
     }
 
-    private static void sleepQuietly(Duration duration) {
+    private static void settleAfterConnect() {
+        int settleMs = PerfUtil.intEnv("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000);
+        if (settleMs <= 0) {
+            return;
+        }
         try {
-            Thread.sleep(duration.toMillis());
+            Thread.sleep(settleMs);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("spot multi barrier interrupted", ex);
         }
-    }
-
-    private static void waitForPeerConnected(SpotNode node) {
-        long deadline = System.nanoTime() + STABILIZATION.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (node.statusSnapshot().connectedPeerCount() > 0) {
-                return;
-            }
-            sleepQuietly(Duration.ofMillis(10));
-        }
-        throw new IllegalStateException("spot peer connection timed out");
     }
 }

@@ -9,6 +9,7 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.SendFlags;
+import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import java.time.Duration;
@@ -29,7 +30,7 @@ final class PerfMultiDealerRouter {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.bind(config.endpoint());
-            PerfUtil.waitForReadySignal(config.controlPort());
+            PerfControl.emitReady(config.endpoint());
             PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, config.clients(),
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "dealer/router server ready");
@@ -84,7 +85,7 @@ final class PerfMultiDealerRouter {
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     metrics.startActiveWindow();
-                    PerfUtil.sendReadySignal(config.controlPort());
+                    PerfControl.emitClientReady(config.size());
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/router start", Duration.ofSeconds(10));

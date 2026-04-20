@@ -4,9 +4,9 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.SubSocket;
+import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
@@ -15,7 +15,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfMultiPubSub {
-    private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
     private static final String TOPIC = "perf.topic";
 
     private PerfMultiPubSub() {
@@ -23,16 +22,12 @@ final class PerfMultiPubSub {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
-             PubSocket pub = new PubSocket(ctx);
-             var monitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
-            PerfUtil.applyMonitorOptions(monitor, config);
+             PubSocket pub = new PubSocket(ctx)) {
             PerfUtil.applySocketOptions(pub, config);
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
-            PerfUtil.waitForReadySignal(config.controlPort());
-            PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, config.clients(),
-                Duration.ofMillis(config.connectReadyTimeoutMs()),
-                "pubsub server ready");
+            PerfControl.emitReady(config.endpoint());
+            PerfControl.awaitStart(config.size(), "pubsub server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
                 try (Message m = PerfUtil.payload(config.size(),
@@ -58,20 +53,16 @@ final class PerfMultiPubSub {
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             try (Context ctx = PerfUtil.newContext(config);
-                 SubSocket sub = new SubSocket(ctx);
-                 var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
-                PerfUtil.applyMonitorOptions(subMonitor, config);
+                 SubSocket sub = new SubSocket(ctx)) {
                 PerfUtil.applySocketOptions(sub, config);
                 PerfUtil.configureClientTls(sub, config.transport());
                 sub.setSubscription(TOPIC);
                 sub.connect(config.endpoint());
-                PerfUtil.waitForMonitorEvent(subMonitor, READY_EVENTS, 1,
-                    Duration.ofMillis(config.connectReadyTimeoutMs()),
-                    "pubsub subscriber ready");
                 connected.countDown();
                 if (connected.getCount() == 0L) {
+                    PerfControl.emitClientReady(config.size());
+                    PerfControl.awaitStart(config.size(), "pubsub client");
                     metrics.startActiveWindow();
-                    PerfUtil.sendReadySignal(config.controlPort());
                     go.countDown();
                 }
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));

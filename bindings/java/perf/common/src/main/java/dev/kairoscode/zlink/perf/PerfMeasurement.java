@@ -10,13 +10,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class PerfMeasurement {
     private static final long BASE_EPOCH_NS = System.currentTimeMillis() * 1_000_000L;
     private static final long BASE_NANO = System.nanoTime();
-    private static final int RUN_ID = nextRunId();
+    private static final int RUN_ID = 1;
     private static final AtomicLong SEQ = new AtomicLong();
 
     private PerfMeasurement() {
@@ -88,12 +87,6 @@ final class PerfMeasurement {
         buffer.flip();
         return Message.copyOf(buffer);
     }
-
-    private static int nextRunId() {
-        int value = ThreadLocalRandom.current().nextInt();
-        return value == 0 ? 1 : value;
-    }
-
     private static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();

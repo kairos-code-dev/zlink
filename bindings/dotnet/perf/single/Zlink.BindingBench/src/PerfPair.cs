@@ -7,12 +7,15 @@ using static PerfRunner;
 
 internal static class PerfPair
 {
+    private const uint RunId = 1;
+    private const uint ActivePhase = 1;
+
     internal static int RunPair(string transport, int size)
     {
-        int warmupCount = ResolveSingleWarmupCount("PAIR");
         int durationSeconds = ResolveSingleDurationSeconds();
         int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
-        int latCount = ResolveSingleLatencyCount("PAIR");
+        int readyTimeoutMs = ResolveSingleConnectReadyTimeoutMs();
+        int latencySampleCap = ResolveSingleLatencyCount("PAIR");
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
@@ -22,50 +25,26 @@ internal static class PerfPair
         ApplySingleSocketOptions(right);
         ConfigureTlsServerIfNeeded(left, transport);
         ConfigureTlsClientIfNeeded(right, transport);
-        bool useMonitors = !string.Equals(transport, "inproc",
-            StringComparison.OrdinalIgnoreCase);
-        MonitorSocket? leftMonitor = null;
-        MonitorSocket? rightMonitor = null;
+        using var leftMonitor = left.MonitorOpen(SocketEvent.ConnectionReady);
+        using var rightMonitor = right.MonitorOpen(SocketEvent.ConnectionReady);
 
         try
         {
-            if (useMonitors)
+            string endpoint = EndpointFor(transport, "pair");
+            left.Bind(endpoint);
+            right.Connect(endpoint);
+            if (!(WaitForConnectionReady(leftMonitor, readyTimeoutMs)
+                && WaitForConnectionReady(rightMonitor, readyTimeoutMs)))
             {
-                leftMonitor = left.MonitorOpen(SocketEvent.ConnectionReady);
-                rightMonitor = right.MonitorOpen(SocketEvent.ConnectionReady);
-            }
-
-            string ep = EndpointFor(transport, "pair");
-            left.Bind(ep);
-            right.Connect(ep);
-            if (useMonitors)
-            {
-                if (!(WaitForConnectionReady(leftMonitor!, SingleConnectWaitMs)
-                    && WaitForConnectionReady(rightMonitor!, SingleConnectWaitMs)))
-                {
-                    return 2;
-                }
-            }
-            else
-            {
-                Thread.Sleep(SingleConnectWaitMs);
-            }
-
-            int payloadSize = Math.Max(size, sizeof(long));
-            var payload = new byte[payloadSize];
-            Array.Fill(payload, (byte)'a');
-
-            if (!RunPhase(right, left, payload, payloadSize, warmupCount, 0,
-                    recvTimeoutMs, 0, out long warmupReceived, out _)
-                || warmupReceived < warmupCount)
-            {
-                Console.Error.WriteLine(
-                    $"single_pair_warmup_failed:received={warmupReceived},expected={warmupCount}");
                 return 2;
             }
 
-            if (!RunPhase(right, left, payload, payloadSize, 0, durationSeconds,
-                    recvTimeoutMs, latCount, out long received,
+            int payloadSize = Math.Max(size, PerfMetricHeaderSize);
+            var payload = new byte[payloadSize];
+            Array.Fill(payload, (byte)'a');
+
+            if (!RunActivePhase(right, left, payload, size, durationSeconds,
+                    recvTimeoutMs, latencySampleCap, out long received,
                     out var latencySamples))
             {
                 Console.Error.WriteLine(
@@ -87,22 +66,13 @@ internal static class PerfPair
             Console.Error.WriteLine($"single_pair_error:{ex}");
             return 2;
         }
-        finally
-        {
-            leftMonitor?.Dispose();
-            rightMonitor?.Dispose();
-        }
     }
 
-    private static bool RunPhase(SocketBase sender, SocketBase receiver,
-        byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
-        int recvTimeoutMs, int latencyCap, out long receivedOut,
-        out List<double> latencySamples)
+    private static bool RunActivePhase(SocketBase sender, SocketBase receiver,
+        byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
+        int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
-        bool active = durationSeconds > 0;
-        long deadlineTicks = active
-            ? DeadlineTicksFromSeconds(durationSeconds)
-            : 0;
+        long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
         long recvFlushTicks = Math.Max(1,
             (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
@@ -115,51 +85,55 @@ internal static class PerfPair
 
         var recvThread = new Thread(() =>
         {
+            using var poller = new Poller();
+            var events = new PollEvent[1];
+            var recvBuffer = new byte[payload.Length];
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            var recvBuffer = new byte[payloadSize];
-
-            void AccountMessage(int bytesRead)
-            {
-                if (bytesRead != payloadSize)
-                    return;
-
-                Interlocked.Increment(ref received);
-                if (!active)
-                    return;
-
-                long nowNs = TimestampNs();
-                long sentNs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
-                double latencyNs = Math.Max(0L, nowNs - sentNs);
-                ReservoirSample(samples, latencyNs, ref sampleSeen,
-                    latencyCap, ref rng);
-            }
+            poller.Add(receiver, PollEvents.PollIn);
 
             try
             {
                 while (true)
                 {
                     bool done = Volatile.Read(ref senderDone) != 0;
-                    if (!receiver.TryReceive(recvBuffer.AsSpan(),
-                            done ? ReceiveFlags.DontWait : ReceiveFlags.None,
-                            out int bytesRead))
+                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
+                    if (!WaitForInput(poller, events, timeoutMs))
                     {
                         if (done && Stopwatch.GetTimestamp() - lastRecvTicks
                             >= recvFlushTicks)
                         {
                             break;
                         }
-                        Thread.Yield();
                         continue;
                     }
 
-                    lastRecvTicks = Stopwatch.GetTimestamp();
-                    AccountMessage(bytesRead);
-
-                    while (receiver.TryReceive(recvBuffer.AsSpan(),
-                        ReceiveFlags.DontWait, out bytesRead))
+                    while (receiver.TryRecv(out Received? receivedMessage)
+                           && receivedMessage != null)
                     {
-                        lastRecvTicks = Stopwatch.GetTimestamp();
-                        AccountMessage(bytesRead);
+                        using (receivedMessage)
+                        {
+                            lastRecvTicks = Stopwatch.GetTimestamp();
+                            ReadOnlySpan<byte> body = receivedMessage.FirstPart()
+                                .AsReadOnlySpan();
+                            long recvTicks = Stopwatch.GetTimestamp();
+                            if (!TryDecodeExpectedSingleHeader(body, msgSize,
+                                    ActivePhase, out var header, RunId))
+                            {
+                                continue;
+                            }
+
+                            if (recvTicks > deadlineTicks)
+                                continue;
+
+                            Interlocked.Increment(ref received);
+                            ulong nowNs = EpochNs();
+                            if (nowNs >= header.SentTsNs)
+                            {
+                                double latencyNs = nowNs - header.SentTsNs;
+                                ReservoirSample(samples, latencyNs,
+                                    ref sampleSeen, latencyCap, ref rng);
+                            }
+                        }
                     }
                 }
             }
@@ -172,49 +146,24 @@ internal static class PerfPair
         recvThread.Start();
 
         bool sendFailed = false;
-        if (active)
+        ulong seq = 1;
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            while (Stopwatch.GetTimestamp() < deadlineTicks)
+            StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize, seq,
+                EpochNs());
+            seq++;
+            try
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendBlocking(sender, payload, PerfSendFlags.None);
-                }
-                catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                                || IsWouldBlock(ex.InternalErrno))
-                {
-                    Thread.Yield();
-                    continue;
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                SendBlocking(sender, payload, PerfSendFlags.None);
             }
-        }
-        else
-        {
-            for (int i = 0; i < warmupCount; i++)
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
-                StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-                try
-                {
-                    SendBlocking(sender, payload, PerfSendFlags.None);
-                }
-                catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                                || IsWouldBlock(ex.InternalErrno))
-                {
-                    i--;
-                    Thread.Yield();
-                    continue;
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
-                }
+                continue;
+            }
+            catch
+            {
+                sendFailed = true;
+                break;
             }
         }
 
@@ -223,10 +172,9 @@ internal static class PerfPair
 
         latencySamples = samples;
         receivedOut = received;
-        if (!active)
-            return received >= warmupCount;
+        if (sendFailed || recvError != null)
+            return false;
 
         return received > 0 && latencySamples.Count > 0;
     }
-
 }

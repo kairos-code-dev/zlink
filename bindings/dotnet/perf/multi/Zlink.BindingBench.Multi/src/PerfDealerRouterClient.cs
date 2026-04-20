@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Zlink;
 using static PerfRunner;
 
@@ -10,9 +9,7 @@ internal static class PerfDealerRouterClient
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
-        int warmupSeconds = ResolveMultiWarmupSeconds(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
-        bool activeWarmup = ResolveMultiActiveWarmup(options);
         int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
@@ -55,8 +52,8 @@ internal static class PerfDealerRouterClient
 
             var slots = CreateSlots(activeClients, size);
             var result = RunMultiDealerRouterClientLoop(pollManager, slots,
-                size, latencySampleCap, pollTimeoutMs, warmupSeconds,
-                durationSeconds, activeWarmup, readyTimeoutMs);
+                size, latencySampleCap, pollTimeoutMs, durationSeconds,
+                readyTimeoutMs);
 
             TrySendStopToken(activeClients);
 
@@ -90,11 +87,8 @@ internal static class PerfDealerRouterClient
         double latencyP99Ns)
         RunMultiDealerRouterClientLoop(PollManager pollManager,
             DealerRouterClientSlot[] slots, int msgSize, int latencySampleCap,
-            int pollTimeoutMs, int warmupSeconds, int durationSeconds,
-            bool activeWarmup, int readyTimeoutMs)
+            int pollTimeoutMs, int durationSeconds, int readyTimeoutMs)
     {
-        _ = warmupSeconds;
-        _ = activeWarmup;
         _ = readyTimeoutMs;
         const uint runId = 1;
         var latSamples = new List<double>(latencySampleCap);

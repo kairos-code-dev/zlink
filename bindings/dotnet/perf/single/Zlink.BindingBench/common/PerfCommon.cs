@@ -17,25 +17,107 @@ internal static partial class PerfRunner
     internal static bool WaitForConnectionReady(MonitorSocket monitor,
         int timeoutMs)
     {
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        using var pollManager = new PollManager();
+        var monitors = new System.Collections.Generic.List<MonitorSocket>
         {
+            monitor,
+        };
+        var activeIndices = new[] { 0 };
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (true)
+        {
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (nowTicks >= deadlineTicks)
+                return false;
+
             try
             {
-                MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
-                if (evt.Event == MonitorEventType.ConnectionReady)
+                while (true)
                 {
-                    return true;
+                    MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
+                    if (evt.Event == MonitorEventType.ConnectionReady)
+                        return true;
                 }
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno))
             {
-                Thread.Sleep(10);
             }
-        }
 
-        return false;
+            int ready = pollManager.PollMonitors(monitors, activeIndices, 1,
+                deadlineTicks, nowTicks);
+            if (ready < 0)
+                return false;
+        }
+    }
+
+    internal static bool IsExpectedSingleHeader(PerfMetricHeader header,
+        int msgSize, uint phase, uint runId = 1)
+    {
+        return header.RunId == runId
+            && header.Phase == phase
+            && header.MsgSize == (uint)msgSize;
+    }
+
+    internal static bool TryDecodeExpectedSingleHeader(ReadOnlySpan<byte> payload,
+        int msgSize, uint phase, out PerfMetricHeader header, uint runId = 1)
+    {
+        header = default;
+        if (!TryDecodeMetricHeader(payload, out header))
+            return false;
+        return IsExpectedSingleHeader(header, msgSize, phase, runId);
+    }
+
+    internal static void PrintResult(string pattern, string transport, int size,
+        double thr, double latNs)
+    {
+        PrintResult(pattern, transport, size, thr, latNs, latNs, latNs);
+    }
+
+    internal static void PrintResult(string pattern, string transport, int size,
+        double thr, double latNs, double latP95Ns, double latP99Ns,
+        double bandwidthMultiplier = 1.0)
+    {
+        PerfShared.PrintResult(pattern, transport, size, thr, latNs, latP95Ns,
+            latP99Ns, bandwidthMultiplier, fixedFormat: false);
+    }
+
+    internal static int ResolveSingleConnectReadyTimeoutMs()
+    {
+        return PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
+    }
+
+    internal static int ResolveSingleDurationSeconds()
+    {
+        return PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5);
+    }
+
+    internal static int ResolveSingleRcvTimeoutMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+    }
+
+    internal static int ResolveSingleLatencyCount(string pattern)
+    {
+        _ = pattern;
+        return PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
+    }
+
+    internal static int ResolveSinglePubSubReadySettleMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_SINGLE_PUBSUB_READY_SETTLE_MS",
+            1000);
+    }
+
+    internal static int ResolveSingleSpotReadySettleMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_SINGLE_SPOT_READY_SETTLE_MS",
+            1000);
+    }
+
+    internal static int ResolveSpotReadyTimeoutMs()
+    {
+        return ResolveSingleConnectReadyTimeoutMs();
     }
 
     internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
@@ -130,38 +212,6 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void PrintResult(string pattern, string transport, int size,
-        double thr, double latNs)
-    {
-        PrintResult(pattern, transport, size, thr, latNs, latNs, latNs);
-    }
-
-    internal static void PrintResult(string pattern, string transport, int size,
-        double thr, double latNs, double latP95Ns, double latP99Ns)
-    {
-        double bw = BandwidthMbps(thr, size);
-        double latMs = NsToMs(latNs);
-        double latP95Ms = NsToMs(latP95Ns);
-        double latP99Ms = NsToMs(latP99Ns);
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},throughput,{thr}");
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},bandwidth,{bw}");
-        Console.WriteLine($"RESULT,current,{pattern},{transport},{size},latency,{latMs}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p95,{latP95Ms}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p99,{latP99Ms}");
-    }
-
-    private static double BandwidthMbps(double throughput, int size)
-    {
-        return (throughput * size) / 1_000_000.0;
-    }
-
-    private static double NsToMs(double latencyNs)
-    {
-        return latencyNs / 1_000_000.0;
-    }
-
     private static int ResolveSingleHwmValue(string specificName)
     {
         int hwm = PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000);
@@ -209,42 +259,6 @@ internal static partial class PerfRunner
         socket.SetOption(SocketOptions.RcvHwm, rcvHwm);
         socket.SetOption(SocketOptions.SndTimeo, sndTimeo);
         socket.SetOption(SocketOptions.RcvTimeo, rcvTimeo);
-    }
-
-    internal static int ResolveSingleWarmupCount(string pattern)
-    {
-        int fallback = pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
-            ? 200
-            : 1000;
-        return PerfEnv.ReadPositive("PERF_WARMUP_COUNT", fallback);
-    }
-
-    internal static int ResolveSingleDurationSeconds()
-    {
-        return PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5);
-    }
-
-    internal static int ResolveSingleRcvTimeoutMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
-    }
-
-    internal static int ResolveSingleLatencyCount(string pattern)
-    {
-        int fallback = pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
-            ? 200
-            : 500;
-        return PerfEnv.ReadPositive("PERF_LAT_COUNT", fallback);
-    }
-
-    internal static int ResolveSpotDiscoveryTimeoutMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_SPOT_DISCOVERY_TIMEOUT_MS", 4000);
-    }
-
-    internal static int ResolveSpotReadyTimeoutMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_SPOT_READY_TIMEOUT_MS", 2000);
     }
 
 }

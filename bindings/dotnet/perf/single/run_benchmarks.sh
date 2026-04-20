@@ -9,7 +9,6 @@ RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
-WARMUP="${PERF_SINGLE_WARMUP_SECONDS:-2}"
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
 RUNS="${PERF_RUNS:-1}"
 RESULTS_TAG=""
@@ -66,7 +65,6 @@ Options:
   -h, --help            Show this help.
   --pattern NAME        Pattern list (comma-separated) or ALL.
   --duration N          Active duration seconds (default: 5).
-  --warmup N            Compatibility option. Current single binaries still read this env, but policy output is ready + active.
   --msg-sizes LIST      Message size list (default: 64,256,1024,65536,131072,262144).
   --transports LIST     Transport list override.
   --runs N              Iterations per configuration (default: 1).
@@ -310,10 +308,6 @@ while [[ $# -gt 0 ]]; do
       MSG_SIZES="${2:-}"
       shift
       ;;
-    --warmup)
-      WARMUP="${2:-}"
-      shift
-      ;;
     --duration)
       DURATION="${2:-}"
       shift
@@ -343,7 +337,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-validate_uint "--warmup" "${WARMUP}"
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
 
@@ -389,7 +382,6 @@ print_line "- lang: dotnet"
 print_line "- suite: single"
 print_line "- runs: ${RUNS}"
 print_line "- duration_seconds: ${DURATION}"
-print_line "- warmup_seconds: ${WARMUP}"
 print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS:-auto(pattern)}"
 print_line "- msg_sizes: ${MSG_SIZES}"
@@ -438,7 +430,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         tmp_log="${TMP_DIR}/${pattern,,}_${transport}_${size}_run${run_index}.log"
         echo "RUN pattern=${pattern} transport=${transport} size=${size} run=${run_index}"
         if DOTNET_TieredCompilation=0 \
-          PERF_SINGLE_WARMUP_SECONDS="${WARMUP}" \
           PERF_SINGLE_DURATION_SECONDS="${DURATION}" \
           PERF_CONFIGURATION="${CONFIGURATION}" \
           bash -lc "${PERF_BINARY@Q} ${pattern@Q} ${transport@Q} ${size@Q}" \
@@ -481,7 +472,6 @@ print_line "- lang: dotnet"
 print_line "- suite: single"
 print_line "- runs: ${RUNS}"
 print_line "- duration_seconds: ${DURATION}"
-print_line "- warmup_seconds: ${WARMUP}"
 print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS:-auto(pattern)}"
 print_line "- msg_sizes: ${MSG_SIZES}"

@@ -37,7 +37,7 @@ from `bindings/README.md` for CLI names, defaults, result file naming, and the
 - single:
   - patterns: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `SPOT`
   - public receive surface: `recv`
-  - default transports: `inproc,tcp` and `ipc` on Linux
+  - default transports: raw=`tcp,tls,ws,wss,inproc,ipc` on Linux and `tcp,tls,ws,wss,inproc` on Windows, SPOT=`tcp,tls,ws,wss`
   - default sizes: `64,256,1024,65536,131072,262144`
 - multi:
   - entrypoint: `./perf/run_benchmarks_multi.sh`
@@ -67,8 +67,8 @@ from `bindings/README.md` for CLI names, defaults, result file naming, and the
 Examples:
 
 ```bash
-./perf/run_benchmarks.sh --pattern PAIR --transports inproc --msg-sizes 64 --warmup 1 --duration 1
-./perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER --transports tcp --msg-sizes 64 --clients 4 --warmup 0 --duration 1
+./perf/run_benchmarks.sh --pattern PAIR --transports inproc --msg-sizes 64 --duration 1
+./perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER --transports tcp --msg-sizes 64 --clients 4 --duration 1
 python3 ./perf/run_comparison.py PAIR --duration 1
 ```
 

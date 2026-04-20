@@ -9,7 +9,6 @@ internal static class PerfDealerDealerServer
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
-        int warmupSeconds = ResolveMultiWarmupSeconds(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
@@ -39,10 +38,6 @@ internal static class PerfDealerDealerServer
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
         const uint expectedRunId = 1;
-        if (!RunReceivePhase(server, payload, size, expectedRunId,
-                PerfPhase.Warmup, warmupSeconds, false, false,
-                latSamples, ref sampleSeen, ref rng))
-            return 2;
         long recvCount = 0;
         if (!RunReceivePhase(server, payload, size, expectedRunId,
                 PerfPhase.Active, Math.Max(1, durationSeconds), true, true,

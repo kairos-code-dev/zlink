@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Zlink;
 using static PerfRunner;
 
@@ -12,7 +11,6 @@ internal static class PerfDealerDealerClient
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
-        int warmupSeconds = ResolveMultiWarmupSeconds(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
@@ -52,7 +50,7 @@ internal static class PerfDealerDealerClient
 
             var slots = CreateSlots(activeClients, size);
             if (!RunMultiDealerDealerClientLoop(pollManager, slots, size,
-                    warmupSeconds, durationSeconds))
+                    durationSeconds))
             {
                 return 2;
             }
@@ -75,7 +73,8 @@ internal static class PerfDealerDealerClient
         {
             var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
             Array.Fill(payload, (byte)'a');
-            slots[i] = new DealerDealerClientSlot(activeClients[i], payload);
+            slots[i] = new DealerDealerClientSlot((DealerSocket)activeClients[i],
+                payload);
         }
 
         return slots;
@@ -83,15 +82,12 @@ internal static class PerfDealerDealerClient
 
     private static bool RunMultiDealerDealerClientLoop(
         PollManager pollManager, DealerDealerClientSlot[] slots, int msgSize,
-        int warmupSeconds, int durationSeconds)
+        int durationSeconds)
     {
         const uint runId = 1;
         ulong seq = 1;
         var sockets = CollectSockets(slots);
         var eventMasks = new PollEvents[slots.Length];
-
-        RunSendPhase(pollManager, slots, sockets, eventMasks, msgSize,
-            warmupSeconds, PerfPhase.Warmup, runId, ref seq, sendActive: true);
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
@@ -129,11 +125,6 @@ internal static class PerfDealerDealerClient
             {
                 if (progressed)
                     continue;
-
-                int idleTimeoutMs = ResolveSendPollTimeoutMs(false,
-                    benchDeadlineTicks);
-                if (idleTimeoutMs > 0)
-                    Thread.Sleep(idleTimeoutMs);
                 continue;
             }
 
@@ -145,63 +136,6 @@ internal static class PerfDealerDealerClient
         return anySent;
     }
 
-    private static void RunSendPhase(PollManager pollManager,
-        DealerDealerClientSlot[] slots,
-        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
-        double durationSeconds,
-        PerfPhase phase, uint runId, ref ulong seq, bool sendActive)
-    {
-        if (durationSeconds <= 0.0)
-            return;
-
-        long deadlineTicks = Stopwatch.GetTimestamp()
-            + (long)(Math.Max(0.0, durationSeconds) * Stopwatch.Frequency);
-        int index = 0;
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            bool progressed = false;
-            for (int i = 0; i < slots.Length; i++)
-            {
-                ref DealerDealerClientSlot slot = ref slots[index];
-                if (sendActive)
-                {
-                    if (!slot.WaitingForWritable
-                        || IsSocketWriteReady(pollManager, index))
-                    {
-                        if (TrySendDealerDealer(ref slot, msgSize, runId,
-                                phase, ref seq))
-                            progressed = true;
-                    }
-                }
-                else
-                {
-                    slot.WaitingForWritable = false;
-                }
-
-                index++;
-                if (index == slots.Length)
-                    index = 0;
-            }
-
-            ResetPollMasks(slots, eventMasks);
-            if (!HasPendingSend(slots))
-            {
-                if (progressed || sendActive)
-                    continue;
-
-                int idleTimeoutMs = ResolveSendPollTimeoutMs(false,
-                    deadlineTicks);
-                if (idleTimeoutMs > 0)
-                    Thread.Sleep(idleTimeoutMs);
-                continue;
-            }
-
-            if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    ResolveSendPollTimeoutMs(progressed, deadlineTicks)) <= 0)
-                continue;
-        }
-    }
-
     private static bool TrySendDealerDealer(ref DealerDealerClientSlot slot,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq)
     {
@@ -210,8 +144,8 @@ internal static class PerfDealerDealerClient
 
         try
         {
-            bool sent = slot.Socket.SendNoWaitResult(slot.Payload.AsSpan(),
-                PerfSendFlags.DontWait, out int written) && written > 0;
+            using var message = Message.FromBytes(slot.Payload);
+            bool sent = slot.Socket.TrySend(message);
             if (sent)
             {
                 slot.WaitingForWritable = false;
@@ -283,13 +217,13 @@ internal static class PerfDealerDealerClient
 
     private sealed class DealerDealerClientSlot
     {
-        internal DealerDealerClientSlot(SocketBase socket, byte[] payload)
+        internal DealerDealerClientSlot(DealerSocket socket, byte[] payload)
         {
             Socket = socket;
             Payload = payload;
         }
 
-        internal SocketBase Socket { get; }
+        internal DealerSocket Socket { get; }
         internal byte[] Payload { get; }
         internal bool WaitingForWritable { get; set; }
     }

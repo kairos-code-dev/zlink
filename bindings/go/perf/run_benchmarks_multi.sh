@@ -19,12 +19,20 @@ RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
 PIN_CPU="off"
+IO_THREADS=""
+SERVER_IO_THREADS=""
+CLIENT_IO_THREADS=""
 HWM=""
 SEND_HWM=""
 RECV_HWM=""
 SNDTIMEO_MS=""
 RCVTIMEO_MS=""
 CONNECT_READY_TIMEOUT_MS=""
+CONNECT_CONCURRENCY=""
+SERVER_READY_TIMEOUT_MS=""
+MONITOR_HWM=""
+SERVER_SHUTDOWN_TIMEOUT_MS=""
+SERVER_BIND_PORT=""
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
@@ -76,8 +84,6 @@ Options:
   --hwm N
   --send-hwm N
   --recv-hwm N
-  --sndbuf SIZE
-  --rcvbuf SIZE
   --sndtimeo N
   --rcvtimeo N
   --send-timeout-ms N
@@ -109,9 +115,31 @@ while [[ $# -gt 0 ]]; do
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
-    --build-dir|--io-threads|--server-io-threads|--client-io-threads|--sndbuf|--server-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
+    --build-dir)
       shift 2 ;;
-    --rcvbuf|--connect-concurrency)
+    --io-threads)
+      IO_THREADS="$2"
+      shift 2 ;;
+    --server-io-threads)
+      SERVER_IO_THREADS="$2"
+      shift 2 ;;
+    --client-io-threads)
+      CLIENT_IO_THREADS="$2"
+      shift 2 ;;
+    --connect-concurrency)
+      CONNECT_CONCURRENCY="$2"
+      shift 2 ;;
+    --server-ready-timeout-ms)
+      SERVER_READY_TIMEOUT_MS="$2"
+      shift 2 ;;
+    --monitor-hwm)
+      MONITOR_HWM="$2"
+      shift 2 ;;
+    --server-shutdown-timeout-ms)
+      SERVER_SHUTDOWN_TIMEOUT_MS="$2"
+      shift 2 ;;
+    --server-bind-port)
+      SERVER_BIND_PORT="$2"
       shift 2 ;;
     --hwm)
       HWM="$2"
@@ -151,6 +179,15 @@ done
 if [[ -n "${HWM}" ]]; then
   export PERF_MULTI_HWM="${HWM}"
 fi
+if [[ -n "${IO_THREADS}" ]]; then
+  export PERF_IO_THREADS="${IO_THREADS}"
+fi
+if [[ -n "${SERVER_IO_THREADS}" ]]; then
+  export PERF_MULTI_SERVER_IO_THREADS="${SERVER_IO_THREADS}"
+fi
+if [[ -n "${CLIENT_IO_THREADS}" ]]; then
+  export PERF_MULTI_CLIENT_IO_THREADS="${CLIENT_IO_THREADS}"
+fi
 if [[ -n "${SEND_HWM}" ]]; then
   export PERF_MULTI_SNDHWM="${SEND_HWM}"
 fi
@@ -165,6 +202,21 @@ if [[ -n "${RCVTIMEO_MS}" ]]; then
 fi
 if [[ -n "${CONNECT_READY_TIMEOUT_MS}" ]]; then
   export PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${CONNECT_READY_TIMEOUT_MS}"
+fi
+if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
+  export PERF_MULTI_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}"
+fi
+if [[ -n "${SERVER_READY_TIMEOUT_MS}" ]]; then
+  export PERF_MULTI_SERVER_READY_TIMEOUT_MS="${SERVER_READY_TIMEOUT_MS}"
+fi
+if [[ -n "${MONITOR_HWM}" ]]; then
+  export PERF_MULTI_MONITOR_HWM="${MONITOR_HWM}"
+fi
+if [[ -n "${SERVER_SHUTDOWN_TIMEOUT_MS}" ]]; then
+  export PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${SERVER_SHUTDOWN_TIMEOUT_MS}"
+fi
+if [[ -n "${SERVER_BIND_PORT}" ]]; then
+  export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
 fi
 
 case "$(uname -s)" in
@@ -261,6 +313,70 @@ transport_enabled() {
   done
   return 1
 }
+
+join_by() {
+  local delim="$1"
+  shift
+  local first=1
+  local item
+  for item in "$@"; do
+    if [[ "${first}" -eq 1 ]]; then
+      printf '%s' "${item}"
+      first=0
+    else
+      printf '%s%s' "${delim}" "${item}"
+    fi
+  done
+}
+
+resolve_multi_effective_transports() {
+  declare -A seen=()
+  local pattern transport
+  local resolved=()
+  for pattern in "${PATTERNS[@]}"; do
+    read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
+    for transport in "${PATTERN_XPORTS[@]}"; do
+      if ! transport_enabled "${transport}"; then
+        continue
+      fi
+      if [[ -n "${seen[${transport}]:-}" ]]; then
+        continue
+      fi
+      seen["${transport}"]=1
+      resolved+=("${transport}")
+    done
+  done
+  join_by "," "${resolved[@]}"
+}
+
+resolve_multi_effective_msg_sizes() {
+  declare -A seen=()
+  local pattern size_list size
+  local resolved=()
+  for pattern in "${PATTERNS[@]}"; do
+    size_list="$(pattern_msg_sizes "${pattern}")"
+    IFS=',' read -r -a SIZE_ITEMS <<< "${size_list}"
+    for size in "${SIZE_ITEMS[@]}"; do
+      if [[ -n "${seen[${size}]:-}" ]]; then
+        continue
+      fi
+      seen["${size}"]=1
+      resolved+=("${size}")
+    done
+  done
+  join_by "," "${resolved[@]}"
+}
+
+EFFECTIVE_PATTERNS_CSV="$(join_by "," "${PATTERNS[@]}")"
+EFFECTIVE_TRANSPORTS_CSV="$(resolve_multi_effective_transports)"
+EFFECTIVE_MSG_SIZES_CSV="$(resolve_multi_effective_msg_sizes)"
+if [[ -n "${CLIENTS}" ]]; then
+  CLIENTS_DISPLAY="${CLIENTS}"
+elif [[ -n "${PERF_MULTI_CLIENTS:-}" ]]; then
+  CLIENTS_DISPLAY="${PERF_MULTI_CLIENTS}"
+else
+  CLIENTS_DISPLAY="auto (default=100, stream=10000)"
+fi
 
 is_unsupported_output() {
   local output_file="$1"
@@ -425,17 +541,11 @@ PY
   echo "## Effective Options (start)"
   echo "- lang: go"
   echo "- suite: multi"
-  echo "- patterns: ${PATTERN}"
+  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
   echo "- runs: ${RUNS}"
-  echo "- transports: ${TRANSPORTS:-auto}"
-  echo "- msg_sizes: ${MSG_SIZES:-policy-default}"
-  if [[ -n "${CLIENTS}" ]]; then
-    echo "- clients: ${CLIENTS}"
-  elif [[ -n "${PERF_MULTI_CLIENTS:-}" ]]; then
-    echo "- clients: ${PERF_MULTI_CLIENTS}"
-  else
-    echo "- clients: auto (default=100, stream=10000)"
-  fi
+  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
+  echo "- msg_sizes: ${EFFECTIVE_MSG_SIZES_CSV}"
+  echo "- clients: ${CLIENTS_DISPLAY}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo "- duration_seconds: ${DURATION}"
   echo
@@ -635,17 +745,11 @@ fi
   echo "## Effective Options (result)"
   echo "- lang: go"
   echo "- suite: multi"
-  echo "- patterns: ${PATTERN}"
+  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
   echo "- runs: ${RUNS}"
-  echo "- transports: ${TRANSPORTS:-auto}"
-  echo "- msg_sizes: ${MSG_SIZES:-policy-default}"
-  if [[ -n "${CLIENTS}" ]]; then
-    echo "- clients: ${CLIENTS}"
-  elif [[ -n "${PERF_MULTI_CLIENTS:-}" ]]; then
-    echo "- clients: ${PERF_MULTI_CLIENTS}"
-  else
-    echo "- clients: auto (default=100, stream=10000)"
-  fi
+  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
+  echo "- msg_sizes: ${EFFECTIVE_MSG_SIZES_CSV}"
+  echo "- clients: ${CLIENTS_DISPLAY}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo "- duration_seconds: ${DURATION}"
   echo "- status: ${status}"

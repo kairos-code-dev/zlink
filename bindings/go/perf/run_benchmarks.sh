@@ -18,6 +18,7 @@ RESULTS_DIR="${SCRIPT_DIR}/results/single/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
 PIN_CPU="off"
+IO_THREADS=""
 HWM=""
 SEND_HWM=""
 RECV_HWM=""
@@ -90,7 +91,10 @@ while [[ $# -gt 0 ]]; do
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
-    --build-dir|--io-threads)
+    --build-dir)
+      shift 2 ;;
+    --io-threads)
+      IO_THREADS="$2"
       shift 2 ;;
     --hwm)
       HWM="$2"
@@ -120,6 +124,9 @@ done
 
 if [[ -n "${HWM}" ]]; then
   export PERF_SINGLE_HWM="${HWM}"
+fi
+if [[ -n "${IO_THREADS}" ]]; then
+  export PERF_IO_THREADS="${IO_THREADS}"
 fi
 if [[ -n "${SEND_HWM}" ]]; then
   export PERF_SINGLE_SNDHWM="${SEND_HWM}"
@@ -194,6 +201,44 @@ transport_enabled() {
   done
   return 1
 }
+
+join_by() {
+  local delim="$1"
+  shift
+  local first=1
+  local item
+  for item in "$@"; do
+    if [[ "${first}" -eq 1 ]]; then
+      printf '%s' "${item}"
+      first=0
+    else
+      printf '%s%s' "${delim}" "${item}"
+    fi
+  done
+}
+
+resolve_single_effective_transports() {
+  declare -A seen=()
+  local pattern transport
+  local resolved=()
+  for pattern in "${PATTERNS[@]}"; do
+    read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
+    for transport in "${PATTERN_XPORTS[@]}"; do
+      if ! transport_enabled "${transport}"; then
+        continue
+      fi
+      if [[ -n "${seen[${transport}]:-}" ]]; then
+        continue
+      fi
+      seen["${transport}"]=1
+      resolved+=("${transport}")
+    done
+  done
+  join_by "," "${resolved[@]}"
+}
+
+EFFECTIVE_PATTERNS_CSV="$(join_by "," "${PATTERNS[@]}")"
+EFFECTIVE_TRANSPORTS_CSV="$(resolve_single_effective_transports)"
 
 append_case_output() {
   local case_log="$1"
@@ -358,8 +403,8 @@ PY
   echo "- lang: go"
   echo "- suite: single"
   echo "- runs: ${RUNS}"
-  echo "- patterns: ${PATTERN}"
-  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
+  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
   echo "- msg_sizes: ${MSG_SIZES}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo
@@ -466,8 +511,8 @@ fi
   echo "- lang: go"
   echo "- suite: single"
   echo "- runs: ${RUNS}"
-  echo "- patterns: ${PATTERN}"
-  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
+  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
   echo "- msg_sizes: ${MSG_SIZES}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo "- status: ${status}"

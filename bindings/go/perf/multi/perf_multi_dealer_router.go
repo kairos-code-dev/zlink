@@ -25,7 +25,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(router)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+	var window perfcommon.BenchmarkWindow
 
 	type dealerClient struct {
 		ctx     *zlink.Context
@@ -64,6 +64,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 			_ = dealer.ctx.Close()
 		}
 	}()
+	window = perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	var wg sync.WaitGroup
 	for _, dealer := range dealers {

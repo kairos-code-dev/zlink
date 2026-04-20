@@ -27,6 +27,8 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 	defer replier.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(replierNode, cfg.transport))
+	perfcommon.ApplyMultiHWM(replier, cfg.pattern)
+	perfcommon.ApplyMultiBenchmarkSocketOptions(replier, cfg.transport)
 	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep")
 	perfcommon.Must(replierNode.Bind(endpoint))
 

@@ -32,15 +32,19 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisherNode, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriberNode, cfg.transport))
+	perfcommon.ApplySingleHWM(publisher)
+	perfcommon.ApplySingleHWM(subscriber)
 	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot")
 	perfcommon.Must(publisherNode.Bind(endpoint))
 	perfcommon.Must(subscriberNode.ConnectPeer(endpoint))
 	perfcommon.Must(publisher.SetNoDrop(true))
 	perfcommon.Must(subscriber.SetSubscription("bench."))
+	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
+	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+	var window perfcommon.BenchmarkWindow
 	var readySeen atomic.Bool
 	var activeCollect atomic.Bool
 	readySignal := make(chan struct{}, 1)
@@ -62,6 +66,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 
 	waitForSpotReady(publisher, cfg.msgSize, readySignal)
 	perfcommon.PostReadySettle(cfg.pattern)
+	window = perfcommon.NewBenchmarkWindow(cfg.duration)
 	activeCollect.Store(true)
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)

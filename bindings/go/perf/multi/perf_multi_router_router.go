@@ -27,7 +27,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(server)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+	var window perfcommon.BenchmarkWindow
 
 	type routerClient struct {
 		ctx     *zlink.Context
@@ -52,7 +52,6 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 			perfcommon.Must(fmt.Errorf("multi router/router connect client[%d]: %w", i, err))
 		}
 		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), clientMon)
-		waitForRouterClientReady(client, serverID)
 
 		clients = append(clients, routerClient{
 			ctx:     clientCtx,
@@ -67,6 +66,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 			_ = client.ctx.Close()
 		}
 	}()
+	window = perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	var wg sync.WaitGroup
 	for _, client := range clients {
@@ -105,40 +105,6 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 
 	wg.Wait()
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
-}
-
-func waitForRouterClientReady(client *zlink.RouterSocket, serverID zlink.RoutingID) {
-	payload := perfcommon.PreparePayload(64)
-	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
-	for time.Now().Before(deadline) {
-		perfcommon.StampProbePayload(payload)
-		err := client.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
-			perfcommon.Must(fmt.Errorf("multi router/router ready send: %w", err))
-		}
-		reply, err := client.Recv(zlink.RecvFlagsDontWait)
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
-			perfcommon.Must(fmt.Errorf("multi router/router ready recv: %w", err))
-		}
-		if reply == nil {
-			continue
-		}
-		perfcommon.Must(reply.Close())
-		return
-	}
-	perfcommon.Must(&multiRouterRouterReadyError{})
-}
-
-type multiRouterRouterReadyError struct{}
-
-func (e *multiRouterRouterReadyError) Error() string {
-	return "multi router/router perf endpoint did not become ready"
 }
 
 func startMultiRouterEchoServer(server *zlink.RouterSocket) {

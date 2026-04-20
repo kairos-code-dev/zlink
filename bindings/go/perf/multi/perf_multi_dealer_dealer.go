@@ -21,8 +21,8 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	defer serverMon.Close()
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
-	recvStopAt := window.StopAt.Add(500 * time.Millisecond)
+	var window perfcommon.BenchmarkWindow
+	var recvStopAt time.Time
 
 	type dealerClient struct {
 		ctx    *zlink.Context
@@ -54,6 +54,8 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 			_ = client.ctx.Close()
 		}
 	}()
+	window = perfcommon.NewBenchmarkWindow(cfg.duration)
+	recvStopAt = window.StopAt
 
 	recvDone := make(chan struct{})
 	go func() {

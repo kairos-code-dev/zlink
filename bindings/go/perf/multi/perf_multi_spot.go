@@ -34,7 +34,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(publisherNode.Bind(endpoint))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+	var window perfcommon.BenchmarkWindow
 
 	subs := make([]multiSpotSubscriber, 0, cfg.clients)
 	tracker := newMultiSpotReadyTracker(cfg.clients)
@@ -75,6 +75,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	}()
 
 	waitForMultiSpotReady(publisher, tracker)
+	window = perfcommon.NewBenchmarkWindow(cfg.duration)
 	activeCollect.Store(true)
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
@@ -88,6 +89,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 			perfcommon.Must(err)
 		}
 	}
+	activeCollect.Store(false)
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }

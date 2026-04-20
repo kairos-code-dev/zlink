@@ -29,7 +29,7 @@ func waitMonitorReady(
 			if out.err != nil {
 				return out.err
 			}
-			if out.event != nil {
+			if out.event != nil && out.event.IsConnectionReady() {
 				readyEvents++
 			}
 		case <-time.After(timeout):

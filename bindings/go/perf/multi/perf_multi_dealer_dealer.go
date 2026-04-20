@@ -31,8 +31,9 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	}
 	clients := make([]dealerClient, 0, cfg.clients)
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	perfcommon.ApplyMultiHWM(server)
 	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-dealer-dealer")
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
+	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
 	for i := 0; i < cfg.clients; i++ {
 		clientCtx, err := zlink.NewContext()
 		perfcommon.Must(err)
@@ -40,8 +41,9 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
+		perfcommon.ApplyMultiHWM(client)
 		perfcommon.Must(client.Connect(endpoint))
-		perfcommon.Must(client.SetSendTimeout(500 * time.Millisecond))
+		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 		perfcommon.WaitConnected(serverMon, clientMon)
 		clients = append(clients, dealerClient{ctx: clientCtx, socket: client, mon: clientMon})
 	}

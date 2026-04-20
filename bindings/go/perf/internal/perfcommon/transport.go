@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"zlink"
 )
 
 type StreamConn interface {
@@ -246,12 +247,12 @@ func openWSStream(endpoint string, secure bool) (StreamConn, error) {
 		HandshakeTimeout: 5 * time.Second,
 	}
 	if secure {
-			dialer.TLSClientConfig = &tls.Config{
-				RootCAs:            assets.rootCAs,
-				ServerName:         "localhost",
-				MinVersion:         tls.VersionTLS12,
-				InsecureSkipVerify: false,
-			}
+		dialer.TLSClientConfig = &tls.Config{
+			RootCAs:            assets.rootCAs,
+			ServerName:         "localhost",
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: false,
+		}
 	}
 	conn, _, err := dialer.Dial(endpoint, nil)
 	if err != nil {
@@ -322,12 +323,12 @@ func openPacketWSStream(endpoint string, secure bool) (PacketConn, error) {
 		HandshakeTimeout: 5 * time.Second,
 	}
 	if secure {
-			dialer.TLSClientConfig = &tls.Config{
-				RootCAs:            assets.rootCAs,
-				ServerName:         "localhost",
-				MinVersion:         tls.VersionTLS12,
-				InsecureSkipVerify: false,
-			}
+		dialer.TLSClientConfig = &tls.Config{
+			RootCAs:            assets.rootCAs,
+			ServerName:         "localhost",
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: false,
+		}
 	}
 	conn, _, err := dialer.Dial(endpoint, nil)
 	if err != nil {

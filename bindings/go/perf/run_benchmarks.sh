@@ -45,12 +45,9 @@ Options:
   --send-timeout-ms N
   --recv-timeout-ms N
   -h, --help
-<<<<<<< HEAD
-=======
 
 Notes:
   - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,SPOT_REQREP
->>>>>>> worktree-agent-a8d2ff8b
 USAGE
 }
 
@@ -163,6 +160,7 @@ import sys
 
 result_file = sys.argv[1]
 metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
+echo_patterns = {"SPOT_REQREP"}
 rows = defaultdict(dict)
 
 with open(result_file, "r", encoding="utf-8") as fh:
@@ -190,7 +188,8 @@ for pattern in sorted(by_pattern):
         print("===============================================================================")
         print()
     printed_first_pattern = True
-    print(f"## PATTERN: {pattern} (one-way)")
+    direction = "echo" if pattern in echo_patterns else "one-way"
+    print(f"## PATTERN: {pattern} ({direction})")
     print()
     transports = defaultdict(list)
     for transport, size, values in by_pattern[pattern]:
@@ -202,9 +201,10 @@ for pattern in sorted(by_pattern):
         for size, values in sorted(transports[transport]):
             if not all(metric in values for metric in metrics):
                 continue
+            unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
             print(
                 f"| {size}B"
-                f" | {values['throughput'] / 1000.0:16.2f} Kmsg/s"
+                f" | {values['throughput'] / 1000.0:16.2f} {unit}"
                 f" | {values['bandwidth']:10.2f} MB/s"
                 f" | {values['latency']:13.3f} ms"
                 f" | {values['latency_p95']:13.3f} ms"
@@ -218,19 +218,11 @@ PY
   echo "## Effective Options (start)"
   echo "- lang: go"
   echo "- suite: single"
-<<<<<<< HEAD
   echo "- runs: ${RUNS}"
   echo "- patterns: ${PATTERN}"
   echo "- transports: ${TRANSPORTS:-auto}"
   echo "- msg_sizes: ${MSG_SIZES}"
   echo "- pin_cpu: ${PIN_CPU}"
-=======
-  echo "- patterns: ${PATTERN}"
-  echo "- runs: ${RUNS}"
-  echo "- transports: ${TRANSPORTS:-auto}"
-  echo "- msg_sizes: ${MSG_SIZES}"
-  echo "- pin_cpu: off"
->>>>>>> worktree-agent-a8d2ff8b
   echo
 } > "${RESULTS_FILE}"
 
@@ -275,16 +267,6 @@ for run in $(seq 1 "${RUNS}"); do
             result_lines=$((result_lines + case_result_lines))
           fi
         else
-<<<<<<< HEAD
-=======
-          if is_unsupported_output "${case_log}"; then
-            echo "UNSUPPORTED,current,${pattern},${transport}" >> "${RESULTS_FILE}"
-            unsupported=$((unsupported + 1))
-            expected_cases=$((expected_cases - 1))
-            transport_unsupported=1
-            break
-          fi
->>>>>>> worktree-agent-a8d2ff8b
           append_case_output "${case_log}"
           if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
             unsupported_cases=$((unsupported_cases + 1))
@@ -316,25 +298,12 @@ fi
   echo "## Effective Options (result)"
   echo "- lang: go"
   echo "- suite: single"
-<<<<<<< HEAD
   echo "- runs: ${RUNS}"
   echo "- patterns: ${PATTERN}"
   echo "- transports: ${TRANSPORTS:-auto}"
   echo "- msg_sizes: ${MSG_SIZES}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo "- status: ${status}"
-=======
-  echo "- patterns: ${PATTERN}"
-  echo "- runs: ${RUNS}"
-  echo "- transports: ${TRANSPORTS:-auto}"
-  echo "- msg_sizes: ${MSG_SIZES}"
-  echo "- pin_cpu: off"
-  if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; then
-    echo "- status: complete"
-  else
-    echo "- status: partial"
-  fi
->>>>>>> worktree-agent-a8d2ff8b
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
 } >> "${RESULTS_FILE}"

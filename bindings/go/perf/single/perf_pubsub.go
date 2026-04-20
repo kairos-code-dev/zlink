@@ -35,8 +35,6 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.WaitConnected(pubMon, subMon)
 
 	perfcommon.Must(subscriber.SetSubscription("bench."))
-	_, err = publisher.ReceiveSubscriptionEvent(zlink.RecvFlagsNone)
-	perfcommon.Must(err)
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.PostReadySettle(cfg.pattern)
 

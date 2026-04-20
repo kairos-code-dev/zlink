@@ -17,11 +17,12 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer publisher.Close()
 	perfcommon.Must(publisher.SetNoDrop(true))
-	perfcommon.Must(publisher.SetSendHWM(100))
+	perfcommon.ApplyMultiHWM(publisher)
 	pubMon := perfcommon.OpenMonitor(publisher)
 	defer pubMon.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisher, cfg.transport))
+	perfcommon.ApplyMultiBenchmarkSocketOptions(publisher, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(publisher, cfg.transport, "perf-multi-pubsub")
 
 	stats := perfcommon.NewStats()
@@ -35,9 +36,8 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 		}
 		subs = append(subs, sub)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(sub, cfg.transport))
-		if err := sub.SetRecvHWM(100); err != nil {
-			perfcommon.Must(fmt.Errorf("multi pubsub set recv hwm[%d]: %w", i, err))
-		}
+		perfcommon.ApplyMultiHWM(sub)
+		perfcommon.ApplyMultiBenchmarkSocketOptions(sub, cfg.transport)
 		subMon := perfcommon.OpenMonitor(sub)
 		if err := sub.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi pubsub connect sub[%d]: %w", i, err))
@@ -58,13 +58,13 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvDone := make(chan struct{})
 	go func() {
-			defer close(recvDone)
-			for time.Now().Before(window.StopAt) {
-				if !drainMultiPubSubAvailable(subs, stats, cfg.msgSize, window.ActiveAt, window.StopAt) {
-					continue
-				}
+		defer close(recvDone)
+		for time.Now().Before(window.StopAt) {
+			if !drainMultiPubSubAvailable(subs, stats, cfg.msgSize, window.ActiveAt, window.StopAt) {
+				continue
 			}
-		}()
+		}
+	}()
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
 		msg, err := zlink.NewMessage(payload)

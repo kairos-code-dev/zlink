@@ -19,6 +19,8 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	defer router.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
+	perfcommon.ApplyMultiHWM(router)
+	perfcommon.ApplyMultiBenchmarkSocketOptions(router, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-multi-dealer-router")
 	startMultiRouterEchoServer(router)
 
@@ -38,6 +40,8 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		dealerMon := perfcommon.OpenMonitor(dealer)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
+		perfcommon.ApplyMultiHWM(dealer)
+		perfcommon.ApplyMultiBenchmarkSocketOptions(dealer, cfg.transport)
 
 		rid := zlink.NewRoutingID([]byte(fmt.Sprintf("dealer-%06d", i)))
 
@@ -45,13 +49,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 		if err := dealer.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi dealer/router connect client[%d]: %w", i, err))
 		}
-			perfcommon.WaitConnected(dealerMon)
-		if err := dealer.SetRecvTimeout(500 * time.Millisecond); err != nil {
-			perfcommon.Must(fmt.Errorf("multi dealer/router set recv timeout client[%d]: %w", i, err))
-		}
-		if err := dealer.SetSendTimeout(500 * time.Millisecond); err != nil {
-			perfcommon.Must(fmt.Errorf("multi dealer/router set send timeout client[%d]: %w", i, err))
-		}
+		perfcommon.WaitConnected(dealerMon)
 		waitForDealerReady(dealer)
 
 		dealers = append(dealers, dealerClient{

@@ -42,26 +42,14 @@ func runSingleOneWay(
 	}()
 
 	for time.Now().Before(window.StopAt) {
-<<<<<<< HEAD:bindings/go/perf/single/oneway.go
-		if !drainSingleOneWay(receiver, stats, cfg.msgSize, window.ActiveAt, true) {
-			continue
-		}
-=======
 		_ = drainSingleOneWay(receiver, stats, cfg.msgSize, window.ActiveAt, true)
->>>>>>> worktree-agent-a8d2ff8b:bindings/go/perf/single/perf_oneway.go
 	}
 
 	<-sendDone
 
 	idleDrainDeadline := time.Now().Add(perfcommon.SingleIdleDrainDuration())
 	for time.Now().Before(idleDrainDeadline) {
-<<<<<<< HEAD:bindings/go/perf/single/oneway.go
-		if !drainSingleOneWay(receiver, nil, cfg.msgSize, window.ActiveAt, false) {
-			continue
-		}
-=======
 		_ = drainSingleOneWay(receiver, nil, cfg.msgSize, window.ActiveAt, false)
->>>>>>> worktree-agent-a8d2ff8b:bindings/go/perf/single/perf_oneway.go
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -102,16 +90,11 @@ func waitSingleRouteReady(
 	if err := send(payload); err != nil {
 		perfcommon.Must(fmt.Errorf("%s ready probe send: %w", name, err))
 	}
-<<<<<<< HEAD:bindings/go/perf/single/oneway.go
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
 			return
 		}
-=======
-	if drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
-		return
->>>>>>> worktree-agent-a8d2ff8b:bindings/go/perf/single/perf_oneway.go
 	}
 	perfcommon.Must(fmt.Errorf("%s did not become ready", name))
 }

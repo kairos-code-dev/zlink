@@ -20,6 +20,8 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 
 	serverID := zlink.NewRoutingID([]byte("SERVER"))
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	perfcommon.ApplyMultiHWM(server)
+	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.Must(server.SetRoutingID(serverID))
 	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-router-router")
 	startMultiRouterEchoServer(server)
@@ -40,6 +42,8 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
+		perfcommon.ApplyMultiHWM(client)
+		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 
 		clientID := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))
 		perfcommon.Must(client.SetRoutingID(clientID))
@@ -47,13 +51,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		if err := client.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi router/router connect client[%d]: %w", i, err))
 		}
-			perfcommon.WaitConnected(clientMon)
-		if err := client.SetRecvTimeout(500 * time.Millisecond); err != nil {
-			perfcommon.Must(fmt.Errorf("multi router/router set recv timeout client[%d]: %w", i, err))
-		}
-		if err := client.SetSendTimeout(500 * time.Millisecond); err != nil {
-			perfcommon.Must(fmt.Errorf("multi router/router set send timeout client[%d]: %w", i, err))
-		}
+		perfcommon.WaitConnected(clientMon)
 		waitForRouterClientReady(client, serverID)
 
 		clients = append(clients, routerClient{
@@ -146,7 +144,6 @@ func (e *multiRouterRouterReadyError) Error() string {
 }
 
 func startMultiRouterEchoServer(server *zlink.RouterSocket) {
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 	go func() {
 		for {
 			received, err := server.Recv(zlink.RecvFlagsDontWait)

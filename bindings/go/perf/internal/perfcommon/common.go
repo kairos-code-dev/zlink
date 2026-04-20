@@ -114,6 +114,20 @@ func DebugEnabled() bool {
 
 const BenchmarkSocketTimeout = 200 * time.Millisecond
 
+func singleSocketTimeout(send bool) time.Duration {
+	if send {
+		return durationFromEnv("PERF_SINGLE_SNDTIMEO_MS", BenchmarkSocketTimeout)
+	}
+	return durationFromEnv("PERF_SINGLE_RCVTIMEO_MS", BenchmarkSocketTimeout)
+}
+
+func multiSocketTimeout(send bool) time.Duration {
+	if send {
+		return durationFromEnv("PERF_MULTI_SNDTIMEO_MS", BenchmarkSocketTimeout)
+	}
+	return durationFromEnv("PERF_MULTI_RCVTIMEO_MS", BenchmarkSocketTimeout)
+}
+
 func resolveSingleSocketHWM(send bool) int {
 	return resolveSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", send)
 }
@@ -184,8 +198,20 @@ func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string)
 	if transport == "inproc" || transport == "wss" {
 		return
 	}
-	Must(socket.SetSendTimeout(BenchmarkSocketTimeout))
-	Must(socket.SetRecvTimeout(BenchmarkSocketTimeout))
+	Must(socket.SetSendTimeout(singleSocketTimeout(true)))
+	Must(socket.SetRecvTimeout(singleSocketTimeout(false)))
+}
+
+func ApplyMultiBenchmarkSocketOptions(socket benchmarkSocket, transport string) {
+	if socket == nil {
+		return
+	}
+	if transport == "pgm" || transport == "epgm" {
+		return
+	}
+	Must(socket.SetLinger(0))
+	Must(socket.SetSendTimeout(multiSocketTimeout(true)))
+	Must(socket.SetRecvTimeout(multiSocketTimeout(false)))
 }
 
 func UniqueTCPEndpoint(prefix string) string {
@@ -287,8 +313,6 @@ func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 	return mon
 }
 
-<<<<<<< HEAD
-=======
 func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
 	type result struct {
 		event *zlink.MonitorEvent
@@ -310,8 +334,6 @@ func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
 		return nil
 	}
 }
-
->>>>>>> worktree-agent-a8d2ff8b
 func PreparePayload(size int) []byte {
 	return make([]byte, size)
 }

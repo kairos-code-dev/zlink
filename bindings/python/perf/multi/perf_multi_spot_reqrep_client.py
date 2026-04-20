@@ -14,6 +14,7 @@ from perf_multi_common import (
     is_active_message,
     latency_ns_from_message,
     print_result_lines,
+    resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
@@ -139,7 +140,11 @@ def main(argv=None):
                     sock.connect(data_endpoint)
                     monitors.append(monitor)
                 for monitor in monitors:
-                    wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
+                    wait_monitor_event(
+                        monitor,
+                        zlink.MonitorEventMask.CONNECTION_READY,
+                        timeout_ms=resolve_multi_connect_ready_timeout_ms(),
+                    )
 
                 deadline = time.perf_counter() + READY_TIMEOUT_S
                 while time.perf_counter() < deadline:

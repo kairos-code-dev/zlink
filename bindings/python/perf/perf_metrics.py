@@ -34,6 +34,10 @@ def _env_int(name, default):
         return default
 
 
+def env_int(name, default):
+    return _env_int(name, default)
+
+
 def benchmark_run_id():
     run_id = _env_int("PERF_RUN_ID", 1)
     if run_id <= 0:
@@ -229,6 +233,14 @@ def wait_monitor_event(monitor, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_
             f"unexpected socket monitor event {int(event.event)} while waiting for {int(event_mask)}"
         )
     return event
+
+
+def resolve_single_connect_ready_timeout_ms():
+    return _env_int("PERF_CONNECT_READY_TIMEOUT_MS", DEFAULT_READY_TIMEOUT_MS)
+
+
+def resolve_multi_connect_ready_timeout_ms():
+    return _env_int("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", DEFAULT_READY_TIMEOUT_MS)
 
 
 def _require_zlink():

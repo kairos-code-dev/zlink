@@ -22,6 +22,7 @@ from perf_metrics import (
     payload_phase,
     parse_result_lines,
     print_result_lines,
+    resolve_multi_connect_ready_timeout_ms,
     render_effective_options,
     render_markdown_summary,
     result_metrics,

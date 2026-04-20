@@ -20,7 +20,6 @@ from perf_multi_common import (
 
 ROOT = Path(__file__).resolve().parent
 RUNNER_LIB = ROOT.parent.parent.parent.parent / "core" / "build" / "lib" / "libzlink.so"
-STREAM_CLIENT = ROOT.parent.parent.parent.parent / "core" / "build" / "bin" / "perf_stream_client"
 DEFAULT_PATTERNS = (
     "DEALER_DEALER",
     "DEALER_ROUTER",
@@ -44,39 +43,6 @@ POLICY_TRANSPORTS = {
 RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 
-def _ensure_core_stream_client():
-    repo_root = ROOT.parent.parent.parent.parent
-    core_build = repo_root / "core" / "build"
-    subprocess.run(
-        [
-            "cmake",
-            "-S",
-            str(repo_root),
-            "-B",
-            str(core_build),
-            "-DCMAKE_BUILD_TYPE=Release",
-            "-DENABLE_LTO=OFF",
-            "-DBUILD_BENCHMARKS=ON",
-            "-DZLINK_BUILD_TESTS=OFF",
-            "-DZLINK_BUILD_BENCH_ZMQ=OFF",
-            "-DZLINK_BUILD_BENCH_ZLINK=ON",
-            "-DZLINK_BUILD_BENCH_BEAST=OFF",
-            "-DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF",
-            "-DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF",
-            "-DZLINK_CXX_STANDARD=17",
-        ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        ["cmake", "--build", str(core_build), "--target", "perf_stream_client"],
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-    if not STREAM_CLIENT.exists():
-        raise SystemExit(f"shared stream client not found: {STREAM_CLIENT}")
-
-
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
     parser.add_argument("--pythonpath", required=True)
@@ -84,9 +50,12 @@ def parse_args(argv):
     parser.add_argument("--build-dir", default="")
     parser.add_argument("--reuse-build", action="store_true")
     parser.add_argument("--clean-build", action="store_true")
-    parser.add_argument("--duration", default="5")
+    parser.add_argument(
+        "--duration",
+        default=os.environ.get("PERF_MULTI_DURATION_SECONDS", "5"),
+    )
     parser.add_argument("--msg-sizes", default="")
-    parser.add_argument("--transports", default="tcp,tls,ws,wss")
+    parser.add_argument("--transports", default="")
     parser.add_argument("--runs", default="1")
     parser.add_argument("--clients", default=None)
     parser.add_argument("--results-dir", default="")
@@ -154,12 +123,26 @@ def _msg_sizes_for_pattern(pattern, requested_msg_sizes):
     if requested_msg_sizes is not None:
         return requested_msg_sizes
     if pattern == "STREAM":
+        stream_env = os.environ.get("PERF_MULTI_STREAM_MSG_SIZES", "")
+        if stream_env:
+            sizes = _parse_csv(stream_env)
+            if not sizes:
+                raise SystemExit("PERF_MULTI_STREAM_MSG_SIZES must not be empty")
+            return sizes
+    common_env = os.environ.get("PERF_MSG_SIZES", "")
+    if common_env:
+        sizes = _parse_csv(common_env)
+        if not sizes:
+            raise SystemExit("PERF_MSG_SIZES must not be empty")
+        return sizes
+    if pattern == "STREAM":
         return list(DEFAULT_STREAM_MSG_SIZES)
     return list(DEFAULT_MSG_SIZES)
 
 
 def _parse_transports(value):
-    transports = [item.lower() for item in _parse_csv(value)]
+    source = value or os.environ.get("PERF_TRANSPORTS", "")
+    transports = [item.lower() for item in _parse_csv(source or "tcp,tls,ws,wss")]
     if not transports:
         raise SystemExit("--transports must not be empty")
     return transports
@@ -182,7 +165,16 @@ def _selected_configs(patterns, transports, requested_msg_sizes):
 def _default_clients(patterns):
     if patterns and all(pattern == "STREAM" for pattern in patterns):
         return "10000"
-    return "100"
+    return "policy-default"
+
+
+def _clients_for_pattern(pattern, cli_value):
+    if cli_value is not None:
+        return cli_value
+    env_value = os.environ.get("PERF_MULTI_CLIENTS")
+    if env_value:
+        return env_value
+    return "10000" if pattern == "STREAM" else "100"
 
 
 def _server_popen_kwargs():
@@ -208,16 +200,6 @@ def _wait_for_tcp_endpoint(endpoint, timeout_s=10.0):
     raise SystemExit(f"tcp endpoint did not become ready: {endpoint}")
 
 
-def _normalize_stream_result_lines(output):
-    normalized = []
-    for line in output.splitlines():
-        if line.startswith("RESULT,current,STREAM,"):
-            normalized.append(line.replace(",STREAM,", ",MULTI_STREAM,", 1))
-        else:
-            normalized.append(line)
-    return "\n".join(normalized)
-
-
 def _parse_status_lines(output):
     rows = []
     for line in output.splitlines():
@@ -239,6 +221,13 @@ def _env_int(name, default):
 def _append_line(lines, line=""):
     print(line, flush=True)
     lines.append(line)
+
+
+def _failure_reason(output):
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return "no_data"
+    return lines[-1]
 
 
 def _result_metrics_for_case(output, pattern, transport, msg_size):
@@ -361,11 +350,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
         return f"UNSUPPORTED,current,MULTI_{pattern},{transport}"
     server_path = ROOT / f"perf_multi_{pattern.lower()}_server.py"
     client_path = ROOT / f"perf_multi_{pattern.lower()}_client.py"
-    if pattern == "STREAM":
-        if not server_path.exists():
-            raise SystemExit(f"unsupported pattern: {pattern}")
-        _ensure_core_stream_client()
-    elif not server_path.exists() or not client_path.exists():
+    if not server_path.exists() or not client_path.exists():
         raise SystemExit(f"unsupported pattern: {pattern}")
 
     server = subprocess.Popen(
@@ -404,45 +389,6 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             raise SystemExit(f"server did not become ready: {combined}")
         endpoint = ready.split(",", 1)[1]
         control_endpoint = ""
-
-        if pattern == "STREAM":
-            _wait_for_tcp_endpoint(endpoint)
-            client_run = subprocess.run(
-                [
-                    str(STREAM_CLIENT),
-                    "--transport",
-                    transport,
-                    "--pattern",
-                    "STREAM",
-                "--sizes",
-                msg_size,
-                "--runs",
-                "1",
-                "--duration",
-                str(args.duration),
-                "--ccu",
-                clients,
-                "--io-threads",
-                "4",
-                "--print-perf-result",
-                "1",
-                "--send-stop-token",
-                "0",
-                "--endpoint",
-                endpoint,
-            ],
-                cwd=str(ROOT.parent.parent.parent.parent),
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=90,
-                check=True,
-            )
-            if client_run.stdout:
-                stdout_chunks.append(_normalize_stream_result_lines(client_run.stdout.strip()))
-            if client_run.stderr:
-                stderr_chunks.append(client_run.stderr.strip())
-            return "\n".join(chunk for chunk in stdout_chunks if chunk)
 
         if pattern in {"SPOT", "SPOT_REQREP"}:
             control_ready = _wait_for_prefixed_line(
@@ -723,11 +669,16 @@ def main(argv=None):
     sections = []
     emitted_chunks = []
     status_lines = []
+    failures = []
     fail_count = 0
     case_ordinal = 1
     _append_line(sections, render_effective_options(options))
     _append_line(sections)
     for pattern_index, pattern in enumerate(patterns):
+        pattern_clients = _clients_for_pattern(pattern, args.clients)
+        if pattern_index > 0:
+            _append_line(sections, "===============================================================================")
+            _append_line(sections)
         _append_line(sections, f"  > Benchmarking current for MULTI_{pattern}...")
         pattern_transports = [
             transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]
@@ -747,7 +698,7 @@ def main(argv=None):
                     case_ordinal += 1
                     try:
                         output = _run_pattern(
-                            args, case_env, pattern, transport, msg_size, clients
+                            args, case_env, pattern, transport, msg_size, pattern_clients
                         )
                     except SystemExit as exc:
                         fail_count += 1
@@ -763,6 +714,9 @@ def main(argv=None):
                     elif output.startswith("UNSUPPORTED,"):
                         _append_line(sections, _status_row(msg_size, "UNSUPPORTED"))
                     else:
+                        failures.append(
+                            f"- MULTI_{pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
+                        )
                         _append_line(sections, _status_row(msg_size, "FAIL"))
             else:
                 for run_index in range(runs):
@@ -775,7 +729,12 @@ def main(argv=None):
                         case_ordinal += 1
                         try:
                             output = _run_pattern(
-                                args, case_env, pattern, transport, msg_size, clients
+                                args,
+                                case_env,
+                                pattern,
+                                transport,
+                                msg_size,
+                                pattern_clients,
                             )
                         except SystemExit as exc:
                             fail_count += 1
@@ -797,6 +756,9 @@ def main(argv=None):
                                 _status_row(msg_size, "UNSUPPORTED", indent="        "),
                             )
                         else:
+                            failures.append(
+                                f"- MULTI_{pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
+                            )
                             _append_line(
                                 sections,
                                 _status_row(msg_size, "FAIL", indent="        "),
@@ -840,11 +802,8 @@ def main(argv=None):
                 )
                 time.sleep(transport_transition_ms / 1000.0)
         if pattern_index + 1 < len(patterns):
-            _append_line(sections, f"  [pattern cooldown {pattern_transition_ms}ms]")
-            _append_line(sections)
             time.sleep(pattern_transition_ms / 1000.0)
-        else:
-            _append_line(sections)
+        _append_line(sections)
     rows = parse_result_lines("\n".join(emitted_chunks))
     skipped_cases = 0
     unsupported_cases = 0
@@ -854,13 +813,15 @@ def main(argv=None):
         elif line.startswith("UNSUPPORTED,"):
             unsupported_cases += 1
     total_cases = len(configs) * runs
-    expected_cases = max(0, total_cases - skipped_cases - unsupported_cases - fail_count)
+    expected_cases = max(0, total_cases - skipped_cases - unsupported_cases)
     expected_result_lines = expected_cases * 5
-    status = (
-        "complete"
-        if fail_count == 0 and len(rows) == expected_result_lines
-        else "partial"
-    )
+    status = "complete" if len(rows) == expected_result_lines else "partial"
+    if failures:
+        _append_line(sections)
+        _append_line(sections, "## Failures")
+        for line in failures:
+            _append_line(sections, line)
+        _append_line(sections)
     _append_line(sections, render_effective_options(options, section="result"))
     _append_line(sections, "## Completion")
     _append_line(sections, f"- status: {status}")
@@ -880,7 +841,7 @@ def main(argv=None):
     report_path.write_text(final_output, encoding="utf-8")
     if args.output:
         Path(args.output).write_text(final_output, encoding="utf-8")
-    if fail_count > 0:
+    if status != "complete":
         raise SystemExit(1)
 
 

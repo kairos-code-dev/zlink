@@ -25,6 +25,7 @@ from perf_metrics import (
     render_effective_options,
     render_markdown_summary,
     result_metrics,
+    resolve_single_connect_ready_timeout_ms,
     safe_poll,
     stamp_payload,
     transport_endpoint,

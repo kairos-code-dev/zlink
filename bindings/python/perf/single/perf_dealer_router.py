@@ -16,6 +16,7 @@ from perf_common import (
     recv_nonblocking,
     result_metrics,
     resolve_single_endpoint,
+    resolve_single_connect_ready_timeout_ms,
     resolve_single_recv_timeout_ms,
     safe_poll,
     stamp_payload,
@@ -33,6 +34,7 @@ def main(argv=None):
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
             dealer.send(stamp_payload(payload, phase=1, run_id=run_id))
+        dealer.send(stamp_payload(payload, phase=2, run_id=run_id))
 
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as router:
@@ -42,7 +44,11 @@ def main(argv=None):
                 with dealer.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
                     router.bind(endpoint)
                     dealer.connect(endpoint)
-                    wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
+                    wait_monitor_event(
+                        monitor,
+                        zlink.MonitorEventMask.CONNECTION_READY,
+                        timeout_ms=resolve_single_connect_ready_timeout_ms(),
+                    )
 
                 sender = threading.Thread(
                     target=send_loop, args=(dealer,), daemon=True

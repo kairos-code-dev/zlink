@@ -13,6 +13,7 @@ from perf_common import (
     parse_single_args,
     print_result_lines,
     resolve_single_endpoint,
+    resolve_single_connect_ready_timeout_ms,
     resolve_single_pubsub_ready_settle_s,
     resolve_single_pubsub_recv_timeout_ms,
     result_metrics,
@@ -36,6 +37,7 @@ def main(argv=None):
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
             publisher.publish(TOPIC, stamp_payload(payload, phase=1, run_id=run_id))
+        publisher.publish(TOPIC, stamp_payload(payload, phase=2, run_id=run_id))
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
@@ -49,7 +51,11 @@ def main(argv=None):
                 with subscriber.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
                     publisher.bind(endpoint)
                     subscriber.connect(endpoint)
-                    wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
+                    wait_monitor_event(
+                        monitor,
+                        zlink.MonitorEventMask.CONNECTION_READY,
+                        timeout_ms=resolve_single_connect_ready_timeout_ms(),
+                    )
                 wait_seconds = resolve_single_pubsub_ready_settle_s()
                 if wait_seconds > 0:
                     time.sleep(wait_seconds)

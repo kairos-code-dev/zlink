@@ -11,6 +11,7 @@ from perf_multi_common import (
     is_active_message,
     parse_client_args,
     print_result_lines,
+    resolve_multi_connect_ready_timeout_ms,
     result_metrics,
     wait_monitor_event,
 )
@@ -38,7 +39,11 @@ def main(argv=None):
                     sock.connect(endpoint)
                     monitors.append(monitor)
                 for monitor in monitors:
-                    wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
+                    wait_monitor_event(
+                        monitor,
+                        zlink.MonitorEventMask.CONNECTION_READY,
+                        timeout_ms=resolve_multi_connect_ready_timeout_ms(),
+                    )
                 print(f"CLIENT_READY,{args.msg_size}", flush=True)
                 command = sys.stdin.readline().strip()
                 if command not in {

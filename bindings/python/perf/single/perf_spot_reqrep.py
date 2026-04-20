@@ -12,15 +12,12 @@ from perf_common import (
     new_payload,
     parse_single_args,
     print_result_lines,
+    resolve_single_connect_ready_timeout_ms,
     resolve_single_endpoint,
     resolve_single_spot_ready_settle_s,
     result_metrics,
     stamp_payload,
 )
-
-
-READY_TIMEOUT_S = 5.0
-
 
 def _issue_request(requester, node_rid, spot_rid, payload, timeout_s):
     reply_holder = {}
@@ -106,7 +103,7 @@ def main(argv=None):
                         replier_node.routing_id,
                         replier.routing_id,
                         stamp_payload(probe_payload, phase=0, run_id=run_id),
-                        READY_TIMEOUT_S,
+                        resolve_single_connect_ready_timeout_ms() / 1000.0,
                     )
                     if not probe_ready.is_set() or not reply_parts:
                         raise RuntimeError("spot reqrep probe-ready timeout")

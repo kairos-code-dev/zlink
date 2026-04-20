@@ -45,9 +45,12 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
     parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
-    parser.add_argument("--duration", default="5")
-    parser.add_argument("--msg-sizes", default=",".join(DEFAULT_MSG_SIZES))
-    parser.add_argument("--transports", default=",".join(RAW_TRANSPORTS))
+    parser.add_argument(
+        "--duration",
+        default=os.environ.get("PERF_SINGLE_DURATION_SECONDS", "5"),
+    )
+    parser.add_argument("--msg-sizes", default="")
+    parser.add_argument("--transports", default="")
     parser.add_argument("--runs", default="1")
     parser.add_argument("--results-dir", default="")
     parser.add_argument("--results-tag", default="")
@@ -84,14 +87,16 @@ def _parse_patterns(value):
 def _parse_msg_sizes(args):
     if args.msg_size_compat is not None:
         return [args.msg_size_compat]
-    sizes = _parse_csv(args.msg_sizes)
+    source = args.msg_sizes or os.environ.get("PERF_MSG_SIZES", "")
+    sizes = _parse_csv(source or ",".join(DEFAULT_MSG_SIZES))
     if not sizes:
         raise SystemExit("--msg-sizes must not be empty")
     return sizes
 
 
 def _parse_transports(value):
-    transports = [item.lower() for item in _parse_csv(value)]
+    source = value or os.environ.get("PERF_TRANSPORTS", "")
+    transports = [item.lower() for item in _parse_csv(source or ",".join(RAW_TRANSPORTS))]
     if not transports:
         raise SystemExit("--transports must not be empty")
     return transports
@@ -132,6 +137,13 @@ def _result_metrics_for_case(output, pattern, transport, msg_size):
 def _append_line(lines, line=""):
     print(line, flush=True)
     lines.append(line)
+
+
+def _failure_reason(output):
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return "no_data"
+    return lines[-1]
 
 
 def _metric_row(pattern, msg_size, metrics, *, indent="      "):
@@ -240,6 +252,7 @@ def main(argv=None):
     sections = []
     emitted_chunks = []
     status_lines = []
+    failures = []
     fail_count = 0
     case_ordinal = 1
 
@@ -247,6 +260,9 @@ def main(argv=None):
     _append_line(sections)
 
     for pattern in patterns:
+        if pattern != patterns[0]:
+            _append_line(sections, "===============================================================================")
+            _append_line(sections)
         _append_line(sections, f"  > Benchmarking current for {pattern}...")
         pattern_transports = [
             transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]
@@ -274,6 +290,9 @@ def main(argv=None):
                     elif output.startswith("UNSUPPORTED,"):
                         _append_line(sections, _status_row(msg_size, "UNSUPPORTED"))
                     else:
+                        failures.append(
+                            f"- {pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
+                        )
                         _append_line(sections, _status_row(msg_size, "FAIL"))
                 suffix = f"(failures={fail_count}) Done" if fail_count else "Done"
                 _append_line(sections, f"    Testing {transport}: {suffix}")
@@ -310,6 +329,9 @@ def main(argv=None):
                                 _status_row(msg_size, "UNSUPPORTED", indent="        "),
                             )
                         else:
+                            failures.append(
+                                f"- {pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
+                            )
                             _append_line(
                                 sections,
                                 _status_row(msg_size, "FAIL", indent="        "),
@@ -353,15 +375,16 @@ def main(argv=None):
             skipped_cases += 1
         elif line.startswith("UNSUPPORTED,"):
             unsupported_cases += 1
-    expected_cases = max(
-        0, len(configs) * runs - skipped_cases - unsupported_cases - fail_count
-    )
+    expected_cases = max(0, len(configs) * runs - skipped_cases - unsupported_cases)
     expected_result_lines = expected_cases * 5
-    status = (
-        "complete"
-        if fail_count == 0 and len(rows) == expected_result_lines
-        else "partial"
-    )
+    status = "complete" if len(rows) == expected_result_lines else "partial"
+
+    if failures:
+        _append_line(sections)
+        _append_line(sections, "## Failures")
+        for line in failures:
+            _append_line(sections, line)
+        _append_line(sections)
 
     _append_line(sections, render_effective_options(options, section="result"))
     _append_line(sections, "## Completion")
@@ -382,7 +405,7 @@ def main(argv=None):
     report_path.write_text(final_output, encoding="utf-8")
     if args.output:
         Path(args.output).write_text(final_output, encoding="utf-8")
-    if fail_count > 0:
+    if status != "complete":
         raise SystemExit(1)
 
 

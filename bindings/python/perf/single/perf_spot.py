@@ -14,6 +14,7 @@ from perf_common import (
     parse_single_args,
     print_result_lines,
     recv_nonblocking,
+    resolve_single_connect_ready_timeout_ms,
     resolve_single_endpoint,
     resolve_single_recv_timeout_ms,
     resolve_single_spot_ready_settle_s,
@@ -24,9 +25,6 @@ from perf_common import (
 
 SERVICE_NAME = "spot-svc"
 TOPIC = b"bench.topic"
-READY_TIMEOUT_S = 5.0
-
-
 def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="spot")
     run_id = benchmark_run_id()
@@ -83,7 +81,9 @@ def main(argv=None):
 
                         subscriber.on_dispatch_event(on_dispatch)
 
-                        ready_deadline = time.monotonic() + READY_TIMEOUT_S
+                        ready_deadline = time.monotonic() + (
+                            resolve_single_connect_ready_timeout_ms() / 1000.0
+                        )
                         while (
                             not probe_ready.is_set()
                             and time.monotonic() < ready_deadline

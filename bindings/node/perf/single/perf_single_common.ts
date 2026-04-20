@@ -110,38 +110,6 @@ function subscribeNoWait(socket) {
   }
 }
 
-function trySocketSend(socket, ...args) {
-  try {
-    socket.send(...args, zlink.SendFlags.DontWait);
-    return true;
-  } catch (error) {
-    const text = String(error && error.message ? error.message : error);
-    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
-      return false;
-    }
-    if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-function trySocketPublish(socket, topic, payload) {
-  try {
-    socket.publish(topic, payload, zlink.SendFlags.DontWait);
-    return true;
-  } catch (error) {
-    const text = String(error && error.message ? error.message : error);
-    if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
-      return false;
-    }
-    if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-      return false;
-    }
-    throw error;
-  }
-}
-
 async function waitForConnectionReady(
   socket,
   connectFn = null,
@@ -186,10 +154,7 @@ function resolveSingleIdleDrainMs(overrides = {}) {
   if (Number.isFinite(overrides.recvTimeoutMs)) {
     return Math.max(0, overrides.recvTimeoutMs);
   }
-  return integerEnv(
-    'PERF_SINGLE_PUBSUB_RCVTIMEO_MS',
-    integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200)
-  );
+  return integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200);
 }
 
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
@@ -270,7 +235,7 @@ function parseSingleBinaryArgs(argv) {
     transport,
     msgSize,
     duration: integerEnv('PERF_SINGLE_DURATION_SECONDS', 5),
-    runId: integerEnv('PERF_RUN_ID', 1),
+    runId: 1,
     hwm: integerEnv('PERF_SINGLE_HWM', NaN),
     sendHwm: integerEnv('PERF_SINGLE_SNDHWM', NaN),
     recvHwm: integerEnv('PERF_SINGLE_RCVHWM', NaN),
@@ -288,6 +253,4 @@ module.exports = {
   resolveSingleIdleDrainMs,
   waitForPostReadySettle,
   waitForConnectionReady,
-  trySocketSend,
-  trySocketPublish
 };

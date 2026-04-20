@@ -108,8 +108,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
     }
     stop = true;
     await recvTask;
-    const result = await collector.finish();
-    return result.latenciesNs;
+    return collector.finish();
   } finally {
     sender.close();
     receiver.close();
@@ -122,14 +121,15 @@ module.exports = { runRouterRouterBenchmark };
 if (require.main === module) {
   (async () => {
     const options = parseSingleBinaryArgs(process.argv.slice(2));
-    const latenciesNs = await runRouterRouterBenchmark(options.msgSize, options);
+    const result = await runRouterRouterBenchmark(options.msgSize, options);
     for (const line of summarizeMetrics(
       'ROUTER_ROUTER',
       options.transport,
       options.msgSize,
-      latenciesNs,
+      result.latenciesNs,
       options.duration,
-      options.libName
+      options.libName,
+      result.accepted
     )) {
       console.log(line);
     }

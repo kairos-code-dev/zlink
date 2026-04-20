@@ -102,9 +102,18 @@ function percentile(sortedValues, q) {
   return sortedValues[index];
 }
 
-function computeMetrics(latenciesNs, durationSeconds, msgSize, bandwidthMultiplier = 1) {
+function computeMetrics(
+  latenciesNs,
+  durationSeconds,
+  msgSize,
+  bandwidthMultiplier = 1,
+  throughputCount = latenciesNs.length
+) {
   const count = latenciesNs.length;
-  const throughput = durationSeconds > 0 ? count / durationSeconds : 0;
+  const effectiveCount = Number.isFinite(throughputCount) && throughputCount >= 0
+    ? throughputCount
+    : count;
+  const throughput = durationSeconds > 0 ? effectiveCount / durationSeconds : 0;
   const bandwidth = throughput * msgSize * bandwidthMultiplier / 1_000_000;
   const sorted = latenciesNs.slice().sort((a, b) => a - b);
   const latency = count > 0 ? sorted.reduce((sum, value) => sum + value, 0) / count : 0;
@@ -134,13 +143,15 @@ function summarizeMetrics(
   msgSize,
   latenciesNs,
   durationSeconds,
-  libName = 'current'
+  libName = 'current',
+  throughputCount = latenciesNs.length
 ) {
   const metrics = computeMetrics(
     latenciesNs,
     durationSeconds,
     msgSize,
-    isEchoPattern(pattern) ? 2 : 1
+    isEchoPattern(pattern) ? 2 : 1,
+    throughputCount
   );
   return Object.entries(metrics).map(([metric, value]) => {
     const formatted = metric.startsWith('latency')

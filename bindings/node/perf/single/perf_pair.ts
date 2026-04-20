@@ -82,8 +82,7 @@ async function runPairBenchmark(msgSize, options) {
     }
     stop = true;
     await recvTask;
-    const result = await collector.finish();
-    return result.latenciesNs;
+    return collector.finish();
   } finally {
     client.close();
     server.close();
@@ -96,14 +95,15 @@ module.exports = { runPairBenchmark };
 if (require.main === module) {
   (async () => {
     const options = parseSingleBinaryArgs(process.argv.slice(2));
-    const latenciesNs = await runPairBenchmark(options.msgSize, options);
+    const result = await runPairBenchmark(options.msgSize, options);
     for (const line of summarizeMetrics(
       'PAIR',
       options.transport,
       options.msgSize,
-      latenciesNs,
+      result.latenciesNs,
       options.duration,
-      options.libName
+      options.libName,
+      result.accepted
     )) {
       console.log(line);
     }

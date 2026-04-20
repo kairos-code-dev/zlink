@@ -51,15 +51,15 @@ async function waitForProbeReady(spot, payload, runId, msgSize, seqRef) {
   const waiters = [];
 
   spot.onDispatchEvent(() => {
-    drainSpot(spot, (received) => {
-      const header = decodeMetricHeaderFromParts(received.parts);
-      if (!header) {
-        return;
-      }
-      if (header.runId === runId && header.msgSize === msgSize) {
-        ready = true;
-        while (waiters.length > 0) {
-          waiters.shift()();
+      drainSpot(spot, (received) => {
+        const header = decodeMetricHeaderFromParts(received.parts);
+        if (!header) {
+          return;
+        }
+        if (header.phase === 0 && header.runId === runId && header.msgSize === msgSize) {
+          ready = true;
+          while (waiters.length > 0) {
+            waiters.shift()();
         }
       }
     });
@@ -77,7 +77,7 @@ async function waitForProbeReady(spot, payload, runId, msgSize, seqRef) {
     if (!ready) {
       await Promise.race([
         new Promise((resolve) => waiters.push(resolve)),
-        new Promise((resolve) => setTimeout(resolve, 25))
+        sleepImmediate()
       ]);
     }
     await sleepImmediate();
@@ -148,8 +148,7 @@ async function runSpotBenchmark(msgSize, options) {
     });
     spot.publish(SERVICE_NAME, TOPIC, payload);
     await waitForPostReadySettle(resolveSingleIdleDrainMs(options));
-    const result = await collector.finish();
-    return result.latenciesNs;
+    return collector.finish();
   } finally {
     if (spot) {
       spot.close();
@@ -164,14 +163,15 @@ module.exports = { runSpotBenchmark };
 if (require.main === module) {
   (async () => {
     const options = parseSingleBinaryArgs(process.argv.slice(2));
-    const latenciesNs = await runSpotBenchmark(options.msgSize, options);
+    const result = await runSpotBenchmark(options.msgSize, options);
     for (const line of summarizeMetrics(
       'SPOT',
       options.transport,
       options.msgSize,
-      latenciesNs,
+      result.latenciesNs,
       options.duration,
-      options.libName
+      options.libName,
+      result.accepted
     )) {
       console.log(line);
     }

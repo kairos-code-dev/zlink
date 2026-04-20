@@ -2,36 +2,30 @@
 
 'use strict';
 
+const { spawn } = require('node:child_process');
 const path = require('node:path');
 const {
   buildEffectiveOptions,
   completionLines,
-  computeMetrics,
   defaultSingleMsgSizes,
   DEFAULT_SINGLE_TRANSPORTS,
   formatTableHeader,
   formatTableRow,
   parseCommonArgs,
   patternDirection,
+  primaryMetricsFromResultLines,
   resolveSinglePatternNames,
   writeReport
 } = require('../common/perf_metrics');
-const { runPairBenchmark } = require('./perf_pair');
-const { runPubSubBenchmark } = require('./perf_pubsub');
-const { runDealerDealerBenchmark } = require('./perf_dealer_dealer');
-const { runDealerRouterBenchmark } = require('./perf_dealer_router');
-const { runRouterRouterBenchmark } = require('./perf_router_router');
-const { runSpotBenchmark } = require('./perf_spot');
-const { runSpotReqRepBenchmark } = require('./perf_spot_reqrep');
 
 const PATTERNS = {
-  PAIR: runPairBenchmark,
-  PUBSUB: runPubSubBenchmark,
-  DEALER_DEALER: runDealerDealerBenchmark,
-  DEALER_ROUTER: runDealerRouterBenchmark,
-  ROUTER_ROUTER: runRouterRouterBenchmark,
-  SPOT: runSpotBenchmark,
-  SPOT_REQREP: runSpotReqRepBenchmark
+  PAIR: { script: 'perf_pair.js' },
+  PUBSUB: { script: 'perf_pubsub.js' },
+  DEALER_DEALER: { script: 'perf_dealer_dealer.js' },
+  DEALER_ROUTER: { script: 'perf_dealer_router.js' },
+  ROUTER_ROUTER: { script: 'perf_router_router.js' },
+  SPOT: { script: 'perf_spot.js' },
+  SPOT_REQREP: { script: 'perf_spot_reqrep.js' }
 };
 
 function policyTransports(pattern) {
@@ -104,6 +98,100 @@ function isPlatformSkip(pattern, transport) {
 
 function errorText(error) {
   return String(error && error.message ? error.message : error);
+}
+
+function buildBinaryEnv(options) {
+  const env = {
+    ...process.env,
+    PERF_SINGLE_DURATION_SECONDS: String(options.duration)
+  };
+  if (Number.isFinite(options.hwm)) {
+    env.PERF_SINGLE_HWM = String(options.hwm);
+  }
+  if (Number.isFinite(options.sendHwm)) {
+    env.PERF_SINGLE_SNDHWM = String(options.sendHwm);
+  }
+  if (Number.isFinite(options.recvHwm)) {
+    env.PERF_SINGLE_RCVHWM = String(options.recvHwm);
+  }
+  if (Number.isFinite(options.sendTimeoutMs)) {
+    env.PERF_SINGLE_SNDTIMEO_MS = String(options.sendTimeoutMs);
+  }
+  if (Number.isFinite(options.recvTimeoutMs)) {
+    env.PERF_SINGLE_RCVTIMEO_MS = String(options.recvTimeoutMs);
+  }
+  if (Number.isFinite(options.ioThreads)) {
+    env.PERF_IO_THREADS = String(options.ioThreads);
+  }
+  return env;
+}
+
+async function runSingleCase(scriptName, transport, msgSize, options) {
+  const scriptPath = path.join(__dirname, scriptName);
+  const child = spawn(
+    process.execPath,
+    [scriptPath, 'current', transport, String(msgSize)],
+    {
+      cwd: process.cwd(),
+      env: buildBinaryEnv(options),
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  );
+  const stdoutLines = [];
+  const stderrLines = [];
+  let stdoutBuffer = '';
+  let stderrBuffer = '';
+
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => {
+    stdoutBuffer += chunk;
+    while (true) {
+      const newline = stdoutBuffer.indexOf('\n');
+      if (newline === -1) {
+        break;
+      }
+      const line = stdoutBuffer.slice(0, newline).trim();
+      stdoutBuffer = stdoutBuffer.slice(newline + 1);
+      if (line) {
+        stdoutLines.push(line);
+      }
+    }
+  });
+
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => {
+    stderrBuffer += chunk;
+    while (true) {
+      const newline = stderrBuffer.indexOf('\n');
+      if (newline === -1) {
+        break;
+      }
+      const line = stderrBuffer.slice(0, newline).trim();
+      stderrBuffer = stderrBuffer.slice(newline + 1);
+      if (line) {
+        stderrLines.push(line);
+      }
+    }
+  });
+
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (code) => resolve(code ?? 1));
+  });
+
+  if (stdoutBuffer.trim()) {
+    stdoutLines.push(stdoutBuffer.trim());
+  }
+  if (stderrBuffer.trim()) {
+    stderrLines.push(stderrBuffer.trim());
+  }
+
+  if (exitCode !== 0) {
+    const stderrText = stderrLines.join('\n');
+    throw new Error(stderrText ? `single case failed: ${stderrText}` : `single case failed: ${exitCode}`);
+  }
+
+  return stdoutLines;
 }
 
 async function main() {
@@ -182,18 +270,8 @@ async function main() {
         const perSizeMetrics = new Map();
         for (const msgSize of options.msgSizes) {
           try {
-            const latenciesNs = await runner(msgSize, {
-              ...options,
-              transport,
-              runId: caseOrdinal
-            });
-            caseOrdinal += 1;
-            const metrics = computeMetrics(
-              latenciesNs,
-              options.duration,
-              msgSize,
-              name === 'SPOT_REQREP' ? 2 : 1
-            );
+            const lines = await runSingleCase(runner.script, transport, msgSize, options);
+            const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
             const row = { pattern: name, msgSize, metrics };
             emit(`      ${formatTableRow(row)}`);
             perSizeMetrics.set(msgSize, metrics);
@@ -219,18 +297,8 @@ async function main() {
           emitIndented('        ', formatTableHeader());
           for (const msgSize of options.msgSizes) {
             try {
-              const latenciesNs = await runner(msgSize, {
-                ...options,
-                transport,
-                runId: caseOrdinal
-              });
-              caseOrdinal += 1;
-              const metrics = computeMetrics(
-                latenciesNs,
-                options.duration,
-                msgSize,
-                name === 'SPOT_REQREP' ? 2 : 1
-              );
+              const lines = await runSingleCase(runner.script, transport, msgSize, options);
+              const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
               runResults.get(msgSize).push(metrics);
               emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
             } catch (error) {

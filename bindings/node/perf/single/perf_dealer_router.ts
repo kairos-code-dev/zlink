@@ -82,8 +82,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
     }
     stop = true;
     await recvTask;
-    const result = await collector.finish();
-    return result.latenciesNs;
+    return collector.finish();
   } finally {
     dealer.close();
     router.close();
@@ -96,14 +95,15 @@ module.exports = { runDealerRouterBenchmark };
 if (require.main === module) {
   (async () => {
     const options = parseSingleBinaryArgs(process.argv.slice(2));
-    const latenciesNs = await runDealerRouterBenchmark(options.msgSize, options);
+    const result = await runDealerRouterBenchmark(options.msgSize, options);
     for (const line of summarizeMetrics(
       'DEALER_ROUTER',
       options.transport,
       options.msgSize,
-      latenciesNs,
+      result.latenciesNs,
       options.duration,
-      options.libName
+      options.libName,
+      result.accepted
     )) {
       console.log(line);
     }

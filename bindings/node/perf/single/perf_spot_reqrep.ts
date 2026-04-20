@@ -95,11 +95,21 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     });
     const payload = createPayload(msgSize);
     let seq = 2n;
-    let inflight = 0;
-
-    const onReply = (result, replyParts) => {
+    while (currentEpochNs() < activeStopNs) {
+      stampPayload(payload, {
+        phase: 1,
+        runId,
+        msgSize,
+        seq
+      });
+      const replyParts = await requester.requestToSpot(
+        replierNode.routingId,
+        replier.routingId,
+        Buffer.from(payload),
+        2000
+      );
       try {
-        if (result === zlink.RequestResult.Ok && replyParts.length > 0) {
+        if (replyParts.length > 0) {
           collector.record(
             decodeMetricHeaderFromParts(replyParts),
             currentEpochNs()
@@ -107,44 +117,10 @@ async function runSpotReqRepBenchmark(msgSize, options) {
         }
       } finally {
         closeMessageParts(replyParts);
-        inflight -= 1;
       }
-    };
-
-    while (currentEpochNs() < activeStopNs) {
-      let progressed = false;
-      while (inflight < 1 && currentEpochNs() < activeStopNs) {
-        stampPayload(payload, {
-          phase: 1,
-          runId,
-          msgSize,
-          seq
-        });
-        const issued = requester.tryRequestToSpot(
-          replierNode.routingId,
-          replier.routingId,
-          Buffer.from(payload),
-          onReply,
-          2000
-        );
-        if (!issued) {
-          break;
-        }
-        inflight += 1;
-        seq += 1n;
-        progressed = true;
-      }
-      if (!progressed) {
-        await sleepImmediate();
-      }
+      seq += 1n;
     }
-
-    const drainDeadline = Date.now() + 2000;
-    while (inflight > 0 && Date.now() < drainDeadline) {
-      await sleepImmediate();
-    }
-    const result = await collector.finish();
-    return result.latenciesNs;
+    return collector.finish();
   } finally {
     replier.close();
     replierNode.close();
@@ -158,14 +134,15 @@ module.exports = { runSpotReqRepBenchmark };
 if (require.main === module) {
   (async () => {
     const options = parseSingleBinaryArgs(process.argv.slice(2));
-    const latenciesNs = await runSpotReqRepBenchmark(options.msgSize, options);
+    const result = await runSpotReqRepBenchmark(options.msgSize, options);
     for (const line of summarizeMetrics(
       'SPOT_REQREP',
       options.transport,
       options.msgSize,
-      latenciesNs,
+      result.latenciesNs,
       options.duration,
-      options.libName
+      options.libName,
+      result.accepted
     )) {
       console.log(line);
     }

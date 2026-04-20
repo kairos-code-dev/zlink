@@ -103,8 +103,7 @@ async function runPubSubBenchmark(msgSize, options) {
     }
     stop = true;
     await recvTask;
-    const result = await collector.finish();
-    return result.latenciesNs;
+    return collector.finish();
   } finally {
     sub.close();
     pub.close();
@@ -117,14 +116,15 @@ module.exports = { runPubSubBenchmark };
 if (require.main === module) {
   (async () => {
     const options = parseSingleBinaryArgs(process.argv.slice(2));
-    const latenciesNs = await runPubSubBenchmark(options.msgSize, options);
+    const result = await runPubSubBenchmark(options.msgSize, options);
     for (const line of summarizeMetrics(
       'PUBSUB',
       options.transport,
       options.msgSize,
-      latenciesNs,
+      result.latenciesNs,
       options.duration,
-      options.libName
+      options.libName,
+      result.accepted
     )) {
       console.log(line);
     }

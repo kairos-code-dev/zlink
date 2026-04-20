@@ -63,6 +63,7 @@ libunity.a
 *.gcno
 *.gcda
 *.gcov
+*.hprof
 *.ncb
 *.lo
 *.loT

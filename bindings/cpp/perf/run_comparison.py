@@ -1161,49 +1161,6 @@ def run_sizes_test_stream_shared(
     pattern_name,
     result_line_callback=None,
 ):
-    if len(sizes) > 1:
-        size_transition_ms = max(
-            0, parse_env_int("PERF_STREAM_SIZE_TRANSITION_MS", 3000)
-        )
-        merged = {
-            "status": "success",
-            "parsed": {},
-            "timed_out": False,
-            "returncode": 0,
-            "reason": "",
-            "warnings": [],
-        }
-        failure_reasons = []
-        for size in sizes:
-            outcome = run_sizes_test_stream_shared(
-                server_binary_name,
-                lib_name,
-                transport,
-                [size],
-                pattern_name,
-                result_line_callback=result_line_callback,
-            )
-            merged["parsed"].update(outcome.get("parsed", {}) or {})
-            merged["warnings"].extend(outcome.get("warnings", []) or [])
-            merged["returncode"] = max(
-                int(merged.get("returncode", 0) or 0),
-                int(outcome.get("returncode", 0) or 0),
-            )
-            merged["timed_out"] = bool(merged["timed_out"] or outcome.get("timed_out"))
-
-            status = outcome.get("status", "fail")
-            if status != "success":
-                merged["status"] = "fail"
-                reason = (outcome.get("reason", "") or "").strip() or f"size_{size}_failed"
-                failure_reasons.append(f"{size}:{reason}")
-
-            if size_transition_ms > 0 and size != sizes[-1]:
-                time.sleep(size_transition_ms / 1000.0)
-
-        if failure_reasons:
-            merged["reason"] = ";".join(failure_reasons)
-        return merged
-
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     shared_client_path = os.path.join(BUILD_DIR, STREAM_SHARED_CLIENT_BINARY + EXE_SUFFIX)
     if not os.path.exists(server_binary_path) or not os.path.exists(shared_client_path):

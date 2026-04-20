@@ -63,6 +63,11 @@ bool wait_for_spot_send_progress (bool send_enabled_)
     return perf_idle_wait_ms (send_enabled_ ? 2 : 1) >= 0;
 }
 
+bool wait_for_spot_control_progress ()
+{
+    return perf_idle_wait_ms (1) >= 0;
+}
+
 void debug_log (const std::string &message_)
 {
     if (!perf_debug_enabled ())
@@ -189,10 +194,7 @@ bool wait_for_ready_counts (zlink::service::spot_t &spot_,
           return parse_ready_count_command (
             payload_, ready_size_, increment_);
       },
-      [&]() {
-          std::this_thread::yield ();
-          return true;
-      });
+      []() { return wait_for_spot_control_progress (); });
 }
 
 bool run_phase (zlink::service::spot_t &spot_,

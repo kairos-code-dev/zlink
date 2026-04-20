@@ -23,6 +23,13 @@
 #include <thread>
 #include <vector>
 
+#if defined(_WIN32)
+#include <winsock2.h>
+#else
+#include <climits>
+#include <poll.h>
+#endif
+
 namespace {
 
 static const char *k_pattern = "MULTI_SPOT";
@@ -48,6 +55,31 @@ void debug_log (const std::string &message_)
     if (!perf_debug_enabled ())
         return;
     std::cerr << "spot client: " << message_ << std::endl;
+}
+
+int perf_idle_wait_ms (long timeout_ms_)
+{
+#if defined(_WIN32)
+    const DWORD wait_ms = timeout_ms_ <= 0
+                            ? 0
+                            : static_cast<DWORD> (timeout_ms_);
+    ::Sleep (wait_ms);
+    return 0;
+#else
+    const int wait_ms =
+      timeout_ms_ > static_cast<long> (INT_MAX) ? INT_MAX
+                                                : static_cast<int> (timeout_ms_);
+    int rc = 0;
+    do {
+        rc = ::poll (NULL, 0, wait_ms);
+    } while (rc < 0 && errno == EINTR);
+    return rc < 0 ? -1 : 0;
+#endif
+}
+
+bool wait_for_spot_control_progress ()
+{
+    return perf_idle_wait_ms (1) >= 0;
 }
 
 int resolve_spot_ready_settle_ms ()
@@ -165,10 +197,7 @@ bool publish_control_ready_count (zlink::service::spot_t &control_spot_,
       k_control_topic,
       payload,
       timeout_ms_,
-      []() {
-          std::this_thread::yield ();
-          return true;
-      });
+      []() { return wait_for_spot_control_progress (); });
 }
 
 struct client_slot_t
@@ -377,7 +406,8 @@ class spot_client_bench_t
             const zlink::maybe_t<zlink::topic_message_t> maybe_received =
               perf::multi::try_subscribe_nowait (*_control_spot);
             if (!maybe_received) {
-                std::this_thread::yield ();
+                if (!wait_for_spot_control_progress ())
+                    return false;
                 continue;
             }
 

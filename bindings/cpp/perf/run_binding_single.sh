@@ -443,35 +443,6 @@ if [[ -n "${RESULT_FILE}" && -n "${OUTPUT_FILE}" && "${RESULT_FILE}" == "${OUTPU
   exit 1
 fi
 
-cleanup_old_results_dirs() {
-  local root="${1:-}"
-  local retention="${PERF_RESULTS_RETENTION_DAYS:-90}"
-  if [[ -z "${root}" || ! -d "${root}" ]]; then
-    return
-  fi
-  if [[ -z "${retention}" || ! "${retention}" =~ ^[0-9]+$ || "${retention}" -le 0 ]]; then
-    return
-  fi
-
-  local cutoff
-  cutoff="$(date -u -d "-${retention} days" +%Y%m%d 2>/dev/null || true)"
-  if [[ -z "${cutoff}" ]]; then
-    return
-  fi
-
-  local dir base
-  for dir in "${root}"/*; do
-    [[ -d "${dir}" ]] || continue
-    base="$(basename "${dir}")"
-    if [[ ! "${base}" =~ ^[0-9]{8}$ ]]; then
-      continue
-    fi
-    if [[ "${base}" < "${cutoff}" ]]; then
-      rm -rf "${dir}"
-    fi
-  done
-}
-
 case "${BUILD_MODE}" in
   reuse)
     if [[ ! -d "${BUILD_DIR}" ]]; then
@@ -614,10 +585,6 @@ else
     echo "Python not found. Install Python 3 or ensure it is on PATH." >&2
     exit 1
   fi
-fi
-
-if [[ -n "${RESULTS_DIR}" ]]; then
-  cleanup_old_results_dirs "${RESULTS_DIR}"
 fi
 
 PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"

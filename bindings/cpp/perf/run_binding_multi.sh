@@ -218,7 +218,7 @@ Options:
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
-  --hwm N                Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
+  --hwm N                Override PERF_MULTI_HWM (default: 1000).
   --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
   --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
   --sndbuf SIZE          Override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).

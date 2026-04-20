@@ -35,7 +35,9 @@ type Result struct {
 }
 
 func NewStats() *Stats {
-	return &Stats{}
+	return &Stats{
+		latNs: make([]float64, 0, latencySampleCap()),
+	}
 }
 
 func (s *Stats) Add(sentAt time.Time) {
@@ -285,6 +287,31 @@ func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 	return mon
 }
 
+<<<<<<< HEAD
+=======
+func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
+	type result struct {
+		event *zlink.MonitorEvent
+		err   error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		event, err := mon.Recv()
+		ch <- result{event: event, err: err}
+	}()
+	select {
+	case out := <-ch:
+		if out.err != nil {
+			Must(out.err)
+		}
+		return out.event
+	case <-time.After(5 * time.Second):
+		Must(fmt.Errorf("timed out waiting for monitor event"))
+		return nil
+	}
+}
+
+>>>>>>> worktree-agent-a8d2ff8b
 func PreparePayload(size int) []byte {
 	return make([]byte, size)
 }

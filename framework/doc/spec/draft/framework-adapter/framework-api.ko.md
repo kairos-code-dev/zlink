@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md)
 
-[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md)
+[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md) | [Java](./java/README.ko.md) | [Node.js](./node/README.ko.md) | [Python](./python/README.ko.md) | [C++](./cpp/README.ko.md)
 
 # Draft -- ZLink Framework API
 
@@ -9,9 +9,9 @@
 
 ## 1. 목적
 
-같은 `ZLink Framework`라도 `ASP.NET Core`, `Spring`, `NestJS` 사용자가 기대하는 표면은
-조금씩 다르다. 이 문서는 각 프레임워크에서 "어떤 식으로 보이면 자연스러운가"를
-정리한다.
+같은 `ZLink Framework`라도 `ASP.NET Core`, `Spring Boot`, `NestJS`,
+`FastAPI`, `C++ standalone host/runtime` 사용자가 기대하는 표면은 조금씩
+다르다. 이 문서는 각 환경에서 "어떤 식으로 보이면 자연스러운가"를 정리한다.
 
 핵심 원칙은 단순하다.
 
@@ -77,8 +77,16 @@ channel messaging, `PUB/SUB`, `STREAM` 세 축이다. `SPOT`은
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "profile";
-    options.AddOutboundChannel("account");
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableServer();
+        channel.EnableSubscriber();
+    });
+
+    options.AddChannel("account", channel =>
+    {
+        channel.EnableClient();
+    });
 });
 
 builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
@@ -99,12 +107,12 @@ public sealed class ProfileHandlers
 이 예시에서 중요한 점은 handler가 raw header part를 직접 받지 않는다는 점이다.
 필요한 metadata는 `ZLinkRequestContext` 같은 context에서 조회한다.
 
-또한 outbound 호출은 framework가 startup 시점에 등록한 outbound channel 기준으로
-관리하는 쪽을 기본 방향으로 본다.
+또한 framework는 startup 시점에 channel별 역할을 등록하고, 필요한 capability만
+여는 쪽을 기본 방향으로 본다.
 
 보다 자세한 `.NET` 초안은 [dotnet/README.ko.md](./dotnet/README.ko.md)를 참고한다.
 
-## 4. Spring 방향
+## 4. Spring Boot 방향
 
 ### 4.1 기대하는 표면
 
@@ -156,11 +164,83 @@ export class ProfileController {
 NestJS 예시도 같은 맥락이다. decorator 값은 packet key 또는 event name override
 예시로 보는 편이 맞다.
 
-## 6. 아직 확정하지 않는 것
+## 6. FastAPI 방향
+
+### 6.1 기대하는 표면
+
+FastAPI에서는 dependency 주입과 startup/shutdown hook이 핵심이다.
+그래서 zlink runtime도 application 수명과 함께 올라가고 내려가는 형태가
+자연스럽다.
+
+- `add_zlink_framework(...)`
+- `Depends(...)`로 받는 outbound client
+- startup 시 local channel / outbound channel 등록
+- route handler 안에서 그대로 쓰는 request/send client
+
+### 6.2 예시
+
+```python
+app = FastAPI()
+add_zlink_framework(
+    app,
+    channel_name="profile",
+    outbound_channels=["account"],
+)
+
+
+@app.post("/profiles/get")
+async def get_profile(
+    request: GetProfileHttpRequest,
+    client: ZLinkClient = Depends(get_zlink_client),
+) -> ProfileReply:
+    return await client.request(
+        "account",
+        GetProfileRequest(account_id=request.account_id),
+    )
+```
+
+FastAPI 방향에서는 framework 내부 dispatch loop를 route 함수로 끌어올리지 않고,
+기존 async application 구조 안에 zlink runtime을 붙이는 모양을 기본으로 본다.
+
+## 7. C++ standalone host 방향
+
+### 7.1 기대하는 표면
+
+`C++`는 다른 언어처럼 기존 웹 프레임워크 위 adapter보다, zlink framework가
+host/runtime 역할 일부를 직접 제공하는 쪽이 더 자연스럽다.
+
+- application host builder
+- local channel 등록
+- outbound channel 등록
+- request/send handler registry
+- poll loop와 lifecycle 통합
+- registry/discovery/manual connection 설정
+
+### 7.2 예시
+
+```cpp
+using namespace zlink::framework;
+
+int main() {
+    app_t app = app_t::build();
+    app.set_channel_name("profile")
+       .add_outbound_channel("account")
+       .add_request_handler("GetProfileRequest", profile_handler)
+       .run();
+}
+```
+
+`C++` 방향에서는 DI container보다 host builder와 registration API가 더 중요하다.
+핵심은 raw socket 배선을 application 코드로 퍼뜨리지 않으면서, lifecycle과
+dispatch loop를 framework가 직접 관리하는 것이다.
+
+## 8. 아직 확정하지 않는 것
 
 - 공용 annotation 이름을 프레임워크마다 통일할지
 - NestJS에서 기존 decorator를 그대로 재사용할지, zlink 전용 decorator를 둘지
 - ASP.NET Core에서 endpoint mapping과 attribute model 중 어디를 우선할지
+- FastAPI에서 decorator보다 helper registration을 더 앞세울지
+- `C++` host가 어느 수준까지 scheduler/timer를 기본 제공할지
 - pub/sub을 `PUB/SUB` 중심으로 설명할지, `SPOT`와 묶은 상위 event 모델로 먼저
   설명할지
 - stream을 packet handler와 raw handler 두 축만으로 충분히 설명할 수 있는지

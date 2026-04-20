@@ -116,8 +116,13 @@ bool perform_router_router_handshake (void *receiver_,
             }
         }
 
-        if (!connected)
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        if (!connected) {
+            zlink_pollitem_t item = {receiver_, 0, ZLINK_POLLIN, 0};
+            const long timeout_ms = remaining_timeout_ms (deadline, 1);
+            const int poll_rc = perf_socket_poll (&item, 1, timeout_ms);
+            if (poll_rc < 0 && zlink_errno () != EINTR)
+                return false;
+        }
     }
 
     if (!connected)

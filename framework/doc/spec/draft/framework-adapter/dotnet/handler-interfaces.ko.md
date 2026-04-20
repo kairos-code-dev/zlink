@@ -284,38 +284,39 @@ packet key는 매번 별도 문자열을 받기보다, 기본적으로 payload �
 `Type.Name`으로 해석하는 쪽을 기준으로 본다. 예를 들면
 `GetProfileRequest`는 기본적으로 `GetProfileRequest` packet으로 매핑된다.
 
-이 기본 규칙만으로 충분하지 않은 경우를 위해 `PacketName`, `Timeout` 같은 변형
-값은 별도 `options` 객체로 모은다. 이렇게 하면 `packetName`, `timeout`,
-`CancellationToken` 조합마다 overload를 계속 늘리지 않아도 된다.
+이 기본 규칙만으로 충분하지 않은 경우를 위해, public 표면은 `Request(...)`,
+`Send(...)`가 builder를 돌려주고, `PacketName`, `Timeout` 같은 변형은 builder에
+이어 붙이는 형태를 기준으로 본다. 이렇게 하면 `packetName`, `timeout` 조합마다
+overload를 계속 늘리지 않아도 된다.
 
 ```csharp
-public sealed class ZLinkSendOptions
+public interface IZLinkSendCall
 {
-    public string? PacketName { get; init; }
+    IZLinkSendCall WithPacketName(string packetName);
+
+    void Exec();
 }
 
-public sealed class ZLinkRequestOptions
+public interface IZLinkRequestCall<TReply>
 {
-    public string? PacketName { get; init; }
-    public TimeSpan? Timeout { get; init; }
+    IZLinkRequestCall<TReply> WithPacketName(string packetName);
+
+    IZLinkRequestCall<TReply> WithTimeout(TimeSpan timeout);
+
+    ValueTask<TReply> ExecAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkClient
 {
-    // --- channelName 기준 ---
-    ValueTask SendAsync<TMessage>(
+    IZLinkSendCall Send<TMessage>(
         string channelName,
-        TMessage message,
-        ZLinkSendOptions? options = null,
-        CancellationToken cancellationToken = default);
+        TMessage message);
 
-    ValueTask<TReply> RequestAsync<TReply>(
+    IZLinkRequestCall<TReply> Request<TReply>(
         string channelName,
-        IZLinkRequest<TReply> request,
-        ZLinkRequestOptions? options = null,
-        CancellationToken cancellationToken = default);
+        IZLinkRequest<TReply> request);
 
-    // --- timer ---
     ValueTask<IZLinkTimer> ScheduleOnceAsync(
         TimeSpan dueTime,
         Func<CancellationToken, ValueTask> callback,
@@ -334,12 +335,32 @@ runtime은 등록한 `channelName`마다 별도 outbound channel을 만든다.
 
 packet key 해석 규칙은 아래 순서를 기본으로 본다.
 
-1. `options.PacketName`이 있으면 그것을 사용한다.
+1. builder에서 `WithPacketName(...)`이 지정되면 그것을 사용한다.
 2. 없으면 payload 타입에 선언된 packet metadata를 본다.
 3. 그것도 없으면 `Type.Name`을 packet key로 사용한다.
 
 즉 simple case에서는 타입 이름만으로 충분하고, 모호하거나 충돌하는 경우에만
 explicit `PacketName`을 쓰게 한다.
+
+timeout은 request builder에서만 둔다.
+
+- `Request(...)`는 reply를 기다리므로 `WithTimeout(...)`을 둘 수 있다.
+- `Send(...)`는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
+- `Publish(...)`도 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
+
+즉 public 호출 감각은 아래처럼 보는 편이 맞다.
+
+```csharp
+var reply = await client
+    .Request("profile", new GetProfileRequest { AccountId = accountId })
+    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .ExecAsync(cancellationToken);
+
+client
+    .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
+    .WithPacketName("profile.refresh-cache")
+    .Exec();
+```
 
 ### 5.2 IZLinkSpotClient
 
@@ -355,17 +376,13 @@ spotRid` routed 호출을 기본으로 두지 않는다. 현재 방향은 아래
 ```csharp
 public interface IZLinkSpotClient
 {
-    ValueTask SendChannelAsync<TMessage>(
+    IZLinkSendCall SendChannel<TMessage>(
         string channelName,
-        TMessage message,
-        ZLinkSendOptions? options = null,
-        CancellationToken cancellationToken = default);
+        TMessage message);
 
-    ValueTask<TReply> RequestChannelAsync<TReply>(
+    IZLinkRequestCall<TReply> RequestChannel<TReply>(
         string channelName,
-        IZLinkRequest<TReply> request,
-        ZLinkRequestOptions? options = null,
-        CancellationToken cancellationToken = default);
+        IZLinkRequest<TReply> request);
 
     ValueTask SendToAsync<TMessage>(
         RoutingId targetRid,
@@ -377,13 +394,11 @@ public interface IZLinkSpotClient
         RoutingId targetRid,
         RoutingId spotRid,
         IZLinkRequest<TReply> request,
-        ZLinkRequestOptions? options = null,
         CancellationToken cancellationToken = default);
 
-    ValueTask PublishAsync<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
         string topic,
-        TEvent message,
-        CancellationToken cancellationToken = default);
+        TEvent message);
 
     ValueTask<IZLinkTimer> ScheduleOnceAsync(
         TimeSpan dueTime,
@@ -399,20 +414,20 @@ public interface IZLinkSpotClient
 
 `IZLinkClient`와의 차이점은 아래와 같다.
 
-- `PublishAsync(topic, ...)`가 있다. SPOT 쪽은 현재 channel 안의 topic publish를
+- `Publish(topic, ...)`가 있다. SPOT 쪽은 현재 channel 안의 topic publish를
   함께 쓰는 경우가 많으므로 한 인터페이스에 같이 둔다.
 - 다른 channel send/request는 attach된 channel client를 통해 푼다.
 - `SendToAsync(...)` / `RequestToAsync(...)`는 spot-to-spot routed 호출에만 쓴다.
   일반 channel `ROUTER(server)`를 `rid`로 직접 지정하는 용도는 아니다.
-- channel send/request와 마찬가지로 `PacketName`, `Timeout`은 options로 모아
-  overload를 최소화한다.
+- channel send/request는 일반 `IZLinkClient`와 같은 builder 감각을 따르는 편이
+  자연스럽다.
 - timer callback은 가능하면 같은 spot 실행 문맥에서 실행되는 편이 더
   자연스럽다. 이 부분은 하부 C API 계약(`zlink_spot_timer_new`)을 따른다.
 
 현재 `.NET` 바인딩의 raw `Spot` 표면은 이 두 종류를 더 직접적으로 나눈다.
 
 - channel 이름 기준 호출:
-  `Spot.SendChannel(...)`, `Spot.RequestChannelAsync(...)`
+  `Spot.SendChannel(...)`, `Spot.RequestChannel(...)`
 - SPOT routed 호출:
   `Spot.SendToRouter(...)`, `Spot.RequestToRouterAsync(...)`,
   `Spot.ReplyToSpot(...)`
@@ -429,15 +444,37 @@ public interface IZLinkSpotClient
 SPOT publish와 별도로, channel messaging 쪽에서 쓴다.
 
 ```csharp
+public interface IZLinkPublishCall
+{
+    IZLinkPublishCall WithPacketName(string packetName);
+
+    void Exec();
+}
+
 public interface IZLinkEventPublisher
 {
-    ValueTask PublishAsync<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
-        TEvent message,
-        CancellationToken cancellationToken = default);
+        TEvent message);
 }
 ```
+
+여기서 두 문자열의 역할은 다르다.
+
+- `channelName`
+  - 어느 논리 channel의 `PUB/SUB` mesh에 publish할지 정한다.
+- `topic`
+  - 그 channel 안에서 어떤 subscriber 집합이 이벤트를 받을지 정한다.
+
+즉 `Publish("profile", "profile.cache-refreshed", evt)`는 `profile` channel 안의
+`profile.cache-refreshed` topic으로 fan-out 한다는 뜻이다.
+
+일반 `PUB/SUB` publish도 `Send(...)`와 비슷하게 timeout은 두지 않는다. 대신
+필요하면 packet 이름 override만 둘 수 있다.
+
+여기서 `Exec()`은 remote peer 처리 완료를 기다리는 뜻이 아니다. framework local
+runtime에 send/publish를 맡기는 종결 동작으로 본다.
 
 ## 6. Spot 관리 인터페이스
 
@@ -552,8 +589,8 @@ public interface IZLinkRequest<TReply>
 ```
 
 handler는 메서드 시그니처만으로 request/reply 타입을 읽을 수 있으므로 marker가
-필수는 아니다. 반면 client 호출부에서는 `RequestAsync`의 반환 타입 추론을 위해
-이 marker를 쓰는 편이 맞다.
+필수는 아니다. 반면 client 호출부에서는 `Request(...)`가 어떤 reply 타입을
+돌려줘야 하는지 알기 위해 이 marker를 쓰는 편이 맞다.
 
 기본 packet key는 `Type.Name`을 쓴다. 예: `GetProfileRequest`.
 이 기본 이름이 맞지 않을 때는 payload 타입에 explicit metadata를 둘 수 있다.
@@ -682,10 +719,11 @@ framework가 강제하는 것은 class 구조가 아니라, resolved packet key 
 - framework는 별도 객체 생성기를 두기보다, `ASP.NET Core`가 쓰는
   `IServiceProvider`를 기준으로 handler invocation을 구성한다.
 
-`channelName`은 route prefix가 아니라 애플리케이션이 local provider로서 서빙하는
-channel 이름이다. handler class attribute보다 등록 옵션
-(`options.ChannelName = "api"`)에 두는 편을 현재 방향으로 본다. 다만 outbound-only
-앱이라면 이 값은 생략할 수 있어야 한다.
+local handler가 붙는 channel은 route prefix가 아니라 애플리케이션이 그 channel에서
+server 역할을 한다는 뜻이다. handler class attribute보다 channel registration
+(`options.AddChannel("api", channel => channel.EnableServer())`)에 두는 편을 현재
+방향으로 본다. 다만 outbound-only 앱이라면 server capability가 있는 channel은
+없을 수 있어야 한다.
 
 ## 14. 아직 확정하지 않는 것
 

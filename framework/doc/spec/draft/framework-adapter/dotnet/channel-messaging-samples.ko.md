@@ -25,7 +25,8 @@
 
 ## 2. channel 등록 샘플부터 보면
 
-framework는 두 연결 방식을 모두 지원한다. 다만 같은 outbound channel은
+framework는 channel마다 역할을 선언하고, request client capability에 대해서는
+두 연결 방식을 모두 지원한다. 다만 같은 channel의 request client capability는
 자동 연결과 수동 연결 중 하나만 선택해야 한다.
 
 - `Discovery`를 이용한 자동 연결
@@ -36,11 +37,22 @@ framework는 두 연결 방식을 모두 지원한다. 다만 같은 outbound ch
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddOutboundChannel("profile");
-    options.AddOutboundChannel("account");
+    options.AddChannel("api", channel =>
+    {
+        channel.EnableServer();
+    });
+
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+    });
+
+    options.AddChannel("account", channel =>
+    {
+        channel.EnableClient();
+    });
 
     options.UseDiscovery(registry =>
     {
@@ -50,8 +62,8 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이 경우 runtime은 등록한 outbound `channel name`마다 channel을 만들고, 그 channel이
-`Discovery` channel view를 붙잡아 provider 집합을 관리한다.
+이 경우 runtime은 channel마다 선언한 capability를 만들고, client capability를
+둔 channel은 `Discovery` channel view를 붙잡아 provider 집합을 관리한다.
 local handler를 등록하지 않으면, 이 단계에서는 outbound `DEALER(client)` runtime만
 생긴다. 이 outbound `DEALER(client)`는 framework 관점에서 주로 reply 수신
 경로로 본다.
@@ -61,13 +73,17 @@ local handler를 등록하지 않으면, 이 단계에서는 outbound `DEALER(cl
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-
-    options.ConfigureManualConnections(connections =>
+    options.AddChannel("api", channel =>
     {
-        connections.Add("profile", peers =>
+        channel.EnableServer();
+    });
+
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+        channel.UseManualConnections(peers =>
         {
             peers.Connect(
                 targetRid: RoutingId.Parse("01HZX..."),
@@ -81,25 +97,34 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이 경우 framework가 `Discovery`를 강제하지 않는다. 호출자는 어떤 channel에 어떤
-peer를 붙일지 직접 정하고, channel은 그 목록만 기준으로 연결을 관리한다.
+이 경우 framework가 `Discovery`를 강제하지 않는다. 호출자는 어떤 channel의
+client capability에 어떤 peer를 붙일지 직접 정하고, channel은 그 목록만 기준으로
+연결을 관리한다.
 
 ### 2.3 앱 전체에서는 채널별로 나눠 쓸 수 있다
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
-    options.AddOutboundChannel("profile");
+    options.AddChannel("api", channel =>
+    {
+        channel.EnableServer();
+    });
+
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+    });
 
     options.UseDiscovery(registry =>
     {
         registry.Add("tcp://registry1:5551");
     });
 
-    options.ConfigureManualConnections(connections =>
+    options.AddChannel("account", channel =>
     {
-        connections.Add("account", peers =>
+        channel.EnableClient();
+        channel.UseManualConnections(peers =>
         {
             peers.Connect(
                 targetRid: RoutingId.Parse("01HZY..."),
@@ -127,7 +152,10 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddOutboundChannel("profile");
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+    });
 
     options.UseDiscovery(registry =>
     {
@@ -149,7 +177,10 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddOutboundChannel("profile");
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+    });
 
     options.UseDiscovery(registry =>
     {
@@ -164,10 +195,11 @@ app.MapPost("/profiles/get", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client.RequestAsync(
-        "profile",
-        new GetProfileRequest { AccountId = request.AccountId },
-        cancellationToken);
+    var reply = await client
+        .Request(
+            "profile",
+            new GetProfileRequest { AccountId = request.AccountId })
+        .ExecAsync(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -200,11 +232,23 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddOutboundChannel("profile");
-    options.AddOutboundChannel("account");
+    options.AddChannel("api", channel =>
+    {
+        channel.EnableServer();
+        channel.EnableSubscriber();
+    });
+
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+    });
+
+    options.AddChannel("account", channel =>
+    {
+        channel.EnableClient();
+    });
 
     options.UseDiscovery(registry =>
     {
@@ -222,10 +266,11 @@ app.MapPost("/profiles/get", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client.RequestAsync(
-        "profile",
-        new GetProfileRequest { AccountId = request.AccountId },
-        cancellationToken);
+    var reply = await client
+        .Request(
+            "profile",
+            new GetProfileRequest { AccountId = request.AccountId })
+        .ExecAsync(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -235,10 +280,11 @@ app.MapPost("/profiles/refresh-cache", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    await client.SendAsync(
-        "profile",
-        new RefreshProfileCacheCommand { AccountId = request.AccountId },
-        cancellationToken);
+    client
+        .Send(
+            "profile",
+            new RefreshProfileCacheCommand { AccountId = request.AccountId })
+        .Exec();
 
     return Results.Accepted();
 });
@@ -264,10 +310,11 @@ public sealed class UserHandlers
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        var account = await _client.RequestAsync(
-            "account",
-            new GetAccountRequest { AccountId = request.AccountId },
-            cancellationToken);
+        var account = await _client
+            .Request(
+                "account",
+                new GetAccountRequest { AccountId = request.AccountId })
+            .ExecAsync(cancellationToken);
 
         return new GetUserReply
         {
@@ -282,14 +329,15 @@ public sealed class UserHandlers
         ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
-        await _publisher.PublishAsync(
-            "api",
-            "user.cache-refreshed",
-            new UserCacheRefreshedEvent
-            {
-                AccountId = command.AccountId
-            },
-            cancellationToken);
+        _publisher
+            .Publish(
+                "api",
+                "user.cache-refreshed",
+                new UserCacheRefreshedEvent
+                {
+                    AccountId = command.AccountId
+                })
+            .Exec();
     }
 }
 
@@ -380,10 +428,12 @@ public sealed class UserCacheRefreshedEvent
 
 - `IZLinkClient`는 하나만 주입받는다.
 - 요청 대상은 endpoint가 아니라 `channel name`이다.
-- local handler를 등록한 경우에만 이 앱은 `channelName = "api"` local channel에 속한다.
-- runtime은 `account`, `profile`처럼 등록한 outbound channel마다 별도 channel을 만든다.
-- 각 channel은 그 channel 전용 `Discovery`와 outbound `DEALER(client)` socket을 가진다.
-- 기본 packet key는 payload 타입 이름이고, timeout/packet override는 options에 모은다.
+- local handler를 등록한 경우에만 이 앱은 `api` channel에서 server 역할을 한다.
+- runtime은 channel마다 선언한 capability에 맞는 runtime만 만든다.
+- `account`, `profile`처럼 client capability를 둔 channel은 그 channel 전용
+  `Discovery`와 outbound `DEALER(client)` socket을 가진다.
+- 기본 packet key는 payload 타입 이름이고, timeout/packet override는 builder에
+  이어 붙인다.
 - 같은 `IZLinkClient`를 ZLink handler와 HTTP handler가 함께 쓴다.
 - handler class는 `UserHandlers`, `ItemHandlers`처럼 주제별로 묶어도 된다.
 
@@ -409,39 +459,37 @@ section 9를 참고한다.
 위 인터페이스는 실제 코드에서 아래처럼 호출된다.
 
 ```csharp
-await client.SendAsync(
-    "profile",
-    new RefreshProfileCacheCommand { AccountId = accountId },
-    cancellationToken);
+client
+    .Send(
+        "profile",
+        new RefreshProfileCacheCommand { AccountId = accountId })
+    .Exec();
 ```
 
 ```csharp
-var reply = await client.RequestAsync(
-    "profile",
-    new GetProfileRequest { AccountId = accountId },
-    cancellationToken);
+var reply = await client
+    .Request(
+        "profile",
+        new GetProfileRequest { AccountId = accountId })
+    .ExecAsync(cancellationToken);
 ```
 
 ```csharp
-var fastReply = await client.RequestAsync(
-    "profile",
-    new GetProfileRequest { AccountId = accountId },
-    new ZLinkRequestOptions
-    {
-        Timeout = TimeSpan.FromMilliseconds(200)
-    },
-    cancellationToken);
+var fastReply = await client
+    .Request(
+        "profile",
+        new GetProfileRequest { AccountId = accountId })
+    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .ExecAsync(cancellationToken);
 ```
 
 ```csharp
-await client.SendAsync(
-    "profile",
-    new RefreshProfileCacheCommand { AccountId = accountId },
-    new ZLinkSendOptions
-    {
-        PacketName = "profile.refresh-cache"
-    },
-    cancellationToken);
+client
+    .Send(
+        "profile",
+        new RefreshProfileCacheCommand { AccountId = accountId })
+    .WithPacketName("profile.refresh-cache")
+    .Exec();
 ```
 
 ### 6.1 framework client의 reply 처리 기준
@@ -455,19 +503,25 @@ binding 문서에서 다루고, framework 문서에서는 아래처럼 typed rep
 설명한다.
 
 ```csharp
-GetProfileReply reply = await client.RequestAsync(
-    "profile",
-    new GetProfileRequest { AccountId = accountId },
-    cancellationToken);
+GetProfileReply reply = await client
+    .Request(
+        "profile",
+        new GetProfileRequest { AccountId = accountId })
+    .ExecAsync(cancellationToken);
 ```
 
 ```csharp
-await publisher.PublishAsync(
-    "profile",
-    "profile.cache-refreshed",
-    new ProfileCacheRefreshedEvent { AccountId = accountId },
-    cancellationToken);
+publisher
+    .Publish(
+        "profile",
+        "profile.cache-refreshed",
+        new ProfileCacheRefreshedEvent { AccountId = accountId })
+    .Exec();
 ```
+
+이 예시에서 첫 번째 문자열 `profile`은 publish 대상 `channelName`이고, 두 번째
+문자열 `profile.cache-refreshed`는 그 channel 안의 `topic`이다. 즉 같은
+`profile` channel 안에서도 여러 topic을 fan-out 할 수 있다.
 
 ## 7. handler 시그니처만 따로 보면
 
@@ -547,10 +601,11 @@ app.MapPost("/profiles/get", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client.RequestAsync(
-        "api",
-        new GetUserRequest { AccountId = request.AccountId },
-        cancellationToken);
+    var reply = await client
+        .Request(
+            "api",
+            new GetUserRequest { AccountId = request.AccountId })
+        .ExecAsync(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -566,7 +621,10 @@ app.MapPost("/profiles/get", async (
 - `IZLinkClient` 시그니처가 충분히 단순한가
 - `channel name` 기준 client 표면이 자연스러운가
 - `channelName`을 앱 등록 레벨 개념으로 두는 것이 맞는가
-- `PacketName`, `Timeout`을 options로 모은 구성이 자연스러운가
+- `Request(...).WithTimeout(...).ExecAsync()` 같은 fluent 호출 구성이
+  자연스러운가
+- `Send(...).WithPacketName(...).Exec()`와 `Publish(...).Exec()`
+  모양이 자연스러운가
 - request/send handler 시그니처가 HTTP handler와 비슷하게 느껴지는가
 - 주제별 handler 묶음과 패킷별 단일 class를 둘 다 허용하는 것이 자연스러운가
 - event publish/subscribe를 같은 응용 안에서 같이 쓰는 흐름이 괜찮은가

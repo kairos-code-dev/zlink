@@ -102,15 +102,16 @@ public sealed class ClientPacketHandler
             {
                 ClientInput input = body.Parse<ClientInput>();
 
-                await _client.SendAsync(
-                    "play",
-                    new ForwardInputCommand
-                    {
-                        StageId = header.StageId,
-                        AccountId = header.AccountId,
-                        Input = input
-                    },
-                    cancellationToken);
+                _client
+                    .Send(
+                        "play",
+                        new ForwardInputCommand
+                        {
+                            StageId = header.StageId,
+                            AccountId = header.AccountId,
+                            Input = input
+                        })
+                    .Exec();
 
                 break;
             }
@@ -119,14 +120,15 @@ public sealed class ClientPacketHandler
             {
                 Ping ping = body.Parse<Ping>();
 
-                await _client.SendAsync(
-                    "api",
-                    new ReportPingCommand
-                    {
-                        From = header.From,
-                        Sequence = ping.Sequence
-                    },
-                    cancellationToken);
+                _client
+                    .Send(
+                        "api",
+                        new ReportPingCommand
+                        {
+                            From = header.From,
+                            Sequence = ping.Sequence
+                        })
+                    .Exec();
 
                 break;
             }

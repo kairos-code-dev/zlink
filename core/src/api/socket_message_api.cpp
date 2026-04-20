@@ -28,11 +28,6 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         return zlink::recv_result_internal::from_errno (errno);
     }
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
-      zlink::part_helper_internal::find_or_create_handle_state (s_);
-    if (!helper_state)
-        return zlink::recv_result_internal::from_errno (errno);
-
     auto copy_routing_id_frame_local = [] (const zlink_msg_t &frame_,
                                            zlink_routing_id_t *source_rid_out_) {
         if (!source_rid_out_)
@@ -59,6 +54,11 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         return zlink::recv_result_internal::from_errno (errno);
     }
 
+    std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
+      zlink::part_helper_internal::find_or_create_handle_state (s_);
+    if (!helper_state)
+        return zlink::recv_result_internal::from_errno (errno);
+
     bool first_part = false;
     zlink::socket_base_t *source_socket = NULL;
     if (zlink::part_helper_internal::prepare_recv_step (
@@ -78,6 +78,39 @@ zlink_recv_result_t zlink_recv_part (void *s_,
             != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
             return zlink::recv_result_internal::from_errno (errno);
+        }
+
+        if (!parts || part_count == 0) {
+            zlink::part_helper_internal::abort_recv_step (helper_state);
+            errno = EPROTO;
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+
+        if (part_count == 1) {
+            {
+                std::lock_guard<std::mutex> lock (helper_state->mutex);
+                helper_state->recv.source_node_rid = source_rid;
+                helper_state->recv.return_source_rid_as_null =
+                  helper_state->recv.source_node_rid.size == 0;
+            }
+            if (zlink_msg_move (part_out_, &parts[0]) != 0) {
+                zlink_multipart_close (parts, part_count);
+                zlink::part_helper_internal::abort_recv_step (helper_state);
+                errno = EFAULT;
+                return zlink::recv_result_internal::from_errno (errno);
+            }
+            zlink_multipart_close (parts, part_count);
+            if (source_rid_out_) {
+                std::lock_guard<std::mutex> lock (helper_state->mutex);
+                *source_rid_out_ =
+                  helper_state->recv.return_source_rid_as_null
+                    ? NULL
+                    : &helper_state->recv.source_node_rid;
+            }
+            *has_more_out_ = ZLINK_PART_FINAL;
+            zlink::part_helper_internal::complete_recv_step (helper_state,
+                                                             *has_more_out_);
+            return ZLINK_RECV_OK;
         }
 
         bool move_failed = false;

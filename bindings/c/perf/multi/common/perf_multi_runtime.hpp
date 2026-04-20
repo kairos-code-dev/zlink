@@ -247,21 +247,6 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
     set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
-inline void sync_spot_internal_mesh_pub_hwm(int hwm_value)
-{
-    if (hwm_value <= 0)
-        return;
-    if (std::getenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM") != NULL)
-        return;
-
-    const std::string value = std::to_string(hwm_value);
-#if defined(_WIN32)
-    _putenv_s("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str());
-#else
-    setenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str(), 1);
-#endif
-}
-
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
 {
     if (!name_ || !*name_)

@@ -676,6 +676,24 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         return 0;
 
     if (msg_->is_routing_id ()) {
+        pipe_t *socket_pipe = pipe_;
+        if (socket_pipe && socket_pipe->get_peer ())
+            socket_pipe = socket_pipe->get_peer ();
+
+        const bool needs_route_registration =
+          socket_pipe
+          && (_anonymous_pipes.count (socket_pipe) != 0
+              || lookup_out_pipe (blob_t (
+                   const_cast<unsigned char *> (
+                     static_cast<unsigned char *> (msg_->data ())),
+                   msg_->size (), zlink::reference_tag_t ()))
+                   == NULL);
+        if (needs_route_registration) {
+            blob_t routing_id (static_cast<unsigned char *> (msg_->data ()),
+                               msg_->size ());
+            if (adopt_peer_routing_id (socket_pipe, ZLINK_MOVE (routing_id)))
+                promote_anonymous_pipe_for_dispatch (socket_pipe);
+        }
         store_dispatch_source_rid (&_dispatch_source_rid,
                                    &_dispatch_source_rid_valid, msg_);
         return 1;
@@ -908,12 +926,16 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         }
     }
 
-    const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id);
+    return adopt_peer_routing_id (pipe_, ZLINK_MOVE (routing_id));
+}
+
+bool zlink::router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_)
+{
+    const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id_);
     if (existing_outpipe) {
         if (!_handover)
             return false;
 
-        //  Same duplicate-ID handover path for non-handshake-based identity setup.
         unsigned char buf[5];
         buf[0] = 0;
         put_uint32 (buf + 1, _next_integral_routing_id++);
@@ -931,8 +953,8 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
             old_pipe->terminate (true);
     }
 
-    pipe_->set_router_socket_routing_id (routing_id);
-    add_out_pipe (ZLINK_MOVE (routing_id), pipe_);
+    pipe_->set_router_socket_routing_id (routing_id_);
+    add_out_pipe (ZLINK_MOVE (routing_id_), pipe_);
     if (router_debug_enabled ()) {
         char rid_text[160];
         format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,
@@ -944,6 +966,23 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         send_local_admission_state (pipe_);
 
     return true;
+}
+
+void zlink::router_t::promote_anonymous_pipe_for_dispatch (pipe_t *pipe_)
+{
+    if (!pipe_)
+        return;
+
+    const std::set<pipe_t *>::iterator it = _anonymous_pipes.find (pipe_);
+    if (it == _anonymous_pipes.end ())
+        return;
+
+    _anonymous_pipes.erase (it);
+    _fq.attach (pipe_);
+    if (socket_msg_dispatch_active ()) {
+        (void) pipe_->check_read ();
+        _fq.deactivate (pipe_);
+    }
 }
 
 void zlink::router_t::broadcast_local_admission_state ()

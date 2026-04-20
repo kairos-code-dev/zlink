@@ -164,6 +164,67 @@ inline int recv_one_message (void *socket,
     if (!socket)
         return -1;
 
+#if defined(ZLINK_PERF_STD_COMPAT)
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const zlink_routing_id_t *router_source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_routing_id_t source_rid_storage;
+    std::memset (&source_rid_storage, 0, sizeof (source_rid_storage));
+
+    int rc = -1;
+    if (router_surface) {
+        rc = ::zlink_router_recv (
+          socket, &router_source_rid, &source_spot_rid, &request_seq, &parts,
+          &part_count, static_cast<zlink_recv_flags_t> (flags));
+    } else {
+        rc = ::zlink_recv (
+          socket, &source_rid_storage, &parts, &part_count,
+          static_cast<zlink_recv_flags_t> (flags));
+        router_source_rid =
+          source_rid_storage.size > 0 ? &source_rid_storage : NULL;
+    }
+    if (rc != 0) {
+        if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
+            return 0;
+        return -1;
+    }
+
+    if (!parts || part_count != 1) {
+        zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (router_surface
+        && ((router_source_rid && router_source_rid->size == 0)
+            || (source_spot_rid && source_spot_rid->size != 0)
+            || request_seq != 0)) {
+        zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (!router_surface && router_source_rid) {
+        zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (capture_bytes > 0 && !scratch.empty ()) {
+        const size_t copy_size =
+          std::min (std::min (capture_bytes, scratch.size ()),
+                    zlink_msg_size (&parts[0]));
+        if (copy_size > 0) {
+            std::memcpy (
+              scratch.data (), zlink_msg_data (&parts[0]), copy_size);
+        }
+    }
+
+    zlink_multipart_close (parts, part_count);
+    return 1;
+#else
     const zlink_routing_id_t *source_rid = NULL;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
@@ -222,6 +283,7 @@ inline int recv_one_message (void *socket,
 
     zlink_msg_close (&part);
     return 1;
+#endif
 }
 
 inline int recv_one_message (void *socket,
@@ -259,32 +321,6 @@ inline bool wait_all_client_connect_ready (std::vector<ready_monitor_t> &monitor
     }
 
     return true;
-}
-
-inline int routed_connect_settle_ms (const std::string &transport)
-{
-    const int configured =
-      parse_positive_env ("PERF_MULTI_ROUTED_CONNECT_SETTLE_MS", -1);
-    if (configured >= 0)
-        return configured;
-
-    if (transport == "tcp" || transport == "tls" || transport == "ws"
-        || transport == "wss")
-        return 1500;
-
-    if (transport == "ipc" || transport == "inproc")
-        return 300;
-
-    return 0;
-}
-
-inline void settle_routed_connect_if_needed (const std::string &transport)
-{
-    const int settle_ms = routed_connect_settle_ms (transport);
-    if (settle_ms <= 0)
-        return;
-
-    std::this_thread::sleep_for (std::chrono::milliseconds (settle_ms));
 }
 
 inline void close_client_sockets (std::vector<void *> *sockets)
@@ -567,6 +603,78 @@ inline int recv_one_message_header (void *socket,
     if (!socket)
         return -1;
 
+#if defined(ZLINK_PERF_STD_COMPAT)
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const zlink_routing_id_t *router_source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_routing_id_t source_rid_storage;
+    std::memset (&source_rid_storage, 0, sizeof (source_rid_storage));
+
+    int rc = -1;
+    if (router_surface) {
+        rc = ::zlink_router_recv (
+          socket, &router_source_rid, &source_spot_rid, &request_seq, &parts,
+          &part_count, static_cast<zlink_recv_flags_t> (flags));
+    } else {
+        rc = ::zlink_recv (
+          socket, &source_rid_storage, &parts, &part_count,
+          static_cast<zlink_recv_flags_t> (flags));
+        router_source_rid =
+          source_rid_storage.size > 0 ? &source_rid_storage : NULL;
+    }
+    if (rc != 0) {
+        if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
+            return 0;
+        return -1;
+    }
+
+    if (!parts || part_count != 1) {
+        zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (router_surface
+        && ((source_spot_rid && source_spot_rid->size != 0)
+            || request_seq != 0)) {
+        zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (!router_surface && router_source_rid) {
+        zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return -1;
+    }
+
+    bool decoded = false;
+    if (header_out) {
+        decoded = perf_multi_metric::decode_payload_header (
+          zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), header_out);
+        if (!decoded && capture_bytes > 0 && !scratch.empty ()) {
+            const size_t write_size =
+              std::min (std::min (capture_bytes, scratch.size ()),
+                        zlink_msg_size (&parts[0]));
+            if (write_size > 0) {
+                std::memcpy (
+                  scratch.data (), zlink_msg_data (&parts[0]), write_size);
+            }
+            if (write_size >= perf_multi_metric::header_size ()) {
+                decoded = decode_metric_header_from_capture (
+                  scratch.data (), write_size, header_out);
+            }
+        }
+    }
+
+    if (decoded_out)
+        *decoded_out = decoded;
+
+    zlink_multipart_close (parts, part_count);
+    return 1;
+#else
     const zlink_routing_id_t *source_rid = NULL;
     const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
@@ -635,6 +743,7 @@ inline int recv_one_message_header (void *socket,
 
     zlink_msg_close (&part);
     return 1;
+#endif
 }
 
 inline bool drain_socket_non_blocking (

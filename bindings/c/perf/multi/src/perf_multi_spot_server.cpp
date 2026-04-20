@@ -372,32 +372,6 @@ bool run_server_loop(spot_server_state_t *state,
             }
             return false;
         }
-        if (!wait_for_ready_slots(state, msg_sizes[i], start_timeout_ms)) {
-            if (bench_transition_debug_enabled()) {
-                std::cerr << "[multi-spot-server] ready wait timeout ts_ns="
-                          << perf_multi_metric::now_ns()
-                          << " size=" << msg_sizes[i] << std::endl;
-            }
-            return false;
-        }
-        if (bench_transition_debug_enabled()) {
-            std::cerr << "[multi-spot-server] ready wait done ts_ns="
-                      << perf_multi_metric::now_ns()
-                      << " size=" << msg_sizes[i] << std::endl;
-        }
-        if (!publish_control_start(state, msg_sizes[i])) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-server] start publish failed size="
-                          << msg_sizes[i] << " err=" << zlink_errno()
-                          << std::endl;
-            }
-            return false;
-        }
-        if (bench_transition_debug_enabled()) {
-            std::cerr << "[multi-spot-server] start publish done ts_ns="
-                      << perf_multi_metric::now_ns()
-                      << " size=" << msg_sizes[i] << std::endl;
-        }
         if (!run_phase(state,
                        lib_name,
                        transport,
@@ -439,8 +413,6 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    sync_spot_internal_mesh_pub_hwm(
-      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;

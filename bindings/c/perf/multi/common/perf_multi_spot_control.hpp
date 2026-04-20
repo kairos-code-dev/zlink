@@ -482,17 +482,46 @@ inline bool publish_control_payload(void *control_pub,
         return false;
     }
 
-    zlink_msg_t part;
-    if (zlink_msg_init_size(&part, payload.size()) != 0)
-        return false;
-    std::memcpy(zlink_msg_data(&part), payload.data(), payload.size());
-    const int rc = zlink_publish(
-      control_pub, topic, &part, 1, static_cast<zlink_send_flags_t>(0));
-    const int saved_errno = rc == 0 ? 0 : errno;
-    (void) zlink_msg_close(&part);
-    if (rc == 0)
-        return true;
-    errno = saved_errno;
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(
+          1,
+          resolve_multi_int_env("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000, 0)));
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        zlink_msg_t part;
+        if (zlink_msg_init_size(&part, payload.size()) != 0)
+            return false;
+        std::memcpy(zlink_msg_data(&part), payload.data(), payload.size());
+
+        const int rc = zlink_spot_publish(
+          control_pub,
+          NULL,
+          topic,
+          &part,
+          1,
+          static_cast<zlink_send_flags_t>(0));
+        const int saved_errno = rc == 0 ? 0 : errno;
+        (void) zlink_msg_close(&part);
+        if (rc == 0)
+            return true;
+
+        if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK
+            && saved_errno != ETIMEDOUT) {
+            errno = saved_errno;
+            return false;
+        }
+
+        const long wait_ms = std::min<long>(remaining_wait_ms(deadline), 10);
+        if (wait_ms <= 0)
+            break;
+        if (perf_socket_poll(NULL, 0, wait_ms) < 0 && zlink_errno() != EINTR) {
+            errno = zlink_errno() != 0 ? zlink_errno() : errno;
+            return false;
+        }
+    }
+
+    errno = ETIMEDOUT;
     return false;
 }
 
@@ -528,13 +557,17 @@ inline bool receive_control_payload(void *control_sub,
     size_t part_count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
+    size_t service_name_len = 0;
     const int rc =
-      zlink_subscribe(control_sub,
-                      &parts,
-                      &part_count,
-                      ZLINK_DONTWAIT,
-                      topic,
-                      &topic_len);
+      zlink_spot_subscribe(control_sub,
+                           NULL,
+                           &parts,
+                           &part_count,
+                           NULL,
+                           &service_name_len,
+                           topic,
+                           &topic_len,
+                           static_cast<zlink_recv_flags_t>(ZLINK_DONTWAIT));
     if (rc != 0) {
         const int err = zlink_errno() != 0 ? zlink_errno() : errno;
         if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK

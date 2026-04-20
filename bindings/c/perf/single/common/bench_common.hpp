@@ -104,54 +104,10 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
 
     if (nitems_ == 0 || !items_)
         return perf_idle_wait_ms(timeout_);
-
-    const auto start = std::chrono::steady_clock::now();
-    while (true) {
-        int ready = 0;
-        for (int i = 0; i < nitems_; ++i) {
-            items_[i].revents = 0;
-            if (!items_[i].socket) {
-                if (items_[i].fd != 0) {
-                    errno = EINVAL;
-                    return -1;
-                }
-                continue;
-            }
-
-            int events = 0;
-            size_t events_len = sizeof(events);
-            if (zlink_get_option(items_[i].socket, ZLINK_OPT_EVENTS, &events,
-                                 &events_len)
-                != 0) {
-                return -1;
-            }
-
-            if ((items_[i].events & ZLINK_POLLIN) != 0
-                && (events & ZLINK_POLLIN) != 0)
-                items_[i].revents |= ZLINK_POLLIN;
-            if ((items_[i].events & ZLINK_POLLOUT) != 0
-                && (events & ZLINK_POLLOUT) != 0)
-                items_[i].revents |= ZLINK_POLLOUT;
-
-            if (items_[i].revents != 0)
-                ++ready;
-        }
-
-        if (ready > 0 || timeout_ == 0)
-            return ready;
-
-        if (timeout_ > 0) {
-            const long elapsed_ms = static_cast<long>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - start)
-                .count());
-            if (elapsed_ms >= timeout_)
-                return 0;
-        }
-
-        if (perf_idle_wait_ms(1) != 0)
-            return -1;
-    }
+    const int rc = ::zlink_poll(items_, nitems_, timeout_, NULL);
+    if (rc < 0 && zlink_errno() == EAGAIN)
+        return 0;
+    return rc;
 }
 
 inline long perf_aux_poll_wait_ms()

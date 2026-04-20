@@ -963,17 +963,6 @@ bool create_control_spot(ctx_guard_t &ctx,
         }
         return false;
     }
-    if (zlink_publish(
-          state->control_pub, k_topic, NULL, 0,
-          static_cast<zlink_send_flags_t>(0))
-        != ZLINK_SUBMIT_OK) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] control primer publish failed err="
-                      << zlink_errno() << std::endl;
-        }
-        return false;
-    }
-
     state->control_connected.store(true, std::memory_order_release);
 
     std::cout << k_control_ready_prefix << state->control_endpoint << std::endl;
@@ -1147,20 +1136,15 @@ bool wait_msg_size_start(spot_client_state_t *state,
                          size_t msg_size,
                          int timeout_ms)
 {
-    const size_t ready_count = state ? state->slots.size() : 0;
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1, timeout_ms));
-    auto next_ready_republish_at = std::chrono::steady_clock::now()
-                                   + std::chrono::milliseconds(50);
 
     while (std::chrono::steady_clock::now() < deadline) {
-        const auto cycle_deadline =
-          std::min(deadline, next_ready_republish_at);
         if (perf_multi_handshake::wait_for_start(
               &state->start_gate,
               msg_size,
-              static_cast<int>(remaining_wait_ms(cycle_deadline)))) {
+              static_cast<int>(remaining_wait_ms(deadline)))) {
             const uint64_t start_recv_ns =
               bench_transition_debug_enabled() ? perf_multi_metric::now_ns() : 0;
             {
@@ -1185,13 +1169,6 @@ bool wait_msg_size_start(spot_client_state_t *state,
             return true;
         }
 
-        if (ready_count > 0
-            && std::chrono::steady_clock::now() >= next_ready_republish_at) {
-            (void) publish_control_ready_count(state, msg_size, ready_count);
-            next_ready_republish_at =
-              std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
-        }
-
         bool received = false;
         if (!recv_one_control_message(state, &received))
             return false;
@@ -1201,7 +1178,7 @@ bool wait_msg_size_start(spot_client_state_t *state,
             return true;
         }
 
-        if (!wait_for_control_activity(state, cycle_deadline))
+        if (!wait_for_control_activity(state, deadline))
             return false;
     }
 
@@ -1367,27 +1344,6 @@ bool run_single_size_case(spot_client_state_t *state,
         }
         return false;
     }
-    const int control_settle_ms = resolve_spot_control_settle_ms();
-    if (control_settle_ms > 0
-        && !idle_until(std::chrono::steady_clock::now()
-                       + std::chrono::milliseconds(control_settle_ms))) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] control settle failed"
-                      << " size=" << msg_size
-                      << " settle_ms=" << control_settle_ms
-                      << " err=" << zlink_errno() << std::endl;
-        }
-        return false;
-    }
-    if (!publish_control_ready_count(state, msg_size, state->slots.size())) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] control ready count publish failed"
-                      << " size=" << msg_size
-                      << " count=" << state->slots.size()
-                      << " err=" << zlink_errno() << std::endl;
-        }
-        return false;
-    }
 
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-client] size wait start ts_ns="
@@ -1508,8 +1464,6 @@ int run_client_benchmark(const std::string &lib_name,
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    sync_spot_internal_mesh_pub_hwm(
-      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes(fallback_size);
     ctx_guard_t ctx;
     if (!ctx.valid())
@@ -1524,6 +1478,12 @@ int run_client_benchmark(const std::string &lib_name,
                       << std::endl;
         fast_exit_process(1);
     }
+    perf_multi_spot_control::start_client_stdin_watcher(
+      &state,
+      [](spot_client_state_t *client_state, size_t start_size) {
+          perf_multi_handshake::signal_start(
+            &client_state->start_gate, start_size);
+      });
     if (!create_spot_slots(ctx, transport, endpoint, settings, &state,
                            &state.slots)) {
         if (bench_debug_enabled()) {
@@ -1533,16 +1493,6 @@ int run_client_benchmark(const std::string &lib_name,
         }
         fast_exit_process(1);
     }
-    // Keep control stdin handling dormant until the recv-side setup is ready.
-    // The runner can forward CONTROL_CONNECTED as soon as the client publishes
-    // its endpoint, and deferring the watcher avoids setup-time races without
-    // changing the recv-only benchmark contract.
-    perf_multi_spot_control::start_client_stdin_watcher(
-      &state,
-      [](spot_client_state_t *client_state, size_t start_size) {
-          perf_multi_handshake::signal_start(
-            &client_state->start_gate, start_size);
-      });
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state,

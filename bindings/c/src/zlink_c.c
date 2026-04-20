@@ -1,10 +1,21 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink_c.h>
+#include "../../core/src/api/service_api_c_internal.h"
 
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if !defined(ZLINK_C_THREAD_LOCAL)
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define ZLINK_C_THREAD_LOCAL _Thread_local
+#elif defined(_MSC_VER)
+#define ZLINK_C_THREAD_LOCAL __declspec(thread)
+#else
+#define ZLINK_C_THREAD_LOCAL __thread
+#endif
+#endif
 
 static void zlink_c_close_parts (zlink_msg_t *parts_, size_t part_count_)
 {
@@ -64,6 +75,75 @@ static zlink_recv_result_t zlink_c_validate_recv_parts (zlink_msg_t **parts_out_
     *parts_out_ = NULL;
     *part_count_out_ = 0;
     return ZLINK_RECV_OK;
+}
+
+static zlink_submit_result_t zlink_c_submit_result_from_rc (int rc_)
+{
+    const int saved_errno = errno;
+
+    if (rc_ == 0)
+        return ZLINK_SUBMIT_OK;
+
+    switch (saved_errno != 0 ? saved_errno : EIO) {
+    case EAGAIN:
+        return ZLINK_SUBMIT_BACKPRESSURED;
+    case ENOTCONN:
+    case EHOSTUNREACH:
+        return ZLINK_SUBMIT_NOT_CONNECTED;
+    case ECONNREFUSED:
+        return ZLINK_SUBMIT_NOT_ADMITTED;
+    case ENOENT:
+        return ZLINK_SUBMIT_NOT_FOUND;
+    case ETERM:
+    case ESHUTDOWN:
+        return ZLINK_SUBMIT_TERMINATED;
+    case EFAULT:
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    case EINVAL:
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    case ENOTSUP:
+#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
+    case EOPNOTSUPP:
+#endif
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+    case EFSM:
+    case EBUSY:
+        return ZLINK_SUBMIT_INVALID_STATE;
+    case EMTHREAD:
+        return ZLINK_SUBMIT_THREAD_VIOLATION;
+    case ENOMEM:
+    case ENOBUFS:
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    default:
+        return ZLINK_SUBMIT_INTERNAL_ERROR;
+    }
+}
+
+static zlink_recv_result_t zlink_c_recv_result_from_rc (int rc_)
+{
+    const int saved_errno = errno;
+
+    if (rc_ == 0)
+        return ZLINK_RECV_OK;
+
+    switch (saved_errno != 0 ? saved_errno : EIO) {
+    case EAGAIN:
+        return ZLINK_RECV_NO_DATA;
+    case EBUSY:
+        return ZLINK_RECV_BUSY;
+    case ETERM:
+    case ESHUTDOWN:
+        return ZLINK_RECV_TERMINATED;
+    case EFAULT:
+        return ZLINK_RECV_INVALID_HANDLE;
+    case ENOTSUP:
+#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
+    case EOPNOTSUPP:
+#endif
+        return ZLINK_RECV_NOT_SUPPORTED;
+    default:
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
 }
 
 typedef zlink_recv_result_t (*zlink_c_recv_more_fn) (void *socket_,
@@ -258,6 +338,22 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_publish (void *subject_,
                                                     size_t part_count_,
                                                     zlink_send_flags_t flags_)
 {
+    zlink_submit_result_t validate_rc_ =
+      zlink_c_validate_send_parts (parts_, part_count_);
+    if (validate_rc_ != ZLINK_SUBMIT_OK)
+        return validate_rc_;
+
+    {
+        const int service_rc = zlink_service_publish_internal (
+          subject_, topic_id_, parts_, part_count_, flags_);
+        const int saved_errno = errno;
+        if (service_rc == 0 || saved_errno != EFAULT) {
+            zlink_c_close_parts (parts_, part_count_);
+            errno = saved_errno;
+            return zlink_c_submit_result_from_rc (service_rc);
+        }
+    }
+
     ZLINK_C_SEND_LOOP (
       zlink_publish_part (subject_, topic_id_, &parts_[i], flags_, part_flag_));
 }
@@ -380,6 +476,7 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_subscribe (
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
+    zlink_routing_id_t service_source_rid_;
     const zlink_routing_id_t *source_rid_ptr_ = NULL;
     size_t topic_id_capacity_ = 0;
     zlink_msg_t first_;
@@ -396,6 +493,22 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_subscribe (
 
     topic_id_capacity_ = *topic_id_len_out_;
     zlink_c_copy_routing_id (source_rid_out_, NULL);
+    rc_ = zlink_c_recv_result_from_rc (
+      zlink_service_subscribe_recv_internal (
+        subject_,
+        &service_source_rid_,
+        parts_out_,
+        part_count_out_,
+        topic_id_out_,
+        topic_id_len_out_,
+        flags_));
+    if (rc_ == ZLINK_RECV_OK) {
+        zlink_c_copy_routing_id (source_rid_out_, &service_source_rid_);
+        return ZLINK_RECV_OK;
+    }
+    if (rc_ != ZLINK_RECV_INVALID_HANDLE)
+        return rc_;
+
     rc_ = zlink_subscribe_part (subject_, &source_rid_ptr_, topic_id_out_,
                                 topic_id_capacity_, topic_id_len_out_, &first_,
                                 &has_more_, flags_);
@@ -417,8 +530,8 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_router_recv (
   size_t *part_count_out_,
   zlink_recv_flags_t flags_)
 {
-    static thread_local zlink_routing_id_t source_node_rid_copy_;
-    static thread_local zlink_routing_id_t source_spot_rid_copy_;
+    static ZLINK_C_THREAD_LOCAL zlink_routing_id_t source_node_rid_copy_;
+    static ZLINK_C_THREAD_LOCAL zlink_routing_id_t source_spot_rid_copy_;
     const zlink_routing_id_t *source_node_rid_local_ = NULL;
     const zlink_routing_id_t *source_spot_rid_local_ = NULL;
     const zlink_routing_id_t **source_node_rid_ptr_ =

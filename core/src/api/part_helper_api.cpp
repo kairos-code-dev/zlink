@@ -390,7 +390,14 @@ void zlink::part_helper_internal::complete_recv_step (
         return;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    reset_recv_sequence (&state_->recv);
+    for (size_t i = 0; i < state_->recv.buffered_parts.size (); ++i)
+        zlink_msg_close (&state_->recv.buffered_parts[i]);
+    state_->recv.buffered_parts.clear ();
+    state_->recv.next_part_index = 0;
+    state_->recv.active = false;
+    state_->recv.family = recv_family_none;
+    state_->recv.source_socket = NULL;
+    state_->recv.owner_thread = std::thread::id ();
 }
 
 void zlink::part_helper_internal::abort_send_step (

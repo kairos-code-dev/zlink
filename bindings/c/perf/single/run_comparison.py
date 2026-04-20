@@ -289,7 +289,11 @@ def enforce_file_retention(
 
 def resolve_linux_paths() -> Tuple[str, str]:
     build_root = os.path.join(ROOT_DIR, "core", "build")
-    build_dir = os.path.join(build_root, "bin")
+    bindings_perf_dir = os.path.join(build_root, "bindings", "c", "perf")
+    if os.path.isdir(bindings_perf_dir):
+        build_dir = bindings_perf_dir
+    else:
+        build_dir = os.path.join(build_root, "bin")
     if IS_WINDOWS:
         release_dir = os.path.join(build_dir, "Release")
         if os.path.isdir(release_dir):
@@ -312,6 +316,10 @@ def normalize_build_dir(path: str) -> str:
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
         return abs_path
+
+    nested_bindings_perf = os.path.join(abs_path, "bindings", "c", "perf")
+    if os.path.isdir(nested_bindings_perf):
+        return nested_bindings_perf
 
     base = os.path.basename(abs_path)
     if base in BUILD_CONFIG_DIRS:

@@ -90,7 +90,6 @@ inline int run_client_benchmark (const std::string &lib_name,
             return 1;
         }
         close_client_monitors (&monitors);
-        perf_multi_client::settle_routed_connect_if_needed (transport);
 
         double throughput = 0.0;
         bench_latency_stats_t latency;

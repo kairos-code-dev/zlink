@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md)
 
-[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md)
+[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md) | [Java](./java/README.ko.md) | [Node.js](./node/README.ko.md) | [Python](./python/README.ko.md) | [C++](./cpp/README.ko.md)
 
 # Draft -- ZLink Framework Interaction Model
 
@@ -70,7 +70,7 @@
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
-  `SendChannelAsync(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
+  `SendChannel(...).Exec()` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 
 ### 3.3 publish-subscribe
 

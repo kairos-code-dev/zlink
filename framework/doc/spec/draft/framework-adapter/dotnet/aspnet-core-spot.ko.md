@@ -185,13 +185,14 @@ topology 초안과 더 잘 맞는다.
 ```csharp
 var stage = await spotManager.CreateAsync(cancellationToken);
 
-await spotClient.PublishAsync(
-    "stage.state.updated",
-    new StageStateUpdatedEvent
-    {
-        StageRid = stage.SpotRid.ToString()
-    },
-    cancellationToken);
+spotClient
+    .Publish(
+        "stage.state.updated",
+        new StageStateUpdatedEvent
+        {
+            StageRid = stage.SpotRid.ToString()
+        })
+    .Exec();
 ```
 
 처럼 사용하면 된다. 생성된 `Spot` 인스턴스를 응용이 직접 오래 관리하는 모델은
@@ -209,20 +210,20 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 - attach된 다른 channel client를 통한 channel send/request
 
 즉 high-level `SPOT` 표면은 `targetRid + spotRid` routed 호출보다,
-`SendChannelAsync(...)` / `RequestChannelAsync(...)` 같은 channel 호출이 먼저
+`SendChannel(...)` / `RequestChannel(...)` 같은 channel 호출이 먼저
 보이는 편이 더 맞다. `SpotNode.router`는 peer topology를 위해 남지만, 그 경로를
 공개 high-level API의 기본 표면으로 두는 것은 현재 방향으로 보지 않는다.
 
 `IZLinkSpotClient` 인터페이스 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.2를
-참고한다. 현재 방향에서는 `SendChannelAsync(...)`,
-`RequestChannelAsync(...)`, `PublishAsync(...)`, spot 문맥 timer를 함께 제공하는
+참고한다. 현재 방향에서는 `SendChannel(...)`,
+`RequestChannel(...)`, `Publish(...)`, spot 문맥 timer를 함께 제공하는
 쪽이 더 자연스럽다.
 
 현재 `.NET` 바인딩의 raw `Spot` 표면도 이 구분을 그대로 가진다.
 
 - channel 이름 기준 호출:
-  `Spot.SendChannel(...)`, `Spot.RequestChannelAsync(...)`
+  `Spot.SendChannel(...)`, `Spot.RequestChannel(...)`
 - SPOT routed 호출:
   `Spot.SendToRouter(...)`, `Spot.RequestToRouterAsync(...)`,
   `Spot.ReplyToSpot(...)`
@@ -233,19 +234,18 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 예를 들면 아래처럼 쓸 수 있다.
 
 ```csharp
-await client.SendChannelAsync(
-    "orders",
-    new RoomNoticeMessage(),
-    cancellationToken);
+client
+    .SendChannel(
+        "orders",
+        new RoomNoticeMessage())
+    .Exec();
 
-var reply = await client.RequestChannelAsync(
-    "orders",
-    new GetStageStateRequest(),
-    new ZLinkRequestOptions
-    {
-        Timeout = TimeSpan.FromMilliseconds(200)
-    },
-    cancellationToken);
+var reply = await client
+    .RequestChannel(
+        "orders",
+        new GetStageStateRequest())
+    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .ExecAsync(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer도 같이 필요하다.
@@ -278,6 +278,24 @@ SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임�
 
 - 같은 channel 안의 publish/subscribe
 - attach된 다른 channel client를 통한 send/request
+
+이때 channel send/request와 topic publish는 일반 channel messaging과 비슷한
+builder 감각으로 읽히는 편이 자연스럽다.
+
+```csharp
+var reply = await spotClient
+    .RequestChannel(
+        "orders",
+        new GetStageStateRequest())
+    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .ExecAsync(cancellationToken);
+
+spotClient
+    .Publish(
+        "stage.state.updated",
+        new StageStateUpdatedEvent())
+    .Exec();
+```
 
 `Stage wrapper` 같은 상위 계층이 별도 directory나 lookup을 얹는 것은 가능하지만,
 그것을 framework 기본 표면으로 고정하는 것은 현재 방향으로 보지 않는다.
@@ -414,7 +432,7 @@ attach된 SPOT channel `Discovery`가 active channel view를 공급하고, 그 v
 
 - `SpotNode`를 하나만 둘지 여러 개 둘지
 - `IZLinkSpotClient`에서 publish를 분리할지, 그대로 둘지
-- `SendChannelAsync(...)` / `RequestChannelAsync(...)` 이름을 그대로 둘지
+- `SendChannel(...)` / `RequestChannel(...)` 이름을 그대로 둘지
 - attach된 channel client 설정을 어떻게 노출할지
 - `IZLinkSpotManager`가 `Created` 외에 어떤 생성 메타데이터를 더 돌려줄지
 - `spotRid` 타입을 `RoutingId` 그대로 쓸지, 별도 wrapper로 올릴지

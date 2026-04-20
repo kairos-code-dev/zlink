@@ -41,12 +41,6 @@ inline std::string format_rid_debug (const zlink_routing_id_t *rid)
     return os.str ();
 }
 
-inline bool is_transient_reply_err (int err)
-{
-    return err == EAGAIN || err == EINTR || err == EHOSTUNREACH
-           || err == ENOTCONN;
-}
-
 struct relay_server_config_t
 {
     relay_server_config_t () :
@@ -64,34 +58,6 @@ struct relay_server_config_t
     bool has_server_routing_id;
     const char *server_routing_id;
 };
-
-inline bool clone_multipart (zlink_msg_t *parts,
-                             size_t part_count,
-                             std::vector<zlink_msg_t> *out)
-{
-    if (!out)
-        return false;
-
-    out->clear ();
-    if (!parts || part_count == 0)
-        return true;
-
-    out->resize (part_count);
-    for (size_t i = 0; i < part_count; ++i)
-        zlink_msg_init (&(*out)[i]);
-
-    for (size_t i = 0; i < part_count; ++i) {
-        if (zlink_msg_copy (&(*out)[i], &parts[i]) == 0)
-            continue;
-
-        for (size_t j = 0; j < part_count; ++j)
-            zlink_msg_close (&(*out)[j]);
-        out->clear ();
-        return false;
-    }
-
-    return true;
-}
 
 inline bool relay_router_once (void *server)
 {
@@ -131,39 +97,18 @@ inline bool relay_router_once (void *server)
                   << std::endl;
     }
 
-    std::vector<zlink_msg_t> reply_parts;
-    if (!clone_multipart (parts, part_count, &reply_parts)) {
-        zlink_multipart_close (parts, part_count);
+    const zlink_submit_result_t send_rc =
+      ::zlink_send_rid (
+        server, source_rid, parts, part_count,
+        static_cast<zlink_send_flags_t> (0));
+    if (send_rc != ZLINK_SUBMIT_OK) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[perf-multi-relay] reply send failed err="
+                      << zlink_errno () << std::endl;
+        }
         return false;
     }
-    zlink_multipart_close (parts, part_count);
-
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (100);
-    for (;;) {
-        const zlink_submit_result_t send_rc =
-          ::zlink_send_rid (
-            server,
-            source_rid,
-            reply_parts.data (),
-            reply_parts.size (),
-            static_cast<zlink_send_flags_t> (0));
-        if (send_rc == ZLINK_SUBMIT_OK)
-            return true;
-
-        const int err = zlink_errno ();
-        if (!is_transient_reply_err (err)
-            || std::chrono::steady_clock::now () >= deadline) {
-            if (bench_debug_enabled ()) {
-                std::cerr << "[perf-multi-relay] reply send failed err=" << err
-                          << std::endl;
-            }
-            for (size_t i = 0; i < reply_parts.size (); ++i)
-                zlink_msg_close (&reply_parts[i]);
-            return false;
-        }
-        (void) perf_socket_poll (NULL, 0, 1);
-    }
+    return true;
 }
 
 inline void print_server_metrics (

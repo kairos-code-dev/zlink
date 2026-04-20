@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <deque>
+#include <iomanip>
 #include <mutex>
 
 namespace perf_multi_stream {
@@ -140,6 +141,10 @@ inline send_result_t try_send(queued_message_t &queued, void *send_socket)
     const int err = zlink_errno();
     if (err == EAGAIN)
         return send_result_pending;
+    if (bench_debug_enabled()) {
+        std::cerr << "[multi-stream-server] send failed err=" << err
+                  << std::endl;
+    }
     return send_result_failed;
 }
 
@@ -212,6 +217,17 @@ inline send_result_t try_send_packet_now(void *stream_socket,
     const int err = zlink_errno();
     if (err == EAGAIN)
         return send_result_pending;
+    if (bench_debug_enabled()) {
+        std::cerr << "[multi-stream-server] try_send_packet_now failed err="
+                  << err << " rid_size=" << static_cast<unsigned>(rid->size)
+                  << " packet_size=" << zlink_msg_size(packet)
+                  << " rid_hex=";
+        for (unsigned int i = 0; i < static_cast<unsigned int>(rid->size); ++i) {
+            std::cerr << std::hex << std::setw(2) << std::setfill('0')
+                      << static_cast<unsigned>(rid->data[i]);
+        }
+        std::cerr << std::dec << std::setfill(' ') << std::endl;
+    }
     return send_result_failed;
 }
 
@@ -245,6 +261,10 @@ inline bool handle_packet_message(session_t *session,
         return true;
     }
     if (send_rc != send_result_pending) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-stream-server] immediate send failed err="
+                      << zlink_errno () << std::endl;
+        }
         (void) zlink_msg_close(&packet);
         return false;
     }
@@ -343,14 +363,18 @@ inline int run_server_event_loop(session_t *session,
         if (pending_size(session) > 0)
             drain_pending(session);
 
-        if (pending_size(session) == 0) {
-            const int idle_rc =
-              perf_socket_poll(NULL, 0, perf_aux_poll_wait_ms());
-            if (idle_rc < 0 && zlink_errno() != EINTR && zlink_errno() != EAGAIN) {
-                rc = 1;
-                break;
+    if (pending_size(session) == 0) {
+        const int idle_rc =
+          perf_socket_poll(NULL, 0, perf_aux_poll_wait_ms());
+        if (idle_rc < 0 && zlink_errno() != EINTR && zlink_errno() != EAGAIN) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-stream-server] idle poll failed err="
+                          << zlink_errno () << std::endl;
             }
-            continue;
+            rc = 1;
+            break;
+        }
+        continue;
         }
 
         zlink_pollitem_t item;
@@ -364,6 +388,10 @@ inline int run_server_event_loop(session_t *session,
         if (poll_rc < 0) {
             if (zlink_errno() == EINTR || zlink_errno() == EAGAIN)
                 continue;
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-stream-server] poll failed err="
+                          << zlink_errno () << std::endl;
+            }
             rc = 1;
             break;
         }

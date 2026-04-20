@@ -79,7 +79,10 @@ Registry만 올리고 서비스 handler는 등록하지 않는 구성도 가능�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
+    options.AddChannel("api", channel =>
+    {
+        channel.EnableServer();
+    });
     options.UseDiscovery(registry =>
     {
         registry.Add("tcp://127.0.0.1:5551");
@@ -335,7 +338,10 @@ builder.Services.AddZLinkRegistry(registry =>
 // --- 서비스 런타임 ---
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
+    options.AddChannel("api", channel =>
+    {
+        channel.EnableServer();
+    });
     options.UseDiscovery(discovery =>
     {
         discovery.Add("tcp://127.0.0.1:5551");
@@ -401,14 +407,6 @@ app.Run();
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddZLinkFramework(options =>
-{
-    options.ChannelName = "dashboard";
-    options.UseDiscovery(discovery =>
-    {
-        discovery.Add("tcp://registry-1:5551");
-    });
-});
 builder.Services.AddZLinkRegistryQueryClient(query =>
 {
     query.Endpoint = "tcp://registry-1:5551";

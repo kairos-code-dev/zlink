@@ -355,6 +355,21 @@ inline zlink_submit_result_t zlink_router_send_spot (
 namespace testutil_agg
 {
 static thread_local std::vector<zlink_msg_t> tl_recv_buf;
+static thread_local zlink_routing_id_t tl_source_node_rid;
+static thread_local zlink_routing_id_t tl_source_spot_rid;
+
+inline void copy_routing_id_view (const zlink_routing_id_t *src_,
+                                  zlink_routing_id_t *dest_)
+{
+    if (!dest_)
+        return;
+
+    memset (dest_, 0, sizeof (*dest_));
+    if (!src_)
+        return;
+
+    memcpy (dest_, src_, sizeof (*dest_));
+}
 
 /* Collect remaining parts after first has been received. */
 inline zlink_recv_result_t collect_more_recv_part (void *s_,
@@ -420,12 +435,27 @@ inline zlink_recv_result_t zlink_router_recv (
       &first, &has_more, static_cast<zlink_recv_flags_t> (flags_));
     if (rc != ZLINK_RECV_OK)
         return rc;
+    testutil_agg::copy_routing_id_view (
+      source_node_rid_out_ ? *source_node_rid_out_ : NULL,
+      &testutil_agg::tl_source_node_rid);
+    testutil_agg::copy_routing_id_view (
+      source_spot_rid_out_ ? *source_spot_rid_out_ : NULL,
+      &testutil_agg::tl_source_spot_rid);
     testutil_agg::tl_recv_buf.push_back (first);
     if (has_more) {
         const zlink_recv_result_t rc2 = testutil_agg::collect_more_recv_part (
           router_, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
         if (rc2 != ZLINK_RECV_OK)
             return rc2;
+    }
+    if (source_node_rid_out_) {
+        *source_node_rid_out_ =
+          testutil_agg::tl_source_node_rid.size > 0
+            ? &testutil_agg::tl_source_node_rid
+            : NULL;
+    }
+    if (source_spot_rid_out_) {
+        *source_spot_rid_out_ = &testutil_agg::tl_source_spot_rid;
     }
     return testutil_agg::finalize_recv (parts_out_, part_count_out_);
 }

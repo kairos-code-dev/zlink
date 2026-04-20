@@ -45,6 +45,12 @@ Options:
   --send-timeout-ms N
   --recv-timeout-ms N
   -h, --help
+<<<<<<< HEAD
+=======
+
+Notes:
+  - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,SPOT_REQREP
+>>>>>>> worktree-agent-a8d2ff8b
 USAGE
 }
 
@@ -93,7 +99,7 @@ trap cleanup EXIT
 
 IFS=',' read -r -a SIZES <<< "${MSG_SIZES}"
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
+  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT" "SPOT_REQREP")
 else
   IFS=',' read -r -a PATTERNS <<< "${PATTERN}"
 fi
@@ -106,7 +112,7 @@ fi
 
 pattern_transports() {
   case "$1" in
-    SPOT) echo "tcp tls ws wss" ;;
+    SPOT|SPOT_REQREP) echo "tcp tls ws wss" ;;
     *)
       if [[ "${PLATFORM}" == "windows" ]]; then
         echo "tcp tls ws wss inproc"
@@ -212,11 +218,19 @@ PY
   echo "## Effective Options (start)"
   echo "- lang: go"
   echo "- suite: single"
+<<<<<<< HEAD
   echo "- runs: ${RUNS}"
   echo "- patterns: ${PATTERN}"
   echo "- transports: ${TRANSPORTS:-auto}"
   echo "- msg_sizes: ${MSG_SIZES}"
   echo "- pin_cpu: ${PIN_CPU}"
+=======
+  echo "- patterns: ${PATTERN}"
+  echo "- runs: ${RUNS}"
+  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- pin_cpu: off"
+>>>>>>> worktree-agent-a8d2ff8b
   echo
 } > "${RESULTS_FILE}"
 
@@ -261,6 +275,16 @@ for run in $(seq 1 "${RUNS}"); do
             result_lines=$((result_lines + case_result_lines))
           fi
         else
+<<<<<<< HEAD
+=======
+          if is_unsupported_output "${case_log}"; then
+            echo "UNSUPPORTED,current,${pattern},${transport}" >> "${RESULTS_FILE}"
+            unsupported=$((unsupported + 1))
+            expected_cases=$((expected_cases - 1))
+            transport_unsupported=1
+            break
+          fi
+>>>>>>> worktree-agent-a8d2ff8b
           append_case_output "${case_log}"
           if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
             unsupported_cases=$((unsupported_cases + 1))
@@ -287,16 +311,30 @@ if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; th
 fi
 
 {
+  expected_result_lines=$((expected_cases * 5))
   echo
   echo "## Effective Options (result)"
   echo "- lang: go"
   echo "- suite: single"
+<<<<<<< HEAD
   echo "- runs: ${RUNS}"
   echo "- patterns: ${PATTERN}"
   echo "- transports: ${TRANSPORTS:-auto}"
   echo "- msg_sizes: ${MSG_SIZES}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo "- status: ${status}"
+=======
+  echo "- patterns: ${PATTERN}"
+  echo "- runs: ${RUNS}"
+  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- pin_cpu: off"
+  if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; then
+    echo "- status: complete"
+  else
+    echo "- status: partial"
+  fi
+>>>>>>> worktree-agent-a8d2ff8b
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
 } >> "${RESULTS_FILE}"

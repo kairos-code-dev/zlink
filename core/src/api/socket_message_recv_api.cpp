@@ -14,6 +14,12 @@
 
 namespace
 {
+inline void reset_routing_id_output (zlink_routing_id_t *source_rid_out_)
+{
+    if (source_rid_out_)
+        source_rid_out_->size = 0;
+}
+
 bool is_direct_public_recv_fast_type (int type_)
 {
     return type_ == ZLINK_CORE_SOCKET_PAIR || type_ == ZLINK_CORE_SOCKET_DEALER;
@@ -239,8 +245,7 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
           parts_out_, part_count_out_, &first_slot)
         != 0)
         return -1;
-    if (source_rid_out_)
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+    reset_routing_id_output (source_rid_out_);
 
     const int type = socket_type (handle_);
     if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
@@ -366,7 +371,7 @@ int recv_socket_parts (socket_handle_t handle_,
             != 0)
             return -1;
 
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+        reset_routing_id_output (source_rid_out_);
         if (handle_.socket->socket_msg_dispatch_active ()) {
             errno = EBUSY;
             return -1;
@@ -388,8 +393,7 @@ int recv_socket_parts (socket_handle_t handle_,
 
     if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
         return -1;
-    if (source_rid_out_)
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+    reset_routing_id_output (source_rid_out_);
 
     zlink_msg_t first;
     zlink_msg_init (&first);
@@ -477,7 +481,7 @@ int zlink_socket_xpub_recv_internal (void *socket_,
     }
 
     if (source_rid_out_) {
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+        reset_routing_id_output (source_rid_out_);
         handle.socket->copy_last_recv_source_rid (source_rid_out_);
     }
 
@@ -517,7 +521,7 @@ zlink_recv_result_t zlink_xpub_recv_part (void *xpub_,
     }
     *topic_id_len_out_ = topic_id_capacity_;
     zlink_routing_id_t tmp_rid;
-    memset (&tmp_rid, 0, sizeof (tmp_rid));
+    tmp_rid.size = 0;
     const int rc = zlink_socket_xpub_recv_internal (
       xpub_, &tmp_rid, subscribed_out_, topic_id_buf_, topic_id_len_out_,
       static_cast<zlink_send_flags_t> (flags_));

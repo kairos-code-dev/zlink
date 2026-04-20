@@ -124,21 +124,17 @@ public interface IZLinkSpotManager
 
 public interface IZLinkSpotClient
 {
-    ValueTask SendChannelAsync<TMessage>(
+    IZLinkSendCall SendChannel<TMessage>(
         string channelName,
-        TMessage message,
-        CancellationToken cancellationToken = default);
+        TMessage message);
 
-    ValueTask<TReply> RequestChannelAsync<TReply>(
+    IZLinkRequestCall<TReply> RequestChannel<TReply>(
         string channelName,
-        IZLinkRequest<TReply> request,
-        ZLinkRequestOptions? options = null,
-        CancellationToken cancellationToken = default);
+        IZLinkRequest<TReply> request);
 
-    ValueTask PublishAsync<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
         string topic,
-        TEvent message,
-        CancellationToken cancellationToken = default);
+        TEvent message);
 
     ValueTask<IZLinkTimer> SchedulePeriodicAsync(
         TimeSpan period,
@@ -160,8 +156,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "play";
     options.Codecs.AddProtobuf();
+
+    options.AddChannel("play", channel =>
+    {
+        channel.EnableServer();
+    });
 
     options.UseDiscovery(registry =>
     {
@@ -213,10 +213,11 @@ app.MapPost("/stage/query", async (
     IZLinkSpotClient spotClient,
     CancellationToken cancellationToken) =>
 {
-    var reply = await spotClient.RequestChannelAsync(
-        "orders",
-        new GetStageStateRequest { StageRid = request.StageRid },
-        cancellationToken: cancellationToken);
+    var reply = await spotClient
+        .RequestChannel(
+            "orders",
+            new GetStageStateRequest { StageRid = request.StageRid })
+        .ExecAsync(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -283,13 +284,14 @@ public sealed class GetStageStateHandler
         GetStageStateRequest request,
         CancellationToken cancellationToken)
     {
-        await _spotClient.SendChannelAsync(
-            "orders",
-            new ReportStageQueryCommand
-            {
-                StageRid = spot.SpotRid.ToString()
-            },
-            cancellationToken);
+        _spotClient
+            .SendChannel(
+                "orders",
+                new ReportStageQueryCommand
+                {
+                    StageRid = spot.SpotRid.ToString()
+                })
+            .Exec();
 
         return new GetStageStateReply
         {
@@ -316,13 +318,14 @@ public sealed class ReportStageStateHandler
     {
         spot.ApplyReportedState(message);
 
-        await _spotClient.SendChannelAsync(
-            "orders",
-            new ReportStageQueryCommand
-            {
-                StageRid = spot.SpotRid.ToString()
-            },
-            cancellationToken);
+        _spotClient
+            .SendChannel(
+                "orders",
+                new ReportStageQueryCommand
+                {
+                    StageRid = spot.SpotRid.ToString()
+                })
+            .Exec();
     }
 }
 
@@ -341,18 +344,16 @@ public sealed class StageStateUpdatedHandler
         StageStateUpdatedEvent message,
         CancellationToken cancellationToken)
     {
-        await _spotClient.RequestChannelAsync(
-            "orders",
-            new SyncStageStateRequest
-            {
-                StageRid = spot.SpotRid.ToString(),
-                UserCount = message.UserCount
-            },
-            new ZLinkRequestOptions
-            {
-                Timeout = TimeSpan.FromMilliseconds(200)
-            },
-            cancellationToken);
+        await _spotClient
+            .RequestChannel(
+                "orders",
+                new SyncStageStateRequest
+                {
+                    StageRid = spot.SpotRid.ToString(),
+                    UserCount = message.UserCount
+                })
+            .WithTimeout(TimeSpan.FromMilliseconds(200))
+            .ExecAsync(cancellationToken);
     }
 }
 
@@ -369,14 +370,17 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
         StageSpot spot,
         CancellationToken cancellationToken)
     {
-        return _spotClient.PublishAsync(
-            "stage.state.updated",
-            new StageStateUpdatedEvent
-            {
-                StageRid = spot.SpotRid.ToString(),
-                UserCount = spot.UserCount
-            },
-            cancellationToken);
+        _spotClient
+            .Publish(
+                "stage.state.updated",
+                new StageStateUpdatedEvent
+                {
+                    StageRid = spot.SpotRid.ToString(),
+                    UserCount = spot.UserCount
+                })
+            .Exec();
+
+        return ValueTask.CompletedTask;
     }
 }
 ```
@@ -480,9 +484,9 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 - 새 spot 인스턴스를 만들고 싶다
   - `IZLinkSpotManager.CreateAsync(...)`
 - attach된 다른 channel에 send packet을 보내고 싶다
-  - `SendChannelAsync(...)`
+  - `SendChannel(...).Exec()`
 - attach된 다른 channel에 request packet을 보내고 싶다
-  - `RequestChannelAsync(...)`
+  - `RequestChannel(...).WithTimeout(...).ExecAsync(...)`
 - 다른 SPOT peer에 routed packet을 보내고 싶다
   - 현재 raw binding 기준으로는 `Spot.SendToRouter(...)`
 - 다른 SPOT peer에 routed request를 보내고 싶다
@@ -490,7 +494,7 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 - 현재 spot 자신의 rid를 알고 싶다
   - `StageSpot.SpotRid`
 - stage 안에서 fan-out 하고 싶다
-  - `PublishAsync(topic, ...)`
+  - `Publish(topic, ...).Exec()`
 - stage 안에서 heartbeat 같은 주기 작업을 돌리고 싶다
   - `StageSpot.OnInitializeAsync()`에서 `AddTimer<THandler>(...)` 등록
 

@@ -287,7 +287,7 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
                                        int flags_)
 {
     if (source_rid_out_)
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+        source_rid_out_->size = 0;
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;

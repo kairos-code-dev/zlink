@@ -693,6 +693,11 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
 
         if (ec) {
+            if (std::getenv ("PERF_DEBUG")) {
+                std::fprintf (stderr,
+                              "perf_stream_client: ws_read_error code=%d message=%s\n",
+                              ec.value (), ec.message ().c_str ());
+            }
             owner.on_recv_error ();
             if (outstanding > 0) {
                 const long dropped = static_cast<long> (outstanding);
@@ -790,6 +795,13 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
 
         if (ec || bytes != sizeof (read_header)) {
+            if (std::getenv ("PERF_DEBUG")) {
+                std::fprintf (
+                  stderr,
+                  "perf_stream_client: read_header_error code=%d message=%s bytes=%zu expected=%zu\n",
+                  ec.value (), ec.message ().c_str (), bytes,
+                  sizeof (read_header));
+            }
             owner.on_recv_error ();
             if (outstanding > 0) {
                 const long dropped = static_cast<long> (outstanding);
@@ -820,6 +832,14 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           static_cast<size_t> (read_header_declared)
           + static_cast<size_t> (read_declared);
         if (ec || bytes != expected_bytes) {
+            if (std::getenv ("PERF_DEBUG")) {
+                std::fprintf (
+                  stderr,
+                  "perf_stream_client: read_payload_error code=%d message=%s bytes=%zu expected=%zu header=%u payload=%u\n",
+                  ec.value (), ec.message ().c_str (), bytes, expected_bytes,
+                  static_cast<unsigned> (read_header_declared),
+                  static_cast<unsigned> (read_declared));
+            }
             owner.on_recv_error ();
             if (outstanding > 0) {
                 const long dropped = static_cast<long> (outstanding);

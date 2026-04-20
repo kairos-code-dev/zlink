@@ -60,6 +60,10 @@ func readySettleDuration(pattern string) time.Duration {
 	}
 }
 
+func SingleIdleDrainDuration() time.Duration {
+	return durationFromEnv("PERF_SINGLE_RCVTIMEO_MS", 200*time.Millisecond)
+}
+
 func durationFromEnv(name string, fallback time.Duration) time.Duration {
 	raw := os.Getenv(name)
 	if raw == "" {

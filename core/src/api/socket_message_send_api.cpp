@@ -669,6 +669,23 @@ zlink_submit_result_t zlink_send_part_rid (void *s_,
         return zlink::submit_result_internal::from_errno (errno);
     }
 
+    if (socket->socket_type () == ZLINK_CORE_SOCKET_STREAM) {
+        if (part_flag_ != ZLINK_PART_FINAL) {
+            zlink::part_helper_internal::consume_send_part (part_);
+            errno = ENOTSUP;
+            return zlink::submit_result_internal::from_errno (errno);
+        }
+
+        socket_handle_t handle = make_socket_handle (socket);
+        const int rc = send_stream_message (handle, target_rid_, part_, flags_);
+        const int saved_errno = errno;
+        if (rc != 0) {
+            zlink::part_helper_internal::consume_send_part (part_);
+            errno = saved_errno;
+        }
+        return zlink::submit_result_internal::from_rc (rc);
+    }
+
     zlink::part_helper_internal::send_sequence_spec_t spec;
     spec.family = zlink::part_helper_internal::send_family_send_rid;
     spec.flags = flags_;

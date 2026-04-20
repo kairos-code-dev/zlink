@@ -46,24 +46,41 @@ handler/controller 안에서도 똑같이 쓸 수 있어야 한다.
 
 ### 3.1 channel 등록
 
-현재 초안은 자동 연결과 수동 연결을 둘 다 지원하되, **같은 outbound
-channel에서는 둘 중 하나만 선택**하는 편을 기본으로 본다.
+현재 초안은 channel마다 어떤 역할을 열지 먼저 선언하고, request client
+capability에 대해서는 자동 연결과 수동 연결을 둘 다 지원하되 **같은 channel의
+request client에서는 둘 중 하나만 선택**하는 편을 기본으로 본다.
 
-여기서 `ChannelName`은 "이 앱이 local provider로서 어떤 channel을 서빙하는가"를
-뜻하는 값으로 본다. 반대로 outbound 호출은 별도 outbound channel 등록을 통해
-선언하는 방향을 기본으로 본다. 즉 inbound handler를 붙이지 않고 outbound client만
-쓰는 앱이라면 `ChannelName` 없이도 시작할 수 있어야 한다. 그런 경우 runtime은
-local `ROUTER(server)`를 열지 않고, 등록된 remote channel마다 outbound
-`DEALER(client)` runtime만 만든다.
+여기서 중요한 점은 channel이 곧바로 하나의 소켓 조합을 뜻하지 않는다는 점이다.
+framework 사용자는 아래처럼 역할 이름으로 읽는 편이 자연스럽다.
+
+- `EnableServer()` -- local request/send handler를 받는다
+- `EnableClient()` -- 그 channel로 request/send outbound 호출을 보낸다
+- `EnablePublisher()` -- 그 channel의 event를 publish한다
+- `EnableSubscriber()` -- 그 channel의 event를 subscribe한다
+
+즉 inbound handler를 붙이지 않고 outbound client만 쓰는 앱이라면, local server
+capability 없이 `EnableClient()`만 선언한 channel만 두고 시작할 수 있어야 한다.
 
 자동 연결 예시는 아래와 같다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
-    options.AddOutboundChannel("profile");
-    options.AddOutboundChannel("account");
+    options.AddChannel("api", channel =>
+    {
+        channel.EnableServer();
+    });
+
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+    });
+
+    options.AddChannel("account", channel =>
+    {
+        channel.EnableClient();
+    });
+
     options.UseDiscovery(registry =>
     {
         registry.Add("tcp://registry1:5551");
@@ -73,22 +90,27 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 이 등록은 framework 전역 runtime, channel runtime factory, codec registry의 기본
-구성을 맡는다. `AddOutboundChannel("profile")` 같은 선언은 그 channel에 접근할
-outbound runtime과 `DEALER(client)`를 framework가 관리한다는 뜻이다.
+구성을 맡는다. `AddChannel("profile", channel => channel.EnableClient())` 같은
+선언은 그 channel에 접근할 outbound runtime과 `DEALER(client)`를 framework가
+관리한다는 뜻이다.
 
-위 예시는 local channel `api`를 서빙하는 애플리케이션 전제다. 실제로 local
-server 역할이 필요해지는 시점은 아래의 handler 등록을 함께 둘 때다.
+위 예시는 `api` channel에서 server 역할을 하고, `profile`, `account` channel에
+대해서는 client 역할만 하는 애플리케이션 전제다.
 
 수동 연결 예시는 아래와 같이 둘 수 있다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelName = "api";
-
-    options.ConfigureManualConnections(connections =>
+    options.AddChannel("api", channel =>
     {
-        connections.Add("profile", peers =>
+        channel.EnableServer();
+    });
+
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+        channel.UseManualConnections(peers =>
         {
             peers.Connect(
                 targetRid: RoutingId.Parse("01HZX..."),
@@ -98,13 +120,13 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이 경우 framework는 `Discovery`를 강제하지 않는다. channel별 outbound runtime이 수동으로
-주어진 peer 목록만 기준으로 연결을 관리한다. 여기서 `connections.Add("profile", ...)`
-자체가 `profile` outbound channel을 선언하는 역할도 함께 한다.
+이 경우 framework는 `Discovery`를 강제하지 않는다. 해당 channel의 request client
+capability가 수동으로 주어진 peer 목록만 기준으로 연결을 관리한다.
 
-앱 전체에서는 두 방식을 함께 둘 수 있다. 다만 그 뜻은 "같은 outbound channel이
-두 방식을 동시에 섞는다"가 아니다. 예를 들어 `profile` channel은 `Discovery`
-기반 자동 연결로 두고, `account` channel은 수동 연결로 둘 수 있다는 뜻이다.
+앱 전체에서는 두 방식을 함께 둘 수 있다. 다만 그 뜻은 "같은 channel의 request
+client capability가 두 방식을 동시에 섞는다"가 아니다. 예를 들어 `profile`
+channel은 `Discovery` 기반 자동 연결로 두고, `account` channel은 수동 연결로
+둘 수 있다는 뜻이다.
 
 이 구분이 필요한 이유는 zlink core에서 `Discovery`가 붙은 `DEALER`는 수동
 `connect`, `disconnect`, `unbind`, `close`를 허용하지 않기 때문이다. 따라서
@@ -114,15 +136,18 @@ framework도 같은 channel runtime 안에서 자동 연결과 수동 연결을 
 ### 3.1.1 outbound-only 앱 예시
 
 아래처럼 local handler를 붙이지 않고 `IZLinkClient`만 쓰는 앱도 가능해야 한다.
-이 경우 framework는 local `ROUTER(server)`를 열지 않고, 등록한 remote channel에
-대해서만 outbound `DEALER(client)`를 만든다.
+이 경우 framework는 server capability를 열지 않고, client capability를 선언한
+remote channel에 대해서만 outbound `DEALER(client)`를 만든다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddOutboundChannel("profile");
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient();
+    });
 
     options.UseDiscovery(registry =>
     {
@@ -146,8 +171,9 @@ builder.Services.AddZLinkFramework(options =>
 
 - `IZLinkClient`는 DI로 주입된다.
 - 호출 대상은 gateway 주소가 아니라 `channel name`
-- runtime은 등록한 outbound `channel name`마다 별도 outbound channel을 만든다.
-- 각 channel은 그 channel 전용 `Discovery`와 outbound `DEALER(client)` socket을 가진다.
+- runtime은 등록한 channel capability마다 필요한 runtime을 만든다.
+- request client capability를 둔 channel은 그 channel 전용 `Discovery`와 outbound
+  `DEALER(client)` socket을 가진다.
 
 여기서 outbound `DEALER(client)`는 framework 관점에서 주로 request의 reply를
 받는 경로다. 일반 request/send handler dispatch는 local `ROUTER(server)`가 받은
@@ -176,9 +202,9 @@ builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 한다. 따라서 constructor injection은 일반 `ASP.NET Core` 서비스와 같은 방식으로
 동작해야 한다.
 
-여기서 `channelName`은 route prefix가 아니라 앱이 local provider로서 서빙하는
-channel 이름이므로, handler class attribute보다 등록 옵션에 두는 편을 현재
-방향으로 본다. 반대로 outbound-only 앱이라면 이 값을 생략할 수 있어야 한다.
+여기서 local request/send handler가 붙는 channel은 route prefix가 아니라 앱이
+그 channel에서 server 역할을 한다는 뜻이다. 반대로 outbound-only 앱이라면
+server capability가 있는 channel 자체를 두지 않을 수 있어야 한다.
 
 ## 4. 서버 쪽 프로그래밍 모델 초안
 
@@ -209,10 +235,11 @@ public sealed class UserHandlers
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        var account = await _client.RequestAsync(
-            "account",
-            new GetAccountRequest { AccountId = request.AccountId },
-            cancellationToken);
+        var account = await _client
+            .Request(
+                "account",
+                new GetAccountRequest { AccountId = request.AccountId })
+            .ExecAsync(cancellationToken);
 
         return new UserReply
         {
@@ -375,9 +402,9 @@ attribute 매핑과 `IZLinkClient`를 함께 쓴다"를 기본으로 본다.
 - `channelName` 기준 호출 -- Discovery가 대상을 선택
 
 그리고 기본 packet key는 request/message 타입 이름으로 해석한다.
-`PacketName`, `Timeout` 같은 변형은 별도 options로 모은다. 호출 시점에는 등록된
-outbound channel 이름만 넘기고, 해당 channel의 dealer/runtime 생성과 관리는
-framework가 맡는다.
+`PacketName`, `Timeout` 같은 변형은 fluent builder에 이어 붙이는 형태를 기본으로
+본다. 호출 시점에는 등록된 outbound channel 이름만 넘기고, 해당 channel의
+dealer/runtime 생성과 관리는 framework가 맡는다.
 
 즉 특정 channel의 `ROUTER(server)`를 `rid`로 직접 지정해 호출하는 표면은 두지
 않는다. `rid`를 넣는 routed 호출은 SPOT spot-to-spot 경로에서만 다룬다.
@@ -398,10 +425,11 @@ app.MapPost("/profiles/get", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client.RequestAsync(
-        "profile",
-        new GetProfileRequest { AccountId = request.AccountId },
-        cancellationToken);
+    var reply = await client
+        .Request(
+            "profile",
+            new GetProfileRequest { AccountId = request.AccountId })
+        .ExecAsync(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -413,6 +441,20 @@ app.MapPost("/profiles/get", async (
 - ZLink handler와 HTTP handler가 같은 outbound 호출 방식을 공유
 - framework 내부 공통 helper
 - 특정 요청만 별도 timeout이나 packet name override로 보내기
+
+예를 들면 아래처럼 읽히는 표면을 기준으로 본다.
+
+```csharp
+var reply = await client
+    .Request("profile", new GetProfileRequest { AccountId = accountId })
+    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .ExecAsync(cancellationToken);
+
+client
+    .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
+    .WithPacketName("profile.refresh-cache")
+    .Exec();
+```
 
 ## 6. ASP.NET Core middleware, 서비스 AOP, handler pipeline
 

@@ -294,7 +294,7 @@ int zlink::socket_base_t::xrecv_routed (msg_t *msg_,
                                         zlink_routing_id_t *source_rid_out_)
 {
     if (source_rid_out_)
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+        source_rid_out_->size = 0;
 
     const int rc = xrecv (msg_);
     if (rc == 0 && source_rid_out_)

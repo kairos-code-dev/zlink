@@ -730,9 +730,6 @@ void test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id ()
       zlink_set_routing_id (dealer, "dealer-tcp", 10));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
-    // TCP routing-id publication completes asynchronously. Give the ROUTER
-    // pipe enough time to publish the peer route before switching the socket
-    // onto callback dispatch mode.
     msleep (SETTLE_TIME * 50);
 
     request_handler_probe_t handler_probe;

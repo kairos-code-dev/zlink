@@ -9,7 +9,7 @@ namespace perf_metric {
 
 static const uint32_t k_magic = 0x5A4C4E4BU;
 
-enum phase_t
+enum phase_t : uint8_t
 {
     phase_warmup = 0,
     phase_active = 1,
@@ -28,12 +28,12 @@ struct header_t
 
 inline size_t header_size ()
 {
-    return static_cast<size_t> (29);
+    return 29U;
 }
 
-inline uint64_t now_ns ()
+inline int64_t now_ns ()
 {
-    return static_cast<uint64_t> (
+    return static_cast<int64_t> (
       std::chrono::duration_cast<std::chrono::nanoseconds> (
         std::chrono::system_clock::now ().time_since_epoch ())
         .count ());
@@ -44,7 +44,7 @@ inline void init_header (header_t *out,
                          phase_t phase,
                          size_t msg_size,
                          uint64_t seq,
-                         uint64_t sent_ts_ns)
+                         int64_t sent_ts_ns)
 {
     if (!out)
         return;
@@ -54,47 +54,7 @@ inline void init_header (header_t *out,
     out->phase = static_cast<uint8_t> (phase);
     out->msg_size = static_cast<uint32_t> (msg_size);
     out->seq = seq;
-    out->sent_ts_ns = static_cast<int64_t> (sent_ts_ns);
-}
-
-inline void write_u32_le (unsigned char *dst, uint32_t value)
-{
-    dst[0] = static_cast<unsigned char> (value & 0xffU);
-    dst[1] = static_cast<unsigned char> ((value >> 8) & 0xffU);
-    dst[2] = static_cast<unsigned char> ((value >> 16) & 0xffU);
-    dst[3] = static_cast<unsigned char> ((value >> 24) & 0xffU);
-}
-
-inline void write_u64_le (unsigned char *dst, uint64_t value)
-{
-    for (size_t i = 0; i < sizeof (uint64_t); ++i)
-        dst[i] = static_cast<unsigned char> ((value >> (i * 8U)) & 0xffU);
-}
-
-inline void write_i64_le (unsigned char *dst, int64_t value)
-{
-    write_u64_le (dst, static_cast<uint64_t> (value));
-}
-
-inline uint32_t read_u32_le (const unsigned char *src)
-{
-    return static_cast<uint32_t> (src[0])
-           | (static_cast<uint32_t> (src[1]) << 8U)
-           | (static_cast<uint32_t> (src[2]) << 16U)
-           | (static_cast<uint32_t> (src[3]) << 24U);
-}
-
-inline uint64_t read_u64_le (const unsigned char *src)
-{
-    uint64_t value = 0;
-    for (size_t i = 0; i < sizeof (uint64_t); ++i)
-        value |= static_cast<uint64_t> (src[i]) << (i * 8U);
-    return value;
-}
-
-inline int64_t read_i64_le (const unsigned char *src)
-{
-    return static_cast<int64_t> (read_u64_le (src));
+    out->sent_ts_ns = sent_ts_ns;
 }
 
 inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
@@ -103,12 +63,12 @@ inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
         return false;
 
     unsigned char *p = static_cast<unsigned char *> (dst);
-    write_u32_le (p + 0, h.magic);
-    write_u32_le (p + 4, h.run_id);
-    p[8] = h.phase;
-    write_u32_le (p + 9, h.msg_size);
-    write_u64_le (p + 13, h.seq);
-    write_i64_le (p + 21, h.sent_ts_ns);
+    std::memcpy (p + 0, &h.magic, sizeof (h.magic));
+    std::memcpy (p + 4, &h.run_id, sizeof (h.run_id));
+    std::memcpy (p + 8, &h.phase, sizeof (h.phase));
+    std::memcpy (p + 9, &h.msg_size, sizeof (h.msg_size));
+    std::memcpy (p + 13, &h.seq, sizeof (h.seq));
+    std::memcpy (p + 21, &h.sent_ts_ns, sizeof (h.sent_ts_ns));
     return true;
 }
 
@@ -118,12 +78,12 @@ inline bool decode_header (const void *src, size_t src_size, header_t *out)
         return false;
 
     const unsigned char *p = static_cast<const unsigned char *> (src);
-    out->magic = read_u32_le (p + 0);
-    out->run_id = read_u32_le (p + 4);
-    out->phase = p[8];
-    out->msg_size = read_u32_le (p + 9);
-    out->seq = read_u64_le (p + 13);
-    out->sent_ts_ns = read_i64_le (p + 21);
+    std::memcpy (&out->magic, p + 0, sizeof (out->magic));
+    std::memcpy (&out->run_id, p + 4, sizeof (out->run_id));
+    std::memcpy (&out->phase, p + 8, sizeof (out->phase));
+    std::memcpy (&out->msg_size, p + 9, sizeof (out->msg_size));
+    std::memcpy (&out->seq, p + 13, sizeof (out->seq));
+    std::memcpy (&out->sent_ts_ns, p + 21, sizeof (out->sent_ts_ns));
     return true;
 }
 
@@ -133,7 +93,7 @@ inline bool stamp_payload (void *payload,
                            phase_t phase,
                            size_t msg_size,
                            uint64_t seq,
-                           uint64_t sent_ts_ns)
+                           int64_t sent_ts_ns)
 {
     if (!payload || payload_size < header_size ())
         return false;

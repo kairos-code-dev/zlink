@@ -7,7 +7,6 @@
 #include "../../common/perf_socket_compat.hpp"
 #include "../../common/perf_tls.hpp"
 
-#include <atomic>
 #include <chrono>
 #include <cerrno>
 #include <climits>
@@ -15,12 +14,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <condition_variable>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace perf {

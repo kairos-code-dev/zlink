@@ -556,15 +556,11 @@ inline void print_server_queue_metrics (const std::string &lib,
                                         size_t size,
                                         const server_queue_stats_t &stats)
 {
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",server_snd_pending_max," << std::fixed << std::setprecision (2)
-              << stats.snd_pending_max << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",server_rcv_pending_max," << std::fixed << std::setprecision (2)
-              << stats.rcv_pending_max << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",server_rcv_pending_end," << std::fixed << std::setprecision (2)
-              << stats.rcv_pending_end << std::endl;
+    (void) lib;
+    (void) pattern;
+    (void) transport;
+    (void) size;
+    (void) stats;
 }
 
 inline bench_multi_cpu_sample_t start_resource_probe ()
@@ -585,16 +581,11 @@ inline void print_server_resource_metrics (
   size_t size,
   const bench_multi_resource_metrics_t &metrics)
 {
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
-                  << size << ",server_cpu_pct," << std::fixed
-                  << std::setprecision (2) << metrics.cpu_pct << std::endl;
-    }
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
-                  << size << ",server_mem_mb," << std::fixed
-                  << std::setprecision (2) << metrics.mem_mb << std::endl;
-    }
+    (void) lib;
+    (void) pattern;
+    (void) transport;
+    (void) size;
+    (void) metrics;
 }
 
 inline void print_client_resource_metrics (
@@ -604,16 +595,11 @@ inline void print_client_resource_metrics (
   size_t size,
   const bench_multi_resource_metrics_t &metrics)
 {
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
-                  << size << ",client_cpu_pct," << std::fixed
-                  << std::setprecision (2) << metrics.cpu_pct << std::endl;
-    }
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
-                  << size << ",client_mem_mb," << std::fixed
-                  << std::setprecision (2) << metrics.mem_mb << std::endl;
-    }
+    (void) lib;
+    (void) pattern;
+    (void) transport;
+    (void) size;
+    (void) metrics;
 }
 
 inline void print_client_result_lines (

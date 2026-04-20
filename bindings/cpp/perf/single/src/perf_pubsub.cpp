@@ -68,8 +68,7 @@ void run_pattern_pubsub (const std::string &transport,
     if (!perf::single::transport_available (transport)) {
         if (perf_debug_enabled ())
             std::cerr << "pubsub: transport unavailable" << std::endl;
-        std::cout << "UNSUPPORTED," << lib_name << ",PUBSUB," << transport
-                  << std::endl;
+        std::cout << "UNSUPPORTED,PUBSUB," << transport << std::endl;
         return;
     }
 
@@ -93,6 +92,17 @@ void run_pattern_pubsub (const std::string &transport,
     zlink::socket_t publisher_socket = zlink::socket_t::wrap (publisher.handle ());
     zlink::socket_t subscriber_socket = zlink::socket_t::wrap (subscriber.handle ());
     (void) publisher_socket.set (zlink::pub_options::nodrop, 1);
+
+    zlink::monitor_handle_t pub_monitor = zlink::monitor_handle_t::open (
+      publisher, zlink::monitor_event::connection_ready);
+    zlink::monitor_handle_t sub_monitor = zlink::monitor_handle_t::open (
+      subscriber, zlink::monitor_event::connection_ready);
+    if (!pub_monitor.valid () || !sub_monitor.valid ()) {
+        if (perf_debug_enabled ())
+            std::cerr << "pubsub: invalid monitors" << std::endl;
+        perf::single::print_fail_result (lib_name, "PUBSUB", transport, msg_size);
+        return;
+    }
 
     if (!perf::single::setup_connected_pair (publisher_socket,
                                              subscriber_socket,

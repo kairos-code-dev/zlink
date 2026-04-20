@@ -112,8 +112,7 @@ final class PerfMultiDealerDealer {
                         System.nanoTime() + Duration.ofSeconds(5).toNanos());
                 }
             }, "multi-dd-client-" + index), config.durationSeconds());
-        return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-            config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+        return PerfUtil.Result.silent(config);
     }
 
     private static void sendWhenWritable(DealerSocket client, PerfSocketPollSet pollSet,

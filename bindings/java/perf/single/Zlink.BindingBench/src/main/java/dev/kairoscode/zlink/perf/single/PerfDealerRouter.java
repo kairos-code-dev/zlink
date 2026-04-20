@@ -93,9 +93,9 @@ final class PerfDealerRouter {
             }, "single-dealer-router-receiver");
             receiverThread.start();
 
-            try (var primer = PerfUtil.payload(config.size(),
+            try (var probe = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                sender.send(primer);
+                sender.send(probe);
             }
             PerfUtil.await(routed, "dealer/router self-check",
                 Duration.ofSeconds(10));

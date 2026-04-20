@@ -81,8 +81,7 @@ final class PerfMultiDealerRouter {
                     }
                 }
             }
-            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+            return PerfUtil.Result.silent(config);
         }
     }
 
@@ -106,7 +105,6 @@ final class PerfMultiDealerRouter {
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     metrics.startActiveWindow();
-                    PerfControl.emitClientReady(config.size());
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/router start", Duration.ofSeconds(10));

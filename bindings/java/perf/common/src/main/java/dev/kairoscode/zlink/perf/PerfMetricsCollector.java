@@ -5,16 +5,14 @@ package dev.kairoscode.zlink.perf;
 import java.util.Arrays;
 
 final class PerfMetricsCollector {
-    private final int maxLatencySamples;
     private long[] latencies;
     private int size;
     private long count;
     private long sum;
-    private long sampleStride = 1L;
 
     PerfMetricsCollector(String suite) {
-        maxLatencySamples = resolveMaxLatencySamples(suite);
-        latencies = new long[Math.min(maxLatencySamples, 1 << 20)];
+        int initialCapacity = Math.max(1, resolveInitialLatencyCapacity(suite));
+        latencies = new long[Math.min(initialCapacity, 1 << 20)];
     }
 
     void startActiveWindow() {
@@ -23,13 +21,7 @@ final class PerfMetricsCollector {
     synchronized void recordNanos(long value) {
         count++;
         sum += value;
-        if ((count % sampleStride) != 0L) {
-            return;
-        }
         ensureCapacity();
-        if ((count % sampleStride) != 0L) {
-            return;
-        }
         latencies[size++] = value;
     }
 
@@ -68,17 +60,7 @@ final class PerfMetricsCollector {
         if (size < latencies.length) {
             return;
         }
-        if (latencies.length < maxLatencySamples) {
-            int next = Math.min(maxLatencySamples, latencies.length * 2);
-            latencies = Arrays.copyOf(latencies, next);
-            return;
-        }
-        int compacted = 0;
-        for (int i = 0; i < size; i += 2) {
-            latencies[compacted++] = latencies[i];
-        }
-        size = compacted;
-        sampleStride *= 2L;
+        latencies = Arrays.copyOf(latencies, latencies.length * 2);
     }
 
     private static int index(int length, double percentile) {
@@ -86,7 +68,7 @@ final class PerfMetricsCollector {
             (int) Math.ceil(length * percentile) - 1));
     }
 
-    private static int resolveMaxLatencySamples(String suite) {
+    private static int resolveInitialLatencyCapacity(String suite) {
         String envName = "multi".equals(suite)
             ? "PERF_MULTI_LATENCY_SAMPLE_CAP"
             : "PERF_SINGLE_LATENCY_SAMPLE_CAP";

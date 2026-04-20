@@ -181,22 +181,22 @@ final class PerfSpot {
                                        AtomicBoolean idleDrain,
                                        AtomicLong lastRecvNs,
                                        Object drainSignal,
-                                       Duration quietWindow,
+                                       Duration idleWindow,
                                        Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
-        long quietNs = quietWindow.toNanos();
+        long idleWindowNs = idleWindow.toNanos();
         synchronized (drainSignal) {
             while (System.nanoTime() < deadline) {
                 if (idleDrain.get()
-                    && System.nanoTime() - lastRecvNs.get() >= quietNs) {
+                    && System.nanoTime() - lastRecvNs.get() >= idleWindowNs) {
                     finished.countDown();
                     return;
                 }
                 long remainingNs = Math.max(1L, deadline - System.nanoTime());
-                long quietRemainingNs = idleDrain.get()
-                    ? Math.max(1L, quietNs - (System.nanoTime() - lastRecvNs.get()))
+                long idleRemainingNs = idleDrain.get()
+                    ? Math.max(1L, idleWindowNs - (System.nanoTime() - lastRecvNs.get()))
                     : remainingNs;
-                long waitNs = Math.min(remainingNs, quietRemainingNs);
+                long waitNs = Math.min(remainingNs, idleRemainingNs);
                 long waitMs = Math.max(1L, waitNs / 1_000_000L);
                 try {
                     drainSignal.wait(waitMs);

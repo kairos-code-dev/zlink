@@ -114,8 +114,7 @@ final class PerfMultiSpotReqRep {
                 throw new IllegalStateException("spot reqrep replier failed",
                     callbackFailure.get());
             }
-            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+            return PerfUtil.Result.silent(config);
         }
     }
 

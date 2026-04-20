@@ -68,14 +68,20 @@ final class PerfArgs {
         if (size < PerfUtil.HEADER_SIZE) {
             throw new IllegalArgumentException("msg size must be >= " + PerfUtil.HEADER_SIZE);
         }
+        boolean streamPattern = "STREAM".equals(pattern);
         int duration = intEnv("PERF_MULTI_DURATION_SECONDS", 5);
         String endpoint = "";
-        int clients = intEnv("PERF_MULTI_CLIENTS", 100);
-        int ioThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS", 2);
+        int clients = intEnv("PERF_MULTI_CLIENTS", streamPattern ? 10_000 : 100);
+        int defaultIoThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS", 2);
+        int ioThreads = defaultIoThreads;
         if ("--multi-server".equals(args[0])) {
-            ioThreads = intEnv("PERF_MULTI_SERVER_IO_THREADS", ioThreads);
+            ioThreads = intEnv(
+                streamPattern ? "PERF_MULTI_STREAM_SERVER_IO_THREADS" : "PERF_MULTI_SERVER_IO_THREADS",
+                streamPattern ? 4 : defaultIoThreads);
         } else if ("--multi-client".equals(args[0])) {
-            ioThreads = intEnv("PERF_MULTI_CLIENT_IO_THREADS", ioThreads);
+            ioThreads = intEnv(
+                streamPattern ? "PERF_MULTI_STREAM_CLIENT_IO_THREADS" : "PERF_MULTI_CLIENT_IO_THREADS",
+                streamPattern ? 4 : defaultIoThreads);
         }
         int sendHwm = intEnv("PERF_MULTI_SNDHWM",
             intEnv("PERF_MULTI_HWM", 1000));

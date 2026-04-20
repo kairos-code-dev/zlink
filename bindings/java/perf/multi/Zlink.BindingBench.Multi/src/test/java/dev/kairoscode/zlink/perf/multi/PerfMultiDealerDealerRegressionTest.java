@@ -44,10 +44,10 @@ class PerfMultiDealerDealerRegressionTest {
         String clientOut = waitAndRead(client, clientOutput, Duration.ofSeconds(10), "client");
         String serverOut = waitAndRead(server, serverOutput, Duration.ofSeconds(10), "server");
 
-        assertTrue(clientOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
-            "unexpected client output:\n" + clientOut);
         assertTrue(serverOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
             "unexpected server output:\n" + serverOut);
+        assertTrue(!clientOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
+            "unexpected client output:\n" + clientOut);
     }
 
     private static Process startPerfProcess(List<String> args) throws Exception {

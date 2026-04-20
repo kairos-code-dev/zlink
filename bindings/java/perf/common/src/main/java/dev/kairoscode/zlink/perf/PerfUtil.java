@@ -87,6 +87,11 @@ public final class PerfUtil {
                 0.0d);
         }
 
+        public static Result silent(Config config) {
+            return new Result("silent", "-", config.pattern(), config.transport(),
+                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+        }
+
         public String status() {
             return status;
         }

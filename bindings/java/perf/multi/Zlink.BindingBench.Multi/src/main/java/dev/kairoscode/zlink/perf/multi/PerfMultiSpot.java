@@ -74,8 +74,7 @@ final class PerfMultiSpot {
                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
                 publisher.publish(SERVICE_NAME, TOPIC, cooldown);
             }
-            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+            return PerfUtil.Result.silent(config);
         }
     }
 

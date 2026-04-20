@@ -84,8 +84,7 @@ final class PerfMultiRouterRouter {
                     }
                 }
             }
-            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
-                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+            return PerfUtil.Result.silent(config);
         }
     }
 
@@ -112,7 +111,6 @@ final class PerfMultiRouterRouter {
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     metrics.startActiveWindow();
-                    PerfControl.emitClientReady(config.size());
                     go.countDown();
                 }
                 PerfUtil.await(go, "router/router start", Duration.ofSeconds(10));
@@ -141,11 +139,9 @@ final class PerfMultiRouterRouter {
                             }
                         }
                     }
-                    for (int i = 0; i < 4; i++) {
-                        PerfUtil.writePayload(stop, config.size(),
-                            (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                        sendUntilSent(client, pollSet, stop);
-                    }
+                    PerfUtil.writePayload(stop, config.size(),
+                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                    sendUntilSent(client, pollSet, stop);
                 }
             }
         }, "multi-rr-client-" + index), config.durationSeconds());

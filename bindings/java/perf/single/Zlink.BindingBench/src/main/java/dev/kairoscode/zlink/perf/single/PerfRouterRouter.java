@@ -100,9 +100,9 @@ final class PerfRouterRouter {
             }, "single-router-router-receiver");
             receiverThread.start();
 
-            try (Message primer = PerfUtil.payload(config.size(),
+            try (Message probe = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                sender.send(ROUTER1, List.of(primer));
+                sender.send(ROUTER1, List.of(probe));
             }
             PerfUtil.await(routed, "router/router self-check", Duration.ofSeconds(10));
 

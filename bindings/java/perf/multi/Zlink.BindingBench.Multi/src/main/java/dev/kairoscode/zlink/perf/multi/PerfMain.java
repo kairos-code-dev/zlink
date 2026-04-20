@@ -51,6 +51,12 @@ public final class PerfMain {
         } catch (Throwable failure) {
             result = PerfUtil.classifyFailure(config, failure);
         }
-        System.out.println(result.toLine("current"));
+        String line = result.toLine("current");
+        if (!line.isEmpty()) {
+            System.out.println(line);
+        }
+        if ("fail".equals(result.status())) {
+            System.exit(1);
+        }
     }
 }

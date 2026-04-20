@@ -5,7 +5,9 @@ package dev.kairoscode.zlink.perf;
 import java.util.Arrays;
 
 final class PerfMetricsCollector {
-    private static final int MAX_LATENCY_SAMPLES = 4 * 1024 * 1024;
+    private static final int MAX_LATENCY_SAMPLES = Math.max(1,
+        intEnv("PERF_SINGLE_LATENCY_SAMPLE_CAP",
+            intEnv("PERF_MULTI_LATENCY_SAMPLE_CAP", 200_000)));
 
     private long[] latencies = new long[Math.min(MAX_LATENCY_SAMPLES, 1 << 20)];
     private int size;
@@ -80,5 +82,13 @@ final class PerfMetricsCollector {
     private static int index(int length, double percentile) {
         return Math.max(0, Math.min(length - 1,
             (int) Math.ceil(length * percentile) - 1));
+    }
+
+    private static int intEnv(String name, int fallback) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return Integer.parseInt(value);
     }
 }

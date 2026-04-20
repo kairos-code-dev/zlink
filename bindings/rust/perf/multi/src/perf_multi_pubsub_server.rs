@@ -58,18 +58,35 @@ fn main() {
         return;
     }
 
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&pub_sock, POLLOUT).expect("poller add");
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
     let mut seq: u64 = 1;
+    let mut pending = false;
 
     while Instant::now() < deadline {
-        common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
-        seq += 1;
-        let msg = Message::copy_from(&buf).expect("msg");
-        match pub_sock.publish_with_flags(TOPIC, msg, SendFlags::DONT_WAIT) {
-            Ok(()) => {}
-            Err(err) if err.code == SubmitResult::Backpressured => {}
-            Err(err) => panic!("publish failed: {err}"),
+        if !pending {
+            common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
+            let msg = Message::copy_from(&buf).expect("msg");
+            match pub_sock.publish_with_flags(TOPIC, msg, SendFlags::DONT_WAIT) {
+                Ok(()) => {
+                    seq += 1;
+                    continue;
+                }
+                Err(err) if err.code == SubmitResult::Backpressured => {
+                    pending = true;
+                }
+                Err(err) => panic!("publish failed: {err}"),
+            }
+        }
+
+        match poller.wait(25) {
+            Ok(Some(event)) if event.is_writable() => {
+                pending = false;
+            }
+            Ok(Some(_)) | Ok(None) => {}
+            Err(err) => panic!("poller wait failed: {err}"),
         }
     }
 }

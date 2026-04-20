@@ -65,25 +65,31 @@ fn main() {
         return;
     }
 
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&server, POLLIN).expect("poller add");
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut latency = common::LatencyStats::new();
     let mut active_count = 0u64;
     while Instant::now() < deadline {
-        loop {
-            match server.recv_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(received) => {
-                    let data = common::message_payload(received.parts());
-                    if common::is_valid_active_message(data, args.msg_size) {
-                        let sent_ts_ns = common::decode_sent_ts_ns(data);
-                        latency.record_ns(
-                            common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
-                        );
-                        active_count += 1;
+        match poller.wait(25) {
+            Ok(Some(event)) if event.is_readable() => loop {
+                match server.recv_with_flags(RecvFlags::DONT_WAIT) {
+                    Ok(received) => {
+                        let data = common::message_payload(received.parts());
+                        if common::is_valid_active_message(data, args.msg_size) {
+                            let sent_ts_ns = common::decode_sent_ts_ns(data);
+                            latency.record_ns(
+                                common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
+                            );
+                            active_count += 1;
+                        }
                     }
+                    Err(err) if err.code == RecvResult::NoData => break,
+                    Err(err) => panic!("recv failed: {err}"),
                 }
-                Err(err) if err.code == RecvResult::NoData => break,
-                Err(_) => break,
-            }
+            },
+            Ok(Some(_)) | Ok(None) => {}
+            Err(err) => panic!("poller wait failed: {err}"),
         }
     }
 

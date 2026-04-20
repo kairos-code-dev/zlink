@@ -1,8 +1,6 @@
 #[path = "perf_common.rs"]
 mod common;
 
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 use zlink::*;
 
@@ -12,6 +10,12 @@ fn main() {
 
     let ctx = common::perf_client_context();
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
+    let poller = Poller::new().expect("poller");
+    let mut payloads: Vec<Vec<u8>> = Vec::with_capacity(settings.clients);
+    let mut waiting_reply = vec![false; settings.clients];
+    let mut send_pending = vec![false; settings.clients];
+    let mut seqs = vec![1u64; settings.clients];
+    let mut socket_keys = Vec::with_capacity(settings.clients);
     let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
 
     for index in 0..settings.clients {
@@ -36,6 +40,9 @@ fn main() {
         }
         let mon = SocketMonitor::open(&sock).expect("monitor");
         sock.connect(&args.endpoint).expect("connect");
+        poller.add_socket(&sock, POLLIN).expect("poller add");
+        payloads.push(vec![0u8; args.msg_size.max(common::HEADER_SIZE)]);
+        socket_keys.push(common::raw_socket_handle_dealer(&sock) as usize);
         sockets.push(sock);
         monitors.push(mon);
     }
@@ -45,52 +52,92 @@ fn main() {
         common::wait_monitor_ready(mon, ready_timeout, "multi dealer-router client");
     }
 
-    let latency = Arc::new(Mutex::new(common::LatencyStats::new()));
-    let payload = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
-    let mut threads = Vec::with_capacity(sockets.len());
-    for sock in sockets {
-        let msg_size = args.msg_size;
-        let duration_seconds = settings.duration_seconds;
-        let payload = payload.clone();
-        let latency = Arc::clone(&latency);
-        threads.push(thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(duration_seconds);
-            let mut seq = 1u64;
-            let mut buf = payload;
-            while Instant::now() < deadline {
-                common::encode_header(&mut buf, common::PHASE_ACTIVE, msg_size as u32, seq);
-                let msg = Message::copy_from(&buf).expect("msg");
-                if sock.send(msg).is_err() {
-                    continue;
+    let mut latency = common::LatencyStats::new();
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    while Instant::now() < deadline {
+        let mut progressed = false;
+        for index in 0..sockets.len() {
+            if waiting_reply[index] || send_pending[index] {
+                continue;
+            }
+            common::encode_header(
+                &mut payloads[index],
+                common::PHASE_ACTIVE,
+                args.msg_size as u32,
+                seqs[index],
+            );
+            match sockets[index].try_send(vec![Message::copy_from(&payloads[index]).expect("msg")]) {
+                Ok(true) => {
+                    waiting_reply[index] = true;
+                    seqs[index] += 1;
+                    progressed = true;
                 }
-                match sock.recv() {
-                    Ok(received) => {
-                        let data = common::message_payload(received.parts());
-                        if !common::is_valid_active_message(data, msg_size) {
-                            continue;
+                Ok(false) => {
+                    send_pending[index] = true;
+                    poller
+                        .modify_socket(&sockets[index], POLLIN | POLLOUT)
+                        .expect("poller modify");
+                }
+                Err(err) => panic!("send failed: {err}"),
+            }
+        }
+        if progressed {
+            continue;
+        }
+
+        let events = common::wait_native_poll_events(&poller, sockets.len(), 25)
+            .expect("poller wait all");
+        for event in events {
+            let Some(index) = socket_keys
+                .iter()
+                .position(|socket_key| *socket_key == event.socket as usize)
+            else {
+                continue;
+            };
+
+            if event.events & POLLOUT != 0 {
+                send_pending[index] = false;
+                poller
+                    .modify_socket(
+                        &sockets[index],
+                        if waiting_reply[index] { POLLIN } else { POLLIN },
+                    )
+                    .expect("poller modify");
+            }
+
+            if event.events & POLLIN != 0 {
+                loop {
+                    match sockets[index].recv_with_flags(RecvFlags::DONT_WAIT) {
+                        Ok(received) => {
+                            let data = common::message_payload(received.parts());
+                            if !common::is_valid_active_message(data, args.msg_size) {
+                                continue;
+                            }
+                            let sent_ts_ns = common::decode_sent_ts_ns(data);
+                            let latency_ns =
+                                common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64
+                                    / 2.0;
+                            latency.record_ns(latency_ns);
+                            waiting_reply[index] = false;
                         }
-                        let sent_ts_ns = common::decode_sent_ts_ns(data);
-                        let latency_ns =
-                            common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
-                        latency.lock().expect("latency lock").record_ns(latency_ns);
-                        seq += 1;
+                        Err(err) if err.code() == RecvResult::NoData => break,
+                        Err(err) => panic!("recv failed: {err}"),
                     }
-                    Err(_) => {}
+                }
+                if !send_pending[index] {
+                    poller
+                        .modify_socket(&sockets[index], POLLIN)
+                        .expect("poller modify");
                 }
             }
-        }));
+        }
     }
-
-    for handle in threads {
-        handle.join().expect("join");
-    }
-    let total = latency.lock().expect("latency lock").finish();
 
     common::print_result(
         "MULTI_DEALER_ROUTER",
         &args.transport,
         args.msg_size,
         settings.duration_seconds,
-        &total,
+        &latency.finish(),
     );
 }

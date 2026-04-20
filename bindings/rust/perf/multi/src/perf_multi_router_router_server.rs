@@ -1,6 +1,7 @@
 #[path = "perf_common.rs"]
 mod common;
 
+use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -50,6 +51,9 @@ fn main() {
     }
     let endpoint = router.last_endpoint().expect("endpoint");
     common::print_ready(&endpoint);
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&router, POLLIN).expect("poller add");
+    let mut pending = VecDeque::<(RoutingId, Vec<u8>)>::new();
     let stop = Arc::new(AtomicBool::new(false));
     let stop_reader = stop.clone();
     std::thread::spawn(move || {
@@ -63,15 +67,54 @@ fn main() {
         }
     });
     while !stop.load(Ordering::Acquire) {
-        match router.recv() {
-            Ok(received) => {
-                let rid = received.routing_id().cloned();
-                let reply = Message::copy_from(common::message_payload(received.parts())).expect("reply");
-                if let Some(rid) = rid {
-                    let _ = router.send(&rid, reply);
+        poller
+            .modify_socket(&router, if pending.is_empty() { POLLIN } else { POLLIN | POLLOUT })
+            .expect("poller modify");
+        match poller.wait(25) {
+            Ok(Some(event)) => {
+                if event.is_readable() {
+                    loop {
+                        match router.recv_with_flags(RecvFlags::DONT_WAIT) {
+                            Ok(received) => {
+                                let Some(rid) = received.routing_id().cloned() else {
+                                    continue;
+                                };
+                                let reply_bytes = common::message_payload(received.parts()).to_vec();
+                                if pending.is_empty() {
+                                    match router.try_send(
+                                        &rid,
+                                        vec![Message::copy_from(&reply_bytes).expect("reply")],
+                                    ) {
+                                        Ok(true) => continue,
+                                        Ok(false) => {}
+                                        Err(err) => panic!("reply send failed: {err}"),
+                                    }
+                                }
+                                pending.push_back((rid, reply_bytes));
+                            }
+                            Err(err) if err.code() == RecvResult::NoData => break,
+                            Err(err) => panic!("router recv failed: {err}"),
+                        }
+                    }
+                }
+                if event.is_writable() {
+                    while let Some((rid, reply_bytes)) = pending.pop_front() {
+                        match router.try_send(
+                            &rid,
+                            vec![Message::copy_from(&reply_bytes).expect("pending reply")],
+                        ) {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                pending.push_front((rid, reply_bytes));
+                                break;
+                            }
+                            Err(err) => panic!("pending reply failed: {err}"),
+                        }
+                    }
                 }
             }
-            Err(_) => {}
+            Ok(None) => {}
+            Err(err) => panic!("poller wait failed: {err}"),
         }
     }
 }

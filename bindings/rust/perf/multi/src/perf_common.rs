@@ -5,6 +5,7 @@
 #[path = "perf_backpressure.rs"]
 pub mod backpressure;
 
+use std::ffi::{c_long, c_void};
 use std::fs;
 use std::path::Path;
 use std::sync::mpsc;
@@ -12,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zlink::Message;
 use zlink::{
     Context, DealerSocket, PairSocket, PubSocket, RouterSocket, SocketMonitor, StreamSocket,
-    SubSocket, ZlinkError,
+    SubSocket, ZlinkError, Poller,
 };
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
@@ -484,4 +485,115 @@ pub fn wait_for_stop_stdin() {
             _ => {}
         }
     }
+}
+
+// -- Native poller access ---------------------------------------------------
+//
+// The public Rust poller wrapper currently drops the native `socket` field from
+// poll events. Multi perf needs socket-level readiness to implement the policy
+// contract (`POLLIN` drain + `POLLOUT` backpressure) on a single poller.
+//
+// These helpers are perf-local and only bridge the missing event metadata.
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct NativePollEventRaw {
+    socket: *mut c_void,
+    fd: libc::c_int,
+    user_data: *mut c_void,
+    events: i16,
+}
+
+pub struct NativePollEvent {
+    pub socket: *mut c_void,
+    pub events: i16,
+}
+
+unsafe extern "C" {
+    fn zlink_poller_wait_all(
+        poller: *mut c_void,
+        events: *mut NativePollEventRaw,
+        n_events: libc::c_int,
+        timeout: c_long,
+        error_out: *mut libc::c_int,
+    ) -> libc::c_int;
+}
+
+#[inline]
+unsafe fn raw_handle_from_object<T>(value: &T) -> *mut c_void {
+    unsafe { *(value as *const T as *const *mut c_void) }
+}
+
+#[inline]
+pub fn raw_socket_handle_dealer(socket: &DealerSocket) -> *mut c_void {
+    unsafe { raw_handle_from_object(socket) }
+}
+
+#[inline]
+pub fn raw_socket_handle_router(socket: &RouterSocket) -> *mut c_void {
+    unsafe { raw_handle_from_object(socket) }
+}
+
+#[inline]
+pub fn raw_socket_handle_pub(socket: &PubSocket) -> *mut c_void {
+    unsafe { raw_handle_from_object(socket) }
+}
+
+#[inline]
+pub fn raw_socket_handle_sub(socket: &SubSocket) -> *mut c_void {
+    unsafe { raw_handle_from_object(socket) }
+}
+
+#[inline]
+pub fn raw_socket_handle_stream(socket: &StreamSocket) -> *mut c_void {
+    unsafe { raw_handle_from_object(socket) }
+}
+
+#[inline]
+fn raw_poller_handle(poller: &Poller) -> *mut c_void {
+    unsafe { raw_handle_from_object(poller) }
+}
+
+pub fn wait_native_poll_events(
+    poller: &Poller,
+    max_events: usize,
+    timeout_ms: i64,
+) -> Result<Vec<NativePollEvent>, i32> {
+    let capacity = max_events.max(1);
+    let mut raw = vec![
+        NativePollEventRaw {
+            socket: std::ptr::null_mut(),
+            fd: 0,
+            user_data: std::ptr::null_mut(),
+            events: 0,
+        };
+        capacity
+    ];
+    let rc = unsafe {
+        zlink_poller_wait_all(
+            raw_poller_handle(poller),
+            raw.as_mut_ptr(),
+            capacity as libc::c_int,
+            timeout_ms as c_long,
+            std::ptr::null_mut(),
+        )
+    };
+    if rc < 0 {
+        let errno = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(libc::EIO);
+        if errno == libc::EAGAIN || errno == libc::ETIMEDOUT || errno == libc::EINTR {
+            return Ok(Vec::new());
+        }
+        return Err(errno);
+    }
+    let count = rc as usize;
+    let mut events = Vec::with_capacity(count);
+    for event in raw.into_iter().take(count) {
+        events.push(NativePollEvent {
+            socket: event.socket,
+            events: event.events,
+        });
+    }
+    Ok(events)
 }

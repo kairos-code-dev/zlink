@@ -13,6 +13,8 @@ fn main() {
 
     let ctx = common::perf_client_context();
     let mut sockets: Vec<SubSocket> = Vec::with_capacity(settings.clients);
+    let poller = Poller::new().expect("poller");
+    let mut socket_keys = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let sub = ctx.sub_socket().expect("sub");
@@ -28,6 +30,8 @@ fn main() {
         }
         sub.connect(&args.endpoint).expect("connect");
         sub.set_subscription(TOPIC).expect("subscribe");
+        poller.add_socket(&sub, POLLIN).expect("poller add");
+        socket_keys.push(common::raw_socket_handle_sub(&sub) as usize);
         sockets.push(sub);
     }
 
@@ -56,9 +60,20 @@ fn main() {
     let mut active_count: u64 = 0;
 
     while Instant::now() < deadline {
-        for sub in &sockets {
+        let events =
+            common::wait_native_poll_events(&poller, sockets.len(), 25).expect("poller wait all");
+        for event in events {
+            let Some(index) = socket_keys
+                .iter()
+                .position(|socket_key| *socket_key == event.socket as usize)
+            else {
+                continue;
+            };
+            if event.events & POLLIN == 0 {
+                continue;
+            }
             loop {
-                match sub.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+                match sockets[index].subscribe_with_flags(RecvFlags::DONT_WAIT) {
                     Ok(topic_msg) => {
                         let data = common::message_payload(topic_msg.parts());
                         if !common::is_valid_active_message(data, args.msg_size) {
@@ -71,7 +86,7 @@ fn main() {
                         active_count += 1;
                     }
                     Err(err) if err.code == RecvResult::NoData => break,
-                    Err(_) => break,
+                    Err(err) => panic!("recv failed: {err}"),
                 }
             }
         }

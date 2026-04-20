@@ -7,8 +7,6 @@ import (
 	"zlink"
 )
 
-const DefaultReadyTimeout = 5 * time.Second
-
 type ReadyConfig struct {
 	Monitor   *zlink.SocketMonitor
 	MinEvents int
@@ -20,7 +18,7 @@ type ReadyConfig struct {
 func WaitReady(cfg ReadyConfig) error {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
-		timeout = DefaultReadyTimeout
+		timeout = SingleReadyTimeout()
 	}
 	name := cfg.Name
 	if name == "" {
@@ -41,7 +39,7 @@ func WaitConnected(monitors ...*zlink.SocketMonitor) {
 		Must(WaitReady(ReadyConfig{
 			Monitor:   monitor,
 			MinEvents: 1,
-			Timeout:   DefaultReadyTimeout,
+			Timeout:   SingleReadyTimeout(),
 		}))
 	}
 }

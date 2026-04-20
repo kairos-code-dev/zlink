@@ -108,10 +108,6 @@ func ValidateCommon(transport string, msgSize int) {
 	}
 }
 
-func DebugEnabled() bool {
-	return os.Getenv("PERF_DEBUG") != ""
-}
-
 const BenchmarkSocketTimeout = 200 * time.Millisecond
 
 func singleSocketTimeout(send bool) time.Duration {
@@ -214,10 +210,6 @@ func ApplyMultiBenchmarkSocketOptions(socket benchmarkSocket, transport string) 
 	Must(socket.SetRecvTimeout(multiSocketTimeout(false)))
 }
 
-func UniqueTCPEndpoint(prefix string) string {
-	return UniqueEndpoint("tcp", prefix)
-}
-
 type boundEndpointSocket interface {
 	Bind(string) error
 	LastEndpoint() (string, error)
@@ -313,27 +305,6 @@ func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 	return mon
 }
 
-func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
-	type result struct {
-		event *zlink.MonitorEvent
-		err   error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		event, err := mon.Recv()
-		ch <- result{event: event, err: err}
-	}()
-	select {
-	case out := <-ch:
-		if out.err != nil {
-			Must(out.err)
-		}
-		return out.event
-	case <-time.After(5 * time.Second):
-		Must(fmt.Errorf("timed out waiting for monitor event"))
-		return nil
-	}
-}
 func PreparePayload(size int) []byte {
 	return make([]byte, size)
 }

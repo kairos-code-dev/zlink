@@ -18,6 +18,24 @@ CLIENTS=""
 RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
+PIN_CPU="off"
+HWM=""
+SEND_HWM=""
+RECV_HWM=""
+SNDTIMEO_MS=""
+RCVTIMEO_MS=""
+CONNECT_READY_TIMEOUT_MS=""
+
+cleanup_report_dir() {
+  local dir="$1"
+  local max_files="${PERF_RESULTS_MAX_FILES:-100}"
+  mkdir -p "${dir}"
+  mapfile -t existing < <(find "${dir}" -maxdepth 1 -type f -name 'perf_go_multi_*.txt' | sort)
+  while [[ "${#existing[@]}" -ge "${max_files}" ]]; do
+    rm -f "${existing[0]}"
+    existing=("${existing[@]:1}")
+  done
+}
 
 usage() {
   cat <<'USAGE'
@@ -60,7 +78,7 @@ Options:
   -h, --help
 
 Notes:
-  - Supported multi patterns: MULTI_PUBSUB,MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_SPOT,MULTI_STREAM
+  - Supported multi patterns: MULTI_PUBSUB,MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM
 USAGE
 }
 
@@ -76,15 +94,55 @@ while [[ $# -gt 0 ]]; do
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
-    --build-dir|--io-threads|--server-io-threads|--client-io-threads|--hwm|--send-hwm|--recv-hwm|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--connect-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
+    --build-dir|--io-threads|--server-io-threads|--client-io-threads|--sndbuf|--rcvbuf|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
       shift 2 ;;
-    --reuse-build|--clean-build|--pin-cpu)
+    --hwm)
+      HWM="$2"
+      shift 2 ;;
+    --send-hwm)
+      SEND_HWM="$2"
+      shift 2 ;;
+    --recv-hwm)
+      RECV_HWM="$2"
+      shift 2 ;;
+    --sndtimeo|--send-timeout-ms)
+      SNDTIMEO_MS="$2"
+      shift 2 ;;
+    --rcvtimeo|--recv-timeout-ms)
+      RCVTIMEO_MS="$2"
+      shift 2 ;;
+    --connect-ready-timeout-ms)
+      CONNECT_READY_TIMEOUT_MS="$2"
+      shift 2 ;;
+    --reuse-build|--clean-build)
+      shift ;;
+    --pin-cpu)
+      PIN_CPU="on"
       shift ;;
     *)
       echo "Error: unknown option $1" >&2
       exit 1 ;;
   esac
 done
+
+if [[ -n "${HWM}" ]]; then
+  export PERF_MULTI_HWM="${HWM}"
+fi
+if [[ -n "${SEND_HWM}" ]]; then
+  export PERF_MULTI_SNDHWM="${SEND_HWM}"
+fi
+if [[ -n "${RECV_HWM}" ]]; then
+  export PERF_MULTI_RCVHWM="${RECV_HWM}"
+fi
+if [[ -n "${SNDTIMEO_MS}" ]]; then
+  export PERF_MULTI_SNDTIMEO_MS="${SNDTIMEO_MS}"
+fi
+if [[ -n "${RCVTIMEO_MS}" ]]; then
+  export PERF_MULTI_RCVTIMEO_MS="${RCVTIMEO_MS}"
+fi
+if [[ -n "${CONNECT_READY_TIMEOUT_MS}" ]]; then
+  export PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${CONNECT_READY_TIMEOUT_MS}"
+fi
 
 case "$(uname -s)" in
   Linux*) PLATFORM="linux" ;;
@@ -99,6 +157,7 @@ if [[ -n "${RESULTS_TAG}" ]]; then
 fi
 RESULTS_FILE="${RESULTS_DIR}/perf_go_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
+cleanup_report_dir "${RESULTS_DIR}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-multi.XXXXXX")"
 cleanup() {
   rm -rf "${TMP_DIR}"
@@ -107,7 +166,7 @@ trap cleanup EXIT
 
 IFS=',' read -r -a SIZES <<< "${MSG_SIZES}"
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERNS=("MULTI_PUBSUB" "MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_SPOT" "MULTI_STREAM")
+  PATTERNS=("MULTI_PUBSUB" "MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_SPOT" "MULTI_SPOT_REQREP" "MULTI_STREAM")
 else
   IFS=',' read -r -a PATTERNS <<< "${PATTERN}"
 fi
@@ -120,7 +179,7 @@ fi
 
 pattern_transports() {
   case "$1" in
-    MULTI_STREAM|MULTI_SPOT|MULTI_PUBSUB|MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER)
+    MULTI_STREAM|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_PUBSUB|MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER)
       echo "tcp tls ws wss"
       ;;
     *)
@@ -145,7 +204,7 @@ transport_enabled() {
 
 is_unsupported_output() {
   local output_file="$1"
-  grep -Eiq '(protocol not supported|operation not permitted|permission denied|address already in use|listen eperm|eaddrinuse|eacces|errno=1|errno=98)' "${output_file}"
+  grep -Eiq 'protocol not supported' "${output_file}"
 }
 
 append_case_output() {
@@ -167,6 +226,67 @@ count_result_lines() {
   ' "${case_log}"
 }
 
+render_tables() {
+  python3 - "$RESULTS_FILE" <<'PY'
+from collections import defaultdict
+import sys
+
+result_file = sys.argv[1]
+metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
+echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP"}
+rows = defaultdict(dict)
+
+with open(result_file, "r", encoding="utf-8") as fh:
+    for raw in fh:
+        parts = raw.strip().split(",")
+        if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
+            continue
+        pattern, transport, size, metric, value = parts[2], parts[3], parts[4], parts[5], parts[6]
+        if metric not in metrics:
+            continue
+        try:
+            rows[(pattern, transport, int(size))][metric] = float(value)
+        except ValueError:
+            continue
+
+by_pattern = defaultdict(list)
+for key, values in rows.items():
+    pattern, transport, size = key
+    by_pattern[pattern].append((transport, size, values))
+
+printed_first_pattern = False
+for pattern in sorted(by_pattern):
+    if printed_first_pattern:
+        print()
+        print("===============================================================================")
+        print()
+    printed_first_pattern = True
+    direction = "echo" if pattern in echo_patterns else "one-way"
+    print(f"## PATTERN: {pattern} ({direction})")
+    print()
+    transports = defaultdict(list)
+    for transport, size, values in by_pattern[pattern]:
+        transports[transport].append((size, values))
+    for transport in sorted(transports):
+        print(f"### Transport: {transport}")
+        print("| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+        print("|----------|------------------|------------|---------------|---------------|---------------|")
+        for size, values in sorted(transports[transport]):
+            if not all(metric in values for metric in metrics):
+                continue
+            unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
+            print(
+                f"| {size}B"
+                f" | {values['throughput'] / 1000.0:16.2f} {unit}"
+                f" | {values['bandwidth']:10.2f} MB/s"
+                f" | {values['latency']:13.3f} ms"
+                f" | {values['latency_p95']:13.3f} ms"
+                f" | {values['latency_p99']:13.3f} ms |"
+            )
+        print()
+PY
+}
+
 {
   echo "## Effective Options (start)"
   echo "- lang: go"
@@ -180,7 +300,7 @@ count_result_lines() {
   else
     echo "- clients: auto (default=100, stream=10000)"
   fi
-  echo "- pin_cpu: off"
+  echo "- pin_cpu: ${PIN_CPU}"
   echo "- duration_seconds: ${DURATION}"
   echo
 } > "${RESULTS_FILE}"
@@ -188,6 +308,7 @@ count_result_lines() {
 result_lines=0
 unsupported=0
 fail=0
+expected_cases=0
 
 for run in $(seq 1 "${RUNS}"); do
   for pattern in "${PATTERNS[@]}"; do
@@ -208,6 +329,7 @@ for run in $(seq 1 "${RUNS}"); do
 
       transport_unsupported=0
       for size in "${SIZES[@]}"; do
+        expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
         if go run ./perf/multi \
           --pattern "${pattern}" \
@@ -228,6 +350,7 @@ for run in $(seq 1 "${RUNS}"); do
           if is_unsupported_output "${case_log}"; then
             echo "UNSUPPORTED,current,${pattern},${transport}" >> "${RESULTS_FILE}"
             unsupported=$((unsupported + 1))
+            expected_cases=$((expected_cases - 1))
             transport_unsupported=1
             break
           fi
@@ -244,6 +367,17 @@ for run in $(seq 1 "${RUNS}"); do
   done
 done
 
+table_output="$(render_tables)"
+if [[ -n "${table_output}" ]]; then
+  printf '\n%s\n' "${table_output}" >> "${RESULTS_FILE}"
+fi
+
+expected_result_lines=$((expected_cases * 5))
+status="partial"
+if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; then
+  status="complete"
+fi
+
 {
   echo
   echo "## Effective Options (result)"
@@ -258,13 +392,11 @@ done
   else
     echo "- clients: auto (default=100, stream=10000)"
   fi
-  echo "- pin_cpu: off"
+  echo "- pin_cpu: ${PIN_CPU}"
   echo "- duration_seconds: ${DURATION}"
-  if [[ "${fail}" -eq 0 ]]; then
-    echo "- status: complete"
-  else
-    echo "- status: partial"
-  fi
+  echo "- status: ${status}"
+  echo "- expected_result_lines: ${expected_result_lines}"
+  echo "- actual_result_lines: ${result_lines}"
 } >> "${RESULTS_FILE}"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
@@ -272,8 +404,7 @@ if [[ -n "${OUTPUT_FILE}" ]]; then
 fi
 
 cat "${RESULTS_FILE}"
-echo "Results saved to: ${RESULTS_FILE}"
 
-if [[ "${fail}" -ne 0 ]]; then
+if [[ "${status}" != "complete" ]]; then
   exit 1
 fi

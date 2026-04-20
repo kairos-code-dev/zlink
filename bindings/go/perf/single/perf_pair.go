@@ -29,10 +29,6 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(client.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
-	perfcommon.Must(server.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
-	perfcommon.Must(server.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
-	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
-	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.WaitConnected(serverMon, clientMon)
 
 	return runSingleOneWay(cfg, server, func(payload []byte) error {

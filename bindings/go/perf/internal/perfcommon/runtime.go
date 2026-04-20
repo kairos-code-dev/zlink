@@ -8,6 +8,11 @@ import (
 	"zlink"
 )
 
+const (
+	ZLinkPollIn  int16 = 1
+	ZLinkPollOut int16 = 2
+)
+
 type BenchmarkWindow struct {
 	StopAt   time.Time
 	ActiveAt time.Time
@@ -62,6 +67,14 @@ func readySettleDuration(pattern string) time.Duration {
 
 func SingleIdleDrainDuration() time.Duration {
 	return durationFromEnv("PERF_SINGLE_RCVTIMEO_MS", 200*time.Millisecond)
+}
+
+func SingleReadyTimeout() time.Duration {
+	return durationFromEnv("PERF_CONNECT_READY_TIMEOUT_MS", 5*time.Second)
+}
+
+func MultiReadyTimeout() time.Duration {
+	return durationFromEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5*time.Second)
 }
 
 func durationFromEnv(name string, fallback time.Duration) time.Duration {

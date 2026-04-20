@@ -2,7 +2,6 @@ package perfcommon
 
 import (
 	"encoding/binary"
-	"sort"
 	"sync/atomic"
 	"time"
 
@@ -19,12 +18,6 @@ const (
 )
 
 var metricSequence uint64
-
-type LatencyStats struct {
-	P50 float64
-	P95 float64
-	P99 float64
-}
 
 func StampPayload(payload []byte) {
 	StampPayloadPhase(payload, PhaseActive)
@@ -78,20 +71,6 @@ func validActiveHeader(header MetricHeader, expectedMsgSize int) bool {
 		header.RunID == MetricRunID &&
 		header.Phase == PhaseActive &&
 		int(header.MsgSize) == expectedMsgSize
-}
-
-func ComputeLatencyStats(values []float64) LatencyStats {
-	if len(values) == 0 {
-		return LatencyStats{}
-	}
-
-	sorted := append([]float64(nil), values...)
-	sort.Float64s(sorted)
-	return LatencyStats{
-		P50: percentile(sorted, 50),
-		P95: percentile(sorted, 95),
-		P99: percentile(sorted, 99),
-	}
 }
 
 func SentAtFromBytes(data []byte, expectedMsgSize int) (time.Time, bool) {

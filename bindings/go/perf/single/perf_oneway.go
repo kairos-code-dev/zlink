@@ -90,7 +90,7 @@ func waitSingleRouteReady(
 	if err := send(payload); err != nil {
 		perfcommon.Must(fmt.Errorf("%s ready probe send: %w", name, err))
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
 		if drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
 			return

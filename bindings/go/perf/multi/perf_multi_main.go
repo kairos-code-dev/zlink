@@ -53,6 +53,8 @@ func main() {
 		result = runMultiRouterRouter(cfg)
 	case "MULTI_SPOT":
 		result = runMultiSpot(cfg)
+	case "MULTI_SPOT_REQREP":
+		result = runMultiSpotReqRep(cfg)
 	case "MULTI_STREAM":
 		result = runMultiStream(cfg)
 	default:

@@ -78,7 +78,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+		err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -89,7 +89,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 
 	activeCollect.Store(false)
 	perfcommon.StampCooldownPayload(payload)
-	err = publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+	err = publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 	if err != nil && !perfcommon.IsTransient(err) {
 		perfcommon.Must(err)
 	}
@@ -104,7 +104,7 @@ func waitForSpotReady(publisher *zlink.Spot, msgSize int, readySeen *atomic.Bool
 		Name: "spot perf endpoint",
 		Probe: func() (bool, error) {
 			perfcommon.StampProbePayload(payload)
-			err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+			err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					return false, nil

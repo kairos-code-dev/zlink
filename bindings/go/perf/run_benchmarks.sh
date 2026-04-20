@@ -18,6 +18,22 @@ RESULTS_DIR="${SCRIPT_DIR}/results/single/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
 PIN_CPU="off"
+HWM=""
+SEND_HWM=""
+RECV_HWM=""
+SNDTIMEO_MS=""
+RCVTIMEO_MS=""
+
+cleanup_report_dir() {
+  local dir="$1"
+  local max_files="100"
+  mkdir -p "${dir}"
+  mapfile -t existing < <(find "${dir}" -maxdepth 1 -type f -name 'perf_go_single_*.txt' | sort)
+  while [[ "${#existing[@]}" -ge "${max_files}" ]]; do
+    rm -f "${existing[0]}"
+    existing=("${existing[@]:1}")
+  done
+}
 
 usage() {
   cat <<'USAGE'
@@ -62,7 +78,22 @@ while [[ $# -gt 0 ]]; do
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
-    --build-dir|--io-threads|--hwm|--send-hwm|--recv-hwm|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms)
+    --build-dir|--io-threads)
+      shift 2 ;;
+    --hwm)
+      HWM="$2"
+      shift 2 ;;
+    --send-hwm)
+      SEND_HWM="$2"
+      shift 2 ;;
+    --recv-hwm)
+      RECV_HWM="$2"
+      shift 2 ;;
+    --sndtimeo|--send-timeout-ms)
+      SNDTIMEO_MS="$2"
+      shift 2 ;;
+    --rcvtimeo|--recv-timeout-ms)
+      RCVTIMEO_MS="$2"
       shift 2 ;;
     --reuse-build|--clean-build)
       shift ;;
@@ -74,6 +105,22 @@ while [[ $# -gt 0 ]]; do
       exit 1 ;;
   esac
 done
+
+if [[ -n "${HWM}" ]]; then
+  export PERF_SINGLE_HWM="${HWM}"
+fi
+if [[ -n "${SEND_HWM}" ]]; then
+  export PERF_SINGLE_SNDHWM="${SEND_HWM}"
+fi
+if [[ -n "${RECV_HWM}" ]]; then
+  export PERF_SINGLE_RCVHWM="${RECV_HWM}"
+fi
+if [[ -n "${SNDTIMEO_MS}" ]]; then
+  export PERF_SINGLE_SNDTIMEO_MS="${SNDTIMEO_MS}"
+fi
+if [[ -n "${RCVTIMEO_MS}" ]]; then
+  export PERF_SINGLE_RCVTIMEO_MS="${RCVTIMEO_MS}"
+fi
 
 case "$(uname -s)" in
   Linux*) PLATFORM="linux" ;;
@@ -88,6 +135,7 @@ if [[ -n "${RESULTS_TAG}" ]]; then
 fi
 RESULTS_FILE="${RESULTS_DIR}/perf_go_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
+cleanup_report_dir "${RESULTS_DIR}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-single.XXXXXX")"
 cleanup() {
   rm -rf "${TMP_DIR}"

@@ -2,40 +2,41 @@
 
 mod common;
 
-use std::future::Future;
-use std::pin::pin;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
 };
-use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
-use std::hint::spin_loop;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use zlink::*;
 
-fn noop_waker() -> Waker {
-    unsafe fn clone(_: *const ()) -> RawWaker {
-        RawWaker::new(std::ptr::null(), &VTABLE)
-    }
-    unsafe fn wake(_: *const ()) {}
-    unsafe fn wake_by_ref(_: *const ()) {}
-    unsafe fn drop(_: *const ()) {}
-
-    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-    let raw = RawWaker::new(std::ptr::null(), &VTABLE);
-    unsafe { Waker::from_raw(raw) }
-}
-
-fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = noop_waker();
-    let mut context = TaskContext::from_waker(&waker);
-    let mut future = pin!(future);
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => spin_loop(),
+fn wait_spot_reply(
+    requester: &RouterSocket,
+    node_rid: RoutingId,
+    spot_rid: RoutingId,
+    parts: Vec<Message>,
+    timeout: Duration,
+) -> Result<Vec<Message>, ZlinkError> {
+    let (tx, rx) = mpsc::sync_channel(1);
+    requester.request_to_spot_callback(
+        node_rid,
+        spot_rid,
+        parts,
+        move |result| {
+            let _ = tx.send(result);
+        },
+        SendFlags::NONE,
+        timeout,
+    )?;
+    match rx.recv_timeout(timeout + Duration::from_millis(50)) {
+        Ok(result) => result.map_err(ZlinkError::from),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            panic!("spot reqrep request timed out after {:?}", timeout);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("spot reqrep reply channel disconnected");
         }
     }
 }
@@ -119,13 +120,14 @@ fn main() {
     let probe_timeout = common::resolve_single_ready_timeout();
     let mut probe = vec![0u8; config.size.max(common::HEADER_SIZE)];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
-    let ready_reply = block_on(requester.request_to_spot(
-            replier_node_rid.clone(),
-            replier_spot_rid.clone(),
-            vec![Message::copy_from(&probe).expect("probe")],
-            probe_timeout,
-        ))
-        .expect("ready probe");
+    let ready_reply = wait_spot_reply(
+        &requester,
+        replier_node_rid.clone(),
+        replier_spot_rid.clone(),
+        vec![Message::copy_from(&probe).expect("probe")],
+        probe_timeout,
+    )
+    .expect("ready probe");
     let ready_data = ready_reply
         .first()
         .map(|message| message.as_bytes())
@@ -137,25 +139,26 @@ fn main() {
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let active_end = std::time::Instant::now() + Duration::from_secs(config.duration_seconds);
+    let active_end = Instant::now() + Duration::from_secs(config.duration_seconds);
     let mut seq: u64 = 1;
     let mut payload = vec![0u8; config.size.max(common::HEADER_SIZE)];
-    while std::time::Instant::now() < active_end {
+    while Instant::now() < active_end {
         common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
-        let reply = block_on(requester.request_to_spot(
-                replier_node_rid.clone(),
-                replier_spot_rid.clone(),
-                vec![Message::copy_from(&payload).expect("request")],
-                probe_timeout,
-            ))
-            .expect("active request");
-        let data = reply.first().map(|message| message.as_bytes()).unwrap_or(&[]);
+        let reply = wait_spot_reply(
+            &requester,
+            replier_node_rid.clone(),
+            replier_spot_rid.clone(),
+            vec![Message::copy_from(&payload).expect("request")],
+            probe_timeout,
+        )
+        .expect("active request");
+        let data = reply
+            .first()
+            .map(|message| message.as_bytes())
+            .unwrap_or(&[]);
         if common::is_valid_active_message(data, config.size) {
             let sent_ts_ns = common::decode_sent_ts_ns(data);
-            let latency_ns = (common::now_ns() as i64)
-                .saturating_sub(sent_ts_ns)
-                .max(0) as u64
-                / 2;
+            let latency_ns = (common::now_ns() as i64).saturating_sub(sent_ts_ns).max(0) as u64 / 2;
             stats.lock().unwrap().record_ns(latency_ns);
         }
         seq += 1;

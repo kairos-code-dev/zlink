@@ -2,11 +2,11 @@
 
 mod common;
 
+use std::sync::mpsc;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
-use std::hint::spin_loop;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -49,20 +49,22 @@ fn main() {
         panic!("bind: {err}");
     }
     let endpoint = publisher_node.last_endpoint().expect("endpoint");
-    subscriber_node.connect_peer(&endpoint).expect("connect peer");
+    subscriber_node
+        .connect_peer(&endpoint)
+        .expect("connect peer");
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let ready_seen = Arc::new(AtomicBool::new(false));
     let active_collect = Arc::new(AtomicBool::new(false));
-    let last_recv_ns = Arc::new(AtomicU64::new(0));
+    let (ready_tx, ready_rx) = mpsc::channel::<()>();
+    let (activity_tx, activity_rx) = mpsc::channel::<()>();
 
     let subscriber_ptr = (&subscriber as *const Spot) as usize;
     subscriber
         .on_dispatch_event({
-            let ready_seen = Arc::clone(&ready_seen);
             let active_collect = Arc::clone(&active_collect);
-            let last_recv_ns = Arc::clone(&last_recv_ns);
+            let ready_tx = ready_tx.clone();
+            let activity_tx = activity_tx.clone();
             move |event| {
                 if event != SpotDispatchEvent::SubscribeReadable {
                     return;
@@ -77,11 +79,11 @@ fn main() {
                                 continue;
                             }
 
-                            last_recv_ns.store(common::now_ns(), Ordering::Release);
+                            let _ = activity_tx.send(());
                             if active_collect.load(Ordering::Acquire) {
                                 common::handle_recv(data, config.size, &stats);
                             } else {
-                                ready_seen.store(true, Ordering::Release);
+                                let _ = ready_tx.send(());
                             }
                         }
                         Err(err) if err.code() == RecvResult::NoData => break,
@@ -96,7 +98,8 @@ fn main() {
     let mut probe = vec![0u8; config.size.max(common::HEADER_SIZE)];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
 
-    while Instant::now() < probe_deadline && !ready_seen.load(Ordering::Acquire) {
+    let mut ready_received = false;
+    while Instant::now() < probe_deadline {
         match publisher.publish(
             SERVICE_NAME,
             TOPIC,
@@ -106,16 +109,24 @@ fn main() {
             Err(err)
                 if matches!(
                     err.code(),
-                    SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
+                    SubmitResult::NotConnected
+                        | SubmitResult::NotFound
+                        | SubmitResult::Backpressured
                 ) =>
             {
-                spin_loop();
-                continue;
+                if let Ok(()) = ready_rx.recv_timeout(Duration::from_millis(10)) {
+                    ready_received = true;
+                    break;
+                }
             }
             Err(err) => panic!("probe publish: {err}"),
         }
+        if let Ok(()) = ready_rx.recv_timeout(Duration::from_millis(10)) {
+            ready_received = true;
+            break;
+        }
     }
-    if !ready_seen.load(Ordering::Acquire) {
+    if !ready_received {
         panic!("single SPOT ready probe timed out");
     }
 
@@ -131,18 +142,14 @@ fn main() {
     active_collect.store(false, Ordering::Release);
 
     let idle_drain = Duration::from_millis(common::resolve_single_idle_drain_ms());
-    let mut idle_since = Instant::now();
-    let mut last_seen = last_recv_ns.load(Ordering::Acquire);
     loop {
-        let current = last_recv_ns.load(Ordering::Acquire);
-        if current != last_seen {
-            last_seen = current;
-            idle_since = Instant::now();
+        match activity_rx.recv_timeout(idle_drain) {
+            Ok(()) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                panic!("single SPOT activity channel disconnected");
+            }
         }
-        if idle_since.elapsed() >= idle_drain {
-            break;
-        }
-        spin_loop();
     }
 
     let result = collector.finish();

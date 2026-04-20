@@ -2,7 +2,6 @@
 mod common;
 
 use std::time::{Duration, Instant};
-use std::hint::spin_loop;
 use zlink::*;
 
 fn main() {
@@ -67,7 +66,8 @@ fn main() {
                 args.msg_size as u32,
                 seqs[index],
             );
-            match sockets[index].try_send(vec![Message::copy_from(&payloads[index]).expect("msg")]) {
+            match sockets[index].try_send(vec![Message::copy_from(&payloads[index]).expect("msg")])
+            {
                 Ok(true) => {
                     waiting_reply[index] = true;
                     seqs[index] += 1;
@@ -127,7 +127,7 @@ fn main() {
             }
         }
         if !saw_event {
-            spin_loop();
+            std::thread::park_timeout(Duration::from_millis(1));
         }
     }
 

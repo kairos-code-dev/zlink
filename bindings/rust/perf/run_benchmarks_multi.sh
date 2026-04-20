@@ -232,11 +232,7 @@ default_io_threads_for_pattern() {
 }
 
 default_hwm_for_pattern() {
-    local pattern="$1"
-    case "${pattern}" in
-        MULTI_STREAM) printf '%s' "10" ;;
-        *) printf '%s' "100" ;;
-    esac
+    printf '%s' "1000"
 }
 
 ensure_core_stream_client() {
@@ -564,6 +560,7 @@ for run in $(seq 1 "${RUNS}"); do
                     else
                         printf 'START,%s\n' "${size}" >&"${SERVER_CONTROL_FD}" || true
                         printf 'START,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
+                        printf 'PHASE_ACTIVE,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
                     fi
 
                     if [[ "${case_status}" == "success" ]]; then

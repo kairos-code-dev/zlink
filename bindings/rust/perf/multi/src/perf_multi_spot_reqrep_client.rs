@@ -1,16 +1,9 @@
 #[path = "perf_common.rs"]
 mod common;
 
-use std::future::Future;
-use std::hint::spin_loop;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::pin::pin;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
-use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -57,29 +50,41 @@ fn decode_routing_id(hex: &str) -> RoutingId {
     RoutingId::from_bytes(&bytes)
 }
 
-fn noop_waker() -> Waker {
-    unsafe fn clone(_: *const ()) -> RawWaker {
-        RawWaker::new(std::ptr::null(), &VTABLE)
-    }
-    unsafe fn wake(_: *const ()) {}
-    unsafe fn wake_by_ref(_: *const ()) {}
-    unsafe fn drop(_: *const ()) {}
-
-    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-    let raw = RawWaker::new(std::ptr::null(), &VTABLE);
-    unsafe { Waker::from_raw(raw) }
-}
-
-fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = noop_waker();
-    let mut context = TaskContext::from_waker(&waker);
-    let mut future = pin!(future);
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => spin_loop(),
+fn wait_spot_reply(
+    router: &RouterSocket,
+    node_rid: RoutingId,
+    spot_rid: RoutingId,
+    parts: Vec<Message>,
+    timeout: Duration,
+) -> Result<Vec<Message>, ZlinkError> {
+    let (tx, rx) = mpsc::sync_channel(1);
+    router.request_to_spot_callback(
+        node_rid,
+        spot_rid,
+        parts,
+        move |result| {
+            let _ = tx.send(result);
+        },
+        SendFlags::NONE,
+        timeout,
+    )?;
+    match rx.recv_timeout(timeout + Duration::from_millis(50)) {
+        Ok(result) => result.map_err(ZlinkError::from),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            panic!("spot reqrep request timed out after {:?}", timeout);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("spot reqrep reply channel disconnected");
         }
     }
+}
+
+enum ClientEvent {
+    ReadySender(TcpStream),
+    RunnerConnected,
+    RunnerStart,
+    Started,
+    Stop,
 }
 
 fn main() {
@@ -93,42 +98,36 @@ fn main() {
 
     let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
     let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
-    let request_timeout = Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms));
-
-    let runner_connected = Arc::new(AtomicBool::new(false));
-    let runner_start = Arc::new(AtomicBool::new(false));
-    let started = Arc::new(AtomicBool::new(false));
+    let request_timeout =
+        Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms));
+    let (event_tx, event_rx) = mpsc::channel::<ClientEvent>();
 
     let (listener, client_control_endpoint) = control_listener();
     println!("CLIENT_CONTROL_ENDPOINT,{client_control_endpoint}");
     io::stdout().flush().ok();
 
-    let ready_sender = Arc::new(Mutex::new(None::<TcpStream>));
     {
-        let ready_sender = Arc::clone(&ready_sender);
+        let event_tx = event_tx.clone();
         thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept server control");
             stream.set_nodelay(true).ok();
-            ready_sender
-                .lock()
-                .expect("ready sender lock")
-                .replace(stream);
+            let _ = event_tx.send(ClientEvent::ReadySender(stream));
         });
     }
 
     {
-        let runner_connected = Arc::clone(&runner_connected);
-        let runner_start = Arc::clone(&runner_start);
+        let event_tx = event_tx.clone();
         thread::spawn(move || {
             let stdin = io::stdin();
             for line in stdin.lock().lines() {
                 let line = line.unwrap_or_default();
                 let text = line.trim();
                 if text.starts_with("CONTROL_CONNECTED,") {
-                    runner_connected.store(true, Ordering::Release);
+                    let _ = event_tx.send(ClientEvent::RunnerConnected);
                 } else if text == format!("START,{}", args.msg_size) {
-                    runner_start.store(true, Ordering::Release);
+                    let _ = event_tx.send(ClientEvent::RunnerStart);
                 } else if matches!(text, "STOP" | "QUIT") {
+                    let _ = event_tx.send(ClientEvent::Stop);
                     return;
                 }
             }
@@ -136,7 +135,7 @@ fn main() {
     }
 
     {
-        let started = Arc::clone(&started);
+        let event_tx = event_tx.clone();
         let control_endpoint = control_endpoint.to_string();
         thread::spawn(move || {
             let stream = TcpStream::connect(tcp_addr(&control_endpoint)).expect("connect control");
@@ -144,7 +143,7 @@ fn main() {
             for line in reader.lines() {
                 let line = line.unwrap_or_default();
                 if line.trim() == format!("START,{}", args.msg_size) {
-                    started.store(true, Ordering::Release);
+                    let _ = event_tx.send(ClientEvent::Started);
                     return;
                 }
             }
@@ -180,26 +179,31 @@ fn main() {
         routers.push(router);
     }
 
+    let mut ready_sender = None::<TcpStream>;
+    let mut runner_connected = false;
     let ready_deadline = Instant::now() + Duration::from_secs(15);
     while Instant::now() < ready_deadline {
-        if runner_connected.load(Ordering::Acquire)
-            && ready_sender.lock().expect("ready sender lock").is_some()
-        {
+        let remaining = ready_deadline.saturating_duration_since(Instant::now());
+        match event_rx.recv_timeout(remaining) {
+            Ok(ClientEvent::ReadySender(stream)) => ready_sender = Some(stream),
+            Ok(ClientEvent::RunnerConnected) => runner_connected = true,
+            Ok(ClientEvent::Stop) => return,
+            Ok(ClientEvent::RunnerStart | ClientEvent::Started) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        if runner_connected && ready_sender.is_some() {
             break;
         }
-        spin_loop();
     }
-    if !runner_connected.load(Ordering::Acquire)
-        || ready_sender.lock().expect("ready sender lock").is_none()
-    {
+    if !runner_connected || ready_sender.is_none() {
         panic!("spot reqrep client control connection timeout");
     }
 
     thread::sleep(ready_settle);
     thread::sleep(control_settle);
     {
-        let mut guard = ready_sender.lock().expect("ready sender lock");
-        let stream = guard.as_mut().expect("ready sender");
+        let stream = ready_sender.as_mut().expect("ready sender");
         writeln!(stream, "CONNECTED").expect("write connected");
         writeln!(stream, "READY_COUNT,{},{}", args.msg_size, settings.clients)
             .expect("write ready count");
@@ -209,14 +213,24 @@ fn main() {
     println!("CLIENT_READY,{}", args.msg_size);
     io::stdout().flush().ok();
 
+    let mut runner_start = false;
+    let mut started = false;
     let start_deadline = Instant::now() + Duration::from_secs(15);
     while Instant::now() < start_deadline {
-        if runner_start.load(Ordering::Acquire) && started.load(Ordering::Acquire) {
+        let remaining = start_deadline.saturating_duration_since(Instant::now());
+        match event_rx.recv_timeout(remaining) {
+            Ok(ClientEvent::RunnerStart) => runner_start = true,
+            Ok(ClientEvent::Started) => started = true,
+            Ok(ClientEvent::Stop) => return,
+            Ok(ClientEvent::ReadySender(_) | ClientEvent::RunnerConnected) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        if runner_start && started {
             break;
         }
-        spin_loop();
     }
-    if !runner_start.load(Ordering::Acquire) || !started.load(Ordering::Acquire) {
+    if !runner_start || !started {
         panic!("spot reqrep client start handshake timeout");
     }
 
@@ -233,14 +247,18 @@ fn main() {
             let mut payload = vec![0u8; msg_size.max(common::HEADER_SIZE)];
             while Instant::now() < deadline {
                 common::encode_header(&mut payload, common::PHASE_ACTIVE, msg_size as u32, seq);
-                match block_on(router.request_to_spot(
+                match wait_spot_reply(
+                    &router,
                     node_rid.clone(),
                     spot_rid.clone(),
                     vec![Message::copy_from(&payload).expect("request")],
                     request_timeout,
-                )) {
+                ) {
                     Ok(reply) => {
-                        let data = reply.first().map(|message| message.as_bytes()).unwrap_or(&[]);
+                        let data = reply
+                            .first()
+                            .map(|message| message.as_bytes())
+                            .unwrap_or(&[]);
                         if !common::is_valid_active_message(data, msg_size) {
                             continue;
                         }

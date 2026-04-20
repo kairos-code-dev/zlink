@@ -36,12 +36,8 @@ fn main() {
         return;
     };
     if let Err(err) = server.bind(&bind_endpoint) {
-        if common::handle_transport_setup_error(
-            "MULTI_DEALER_DEALER",
-            &args.transport,
-            "bind",
-            err,
-        ) {
+        if common::handle_transport_setup_error("MULTI_DEALER_DEALER", &args.transport, "bind", err)
+        {
             return;
         }
         panic!("bind: {err}");

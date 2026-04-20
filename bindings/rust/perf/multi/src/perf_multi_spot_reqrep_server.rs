@@ -2,11 +2,11 @@
 mod common;
 
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
-use std::hint::spin_loop;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-    Arc, Mutex,
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -39,17 +39,19 @@ fn hex_encode(bytes: &[u8]) -> String {
     out
 }
 
+enum ServerEvent {
+    Stop,
+    RunnerStart,
+    ClientConnected,
+    ReadyCount(usize),
+    StartSender(TcpStream),
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
-
     let stop = Arc::new(AtomicBool::new(false));
-    let runner_start = Arc::new(AtomicBool::new(false));
-    let control_socket_ready = Arc::new(AtomicBool::new(false));
-    let client_connected = Arc::new(AtomicBool::new(false));
-    let ready_count = Arc::new(AtomicUsize::new(0));
-    let ready_reader = Arc::new(Mutex::new(None::<TcpStream>));
-    let start_sender = Arc::new(Mutex::new(None::<TcpStream>));
+    let (event_tx, event_rx) = mpsc::channel::<ServerEvent>();
 
     let (listener, control_endpoint) = match control_listener() {
         Ok(value) => value,
@@ -57,28 +59,26 @@ fn main() {
             common::emit_unsupported(
                 "MULTI_SPOT_REQREP",
                 &args.transport,
-                &format!("control_bind_errno_{}", err.raw_os_error().unwrap_or(libc::EPERM)),
+                &format!(
+                    "control_bind_errno_{}",
+                    err.raw_os_error().unwrap_or(libc::EPERM)
+                ),
             );
             return;
         }
         Err(err) => panic!("control bind: {err}"),
     };
     {
-        let start_sender = Arc::clone(&start_sender);
+        let event_tx = event_tx.clone();
         thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept control");
-            start_sender
-                .lock()
-                .expect("start sender lock")
-                .replace(stream);
+            let _ = event_tx.send(ServerEvent::StartSender(stream));
         });
     }
 
     {
         let stop = Arc::clone(&stop);
-        let runner_start = Arc::clone(&runner_start);
-        let control_socket_ready = Arc::clone(&control_socket_ready);
-        let ready_reader = Arc::clone(&ready_reader);
+        let event_tx = event_tx.clone();
         thread::spawn(move || {
             let stdin = io::stdin();
             for line in stdin.lock().lines() {
@@ -87,66 +87,47 @@ fn main() {
                 if let Some(endpoint) = text.strip_prefix("CONNECT_CONTROL,") {
                     let stream = TcpStream::connect(tcp_addr(endpoint)).expect("connect control");
                     stream.set_nodelay(true).ok();
-                    ready_reader
-                        .lock()
-                        .expect("ready reader lock")
-                        .replace(stream);
-                    control_socket_ready.store(true, Ordering::Release);
+                    let reader = BufReader::new(stream);
                     println!("CONTROL_CONNECTED,{endpoint}");
                     io::stdout().flush().ok();
+                    let event_tx = event_tx.clone();
+                    thread::spawn(move || {
+                        for line in reader.lines() {
+                            let line = line.unwrap_or_default();
+                            let text = line.trim();
+                            if text == "CONNECTED" {
+                                let _ = event_tx.send(ServerEvent::ClientConnected);
+                            } else if let Some(rest) = text.strip_prefix("READY_COUNT,") {
+                                let mut parts = rest.split(',');
+                                let size =
+                                    parts.next().and_then(|value| value.parse::<usize>().ok());
+                                let count =
+                                    parts.next().and_then(|value| value.parse::<usize>().ok());
+                                if size == Some(args.msg_size) {
+                                    let _ =
+                                        event_tx.send(ServerEvent::ReadyCount(count.unwrap_or(0)));
+                                }
+                            } else if matches!(text, "STOP" | "QUIT") {
+                                let _ = event_tx.send(ServerEvent::Stop);
+                                return;
+                            }
+                            if stop.load(Ordering::Acquire) {
+                                return;
+                            }
+                        }
+                    });
                     continue;
                 }
                 if text == format!("START,{}", args.msg_size) {
-                    runner_start.store(true, Ordering::Release);
+                    let _ = event_tx.send(ServerEvent::RunnerStart);
                     continue;
                 }
                 if matches!(text, "STOP" | "QUIT") {
                     stop.store(true, Ordering::Release);
+                    let _ = event_tx.send(ServerEvent::Stop);
                     return;
                 }
             }
-        });
-    }
-
-    {
-        let stop = Arc::clone(&stop);
-        let client_connected = Arc::clone(&client_connected);
-        let ready_count = Arc::clone(&ready_count);
-        let ready_reader = Arc::clone(&ready_reader);
-        thread::spawn(move || loop {
-            if stop.load(Ordering::Acquire) {
-                return;
-            }
-            let stream = {
-                let guard = ready_reader.lock().expect("ready reader lock");
-                guard.as_ref().and_then(|stream| stream.try_clone().ok())
-            };
-            let Some(stream) = stream else {
-                spin_loop();
-                continue;
-            };
-
-            let reader = BufReader::new(stream);
-            for line in reader.lines() {
-                let line = line.unwrap_or_default();
-                let text = line.trim();
-                if text == "CONNECTED" {
-                    client_connected.store(true, Ordering::Release);
-                } else if let Some(rest) = text.strip_prefix("READY_COUNT,") {
-                    let mut parts = rest.split(',');
-                    let size = parts.next().and_then(|value| value.parse::<usize>().ok());
-                    let count = parts.next().and_then(|value| value.parse::<usize>().ok());
-                    if size == Some(args.msg_size) {
-                        ready_count.fetch_add(count.unwrap_or(0), Ordering::AcqRel);
-                    }
-                } else if matches!(text, "STOP" | "QUIT") {
-                    return;
-                }
-                if stop.load(Ordering::Acquire) {
-                    return;
-                }
-            }
-            return;
         });
     }
 
@@ -186,8 +167,7 @@ fn main() {
         return;
     };
     if let Err(err) = node.bind(&data_bind_endpoint) {
-        if common::handle_transport_setup_error("MULTI_SPOT_REQREP", &args.transport, "bind", err)
-        {
+        if common::handle_transport_setup_error("MULTI_SPOT_REQREP", &args.transport, "bind", err) {
             return;
         }
         panic!("bind: {err}");
@@ -204,38 +184,47 @@ fn main() {
     );
     io::stdout().flush().ok();
 
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if stop.load(Ordering::Acquire) {
-            return;
+    let mut runner_start = false;
+    let mut client_connected = false;
+    let mut ready_count = 0usize;
+    let mut start_sender = None::<TcpStream>;
+    let handshake_deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < handshake_deadline {
+        let remaining = handshake_deadline.saturating_duration_since(Instant::now());
+        match event_rx.recv_timeout(remaining) {
+            Ok(ServerEvent::Stop) => return,
+            Ok(ServerEvent::RunnerStart) => runner_start = true,
+            Ok(ServerEvent::ClientConnected) => client_connected = true,
+            Ok(ServerEvent::ReadyCount(count)) => ready_count += count,
+            Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
+            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        if runner_start.load(Ordering::Acquire)
-            && control_socket_ready.load(Ordering::Acquire)
-            && client_connected.load(Ordering::Acquire)
-            && ready_count.load(Ordering::Acquire) >= settings.clients
-            && start_sender.lock().expect("start sender lock").is_some()
+        if runner_start
+            && client_connected
+            && ready_count >= settings.clients
+            && start_sender.is_some()
         {
             break;
         }
-        spin_loop();
     }
-    if stop.load(Ordering::Acquire)
-        || !runner_start.load(Ordering::Acquire)
-        || !control_socket_ready.load(Ordering::Acquire)
-        || !client_connected.load(Ordering::Acquire)
-        || ready_count.load(Ordering::Acquire) < settings.clients
+    if !runner_start
+        || !client_connected
+        || ready_count < settings.clients
+        || start_sender.is_none()
     {
         panic!("spot reqrep server handshake timeout");
     }
 
     {
-        let mut guard = start_sender.lock().expect("start sender lock");
-        let stream = guard.as_mut().expect("start sender");
+        let stream = start_sender.as_mut().expect("start sender");
         writeln!(stream, "START,{}", args.msg_size).expect("write start");
         stream.flush().expect("flush start");
     }
 
-    while !stop.load(Ordering::Acquire) {
-        spin_loop();
+    while let Ok(event) = event_rx.recv() {
+        if matches!(event, ServerEvent::Stop) {
+            break;
+        }
     }
 }

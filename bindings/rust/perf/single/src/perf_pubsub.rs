@@ -104,5 +104,11 @@ fn main() {
     send_thread.join().expect("sender thread");
 
     let result = collector.finish();
-    common::print_result("PUBSUB", &config.transport, config.size, config.duration_seconds, &result);
+    common::print_result(
+        "PUBSUB",
+        &config.transport,
+        config.size,
+        config.duration_seconds,
+        &result,
+    );
 }

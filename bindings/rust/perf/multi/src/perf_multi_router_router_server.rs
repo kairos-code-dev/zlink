@@ -4,8 +4,8 @@ mod common;
 use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
 use zlink::*;
@@ -39,12 +39,8 @@ fn main() {
         return;
     };
     if let Err(err) = router.bind(&bind_endpoint) {
-        if common::handle_transport_setup_error(
-            "MULTI_ROUTER_ROUTER",
-            &args.transport,
-            "bind",
-            err,
-        ) {
+        if common::handle_transport_setup_error("MULTI_ROUTER_ROUTER", &args.transport, "bind", err)
+        {
             return;
         }
         panic!("bind: {err}");
@@ -68,7 +64,14 @@ fn main() {
     });
     while !stop.load(Ordering::Acquire) {
         poller
-            .modify_socket(&router, if pending.is_empty() { POLLIN } else { POLLIN | POLLOUT })
+            .modify_socket(
+                &router,
+                if pending.is_empty() {
+                    POLLIN
+                } else {
+                    POLLIN | POLLOUT
+                },
+            )
             .expect("poller modify");
         match poller.wait(25) {
             Ok(Some(event)) => {
@@ -79,7 +82,8 @@ fn main() {
                                 let Some(rid) = received.routing_id().cloned() else {
                                     continue;
                                 };
-                                let reply_bytes = common::message_payload(received.parts()).to_vec();
+                                let reply_bytes =
+                                    common::message_payload(received.parts()).to_vec();
                                 if pending.is_empty() {
                                     match router.try_send(
                                         &rid,

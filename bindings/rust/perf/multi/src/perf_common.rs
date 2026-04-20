@@ -69,7 +69,10 @@ pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
 }
 
 pub fn now_ns() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64
 }
 
 pub struct TlsPaths {
@@ -116,7 +119,14 @@ macro_rules! impl_raw_tls_socket {
     };
 }
 
-impl_raw_tls_socket!(PairSocket, PubSocket, DealerSocket, RouterSocket, StreamSocket, SubSocket);
+impl_raw_tls_socket!(
+    PairSocket,
+    PubSocket,
+    DealerSocket,
+    RouterSocket,
+    StreamSocket,
+    SubSocket
+);
 
 fn resolve_perf_tls_paths_from(start: &Path) -> Option<TlsPaths> {
     let mut cur = if start.is_file() {
@@ -127,10 +137,24 @@ fn resolve_perf_tls_paths_from(start: &Path) -> Option<TlsPaths> {
 
     loop {
         for candidate in [
-            cur.join("bindings").join("cpp").join("tests").join("certs").join("gen"),
-            cur.join("bindings").join("rust").join("tests").join("certs").join("gen"),
-            cur.join("bindings").join("java").join("tests").join("certs"),
-            cur.join("bindings").join("dotnet").join("tests").join("certs"),
+            cur.join("bindings")
+                .join("cpp")
+                .join("tests")
+                .join("certs")
+                .join("gen"),
+            cur.join("bindings")
+                .join("rust")
+                .join("tests")
+                .join("certs")
+                .join("gen"),
+            cur.join("bindings")
+                .join("java")
+                .join("tests")
+                .join("certs"),
+            cur.join("bindings")
+                .join("dotnet")
+                .join("tests")
+                .join("certs"),
             cur.join("tests").join("certs").join("gen"),
         ] {
             if candidate.join("server.crt").is_file()
@@ -209,12 +233,7 @@ pub fn is_transport_unsupported_error(err: &ZlinkError) -> bool {
     )
 }
 
-pub fn handle_transport_setup_error<E>(
-    pattern: &str,
-    transport: &str,
-    stage: &str,
-    err: E,
-) -> bool
+pub fn handle_transport_setup_error<E>(pattern: &str, transport: &str, stage: &str, err: E) -> bool
 where
     E: Into<ZlinkError> + Copy,
 {
@@ -271,17 +290,26 @@ impl LatencyStats {
     }
 
     pub fn finish(&mut self) -> StatsResult {
-        if self.count == 0 { return StatsResult::default(); }
+        if self.count == 0 {
+            return StatsResult::default();
+        }
         self.samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let mean = self.sum / self.count as f64;
         let p95 = percentile(&self.samples, 0.95);
         let p99 = percentile(&self.samples, 0.99);
-        StatsResult { count: self.count, mean_ns: mean, p95_ns: p95, p99_ns: p99 }
+        StatsResult {
+            count: self.count,
+            mean_ns: mean,
+            p95_ns: p95,
+            p99_ns: p99,
+        }
     }
 }
 
 fn percentile(sorted: &[f64], p: f64) -> f64 {
-    if sorted.is_empty() { return 0.0; }
+    if sorted.is_empty() {
+        return 0.0;
+    }
     let idx = ((sorted.len() as f64 * p) as usize).min(sorted.len() - 1);
     sorted[idx]
 }
@@ -305,9 +333,7 @@ pub struct PhaseResult {
 
 fn bandwidth_multiplier(pattern: &str) -> f64 {
     match pattern {
-        "MULTI_DEALER_ROUTER" | "MULTI_ROUTER_ROUTER" | "MULTI_STREAM" | "MULTI_SPOT_REQREP" => {
-            2.0
-        }
+        "MULTI_DEALER_ROUTER" | "MULTI_ROUTER_ROUTER" | "MULTI_STREAM" | "MULTI_SPOT_REQREP" => 2.0,
         _ => 1.0,
     }
 }
@@ -325,7 +351,13 @@ pub fn build_phase_result(
     };
     let bandwidth = throughput * size as f64 * bandwidth_multiplier(pattern) / 1_000_000.0;
 
-    PhaseResult { throughput, bandwidth, latency_mean_ns: stats.mean_ns, latency_p95_ns: stats.p95_ns, latency_p99_ns: stats.p99_ns }
+    PhaseResult {
+        throughput,
+        bandwidth,
+        latency_mean_ns: stats.mean_ns,
+        latency_p95_ns: stats.p95_ns,
+        latency_p99_ns: stats.p99_ns,
+    }
 }
 
 // -- RESULT output -----------------------------------------------------------
@@ -334,13 +366,25 @@ pub fn print_phase_result(key: &str, phase: &PhaseResult) {
     println!("{key},throughput,{:.3}", phase.throughput);
     println!("{key},bandwidth,{:.3}", phase.bandwidth);
     println!("{key},latency,{:.3}", phase.latency_mean_ns / 1_000_000.0);
-    println!("{key},latency_p95,{:.3}", phase.latency_p95_ns / 1_000_000.0);
-    println!("{key},latency_p99,{:.3}", phase.latency_p99_ns / 1_000_000.0);
+    println!(
+        "{key},latency_p95,{:.3}",
+        phase.latency_p95_ns / 1_000_000.0
+    );
+    println!(
+        "{key},latency_p99,{:.3}",
+        phase.latency_p99_ns / 1_000_000.0
+    );
     use std::io::Write;
     std::io::stdout().flush().ok();
 }
 
-pub fn print_result(pattern: &str, transport: &str, size: usize, duration_s: u64, stats: &StatsResult) {
+pub fn print_result(
+    pattern: &str,
+    transport: &str,
+    size: usize,
+    duration_s: u64,
+    stats: &StatsResult,
+) {
     let key = format!("RESULT,current,{pattern},{transport},{size}");
     let phase = build_phase_result(pattern, size, duration_s, stats);
     print_phase_result(&key, &phase);
@@ -380,7 +424,9 @@ fn perf_context_with_env(primary_env: &str) -> Context {
         .and_then(|value| value.parse::<i32>().ok())
         .filter(|value| *value > 0);
     if let Some(io_threads) = io_threads {
-        ctx.options().set_io_threads(io_threads).expect("set io threads");
+        ctx.options()
+            .set_io_threads(io_threads)
+            .expect("set io threads");
     }
     ctx
 }
@@ -426,8 +472,8 @@ impl MultiSettings {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
-            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 100)),
-            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 100)),
+            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
+            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
             recv_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
         }
@@ -439,7 +485,10 @@ pub fn resolve_multi_connect_ready_timeout() -> Duration {
 }
 
 fn env_or(name: &str, default: usize) -> usize {
-    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn env_or_i32(name: &str, default: i32) -> i32 {
@@ -467,7 +516,11 @@ impl MultiArgs {
         let transport = args.get(1).cloned().unwrap_or_else(|| "tcp".into());
         let msg_size: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(64);
         let endpoint = args.get(3).cloned().unwrap_or_default();
-        Self { transport, msg_size, endpoint }
+        Self {
+            transport,
+            msg_size,
+            endpoint,
+        }
     }
 }
 

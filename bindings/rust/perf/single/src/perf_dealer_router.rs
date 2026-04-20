@@ -87,10 +87,16 @@ fn main() {
             panic!("router handshake recv: {err}");
         }
     };
-    let reply_rid = handshake.routing_id().expect("router handshake rid").clone();
+    let reply_rid = handshake
+        .routing_id()
+        .expect("router handshake rid")
+        .clone();
     assert_eq!(handshake.parts()[0].as_bytes(), b"PING");
     router
-        .send(&reply_rid, Message::copy_from(b"PONG").expect("router pong"))
+        .send(
+            &reply_rid,
+            Message::copy_from(b"PONG").expect("router pong"),
+        )
         .expect("router handshake reply");
     let handshake_reply = match dealer.recv() {
         Ok(received) => received,
@@ -152,5 +158,11 @@ fn main() {
     send_thread.join().expect("sender thread");
 
     let result = collector.finish();
-    common::print_result("DEALER_ROUTER", &config.transport, config.size, config.duration_seconds, &result);
+    common::print_result(
+        "DEALER_ROUTER",
+        &config.transport,
+        config.size,
+        config.duration_seconds,
+        &result,
+    );
 }

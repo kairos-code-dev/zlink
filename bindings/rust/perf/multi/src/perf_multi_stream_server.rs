@@ -1,11 +1,7 @@
 #[path = "perf_common.rs"]
 mod common;
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use std::hint::spin_loop;
+use std::sync::mpsc;
 use zlink::*;
 
 fn build_packet_frame(header: &[u8], body: &[u8]) -> Vec<u8> {
@@ -66,13 +62,10 @@ fn main() {
     }
     let endpoint = stream.last_endpoint().expect("endpoint");
     common::print_ready(&endpoint);
-    let stop = Arc::new(AtomicBool::new(false));
-    let stop_reader = stop.clone();
+    let (stop_tx, stop_rx) = mpsc::channel::<()>();
     std::thread::spawn(move || {
         common::wait_for_stop_stdin();
-        stop_reader.store(true, Ordering::Release);
+        let _ = stop_tx.send(());
     });
-    while !stop.load(Ordering::Acquire) {
-        spin_loop();
-    }
+    let _ = stop_rx.recv();
 }

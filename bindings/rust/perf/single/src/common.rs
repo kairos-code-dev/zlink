@@ -6,8 +6,9 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::sync::{
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
-    mpsc, Arc, Mutex,
+    mpsc,
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -153,10 +154,24 @@ fn resolve_perf_tls_paths_from(start: &Path) -> Option<TlsPaths> {
 
     loop {
         for candidate in [
-            cur.join("bindings").join("cpp").join("tests").join("certs").join("gen"),
-            cur.join("bindings").join("rust").join("tests").join("certs").join("gen"),
-            cur.join("bindings").join("java").join("tests").join("certs"),
-            cur.join("bindings").join("dotnet").join("tests").join("certs"),
+            cur.join("bindings")
+                .join("cpp")
+                .join("tests")
+                .join("certs")
+                .join("gen"),
+            cur.join("bindings")
+                .join("rust")
+                .join("tests")
+                .join("certs")
+                .join("gen"),
+            cur.join("bindings")
+                .join("java")
+                .join("tests")
+                .join("certs"),
+            cur.join("bindings")
+                .join("dotnet")
+                .join("tests")
+                .join("certs"),
             cur.join("tests").join("certs").join("gen"),
         ] {
             if candidate.join("server.crt").is_file()
@@ -236,12 +251,7 @@ pub fn is_transport_unsupported_error(err: &ZlinkError) -> bool {
     )
 }
 
-pub fn handle_transport_setup_error<E>(
-    pattern: &str,
-    transport: &str,
-    stage: &str,
-    err: E,
-) -> bool
+pub fn handle_transport_setup_error<E>(pattern: &str, transport: &str, stage: &str, err: E) -> bool
 where
     E: Into<ZlinkError> + Copy,
 {
@@ -304,7 +314,9 @@ pub fn perf_context() -> Context {
     if let Ok(value) = std::env::var("PERF_IO_THREADS") {
         if let Ok(io_threads) = value.parse::<i32>() {
             if io_threads > 0 {
-                ctx.options().set_io_threads(io_threads).expect("set io threads");
+                ctx.options()
+                    .set_io_threads(io_threads)
+                    .expect("set io threads");
             }
         }
     }
@@ -408,8 +420,14 @@ pub fn print_phase_result(key: &str, phase: &PhaseResult) {
     println!("{key},throughput,{:.2}", phase.throughput);
     println!("{key},bandwidth,{:.6}", phase.bandwidth);
     println!("{key},latency,{:.3}", phase.latency_mean_ns / 1_000_000.0);
-    println!("{key},latency_p95,{:.3}", phase.latency_p95_ns / 1_000_000.0);
-    println!("{key},latency_p99,{:.3}", phase.latency_p99_ns / 1_000_000.0);
+    println!(
+        "{key},latency_p95,{:.3}",
+        phase.latency_p95_ns / 1_000_000.0
+    );
+    println!(
+        "{key},latency_p99,{:.3}",
+        phase.latency_p99_ns / 1_000_000.0
+    );
     use std::io::Write;
     std::io::stdout().flush().ok();
 }
@@ -523,12 +541,8 @@ pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<L
 
 /// One-way send loop: active only.
 /// `send_fn` performs the blocking send (may be plain or routed).
-pub fn send_loop<S>(
-    active_deadline: Instant,
-    msg_size: usize,
-    phase: u8,
-    send_fn: S,
-) where
+pub fn send_loop<S>(active_deadline: Instant, msg_size: usize, phase: u8, send_fn: S)
+where
     S: Fn(Message),
 {
     let mut seq: u64 = 0;
@@ -578,7 +592,9 @@ impl PerfConfig {
                 "--pattern" if i + 1 < args.len() => {
                     i += 2;
                 }
-                _ => { i += 1; }
+                _ => {
+                    i += 1;
+                }
             }
         }
 
@@ -638,17 +654,11 @@ fn try_reserve_tcp_port() -> io::Result<std::net::TcpListener> {
 }
 
 pub fn resolve_single_send_hwm() -> i32 {
-    env_or_i32(
-        "PERF_SINGLE_SNDHWM",
-        env_or_i32("PERF_SINGLE_HWM", 1000),
-    )
+    env_or_i32("PERF_SINGLE_SNDHWM", env_or_i32("PERF_SINGLE_HWM", 1000))
 }
 
 pub fn resolve_single_recv_hwm() -> i32 {
-    env_or_i32(
-        "PERF_SINGLE_RCVHWM",
-        env_or_i32("PERF_SINGLE_HWM", 1000),
-    )
+    env_or_i32("PERF_SINGLE_RCVHWM", env_or_i32("PERF_SINGLE_HWM", 1000))
 }
 
 pub fn resolve_single_idle_drain_ms() -> u64 {
@@ -720,7 +730,10 @@ fn reserve_tcp_port_for_transport(pattern: &str, transport: &str) -> Option<u16>
             emit_unsupported(
                 pattern,
                 transport,
-                &format!("reserve_port_errno_{}", err.raw_os_error().unwrap_or(libc::EPERM)),
+                &format!(
+                    "reserve_port_errno_{}",
+                    err.raw_os_error().unwrap_or(libc::EPERM)
+                ),
             );
             None
         }

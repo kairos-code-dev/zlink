@@ -2,7 +2,6 @@
 mod common;
 
 use std::time::{Duration, Instant};
-use std::hint::spin_loop;
 use zlink::*;
 
 fn main() {
@@ -131,7 +130,7 @@ fn main() {
             }
         }
         if !saw_event {
-            spin_loop();
+            std::thread::park_timeout(Duration::from_millis(1));
         }
     }
 

@@ -1,5 +1,4 @@
 import sys
-import threading
 import time
 from contextlib import ExitStack
 
@@ -8,13 +7,16 @@ import zlink
 from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_run_id,
-    latency_ns_from_message,
     is_active_message,
+    latency_ns_from_message,
     new_payload,
     parse_client_args,
     print_result_lines,
+    recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     result_metrics,
+    safe_poll,
+    send_nonblocking,
     stamp_payload,
     wait_monitor_event,
 )
@@ -23,8 +25,11 @@ from perf_multi_common import (
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="router_router")
     run_id = benchmark_run_id()
-    payload = new_payload(args.msg_size)
-    results = [None] * args.clients
+    payloads = [new_payload(args.msg_size) for _ in range(args.clients)]
+    waiting_reply = [False] * args.clients
+    send_pending = [True] * args.clients
+    latencies = []
+    seq = 0
 
     with zlink.Context() as ctx:
         sockets = [zlink.RouterSocket(ctx) for _ in range(args.clients)]
@@ -47,34 +52,59 @@ def main(argv=None):
                         timeout_ms=resolve_multi_connect_ready_timeout_ms(),
                     )
 
-                def worker(sock, slot):
-                    local_latencies = []
-                    deadline = time.perf_counter() + args.duration
-                    while time.perf_counter() < deadline:
-                        sock.send(b"SERVER", stamp_payload(payload, phase=1))
-                        with sock.recv() as received:
-                            data = received.to_bytes_list()[0]
-                            if not is_active_message(
-                                data,
-                                expected_msg_size=args.msg_size,
-                                run_id=run_id,
+                active_deadline = time.perf_counter() + args.duration
+                with zlink.Poller() as poller:
+                    for index, sock in enumerate(sockets):
+                        poller.add_socket(
+                            sock,
+                            zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
+                            tag=index,
+                        )
+                    while time.perf_counter() < active_deadline:
+                        events = safe_poll(poller, 100)
+                        if not events:
+                            continue
+                        for event in events:
+                            index = event["tag"]
+                            current_sock = event["socket"]
+                            event_mask = int(event["events"])
+                            if (
+                                event_mask & int(zlink.PollEvent.POLLOUT)
+                                and not waiting_reply[index]
+                                and send_pending[index]
                             ):
+                                seq += 1
+                                payload = stamp_payload(
+                                    payloads[index],
+                                    phase=1,
+                                    run_id=run_id,
+                                    seq=seq,
+                                )
+                                if send_nonblocking(
+                                    current_sock,
+                                    payload,
+                                    routing_id=b"SERVER",
+                                ):
+                                    waiting_reply[index] = True
+                                    send_pending[index] = False
+                            if not (event_mask & int(zlink.PollEvent.POLLIN)):
                                 continue
-                            local_latencies.append(latency_ns_from_message(data))
-                    results[slot] = local_latencies
-
-                threads = [
-                    threading.Thread(target=worker, args=(sock, index))
-                    for index, sock in enumerate(sockets)
-                ]
-                started = time.perf_counter()
-                for thread in threads:
-                    thread.start()
-                for thread in threads:
-                    thread.join()
-                latencies = []
-                for bucket in results:
-                    latencies.extend(bucket or [])
+                            while True:
+                                received = recv_nonblocking(current_sock)
+                                if received is None:
+                                    break
+                                with received:
+                                    data = received.to_bytes_list()[0]
+                                waiting_reply[index] = False
+                                if time.perf_counter() < active_deadline:
+                                    send_pending[index] = True
+                                if not is_active_message(
+                                    data,
+                                    expected_msg_size=args.msg_size,
+                                    run_id=run_id,
+                                ):
+                                    continue
+                                latencies.append(latency_ns_from_message(data) / 2.0)
                 if not latencies:
                     raise RuntimeError(
                         "multi router-router benchmark did not receive any active reply"
@@ -82,8 +112,9 @@ def main(argv=None):
                 metrics = result_metrics(
                     count=len(latencies),
                     msg_size=args.msg_size,
-                    elapsed_s=max(args.duration, time.perf_counter() - started),
+                    elapsed_s=args.duration,
                     latencies_ns=latencies,
+                    bandwidth_multiplier=2.0,
                 )
                 print_result_lines(
                     "MULTI_ROUTER_ROUTER", args.transport, args.msg_size, metrics

@@ -9,6 +9,7 @@ from perf_common import (
     build_report_path,
     parse_result_lines,
     render_effective_options,
+    resolve_single_timeout_seconds,
     rows_by_case,
     status_row_text,
     table_header_lines,
@@ -199,7 +200,7 @@ def _run_pattern(args, env, pattern, transport, msg_size):
         env=env,
         capture_output=True,
         text=True,
-        timeout=90,
+        timeout=resolve_single_timeout_seconds(float(args.duration)),
     )
     chunks = []
     if result.stdout:

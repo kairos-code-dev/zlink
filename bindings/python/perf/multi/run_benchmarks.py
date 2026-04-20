@@ -11,6 +11,7 @@ from perf_multi_common import (
     build_report_path,
     parse_result_lines,
     render_effective_options,
+    resolve_multi_timeout_seconds,
     rows_by_case,
     status_row_text,
     table_header_lines,
@@ -44,7 +45,7 @@ RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 
 def parse_args(argv):
-    parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
+    parser = argparse.ArgumentParser(prog="run_benchmarks_multi.sh")
     parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
     parser.add_argument("--build-dir", default="")
@@ -184,22 +185,6 @@ def _server_popen_kwargs():
     return kwargs
 
 
-def _wait_for_tcp_endpoint(endpoint, timeout_s=10.0):
-    import socket
-    import time
-
-    host_port = endpoint.split("://", 1)[1]
-    host, port_text = host_port.rsplit(":", 1)
-    deadline = time.perf_counter() + timeout_s
-    while time.perf_counter() < deadline:
-        with socket.socket() as sock:
-            sock.settimeout(0.2)
-            if sock.connect_ex((host, int(port_text))) == 0:
-                return
-        time.sleep(0.05)
-    raise SystemExit(f"tcp endpoint did not become ready: {endpoint}")
-
-
 def _parse_status_lines(output):
     rows = []
     for line in output.splitlines():
@@ -216,6 +201,15 @@ def _env_int(name, default):
         return int(value)
     except ValueError:
         return default
+
+
+def _arg_or_env_int(cli_value, env_name, default):
+    if cli_value not in (None, ""):
+        try:
+            return int(cli_value)
+        except ValueError:
+            raise SystemExit(f"{env_name} must be an integer")
+    return _env_int(env_name, default)
 
 
 def _append_line(lines, line=""):
@@ -273,20 +267,6 @@ def _is_unsupported_output(text):
         "unsupported,current,",
     )
     return any(marker in lowered for marker in markers)
-
-
-def _read_next_nonempty_line(stream, *, timeout_s):
-    import time
-
-    deadline = time.perf_counter() + timeout_s
-    while time.perf_counter() < deadline:
-        line = stream.readline()
-        if not line:
-            return ""
-        text = line.strip()
-        if text:
-            return text
-    return ""
 
 
 def _wait_for_prefixed_line(proc, prefix, *, timeout_s, stdout_chunks):
@@ -375,6 +355,31 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
     stdout_chunks = []
     stderr_chunks = []
     client = None
+    ready_timeout_s = _arg_or_env_int(
+        args.server_ready_timeout_ms,
+        "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
+        10000,
+    ) / 1000.0
+    shutdown_grace_s = _arg_or_env_int(
+        args.server_shutdown_timeout_ms,
+        "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
+        5000,
+    ) / 1000.0
+    timeout_override = _arg_or_env_int(
+        "",
+        "PERF_MULTI_TIMEOUT_SECONDS",
+        0,
+    )
+    client_timeout_s = (
+        timeout_override
+        if timeout_override > 0
+        else resolve_multi_timeout_seconds(
+            args.duration,
+            pattern,
+            transport,
+            msg_size,
+        )
+    )
     try:
         ready = server.stdout.readline().strip()
         if ready:
@@ -394,7 +399,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             control_ready = _wait_for_prefixed_line(
                 server,
                 "CONTROL_READY,",
-                timeout_s=10,
+                timeout_s=ready_timeout_s,
                 stdout_chunks=stdout_chunks,
             )
             control_endpoint = control_ready.split(",", 1)[1]
@@ -404,7 +409,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 route_ready = _wait_for_prefixed_line(
                     server,
                     "ROUTE_READY,",
-                    timeout_s=10,
+                    timeout_s=ready_timeout_s,
                     stdout_chunks=stdout_chunks,
                 )
                 _, server_node_rid, server_spot_rid = route_ready.split(",", 2)
@@ -444,7 +449,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             client_control = _wait_for_prefixed_line(
                 client,
                 "CLIENT_CONTROL_ENDPOINT,",
-                timeout_s=10,
+                timeout_s=ready_timeout_s,
                 stdout_chunks=stdout_chunks,
             )
             client_control_endpoint = client_control.split(",", 1)[1]
@@ -453,7 +458,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             control_connected = _wait_for_prefixed_line(
                 server,
                 "CONTROL_CONNECTED,",
-                timeout_s=10,
+                timeout_s=ready_timeout_s,
                 stdout_chunks=stdout_chunks,
             )
             client.stdin.write(f"{control_connected}\n")
@@ -461,7 +466,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             client_ready = _wait_for_prefixed_line(
                 client,
                 "CLIENT_READY,",
-                timeout_s=20,
+                timeout_s=client_timeout_s,
                 stdout_chunks=stdout_chunks,
             )
             if client_ready != f"CLIENT_READY,{msg_size}":
@@ -470,7 +475,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             server.stdin.flush()
             client.stdin.write(f"START,{msg_size}\n")
             client.stdin.flush()
-            client_stdout, client_stderr = client.communicate(timeout=90)
+            client_stdout, client_stderr = client.communicate(timeout=client_timeout_s)
             if client_stdout:
                 stdout_chunks.append(client_stdout.strip())
             if client_stderr:
@@ -516,9 +521,10 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             server.stdin.write(f"START,{msg_size}\n")
             server.stdin.flush()
             client.stdin.write(f"START,{msg_size}\n")
-            client.stdin.write(f"PHASE_ACTIVE,{msg_size}\n")
+            if pattern == "PUBSUB":
+                client.stdin.write(f"PHASE_ACTIVE,{msg_size}\n")
             client.stdin.flush()
-            client_stdout, client_stderr = client.communicate(timeout=90)
+            client_stdout, client_stderr = client.communicate(timeout=client_timeout_s)
             if client_stdout:
                 stdout_chunks.append(client_stdout.strip())
             if client_stderr:
@@ -545,7 +551,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 env=env,
                 capture_output=True,
                 text=True,
-                timeout=90,
+                timeout=client_timeout_s,
                 check=True,
             )
             if client_run.stdout:
@@ -576,8 +582,8 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
         raise SystemExit(output)
     finally:
         if client is not None and hasattr(client, "poll") and client.poll() is None:
-            _terminate_process(client, grace_seconds=3)
-        _terminate_process(server, grace_seconds=3)
+            _terminate_process(client, grace_seconds=shutdown_grace_s)
+        _terminate_process(server, grace_seconds=shutdown_grace_s)
         if server.stderr:
             err = server.stderr.read().strip()
             if err:

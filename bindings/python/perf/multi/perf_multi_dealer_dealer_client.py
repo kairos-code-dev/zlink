@@ -11,17 +11,16 @@ from perf_multi_common import (
     is_active_message,
     parse_client_args,
     print_result_lines,
+    recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     result_metrics,
+    safe_poll,
     wait_monitor_event,
 )
 
 
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="dealer_dealer")
-    endpoints = args.endpoint.split(";")
-    if len(endpoints) != args.clients:
-        raise SystemExit("endpoint count must match --clients")
     run_id = benchmark_run_id()
     latencies = []
     count = 0
@@ -31,12 +30,12 @@ def main(argv=None):
         try:
             with ExitStack() as stack:
                 monitors = []
-                for sock, endpoint in zip(sockets, endpoints):
+                for sock in sockets:
                     monitor = stack.enter_context(
                         sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
                     )
                     apply_multi_socket_options(sock)
-                    sock.connect(endpoint)
+                    sock.connect(args.endpoint)
                     monitors.append(monitor)
                 for monitor in monitors:
                     wait_monitor_event(
@@ -46,31 +45,35 @@ def main(argv=None):
                     )
                 print(f"CLIENT_READY,{args.msg_size}", flush=True)
                 command = sys.stdin.readline().strip()
-                if command not in {
-                    f"START,{args.msg_size}",
-                    f"PHASE_ACTIVE,{args.msg_size}",
-                }:
+                if command != f"START,{args.msg_size}":
                     raise SystemExit(f"unexpected command: {command}")
 
-                started = time.perf_counter()
-                deadline = started + args.duration
-                while time.perf_counter() < deadline:
-                    for current_sock in sockets:
-                        try:
-                            with current_sock.recv() as received:
-                                data = received.to_bytes_list()[0]
-                        except zlink.RecvError as exc:
-                            if exc.result == zlink.RecvResult.NO_DATA:
-                                continue
-                            raise
-                        if not is_active_message(
-                            data,
-                            expected_msg_size=args.msg_size,
-                            run_id=run_id,
-                        ):
+                active_deadline = time.perf_counter() + args.duration
+                with zlink.Poller() as poller:
+                    for sock in sockets:
+                        poller.add_socket(sock, zlink.PollEvent.POLLIN)
+                    while time.perf_counter() < active_deadline:
+                        events = safe_poll(poller, 100)
+                        if not events:
                             continue
-                        latencies.append(latency_ns_from_message(data))
-                        count += 1
+                        for event in events:
+                            if not (event["events"] & int(zlink.PollEvent.POLLIN)):
+                                continue
+                            current_sock = event["socket"]
+                            while True:
+                                received = recv_nonblocking(current_sock)
+                                if received is None:
+                                    break
+                                with received:
+                                    data = received.to_bytes_list()[0]
+                                if not is_active_message(
+                                    data,
+                                    expected_msg_size=args.msg_size,
+                                    run_id=run_id,
+                                ):
+                                    continue
+                                latencies.append(latency_ns_from_message(data))
+                                count += 1
                 if count <= 0:
                     raise RuntimeError(
                         "multi dealer-dealer benchmark did not receive any active message"
@@ -78,7 +81,7 @@ def main(argv=None):
                 metrics = result_metrics(
                     count=count,
                     msg_size=args.msg_size,
-                    elapsed_s=max(args.duration, time.perf_counter() - started),
+                    elapsed_s=args.duration,
                     latencies_ns=latencies,
                 )
                 print_result_lines(

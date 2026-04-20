@@ -1,7 +1,6 @@
 import argparse
 import os
 import sys
-import struct
 import time
 from pathlib import Path
 
@@ -98,6 +97,29 @@ def resolve_multi_spot_control_settle_s():
     return _env_int("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25) / 1000.0
 
 
+def resolve_multi_server_ready_timeout_ms():
+    return _env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000)
+
+
+def resolve_multi_server_shutdown_timeout_ms():
+    return _env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000)
+
+
+def resolve_multi_timeout_seconds(duration_seconds, pattern, transport, msg_size):
+    override = _env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
+    if override > 0:
+        return override
+    size = max(int(msg_size), 64)
+    duration = max(float(duration_seconds), 1.0)
+    if pattern == "STREAM":
+        return max(45, int(duration * 3.0) + 20)
+    if pattern == "SPOT":
+        return max(90, int(duration * 6.0) + 30)
+    if transport in {"tls", "wss"} and size >= 131072:
+        return max(90, int(duration * 6.0) + 30)
+    return max(45, int(duration * 3.0) + 20)
+
+
 def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
     send_hwm = resolve_multi_send_hwm()
     recv_hwm = resolve_multi_recv_hwm()
@@ -113,43 +135,6 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
         sock.options.receive_high_water_mark = recv_hwm
         sock.options.send_timeout_ms = send_timeout_ms
         sock.options.receive_timeout_ms = recv_timeout_ms
-
-
-def encode_len32be(payload):
-    return struct.pack("!I", len(payload)) + payload
-
-
-def recv_exact(sock, size):
-    chunks = bytearray()
-    while len(chunks) < size:
-        chunk = sock.recv(size - len(chunks))
-        if not chunk:
-            raise RuntimeError("connection closed")
-        chunks.extend(chunk)
-    return bytes(chunks)
-
-
-def recv_len32be(sock):
-    header = recv_exact(sock, 4)
-    size = struct.unpack("!I", header)[0]
-    payload = recv_exact(sock, size)
-    return payload
-
-
-def parse_len32be_frames(buffer):
-    frames = []
-    offset = 0
-    while len(buffer) - offset >= 4:
-        size = struct.unpack_from("!I", buffer, offset)[0]
-        frame_end = offset + 4 + size
-        if len(buffer) < frame_end:
-            break
-        frames.append(bytes(buffer[offset:frame_end]))
-        offset = frame_end
-    if offset:
-        del buffer[:offset]
-    return frames
-
 
 def recv_nonblocking(sock, *, method="recv"):
     zlink_mod = _require_zlink()
@@ -201,4 +186,11 @@ def attach_spot_service_pair(ctx, node, service_name):
 
 
 def benchmark_endpoint(transport, prefix):
-    return transport_endpoint(transport, prefix)
+    endpoint = transport_endpoint(transport, prefix)
+    bind_port = _env_int("PERF_MULTI_SERVER_BIND_PORT", 0)
+    if bind_port <= 0:
+        return endpoint
+    scheme = transport.lower()
+    if scheme not in {"tcp", "tls", "ws", "wss"}:
+        return endpoint
+    return f"{scheme}://127.0.0.1:{bind_port}"

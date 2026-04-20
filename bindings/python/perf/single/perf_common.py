@@ -26,6 +26,7 @@ from perf_metrics import (
     render_markdown_summary,
     result_metrics,
     resolve_single_connect_ready_timeout_ms,
+    resolve_single_timeout_seconds,
     safe_poll,
     stamp_payload,
     transport_endpoint,
@@ -110,11 +111,6 @@ def apply_single_socket_options(*sockets, receive_timeout_ms=None):
         sock.options.receive_timeout_ms = recv_timeout_ms
 
 
-def wait_post_ready_settle(seconds):
-    if seconds > 0:
-        time.sleep(seconds)
-
-
 def recv_nonblocking(sock, *, method="recv"):
     zlink_mod = _require_zlink()
     recv_method = getattr(sock, method)
@@ -124,10 +120,3 @@ def recv_nonblocking(sock, *, method="recv"):
         if exc.result == zlink_mod.RecvResult.NO_DATA:
             return None
         raise
-
-
-def attach_spot_service_pair(ctx, node, service_name):
-    _ = ctx
-    _ = node
-    _ = service_name
-    return None, None

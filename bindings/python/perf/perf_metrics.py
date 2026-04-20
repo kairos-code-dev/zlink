@@ -1,8 +1,6 @@
 import importlib
 import math
 import os
-import socket
-import statistics
 import struct
 import sys
 import tempfile
@@ -204,6 +202,13 @@ def transport_endpoint(transport, prefix="perf"):
         )
         return f"ipc://{sock_path}"
     raise ValueError(f"unsupported transport: {transport}")
+
+
+def resolve_single_timeout_seconds(duration_seconds):
+    override = _env_int("PERF_SINGLE_TIMEOUT_SECONDS", 0)
+    if override > 0:
+        return override
+    return max(30, int(math.ceil(float(duration_seconds) * 6.0)) + 15)
 
 
 def wait_monitor_event(monitor, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):

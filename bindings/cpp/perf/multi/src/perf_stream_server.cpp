@@ -66,8 +66,7 @@ bool perf_stream_server (const std::string &transport, size_t)
     perf::multi::apply_benchmark_socket_options (
       server.sock (), settings, transport);
 
-    const int io_timeout_ms =
-      perf::multi::parse_positive_env ("PERF_STREAM_TIMEOUT_MS", 5000);
+    const int io_timeout_ms = std::max (settings.sndtimeo_ms, settings.rcvtimeo_ms);
     (void) server.sock ().set_option (zlink::socket_options::sndtimeo,
                                       io_timeout_ms);
     (void) server.sock ().set_option (zlink::socket_options::rcvtimeo,

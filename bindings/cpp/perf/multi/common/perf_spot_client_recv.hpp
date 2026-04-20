@@ -23,13 +23,15 @@ struct spot_recv_worker_t
 
 inline size_t resolve_spot_recv_worker_count (size_t slot_count_)
 {
+    if (slot_count_ == 0)
+        return 0;
+
+    const unsigned int concurrency = std::thread::hardware_concurrency ();
     return std::min<size_t> (
       slot_count_,
       static_cast<size_t> (std::max (
         1,
-        parse_positive_env (
-          "PERF_MULTI_SPOT_RECV_WORKERS",
-          static_cast<int> (std::thread::hardware_concurrency ())))));
+        static_cast<int> (concurrency > 0 ? concurrency : 1))));
 }
 
 template<typename OwnerT>

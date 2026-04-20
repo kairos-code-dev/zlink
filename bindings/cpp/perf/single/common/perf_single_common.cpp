@@ -8,15 +8,6 @@
 namespace perf {
 namespace single {
 
-namespace {
-
-bool perf_debug_enabled_local ()
-{
-    return std::getenv ("PERF_DEBUG") != NULL;
-}
-
-} // namespace
-
 // latency_stats_builder_t methods removed: now a typedef to
 // the unified header-only perf::latency_sampler_t in
 // common/perf_latency_sampler.hpp.
@@ -105,14 +96,7 @@ void apply_ctx_options (zlink::context_t &ctx_)
     if (io_threads > 0)
         (void) options.ioThreads (io_threads);
 
-    int max_sockets = parse_positive_env ("PERF_MAX_SOCKETS", 0);
-    if (max_sockets <= 0) {
-        const int clients = parse_positive_env ("PERF_CLIENTS", 0);
-        if (clients > 0) {
-            const long required = static_cast<long> (clients) + 4096L;
-            max_sockets = required > INT_MAX ? INT_MAX : static_cast<int> (required);
-        }
-    }
+    const int max_sockets = parse_positive_env ("PERF_MAX_SOCKETS", 0);
     if (max_sockets > 0)
         (void) options.maxSockets (max_sockets);
 }
@@ -296,12 +280,10 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     if (!wait_socket_monitor_event (
           bind_monitor,
           static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          -1,
           10000)
         || !wait_socket_monitor_event (
           connect_monitor,
           static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          -1,
           10000)) {
         return false;
     }

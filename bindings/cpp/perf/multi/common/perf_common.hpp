@@ -53,7 +53,7 @@ inline zlink::message_t message_from_external_buffer (std::vector<char> &buffer,
 
 inline int bench_io_threads ()
 {
-    return parse_positive_env ("PERF_IO_THREADS", 4);
+    return parse_positive_env ("PERF_IO_THREADS", 0);
 }
 
 inline int bench_max_sockets ()
@@ -84,7 +84,7 @@ inline int bench_max_sockets ()
 class ctx_guard_t
 {
   public:
-    ctx_guard_t () : _ctx (), _skip_term (false)
+    ctx_guard_t () : _ctx ()
     {
         zlink::context_options_t options = _ctx.options ();
         const int io_threads = bench_io_threads ();
@@ -101,19 +101,6 @@ class ctx_guard_t
     {
         if (_ctx.handle ())
             (void) _ctx.shutdown ();
-        if (!_skip_term) {
-            const int do_term = parse_positive_env ("PERF_CTX_TERM", 0);
-            if (do_term > 0)
-                force_term ();
-        }
-    }
-
-    void force_term ()
-    {
-        if (!_ctx.handle ())
-            return;
-        (void) _ctx.shutdown ();
-        _skip_term = true;
     }
 
     zlink::context_t &ctx () { return _ctx; }
@@ -121,7 +108,6 @@ class ctx_guard_t
 
   private:
     zlink::context_t _ctx;
-    bool _skip_term;
 };
 
 using ::perf::socket_guard_t;

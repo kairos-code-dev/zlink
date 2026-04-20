@@ -74,6 +74,10 @@ class pubsub_client_bench_t
             return false;
 
         std::cout << "CLIENT_READY," << _msg_size << std::endl;
+        if (!perf::multi::wait_for_start_from_stdin (_msg_size)) {
+            _failure_stage = "start_signal";
+            return false;
+        }
 
         _resource_probe_start = perf::multi::start_resource_probe ();
         if (!run_phase (perf_metric::phase_active,
@@ -122,40 +126,17 @@ class pubsub_client_bench_t
             _holders.emplace_back (
               new perf::multi::socket_guard_t (_ctx, zlink::socket_type::sub));
             zlink::socket_t &sock = _holders.back ()->sock ();
-            _monitors.push_back (perf::multi::connect_monitor_t ());
 
             (void) sock.set_subscription (std::string (k_topic));
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
-            if (!perf::multi::open_socket_monitor (
-                  sock,
-                  zlink::monitor_event::connection_ready,
-                  _monitors.back ())) {
-                _failure_stage = "monitor_open";
-                return false;
-            }
             if (sock.connect (_endpoint) != 0)
                 return false;
 
             _sockets.push_back (&sock);
             (void) _poller.add (sock, zlink::poll_event::pollin, &sock);
         }
-
-        for (size_t i = 0; i < _monitors.size (); ++i) {
-            if (!perf::multi::wait_socket_monitor_event (
-                  *_monitors[i].monitor,
-                  static_cast<uint64_t> (
-                    zlink::monitor_event::connection_ready),
-                  -1,
-                  _settings.connect_ready_timeout_ms)) {
-                _failure_stage = "connection_ready";
-                close_monitors ();
-                return false;
-            }
-        }
-
-        close_monitors ();
         return !_sockets.empty ();
     }
 
@@ -178,20 +159,13 @@ class pubsub_client_bench_t
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
         const bool active_phase = phase == perf_metric::phase_active;
-        auto deadline = std::chrono::steady_clock::now () + duration;
-        const int active_search_extension_seconds = 2;
-        const auto active_search_deadline =
-          deadline + std::chrono::seconds (active_search_extension_seconds);
-        bool active_started = !active_phase;
+        const auto deadline = std::chrono::steady_clock::now () + duration;
 
-        while (std::chrono::steady_clock::now ()
-               < (active_started ? deadline : active_search_deadline)) {
+        while (std::chrono::steady_clock::now () < deadline) {
             const auto now = std::chrono::steady_clock::now ();
-            const auto phase_deadline = active_started ? deadline : active_search_deadline;
             long wait_ms = 100;
             const long remain_ms =
-              std::chrono::duration_cast<std::chrono::milliseconds> (phase_deadline
-                                                                      - now)
+              std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
                 .count ();
             if (remain_ms < wait_ms)
                 wait_ms = remain_ms;
@@ -259,16 +233,10 @@ class pubsub_client_bench_t
                         continue;
                     }
 
-                    if (active_phase) {
-                        if (header.phase
-                            != static_cast<uint32_t> (perf_metric::phase_active)) {
-                            continue;
-                        }
-                        if (!active_started) {
-                            active_started = true;
-                            deadline = std::chrono::steady_clock::now () + duration;
-                        }
-                    } else if (header.phase != static_cast<uint32_t> (phase))
+                    if (header.phase
+                        != static_cast<uint32_t> (active_phase
+                                                    ? perf_metric::phase_active
+                                                    : phase))
                         continue;
 
                     ++count;

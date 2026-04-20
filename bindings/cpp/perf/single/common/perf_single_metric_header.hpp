@@ -2,6 +2,7 @@
 #define PERF_SINGLE_METRIC_HEADER_HPP
 
 #include <chrono>
+#include <cstddef>
 #include <cstring>
 #include <stdint.h>
 
@@ -29,6 +30,36 @@ struct header_t
 inline size_t header_size ()
 {
     return 29U;
+}
+
+inline uint32_t load_u32_le (const unsigned char *src)
+{
+    return static_cast<uint32_t> (src[0])
+           | (static_cast<uint32_t> (src[1]) << 8)
+           | (static_cast<uint32_t> (src[2]) << 16)
+           | (static_cast<uint32_t> (src[3]) << 24);
+}
+
+inline uint64_t load_u64_le (const unsigned char *src)
+{
+    uint64_t value = 0;
+    for (size_t i = 0; i < 8; ++i)
+        value |= static_cast<uint64_t> (src[i]) << (i * 8);
+    return value;
+}
+
+inline void store_u32_le (unsigned char *dst, uint32_t value)
+{
+    dst[0] = static_cast<unsigned char> (value & 0xFFU);
+    dst[1] = static_cast<unsigned char> ((value >> 8) & 0xFFU);
+    dst[2] = static_cast<unsigned char> ((value >> 16) & 0xFFU);
+    dst[3] = static_cast<unsigned char> ((value >> 24) & 0xFFU);
+}
+
+inline void store_u64_le (unsigned char *dst, uint64_t value)
+{
+    for (size_t i = 0; i < 8; ++i)
+        dst[i] = static_cast<unsigned char> ((value >> (i * 8)) & 0xFFU);
 }
 
 inline int64_t now_ns ()
@@ -63,12 +94,12 @@ inline bool encode_header (void *dst, size_t dst_size, const header_t &h)
         return false;
 
     unsigned char *p = static_cast<unsigned char *> (dst);
-    std::memcpy (p + 0, &h.magic, sizeof (h.magic));
-    std::memcpy (p + 4, &h.run_id, sizeof (h.run_id));
-    std::memcpy (p + 8, &h.phase, sizeof (h.phase));
-    std::memcpy (p + 9, &h.msg_size, sizeof (h.msg_size));
-    std::memcpy (p + 13, &h.seq, sizeof (h.seq));
-    std::memcpy (p + 21, &h.sent_ts_ns, sizeof (h.sent_ts_ns));
+    store_u32_le (p + 0, h.magic);
+    store_u32_le (p + 4, h.run_id);
+    p[8] = h.phase;
+    store_u32_le (p + 9, h.msg_size);
+    store_u64_le (p + 13, h.seq);
+    store_u64_le (p + 21, static_cast<uint64_t> (h.sent_ts_ns));
     return true;
 }
 
@@ -78,12 +109,12 @@ inline bool decode_header (const void *src, size_t src_size, header_t *out)
         return false;
 
     const unsigned char *p = static_cast<const unsigned char *> (src);
-    std::memcpy (&out->magic, p + 0, sizeof (out->magic));
-    std::memcpy (&out->run_id, p + 4, sizeof (out->run_id));
-    std::memcpy (&out->phase, p + 8, sizeof (out->phase));
-    std::memcpy (&out->msg_size, p + 9, sizeof (out->msg_size));
-    std::memcpy (&out->seq, p + 13, sizeof (out->seq));
-    std::memcpy (&out->sent_ts_ns, p + 21, sizeof (out->sent_ts_ns));
+    out->magic = load_u32_le (p + 0);
+    out->run_id = load_u32_le (p + 4);
+    out->phase = p[8];
+    out->msg_size = load_u32_le (p + 9);
+    out->seq = load_u64_le (p + 13);
+    out->sent_ts_ns = static_cast<int64_t> (load_u64_le (p + 21));
     return true;
 }
 

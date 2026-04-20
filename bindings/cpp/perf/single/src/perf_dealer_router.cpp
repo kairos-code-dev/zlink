@@ -125,33 +125,57 @@ void run_pattern_dealer_router (const std::string &transport,
         sender_done.store (true, std::memory_order_release);
     });
 
+    zlink::poller_t poller;
+    poller.add (router.sock (), zlink::poll_event::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        try {
-            zlink::received_t received;
-            if (router.sock ().receive (received, zlink::recv_flags_t::none) != 0) {
-                sender_ok.store (false, std::memory_order_release);
-                break;
-            }
-            (void) record_router_payload (
-              received,
-              run_id,
-              msg_size,
-              payload_size,
-              received_count,
-              latency_builder);
-        }
-        catch (const zlink::recv_error_t &err) {
-            if (err.result () == zlink::recv_result_t::no_data
-                || err.result () == zlink::recv_result_t::busy) {
+        zlink::poll_event_t event = {};
+        const int poll_rc = poller.wait (&event, 5);
+        if (poll_rc < 0) {
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
-            }
-            if (perf_debug_enabled ())
-                std::cerr << "dealer_router: recv failed result="
-                          << static_cast<int> (err.result ())
-                          << " errno=" << err.internal_errno () << std::endl;
             sender_ok.store (false, std::memory_order_release);
             break;
         }
+        if (poll_rc == 0
+            || (event.revents & static_cast<short> (zlink::poll_event::pollin))
+                 == 0) {
+            continue;
+        }
+
+        for (;;) {
+            try {
+                zlink::received_t received;
+                if (router.sock ().receive (received, zlink::recv_flags_t::dontwait)
+                    != 0) {
+                    if (errno == EAGAIN || errno == EINTR)
+                        break;
+                    sender_ok.store (false, std::memory_order_release);
+                    break;
+                }
+                (void) record_router_payload (
+                  received,
+                  run_id,
+                  msg_size,
+                  payload_size,
+                  received_count,
+                  latency_builder);
+            }
+            catch (const zlink::recv_error_t &err) {
+                if (err.result () == zlink::recv_result_t::no_data
+                    || err.result () == zlink::recv_result_t::busy) {
+                    break;
+                }
+                if (perf_debug_enabled ())
+                    std::cerr << "dealer_router: recv failed result="
+                              << static_cast<int> (err.result ())
+                              << " errno=" << err.internal_errno () << std::endl;
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+        }
+
+        if (!sender_ok.load (std::memory_order_acquire))
+            break;
     }
 
     sender_thread.join ();

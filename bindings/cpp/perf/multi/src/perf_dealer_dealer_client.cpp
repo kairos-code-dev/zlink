@@ -95,7 +95,10 @@ class dealer_dealer_client_bench_t
         if (!setup_sockets ())
             return false;
 
-        _resource_probe_start = perf::multi::start_resource_probe ();
+        std::cout << "CLIENT_READY," << _msg_size << std::endl;
+        if (!perf::multi::wait_for_start_from_stdin (_msg_size))
+            return false;
+
         if (!run_phase (perf_metric::phase_active,
                         std::chrono::seconds (_phase_cfg.active_seconds),
                         &_result.active_count,
@@ -103,16 +106,7 @@ class dealer_dealer_client_bench_t
             return false;
 
         send_stop_token_once ();
-        _resource_metrics =
-          perf::multi::finish_resource_probe (_resource_probe_start);
-
-        if (_result.active_count == 0) {
-            debug_log ("active_count remained zero");
-            return false;
-        }
-
-        print_result ();
-        return true;
+        return _result.active_count > 0;
     }
 
   private:
@@ -339,19 +333,6 @@ class dealer_dealer_client_bench_t
                                              zlink::send_flags_t::dontwait);
     }
 
-    void print_result () const
-    {
-        perf::multi::print_client_result_lines (
-          k_pattern_result,
-          _transport,
-          _msg_size,
-          _result.active_count,
-          _phase_cfg.active_seconds,
-          1.0,
-          _result.latency,
-          _resource_metrics);
-    }
-
   private:
     const std::string _transport;
     const size_t _msg_size;
@@ -371,8 +352,6 @@ class dealer_dealer_client_bench_t
 
     phase_config_t _phase_cfg;
     bench_result_t _result;
-    bench_multi_cpu_sample_t _resource_probe_start;
-    bench_multi_resource_metrics_t _resource_metrics;
 };
 
 } // namespace

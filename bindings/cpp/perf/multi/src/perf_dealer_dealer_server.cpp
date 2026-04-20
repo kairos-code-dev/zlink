@@ -4,7 +4,9 @@
 
 #include "../common/perf_common.hpp"
 #include "../common/perf_entry.hpp"
+#include "../common/perf_metric_header.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -42,11 +44,13 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
       perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
-    const int active_seconds = settings.duration_seconds > 0 ? settings.duration_seconds : 1;
-    const int deadline_seconds = active_seconds + 2;
+    if (!perf::multi::wait_for_start_from_stdin (msg_size))
+        return false;
 
+    const int active_seconds =
+      settings.duration_seconds > 0 ? settings.duration_seconds : 1;
     const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::seconds (deadline_seconds);
+                          + std::chrono::seconds (active_seconds);
 
     zlink::poller_t poller;
     (void) poller.add (server.sock (), zlink::poll_event::pollin, &server.sock ());
@@ -54,6 +58,8 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
     events.reserve (1);
     bool stop_requested = false;
     bool failed = false;
+    unsigned long long active_count = 0;
+    perf::multi::bench_latency_sampler_t latency;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
         const auto now = std::chrono::steady_clock::now ();
         long wait_ms = 100;
@@ -100,12 +106,48 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
                     stop_requested = true;
                     break;
                 }
+
+                perf_metric::header_t header;
+                if (!perf_metric::decode_payload_header (
+                      inbound.data (), inbound.size (), &header)) {
+                    continue;
+                }
+                if (!perf_metric::is_expected (
+                      header, 1U, perf_metric::phase_active, msg_size)) {
+                    continue;
+                }
+
+                ++active_count;
+                const uint64_t now_ns = perf_metric::now_ns ();
+                const double sample_ns =
+                  now_ns >= header.sent_ts_ns
+                    ? static_cast<double> (now_ns - header.sent_ts_ns)
+                    : 0.0;
+                latency.add (sample_ns);
             }
         }
     }
 
     const bench_multi_resource_metrics_t resource_metrics =
       perf::multi::finish_resource_probe (resource_probe_start);
+    if (failed || active_count == 0 || latency.count () == 0)
+        return false;
+
+    const perf::multi::bench_latency_stats_t latency_stats = latency.snapshot ();
+    const double throughput =
+      static_cast<double> (active_count)
+      / static_cast<double> (std::max (1, active_seconds));
+    const double bandwidth =
+      throughput * static_cast<double> (msg_size) / 1000000.0;
+    perf::multi::print_result ("current",
+                               "MULTI_DEALER_DEALER",
+                               transport,
+                               msg_size,
+                               throughput,
+                               bandwidth,
+                               latency_stats.mean_ns,
+                               latency_stats.p95_ns,
+                               latency_stats.p99_ns);
     perf::multi::print_server_resource_metrics (
       "current",
       "MULTI_DEALER_DEALER",
@@ -118,7 +160,7 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
       transport,
       msg_size,
       perf::multi::server_queue_stats_t ());
-    return !failed;
+    return true;
 }
 
 int main (int argc, char **argv)

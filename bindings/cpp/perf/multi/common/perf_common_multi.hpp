@@ -49,19 +49,6 @@ inline int parse_positive_env (const char *name, int default_value)
     return static_cast<int> (parsed);
 }
 
-inline int parse_positive_env_alias (const char *name,
-                                     const char *alias,
-                                     int default_value,
-                                     int min_value)
-{
-    int value = parse_positive_env (name, INT_MIN);
-    if (value == INT_MIN)
-        value = parse_positive_env (alias, default_value);
-    if (value < min_value)
-        return min_value;
-    return value;
-}
-
 inline bool is_stream_pattern (const char *pattern)
 {
     if (!pattern || !*pattern)
@@ -103,39 +90,34 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     const std::string pattern = pattern_env ? pattern_env : "";
 
     const size_t default_clients = resolve_multi_default_clients (pattern);
-    const int clients = parse_positive_env_alias (
-      "PERF_CLIENTS",
-      "PERF_MULTI_CLIENTS",
-      static_cast<int> (default_clients),
-      1);
+    const int clients = std::max (
+      1,
+      parse_positive_env (
+        "PERF_MULTI_CLIENTS", static_cast<int> (default_clients)));
 
     const int default_hwm =
       resolve_multi_default_hwm (pattern, static_cast<size_t> (clients));
 
     multi_bench_settings_t out;
     out.clients = static_cast<size_t> (clients);
-    out.hwm = parse_positive_env_alias ("PERF_HWM", "PERF_MULTI_HWM", default_hwm, 1);
-    out.sndhwm = parse_positive_env_alias (
-      "PERF_SNDHWM", "PERF_MULTI_SNDHWM", out.hwm, 1);
-    out.rcvhwm = parse_positive_env_alias (
-      "PERF_RCVHWM", "PERF_MULTI_RCVHWM", out.hwm, 1);
-    out.duration_seconds = parse_positive_env_alias (
-      "PERF_DURATION_SECONDS", "PERF_MULTI_DURATION_SECONDS", 5, 1);
-    out.client_poll_timeout_ms = parse_positive_env (
-      "PERF_CLIENT_POLL_TIMEOUT_MS", 0);
-    out.connect_ready_timeout_ms = parse_positive_env_alias (
-      "PERF_CONNECT_READY_TIMEOUT_MS",
-      "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
-      5000,
-      0);
-    out.sndtimeo_ms = parse_positive_env_alias (
-      "PERF_SNDTIMEO_MS", "PERF_MULTI_SNDTIMEO_MS", 200, 0);
-    out.rcvtimeo_ms = parse_positive_env_alias (
-      "PERF_RCVTIMEO_MS", "PERF_MULTI_RCVTIMEO_MS", 200, 0);
-    out.monitor_hwm = parse_positive_env_alias (
-      "PERF_MONITOR_HWM", "PERF_MULTI_MONITOR_HWM", 1000, 1);
-    out.server_bind_port = parse_positive_env_alias (
-      "PERF_SERVER_BIND_PORT", "PERF_MULTI_SERVER_BIND_PORT", 0, 0);
+    out.hwm = std::max (1, parse_positive_env ("PERF_MULTI_HWM", default_hwm));
+    out.sndhwm = std::max (
+      1, parse_positive_env ("PERF_MULTI_SNDHWM", out.hwm));
+    out.rcvhwm = std::max (
+      1, parse_positive_env ("PERF_MULTI_RCVHWM", out.hwm));
+    out.duration_seconds = std::max (
+      1, parse_positive_env ("PERF_MULTI_DURATION_SECONDS", 5));
+    out.client_poll_timeout_ms = 0;
+    out.connect_ready_timeout_ms =
+      std::max (0, parse_positive_env ("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000));
+    out.sndtimeo_ms =
+      std::max (0, parse_positive_env ("PERF_MULTI_SNDTIMEO_MS", 200));
+    out.rcvtimeo_ms =
+      std::max (0, parse_positive_env ("PERF_MULTI_RCVTIMEO_MS", 200));
+    out.monitor_hwm =
+      std::max (1, parse_positive_env ("PERF_MULTI_MONITOR_HWM", 1000));
+    out.server_bind_port =
+      std::max (0, parse_positive_env ("PERF_MULTI_SERVER_BIND_PORT", 0));
 
     return out;
 }

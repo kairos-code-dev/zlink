@@ -31,7 +31,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(publisherNode.Bind(endpoint))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	subs := make([]multiSpotSubscriber, 0, cfg.clients)
 	tracker := newMultiSpotReadyTracker(cfg.clients)

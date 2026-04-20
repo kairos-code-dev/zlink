@@ -29,7 +29,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	waitForSpotReady(publisher, subscriber)
 	perfcommon.PostReadySettle(cfg.pattern)
@@ -64,13 +64,12 @@ func waitForSpotReady(publisher *zlink.Spot, subscriber *zlink.Spot) {
 				}
 				return false, err
 			}
-			if drainSpotOnce(subscriber, nil, time.Now().Add(24*time.Hour)) {
-				return true, nil
-			}
-			time.Sleep(250 * time.Microsecond)
-			return false, nil
-		},
-	}))
+				if drainSpotOnce(subscriber, nil, time.Now().Add(24*time.Hour)) {
+					return true, nil
+				}
+				return false, nil
+			},
+		}))
 }
 
 func drainSpotOnce(subscriber *zlink.Spot, stats *perfcommon.Stats, activeAt time.Time) bool {

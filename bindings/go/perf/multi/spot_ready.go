@@ -62,9 +62,8 @@ func waitForMultiSpotReady(
 				}
 				return false, err
 			}
-			_ = drainMultiSpotOnce(subs, nil, time.Now().Add(24*time.Hour), tracker)
-			time.Sleep(250 * time.Microsecond)
-			return tracker.countReady() >= len(subs), nil
-		},
-	}))
+				_ = drainMultiSpotOnce(subs, nil, time.Now().Add(24*time.Hour), tracker)
+				return tracker.countReady() >= len(subs), nil
+			},
+		}))
 }

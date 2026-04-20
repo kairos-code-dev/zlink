@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"time"
 
 	"zlink/perf/internal/perfcommon"
 )
@@ -11,7 +10,6 @@ type multiConfig struct {
 	pattern   string
 	transport string
 	msgSize   int
-	warmup    time.Duration
 	duration  time.Duration
 	clients   int
 }
@@ -20,7 +18,6 @@ var (
 	multiPattern   = flag.String("pattern", "MULTI_PUBSUB", "")
 	multiTransport = flag.String("transport", "tcp", "")
 	multiSize      = flag.Int("msg-size", 64, "")
-	multiWarmup    = flag.Int("warmup", 2, "")
 	multiDuration  = flag.Int("duration", 5, "")
 	multiClients   = flag.Int("clients", 100, "")
 )
@@ -32,7 +29,6 @@ func main() {
 		*multiPattern,
 		*multiTransport,
 		*multiSize,
-		*multiWarmup,
 		*multiDuration,
 		*multiClients,
 	)
@@ -40,7 +36,6 @@ func main() {
 		pattern:   loaded.Pattern,
 		transport: loaded.Transport,
 		msgSize:   loaded.MsgSize,
-		warmup:    loaded.Warmup,
 		duration:  loaded.Duration,
 		clients:   loaded.Clients,
 	}

@@ -23,7 +23,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 	startMultiStreamEchoServer(server)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	var wg sync.WaitGroup
 	for i := 0; i < cfg.clients; i++ {

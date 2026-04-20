@@ -25,7 +25,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	endpoint := perfcommon.BindAndResolveEndpoint(publisher, cfg.transport, "perf-multi-pubsub")
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	subs := make([]*zlink.SubSocket, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
@@ -58,13 +58,13 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvDone := make(chan struct{})
 	go func() {
-		defer close(recvDone)
-		for time.Now().Before(window.StopAt) {
-			if !drainMultiPubSubAvailable(subs, stats, cfg.msgSize, window.ActiveAt, window.StopAt) {
-				time.Sleep(50 * time.Microsecond)
+			defer close(recvDone)
+			for time.Now().Before(window.StopAt) {
+				if !drainMultiPubSubAvailable(subs, stats, cfg.msgSize, window.ActiveAt, window.StopAt) {
+					continue
+				}
 			}
-		}
-	}()
+		}()
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
 		msg, err := zlink.NewMessage(payload)

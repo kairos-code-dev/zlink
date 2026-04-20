@@ -5,6 +5,7 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.SpotDispatchEvent;
 import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.discovery.Discovery;
@@ -14,7 +15,6 @@ import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -67,7 +67,7 @@ final class PerfMultiSpot {
         CountDownLatch ready = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         MultiSendLoops.runClients(config.clients(), (index, duration) ->
             new Thread(() -> runClientSlot(config, duration, ready, go,
                 metrics, failure), "multi-spot-client-" + index),
@@ -83,6 +83,7 @@ final class PerfMultiSpot {
                                       CountDownLatch go,
                                       PerfUtil.Metrics metrics,
                                       AtomicReference<Throwable> failure) {
+        CountDownLatch finished = new CountDownLatch(1);
         try (Context ctx = PerfUtil.newContext(config);
              DealerSocket channelDealer = new DealerSocket(ctx);
              SpotNode node = new SpotNode(ctx);
@@ -90,8 +91,30 @@ final class PerfMultiSpot {
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureClientTls(node, config.transport());
             node.attachChannelDealerManual(SERVICE_NAME, channelDealer);
-            node.connectPeer(config.endpoint());
             subscriber.setSubscription(TOPIC);
+            subscriber.onDispatchEvent(event -> {
+                if (event != SpotDispatchEvent.SUBSCRIBE_READABLE) {
+                    return;
+                }
+                try {
+                    while (true) {
+                        var maybe = PerfUtil.subscribeNoWait(subscriber);
+                        if (maybe.isEmpty()) {
+                            return;
+                        }
+                        try (var received = maybe.orElseThrow()) {
+                            if (handleDelivery(received, metrics, config.size())) {
+                                finished.countDown();
+                                return;
+                            }
+                        }
+                    }
+                } catch (Throwable ex) {
+                    failure.compareAndSet(null, ex);
+                    finished.countDown();
+                }
+            });
+            node.connectPeer(config.endpoint());
             settleAfterConnect();
             ready.countDown();
             if (ready.getCount() == 0L) {
@@ -101,21 +124,8 @@ final class PerfMultiSpot {
                 go.countDown();
             }
             PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
-            long finishDeadline = System.nanoTime()
-                + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
-            while (System.nanoTime() < finishDeadline) {
-                Optional<dev.kairoscode.zlink.TopicMessage> maybe =
-                    PerfUtil.subscribeNoWait(subscriber);
-                if (maybe.isEmpty()) {
-                    Thread.onSpinWait();
-                    continue;
-                }
-                try (var received = maybe.orElseThrow()) {
-                    if (handleDelivery(received, metrics, config.size())) {
-                        return;
-                    }
-                }
-            }
+            PerfUtil.await(finished, "spot client recv",
+                Duration.ofSeconds(duration + 20L));
         } catch (Throwable ex) {
             failure.compareAndSet(null, ex);
         }

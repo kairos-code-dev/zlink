@@ -24,7 +24,7 @@ final class PerfDealerDealer {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-dealer-dealer");
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
              DealerSocket receiver = new DealerSocket(ctx);
              DealerSocket sender = new DealerSocket(ctx);

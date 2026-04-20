@@ -28,7 +28,7 @@ final class PerfDealerRouter {
         CountDownLatch routed = new CountDownLatch(1);
         AtomicBoolean probePending = new AtomicBoolean(true);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
              RouterSocket receiver = new RouterSocket(ctx);
              DealerSocket sender = new DealerSocket(ctx);

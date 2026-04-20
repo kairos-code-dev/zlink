@@ -29,7 +29,7 @@ final class PerfPubSub {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-pubsub");
         AtomicBoolean idleDrain = new AtomicBoolean(false);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         boolean sharedContext = "inproc".equals(config.transport());
         Context pubCtx = PerfUtil.newContext(config);
         Context subCtx = sharedContext ? pubCtx : PerfUtil.newContext(config);

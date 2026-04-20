@@ -33,13 +33,13 @@ public final class PerfUtil {
     }
 
     public record Config(
+        String suite,
         String pattern,
         String transport,
         int size,
         int durationSeconds,
         String endpoint,
         int clients,
-        int controlPort,
         int ioThreads,
         int sendHwm,
         int recvHwm,
@@ -97,7 +97,11 @@ public final class PerfUtil {
     }
 
     public static final class Metrics {
-        private final PerfMetricsCollector delegate = new PerfMetricsCollector();
+        private final PerfMetricsCollector delegate;
+
+        public Metrics(Config config) {
+            delegate = new PerfMetricsCollector(config.suite());
+        }
 
         public void startActiveWindow() {
             delegate.startActiveWindow();
@@ -252,11 +256,6 @@ public final class PerfUtil {
 
     public static String resultFileName(String lang, String suite, String platform, String tag) {
         return PerfReport.resultFileName(lang, suite, platform, tag);
-    }
-
-    @Deprecated
-    public static String resultFileName(String platform, String recvMode, String tag) {
-        return PerfReport.resultFileName("java", recvMode, platform, tag);
     }
 
     public static long nowNs() {

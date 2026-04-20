@@ -5,15 +5,17 @@ package dev.kairoscode.zlink.perf;
 import java.util.Arrays;
 
 final class PerfMetricsCollector {
-    private static final int MAX_LATENCY_SAMPLES = Math.max(1,
-        intEnv("PERF_SINGLE_LATENCY_SAMPLE_CAP",
-            intEnv("PERF_MULTI_LATENCY_SAMPLE_CAP", 200_000)));
-
-    private long[] latencies = new long[Math.min(MAX_LATENCY_SAMPLES, 1 << 20)];
+    private final int maxLatencySamples;
+    private long[] latencies;
     private int size;
     private long count;
     private long sum;
     private long sampleStride = 1L;
+
+    PerfMetricsCollector(String suite) {
+        maxLatencySamples = resolveMaxLatencySamples(suite);
+        latencies = new long[Math.min(maxLatencySamples, 1 << 20)];
+    }
 
     void startActiveWindow() {
     }
@@ -66,8 +68,8 @@ final class PerfMetricsCollector {
         if (size < latencies.length) {
             return;
         }
-        if (latencies.length < MAX_LATENCY_SAMPLES) {
-            int next = Math.min(MAX_LATENCY_SAMPLES, latencies.length * 2);
+        if (latencies.length < maxLatencySamples) {
+            int next = Math.min(maxLatencySamples, latencies.length * 2);
             latencies = Arrays.copyOf(latencies, next);
             return;
         }
@@ -82,6 +84,13 @@ final class PerfMetricsCollector {
     private static int index(int length, double percentile) {
         return Math.max(0, Math.min(length - 1,
             (int) Math.ceil(length * percentile) - 1));
+    }
+
+    private static int resolveMaxLatencySamples(String suite) {
+        String envName = "multi".equals(suite)
+            ? "PERF_MULTI_LATENCY_SAMPLE_CAP"
+            : "PERF_SINGLE_LATENCY_SAMPLE_CAP";
+        return Math.max(1, intEnv(envName, 200_000));
     }
 
     private static int intEnv(String name, int fallback) {

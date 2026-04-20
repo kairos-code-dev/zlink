@@ -4,13 +4,16 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PubSocket;
+import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.SubSocket;
+import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfControl;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -50,7 +53,7 @@ final class PerfMultiPubSub {
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             try (Context ctx = PerfUtil.newContext(config);
                  SubSocket sub = new SubSocket(ctx)) {
@@ -68,23 +71,39 @@ final class PerfMultiPubSub {
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));
                 long finishDeadline = System.nanoTime()
                     + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
-                while (System.nanoTime() < finishDeadline) {
-                    Optional<dev.kairoscode.zlink.TopicMessage> maybe = PerfUtil.subscribeNoWait(sub);
-                    if (maybe.isEmpty()) {
-                        Thread.onSpinWait();
-                        continue;
-                    }
-                    try (var received = maybe.orElseThrow()) {
-                        PerfUtil.Header header = PerfUtil.decodeHeader(
-                            received.firstPart(), config.size());
-                        if (header == null) {
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                    List.of(sub), PollEventType.POLLIN.getValue())) {
+                    while (System.nanoTime() < finishDeadline) {
+                        int timeoutMs = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
+                            Duration.ofNanos(
+                                Math.max(1L, finishDeadline - System.nanoTime())).toMillis()));
+                        if (pollSet.poll(timeoutMs) <= 0
+                            || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
                             continue;
                         }
-                        if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                            return;
-                        }
-                        if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                            metrics.recordNanos(header.latencyNanos());
+                        while (true) {
+                            TopicMessage received;
+                            try {
+                                received = sub.subscribe(RecvFlags.DONT_WAIT);
+                            } catch (dev.kairoscode.zlink.ZlinkException ex) {
+                                if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
+                                    break;
+                                }
+                                throw ex;
+                            }
+                            try (received) {
+                                PerfUtil.Header header = PerfUtil.decodeHeader(
+                                    received.firstPart(), config.size());
+                                if (header == null) {
+                                    continue;
+                                }
+                                if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                                    return;
+                                }
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                    metrics.recordNanos(header.latencyNanos());
+                                }
+                            }
                         }
                     }
                 }

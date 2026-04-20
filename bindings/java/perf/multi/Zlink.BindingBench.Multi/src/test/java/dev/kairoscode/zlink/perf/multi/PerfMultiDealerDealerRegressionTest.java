@@ -19,14 +19,12 @@ class PerfMultiDealerDealerRegressionTest {
     @Test
     void splitProcessServerAndClientCompleteWithoutTimeout() throws Exception {
         String endpoint = "tcp://127.0.0.1:" + freePort();
-        String controlPort = String.valueOf(freePort());
 
         Process server = startPerfProcess(List.of(
             "--multi-server", "MULTI_DEALER_DEALER", "tcp", "64",
             "--endpoint", endpoint,
             "--clients", "1",
-            "--duration", "1",
-            "--control-port", controlPort
+            "--duration", "1"
         ));
         ProcessOutput serverOutput = ProcessOutput.capture(server);
         waitForOutput(server, serverOutput, "READY,", Duration.ofSeconds(10), "server ready");
@@ -35,8 +33,7 @@ class PerfMultiDealerDealerRegressionTest {
             "--multi-client", "MULTI_DEALER_DEALER", "tcp", "64",
             "--endpoint", endpoint,
             "--clients", "1",
-            "--duration", "1",
-            "--control-port", controlPort
+            "--duration", "1"
         ));
         ProcessOutput clientOutput = ProcessOutput.capture(client);
         waitForOutput(client, clientOutput, "CLIENT_READY,64", Duration.ofSeconds(10),

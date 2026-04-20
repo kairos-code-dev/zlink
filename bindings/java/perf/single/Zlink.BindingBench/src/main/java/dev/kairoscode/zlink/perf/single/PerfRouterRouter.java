@@ -31,7 +31,7 @@ final class PerfRouterRouter {
         CountDownLatch routed = new CountDownLatch(1);
         AtomicBoolean probePending = new AtomicBoolean(true);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         boolean sharedContext = "inproc".equals(config.transport());
         Context receiverCtx = PerfUtil.newContext(config);
         Context senderCtx = sharedContext ? receiverCtx : PerfUtil.newContext(config);

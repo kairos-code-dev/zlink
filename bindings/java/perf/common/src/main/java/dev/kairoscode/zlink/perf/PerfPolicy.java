@@ -12,7 +12,9 @@ final class PerfPolicy {
     }
 
     static PerfUtil.Result classifyFailure(PerfUtil.Config config, Throwable failure) {
-        String unsupportedReason = unsupportedReason(failure);
+        String unsupportedReason = "multi".equals(config.suite())
+            ? unsupportedReason(failure)
+            : null;
         if (unsupportedReason != null) {
             return PerfUtil.Result.unsupported(unsupportedReason, config);
         }

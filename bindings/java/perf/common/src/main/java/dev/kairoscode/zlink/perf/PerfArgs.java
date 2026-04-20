@@ -27,8 +27,7 @@ final class PerfArgs {
         int sendTimeoutMs = intEnv("PERF_SINGLE_SNDTIMEO_MS", 200);
         int recvTimeoutMs = intEnv("PERF_SINGLE_RCVTIMEO_MS", 200);
         int monitorHwm = 1000;
-        int connectReadyTimeoutMs = intEnv("PERF_SINGLE_CONNECT_READY_TIMEOUT_MS",
-            intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 20_000));
+        int connectReadyTimeoutMs = intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 20_000);
         for (int i = 3; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
@@ -46,13 +45,13 @@ final class PerfArgs {
                 }
             }
         }
-        return new PerfUtil.Config(pattern, transport, size, duration, "",
-            1, 0, ioThreads, sendHwm, recvHwm, sendTimeoutMs, recvTimeoutMs,
+        return new PerfUtil.Config("single", pattern, transport, size, duration,
+            "", 1, ioThreads, sendHwm, recvHwm, sendTimeoutMs, recvTimeoutMs,
             monitorHwm, connectReadyTimeoutMs, 0);
     }
 
     static PerfUtil.Config parseMultiArgs(String[] args) {
-        if (args.length < 8) {
+        if (args.length < 4) {
             throw new IllegalArgumentException("usage: --multi-(server|client) ...");
         }
         String pattern = args[1].toUpperCase(Locale.ROOT);
@@ -67,7 +66,6 @@ final class PerfArgs {
         int duration = intEnv("PERF_MULTI_DURATION_SECONDS", 5);
         String endpoint = "";
         int clients = intEnv("PERF_MULTI_CLIENTS", 100);
-        int controlPort = 0;
         int ioThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS", 2);
         if ("--multi-server".equals(args[0])) {
             ioThreads = intEnv("PERF_MULTI_SERVER_IO_THREADS", ioThreads);
@@ -82,14 +80,13 @@ final class PerfArgs {
         int recvTimeoutMs = intEnv("PERF_MULTI_RCVTIMEO_MS", 200);
         int monitorHwm = intEnv("PERF_MULTI_MONITOR_HWM", 1000);
         int connectReadyTimeoutMs = intEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000);
-        int connectConcurrency = intEnv("PERF_MULTI_CONNECT_CONCURRENCY",
-            clients >= 10_000 ? 1024 : 128);
+        int connectConcurrency = intEnv("PERF_MULTI_CONNECT_CONCURRENCY", 0);
+        boolean connectConcurrencySet = connectConcurrency > 0;
         for (int i = 4; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
                 case "--endpoint" -> endpoint = args[i + 1];
                 case "--clients" -> clients = Integer.parseInt(args[i + 1]);
-                case "--control-port" -> controlPort = Integer.parseInt(args[i + 1]);
                 case "--io-threads" -> ioThreads = Integer.parseInt(args[i + 1]);
                 case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
                 case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
@@ -100,19 +97,20 @@ final class PerfArgs {
                 case "--monitor-hwm" -> monitorHwm = Integer.parseInt(args[i + 1]);
                 case "--connect-ready-timeout-ms" ->
                     connectReadyTimeoutMs = Integer.parseInt(args[i + 1]);
-                case "--connect-concurrency" ->
+                case "--connect-concurrency" -> {
                     connectConcurrency = Integer.parseInt(args[i + 1]);
+                    connectConcurrencySet = true;
+                }
                 default -> {
                 }
             }
         }
-        if (connectConcurrency <= 0) {
+        if (!connectConcurrencySet || connectConcurrency <= 0) {
             connectConcurrency = clients >= 10_000 ? 1024 : 128;
         }
-        return new PerfUtil.Config(pattern, transport, size, duration, endpoint,
-            clients, controlPort, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
-            recvTimeoutMs, monitorHwm, connectReadyTimeoutMs,
-            connectConcurrency);
+        return new PerfUtil.Config("multi", pattern, transport, size, duration,
+            endpoint, clients, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
+            recvTimeoutMs, monitorHwm, connectReadyTimeoutMs, connectConcurrency);
     }
 
     private static int intEnv(String name, int fallback) {

@@ -28,7 +28,7 @@ final class PerfSpot {
         CountDownLatch finished = new CountDownLatch(1);
         CountDownLatch ready = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         String registryPub = PerfUtil.endpoint(config.transport(),
             "single-spot-registry-pub");
         String registryRouter = PerfUtil.endpoint(config.transport(),

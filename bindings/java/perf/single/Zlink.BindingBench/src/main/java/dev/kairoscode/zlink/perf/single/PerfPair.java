@@ -24,7 +24,7 @@ final class PerfPair {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-pair");
         CountDownLatch finished = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
              PairSocket receiver = new PairSocket(ctx);
              PairSocket sender = new PairSocket(ctx);

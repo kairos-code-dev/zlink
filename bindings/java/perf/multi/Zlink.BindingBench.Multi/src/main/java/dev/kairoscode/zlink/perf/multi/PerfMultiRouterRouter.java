@@ -74,7 +74,7 @@ final class PerfMultiRouterRouter {
     static PerfUtil.Result runClient(PerfUtil.Config config) {
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             Context ctx = PerfUtil.newContext(config);
             try (RouterSocket client = new RouterSocket(ctx);

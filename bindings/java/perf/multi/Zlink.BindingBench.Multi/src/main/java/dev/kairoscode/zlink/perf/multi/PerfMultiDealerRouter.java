@@ -70,7 +70,7 @@ final class PerfMultiDealerRouter {
     static PerfUtil.Result runClient(PerfUtil.Config config) {
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             try (Context ctx = PerfUtil.newContext(config);
                  DealerSocket client = new DealerSocket(ctx);

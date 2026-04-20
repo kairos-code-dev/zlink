@@ -40,32 +40,34 @@ final class PerfMultiDealerDealer {
             PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, config.clients(),
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "dealer/dealer server ready");
-            PerfUtil.Metrics metrics = new PerfUtil.Metrics();
+            PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
             metrics.startActiveWindow();
             int stops = 0;
-            while (stops < config.clients()) {
-                try (var received = server.recv()) {
-                    PerfUtil.Header header = PerfUtil.decodeHeader(
-                        received.firstPart(), config.size());
-                    if (header == null) {
-                        continue;
+            try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                java.util.List.of(server), PollEventType.POLLIN.getValue())) {
+                while (stops < config.clients()) {
+                    pollSet.poll(-1);
+                    while (true) {
+                        dev.kairoscode.zlink.Received received =
+                            PerfUtil.recvNoWait(server);
+                        if (received == null) {
+                            break;
+                        }
+                        try (received) {
+                            PerfUtil.Header header = PerfUtil.decodeHeader(
+                                received.firstPart(), config.size());
+                            if (header == null) {
+                                continue;
+                            }
+                            if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                                stops++;
+                                continue;
+                            }
+                            if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                metrics.recordNanos(header.latencyNanos());
+                            }
+                        }
                     }
-                    if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                        stops++;
-                        continue;
-                    }
-                    if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                        metrics.recordNanos(header.latencyNanos());
-                    }
-                } catch (ZlinkException ex) {
-                    int errno = ex.getInternalErrno();
-                    if (errno == ERRNO_EAGAIN
-                        || errno == ERRNO_EINTR
-                        || errno == ERRNO_ETIMEDOUT
-                        || errno == ERRNO_ETIMEDOUT_WIN) {
-                        continue;
-                    }
-                    throw ex;
                 }
             }
             return metrics.finishMulti(config);
@@ -143,8 +145,7 @@ final class PerfMultiDealerDealer {
 
     private static boolean isTransient(ZlinkException ex) {
         if (ex instanceof SubmitException submit) {
-            return submit.getResult() == SubmitResult.BACKPRESSURED
-                || submit.getResult() == SubmitResult.NOT_CONNECTED;
+            return submit.getResult() == SubmitResult.BACKPRESSURED;
         }
         return ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4;
     }

@@ -222,7 +222,7 @@ function resolvePatternClients(patternName, options, clientSource) {
             else if (requested > maxClients) {
                 return {
                     clients: requested,
-                    skipReason: `preflight_memory_clients=${requested},max_clients=${maxClients},mem_available_kb=${memoryAvailableKb()},budget_pct=${process.env.PERF_MULTI_MEMORY_BUDGET_PCT || 70},base_mb=${process.env.PERF_MULTI_MEMORY_BASE_MB || 512},per_client_kb=${process.env.PERF_MULTI_MEMORY_PER_CLIENT_KB || 1024}`
+                    skipReason: `memory_guard_clients=${requested},max_clients=${maxClients},mem_available_kb=${memoryAvailableKb()},budget_pct=${process.env.PERF_MULTI_MEMORY_BUDGET_PCT || 70},base_mb=${process.env.PERF_MULTI_MEMORY_BASE_MB || 512},per_client_kb=${process.env.PERF_MULTI_MEMORY_PER_CLIENT_KB || 1024}`
                 };
             }
         }
@@ -233,7 +233,7 @@ function resolvePatternClients(patternName, options, clientSource) {
         if (Number.isFinite(softLimit) && softLimit < required) {
             return {
                 clients: effectiveClients,
-                skipReason: `preflight_nofile_clients=${effectiveClients},required=${required},soft=${softLimit}`
+                skipReason: `nofile_guard_clients=${effectiveClients},required=${required},soft=${softLimit}`
             };
         }
     }

@@ -212,6 +212,18 @@ function phaseActiveLine(msgSize) {
 function startLine(msgSize) {
     return `START,${msgSize}`;
 }
+function needsClientReady(pattern) {
+    return pattern === 'MULTI_DEALER_DEALER'
+        || pattern === 'MULTI_PUBSUB'
+        || pattern === 'MULTI_SPOT'
+        || pattern === 'MULTI_SPOT_REQREP';
+}
+function needsRunnerStart(pattern) {
+    return pattern === 'MULTI_DEALER_DEALER'
+        || pattern === 'MULTI_PUBSUB'
+        || pattern === 'MULTI_SPOT'
+        || pattern === 'MULTI_SPOT_REQREP';
+}
 function childEnv(args) {
     const env = { ...process.env };
     if (env.PERF_MULTI_HWM === undefined
@@ -338,12 +350,6 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
         await waitForPrefix(server, 'CONTROL_READY,', serverScript, 10_000);
     }
-    if (args.pattern === 'MULTI_SPOT_REQREP') {
-        const routeLine = await waitForPrefix(server, 'ROUTE_READY,', serverScript, 10_000);
-        const [, serverNodeRid, serverSpotRid] = routeLine.split(',');
-        clientArgs.push('--server-node-rid', serverNodeRid);
-        clientArgs.push('--server-spot-rid', serverSpotRid);
-    }
     const clientSpawn = buildPinnedSpawn(process.execPath, [clientPath, ...clientArgs], args);
     const client = spawn(clientSpawn.command, clientSpawn.args, {
         cwd: process.cwd(),
@@ -359,14 +365,18 @@ async function spawnMultiPair(serverScript, clientScript, args) {
             server.stdin.write(`CONNECT_CONTROL,${clientControlLine.split(',')[1]}\n`);
         }
     }
-    await waitForLine(client, clientReadyLine(args.msgSize), clientScript, Number.isFinite(args.connectReadyTimeoutMs) ? args.connectReadyTimeoutMs : 20_000);
-    if (server.stdin.writable) {
-        server.stdin.write(`${startLine(args.msgSize)}\n`);
+    if (needsClientReady(args.pattern)) {
+        await waitForLine(client, clientReadyLine(args.msgSize), clientScript, Number.isFinite(args.connectReadyTimeoutMs) ? args.connectReadyTimeoutMs : 20_000);
     }
-    if (client.stdin.writable) {
-        client.stdin.write(`${startLine(args.msgSize)}\n`);
-        if (args.pattern === 'MULTI_PUBSUB') {
-            client.stdin.write(`${phaseActiveLine(args.msgSize)}\n`);
+    if (needsRunnerStart(args.pattern)) {
+        if (server.stdin.writable) {
+            server.stdin.write(`${startLine(args.msgSize)}\n`);
+        }
+        if (client.stdin.writable) {
+            client.stdin.write(`${startLine(args.msgSize)}\n`);
+            if (args.pattern === 'MULTI_PUBSUB') {
+                client.stdin.write(`${phaseActiveLine(args.msgSize)}\n`);
+            }
         }
     }
     const clientTimeoutMs = resolveMultiTimeoutSeconds(args) * 1000;

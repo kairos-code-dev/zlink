@@ -16,6 +16,12 @@ const {
 
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(
+  Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii')
+);
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(
+  Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii')
+);
 
 function tryRecvRouted(spot) {
   try {
@@ -46,9 +52,11 @@ async function main() {
   try {
     node.attachChannelDealerManual(SERVICE_NAME, dealer);
     applySocketPolicy(dealer);
+    node.setRoutingId(SERVER_NODE_ROUTING_ID);
     node.bind(options.peerEndpoint);
     spot = node.createSpot();
     applySocketPolicy(spot);
+    spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
     spot.onDispatchEvent(() => {
       while (true) {
         const received = tryRecvRouted(spot);
@@ -70,7 +78,6 @@ async function main() {
 
     console.log(`READY,${options.endpoint}`);
     console.log(`CONTROL_READY,${options.controlEndpoint}`);
-    console.log(`ROUTE_READY,${node.routingId.toBytes().toString('hex')},${spot.routingId.toBytes().toString('hex')}`);
 
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     (async () => {

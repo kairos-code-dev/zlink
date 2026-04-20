@@ -2,7 +2,6 @@
 
 'use strict';
 
-const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
@@ -55,98 +54,88 @@ async function main() {
       await waitForConnectionReady(routers[i], () => routers[i].connect(options.endpoint));
       poller.addSocket(routers[i], POLLIN | POLLOUT, i);
     }
-    console.log(`CLIENT_READY,${options.msgSize}`);
+    const runId = createRunId(1);
+    const activeStartNs = currentEpochNs();
+    const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+    const collector = createMetricCollector({
+      runId,
+      msgSize: options.msgSize,
+      activeStartNs,
+      activeStopNs,
+      roundTrip: true,
+      sampleCap: resolveMultiLatencySampleCap()
+    });
+    let seq = 1n;
 
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-    for await (const line of rl) {
-      if (line !== `START,${options.msgSize}`) {
+    const drainReply = (index) => {
+      let progressed = false;
+      while (true) {
+        const echoed = recvNoWait(routers[index]);
+        if (!echoed) {
+          break;
+        }
+        waiting[index] = false;
+        collector.record(
+          decodeMetricHeader(echoed.parts[0].data()),
+          currentEpochNs()
+        );
+        progressed = true;
+      }
+      return progressed;
+    };
+
+    while (currentEpochNs() < activeStopNs) {
+      let progressed = false;
+      for (let i = 0; i < routers.length; i += 1) {
+        if (waiting[i] || sendPending[i]) {
+          continue;
+        }
+        stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
+        if (!trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i])) {
+          sendPending[i] = true;
+          continue;
+        }
+        waiting[i] = true;
+        seq += 1n;
+        progressed = true;
+      }
+      for (let i = 0; i < routers.length; i += 1) {
+        progressed = drainReply(i) || progressed;
+      }
+      if (progressed) {
         continue;
       }
 
-      const runId = createRunId(1);
-      const activeStartNs = currentEpochNs();
-      const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
-      const collector = createMetricCollector({
-        runId,
-        msgSize: options.msgSize,
-        activeStartNs,
-        activeStopNs,
-        roundTrip: true,
-        sampleCap: resolveMultiLatencySampleCap()
-      });
-      let seq = 1n;
-
-      const drainReply = (index) => {
-        let progressed = false;
-        while (true) {
-          const echoed = recvNoWait(routers[index]);
-          if (!echoed) {
-            break;
-          }
-          waiting[index] = false;
-          collector.record(
-            decodeMetricHeader(echoed.parts[0].data()),
-            currentEpochNs()
-          );
-          progressed = true;
-        }
-        return progressed;
-      };
-
-      while (currentEpochNs() < activeStopNs) {
-        let progressed = false;
-        for (let i = 0; i < routers.length; i += 1) {
-          if (waiting[i] || sendPending[i]) {
-            continue;
-          }
-          stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-          if (!trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i])) {
-            sendPending[i] = true;
-            continue;
-          }
-          waiting[i] = true;
-          seq += 1n;
-          progressed = true;
-        }
-        for (let i = 0; i < routers.length; i += 1) {
-          progressed = drainReply(i) || progressed;
-        }
-        if (progressed) {
+      const ready = poller.waitAll(poller.size, 25);
+      if (ready.length === 0) {
+        await sleepImmediate();
+        continue;
+      }
+      for (const event of ready) {
+        const index = event.userData;
+        if (!Number.isInteger(index)) {
           continue;
         }
-
-        const ready = poller.waitAll(poller.size, 25);
-        if (ready.length === 0) {
-          await sleepImmediate();
-          continue;
+        if ((event.events & POLLOUT) !== 0) {
+          sendPending[index] = false;
         }
-        for (const event of ready) {
-          const index = event.userData;
-          if (!Number.isInteger(index)) {
-            continue;
-          }
-          if ((event.events & POLLOUT) !== 0) {
-            sendPending[index] = false;
-          }
-          if ((event.events & POLLIN) !== 0) {
-            drainReply(index);
-          }
+        if ((event.events & POLLIN) !== 0) {
+          drainReply(index);
         }
       }
+    }
 
-      const result = await collector.finish();
-      for (const metricLine of summarizeMetrics(
-        'MULTI_ROUTER_ROUTER',
-        options.transport,
-        options.msgSize,
-        result.latenciesNs,
-        options.duration,
-        'current',
-        result.accepted
-      )) {
-        console.log(metricLine);
-      }
-      break;
+    const result = await collector.finish();
+    for (const metricLine of summarizeMetrics(
+      'MULTI_ROUTER_ROUTER',
+      options.transport,
+      options.msgSize,
+      result.latenciesNs,
+      options.duration,
+      'current',
+      result.accepted
+    )) {
+      console.log(metricLine);
     }
   } finally {
     poller.close();

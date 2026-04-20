@@ -382,13 +382,6 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     await waitForPrefix(server, 'CONTROL_READY,', serverScript, 10_000);
   }
 
-  if (args.pattern === 'MULTI_SPOT_REQREP') {
-    const routeLine = await waitForPrefix(server, 'ROUTE_READY,', serverScript, 10_000);
-    const [, serverNodeRid, serverSpotRid] = routeLine.split(',');
-    clientArgs.push('--server-node-rid', serverNodeRid);
-    clientArgs.push('--server-spot-rid', serverSpotRid);
-  }
-
   const clientSpawn = buildPinnedSpawn(process.execPath, [clientPath, ...clientArgs], args);
   const client = spawn(clientSpawn.command, clientSpawn.args, {
     cwd: process.cwd(),

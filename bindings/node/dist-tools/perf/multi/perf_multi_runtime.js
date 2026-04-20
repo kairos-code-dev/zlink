@@ -165,6 +165,22 @@ function trySocketPublish(socket, topic, payload) {
         throw error;
     }
 }
+function trySendToSpot(socket, destNodeRid, destSpotRid, payload) {
+    try {
+        socket.sendToSpot(destNodeRid, destSpotRid, payload, zlink.SendFlags.DontWait);
+        return true;
+    }
+    catch (error) {
+        if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+            return false;
+        }
+        const text = String(error && error.message ? error.message : error);
+        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
+            return false;
+        }
+        throw error;
+    }
+}
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
     const poller = new zlink.Poller();
     poller.addSocket(socket, POLLIN);
@@ -219,6 +235,7 @@ module.exports = {
     recvNoWait,
     resolveMultiLatencySampleCap,
     subscribeNoWait,
+    trySendToSpot,
     trySocketPublish,
     trySocketSend,
     waitForConnectionReadyCount,

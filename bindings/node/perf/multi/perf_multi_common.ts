@@ -15,8 +15,6 @@ function parseArgs(argv, defaults = {}) {
     controlEndpoint: '',
     serverControlEndpoint: '',
     transport: 'tcp',
-    serverNodeRid: '',
-    serverSpotRid: '',
     msgSize: 256,
     duration: 5,
     clients: 1,
@@ -34,10 +32,6 @@ function parseArgs(argv, defaults = {}) {
       options.serverControlEndpoint = argv[++i];
     } else if (argv[i] === '--transport') {
       options.transport = String(argv[++i] || '').trim().toLowerCase();
-    } else if (argv[i] === '--server-node-rid') {
-      options.serverNodeRid = argv[++i];
-    } else if (argv[i] === '--server-spot-rid') {
-      options.serverSpotRid = argv[++i];
     } else if (argv[i] === '--msg-size') {
       options.msgSize = Number(argv[++i]);
     } else if (argv[i] === '--duration') {

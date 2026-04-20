@@ -3,7 +3,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const net = require('node:net');
 const tls = require('node:tls');
-const readline = require('node:readline');
 const { once } = require('node:events');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs, resolveMultiConnectConcurrency } = require('./perf_multi_common');
@@ -275,37 +274,29 @@ async function main() {
         if (transports.length !== options.clients) {
             throw new Error(`connect_ok mismatch: ${transports.length}/${options.clients}`);
         }
-        console.log(`CLIENT_READY,${options.msgSize}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-        for await (const line of rl) {
-            if (line !== `START,${options.msgSize}`) {
-                continue;
+        const activeStartNs = currentEpochNs();
+        const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+        const collector = createMetricCollector({
+            runId,
+            msgSize: options.msgSize,
+            activeStartNs,
+            activeStopNs,
+            roundTrip: true,
+            sampleCap: resolveMultiLatencySampleCap()
+        });
+        let seq = 1n;
+        while (currentEpochNs() < activeStopNs) {
+            for (let i = 0; i < transports.length; i += 1) {
+                stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
+                await transports[i].writeFrame(buildPacketFrame(payloads[i]));
+                const echoed = await readers[i].nextFrame();
+                collector.record(decodeMetricHeader(echoed), currentEpochNs());
+                seq += 1n;
             }
-            const activeStartNs = currentEpochNs();
-            const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
-            const collector = createMetricCollector({
-                runId,
-                msgSize: options.msgSize,
-                activeStartNs,
-                activeStopNs,
-                roundTrip: true,
-                sampleCap: resolveMultiLatencySampleCap()
-            });
-            let seq = 1n;
-            while (currentEpochNs() < activeStopNs) {
-                for (let i = 0; i < transports.length; i += 1) {
-                    stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                    await transports[i].writeFrame(buildPacketFrame(payloads[i]));
-                    const echoed = await readers[i].nextFrame();
-                    collector.record(decodeMetricHeader(echoed), currentEpochNs());
-                    seq += 1n;
-                }
-            }
-            const result = await collector.finish();
-            for (const metricLine of summarizeMetrics('MULTI_STREAM', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
-                console.log(metricLine);
-            }
-            break;
+        }
+        const result = await collector.finish();
+        for (const metricLine of summarizeMetrics('MULTI_STREAM', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
+            console.log(metricLine);
         }
     }
     finally {

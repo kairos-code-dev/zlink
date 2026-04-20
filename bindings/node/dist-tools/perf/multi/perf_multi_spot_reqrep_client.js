@@ -3,15 +3,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { applySocketPolicy, applyContextPolicy, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, recvNoWait, resolveMultiLatencySampleCap, subscribeNoWait, trySendToSpot, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'perf.control';
-function closeMessageParts(parts) {
-    for (const part of parts || []) {
-        if (part && typeof part.close === 'function') {
-            part.close();
-        }
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
+function closeReceived(received) {
+    if (received && typeof received.close === 'function') {
+        received.close();
     }
 }
 async function main() {
@@ -23,12 +23,9 @@ async function main() {
     const routers = [];
     const payloads = [];
     const waiting = [];
+    const sendPending = [];
+    const poller = new zlink.Poller();
     try {
-        if (!options.serverNodeRid || !options.serverSpotRid) {
-            throw new Error('missing server routing ids');
-        }
-        const serverNodeRid = zlink.RoutingId.fromBytes(Buffer.from(options.serverNodeRid, 'hex'));
-        const serverSpotRid = zlink.RoutingId.fromBytes(Buffer.from(options.serverSpotRid, 'hex'));
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
         controlPub.bind(options.controlEndpoint);
@@ -42,9 +39,11 @@ async function main() {
             routers.push(router);
             payloads.push(createPayload(options.msgSize));
             waiting.push(false);
+            sendPending.push(false);
         }
-        for (const router of routers) {
-            await waitForConnectionReady(router, () => router.connect(options.peerEndpoint));
+        for (let i = 0; i < routers.length; i += 1) {
+            await waitForConnectionReady(routers[i], () => routers[i].connect(options.peerEndpoint));
+            poller.addSocket(routers[i], POLLIN | POLLOUT, i);
         }
         const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
         while (Date.now() < stabilizationDeadline) {
@@ -96,34 +95,61 @@ async function main() {
             sampleCap: resolveMultiLatencySampleCap()
         });
         let seq = 1n;
-        const onReply = (index, result, replyParts) => {
-            try {
-                if (result === zlink.RequestResult.Ok && replyParts.length > 0) {
-                    collector.record(decodeMetricHeader(replyParts[0].data()), currentEpochNs());
+        const drainReply = (index) => {
+            let progressed = false;
+            while (true) {
+                const received = recvNoWait(routers[index]);
+                if (!received) {
+                    break;
+                }
+                try {
+                    waiting[index] = false;
+                    collector.record(decodeMetricHeaderFromParts(received.parts), currentEpochNs());
+                    progressed = true;
+                }
+                finally {
+                    closeReceived(received);
                 }
             }
-            finally {
-                closeMessageParts(replyParts);
-                waiting[index] = false;
-            }
+            return progressed;
         };
         while (currentEpochNs() < activeStopNs) {
             let progressed = false;
             for (let i = 0; i < routers.length; i += 1) {
-                if (waiting[i]) {
+                if (waiting[i] || sendPending[i]) {
                     continue;
                 }
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                const issued = routers[i].tryRequestToSpot(serverNodeRid, serverSpotRid, payloads[i], (result, replyParts) => onReply(i, result, replyParts), 2000);
-                if (!issued) {
+                if (!trySendToSpot(routers[i], SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID, payloads[i])) {
+                    sendPending[i] = true;
                     continue;
                 }
                 waiting[i] = true;
                 seq += 1n;
                 progressed = true;
             }
-            if (!progressed) {
+            for (let i = 0; i < routers.length; i += 1) {
+                progressed = drainReply(i) || progressed;
+            }
+            if (progressed) {
+                continue;
+            }
+            const ready = poller.waitAll(poller.size, 25);
+            if (ready.length === 0) {
                 await sleepImmediate();
+                continue;
+            }
+            for (const event of ready) {
+                const index = event.userData;
+                if (!Number.isInteger(index)) {
+                    continue;
+                }
+                if ((event.events & POLLOUT) !== 0) {
+                    sendPending[index] = false;
+                }
+                if ((event.events & POLLIN) !== 0) {
+                    drainReply(index);
+                }
             }
         }
         const result = await collector.finish();
@@ -132,6 +158,7 @@ async function main() {
         }
     }
     finally {
+        poller.close();
         controlSub.close();
         controlPub.close();
         for (const router of routers) {

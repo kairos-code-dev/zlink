@@ -62,24 +62,6 @@ fn main() {
     let ready_timeout = common::resolve_single_ready_timeout();
     common::wait_monitor_ready(&pub_mon, ready_timeout, "pubsub publisher");
     common::wait_monitor_ready(&mon, ready_timeout, "pubsub subscriber");
-    common::wait_send_probe_ready("pubsub perf endpoint", config.size, ready_timeout, |msg| {
-        pub_sock.publish("P", msg)
-    }, || {
-        let mut saw_probe = false;
-        loop {
-            match sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(topic_msg) => {
-                    let data = common::message_payload(topic_msg.parts());
-                    if common::is_valid_message(data, config.size) {
-                        saw_probe = true;
-                    }
-                }
-                Err(err) if err.code() == RecvResult::NoData => break,
-                Err(_) => break,
-            }
-        }
-        saw_probe
-    });
     std::thread::sleep(common::resolve_single_pubsub_ready_settle());
 
     let collector = common::MetricCollector::new();
@@ -102,18 +84,19 @@ fn main() {
 
     let active = Duration::from_secs(config.duration_seconds);
     let idle_drain = Duration::from_millis(common::resolve_single_pubsub_idle_drain_ms());
-    common::send_loop(active, config.size, common::PHASE_ACTIVE, |msg| {
-        let _ = pub_sock.publish("P", msg);
-        let _ = drain_sub();
+    let hard_deadline = std::time::Instant::now() + active + idle_drain + ready_timeout;
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&sub_sock, POLLIN).expect("poller add");
+    let done = common::CompletionSignal::new();
+    let sender_done = done.clone();
+    let send_thread = std::thread::spawn(move || {
+        common::send_loop(active, config.size, common::PHASE_ACTIVE, |msg| {
+            pub_sock.publish("P", msg).expect("active publish");
+        });
+        sender_done.signal_done();
     });
-    let mut idle_since = std::time::Instant::now();
-    while idle_since.elapsed() < idle_drain {
-        if drain_sub() {
-            idle_since = std::time::Instant::now();
-        } else {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    }
+    common::run_single_recv_loop(&poller, hard_deadline, done, idle_drain, drain_sub);
+    send_thread.join().expect("sender thread");
 
     let result = collector.finish();
     common::print_result("PUBSUB", &config.transport, config.size, config.duration_seconds, &result);

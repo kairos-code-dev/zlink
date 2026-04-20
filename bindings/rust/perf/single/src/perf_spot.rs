@@ -4,7 +4,7 @@ mod common;
 
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Condvar, Mutex,
+    Arc,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -49,22 +49,17 @@ fn main() {
     }
     let endpoint = publisher_node.last_endpoint().expect("endpoint");
     subscriber_node.connect_peer(&endpoint).expect("connect peer");
-    common::wait_spot_peer_connected(
-        &subscriber_node,
-        common::resolve_single_ready_timeout(),
-        "spot subscriber",
-    );
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let ready_state = Arc::new((Mutex::new(false), Condvar::new()));
+    let ready_seen = Arc::new(AtomicBool::new(false));
     let active_collect = Arc::new(AtomicBool::new(false));
     let last_recv_ns = Arc::new(AtomicU64::new(0));
 
     let subscriber_ptr = (&subscriber as *const Spot) as usize;
     subscriber
         .on_dispatch_event({
-            let ready_state = Arc::clone(&ready_state);
+            let ready_seen = Arc::clone(&ready_seen);
             let active_collect = Arc::clone(&active_collect);
             let last_recv_ns = Arc::clone(&last_recv_ns);
             move |event| {
@@ -85,10 +80,7 @@ fn main() {
                             if active_collect.load(Ordering::Acquire) {
                                 common::handle_recv(data, config.size, &stats);
                             } else {
-                                let (lock, condvar) = &*ready_state;
-                                let mut ready = lock.lock().expect("ready lock");
-                                *ready = true;
-                                condvar.notify_all();
+                                ready_seen.store(true, Ordering::Release);
                             }
                         }
                         Err(err) if err.code() == RecvResult::NoData => break,
@@ -99,15 +91,11 @@ fn main() {
         })
         .expect("on dispatch event");
 
-    let probe_deadline = Instant::now() + Duration::from_secs(10);
+    let probe_deadline = Instant::now() + common::resolve_single_ready_timeout();
     let mut probe = vec![0u8; config.size.max(common::HEADER_SIZE)];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
 
-    loop {
-        if Instant::now() >= probe_deadline {
-            panic!("single SPOT ready probe timed out");
-        }
-
+    while Instant::now() < probe_deadline && !ready_seen.load(Ordering::Acquire) {
         match publisher.publish(
             SERVICE_NAME,
             TOPIC,
@@ -125,15 +113,9 @@ fn main() {
             }
             Err(err) => panic!("probe publish: {err}"),
         }
-
-        let (lock, condvar) = &*ready_state;
-        let ready = lock.lock().expect("ready lock");
-        let (ready, _) = condvar
-            .wait_timeout_while(ready, Duration::from_millis(50), |ready| !*ready)
-            .expect("ready wait");
-        if *ready {
-            break;
-        }
+    }
+    if !ready_seen.load(Ordering::Acquire) {
+        panic!("single SPOT ready probe timed out");
     }
 
     thread::sleep(common::resolve_single_spot_ready_settle());

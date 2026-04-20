@@ -12,8 +12,22 @@ fn main() {
 
     let ctx = Context::new().expect("context");
     let pub_sock = ctx.pub_socket().expect("pub");
-    pub_sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-    pub_sock.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
+    pub_sock
+        .common_options()
+        .set_send_hwm(settings.send_hwm)
+        .expect("sndhwm");
+    pub_sock
+        .common_options()
+        .set_recv_hwm(settings.recv_hwm)
+        .expect("rcvhwm");
+    pub_sock
+        .common_options()
+        .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
+        .expect("sndtimeo");
+    if matches!(args.transport.as_str(), "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        common::setup_raw_tls_server(&pub_sock, &tls).expect("server tls");
+    }
     let bind_endpoint = match args.transport.as_str() {
         "ws" => "ws://0.0.0.0:0".to_string(),
         "wss" => "wss://0.0.0.0:0".to_string(),
@@ -55,9 +69,7 @@ fn main() {
         let msg = Message::copy_from(&buf).expect("msg");
         match pub_sock.publish_with_flags(TOPIC, msg, SendFlags::DONT_WAIT) {
             Ok(()) => {}
-            Err(err) if err.code == SubmitResult::Backpressured => {
-                std::thread::yield_now();
-            }
+            Err(err) if err.code == SubmitResult::Backpressured => {}
             Err(err) => panic!("publish failed: {err}"),
         }
     }

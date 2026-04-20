@@ -90,32 +90,6 @@ fn main() {
     let target = receiver_rid.clone();
     common::wait_monitor_ready(&receiver_mon, ready_timeout, "router-router receiver");
     common::wait_monitor_ready(&mon, ready_timeout, "router-router sender");
-    if config.transport == "inproc" {
-        std::thread::sleep(Duration::from_millis(50));
-    } else {
-        common::wait_send_probe_ready(
-            "router/router perf endpoint",
-            config.size,
-            ready_timeout,
-            |msg| sender.send(&target, msg),
-            || {
-                let mut saw_probe = false;
-                loop {
-                    match receiver.recv_with_flags(RecvFlags::DONT_WAIT) {
-                        Ok(received) => {
-                            let data = common::message_payload(received.parts());
-                            if common::is_valid_message(data, config.size) {
-                                saw_probe = true;
-                            }
-                        }
-                        Err(err) if err.code() == RecvResult::NoData => break,
-                        Err(_) => break,
-                    }
-                }
-                saw_probe
-            },
-        );
-    }
     sender
         .send(&target, Message::copy_from(b"PING").expect("router ping"))
         .expect("router handshake send");
@@ -156,23 +130,37 @@ fn main() {
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let deadline = std::time::Instant::now() + Duration::from_secs(config.duration_seconds);
-    let mut seq: u64 = 0;
-    let mut buf = vec![0u8; config.size.max(common::HEADER_SIZE)];
-    while std::time::Instant::now() < deadline {
-        common::encode_header(&mut buf, common::PHASE_ACTIVE, config.size as u32, seq);
-        seq += 1;
-        if sender
-            .send(&target, Message::copy_from(&buf).expect("active msg"))
-            .is_err()
-        {
-            continue;
+    let drain_receiver = || {
+        let mut saw_message = false;
+        loop {
+            match receiver.recv_with_flags(RecvFlags::DONT_WAIT) {
+                Ok(received) => {
+                    let data = common::message_payload(received.parts());
+                    common::handle_recv(data, config.size, &stats);
+                    saw_message = true;
+                }
+                Err(err) if err.code() == RecvResult::NoData => break,
+                Err(_) => break,
+            }
         }
-        if let Ok(received) = receiver.recv() {
-            let data = common::message_payload(received.parts());
-            common::handle_recv(data, config.size, &stats);
-        }
-    }
+        saw_message
+    };
+    let active = Duration::from_secs(config.duration_seconds);
+    let idle_drain = Duration::from_millis(common::resolve_single_idle_drain_ms());
+    let hard_deadline = std::time::Instant::now() + active + idle_drain + ready_timeout;
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&receiver, POLLIN).expect("poller add");
+    let done = common::CompletionSignal::new();
+    let sender_done = done.clone();
+    let send_target = target.clone();
+    let send_thread = std::thread::spawn(move || {
+        common::send_loop(active, config.size, common::PHASE_ACTIVE, |msg| {
+            sender.send(&send_target, msg).expect("active send");
+        });
+        sender_done.signal_done();
+    });
+    common::run_single_recv_loop(&poller, hard_deadline, done, idle_drain, drain_receiver);
+    send_thread.join().expect("sender thread");
 
     let result = collector.finish();
     common::print_result("ROUTER_ROUTER", &config.transport, config.size, config.duration_seconds, &result);

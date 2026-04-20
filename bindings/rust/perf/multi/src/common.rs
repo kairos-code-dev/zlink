@@ -8,8 +8,10 @@ pub mod backpressure;
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, ZlinkError};
 use zlink::Message;
+use zlink::{
+    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, ZlinkError,
+};
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
 pub const HEADER_SIZE: usize = 29;
@@ -195,7 +197,8 @@ pub fn load_tls_pem(tls: &TlsPaths) -> TlsPem {
 }
 
 pub fn emit_unsupported(pattern: &str, transport: &str, reason: &str) {
-    println!("UNSUPPORTED,{pattern},{transport},{reason}");
+    let _ = reason;
+    println!("UNSUPPORTED,rust,{pattern},{transport}");
     use std::io::Write;
     std::io::stdout().flush().ok();
 }
@@ -203,7 +206,7 @@ pub fn emit_unsupported(pattern: &str, transport: &str, reason: &str) {
 pub fn is_transport_unsupported_error(err: &ZlinkError) -> bool {
     matches!(
         err.internal_errno(),
-        libc::EPERM | libc::EACCES | libc::ENOTSUP | libc::EADDRINUSE | libc::EINVAL
+        libc::EPERM | libc::EACCES | libc::ENOTSUP
     )
 }
 
@@ -253,13 +256,17 @@ pub struct LatencyStats {
 
 impl LatencyStats {
     pub fn new() -> Self {
-        Self { samples: Vec::with_capacity(1 << 16), count: 0, sum: 0.0 }
+        Self {
+            samples: Vec::with_capacity(resolve_multi_latency_sample_cap().min(1 << 16)),
+            count: 0,
+            sum: 0.0,
+        }
     }
 
     pub fn record_ns(&mut self, ns: f64) {
         self.count += 1;
         self.sum += ns;
-        if self.samples.len() < 4 * 1024 * 1024 {
+        if self.samples.len() < resolve_multi_latency_sample_cap() {
             self.samples.push(ns);
         }
     }
@@ -349,7 +356,10 @@ pub fn print_ready(endpoint: &str) {
 pub struct MultiSettings {
     pub clients: usize,
     pub duration_seconds: u64,
-    pub hwm: i32,
+    pub send_hwm: i32,
+    pub recv_hwm: i32,
+    pub send_timeout_ms: u64,
+    pub recv_timeout_ms: u64,
 }
 
 impl MultiSettings {
@@ -357,13 +367,27 @@ impl MultiSettings {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
-            hwm: env_or("PERF_MULTI_HWM", 1000) as i32,
+            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
+            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
+            send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
+            recv_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
         }
     }
 }
 
 fn env_or(name: &str, default: usize) -> usize {
     std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+
+fn env_or_i32(name: &str, default: i32) -> i32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn resolve_multi_latency_sample_cap() -> usize {
+    env_or("PERF_MULTI_LATENCY_SAMPLE_CAP", 200_000)
 }
 
 // -- CLI parsing for server/client binaries ----------------------------------

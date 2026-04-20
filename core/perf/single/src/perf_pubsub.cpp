@@ -112,7 +112,7 @@ int recv_pubsub_header_flags (void *subscriber_,
                       << " part_count=" << part_count << std::endl;
         }
         if (parts)
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
         return -1;
     }
 
@@ -123,7 +123,7 @@ int recv_pubsub_header_flags (void *subscriber_,
         header_ok = perf_single_metric::decode_payload_header (
           zlink_msg_data (&parts[0]), actual_size, header_out_);
     }
-    zlink_multipart_close (parts, part_count);
+    perf_agg::multipart_close (parts, part_count);
     if (!size_ok) {
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-pubsub] unexpected payload size="

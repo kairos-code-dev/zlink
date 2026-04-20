@@ -97,7 +97,7 @@ int recv_spot_header_flags (void *subscriber_,
       && perf_single_metric::decode_payload_header (
         zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), header_out_);
     if (parts)
-        zlink_multipart_close (parts, part_count);
+        perf_agg::multipart_close (parts, part_count);
 
     if (header_ok_out_)
         *header_ok_out_ = header_ok;

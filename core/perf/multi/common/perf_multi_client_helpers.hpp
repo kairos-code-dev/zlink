@@ -191,7 +191,7 @@ inline int recv_one_message (void *socket,
 
     if (router_surface && request_seq != 0) {
         if (parts)
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
         errno = EPROTO;
         return -1;
     }
@@ -215,7 +215,7 @@ inline int recv_one_message (void *socket,
     }
 
     if (parts) {
-        zlink_multipart_close (parts, part_count);
+        perf_agg::multipart_close (parts, part_count);
     }
 
     return 1;
@@ -566,7 +566,7 @@ inline int recv_one_message_header (void *socket,
 
     if (router_surface && request_seq != 0) {
         if (parts)
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
         errno = EPROTO;
         return -1;
     }
@@ -599,7 +599,7 @@ inline int recv_one_message_header (void *socket,
         *decoded_out = decoded;
 
     if (parts) {
-        zlink_multipart_close (parts, part_count);
+        perf_agg::multipart_close (parts, part_count);
     }
 
     return 1;

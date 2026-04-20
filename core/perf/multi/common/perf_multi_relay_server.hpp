@@ -84,14 +84,14 @@ inline bool relay_router_once (void *server)
         || (source_spot_rid && source_spot_rid->size != 0)
         || request_seq != 0) {
         if (parts)
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
         errno = EPROTO;
         return false;
     }
 
     if (part_count == 0 || !parts) {
         if (parts)
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
 
         zlink_msg_t empty_part;
         if (zlink_msg_init_size (&empty_part, 0) != 0)
@@ -110,10 +110,10 @@ inline bool relay_router_once (void *server)
 
     std::vector<zlink_msg_t> reply_parts;
     if (!clone_multipart (parts, part_count, &reply_parts)) {
-        zlink_multipart_close (parts, part_count);
+        perf_agg::multipart_close (parts, part_count);
         return false;
     }
-    zlink_multipart_close (parts, part_count);
+    perf_agg::multipart_close (parts, part_count);
 
     const zlink_submit_result_t send_rc = ::zlink_send_rid (
       server, source_rid, &reply_parts[0], reply_parts.size (),
@@ -122,7 +122,7 @@ inline bool relay_router_once (void *server)
         return true;
 
     const int err = zlink_errno ();
-    zlink_multipart_close (&reply_parts[0], reply_parts.size ());
+    perf_agg::multipart_close (&reply_parts[0], reply_parts.size ());
     return err == EAGAIN || err == EINTR;
 }
 

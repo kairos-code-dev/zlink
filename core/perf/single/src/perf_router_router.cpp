@@ -126,7 +126,7 @@ int recv_router_router_header_flags (void *receiver_,
       && request_seq == 0 && parts && part_count == 1;
     if (!shape_ok) {
         if (parts)
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
         return -1;
     }
 
@@ -137,7 +137,7 @@ int recv_router_router_header_flags (void *receiver_,
         header_ok = perf_single_metric::decode_payload_header (
           zlink_msg_data (&parts[0]), actual_size, header_out_);
     }
-    zlink_multipart_close (parts, part_count);
+    perf_agg::multipart_close (parts, part_count);
     if (!size_ok)
         return -1;
 

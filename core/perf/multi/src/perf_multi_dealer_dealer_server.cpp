@@ -100,7 +100,7 @@ inline recv_result_t receive_one_message (
                       << std::endl;
         }
         if (parts) {
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
         }
         return recv_fatal;
     }
@@ -136,7 +136,7 @@ inline recv_result_t receive_one_message (
         }
     }
 
-    zlink_multipart_close (parts, part_count);
+    perf_agg::multipart_close (parts, part_count);
     return recv_ok;
 }
 

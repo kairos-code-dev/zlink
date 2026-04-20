@@ -50,7 +50,7 @@ int recv_one_pubsub_message (void *socket,
                       << topic_len << " part_count=" << part_count << std::endl;
         }
         if (parts) {
-            zlink_multipart_close (parts, part_count);
+            perf_agg::multipart_close (parts, part_count);
         }
         return 1;
     }
@@ -58,7 +58,7 @@ int recv_one_pubsub_message (void *socket,
     perf_multi_metric::header_t header;
     const bool decoded = perf_multi_metric::decode_payload_header (
       zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), &header);
-    zlink_multipart_close (parts, part_count);
+    perf_agg::multipart_close (parts, part_count);
 
     if (!decoded || header.magic != perf_multi_metric::k_magic
         || header.run_id != expected_run_id

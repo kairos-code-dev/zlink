@@ -9,15 +9,19 @@ import zlink
 
 from perf_multi_common import (
     apply_multi_socket_options,
+    extract_metric_payload,
     HEADER_SIZE,
     benchmark_run_id,
     is_active_message,
     latency_ns_from_message,
     print_result_lines,
+    recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
+    safe_poll,
+    send_to_spot_nonblocking,
     stamp_payload,
     wait_monitor_event,
 )
@@ -66,12 +70,10 @@ def main(argv=None):
     ready_settle_s = resolve_multi_spot_ready_settle_s()
     control_settle_s = resolve_multi_spot_control_settle_s()
     ready_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
-    recv_lock = threading.Lock()
     runner_start = threading.Event()
     control_connected = threading.Event()
     started_event = threading.Event()
     started_size = [0]
-    active_deadline = [0.0]
 
     ready_listener = _listen_tcp()
     ready_host, ready_port = ready_listener.getsockname()
@@ -121,9 +123,9 @@ def main(argv=None):
     with zlink.Context() as ctx:
         sockets = [zlink.RouterSocket(ctx) for _ in range(args.clients)]
         payloads = [bytearray(args.msg_size) for _ in range(args.clients)]
-        waiting = [False] * args.clients
-        pending_count = [0]
-        seq_counter = [0]
+        waiting_reply = [False] * args.clients
+        send_pending = [True] * args.clients
+        seq = 0
         try:
             with ExitStack() as stack:
                 monitors = []
@@ -174,76 +176,74 @@ def main(argv=None):
                 ):
                     raise RuntimeError("spot reqrep start handshake timeout")
 
-                def on_reply(index, result, reply_parts):
-                    try:
-                        if result == zlink.RequestResult.OK and reply_parts:
-                            data = reply_parts[0].to_bytes()
-                            if not is_active_message(
-                                data,
-                                expected_msg_size=args.msg_size,
-                                run_id=run_id,
+                active_deadline = time.perf_counter() + args.duration
+                with zlink.Poller() as poller:
+                    for index, sock in enumerate(sockets):
+                        poller.add_socket(
+                            sock,
+                            zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
+                            tag=index,
+                        )
+                    while time.perf_counter() < active_deadline:
+                        events = safe_poll(poller, 100)
+                        if not events:
+                            continue
+                        for event in events:
+                            index = event["tag"]
+                            current_sock = event["socket"]
+                            event_mask = int(event["events"])
+                            if (
+                                event_mask & int(zlink.PollEvent.POLLOUT)
+                                and not waiting_reply[index]
+                                and send_pending[index]
                             ):
-                                return
-                            if time.perf_counter() > active_deadline[0]:
-                                return
-                            with recv_lock:
+                                seq += 1
+                                payload = stamp_payload(
+                                    payloads[index],
+                                    phase=1,
+                                    run_id=run_id,
+                                    seq=seq,
+                                )
+                                if send_to_spot_nonblocking(
+                                    current_sock,
+                                    args.server_node_rid,
+                                    args.server_spot_rid,
+                                    [bytes(payload)],
+                                ):
+                                    waiting_reply[index] = True
+                                    send_pending[index] = False
+                            if not (event_mask & int(zlink.PollEvent.POLLIN)):
+                                continue
+                            while True:
+                                received = recv_nonblocking(current_sock)
+                                if received is None:
+                                    break
+                                with received:
+                                    data = extract_metric_payload(
+                                        received.to_bytes_list()
+                                    )
+                                waiting_reply[index] = False
+                                if time.perf_counter() < active_deadline:
+                                    send_pending[index] = True
+                                if not is_active_message(
+                                    data,
+                                    expected_msg_size=args.msg_size,
+                                    run_id=run_id,
+                                ):
+                                    continue
                                 latencies.append(
                                     latency_ns_from_message(data) / 2.0
                                 )
-                    finally:
-                        for part in reply_parts:
-                            part.close()
-                        waiting[index] = False
-                        pending_count[0] -= 1
 
-                active_deadline[0] = time.perf_counter() + args.duration
-                while time.perf_counter() < active_deadline[0]:
-                    for index, sock in enumerate(sockets):
-                        if waiting[index]:
-                            continue
-                        seq_counter[0] += 1
-                        payload = stamp_payload(
-                            payloads[index],
-                            phase=1,
-                            run_id=run_id,
-                            seq=seq_counter[0],
-                        )
-                        try:
-                            sock.request_to_spot(
-                                args.server_node_rid,
-                                args.server_spot_rid,
-                                [bytes(payload)],
-                                lambda result, reply_parts, index=index: on_reply(
-                                    index, result, reply_parts
-                                ),
-                                timeout=2.0,
-                            )
-                        except zlink.SubmitError as exc:
-                            if exc.result in (
-                                zlink.SubmitResult.BACKPRESSURED,
-                                zlink.SubmitResult.NOT_CONNECTED,
-                                zlink.SubmitResult.NOT_ADMITTED,
-                            ):
-                                continue
-                            raise
-                        waiting[index] = True
-                        pending_count[0] += 1
-
-                drain_deadline = time.perf_counter() + 2.0
-                while pending_count[0] > 0 and time.perf_counter() < drain_deadline:
-                    runner_start.wait(0.01)
-
-                with recv_lock:
-                    collected = list(latencies)
-                if not collected:
+                if not latencies:
                     raise RuntimeError(
                         "multi spot reqrep benchmark did not receive any active reply"
                     )
                 metrics = result_metrics(
-                    count=len(collected),
+                    count=len(latencies),
                     msg_size=args.msg_size,
                     elapsed_s=max(args.duration, 0.001),
-                    latencies_ns=collected,
+                    latencies_ns=latencies,
                     bandwidth_multiplier=2.0,
                 )
                 print_result_lines(

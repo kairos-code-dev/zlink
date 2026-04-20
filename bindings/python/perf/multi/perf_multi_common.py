@@ -141,6 +141,7 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
         sock.options.send_timeout_ms = send_timeout_ms
         sock.options.receive_timeout_ms = recv_timeout_ms
 
+
 def recv_nonblocking(sock, *, method="recv"):
     zlink_mod = _require_zlink()
     recv_method = getattr(sock, method)
@@ -160,6 +161,26 @@ def send_nonblocking(sock, payload, *, method="send", routing_id=None):
             send_method(payload, flags=zlink_mod.SendFlags.DONT_WAIT)
         else:
             send_method(routing_id, payload, flags=zlink_mod.SendFlags.DONT_WAIT)
+        return True
+    except zlink_mod.SubmitError as exc:
+        if exc.result in (
+            zlink_mod.SubmitResult.BACKPRESSURED,
+            zlink_mod.SubmitResult.NOT_CONNECTED,
+            zlink_mod.SubmitResult.NOT_ADMITTED,
+        ):
+            return False
+        raise
+
+
+def send_to_spot_nonblocking(sock, dest_node_rid, dest_spot_rid, payload):
+    zlink_mod = _require_zlink()
+    try:
+        sock.send_to_spot(
+            dest_node_rid,
+            dest_spot_rid,
+            payload,
+            flags=zlink_mod.SendFlags.DONT_WAIT,
+        )
         return True
     except zlink_mod.SubmitError as exc:
         if exc.result in (

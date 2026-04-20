@@ -1,6 +1,7 @@
 import sys
 import threading
 import time
+import os
 
 import zlink
 
@@ -20,8 +21,9 @@ def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     run_id = benchmark_run_id()
     endpoint = benchmark_endpoint(args.transport, "multi-dealer-dealer")
-    active_duration_s = float(
-        max(1, int(float(sys.modules["os"].environ.get("PERF_MULTI_DURATION_SECONDS", "5"))))
+    active_duration_s = max(
+        1.0,
+        float(os.environ.get("PERF_MULTI_DURATION_SECONDS", "5")),
     )
     start_event = threading.Event()
     stop_event = threading.Event()

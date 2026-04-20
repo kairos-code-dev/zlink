@@ -1,6 +1,5 @@
 import sys
 import threading
-import queue
 
 import zlink
 
@@ -17,8 +16,10 @@ def main(argv=None):
     stop = threading.Event()
 
     def wait_stop():
-        sys.stdin.readline()
-        stop.set()
+        for line in sys.stdin:
+            if line.strip() in {"STOP", "QUIT"}:
+                stop.set()
+                return
 
     threading.Thread(target=wait_stop, daemon=True).start()
 
@@ -28,21 +29,11 @@ def main(argv=None):
             server.options.tcp_no_delay = True
             server.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            send_queue = queue.SimpleQueue()
 
             def packet_handler(routing_id, header, body):
-                send_queue.put((routing_id, build_packet_frame(header, body)))
-
-            def sender_worker():
-                while not stop.is_set():
-                    try:
-                        routing_id, payload = send_queue.get(timeout=0.1)
-                    except queue.Empty:
-                        continue
-                    server.send(routing_id, payload)
+                server.send(routing_id, build_packet_frame(header, body))
 
             server.on_packet(packet_handler)
-            threading.Thread(target=sender_worker, daemon=True).start()
             while not stop.is_set():
                 stop.wait(0.1)
 

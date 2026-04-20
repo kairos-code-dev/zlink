@@ -394,16 +394,20 @@ pub fn perf_client_context() -> Context {
     perf_context_with_env("PERF_MULTI_CLIENT_IO_THREADS")
 }
 
-pub fn resolve_server_bind_endpoint(transport: &str) -> String {
+pub fn resolve_server_bind_endpoint(pattern: &str, transport: &str) -> Option<String> {
     let port = std::env::var("PERF_MULTI_SERVER_BIND_PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(0);
     match transport {
-        "ws" => format!("ws://0.0.0.0:{port}"),
-        "wss" => format!("wss://0.0.0.0:{port}"),
-        "tls" => format!("tls://0.0.0.0:{port}"),
-        _ => format!("tcp://0.0.0.0:{port}"),
+        "tcp" => Some(format!("tcp://0.0.0.0:{port}")),
+        "tls" => Some(format!("tls://0.0.0.0:{port}")),
+        "ws" => Some(format!("ws://0.0.0.0:{port}")),
+        "wss" => Some(format!("wss://0.0.0.0:{port}")),
+        _ => {
+            emit_unsupported(pattern, transport, "unsupported_transport");
+            None
+        }
     }
 }
 

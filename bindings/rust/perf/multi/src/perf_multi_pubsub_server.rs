@@ -29,7 +29,10 @@ fn main() {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&pub_sock, &tls).expect("server tls");
     }
-    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
+    let Some(bind_endpoint) = common::resolve_server_bind_endpoint("MULTI_PUBSUB", &args.transport)
+    else {
+        return;
+    };
     if let Err(err) = pub_sock.bind(&bind_endpoint) {
         if common::handle_transport_setup_error("MULTI_PUBSUB", &args.transport, "bind", err) {
             return;

@@ -604,7 +604,7 @@ impl PerfConfig {
             "wss" => format!("wss://127.0.0.1:{}", reserve_tcp_port()),
             "tls" => format!("tls://127.0.0.1:{}", reserve_tcp_port()),
             "tcp" => format!("tcp://127.0.0.1:{}", reserve_tcp_port()),
-            _ => format!("inproc://perf-{suffix}"),
+            _ => panic!("unsupported transport for endpoint: {}", self.transport),
         }
     }
 }
@@ -699,7 +699,10 @@ pub fn resolve_endpoint_or_emit_unsupported(
             .map(|port| format!("tls://127.0.0.1:{port}")),
         "tcp" => reserve_tcp_port_for_transport(pattern, transport)
             .map(|port| format!("tcp://127.0.0.1:{port}")),
-        _ => Some(format!("inproc://perf-{suffix}")),
+        _ => {
+            emit_unsupported(pattern, transport, "unsupported_transport");
+            None
+        }
     }
 }
 

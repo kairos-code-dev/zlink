@@ -47,8 +47,6 @@ fn main() {
 
     let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
     let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
-    let drain_grace = Duration::from_millis(500);
-
     let active_collect = Arc::new(AtomicBool::new(false));
     let runner_connected = Arc::new(AtomicBool::new(false));
     let runner_start = Arc::new(AtomicBool::new(false));
@@ -200,7 +198,6 @@ fn main() {
         thread::yield_now();
     }
     active_collect.store(false, Ordering::Release);
-    thread::sleep(drain_grace);
 
     let stats = latency.lock().expect("latency lock").finish();
     common::print_result(

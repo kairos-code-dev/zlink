@@ -30,7 +30,11 @@ fn main() {
         common::setup_raw_tls_server(&server, &tls).expect("server tls");
     }
 
-    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
+    let Some(bind_endpoint) =
+        common::resolve_server_bind_endpoint("MULTI_DEALER_DEALER", &args.transport)
+    else {
+        return;
+    };
     if let Err(err) = server.bind(&bind_endpoint) {
         if common::handle_transport_setup_error(
             "MULTI_DEALER_DEALER",

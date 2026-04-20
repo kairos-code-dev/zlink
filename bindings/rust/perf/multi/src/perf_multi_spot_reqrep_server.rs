@@ -179,7 +179,11 @@ fn main() {
     })
     .expect("dispatch event");
 
-    let data_bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
+    let Some(data_bind_endpoint) =
+        common::resolve_server_bind_endpoint("MULTI_SPOT_REQREP", &args.transport)
+    else {
+        return;
+    };
     if let Err(err) = node.bind(&data_bind_endpoint) {
         if common::handle_transport_setup_error("MULTI_SPOT_REQREP", &args.transport, "bind", err)
         {

@@ -30,7 +30,11 @@ fn main() {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&router, &tls).expect("server tls");
     }
-    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
+    let Some(bind_endpoint) =
+        common::resolve_server_bind_endpoint("MULTI_DEALER_ROUTER", &args.transport)
+    else {
+        return;
+    };
     if let Err(err) = router.bind(&bind_endpoint) {
         if common::handle_transport_setup_error(
             "MULTI_DEALER_ROUTER",

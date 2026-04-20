@@ -17,6 +17,7 @@ MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 RUNS="1"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
+RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
 RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
@@ -42,6 +43,8 @@ SERVER_BIND_PORT="0"
 ENV_PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 ENV_MULTI_SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-}"
 ENV_MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
+ENV_MULTI_STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-}"
+ENV_MULTI_STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-}"
 ENV_MULTI_HWM="${PERF_MULTI_HWM:-}"
 ENV_MULTI_SNDHWM="${PERF_MULTI_SNDHWM:-}"
 ENV_MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
@@ -124,7 +127,6 @@ while [[ $# -gt 0 ]]; do
         --output)      OUTPUT_FILE="$2"; shift 2 ;;
         --reuse-build) REUSE_BUILD=1; shift ;;
         --clean-build) CLEAN_BUILD=1; shift ;;
-        --sndbuf|--rcvbuf) shift 2 ;;
         --pin-cpu) PIN_CPU=1; shift ;;
         *)             echo "unknown option: $1" >&2; exit 1 ;;
     esac
@@ -213,7 +215,7 @@ default_msg_sizes_for_pattern() {
     fi
     case "${pattern}" in
         MULTI_STREAM)
-            printf '%s' "64,256,1024,65536"
+            printf '%s' "${PERF_MULTI_STREAM_MSG_SIZES:-64,256,1024,65536}"
             ;;
         *)
             printf '%s' "${MSG_SIZES}"
@@ -459,6 +461,20 @@ for run in $(seq 1 "${RUNS}"); do
             transport="${TRANSPORT_LIST[transport_index]}"
             for size in "${SIZE_LIST[@]}"; do
                 export PERF_MULTI_CLIENTS="${PATTERN_CLIENTS}"
+                pattern_default_io_threads="$(default_io_threads_for_pattern "${pat}")"
+                pattern_default_hwm="$(default_hwm_for_pattern "${pat}")"
+                if [[ "${pat}" == "MULTI_STREAM" ]]; then
+                    pattern_server_io_threads="${ENV_MULTI_STREAM_SERVER_IO_THREADS:-${ENV_MULTI_SERVER_IO_THREADS:-${pattern_default_io_threads}}}"
+                    pattern_client_io_threads="${ENV_MULTI_STREAM_CLIENT_IO_THREADS:-${ENV_MULTI_CLIENT_IO_THREADS:-${pattern_default_io_threads}}}"
+                else
+                    pattern_server_io_threads="${ENV_MULTI_SERVER_IO_THREADS:-${pattern_default_io_threads}}"
+                    pattern_client_io_threads="${ENV_MULTI_CLIENT_IO_THREADS:-${pattern_default_io_threads}}"
+                fi
+                export PERF_MULTI_SERVER_IO_THREADS="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-${ENV_PERF_IO_THREADS:-${pattern_server_io_threads}}}}"
+                export PERF_MULTI_CLIENT_IO_THREADS="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-${ENV_PERF_IO_THREADS:-${pattern_client_io_threads}}}}"
+                export PERF_MULTI_HWM="${HWM:-${ENV_MULTI_HWM:-${pattern_default_hwm}}}"
+                export PERF_MULTI_SNDHWM="${SEND_HWM:-${ENV_MULTI_SNDHWM:-${PERF_MULTI_HWM}}}"
+                export PERF_MULTI_RCVHWM="${RECV_HWM:-${ENV_MULTI_RCVHWM:-${PERF_MULTI_HWM}}}"
                 case_status="success"
                 case_reason=""
                 CLIENT_OUTPUT=""
@@ -718,19 +734,20 @@ for run in $(seq 1 "${RUNS}"); do
     fi
 done
     if (( run < RUNS )); then
-        sleep 3
+        sleep "$(awk "BEGIN { printf \"%.3f\", ${RUN_COOLDOWN_MS} / 1000 }")"
     fi
 done
 python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
   "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" \
   "${COMMON_IO_THREADS}" "${SERVER_IO_THREADS}" "${CLIENT_IO_THREADS}" "${HWM}" "${SEND_HWM}" \
-  "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" <<'PY'
+  "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" "${RUN_COOLDOWN_MS}" \
+  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" <<'PY'
 import csv
 import math
 import sys
 from collections import defaultdict
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, run_cooldown_ms, transport_transition_ms, pattern_transition_ms = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 rows = defaultdict(lambda: defaultdict(list))
@@ -819,6 +836,9 @@ def emit_effective_options(section):
     emit(f"- send_timeout_ms: {sndtimeo_ms}")
     emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
     emit(f"- duration_seconds: {duration}")
+    emit(f"- run_cooldown_ms: {run_cooldown_ms}")
+    emit(f"- transport_transition_ms: {transport_transition_ms}")
+    emit(f"- pattern_transition_ms: {pattern_transition_ms}")
     if results_tag:
         emit(f"- results_tag: {results_tag}")
     emit("")

@@ -49,7 +49,10 @@ fn main() {
             let _ = send_handle.send_to(&routing_id, msg);
         })
         .expect("on_packet");
-    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
+    let Some(bind_endpoint) = common::resolve_server_bind_endpoint("MULTI_STREAM", &args.transport)
+    else {
+        return;
+    };
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&stream, &tls).expect("stream tls");

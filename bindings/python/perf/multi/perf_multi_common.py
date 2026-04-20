@@ -11,7 +11,10 @@ if perf_dir_text not in sys.path:
     sys.path.insert(0, perf_dir_text)
 
 from perf_metrics import (
+    HEADER_SIZE,
+    benchmark_run_id,
     build_report_path,
+    extract_metric_payload,
     latency_ns_from_message,
     new_payload,
     is_active_message,
@@ -23,7 +26,7 @@ from perf_metrics import (
     result_metrics,
     safe_poll,
     stamp_payload,
-    tcp_endpoint,
+    transport_endpoint,
     wait_monitor_event,
     _require_zlink,
 )
@@ -35,20 +38,27 @@ TOPIC = b"bench"
 def parse_client_args(argv, *, pattern):
     parser = argparse.ArgumentParser(prog=f"perf_multi_{pattern.lower()}_client.py")
     parser.add_argument("--endpoint", required=True)
-    parser.add_argument("--duration", type=float, default=2.0)
-    parser.add_argument("--msg-size", type=int, default=256)
-    parser.add_argument("--clients", type=int, default=4)
+    parser.add_argument("--transport", default="tcp")
+    parser.add_argument("--duration", type=float, default=5.0)
+    parser.add_argument("--msg-size", type=int, default=64)
+    parser.add_argument("--clients", type=int, default=100)
     args = parser.parse_args(argv)
-    if args.duration <= 0 or args.msg_size < 16 or args.clients <= 0:
+    if args.duration <= 0 or args.msg_size < HEADER_SIZE or args.clients <= 0:
         raise SystemExit("invalid perf arguments")
+    args.transport = args.transport.lower()
     return args
 
 
 def parse_server_args(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--msg-size", type=int, default=256)
-    return parser.parse_args(argv)
+    parser.add_argument("--transport", default="tcp")
+    parser.add_argument("--clients", type=int, default=100)
+    parser.add_argument("--msg-size", type=int, default=64)
+    args = parser.parse_args(argv)
+    args.transport = args.transport.lower()
+    if args.msg_size < HEADER_SIZE or args.clients <= 0:
+        raise SystemExit("invalid perf arguments")
+    return args
 
 
 def _env_int(name, default):
@@ -185,3 +195,7 @@ def attach_spot_service_pair(ctx, node, service_name):
     dealer = _require_zlink().DealerSocket(ctx)
     node.attach_channel_dealer_manual(service_name, dealer)
     return dealer, None
+
+
+def benchmark_endpoint(transport, prefix):
+    return transport_endpoint(transport, prefix)

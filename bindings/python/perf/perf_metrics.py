@@ -17,6 +17,7 @@ DEFAULT_READY_TIMEOUT_MS = 5000
 HEADER_MAGIC = 0x5A4C4E4B
 HEADER_FORMAT = "<IIBIQq"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+HEADER_MAGIC_BYTES = struct.pack("<I", HEADER_MAGIC)
 _zlink = None
 _seq = 0
 _port_counter = 0
@@ -71,6 +72,23 @@ def latency_ns_from_message(data):
     return float(now_ns - header["sent_ts_ns"])
 
 
+def extract_metric_payload(parts):
+    for part in parts:
+        if part is None:
+            continue
+        data = bytes(part)
+        header = decode_header(data)
+        if header is not None and header["magic"] == HEADER_MAGIC:
+            return data
+        offset = data.find(HEADER_MAGIC_BYTES)
+        if offset >= 0:
+            candidate = data[offset:]
+            header = decode_header(candidate)
+            if header is not None and header["magic"] == HEADER_MAGIC:
+                return candidate
+    return b""
+
+
 def is_active_message(data, *, expected_msg_size=None, run_id=None):
     header = decode_header(data)
     if header is None:
@@ -122,14 +140,25 @@ def percentile(values, ratio):
     return float(ordered[index])
 
 
-def result_metrics(*, count, msg_size, elapsed_s, latencies_ns):
+def result_metrics(
+    *,
+    count,
+    msg_size,
+    elapsed_s,
+    latencies_ns,
+    bandwidth_multiplier=1.0,
+):
     throughput = (count / elapsed_s) if elapsed_s > 0 else 0.0
-    bandwidth = ((count * msg_size) / elapsed_s / 1_000_000.0) if elapsed_s > 0 else 0.0
-    median = statistics.median(latencies_ns) if latencies_ns else 0.0
+    bandwidth = (
+        (count * msg_size * bandwidth_multiplier) / elapsed_s / 1_000_000.0
+        if elapsed_s > 0
+        else 0.0
+    )
+    mean = (sum(latencies_ns) / len(latencies_ns)) if latencies_ns else 0.0
     return {
         "throughput": throughput,
         "bandwidth": bandwidth,
-        "latency": float(median) / 1_000_000.0,
+        "latency": float(mean) / 1_000_000.0,
         "latency_p95": percentile(latencies_ns, 0.95) / 1_000_000.0,
         "latency_p99": percentile(latencies_ns, 0.99) / 1_000_000.0,
     }
@@ -141,7 +170,7 @@ def print_result_lines(pattern, transport, msg_size, metrics):
             value = f"{metrics[name]:.6f}"
         else:
             value = f"{metrics[name]:.2f}"
-        print(f"RESULT,current,{pattern},{transport},{msg_size},{name},{value}")
+        print(f"RESULT,current,{pattern},{transport},{msg_size},{name},{value}", flush=True)
 
 
 def unique_endpoint(prefix):
@@ -225,81 +254,126 @@ def safe_poll(poller, timeout_ms):
 
 
 def platform_name():
-    if sys.platform.startswith('linux'):
-        return 'linux'
-    if sys.platform == 'darwin':
-        return 'macos'
-    if sys.platform.startswith(('win32', 'cygwin', 'msys')):
-        return 'windows'
+    if sys.platform.startswith("linux"):
+        return "linux"
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith(("win32", "cygwin", "msys")):
+        return "windows"
     return sys.platform
+
+
+def _retain_latest_report_files(report_dir, max_files):
+    if max_files <= 0 or not report_dir.exists():
+        return
+    files = sorted(path for path in report_dir.iterdir() if path.is_file())
+    while len(files) >= max_files:
+        oldest = files.pop(0)
+        try:
+            oldest.unlink()
+        except OSError:
+            break
 
 
 def build_report_path(*, lang, suite, results_dir=None, tag=None):
     report_dir = (
-        Path(__file__).resolve().parent / 'results' / suite / 'report'
+        Path(__file__).resolve().parent / "results" / suite / "report"
         if results_dir is None
         else Path(results_dir)
     )
     report_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    suffix = f'_{tag}' if tag else ''
-    return report_dir / f'perf_{lang}_{suite}_{platform_name()}_{timestamp}{suffix}.txt'
+    max_files = (
+        _env_int("PERF_RESULTS_MAX_FILES", 100)
+        if suite == "multi"
+        else 100
+    )
+    _retain_latest_report_files(report_dir, max_files)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    suffix = f"_{tag}" if tag else ""
+    return report_dir / f"perf_{lang}_{suite}_{platform_name()}_{timestamp}{suffix}.txt"
 
 
-def render_effective_options(options):
-    lines = ['## Effective Options (start)']
+def render_effective_options(options, *, section="start"):
+    lines = [f"## Effective Options ({section})"]
     for key, value in options.items():
-        lines.append(f'- {key}: {value}')
+        lines.append(f"- {key}: {value}")
     return "\n".join(lines)
 
 
 def parse_result_lines(output):
     rows = []
     for line in output.splitlines():
-        if not line.startswith('RESULT,'):
+        if not line.startswith("RESULT,"):
             continue
-        parts = line.split(',')
+        parts = line.split(",")
         if len(parts) != 7:
             continue
         _, lib, pattern, transport, size, metric, value = parts
         rows.append(
             {
-                'lib': lib,
-                'pattern': pattern,
-                'transport': transport,
-                'size': size,
-                'metric': metric,
-                'value': value,
+                "lib": lib,
+                "pattern": pattern,
+                "transport": transport,
+                "size": size,
+                "metric": metric,
+                "value": value,
             }
         )
     return rows
 
 
-def render_markdown_summary(rows):
+def pattern_direction_label(pattern):
+    if pattern in {
+        "SPOT_REQREP",
+        "MULTI_DEALER_ROUTER",
+        "MULTI_ROUTER_ROUTER",
+        "MULTI_STREAM",
+        "MULTI_SPOT_REQREP",
+    }:
+        return "echo"
+    return "one-way"
+
+
+def throughput_unit(pattern):
+    return "Kops/s" if pattern_direction_label(pattern) == "echo" else "Kmsg/s"
+
+
+def _metric_row_text(pattern, size, metrics):
+    return (
+        f"| {size}B | "
+        f"{float(metrics.get('throughput', 0.0)) / 1000.0:>16.2f} {throughput_unit(pattern)} | "
+        f"{float(metrics.get('bandwidth', 0.0)):>9.2f} MB/s | "
+        f"{float(metrics.get('latency', 0.0)):>11.6f} ms | "
+        f"{float(metrics.get('latency_p95', 0.0)):>11.6f} ms | "
+        f"{float(metrics.get('latency_p99', 0.0)):>11.6f} ms |"
+    )
+
+
+def render_result_tables(rows):
     if not rows:
-        return ''
-    by_key = {}
+        return ""
+    grouped = {}
     for row in rows:
-        key = (row['pattern'], row['transport'], row['size'])
-        metrics = by_key.setdefault(key, {})
-        metrics[row['metric']] = row['value']
-    lines = [
-        '| Pattern | Transport | Size | Throughput | Bandwidth | Latency | Latency P95 | Latency P99 |',
-        '|---|---|---:|---:|---:|---:|---:|---:|',
-    ]
-    for key in sorted(by_key):
-        pattern, transport, size = key
-        metrics = by_key[key]
-        lines.append(
-            '| {pattern} | {transport} | {size} | {throughput} | {bandwidth} | {latency} | {latency_p95} | {latency_p99} |'.format(
-                pattern=pattern,
-                transport=transport,
-                size=size,
-                throughput=metrics.get('throughput', 'NA'),
-                bandwidth=metrics.get('bandwidth', 'NA'),
-                latency=metrics.get('latency', 'NA'),
-                latency_p95=metrics.get('latency_p95', 'NA'),
-                latency_p99=metrics.get('latency_p99', 'NA'),
-            )
-        )
+        key = (row["pattern"], row["transport"], row["size"])
+        grouped.setdefault(key, {})[row["metric"]] = row["value"]
+    lines = []
+    last_pattern = None
+    for pattern, transport, size in sorted(grouped):
+        if pattern != last_pattern:
+            if last_pattern is not None:
+                lines.extend(["", "===============================================================================", ""])
+            lines.append(f"## PATTERN: {pattern} ({pattern_direction_label(pattern)})")
+            lines.append("")
+            last_pattern = pattern
+        if not lines or not lines[-1].startswith("### Transport:") or lines[-1] != f"### Transport: {transport}":
+            if lines and lines[-1] != "":
+                lines.append("")
+            lines.append(f"### Transport: {transport}")
+            lines.append("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
+            lines.append("|------|------------|-----------|--------------|-------------|-------------|")
+        lines.append(_metric_row_text(pattern, size, grouped[(pattern, transport, size)]))
     return "\n".join(lines)
+
+
+def render_markdown_summary(rows):
+    return render_result_tables(rows)

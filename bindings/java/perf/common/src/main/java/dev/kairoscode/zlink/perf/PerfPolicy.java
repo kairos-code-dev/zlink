@@ -9,8 +9,6 @@ import java.net.SocketException;
 import java.util.Locale;
 
 final class PerfPolicy {
-    private static final int ERRNO_EPERM = 1;
-    private static final int ERRNO_EADDRINUSE = 98;
     private static final int ERRNO_ENOTSUP = 95;
 
     private PerfPolicy() {
@@ -37,14 +35,12 @@ final class PerfPolicy {
     private static String unsupportedReason(Throwable failure) {
         for (Throwable current = failure; current != null; current = current.getCause()) {
             if (current instanceof BindException) {
-                int errno = ((BindException) current).getInternalErrno();
-                return errno > 0 ? "bind_errno_" + errno : "bind_failed";
+                continue;
             }
             if (current instanceof ZlinkException) {
                 int errno = ((ZlinkException) current).getInternalErrno();
-                if (errno == ERRNO_EPERM || errno == ERRNO_EADDRINUSE
-                    || errno == ERRNO_ENOTSUP) {
-                    return "bind_errno_" + errno;
+                if (errno == ERRNO_ENOTSUP) {
+                    return "protocol_not_supported";
                 }
             }
             if (current instanceof SocketException || current instanceof IOException) {
@@ -86,7 +82,7 @@ final class PerfPolicy {
             return "bind_permission_denied";
         }
         if (normalized.contains("cannot assign requested address")) {
-            return "bind_cannot_assign_address";
+            return null;
         }
         if (normalized.contains("protocol not supported")) {
             return "protocol_not_supported";

@@ -17,13 +17,11 @@ final class PerfReport {
 
     static String format(PerfUtil.Result result, String libTag) {
         if ("unsupported".equals(result.status)) {
-            return String.format(Locale.ROOT, "UNSUPPORTED,%s,%s,%s,%s",
-                libTag, result.pattern, result.transport, sanitize(result.reason));
+            return String.format(Locale.ROOT, "UNSUPPORTED,%s,%s,%s",
+                libTag, result.pattern, result.transport);
         }
         if (!"ok".equals(result.status)) {
-            return String.format(Locale.ROOT, "FAIL,%s,%s,%s,%s,%s",
-                libTag, result.pattern, result.transport, result.size,
-                sanitize(result.reason));
+            return "";
         }
         String key = String.format(Locale.ROOT, "RESULT,%s,%s,%s,%d",
             libTag, result.pattern, result.transport, result.size);
@@ -57,9 +55,5 @@ final class PerfReport {
 
     private static String metric(double value) {
         return Double.isNaN(value) ? "N/A" : String.format(Locale.ROOT, "%.3f", value);
-    }
-
-    private static String sanitize(String value) {
-        return value == null || value.isBlank() ? "-" : value.replace(' ', '_');
     }
 }

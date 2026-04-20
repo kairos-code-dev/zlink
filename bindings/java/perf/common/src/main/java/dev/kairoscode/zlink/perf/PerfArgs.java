@@ -16,7 +16,6 @@ final class PerfArgs {
         String transport = args[1].toLowerCase(Locale.ROOT);
         int size = Integer.parseInt(args[2]);
         int duration = 5;
-        int warmup = intEnv("PERF_SINGLE_WARMUP_SECONDS", 0);
         String recv = "recv";
         int ioThreads = intEnv("PERF_IO_THREADS", 0);
         int sendHwm = intEnv("PERF_SINGLE_SNDHWM",
@@ -25,20 +24,10 @@ final class PerfArgs {
             intEnv("PERF_SINGLE_HWM", 0));
         int sendTimeoutMs = intEnv("PERF_SINGLE_SNDTIMEO_MS", 200);
         int recvTimeoutMs = intEnv("PERF_SINGLE_RCVTIMEO_MS", 200);
-        int monitorHwm = intEnv("PERF_MONITOR_HWM", 1000);
         int connectReadyTimeoutMs = intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 20_000);
-        int connectConcurrency = intEnv("PERF_CONNECT_CONCURRENCY", 0);
         for (int i = 3; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
-                case "--warmup" -> warmup = Integer.parseInt(args[i + 1]);
-                case "--recv" -> {
-                    recv = args[i + 1];
-                    if (!"recv".equalsIgnoreCase(recv)) {
-                        throw new IllegalArgumentException(
-                            "single suite supports only recv");
-                    }
-                }
                 case "--io-threads" -> ioThreads = Integer.parseInt(args[i + 1]);
                 case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
                 case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
@@ -46,18 +35,15 @@ final class PerfArgs {
                     sendTimeoutMs = Integer.parseInt(args[i + 1]);
                 case "--rcvtimeo", "--recv-timeout-ms" ->
                     recvTimeoutMs = Integer.parseInt(args[i + 1]);
-                case "--monitor-hwm" -> monitorHwm = Integer.parseInt(args[i + 1]);
                 case "--connect-ready-timeout-ms" ->
                     connectReadyTimeoutMs = Integer.parseInt(args[i + 1]);
-                case "--connect-concurrency" ->
-                    connectConcurrency = Integer.parseInt(args[i + 1]);
                 default -> {
                 }
             }
         }
-        return new PerfUtil.Config(pattern, transport, size, duration, warmup,
+        return new PerfUtil.Config(pattern, transport, size, duration,
             recv, "", 1, 0, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
-            recvTimeoutMs, monitorHwm, connectReadyTimeoutMs, connectConcurrency);
+            recvTimeoutMs, 1000, connectReadyTimeoutMs, 0);
     }
 
     static PerfUtil.Config parseMultiArgs(String[] args) {
@@ -71,7 +57,6 @@ final class PerfArgs {
         String transport = args[2].toLowerCase(Locale.ROOT);
         int size = Integer.parseInt(args[3]);
         int duration = 5;
-        int warmup = intEnv("PERF_MULTI_WARMUP_SECONDS", 0);
         String recv = "recv";
         String endpoint = "";
         int clients = 32;
@@ -94,14 +79,6 @@ final class PerfArgs {
         for (int i = 4; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
-                case "--warmup" -> warmup = Integer.parseInt(args[i + 1]);
-                case "--recv" -> {
-                    recv = args[i + 1];
-                    if (!"recv".equalsIgnoreCase(recv)) {
-                        throw new IllegalArgumentException(
-                            "multi suite supports only recv");
-                    }
-                }
                 case "--endpoint" -> endpoint = args[i + 1];
                 case "--clients" -> clients = Integer.parseInt(args[i + 1]);
                 case "--control-port" -> controlPort = Integer.parseInt(args[i + 1]);
@@ -121,7 +98,7 @@ final class PerfArgs {
                 }
             }
         }
-        return new PerfUtil.Config(pattern, transport, size, duration, warmup,
+        return new PerfUtil.Config(pattern, transport, size, duration,
             recv, endpoint, clients, controlPort, ioThreads, sendHwm, recvHwm,
             sendTimeoutMs, recvTimeoutMs, monitorHwm, connectReadyTimeoutMs,
             connectConcurrency);

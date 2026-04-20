@@ -14,8 +14,7 @@ function parseArgs(argv, defaults = {}) {
     serverNodeRid: '',
     serverSpotRid: '',
     msgSize: 256,
-    warmup: 1,
-    duration: 2,
+    duration: 5,
     clients: 1,
     ...defaults
   };
@@ -35,8 +34,6 @@ function parseArgs(argv, defaults = {}) {
       options.serverSpotRid = argv[++i];
     } else if (argv[i] === '--msg-size') {
       options.msgSize = Number(argv[++i]);
-    } else if (argv[i] === '--warmup') {
-      options.warmup = Number(argv[++i]);
     } else if (argv[i] === '--duration') {
       options.duration = Number(argv[++i]);
     } else if (argv[i] === '--clients') {

@@ -33,11 +33,16 @@ def main(argv=None):
                 sock.connect(args.endpoint)
                 sock.set_subscription(TOPIC)
             print(f"CLIENT_READY,{args.msg_size}", flush=True)
-            command = sys.stdin.readline().strip()
-            if command not in {
-                f"START,{args.msg_size}",
-                f"PHASE_ACTIVE,{args.msg_size}",
-            }:
+            saw_start = False
+            saw_phase_active = False
+            while not (saw_start and saw_phase_active):
+                command = sys.stdin.readline().strip()
+                if command == f"START,{args.msg_size}":
+                    saw_start = True
+                    continue
+                if command == f"PHASE_ACTIVE,{args.msg_size}":
+                    saw_phase_active = True
+                    continue
                 raise SystemExit(f"unexpected command: {command}")
 
             started = time.perf_counter()
@@ -74,7 +79,7 @@ def main(argv=None):
             metrics = result_metrics(
                 count=count,
                 msg_size=args.msg_size,
-                elapsed_s=max(args.duration, elapsed),
+                elapsed_s=args.duration,
                 latencies_ns=latencies,
             )
             print_result_lines("MULTI_PUBSUB", args.transport, args.msg_size, metrics)

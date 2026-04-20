@@ -25,12 +25,15 @@ from perf_common import (
 
 SERVICE_NAME = "spot-svc"
 TOPIC = b"bench.topic"
+
+
 def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="spot")
     run_id = benchmark_run_id()
     latencies = []
     probe_ready = threading.Event()
     recv_lock = threading.Lock()
+    active_deadline = [0.0]
     probe_payload = new_payload(args.msg_size)
     active_payload = new_payload(args.msg_size)
     cooldown_payload = new_payload(args.msg_size)
@@ -76,6 +79,8 @@ def main(argv=None):
                                     run_id=run_id,
                                 ):
                                     continue
+                                if time.perf_counter() > active_deadline[0]:
+                                    continue
                                 with recv_lock:
                                     latencies.append(latency_ns_from_message(data))
 
@@ -105,8 +110,8 @@ def main(argv=None):
 
                         time.sleep(resolve_single_spot_ready_settle_s())
 
-                        active_end = time.monotonic() + args.duration
-                        while time.monotonic() < active_end:
+                        active_deadline[0] = time.perf_counter() + args.duration
+                        while time.perf_counter() < active_deadline[0]:
                             publisher.publish(
                                 SERVICE_NAME,
                                 TOPIC,
@@ -118,7 +123,6 @@ def main(argv=None):
                                     )
                                 ],
                             )
-
                         publisher.publish(
                             SERVICE_NAME,
                             TOPIC,
@@ -130,7 +134,9 @@ def main(argv=None):
                                 )
                             ],
                         )
-                        time.sleep(resolve_single_recv_timeout_ms() / 1000.0)
+                        threading.Event().wait(
+                            resolve_single_recv_timeout_ms() / 1000.0
+                        )
 
                         with recv_lock:
                             collected = list(latencies)

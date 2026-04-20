@@ -14,6 +14,7 @@ from perf_multi_common import (
     is_active_message,
     parse_client_args,
     print_result_lines,
+    resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
@@ -21,9 +22,7 @@ from perf_multi_common import (
 
 
 SERVICE_NAME = "spot-svc"
-READY_TIMEOUT_S = 15.0
-START_TIMEOUT_S = 15.0
-DRAIN_GRACE_S = 0.5
+WAIT_SLICE_S = 0.01
 
 
 def _parse_tcp_endpoint(endpoint):
@@ -51,12 +50,14 @@ def main(argv=None):
     run_id = benchmark_run_id()
     ready_settle_s = resolve_multi_spot_ready_settle_s()
     control_settle_s = resolve_multi_spot_control_settle_s()
+    ready_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
     recv_lock = threading.Lock()
     runner_connected = threading.Event()
     runner_start = threading.Event()
     control_connected = threading.Event()
     started_event = threading.Event()
     started_size = [0]
+    active_deadline = [0.0]
 
     ready_listener = _listen_tcp()
     ready_host, ready_port = ready_listener.getsockname()
@@ -71,7 +72,9 @@ def main(argv=None):
 
     threading.Thread(target=accept_ready_sender, daemon=True).start()
 
-    start_reader = socket.create_connection(_parse_tcp_endpoint(control_endpoint), timeout=READY_TIMEOUT_S)
+    start_reader = socket.create_connection(
+        _parse_tcp_endpoint(control_endpoint), timeout=ready_timeout_s
+    )
     start_file = start_reader.makefile("r", encoding="utf-8", newline="\n")
 
     def control_loop():
@@ -136,6 +139,8 @@ def main(argv=None):
                     run_id=run_id,
                 ):
                     continue
+                if time.perf_counter() > active_deadline[0]:
+                    continue
                 with recv_lock:
                     latencies.append(latency_ns_from_message(data))
                     received_count += 1
@@ -143,11 +148,11 @@ def main(argv=None):
         for _, spot in clients:
             spot.on_dispatch_event(on_dispatch)
 
-        deadline = time.perf_counter() + READY_TIMEOUT_S
+        deadline = time.perf_counter() + ready_timeout_s
         while time.perf_counter() < deadline:
             if control_connected.is_set() and runner_connected.is_set():
                 break
-            time.sleep(0.01)
+            runner_connected.wait(WAIT_SLICE_S)
         if not (control_connected.is_set() and runner_connected.is_set()):
             raise RuntimeError("control connection handshake timeout")
 
@@ -157,20 +162,17 @@ def main(argv=None):
         ready_sender[0].sendall(f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8"))
         print(f"CLIENT_READY,{args.msg_size}", flush=True)
 
-        start_deadline = time.perf_counter() + START_TIMEOUT_S
+        start_deadline = time.perf_counter() + ready_timeout_s
         while time.perf_counter() < start_deadline:
             if runner_start.is_set() and started_event.is_set() and started_size[0] == args.msg_size:
                 break
-            time.sleep(0.01)
+            runner_start.wait(WAIT_SLICE_S)
         if not (runner_start.is_set() and started_event.is_set() and started_size[0] == args.msg_size):
             raise RuntimeError("spot start handshake timeout")
 
-        active_deadline = time.perf_counter() + args.duration
-        while time.perf_counter() < active_deadline:
-            time.sleep(0.01)
-        drain_deadline = time.perf_counter() + DRAIN_GRACE_S
-        while time.perf_counter() < drain_deadline:
-            time.sleep(0.01)
+        active_deadline[0] = time.perf_counter() + args.duration
+        while time.perf_counter() < active_deadline[0]:
+            runner_start.wait(WAIT_SLICE_S)
 
         with recv_lock:
             if received_count <= 0:

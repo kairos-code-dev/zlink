@@ -284,7 +284,7 @@ def _retain_latest_report_files(report_dir, max_files):
     if max_files <= 0 or not report_dir.exists():
         return
     files = sorted(path for path in report_dir.iterdir() if path.is_file())
-    while len(files) >= max_files:
+    while len(files) > max_files:
         oldest = files.pop(0)
         try:
             oldest.unlink()
@@ -318,13 +318,20 @@ def render_effective_options(options, *, section="start"):
     return "\n".join(lines)
 
 
-def parse_result_lines(output):
+def _default_warn(message):
+    print(f"warning: {message}", file=sys.stderr, flush=True)
+
+
+def parse_result_lines(output, *, warn=None):
     rows = []
+    warn_fn = _default_warn if warn is True else warn
     for line in output.splitlines():
         if not line.startswith("RESULT,"):
             continue
         parts = line.split(",")
         if len(parts) != 7:
+            if warn_fn is not None:
+                warn_fn(f"ignored malformed RESULT line: {line}")
             continue
         _, lib, pattern, transport, size, metric, value = parts
         rows.append(
@@ -340,10 +347,16 @@ def parse_result_lines(output):
     return rows
 
 
-def rows_by_case(rows):
+def rows_by_case(rows, *, warn=None):
     grouped = {}
+    warn_fn = _default_warn if warn is True else warn
     for row in rows:
         key = (row["pattern"], row["transport"], str(row["size"]))
+        if warn_fn is not None and key in grouped and row["metric"] in grouped[key]:
+            warn_fn(
+                "duplicate RESULT metric overwritten for "
+                f"{row['pattern']} {row['transport']} {row['size']} {row['metric']}"
+            )
         grouped.setdefault(key, {})[row["metric"]] = row["value"]
     return grouped
 

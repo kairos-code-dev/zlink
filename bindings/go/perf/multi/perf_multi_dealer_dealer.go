@@ -44,7 +44,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 		perfcommon.ApplyMultiHWM(client, cfg.pattern)
 		perfcommon.Must(client.Connect(endpoint))
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
-		perfcommon.WaitConnected(serverMon, clientMon)
+		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), serverMon, clientMon)
 		clients = append(clients, dealerClient{ctx: clientCtx, socket: client, mon: clientMon})
 	}
 	defer func() {

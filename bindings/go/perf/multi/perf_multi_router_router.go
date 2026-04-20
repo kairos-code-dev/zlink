@@ -51,7 +51,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		if err := client.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi router/router connect client[%d]: %w", i, err))
 		}
-		perfcommon.WaitConnected(clientMon)
+		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), clientMon)
 		waitForRouterClientReady(client, serverID)
 
 		clients = append(clients, routerClient{
@@ -96,9 +96,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 				}
 				part, err := reply.SinglePartOrError()
 				if err == nil {
-					if sentAt, ok := perfcommon.SentAtFromMessage(part, cfg.msgSize); ok && time.Now().After(window.ActiveAt) {
-						stats.Add(sentAt)
-					}
+					perfcommon.RecordMessageRTTLatency(stats, window.ActiveAt, cfg.msgSize, part)
 				}
 				_ = reply.Close()
 			}

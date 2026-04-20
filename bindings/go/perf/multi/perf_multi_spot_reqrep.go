@@ -109,7 +109,7 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 							return
 						}
 						if sentAt, ok := perfcommon.SentAtFromMessage(parts[0], cfg.msgSize); ok {
-							stats.Add(sentAt)
+							stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()) / 2.0)
 						}
 						replyDone <- nil
 					},

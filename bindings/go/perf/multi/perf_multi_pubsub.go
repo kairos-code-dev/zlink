@@ -16,7 +16,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	publisher, err := ctx.XPubSocket()
 	perfcommon.Must(err)
 	defer publisher.Close()
-	perfcommon.Must(publisher.SetNoDrop(true))
+	perfcommon.Must(publisher.SetNoDrop(perfcommon.EnvEnabled("PERF_MULTI_PUBSUB_XPUB_NODROP", true)))
 	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
 	pubMon := perfcommon.OpenMonitor(publisher)
 	defer pubMon.Close()
@@ -42,7 +42,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 		if err := sub.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi pubsub connect sub[%d]: %w", i, err))
 		}
-		perfcommon.WaitConnected(pubMon, subMon)
+		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), pubMon, subMon)
 		_ = subMon.Close()
 		if err := sub.SetSubscription("bench."); err != nil {
 			perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", i, err))

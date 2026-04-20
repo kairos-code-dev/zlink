@@ -32,7 +32,7 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(dealer.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(router, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(dealer, cfg.transport)
-	perfcommon.WaitConnected(routerMon, dealerMon)
+	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), routerMon, dealerMon)
 	waitSingleRouteReady("dealer/router perf endpoint", func(payload []byte) error {
 		return dealer.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 	}, router)

@@ -11,8 +11,8 @@ mkdir -p "${GOCACHE}" "${GOTMPDIR}"
 
 PATTERN="ALL"
 DURATION="5"
-MSG_SIZES="64,256,1024,65536,131072,262144"
-TRANSPORTS=""
+MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
+TRANSPORTS="${PERF_TRANSPORTS:-}"
 RUNS="1"
 RESULTS_DIR="${SCRIPT_DIR}/results/single/report"
 RESULTS_TAG=""
@@ -190,6 +190,70 @@ append_case_output() {
   fi
 }
 
+progress_header_printed=0
+
+progress_pattern_heading() {
+  local pattern="$1"
+  if [[ "${progress_pattern_heading_last:-}" == "${pattern}" ]]; then
+    return
+  fi
+  progress_pattern_heading_last="${pattern}"
+  echo "  > Benchmarking current for ${pattern}..."
+}
+
+progress_table_header() {
+  if [[ "${progress_header_printed}" -eq 1 ]]; then
+    return
+  fi
+  progress_header_printed=1
+  echo "      | Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
+  echo "      |----------|------------------|------------|---------------|---------------|---------------|"
+}
+
+progress_case_row() {
+  local pattern="$1"
+  local size="$2"
+  local case_log="$3"
+  if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
+    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED"
+    return
+  fi
+  if grep -Eq '^SKIP,' "${case_log}"; then
+    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "FAIL" "FAIL" "FAIL" "FAIL" "FAIL"
+    return
+  fi
+  python3 - "$pattern" "$size" "$case_log" <<'PY'
+import sys
+
+pattern, size, path = sys.argv[1], sys.argv[2], sys.argv[3]
+metrics = {}
+with open(path, "r", encoding="utf-8", errors="replace") as fh:
+    for raw in fh:
+        parts = raw.strip().split(",")
+        if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
+            continue
+        if parts[2] != pattern or parts[4] != size:
+            continue
+        metrics[parts[5]] = parts[6]
+
+required = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
+if not all(key in metrics for key in required):
+    print(f"      | {size}B | {'FAIL':>16} | {'FAIL':>10} | {'FAIL':>13} | {'FAIL':>13} | {'FAIL':>13} |")
+    raise SystemExit(0)
+
+unit = "Kops/s" if pattern == "SPOT_REQREP" else "Kmsg/s"
+throughput = float(metrics["throughput"]) / 1000.0
+bandwidth = float(metrics["bandwidth"])
+latency = float(metrics["latency"])
+latency_p95 = float(metrics["latency_p95"])
+latency_p99 = float(metrics["latency_p99"])
+print(
+    f"      | {size}B | {throughput:16.2f} {unit} | {bandwidth:10.2f} MB/s |"
+    f" {latency:13.3f} ms | {latency_p95:13.3f} ms | {latency_p99:13.3f} ms |"
+)
+PY
+}
+
 count_result_lines() {
   local pattern="$1"
   local transport="$2"
@@ -297,11 +361,17 @@ FAILURES=()
 
 for run in $(seq 1 "${RUNS}"); do
   for pattern in "${PATTERNS[@]}"; do
+    progress_pattern_heading "${pattern}"
     read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
     for transport in "${PATTERN_XPORTS[@]}"; do
       if ! transport_enabled "${transport}"; then
         continue
       fi
+      echo "    Testing ${transport}:"
+      if [[ "${RUNS}" -gt 1 ]]; then
+        echo "      run ${run}/${RUNS}:"
+      fi
+      progress_header_printed=0
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
@@ -316,11 +386,15 @@ for run in $(seq 1 "${RUNS}"); do
           if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
             unsupported_cases=$((unsupported_cases + 1))
             expected_cases=$((expected_cases - 1))
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
           if grep -Eq '^SKIP,' "${case_log}"; then
             skip_cases=$((skip_cases + 1))
             expected_cases=$((expected_cases - 1))
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
           if [[ "${case_result_lines}" -eq 0 ]]; then
@@ -335,13 +409,18 @@ for run in $(seq 1 "${RUNS}"); do
           if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
             unsupported_cases=$((unsupported_cases + 1))
             expected_cases=$((expected_cases - 1))
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
           echo "FAIL,current,${pattern},${transport},${size},exit_nonzero" >> "${RESULTS_FILE}"
           fail=$((fail + 1))
           FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero")
         fi
+        progress_table_header
+        progress_case_row "${pattern}" "${size}" "${case_log}"
       done
+      echo "    Testing ${transport}: Done"
     done
   done
 done

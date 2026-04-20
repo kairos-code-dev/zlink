@@ -41,7 +41,10 @@ func NewStats() *Stats {
 }
 
 func (s *Stats) Add(sentAt time.Time) {
-	latencyNs := float64(time.Since(sentAt).Nanoseconds())
+	s.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()))
+}
+
+func (s *Stats) AddLatencyNs(latencyNs float64) {
 	atomic.AddUint64(&s.count, 1)
 	s.mu.Lock()
 	s.sumNs += latencyNs
@@ -205,9 +208,6 @@ func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string)
 		return
 	}
 	Must(socket.SetLinger(0))
-	if transport == "inproc" || transport == "wss" {
-		return
-	}
 	Must(socket.SetSendTimeout(singleSocketTimeout(true)))
 	Must(socket.SetRecvTimeout(singleSocketTimeout(false)))
 }

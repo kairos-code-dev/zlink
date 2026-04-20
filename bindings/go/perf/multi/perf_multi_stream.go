@@ -48,7 +48,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 				if err != nil {
 					return
 				}
-				perfcommon.RecordBytesLatency(stats, window.ActiveAt, cfg.msgSize, reply)
+				perfcommon.RecordBytesRTTLatency(stats, window.ActiveAt, cfg.msgSize, reply)
 			}
 		}(conn)
 	}

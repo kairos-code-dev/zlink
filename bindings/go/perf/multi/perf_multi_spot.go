@@ -69,7 +69,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 			}
 			perfcommon.Must(err)
 		}
-		_ = drainMultiSpotOnce(subs, stats, window.ActiveAt, tracker)
+		_ = drainMultiSpotOnce(subs, stats, window.ActiveAt, cfg.msgSize, tracker)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)

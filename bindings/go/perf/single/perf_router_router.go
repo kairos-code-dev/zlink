@@ -35,7 +35,7 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(client.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
-	perfcommon.WaitConnected(serverMon, clientMon)
+	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), serverMon, clientMon)
 	waitSingleRouteReady("router/router perf endpoint", func(payload []byte) error {
 		return client.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 	}, server)

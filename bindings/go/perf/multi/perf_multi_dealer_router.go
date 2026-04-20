@@ -49,7 +49,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 		if err := dealer.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi dealer/router connect client[%d]: %w", i, err))
 		}
-		perfcommon.WaitConnected(dealerMon)
+		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), dealerMon)
 
 		dealers = append(dealers, dealerClient{
 			ctx:     clientCtx,
@@ -93,7 +93,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 				}
 				part, err := reply.SinglePartOrError()
 				if err == nil {
-					perfcommon.RecordMessageLatency(stats, window.ActiveAt, cfg.msgSize, part)
+					perfcommon.RecordMessageRTTLatency(stats, window.ActiveAt, cfg.msgSize, part)
 				}
 				_ = reply.Close()
 			}

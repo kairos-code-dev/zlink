@@ -29,7 +29,7 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(client.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
-	perfcommon.WaitConnected(serverMon, clientMon)
+	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), serverMon, clientMon)
 
 	return runSingleOneWay(cfg, server, func(payload []byte) error {
 		return client.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))

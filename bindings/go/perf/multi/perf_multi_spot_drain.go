@@ -11,6 +11,7 @@ func drainMultiSpotOnce(
 	subs []multiSpotSubscriber,
 	stats *perfcommon.Stats,
 	activeAt time.Time,
+	msgSize int,
 	tracker *multiSpotReadyTracker,
 ) int {
 	processed := 0
@@ -28,7 +29,7 @@ func drainMultiSpotOnce(
 		processed++
 		part, err := message.SinglePartOrError()
 		if err == nil && stats != nil {
-			perfcommon.RecordMessageLatency(stats, activeAt, len(part.Data()), part)
+			perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
 		}
 		if tracker != nil {
 			tracker.mark(index)

@@ -48,27 +48,14 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		if event != zlink.SpotDispatchEventSubscribeReadable {
 			return
 		}
-		for {
-			message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					return
-				}
-				perfcommon.Must(err)
-			}
-			if message == nil {
-				return
-			}
-			part, err := message.SinglePartOrError()
-			if err == nil {
-				if activeCollect.Load() {
-					perfcommon.RecordMessageLatency(stats, window.ActiveAt, cfg.msgSize, part)
-				} else if _, ok := perfcommon.SentAtFromMessage(part, cfg.msgSize); ok {
-					readySeen.Store(true)
-				}
-			}
-			_ = message.Close()
-		}
+		_ = drainSingleSpotReadable(
+			subscriber,
+			stats,
+			window.ActiveAt,
+			cfg.msgSize,
+			&activeCollect,
+			&readySeen,
+		)
 	}))
 
 	waitForSpotReady(publisher, cfg.msgSize, &readySeen)
@@ -93,9 +80,56 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	if err != nil && !perfcommon.IsTransient(err) {
 		perfcommon.Must(err)
 	}
-	time.Sleep(perfcommon.SingleIdleDrainDuration())
+	idleDrainDeadline := time.Now().Add(perfcommon.SingleIdleDrainDuration())
+	for time.Now().Before(idleDrainDeadline) {
+		if !drainSingleSpotReadable(
+			subscriber,
+			nil,
+			window.ActiveAt,
+			cfg.msgSize,
+			&activeCollect,
+			&readySeen,
+		) {
+			continue
+		}
+	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func drainSingleSpotReadable(
+	subscriber *zlink.Spot,
+	stats *perfcommon.Stats,
+	activeAt time.Time,
+	msgSize int,
+	activeCollect *atomic.Bool,
+	readySeen *atomic.Bool,
+) bool {
+	processed := false
+	for {
+		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				return processed
+			}
+			perfcommon.Must(err)
+		}
+		if message == nil {
+			return processed
+		}
+		processed = true
+		part, err := message.SinglePartOrError()
+		if err == nil {
+			if activeCollect.Load() {
+				if stats != nil {
+					perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
+				}
+			} else if _, ok := perfcommon.SentAtFromMessage(part, msgSize); ok {
+				readySeen.Store(true)
+			}
+		}
+		_ = message.Close()
+	}
 }
 
 func waitForSpotReady(publisher *zlink.Spot, msgSize int, readySeen *atomic.Bool) {

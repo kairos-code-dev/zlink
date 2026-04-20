@@ -15,6 +15,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	publisher, err := ctx.XPubSocket()
 	perfcommon.Must(err)
 	defer publisher.Close()
+	perfcommon.Must(publisher.SetNoDrop(perfcommon.EnvEnabled("PERF_SINGLE_PUBSUB_XPUB_NODROP", true)))
 	subscriber, err := ctx.SubSocket()
 	perfcommon.Must(err)
 	defer subscriber.Close()
@@ -32,10 +33,10 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(subscriber.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
-	perfcommon.WaitConnected(pubMon, subMon)
+	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), pubMon, subMon)
 
 	perfcommon.Must(subscriber.SetSubscription("bench."))
-	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SinglePubSubRecvTimeout()))
 	perfcommon.PostReadySettle(cfg.pattern)
 
 	stats := perfcommon.NewStats()

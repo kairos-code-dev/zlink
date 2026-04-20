@@ -12,7 +12,7 @@ mkdir -p "${GOCACHE}" "${GOTMPDIR}"
 PATTERN="ALL"
 DURATION="5"
 MSG_SIZES=""
-TRANSPORTS=""
+TRANSPORTS="${PERF_TRANSPORTS:-}"
 RUNS="1"
 CLIENTS=""
 RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
@@ -25,6 +25,9 @@ RECV_HWM=""
 SNDTIMEO_MS=""
 RCVTIMEO_MS=""
 CONNECT_READY_TIMEOUT_MS=""
+RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
+TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
+PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
 
 cleanup_report_dir() {
   local dir="$1"
@@ -94,7 +97,9 @@ while [[ $# -gt 0 ]]; do
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
-    --build-dir|--io-threads|--server-io-threads|--client-io-threads|--sndbuf|--rcvbuf|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
+    --build-dir|--io-threads|--server-io-threads|--client-io-threads|--sndbuf|--server-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
+      shift 2 ;;
+    --rcvbuf|--connect-concurrency)
       shift 2 ;;
     --hwm)
       HWM="$2"
@@ -113,6 +118,12 @@ while [[ $# -gt 0 ]]; do
       shift 2 ;;
     --connect-ready-timeout-ms)
       CONNECT_READY_TIMEOUT_MS="$2"
+      shift 2 ;;
+    --transport-transition-ms)
+      TRANSPORT_TRANSITION_MS="$2"
+      shift 2 ;;
+    --pattern-transition-ms)
+      PATTERN_TRANSITION_MS="$2"
       shift 2 ;;
     --reuse-build|--clean-build)
       shift ;;
@@ -251,6 +262,67 @@ append_case_output() {
   fi
 }
 
+progress_header_printed=0
+
+progress_pattern_heading() {
+  local pattern="$1"
+  echo "  > Benchmarking current for ${pattern}..."
+}
+
+progress_table_header() {
+  if [[ "${progress_header_printed}" -eq 1 ]]; then
+    return
+  fi
+  progress_header_printed=1
+  echo "      | Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
+  echo "      |----------|------------------|------------|---------------|---------------|---------------|"
+}
+
+progress_case_row() {
+  local pattern="$1"
+  local size="$2"
+  local case_log="$3"
+  if grep -Eq '^UNSUPPORTED,' "${case_log}'; then
+    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED"
+    return
+  fi
+  if grep -Eq '^SKIP,' "${case_log}"; then
+    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "FAIL" "FAIL" "FAIL" "FAIL" "FAIL"
+    return
+  fi
+  python3 - "$pattern" "$size" "$case_log" <<'PY'
+import sys
+
+pattern, size, path = sys.argv[1], sys.argv[2], sys.argv[3]
+metrics = {}
+echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP"}
+with open(path, "r", encoding="utf-8", errors="replace") as fh:
+    for raw in fh:
+        parts = raw.strip().split(",")
+        if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
+            continue
+        if parts[2] != pattern or parts[4] != size:
+            continue
+        metrics[parts[5]] = parts[6]
+
+required = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
+if not all(key in metrics for key in required):
+    print(f"      | {size}B | {'FAIL':>16} | {'FAIL':>10} | {'FAIL':>13} | {'FAIL':>13} | {'FAIL':>13} |")
+    raise SystemExit(0)
+
+unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
+throughput = float(metrics["throughput"]) / 1000.0
+bandwidth = float(metrics["bandwidth"])
+latency = float(metrics["latency"])
+latency_p95 = float(metrics["latency_p95"])
+latency_p99 = float(metrics["latency_p99"])
+print(
+    f"      | {size}B | {throughput:16.2f} {unit} | {bandwidth:10.2f} MB/s |"
+    f" {latency:13.3f} ms | {latency_p95:13.3f} ms | {latency_p99:13.3f} ms |"
+)
+PY
+}
+
 count_result_lines() {
   local pattern="$1"
   local transport="$2"
@@ -363,29 +435,47 @@ expected_cases=0
 FAILURES=()
 SKIPS=()
 
-for run in $(seq 1 "${RUNS}"); do
-  for pattern in "${PATTERNS[@]}"; do
-    read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
-    size_list="$(pattern_msg_sizes "${pattern}")"
-    IFS=',' read -r -a SIZES <<< "${size_list}"
-    resolved_clients="${CLIENTS}"
-    if [[ -z "${resolved_clients}" ]]; then
-      resolved_clients="${PERF_MULTI_CLIENTS:-}"
+for pattern_index in "${!PATTERNS[@]}"; do
+  pattern="${PATTERNS[pattern_index]}"
+  progress_pattern_heading "${pattern}"
+  read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
+  size_list="$(pattern_msg_sizes "${pattern}")"
+  IFS=',' read -r -a SIZES <<< "${size_list}"
+  resolved_clients="${CLIENTS}"
+  if [[ -z "${resolved_clients}" ]]; then
+    resolved_clients="${PERF_MULTI_CLIENTS:-}"
+  fi
+  if [[ -z "${resolved_clients}" ]]; then
+    if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+      resolved_clients="10000"
+    else
+      resolved_clients="100"
     fi
-    if [[ -z "${resolved_clients}" ]]; then
-      if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-        resolved_clients="10000"
-      else
-        resolved_clients="100"
-      fi
+  fi
+
+  transport_total=0
+  for candidate_transport in "${PATTERN_XPORTS[@]}"; do
+    if transport_enabled "${candidate_transport}"; then
+      transport_total=$((transport_total + 1))
     fi
+  done
+  transport_seen=0
 
-    for transport in "${PATTERN_XPORTS[@]}"; do
-      if ! transport_enabled "${transport}"; then
-        continue
+  for transport in "${PATTERN_XPORTS[@]}"; do
+    if ! transport_enabled "${transport}"; then
+      continue
+    fi
+    transport_seen=$((transport_seen + 1))
+    echo "    Testing ${transport} | ${size_list}:"
+    transport_failures=0
+    transport_unsupported=0
+
+    for run in $(seq 1 "${RUNS}"); do
+      if [[ "${RUNS}" -gt 1 ]]; then
+        echo "      run ${run}/${RUNS}:"
       fi
+      progress_header_printed=0
 
-      transport_unsupported=0
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
@@ -397,45 +487,103 @@ for run in $(seq 1 "${RUNS}"); do
           --clients "${resolved_clients}" \
           > "${case_log}" 2>&1; then
           append_case_output "${case_log}"
+          case_result_lines="$(count_result_lines "${pattern}" "${transport}" "${size}" "${case_log}")"
+          if [[ "${case_result_lines}" -gt 0 ]]; then
+            result_lines=$((result_lines + case_result_lines))
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
+            continue
+          fi
           if grep -Eq '^UNSUPPORTED,' "${case_log}" || is_unsupported_output "${case_log}"; then
             unsupported=$((unsupported + 1))
             expected_cases=$((expected_cases - 1))
             transport_unsupported=1
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
             break
           fi
           if grep -Eq '^SKIP,' "${case_log}"; then
             expected_cases=$((expected_cases - 1))
             SKIPS+=("${pattern} current ${transport} ${size}B: skipped")
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
-          case_result_lines="$(count_result_lines "${pattern}" "${transport}" "${size}" "${case_log}")"
-          if [[ "${case_result_lines}" -eq 0 ]]; then
-            echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RESULTS_FILE}"
-            fail=$((fail + 1))
-            FAILURES+=("${pattern} current ${transport} ${size}B: no_result_lines")
-          else
-            result_lines=$((result_lines + case_result_lines))
-          fi
+          echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RESULTS_FILE}"
+          fail=$((fail + 1))
+          transport_failures=$((transport_failures + 1))
+          FAILURES+=("${pattern} current ${transport} ${size}B: no_result_lines")
         else
-          if is_unsupported_output "${case_log}"; then
+          append_case_output "${case_log}"
+          case_result_lines="$(count_result_lines "${pattern}" "${transport}" "${size}" "${case_log}")"
+          if [[ "${case_result_lines}" -gt 0 ]]; then
+            result_lines=$((result_lines + case_result_lines))
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
+            continue
+          fi
+          if grep -Eq '^UNSUPPORTED,' "${case_log}" || is_unsupported_output "${case_log}"; then
             echo "UNSUPPORTED,current,${pattern},${transport}" >> "${RESULTS_FILE}"
             unsupported=$((unsupported + 1))
             expected_cases=$((expected_cases - 1))
             transport_unsupported=1
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
             break
           fi
-          append_case_output "${case_log}"
+          if grep -Eq '^SKIP,' "${case_log}"; then
+            expected_cases=$((expected_cases - 1))
+            SKIPS+=("${pattern} current ${transport} ${size}B: skipped")
+            progress_table_header
+            progress_case_row "${pattern}" "${size}" "${case_log}"
+            continue
+          fi
           echo "FAIL,current,${pattern},${transport},${size},exit_nonzero" >> "${RESULTS_FILE}"
           fail=$((fail + 1))
+          transport_failures=$((transport_failures + 1))
           FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero")
         fi
+        progress_table_header
+        progress_case_row "${pattern}" "${size}" "${case_log}"
       done
 
       if [[ "${transport_unsupported}" -eq 1 ]]; then
-        continue
+        break
+      fi
+
+      if [[ "${RUNS}" -gt 1 && "${run}" -lt "${RUNS}" ]]; then
+        echo "      [cooldown ${RUN_COOLDOWN_MS}ms]"
+        sleep "$(python3 - <<PY
+print(${RUN_COOLDOWN_MS} / 1000.0)
+PY
+)"
       fi
     done
+
+    if [[ "${transport_unsupported}" -eq 1 ]]; then
+      echo "    Testing ${transport}: unsupported Done"
+    elif [[ "${transport_failures}" -gt 0 ]]; then
+      echo "    Testing ${transport}: (failures=${transport_failures}) Done"
+    else
+      echo "    Testing ${transport}: Done"
+    fi
+
+    if [[ "${transport_seen}" -lt "${transport_total}" ]]; then
+      echo "    [transport cooldown ${TRANSPORT_TRANSITION_MS}ms]"
+      sleep "$(python3 - <<PY
+print(${TRANSPORT_TRANSITION_MS} / 1000.0)
+PY
+)"
+    fi
   done
+
+  if [[ $((pattern_index + 1)) -lt "${#PATTERNS[@]}" ]]; then
+    echo "[pattern cooldown ${PATTERN_TRANSITION_MS}ms]"
+    sleep "$(python3 - <<PY
+print(${PATTERN_TRANSITION_MS} / 1000.0)
+PY
+)"
+  fi
 done
 
 table_output="$(render_tables)"

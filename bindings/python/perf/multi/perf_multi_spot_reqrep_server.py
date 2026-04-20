@@ -13,6 +13,10 @@ from perf_multi_common import (
 
 
 SERVICE_NAME = "spot-svc"
+SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
+SERVER_SPOT_RID = b"SPOT-REQREP-SERVER-SPOT"
+
+
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     connect_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
@@ -26,9 +30,11 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as data_node:
+            data_node.set_routing_id(SERVER_NODE_RID)
             data_node.bind(benchmark_endpoint(args.transport, "multi-spot-reqrep"))
             data_endpoint = data_node.last_endpoint()
             with data_node.create_spot() as replier:
+                replier.set_routing_id(SERVER_SPOT_RID)
                 control_listener = None
                 start_sender = [None]
 
@@ -111,12 +117,6 @@ def main(argv=None):
 
                 print(f"READY,{data_endpoint}", flush=True)
                 print(f"CONTROL_READY,tcp://127.0.0.1:{start_port}", flush=True)
-                print(
-                    "ROUTE_READY,"
-                    f"{data_node.routing_id.to_bytes().hex()},"
-                    f"{replier.routing_id.to_bytes().hex()}",
-                    flush=True,
-                )
 
                 deadline = time.perf_counter() + connect_timeout_s
                 while time.perf_counter() < deadline:

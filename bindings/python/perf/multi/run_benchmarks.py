@@ -465,16 +465,6 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 stdout_chunks=stdout_chunks,
             )
             control_endpoint = control_ready.split(",", 1)[1]
-            server_node_rid = ""
-            server_spot_rid = ""
-            if pattern == "SPOT_REQREP":
-                route_ready = _wait_for_control_line(
-                    server,
-                    ("ROUTE_READY,",),
-                    timeout_s=ready_timeout_s,
-                    stdout_chunks=stdout_chunks,
-                )
-                _, server_node_rid, server_spot_rid = route_ready.split(",", 2)
             client_cmd = [
                 sys.executable,
                 str(client_path),
@@ -489,15 +479,6 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 "--transport",
                 transport,
             ]
-            if pattern == "SPOT_REQREP":
-                client_cmd.extend(
-                    [
-                        "--server-node-rid",
-                        server_node_rid,
-                        "--server-spot-rid",
-                        server_spot_rid,
-                    ]
-                )
             client = subprocess.Popen(
                 client_cmd,
                 cwd=str(ROOT.parent.parent),
@@ -765,6 +746,7 @@ def main(argv=None):
         for transport_index, transport in enumerate(pattern_transports):
             _append_line(sections, f"    Testing {transport} | {size_label}:")
             transport_failures = 0
+            transport_all_unsupported = True
             run_outputs = {msg_size: [] for msg_size in pattern_msg_sizes}
             if runs == 1:
                 for header_line in table_header_lines():
@@ -795,10 +777,12 @@ def main(argv=None):
                         run_outputs[msg_size].append(output)
                     metrics = _result_metrics_for_case(output, pattern, transport, msg_size)
                     if metrics:
+                        transport_all_unsupported = False
                         _append_line(sections, _metric_row(pattern, msg_size, metrics))
                     elif status_kind == "unsupported":
-                        _append_line(sections, _status_row(msg_size, "UNSUPPORTED"))
+                        _append_line(sections, _status_row(msg_size, "N/A"))
                     else:
+                        transport_all_unsupported = False
                         if status_kind == "fail":
                             failures.append(
                                 f"- MULTI_{pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
@@ -840,6 +824,7 @@ def main(argv=None):
                             run_outputs[msg_size].append(output)
                         metrics = _result_metrics_for_case(output, pattern, transport, msg_size)
                         if metrics:
+                            transport_all_unsupported = False
                             _append_line(
                                 sections,
                                 _metric_row(pattern, msg_size, metrics, indent="        "),
@@ -847,9 +832,10 @@ def main(argv=None):
                         elif status_kind == "unsupported":
                             _append_line(
                                 sections,
-                                _status_row(msg_size, "UNSUPPORTED", indent="        "),
+                                _status_row(msg_size, "N/A", indent="        "),
                             )
                         else:
+                            transport_all_unsupported = False
                             if status_kind == "fail":
                                 failures.append(
                                     f"- MULTI_{pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
@@ -869,6 +855,7 @@ def main(argv=None):
                         run_outputs[msg_size], pattern, transport, msg_size
                     )
                     if metrics:
+                        transport_all_unsupported = False
                         _append_line(
                             sections,
                             _metric_row(pattern, msg_size, metrics, indent="        "),
@@ -876,16 +863,20 @@ def main(argv=None):
                     elif any(_status_kind(output) == "unsupported" for output in run_outputs[msg_size]):
                         _append_line(
                             sections,
-                            _status_row(msg_size, "UNSUPPORTED", indent="        "),
+                            _status_row(msg_size, "N/A", indent="        "),
                         )
                     else:
+                        transport_all_unsupported = False
                         _append_line(
                             sections,
                             _status_row(msg_size, "FAIL", indent="        "),
                         )
-            suffix = (
-                f"(failures={transport_failures}) Done" if transport_failures else "Done"
-            )
+            if transport_all_unsupported:
+                suffix = "unsupported Done"
+            elif transport_failures:
+                suffix = f"(failures={transport_failures}) Done"
+            else:
+                suffix = "Done"
             _append_line(sections, f"    Testing {transport}: {suffix}")
             if transport_index + 1 < len(pattern_transports):
                 _append_line(

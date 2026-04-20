@@ -26,6 +26,9 @@ from perf_multi_common import (
     wait_monitor_event,
 )
 
+SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
+SERVER_SPOT_RID = b"SPOT-REQREP-SERVER-SPOT"
+
 
 def _parse_args(argv):
     parser = argparse.ArgumentParser(prog="perf_multi_spot_reqrep_client.py")
@@ -34,14 +37,10 @@ def _parse_args(argv):
     parser.add_argument("--duration", type=float, default=5.0)
     parser.add_argument("--msg-size", type=int, default=64)
     parser.add_argument("--clients", type=int, default=100)
-    parser.add_argument("--server-node-rid", required=True)
-    parser.add_argument("--server-spot-rid", required=True)
     args = parser.parse_args(argv)
     if args.duration <= 0 or args.msg_size < HEADER_SIZE or args.clients <= 0:
         raise SystemExit("invalid perf arguments")
     args.transport = args.transport.lower()
-    args.server_node_rid = bytes.fromhex(args.server_node_rid)
-    args.server_spot_rid = bytes.fromhex(args.server_spot_rid)
     return args
 
 
@@ -206,8 +205,8 @@ def main(argv=None):
                                 )
                                 if send_to_spot_nonblocking(
                                     current_sock,
-                                    args.server_node_rid,
-                                    args.server_spot_rid,
+                                    SERVER_NODE_RID,
+                                    SERVER_SPOT_RID,
                                     [bytes(payload)],
                                 ):
                                     waiting_reply[index] = True

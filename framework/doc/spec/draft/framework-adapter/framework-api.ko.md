@@ -42,8 +42,8 @@
 - codec, timeout, target channel을 설정할 수 있다.
 - gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
-- framework runtime은 접근하는 channel마다 별도 outbound runtime을 관리할 수
-  있어야 한다.
+- framework runtime은 등록한 outbound channel마다 별도 outbound runtime을 관리할
+  수 있어야 한다.
 - 단순 unary request 외에 event publish와 필요하면 aggregate helper를 분리할 수
   있어야 한다.
 - 운영 점검이나 관리 API에서는 Registry topology snapshot/query 결과를 읽는
@@ -55,7 +55,7 @@
 
 framework가 직접 통합할 transport 축은 [overview.ko.md](./overview.ko.md)의
 section 2에 정의되어 있다. 이 문서에서 다루는 API 표면 범위는 그 중
-`ROUTER <-> ROUTER`, `PUB/SUB`, `STREAM` 세 축이다. `SPOT`은
+channel messaging, `PUB/SUB`, `STREAM` 세 축이다. `SPOT`은
 [dotnet/aspnet-core-spot.ko.md](./dotnet/aspnet-core-spot.ko.md) 등 별도
 문서에서 따로 다룬다.
 
@@ -66,8 +66,8 @@ section 2에 정의되어 있다. 이 문서에서 다루는 API 표면 범위�
 
 ### 3.1 기대하는 표면
 
-- `AddZlinkMessaging(...)`
-- `MapZlinkHandlers()` 또는 그와 비슷한 endpoint 등록
+- `AddZLinkFramework(...)`
+- `AddZLinkHandlersFromAssemblyContaining<...>()` 또는 그와 비슷한 등록
 - outbound client DI
 - `SPOT` node / publisher / subscriber의 hosted lifecycle 통합
 - stream hosted lifecycle 또는 stream handler 등록
@@ -75,25 +75,32 @@ section 2에 정의되어 있다. 이 문서에서 다루는 API 표면 범위�
 ### 3.2 예시
 
 ```csharp
-builder.Services.AddZlinkMessaging();
-
-app.MapZlinkHandlers();
-
-public sealed class ProfileHandler
+builder.Services.AddZLinkFramework(options =>
 {
-    [ZlinkHandler("profile.get")]
-    public Task<ProfileReply> HandleAsync(ProfileRequest request, ZlinkContext ctx)
+    options.ChannelName = "profile";
+    options.AddOutboundChannel("account");
+});
+
+builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
+
+public sealed class ProfileHandlers
+{
+    [ZLinkRequest]
+    public ValueTask<ProfileReply> GetAsync(
+        GetProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
     {
-        return Task.FromResult(new ProfileReply());
+        return ValueTask.FromResult(new ProfileReply());
     }
 }
 ```
 
 이 예시에서 중요한 점은 handler가 raw header part를 직접 받지 않는다는 점이다.
-필요한 metadata는 `ZlinkContext`에서 조회한다.
+필요한 metadata는 `ZLinkRequestContext` 같은 context에서 조회한다.
 
-또한 outbound 호출은 framework가 channel별 outbound runtime을 내부에서 lazy하게
-만들어 관리하는 쪽이 기본 방향이다.
+또한 outbound 호출은 framework가 startup 시점에 등록한 outbound channel 기준으로
+관리하는 쪽을 기본 방향으로 본다.
 
 보다 자세한 `.NET` 초안은 [dotnet/README.ko.md](./dotnet/README.ko.md)를 참고한다.
 
@@ -111,12 +118,16 @@ RSocket의 `@MessageMapping`과 비슷한 경험을 주는 방향이 적합하�
 @ZlinkController
 public final class ProfileController {
 
-    @ZlinkMapping("profile.get")
-    public Mono<ProfileReply> get(ProfileRequest request, ZlinkContext ctx) {
+    @ZlinkMapping(packetName = "profile.get")
+    public Mono<ProfileReply> get(ProfileRequest request, ZLinkContext ctx) {
         return Mono.just(new ProfileReply());
     }
 }
 ```
+
+여기서는 annotation에 packet 이름을 직접 적는 예시를 들었지만, 실제 구현에서는
+request 타입 이름을 기본 packet key로 삼고 annotation 값은 explicit override로
+쓰는 쪽이 더 자연스럽다.
 
 ## 5. NestJS 방향
 
@@ -132,15 +143,18 @@ NestJS는 메시지 기반 프로그래밍 모델이 이미 익숙하므로, 가
 @Controller()
 export class ProfileController {
   @MessagePattern('profile.get')
-  getProfile(data: ProfileRequest, ctx: ZlinkContext): Promise<ProfileReply> {
+  getProfile(data: ProfileRequest, ctx: ZLinkContext): Promise<ProfileReply> {
     return Promise.resolve({} as ProfileReply);
   }
 
   @EventPattern('cache.invalidate')
-  invalidate(data: InvalidateEvent, ctx: ZlinkContext): void {
+  invalidate(data: InvalidateEvent, ctx: ZLinkContext): void {
   }
 }
 ```
+
+NestJS 예시도 같은 맥락이다. decorator 값은 packet key 또는 event name override
+예시로 보는 편이 맞다.
 
 ## 6. 아직 확정하지 않는 것
 

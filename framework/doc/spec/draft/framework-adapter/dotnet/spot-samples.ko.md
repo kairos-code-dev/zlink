@@ -182,6 +182,48 @@ var app = builder.Build();
 app.Run();
 ```
 
+### 3.1.1 outbound-only spot client 앱
+
+`SPOT`도 local `SpotNode`를 열지 않고, 다른 channel이나 다른 spot으로만 outbound
+호출하는 앱이 있을 수 있다. 이런 경우에는 `IZLinkSpotClient`만 주입받아 쓰고,
+local `SpotNode`와 local spot runtime은 만들지 않는다.
+
+```csharp
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddZLinkFramework(options =>
+{
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
+    options.Codecs.AddProtobuf();
+
+    options.UseDiscovery(registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+    });
+});
+
+var app = builder.Build();
+
+app.MapPost("/stage/query", async (
+    GetStageStateHttpRequest request,
+    IZLinkSpotClient spotClient,
+    CancellationToken cancellationToken) =>
+{
+    var reply = await spotClient.RequestChannelAsync(
+        "orders",
+        new GetStageStateRequest { StageRid = request.StageRid },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(reply);
+});
+
+app.Run();
+```
+
 ### 3.2 spot 객체
 
 ```csharp

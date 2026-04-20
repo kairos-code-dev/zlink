@@ -63,8 +63,8 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 | 개념 | 다루는 곳 | 다른 문서에서는 |
 |------|----------|---------------|
 | 인터페이스, attribute, context 전체 정의 | handler-interfaces | 교차 참조 |
-| channel 등록 (AddZLinkFramework), lifecycle | service-messaging | 필요하면 링크 |
-| handler/client 사용 예시, dispatch 흐름 | service-messaging, 샘플 | |
+| channel 등록 (AddZLinkFramework), lifecycle | aspnet-core-channel-messaging | 필요하면 링크 |
+| handler/client 사용 예시, dispatch 흐름 | aspnet-core-channel-messaging, 샘플 | |
 | SPOT 개념, 등록, lifecycle | aspnet-core-spot | 필요하면 링크 |
 | Registry 구동, topology 조회 | aspnet-core-registry | 필요하면 링크 |
 

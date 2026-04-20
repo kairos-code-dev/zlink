@@ -44,7 +44,7 @@ typed request body를 받고, header metadata가 필요하면 context에서 조�
 |------|------|
 | `message-kind` | request, response, command, event 구분 |
 | `channel` | 논리 channel 이름 |
-| `method` 또는 `pattern` | handler 선택에 쓰는 이름 |
+| `packet-name` | handler 선택에 쓰는 이름 |
 | `content-type` | body codec 식별 |
 | `correlation-id` | 요청과 응답 연결 |
 | `deadline` 또는 `timeout` | 시간 제한 전달 |
@@ -92,20 +92,23 @@ binding 또는 framework 위에 얹는 별도 codec extension/provider 계층으
 
 - `message-kind = request`
 - `correlation-id` 필수
-- `method` 또는 그와 같은 handler 식별값 필요
+- `packet-name` 필요
+- local `ROUTER(server)`가 받은 request는 `packet-name` 기준으로 handler에 dispatch한다
 
 ### 5.2 response
 
 - `message-kind = response`
 - 같은 `correlation-id`를 되돌려 준다
 - 성공이면 `status`, 실패면 `status + error-code`를 함께 보낸다
+- outbound `DEALER(client)`가 받은 response는 일반 handler dispatch 대상이 아니라,
+  먼저 보낸 request의 pending reply를 완료하는 데 쓴다
 
 ## 6. 이벤트의 기본 의미
 
 이벤트는 응답을 기대하지 않으므로 아래가 핵심이다.
 
 - `message-kind = event`
-- `pattern` 또는 `event-name`
+- `packet-name` 또는 `event-name`
 - 선택적 metadata
 
 ## 7. stream에 대한 별도 메모

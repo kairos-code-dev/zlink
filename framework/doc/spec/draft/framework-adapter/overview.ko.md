@@ -20,7 +20,7 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 `ZLink Framework`는 아래 기능을 하나의 방향으로 묶는다.
 
 - server-to-server send/request
-- router-to-router integration
+- channel messaging integration
 - pub/sub integration
 - spot integration
 - stream integration
@@ -36,7 +36,8 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 
 현재 이 초안은 아래 네 축을 직접 통합 대상으로 본다.
 
-1. `ROUTER <-> ROUTER`
+1. channel messaging
+   `DEALER(client) -> ROUTER(server)`
 2. `SPOT`
 3. `PUB/SUB`
 4. `STREAM`

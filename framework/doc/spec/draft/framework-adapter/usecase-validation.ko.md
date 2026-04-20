@@ -26,7 +26,7 @@ use case를 설명할 틀을 갖추었는지를 본다.
 
 | use case | 필요한 모델 | 현재 초안 상태 | 판정 | 메모 |
 |----------|-------------|----------------|------|------|
-| [Service To Service RPC](./use-cases/01-service-to-service-rpc.ko.md) | request-response | `interaction-model`, `message-model`, `framework-api`, `service-topology`에 설명 있음 | 만족 | 1차 핵심 범위 |
+| [Service To Service RPC](./use-cases/01-service-to-service-rpc.ko.md) | request-response | `interaction-model`, `message-model`, `framework-api`, `channel-topology`에 설명 있음 | 만족 | 1차 핵심 범위 |
 | [Playhouse Play To API](./use-cases/02-playhouse-play-to-api.ko.md) | request-response | channel별 client, Discovery, channel grouping 설명 있음 | 만족 | 대표 기준 use case |
 | [Worker Dispatch](./use-cases/03-worker-dispatch.ko.md) | worker-dispatch, command | 모델은 있으나 retry, in-flight failure, 처리 보장 논의가 부족함 | 부분 만족 | 후속 설계 필요 |
 | [Domain Event Fanout](./use-cases/04-domain-event-fanout.ko.md) | publish-subscribe | event 모델과 framework handler 방향이 설명됨 | 만족 | 일반 메시징 시스템 핵심 use case |

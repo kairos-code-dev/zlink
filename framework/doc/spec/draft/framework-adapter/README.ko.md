@@ -46,7 +46,7 @@ API 표면(6-7)으로 구체적인 모양을 보고, 마지막으로 검증(8)�
 | 제품 정의, 차별점, transport 축, 우선 범위 | overview | 필요하면 overview를 링크 |
 | 상호작용 모델 분류와 모델별 의미 | interaction-model | 필요하면 interaction-model을 링크 |
 | 메시지 구조, header 필드, codec | message-model | 필요하면 message-model을 링크 |
-| channel grouping, Discovery, 내부 매핑 | service-topology | 필요하면 service-topology를 링크 |
+| channel grouping, Discovery, 내부 매핑 | channel-topology | 필요하면 channel-topology를 링크 |
 | 프레임워크별 API 표면, DI, handler 등록 | framework-api, dotnet/ | 필요하면 해당 문서를 링크 |
 
 ## 4. 문서 작성 원칙

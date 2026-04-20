@@ -45,8 +45,10 @@
 - HTTP 호출이나 gRPC unary와 가장 비슷한 경험을 제공한다.
 - 현재 framework 초안의 기본 channel 요청 토대는
   `DEALER(client) -> ROUTER(server)`다.
-- node 간 직접 경로가 꼭 필요할 때만 `ROUTER <-> ROUTER`를 별도 내부 경로로
-  둔다.
+- 일반 handler dispatch는 local `ROUTER(server)`가 받은 request를 기준으로
+  설명한다.
+- outbound `DEALER(client)`가 받은 메시지는 기본적으로 reply 매칭 대상으로 보고,
+  일반 handler dispatch 경로에 넣지 않는다.
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` request/reply는
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - 다만 최신 SPOT topology 초안에서는 high-level public surface에서
@@ -62,8 +64,9 @@
   `DEALER(client) -> ROUTER(server)`다.
 - 다른 channel에 접근할 때는 그 channel에 붙은 `DEALER(client)`를 통해 보내는
   구조를 기본으로 본다.
-- node 간 직접 send가 꼭 필요할 때만 `ROUTER <-> ROUTER`를 별도 내부 경로로
-  둔다.
+- command를 받은 쪽의 handler dispatch도 local `ROUTER(server)` 기준으로
+  설명한다.
+- `ROUTER -> DEALER` 임의 push는 현재 channel messaging 공용 계약에 넣지 않는다.
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
@@ -105,6 +108,9 @@
 - 이 경로에서 wire header는 공용 handler 시그니처에 직접 노출하지 않는다.
   handler는 typed body와 context만 받는 편을 기본으로 본다.
 - header metadata가 필요하면 framework context에서 조회하게 한다.
+- 같은 이유로 channel messaging에서 일반 message dispatch는 local `ROUTER`
+  ingress를 기준으로 설명하는 편이 맞다. outbound `DEALER` 수신은 우선 reply
+  correlation 경로로 처리한다.
 - `dealer-dealer`는 현재 목표 범위에 넣지 않는다.
 - `SPOT`은 event 전파의 핵심 토대이지만, 필요할 때는 request/reply의 내부
   운반층으로도 쓸 수 있다. 다만 framework 공용 이름은 여전히 socket 이름보다

@@ -46,7 +46,15 @@ handler/controller 안에서도 똑같이 쓸 수 있어야 한다.
 
 ### 3.1 channel 등록
 
-현재 초안은 자동 연결과 수동 연결을 둘 다 열어 두는 편을 우선 가정한다.
+현재 초안은 자동 연결과 수동 연결을 둘 다 지원하되, **같은 outbound
+channel에서는 둘 중 하나만 선택**하는 편을 기본으로 본다.
+
+여기서 `ChannelName`은 "이 앱이 local provider로서 어떤 channel을 서빙하는가"를
+뜻하는 값으로 본다. 반대로 outbound 호출은 별도 outbound channel 등록을 통해
+선언하는 방향을 기본으로 본다. 즉 inbound handler를 붙이지 않고 outbound client만
+쓰는 앱이라면 `ChannelName` 없이도 시작할 수 있어야 한다. 그런 경우 runtime은
+local `ROUTER(server)`를 열지 않고, 등록된 remote channel마다 outbound
+`DEALER(client)` runtime만 만든다.
 
 자동 연결 예시는 아래와 같다.
 
@@ -54,6 +62,8 @@ handler/controller 안에서도 똑같이 쓸 수 있어야 한다.
 builder.Services.AddZLinkFramework(options =>
 {
     options.ChannelName = "api";
+    options.AddOutboundChannel("profile");
+    options.AddOutboundChannel("account");
     options.UseDiscovery(registry =>
     {
         registry.Add("tcp://registry1:5551");
@@ -63,7 +73,11 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 이 등록은 framework 전역 runtime, channel runtime factory, codec registry의 기본
-구성을 맡는다.
+구성을 맡는다. `AddOutboundChannel("profile")` 같은 선언은 그 channel에 접근할
+outbound runtime과 `DEALER(client)`를 framework가 관리한다는 뜻이다.
+
+위 예시는 local channel `api`를 서빙하는 애플리케이션 전제다. 실제로 local
+server 역할이 필요해지는 시점은 아래의 handler 등록을 함께 둘 때다.
 
 수동 연결 예시는 아래와 같이 둘 수 있다.
 
@@ -85,10 +99,38 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 이 경우 framework는 `Discovery`를 강제하지 않는다. channel별 outbound runtime이 수동으로
-주어진 peer 목록만 기준으로 연결을 관리한다.
+주어진 peer 목록만 기준으로 연결을 관리한다. 여기서 `connections.Add("profile", ...)`
+자체가 `profile` outbound channel을 선언하는 역할도 함께 한다.
 
-필요하면 두 방식을 함께 둘 수도 있다. 즉 자동 연결과 수동 연결은 서로 배타적
-기능이라기보다, channel runtime이 함께 가질 수 있는 두 종류의 연결 소스에 가깝다.
+앱 전체에서는 두 방식을 함께 둘 수 있다. 다만 그 뜻은 "같은 outbound channel이
+두 방식을 동시에 섞는다"가 아니다. 예를 들어 `profile` channel은 `Discovery`
+기반 자동 연결로 두고, `account` channel은 수동 연결로 둘 수 있다는 뜻이다.
+
+이 구분이 필요한 이유는 zlink core에서 `Discovery`가 붙은 `DEALER`는 수동
+`connect`, `disconnect`, `unbind`, `close`를 허용하지 않기 때문이다. 따라서
+framework도 같은 channel runtime 안에서 자동 연결과 수동 연결을 함께 섞는
+모델로 설명하면 안 된다.
+
+### 3.1.1 outbound-only 앱 예시
+
+아래처럼 local handler를 붙이지 않고 `IZLinkClient`만 쓰는 앱도 가능해야 한다.
+이 경우 framework는 local `ROUTER(server)`를 열지 않고, 등록한 remote channel에
+대해서만 outbound `DEALER(client)`를 만든다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
+    options.Codecs.AddProtobuf();
+    options.AddOutboundChannel("profile");
+
+    options.UseDiscovery(registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+        registry.Add("tcp://registry2:5551");
+    });
+});
+```
 
 ### 3.2 outbound client 등록
 
@@ -104,8 +146,12 @@ builder.Services.AddZLinkFramework(options =>
 
 - `IZLinkClient`는 DI로 주입된다.
 - 호출 대상은 gateway 주소가 아니라 `channel name`
-- runtime은 접근한 `channel name`마다 별도 outbound channel을 만든다.
-- 각 channel은 그 channel 전용 `Discovery`와 outbound socket을 가진다.
+- runtime은 등록한 outbound `channel name`마다 별도 outbound channel을 만든다.
+- 각 channel은 그 channel 전용 `Discovery`와 outbound `DEALER(client)` socket을 가진다.
+
+여기서 outbound `DEALER(client)`는 framework 관점에서 주로 request의 reply를
+받는 경로다. 일반 request/send handler dispatch는 local `ROUTER(server)`가 받은
+메시지를 기준으로 설명하는 편이 맞다.
 
 ### 3.3 handler 등록
 
@@ -130,8 +176,9 @@ builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 한다. 따라서 constructor injection은 일반 `ASP.NET Core` 서비스와 같은 방식으로
 동작해야 한다.
 
-여기서 `channelName`은 route prefix가 아니라 앱이 속한 local channel 이름이므로,
-handler class attribute보다 등록 옵션에 두는 편을 현재 방향으로 본다.
+여기서 `channelName`은 route prefix가 아니라 앱이 local provider로서 서빙하는
+channel 이름이므로, handler class attribute보다 등록 옵션에 두는 편을 현재
+방향으로 본다. 반대로 outbound-only 앱이라면 이 값을 생략할 수 있어야 한다.
 
 ## 4. 서버 쪽 프로그래밍 모델 초안
 
@@ -208,9 +255,10 @@ request-response와 event는 분리된 표면으로 보이는 편이 좋다.
 
 ### 4.3 inbound dispatch 시퀀스
 
-아래 시퀀스는 `GetProfileRequest` packet이 들어왔을 때 runtime이 handler를 찾고,
-DI로 handler를 resolve해서 응답을 돌려주는 흐름을 보여 준다. 이때 channel
-runtime은 `Discovery` 기반 자동 연결과 수동 연결 구성을 둘 다 가질 수 있다.
+아래 시퀀스는 `GetProfileRequest` packet이 local `ROUTER(server)`로 들어왔을 때
+runtime이 handler를 찾고, DI로 handler를 resolve해서 응답을 돌려주는 흐름을 보여
+준다. 여기서 outbound channel runtime은 startup 시점에 `Discovery` 기반 자동
+연결 또는 수동 연결 중 하나를 선택해 둔다.
 
 ```mermaid
 sequenceDiagram
@@ -229,7 +277,7 @@ sequenceDiagram
     participant H as ProfileHandlers
     participant SVC as IProfileService
 
-    Note over RT,MC: startup or first-use stage
+    Note over RT,MC: startup stage
     RT->>CH: GetOrCreateChannel("profile")
     alt discovery-based connection
         CH->>DISC: Attach channel view("profile")
@@ -238,7 +286,7 @@ sequenceDiagram
         CH->>MC: Load configured peers/endpoints
         MC-->>CH: target rid + endpoint set
     end
-    Note over CH: channel can support both modes
+    Note over CH: one outbound channel chooses one connection mode
 
     RP->>RT: request frame(packet=GetProfileRequest, body, headers)
     RT->>CH: Select inbound session / validate route
@@ -289,7 +337,14 @@ sequenceDiagram
 
 이 흐름에서 중요한 점은 아래와 같다.
 
-- channel runtime은 `Discovery` 기반 자동 연결과 수동 연결 구성을 둘 다 가질 수 있다.
+- outbound channel runtime은 `Discovery` 기반 자동 연결과 수동 연결 중 하나를
+  선택한다.
+- 하나의 앱은 channel마다 다른 연결 방식을 택할 수 있다. 예를 들어 `profile`은
+  자동 연결, `account`는 수동 연결로 둘 수 있다.
+- 일반 request/send handler dispatch는 local `ROUTER(server)` ingress를 기준으로
+  설명한다.
+- outbound `DEALER(client)` 수신은 우선 reply correlation 경로로 보고,
+  `ROUTER -> DEALER` 임의 push는 현재 channel messaging 공용 계약에 넣지 않는다.
 - framework는 handler 객체를 직접 `new` 하지 않고 `.NET DI`로 resolve한다.
 - filter pipeline이 있으면 handler 호출 전후를 감싼다.
 - 예외는 framework가 표준 오류 응답으로 매핑해서 reply로 돌려준다.
@@ -320,10 +375,17 @@ attribute 매핑과 `IZLinkClient`를 함께 쓴다"를 기본으로 본다.
 - `channelName` 기준 호출 -- Discovery가 대상을 선택
 
 그리고 기본 packet key는 request/message 타입 이름으로 해석한다.
-`PacketName`, `Timeout` 같은 변형은 별도 options로 모은다.
+`PacketName`, `Timeout` 같은 변형은 별도 options로 모은다. 호출 시점에는 등록된
+outbound channel 이름만 넘기고, 해당 channel의 dealer/runtime 생성과 관리는
+framework가 맡는다.
 
 즉 특정 channel의 `ROUTER(server)`를 `rid`로 직접 지정해 호출하는 표면은 두지
 않는다. `rid`를 넣는 routed 호출은 SPOT spot-to-spot 경로에서만 다룬다.
+
+중요한 점은 `IZLinkClient`를 쓴다고 해서 local `ROUTER(server)`가 항상 필요한
+것은 아니라는 점이다. local inbound handler를 등록하지 않은 앱은 dealer-only
+outbound runtime으로 충분하다. 다만 그 경우에도 어떤 remote channel에 접근할지는
+startup에서 등록해 두는 편을 현재 방향으로 본다.
 
 ### 5.2 HTTP handler에서의 사용
 
@@ -414,8 +476,9 @@ logging, validation, authorization, metrics, exception mapping 같은 공통 처
 ### 7.1 기본 방향
 
 - 호출자는 `channel name`만 지정한다.
-- `IZLinkClient`는 접근한 `channel name`마다 별도 channel을 lazy하게 만든다.
-- 각 channel은 그 channel view에 묶인 `Discovery`와 outbound socket을 가진다.
+- `IZLinkClient`는 등록된 `channel name`마다 별도 channel runtime을 가진다.
+- 각 channel은 그 channel view에 묶인 `Discovery`와 outbound `DEALER(client)`
+  socket을 가진다.
 - Discovery가 현재 channel view의 provider 목록을 유지한다.
 - framework는 그 channel의 `rid` 집합과 연결 상태를 보고 요청을 보낸다.
 - 필요하면 운영 점검용 별도 서비스가 `Registry` snapshot/query 결과를 읽어 현재

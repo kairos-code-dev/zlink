@@ -38,7 +38,7 @@
 - 케이스 문서는 "누가", "왜", "무엇을 기대하는가"를 먼저 적는다.
 - topology 이름은 설명에 필요할 때만 뒤쪽에 적는다.
 - 한 use case가 공통 설계에 요구하는 능력은 `interaction-model`,
-  `message-model`, `service-topology`, `framework-api` 문서에서 받아준다.
+  `message-model`, `channel-topology`, `framework-api` 문서에서 받아준다.
 - 어떤 케이스가 현재 초안으로 충분히 설명되지 않으면
   `usecase-validation.ko.md`에서 `부분 만족` 또는 `미해결`로 남긴다.
 - 비슷해 보이는 케이스라도 운영 요구가 다르면 문서를 분리한다.

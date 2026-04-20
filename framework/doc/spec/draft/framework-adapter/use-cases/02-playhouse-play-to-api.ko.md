@@ -25,13 +25,18 @@
 play 서버 개발자는 raw socket을 직접 열고 multipart framing을 손으로 맞추기보다,
 아래와 같은 형태를 원할 가능성이 크다.
 
-- `outgameClient.request("profile.get", req)`
-- `accountClient.request("inventory.get", req)`
+- `outgameClient.request(new GetProfileRequest(...))`
+- `accountClient.request(new GetInventoryRequest(...))`
 - channel별 client를 DI 또는 server bootstrap에서 받아 사용
+
+다만 현재 초안 기준으로는 packet 이름 문자열을 매번 직접 넘기기보다,
+`GetProfileRequest`, `GetInventoryRequest` 같은 request 타입 이름을 기본 packet
+key로 쓰는 편을 먼저 본다. 외부 계약 때문에 이름을 다르게 써야 할 때만
+별도 `PacketName` override를 둔다.
 
 서버 쪽 api 서버 개발자는 아래와 같은 형태를 원한다.
 
-- `profile.get` handler 등록
+- `GetProfileRequest` handler 등록
 - 요청 body를 typed object로 수신
 - 공통 header에서 session, correlation, deadline, caller 정보를 조회
 
@@ -43,7 +48,7 @@ play 서버 개발자는 raw socket을 직접 열고 multipart framing을 손으
 
 - `profile`
 - `inventory`
-- `api.payment`
+- `payment`
 
 play 서버가 여러 api channel에 요청을 보내야 한다면, 내부적으로는 channel별
 outbound client나 connection pool이 필요하다. 이때 사용자가 raw `DEALER`
@@ -72,7 +77,7 @@ play 서버는 `profile`, `inventory` 같은 `channel name`만 기준으로
 
 - `channel client`
 - `request handler`
-- `message name`
+- `packet key`
 - `request context`
 
 즉 사용자는 "dealer를 하나 더 만들까"보다

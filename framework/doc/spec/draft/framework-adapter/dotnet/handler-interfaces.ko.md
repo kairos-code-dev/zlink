@@ -63,8 +63,8 @@
 ```csharp
 public interface IZLinkHandlerContext
 {
-    string ServiceName { get; }
-    string Pattern { get; }
+    string? ChannelName { get; }
+    string? PacketName { get; }
     string? ContentType { get; }
     string? CorrelationId { get; }
     DateTimeOffset? Deadline { get; }
@@ -328,8 +328,9 @@ public interface IZLinkClient
 }
 ```
 
-runtime은 접근한 `channelName`마다 별도 outbound channel을 lazy하게 만든다.
-각 channel은 그 channel 전용 `Discovery`와 outbound socket을 가진다.
+runtime은 등록한 `channelName`마다 별도 outbound channel을 만든다.
+각 channel은 그 channel 전용 `Discovery` 또는 수동 연결 정보와 outbound socket을
+가진다.
 
 packet key 해석 규칙은 아래 순서를 기본으로 본다.
 
@@ -425,7 +426,7 @@ public interface IZLinkSpotClient
 ### 5.3 IZLinkEventPublisher
 
 일반 `PUB/SUB` event를 publish하는 인터페이스다.
-SPOT publish와 별도로, `ROUTER <-> ROUTER` 기반 서버간 messaging 쪽에서 쓴다.
+SPOT publish와 별도로, channel messaging 쪽에서 쓴다.
 
 ```csharp
 public interface IZLinkEventPublisher
@@ -597,7 +598,6 @@ public sealed class ZLinkRequestAttribute : Attribute
 {
     public ZLinkRequestAttribute();
     public string? PacketName { get; init; }
-    public string? ServiceName { get; init; }
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
@@ -605,7 +605,6 @@ public sealed class ZLinkSendAttribute : Attribute
 {
     public ZLinkSendAttribute();
     public string? PacketName { get; init; }
-    public string? ServiceName { get; init; }
 }
 ```
 
@@ -617,7 +616,6 @@ public sealed class ZLinkEventAttribute : Attribute
 {
     public ZLinkEventAttribute();
     public string? PacketName { get; init; }
-    public string? ServiceName { get; init; }
 }
 ```
 
@@ -684,9 +682,10 @@ framework가 강제하는 것은 class 구조가 아니라, resolved packet key 
 - framework는 별도 객체 생성기를 두기보다, `ASP.NET Core`가 쓰는
   `IServiceProvider`를 기준으로 handler invocation을 구성한다.
 
-`channelName`은 route prefix가 아니라 애플리케이션이 속한 local channel 이름이다.
-handler class attribute보다 등록 옵션(`options.ChannelName = "api"`)에 두는 편을
-현재 방향으로 본다.
+`channelName`은 route prefix가 아니라 애플리케이션이 local provider로서 서빙하는
+channel 이름이다. handler class attribute보다 등록 옵션
+(`options.ChannelName = "api"`)에 두는 편을 현재 방향으로 본다. 다만 outbound-only
+앱이라면 이 값은 생략할 수 있어야 한다.
 
 ## 14. 아직 확정하지 않는 것
 

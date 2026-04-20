@@ -31,15 +31,15 @@
 
 - `profile`
 - `inventory`
-- `api.payment`
+- `payment`
 - `game.stage.sync`
 
 클라이언트는 endpoint 주소보다 `channel name`을 먼저 기준으로 삼는다.
-현재 방향에서는 framework runtime도 이 기준을 그대로 따른다. 즉 outbound 요청
-경로는 "노드 하나에 모든 channel을 합쳐 관리하는 연결"보다, "접근하려는
-channel마다 별도 outbound socket을 두는 구조"를 기본으로 본다.
+현재 방향에서는 framework runtime도 이 기준을 그대로 따른다. 다만 outbound
+channel은 startup 등록을 통해 먼저 선언하고, framework가 그 channel마다 별도
+outbound socket을 두는 구조를 기본으로 본다.
 
-- `profile`에 처음 요청하면 `profile` 전용 channel을 만든다.
+- `profile` outbound channel을 등록하면 framework가 `profile` 전용 channel runtime을 만든다.
 - 이 channel은 그 channel view에 묶인 `Discovery`와 `DEALER(client)` outbound
   socket을 가진다.
 - 같은 `channel name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
@@ -49,6 +49,12 @@ channel마다 별도 outbound socket을 두는 구조"를 기본으로 본다.
 plane에서는 Registry topology snapshot/query 또는 원격 `RegistryQueryClient`로
 전체 provider 집합을 읽을 수도 있다.
 
+여기서 중요한 점은 같은 outbound channel이 자동 연결과 수동 연결을 동시에
+가질 수는 없다는 점이다. zlink core에서 `Discovery`가 붙은 `DEALER`는 수동
+`connect`를 허용하지 않기 때문이다. 따라서 framework는 channel마다 연결 방식을
+하나씩 고르고, 앱 전체에서는 channel별로 다른 방식을 나눠 쓰는 모델로 설명하는
+편이 맞다.
+
 이 구조가 일반적인 gateway 기반 호출 모델과 어떻게 다른지, 왜 gateway 없이도
 location transparency를 얻을 수 있는지는 [overview.ko.md](./overview.ko.md)의
 section 3을 참고한다.
@@ -57,8 +63,8 @@ section 3을 참고한다.
 
 | 공용 모델 | 내부 기본 매핑 초안 |
 |-----------|---------------------|
-| `request-response` | `DEALER(client) -> ROUTER(server)` channel 단위 요청; node 간 직접 경로가 필요하면 `ROUTER <-> ROUTER` |
-| `command` | `DEALER(client) -> ROUTER(server)` channel 단위 send; node 간 직접 send가 필요하면 `ROUTER <-> ROUTER` |
+| `request-response` | `DEALER(client) -> ROUTER(server)` channel 단위 요청 |
+| `command` | `DEALER(client) -> ROUTER(server)` channel 단위 send |
 | `publish-subscribe` | `PUB/SUB` 또는 같은 channel의 `SPOT` mesh |
 | `stream` | `STREAM` |
 | `worker-dispatch` | 별도 조합 모델 |
@@ -83,13 +89,18 @@ section 3을 참고한다.
 
 예를 들면 아래처럼 보는 편이 자연스럽다.
 
-- `IZLinkClient`가 `profile`에 요청하면 framework는 `profile` channel을 쓴다.
-- `IZLinkClient`가 `inventory`에 요청하면 framework는 `inventory` channel을 쓴다.
+- `IZLinkClient`가 `profile`에 요청하면 framework는 등록된 `profile` channel을 쓴다.
+- `IZLinkClient`가 `inventory`에 요청하면 framework는 등록된 `inventory` channel을 쓴다.
 - api 서버는 각 channel group에 대해 request handler를 제공한다.
 
 즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 channel마다 별도
 outbound socket을 가질 수 있다. 현재 초안은 이 channel별 outbound socket 구조를
 기본 방향으로 본다.
+
+그리고 channel messaging의 일반 handler dispatch는 local `ROUTER(server)`가
+받은 request 또는 command를 기준으로 설명하는 편이 맞다. outbound
+`DEALER(client)`가 받는 response는 먼저 보낸 request의 pending reply를 매칭하는
+경로로 보고, 일반 handler dispatch 경로와 섞지 않는다.
 
 ## 5. Discovery와 수동 연결
 
@@ -121,6 +132,7 @@ outbound socket을 가질 수 있다. 현재 초안은 이 channel별 outbound s
 ## 6. 범위 밖에 두는 것
 
 - `DEALER <-> DEALER`를 공용 모델로 노출하는 일
+- `ROUTER -> DEALER` 임의 push를 channel messaging 공용 API로 노출하는 일
 - raw multipart header를 application handler 인자로 직접 노출하는 일
 
 이 둘은 필요해지면 고급 문서에서 다루되, 현재 `ZLink Framework` 초안의 중심에는 두지

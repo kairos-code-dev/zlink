@@ -31,7 +31,7 @@
 - 대상 서버 주소를 직접 적지 않고, channel 이름 기준으로 보낼 수 있다.
 
 즉 사용자는 "몇 번 포트의 어느 peer에게 connect할까"보다
-"`profile.get` 요청을 어디로 보낼까"를 먼저 생각한다.
+"`profile` channel로 `GetProfileRequest`를 어디에 보낼까"를 먼저 생각한다.
 
 여기서 중요한 차별점은 위치투명성을 위해 별도 gateway를 강제하지 않는다는
 점이다. 기존 웹 시스템에서는 서비스 주소를 숨기기 위해 gateway를 두는 경우가
@@ -54,7 +54,7 @@ location-transparent 호출이 가능해야 한다.
 ## 4. 기대하는 처리 흐름
 
 1. 애플리케이션이 `profile-service` client를 DI로 받는다.
-2. client가 `profile.get` 요청을 header + body 메시지로 만든다.
+2. client가 `GetProfileRequest`를 header + body 메시지로 만든다.
 3. `ZLink Framework`가 `profile-service` 전용 channel을 통해 요청을 보낸다.
 4. 서버 handler가 요청을 처리한다.
 5. 응답 또는 에러가 같은 상관관계 정보와 함께 돌아온다.
@@ -74,7 +74,8 @@ location-transparent 호출이 가능해야 한다.
 ## 6. 이 use case가 설계에 주는 요구
 
 - `ZLink Framework`의 **기본 모델**은 request-response여야 한다.
-- `router-router`는 고급 내부 모델로 남길 수 있지만, 기본 서버 API로 삼는 것은
-  우선순위가 낮다.
+- `rid`를 직접 다루는 routed 호출은 고급 내부 모델로 남길 수 있지만, 기본 서버
+  API로 삼는 것은 우선순위가 낮다.
 - body codec은 고정하지 않아야 한다.
-- HTTP route나 gRPC method처럼 메시지 이름을 안정적으로 식별할 수 있어야 한다.
+- 기본 packet key를 안정적으로 정할 수 있어야 한다.
+- 기본 규칙만으로 부족하면 `PacketName` 같은 explicit override가 있어야 한다.

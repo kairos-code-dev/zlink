@@ -48,6 +48,7 @@ internal static class PerfMultiPubSubClient
             }
             DisposeAllQuietly(monitors);
             monitors.Clear();
+            WriteStdoutLine($"CLIENT_READY,{size}");
 
             var result = RunMultiPubSubClientLoop(pollManager, activeClients,
                 size, latencySampleCap, pollTimeoutMs, durationSeconds);

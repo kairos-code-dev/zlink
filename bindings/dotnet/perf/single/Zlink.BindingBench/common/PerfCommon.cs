@@ -4,7 +4,6 @@ using Zlink;
 
 internal static partial class PerfRunner
 {
-    internal const int SingleConnectWaitMs = 1000;
     private static readonly bool SinglePerfDebugEnabled =
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PERF_DEBUG"));
 

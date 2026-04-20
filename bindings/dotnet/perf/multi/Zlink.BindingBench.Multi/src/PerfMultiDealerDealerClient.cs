@@ -47,6 +47,7 @@ internal static class PerfMultiDealerDealerClient
             }
             DisposeAllQuietly(monitors);
             monitors.Clear();
+            WriteStdoutLine($"CLIENT_READY,{size}");
 
             var slots = CreateSlots(activeClients, size);
             if (!RunMultiDealerDealerClientLoop(pollManager, slots, size,

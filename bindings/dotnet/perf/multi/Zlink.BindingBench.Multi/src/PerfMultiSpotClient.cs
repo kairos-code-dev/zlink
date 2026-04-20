@@ -79,6 +79,7 @@ internal static class PerfMultiSpotClient
             control.SetRoutingId(RoutingId.FromBytes(
                 Encoding.ASCII.GetBytes($"spot-client-{index}")));
             control.Connect(config.ControlEndpoint);
+            WriteStdoutLine($"CONTROL_CONNECTED,{config.ControlEndpoint}");
 
             ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
             ApplySpotSubscriberOptions(node, options);
@@ -188,14 +189,17 @@ internal static class PerfMultiSpotClient
             slots[i].State.ActiveOpen = 1;
         }
 
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-            Thread.SpinWait(64);
+        int waitMs = Math.Max(1, config.DurationSeconds * 1000);
+        using (var activeWait = new ManualResetEventSlim(false))
+            activeWait.Wait(waitMs);
 
         for (int i = 0; i < slots.Count; i++)
             slots[i].State.ActiveOpen = 0;
 
         long measureCount = 0;
-        var samples = new List<double>();
+        var samples = new List<double>(Math.Max(0, config.LatencySampleCap));
+        long sampleSeen = 0;
+        uint rng = 0xA341316Cu;
         for (int i = 0; i < slots.Count; i++)
         {
             if (slots[i].State.Error != null)
@@ -205,7 +209,8 @@ internal static class PerfMultiSpotClient
             }
 
             measureCount += slots[i].State.MeasureCount;
-            samples.AddRange(slots[i].State.LatencySamples);
+            MergeLatencySamples(slots[i].State.LatencySamples, samples,
+                ref sampleSeen, config.LatencySampleCap, ref rng);
         }
 
         if (measureCount <= 0)
@@ -223,6 +228,15 @@ internal static class PerfMultiSpotClient
         PrintResult(Pattern, config.Transport, config.Size, throughput,
             latencyNs, latencyP95Ns, latencyP99Ns);
         return 0;
+    }
+
+    private static void MergeLatencySamples(IReadOnlyList<double> source,
+        List<double> target, ref long seenCount, int cap, ref uint rng)
+    {
+        for (int i = 0; i < source.Count; i++)
+        {
+            ReservoirSample(target, source[i], ref seenCount, cap, ref rng);
+        }
     }
 
     private static void DrainSubscriber(Spot subscriber,

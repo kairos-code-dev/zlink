@@ -77,21 +77,6 @@ internal static partial class PerfRunner
         return ReceiveBlocking(socket, buffer, RecvFlags.DontWait);
     }
 
-    internal static int ReceiveRetry(SocketBase socket, Span<byte> buffer,
-        RecvFlags flags = RecvFlags.None)
-    {
-        try
-        {
-            return ReceiveBlocking(socket, buffer, flags);
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno)
-                                        || ex.InternalErrno == 0)
-        {
-            return 0;
-        }
-    }
-
     internal static int DrainReadableSocket(SocketBase socket, Span<byte> buffer,
         PayloadHandler onMessage)
     {

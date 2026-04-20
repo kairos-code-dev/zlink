@@ -104,13 +104,20 @@ inline received_t recv_router_received (void *router_handle_,
     const zlink_routing_id_t *source_node_rid = NULL;
     const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
-    zlink_msg_t *parts = NULL;
+    zlink_msg_t *parts_native = NULL;
     size_t part_count = 0;
-    const recv_result_t rc = static_cast<recv_result_t> (zlink_router_recv (
-      router_handle_, &source_node_rid, &source_spot_rid, &request_seq, &parts,
-      &part_count, static_cast<zlink_recv_flags_t> (flags_)));
+    const ::socket_handle_t handle = {
+      static_cast<socket_base_t *> (router_handle_)};
+    const recv_result_t rc = static_cast<recv_result_t> (
+      detail::recv_result_from_rc (
+        socket_reqrep_internal::recv_router_message_direct (
+          handle, &source_node_rid, &source_spot_rid, &request_seq,
+          &parts_native, &part_count, static_cast<int> (flags_))));
     if (rc != recv_result_t::ok)
         throw recv_error_t (rc, zlink_errno ());
+    std::vector<message_t> parts;
+    if (detail::assign_parts_from_native (parts_native, part_count, parts) != 0)
+        throw last_error ();
 
     std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn;
     if (source_node_rid && source_node_rid->size > 0 && request_seq != 0u) {
@@ -125,13 +132,23 @@ inline received_t recv_router_received (void *router_handle_,
                 std::vector<zlink_msg_t> native;
                 if (detail::move_parts_to_native (reply_parts_, native) != 0)
                     throw last_error ();
+                size_t failed_index = 0;
                 const submit_result_t result = static_cast<submit_result_t> (
-                  zlink_router_reply_spot (
-                    router_handle_, routing_id_native (reply_node_rid),
-                    routing_id_native (reply_spot_rid), request_seq,
-                    native.data (), native.size ()));
-                if (result != submit_result_t::ok)
+                  detail::submit_native_parts (
+                    native, failed_index,
+                    [&] (zlink_msg_t *part_out_,
+                         zlink_part_flag_t part_flag_,
+                         bool) {
+                        return zlink_router_reply_spot_part (
+                          router_handle_, routing_id_native (reply_node_rid),
+                          routing_id_native (reply_spot_rid), request_seq,
+                          part_out_, part_flag_);
+                    }));
+                if (result != submit_result_t::ok) {
+                    detail::restore_parts_from_native (
+                      reply_parts_, native, failed_index);
                     throw submit_error_t (result, zlink_errno ());
+                }
             };
         } else {
             reply_fn = [router_handle_, reply_node_rid, request_seq] (
@@ -141,18 +158,34 @@ inline received_t recv_router_received (void *router_handle_,
                 std::vector<zlink_msg_t> native;
                 if (detail::move_parts_to_native (reply_parts_, native) != 0)
                     throw last_error ();
+                size_t failed_index = 0;
                 const submit_result_t result = static_cast<submit_result_t> (
-                  zlink_router_reply (
-                    router_handle_, routing_id_native (reply_node_rid),
-                    request_seq, native.data (), native.size ()));
-                if (result != submit_result_t::ok)
+                  detail::submit_native_parts (
+                    native, failed_index,
+                    [&] (zlink_msg_t *part_out_,
+                         zlink_part_flag_t part_flag_,
+                         bool) {
+                        return zlink_router_reply_part (
+                          router_handle_, routing_id_native (reply_node_rid),
+                          request_seq, part_out_, part_flag_);
+                    }));
+                if (result != submit_result_t::ok) {
+                    detail::restore_parts_from_native (
+                      reply_parts_, native, failed_index);
                     throw submit_error_t (result, zlink_errno ());
+                }
             };
         }
     }
-    return make_received (
-      source_node_rid, source_spot_rid, request_seq, request_seq != 0u, parts,
-      part_count, std::move (reply_fn));
+    return received_t (
+      (source_node_rid && source_node_rid->size > 0)
+        ? std::optional<routing_id_t> (routing_id_t (*source_node_rid))
+        : std::nullopt,
+      (source_spot_rid && source_spot_rid->size > 0)
+        ? std::optional<routing_id_t> (routing_id_t (*source_spot_rid))
+        : std::nullopt,
+      request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt,
+      std::move (parts), std::move (reply_fn));
 }
 
 } // namespace detail
@@ -323,14 +356,22 @@ class dealer_socket_t : public message_socket_t
             delete state;
             throw last_error ();
         }
-        const int rc = zlink_dealer_request (
-          handle (), native.data (), native.size (),
-          &detail::request_callback_trampoline, state,
-          ZLINK_SEND_FLAGS_NONE,
-          static_cast<uint32_t> (
-            detail::resolve_timeout (timeout_, _default_request_timeout)
-              .count ()));
+        size_t failed_index = 0;
+        const int rc = detail::submit_native_parts (
+          native, failed_index,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+              return zlink_dealer_request_part (
+                handle (), part_out_, ZLINK_SEND_FLAGS_NONE, part_flag_,
+                is_final_
+                  ? static_cast<uint32_t> (
+                      detail::resolve_timeout (timeout_, _default_request_timeout)
+                        .count ())
+                  : 0u,
+                is_final_ ? &detail::request_callback_trampoline : NULL,
+                is_final_ ? state : NULL);
+          });
         if (rc != 0) {
+            detail::close_native_parts (native, failed_index);
             delete state;
             throw last_error ();
         }
@@ -359,14 +400,23 @@ class dealer_socket_t : public message_socket_t
             delete state;
             throw last_error ();
         }
-        const int rc = zlink_dealer_request (
-          handle (), native.data (), native.size (),
-          &detail::request_callback_trampoline, state,
-          static_cast<zlink_send_flags_t> (flags_),
-          static_cast<uint32_t> (
-            detail::resolve_timeout (timeout_, _default_request_timeout)
-              .count ()));
+        size_t failed_index = 0;
+        const int rc = detail::submit_native_parts (
+          native, failed_index,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+              return zlink_dealer_request_part (
+                handle (), part_out_, static_cast<zlink_send_flags_t> (flags_),
+                part_flag_,
+                is_final_
+                  ? static_cast<uint32_t> (
+                      detail::resolve_timeout (timeout_, _default_request_timeout)
+                        .count ())
+                  : 0u,
+                is_final_ ? &detail::request_callback_trampoline : NULL,
+                is_final_ ? state : NULL);
+          });
         if (rc != 0) {
+            detail::close_native_parts (native, failed_index);
             delete state;
             throw last_error ();
         }
@@ -507,14 +557,23 @@ class router_socket_t : public routed_message_socket_t
             delete state;
             throw last_error ();
         }
-        const int rc = zlink_router_request (
-          handle (), routing_id_native (routing_id_), native.data (),
-          native.size (), &detail::request_callback_trampoline, state,
-          ZLINK_SEND_FLAGS_NONE,
-          static_cast<uint32_t> (
-            detail::resolve_timeout (timeout_, _default_request_timeout)
-              .count ()));
+        size_t failed_index = 0;
+        const int rc = detail::submit_native_parts (
+          native, failed_index,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+              return zlink_router_request_part (
+                handle (), routing_id_native (routing_id_), part_out_,
+                ZLINK_SEND_FLAGS_NONE, part_flag_,
+                is_final_
+                  ? static_cast<uint32_t> (
+                      detail::resolve_timeout (timeout_, _default_request_timeout)
+                        .count ())
+                  : 0u,
+                is_final_ ? &detail::request_callback_trampoline : NULL,
+                is_final_ ? state : NULL);
+          });
         if (rc != 0) {
+            detail::close_native_parts (native, failed_index);
             delete state;
             throw last_error ();
         }
@@ -545,14 +604,23 @@ class router_socket_t : public routed_message_socket_t
             delete state;
             throw last_error ();
         }
-        const int rc = zlink_router_request (
-          handle (), routing_id_native (routing_id_), native.data (),
-          native.size (), &detail::request_callback_trampoline, state,
-          static_cast<zlink_send_flags_t> (flags_),
-          static_cast<uint32_t> (
-            detail::resolve_timeout (timeout_, _default_request_timeout)
-              .count ()));
+        size_t failed_index = 0;
+        const int rc = detail::submit_native_parts (
+          native, failed_index,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+              return zlink_router_request_part (
+                handle (), routing_id_native (routing_id_), part_out_,
+                static_cast<zlink_send_flags_t> (flags_), part_flag_,
+                is_final_
+                  ? static_cast<uint32_t> (
+                      detail::resolve_timeout (timeout_, _default_request_timeout)
+                        .count ())
+                  : 0u,
+                is_final_ ? &detail::request_callback_trampoline : NULL,
+                is_final_ ? state : NULL);
+          });
         if (rc != 0) {
+            detail::close_native_parts (native, failed_index);
             delete state;
             throw last_error ();
         }
@@ -577,11 +645,18 @@ class router_socket_t : public routed_message_socket_t
         std::vector<zlink_msg_t> native;
         if (detail::move_parts_to_native (parts_, native) != 0)
             throw last_error ();
-        const int rc = zlink_router_reply (
-          handle (), routing_id_native (routing_id_), request_seq_,
-          native.data (), native.size ());
-        if (rc != 0)
+        size_t failed_index = 0;
+        const int rc = detail::submit_native_parts (
+          native, failed_index,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+              return zlink_router_reply_part (
+                handle (), routing_id_native (routing_id_), request_seq_,
+                part_out_, part_flag_);
+          });
+        if (rc != 0) {
+            detail::restore_parts_from_native (parts_, native, failed_index);
             throw last_error ();
+        }
     }
 
     void set_default_request_timeout (std::chrono::milliseconds timeout_)
@@ -628,13 +703,18 @@ class router_socket_t : public routed_message_socket_t
         std::vector<zlink_msg_t> native;
         if (detail::move_parts_to_native (parts_, native) != 0)
             throw last_error ();
+        size_t failed_index = 0;
         const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_router_send_spot (
-            handle (), routing_id_native (dest_node_rid_),
-            routing_id_native (dest_spot_rid_), native.data (), native.size (),
-            static_cast<zlink_send_flags_t> (flags_)));
+          detail::submit_native_parts (
+            native, failed_index,
+            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+                return zlink_router_send_spot_part (
+                  handle (), routing_id_native (dest_node_rid_),
+                  routing_id_native (dest_spot_rid_), part_out_,
+                  static_cast<zlink_send_flags_t> (flags_), part_flag_);
+            }));
         if (rc != submit_result_t::ok) {
-            detail::restore_parts_from_native (parts_, native);
+            detail::restore_parts_from_native (parts_, native, failed_index);
             throw submit_error_t (rc, zlink_errno ());
         }
     }
@@ -654,15 +734,24 @@ class router_socket_t : public routed_message_socket_t
             delete state;
             throw last_error ();
         }
+        size_t failed_index = 0;
         const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_router_request_spot (
-            handle (), routing_id_native (dest_node_rid_),
-            routing_id_native (dest_spot_rid_), native.data (), native.size (),
-            &detail::request_callback_trampoline, state, ZLINK_SEND_FLAGS_NONE,
-            static_cast<uint32_t> (
-              detail::resolve_timeout (timeout_, _default_request_timeout)
-                .count ())));
+          detail::submit_native_parts (
+            native, failed_index,
+            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+                return zlink_router_request_spot_part (
+                  handle (), routing_id_native (dest_node_rid_),
+                  routing_id_native (dest_spot_rid_), part_out_,
+                  is_final_ ? &detail::request_callback_trampoline : NULL,
+                  is_final_ ? state : NULL, ZLINK_SEND_FLAGS_NONE, part_flag_,
+                  is_final_
+                    ? static_cast<uint32_t> (
+                        detail::resolve_timeout (timeout_, _default_request_timeout)
+                          .count ())
+                    : 0u);
+            }));
         if (rc != submit_result_t::ok) {
+            detail::close_native_parts (native, failed_index);
             delete state;
             throw submit_error_t (rc, zlink_errno ());
         }
@@ -686,16 +775,25 @@ class router_socket_t : public routed_message_socket_t
             delete state;
             throw last_error ();
         }
+        size_t failed_index = 0;
         const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_router_request_spot (
-            handle (), routing_id_native (dest_node_rid_),
-            routing_id_native (dest_spot_rid_), native.data (), native.size (),
-            &detail::request_callback_trampoline, state,
-            static_cast<zlink_send_flags_t> (flags_),
-            static_cast<uint32_t> (
-              detail::resolve_timeout (timeout_, _default_request_timeout)
-                .count ())));
+          detail::submit_native_parts (
+            native, failed_index,
+            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+                return zlink_router_request_spot_part (
+                  handle (), routing_id_native (dest_node_rid_),
+                  routing_id_native (dest_spot_rid_), part_out_,
+                  is_final_ ? &detail::request_callback_trampoline : NULL,
+                  is_final_ ? state : NULL,
+                  static_cast<zlink_send_flags_t> (flags_), part_flag_,
+                  is_final_
+                    ? static_cast<uint32_t> (
+                        detail::resolve_timeout (timeout_, _default_request_timeout)
+                          .count ())
+                    : 0u);
+            }));
         if (rc != submit_result_t::ok) {
+            detail::close_native_parts (native, failed_index);
             delete state;
             throw submit_error_t (rc, zlink_errno ());
         }
@@ -713,13 +811,20 @@ class router_socket_t : public routed_message_socket_t
         std::vector<zlink_msg_t> native;
         if (detail::move_parts_to_native (parts, native) != 0)
             throw last_error ();
+        size_t failed_index = 0;
         const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_router_reply_spot (
-            handle (), routing_id_native (dest_node_rid_),
-            routing_id_native (dest_spot_rid_), request_seq_, native.data (),
-            native.size ()));
-        if (rc != submit_result_t::ok)
+          detail::submit_native_parts (
+            native, failed_index,
+            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+                return zlink_router_reply_spot_part (
+                  handle (), routing_id_native (dest_node_rid_),
+                  routing_id_native (dest_spot_rid_), request_seq_, part_out_,
+                  part_flag_);
+            }));
+        if (rc != submit_result_t::ok) {
+            detail::close_native_parts (native, failed_index);
             throw submit_error_t (rc, zlink_errno ());
+        }
     }
 
     template<typename DiscoveryT>

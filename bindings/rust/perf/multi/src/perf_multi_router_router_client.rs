@@ -1,5 +1,6 @@
 mod common;
 
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use zlink::*;
@@ -49,23 +50,21 @@ fn main() {
         }
     }
 
+    let latency = Arc::new(Mutex::new(common::LatencyStats::new()));
     let payload = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
     let mut threads = Vec::with_capacity(sockets.len());
     for sock in sockets {
         let target = server_rid.clone();
-        let transport = args.transport.clone();
         let msg_size = args.msg_size;
         let duration_seconds = settings.duration_seconds;
         let payload = payload.clone();
+        let latency = Arc::clone(&latency);
         threads.push(thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(duration_seconds);
-            let mut local_latencies = common::LatencyStats::new();
-            let mut count = 0u64;
             let mut seq = 1u64;
             let mut buf = payload;
             while Instant::now() < deadline {
                 common::encode_header(&mut buf, common::PHASE_ACTIVE, msg_size as u32, seq);
-                let sent_ns = common::now_ns();
                 let msg = Message::copy_from(&buf).expect("msg");
                 if sock.send(&target, msg).is_err() {
                     continue;
@@ -73,35 +72,25 @@ fn main() {
                 match sock.recv() {
                     Ok(received) => {
                         let data = common::message_payload(received.parts());
-                        if common::decode_phase(data) != common::PHASE_ACTIVE {
+                        if !common::is_valid_active_message(data, msg_size) {
                             continue;
                         }
                         let sent_ts_ns = common::decode_sent_ts_ns(data);
-                        let latency = common::now_ns()
-                            .saturating_sub(sent_ts_ns.max(sent_ns as i64) as u64)
-                            as f64;
-                        local_latencies.record_ns(latency);
-                        count += 1;
+                        let latency_ns =
+                            common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
+                        latency.lock().expect("latency lock").record_ns(latency_ns);
                         seq += 1;
                     }
                     Err(_) => {}
                 }
             }
-            (transport, msg_size, count, local_latencies.finish())
         }));
     }
 
-    let mut total = common::StatsResult::default();
     for handle in threads {
-        let (_transport, _msg_size, count, stats) = handle.join().expect("join");
-        total.count += count;
-        total.mean_ns += stats.mean_ns * count as f64;
-        total.p95_ns = total.p95_ns.max(stats.p95_ns);
-        total.p99_ns = total.p99_ns.max(stats.p99_ns);
+        handle.join().expect("join");
     }
-    if total.count > 0 {
-        total.mean_ns /= total.count as f64;
-    }
+    let total = latency.lock().expect("latency lock").finish();
 
     common::print_result(
         "MULTI_ROUTER_ROUTER",

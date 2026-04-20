@@ -16,6 +16,7 @@ final class PerfArgs {
         String transport = args[1].toLowerCase(Locale.ROOT);
         int size = Integer.parseInt(args[2]);
         int duration = 5;
+        int warmup = intEnv("PERF_SINGLE_WARMUP_SECONDS", 0);
         String recv = "recv";
         int ioThreads = intEnv("PERF_IO_THREADS", 0);
         int sendHwm = intEnv("PERF_SINGLE_SNDHWM",
@@ -30,6 +31,7 @@ final class PerfArgs {
         for (int i = 3; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
+                case "--warmup" -> warmup = Integer.parseInt(args[i + 1]);
                 case "--recv" -> {
                     recv = args[i + 1];
                     if (!"recv".equalsIgnoreCase(recv)) {
@@ -53,7 +55,7 @@ final class PerfArgs {
                 }
             }
         }
-        return new PerfUtil.Config(pattern, transport, size, duration,
+        return new PerfUtil.Config(pattern, transport, size, duration, warmup,
             recv, "", 1, 0, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
             recvTimeoutMs, monitorHwm, connectReadyTimeoutMs, connectConcurrency);
     }
@@ -69,6 +71,7 @@ final class PerfArgs {
         String transport = args[2].toLowerCase(Locale.ROOT);
         int size = Integer.parseInt(args[3]);
         int duration = 5;
+        int warmup = intEnv("PERF_MULTI_WARMUP_SECONDS", 0);
         String recv = "recv";
         String endpoint = "";
         int clients = 32;
@@ -91,6 +94,7 @@ final class PerfArgs {
         for (int i = 4; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
+                case "--warmup" -> warmup = Integer.parseInt(args[i + 1]);
                 case "--recv" -> {
                     recv = args[i + 1];
                     if (!"recv".equalsIgnoreCase(recv)) {
@@ -117,7 +121,7 @@ final class PerfArgs {
                 }
             }
         }
-        return new PerfUtil.Config(pattern, transport, size, duration,
+        return new PerfUtil.Config(pattern, transport, size, duration, warmup,
             recv, endpoint, clients, controlPort, ioThreads, sendHwm, recvHwm,
             sendTimeoutMs, recvTimeoutMs, monitorHwm, connectReadyTimeoutMs,
             connectConcurrency);

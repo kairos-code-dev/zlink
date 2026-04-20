@@ -17,7 +17,7 @@ from ._enums import (
     SocketType,
     SubmitResult,
 )
-from ._ffi import ZlinkMsg, lib
+from ._ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
 from ._core import (
     BindError,
     CloseError,
@@ -117,9 +117,18 @@ def _bool_bytes(value):
     return _int32_bytes(1 if value else 0)
 
 
-def _close_send_parts(parts_array, part_count):
-    for index in range(part_count):
+def _close_send_parts(parts_array, part_count, start=0):
+    for index in range(start, part_count):
         lib().zlink_msg_close(ctypes.byref(parts_array[index]))
+
+
+def _close_native_parts(native_parts, start=0):
+    for native in native_parts[start:]:
+        lib().zlink_msg_close(ctypes.byref(native))
+
+
+def _part_flag(part_index, part_count):
+    return ZLINK_PART_FINAL if part_index == part_count - 1 else ZLINK_PART_MORE
 
 
 def _classify_nonblocking_send_errno():
@@ -132,27 +141,50 @@ def _classify_nonblocking_send_errno():
 
 
 def _send_via_native_no_wait_result(handle, parts_array, part_count):
-    rc = lib().zlink_send(handle, parts_array, part_count, 1)
-    result = SubmitResult.OK if rc == 0 else _classify_nonblocking_send_errno()
-    if result is not SubmitResult.OK:
-        _close_send_parts(parts_array, part_count)
-    return result
+    for index in range(part_count):
+        rc = lib().zlink_send_part(
+            handle,
+            ctypes.byref(parts_array[index]),
+            1,
+            _part_flag(index, part_count),
+        )
+        if rc != 0:
+            result = _classify_nonblocking_send_errno()
+            _close_send_parts(parts_array, part_count, index)
+            return result
+    return SubmitResult.OK
 
 
 def _send_rid_via_native_no_wait_result(handle, routing_id, parts_array, part_count):
-    rc = lib().zlink_send_rid(handle, ctypes.byref(routing_id), parts_array, part_count, 1)
-    result = SubmitResult.OK if rc == 0 else _classify_nonblocking_send_errno()
-    if result is not SubmitResult.OK:
-        _close_send_parts(parts_array, part_count)
-    return result
+    for index in range(part_count):
+        rc = lib().zlink_send_part_rid(
+            handle,
+            ctypes.byref(routing_id),
+            ctypes.byref(parts_array[index]),
+            1,
+            _part_flag(index, part_count),
+        )
+        if rc != 0:
+            result = _classify_nonblocking_send_errno()
+            _close_send_parts(parts_array, part_count, index)
+            return result
+    return SubmitResult.OK
 
 
 def _publish_via_native_no_wait_result(handle, topic_bytes, parts_array, part_count):
-    rc = lib().zlink_publish(handle, topic_bytes, parts_array, part_count, 1)
-    result = SubmitResult.OK if rc == 0 else _classify_nonblocking_send_errno()
-    if result is not SubmitResult.OK:
-        _close_send_parts(parts_array, part_count)
-    return result
+    for index in range(part_count):
+        rc = lib().zlink_publish_part(
+            handle,
+            topic_bytes,
+            ctypes.byref(parts_array[index]),
+            1,
+            _part_flag(index, part_count),
+        )
+        if rc != 0:
+            result = _classify_nonblocking_send_errno()
+            _close_send_parts(parts_array, part_count, index)
+            return result
+    return SubmitResult.OK
 
 
 def _read_int32(raw):
@@ -454,31 +486,36 @@ class _BaseSocket:
     def _send_native_parts(self, native_parts, flags):
         _ensure_not_in_callback("blocking send")
         part_count = len(native_parts)
-        parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
-            parts_array[index] = native
-        rc = lib().zlink_send(self._handle, parts_array, part_count, int(flags))
-        if rc != 0:
-            for index in range(part_count):
-                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-        return rc
+            rc = lib().zlink_send_part(
+                self._handle,
+                ctypes.byref(native),
+                int(flags),
+                _part_flag(index, part_count),
+            )
+            if rc != 0:
+                err = lib().zlink_errno()
+                _close_native_parts(native_parts, index)
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
+        return 0
 
     def _send_native_parts_to_routing_id(self, routing_id, native_parts, flags):
         _ensure_not_in_callback("blocking send")
-        part_count = len(native_parts)
-        parts_array = (ZlinkMsg * part_count)()
-        for index, native in enumerate(native_parts):
-            parts_array[index] = native
         target = _copy_routing_id(routing_id)
-        rc = lib().zlink_send_rid(
-            self._handle, ctypes.byref(target), parts_array, part_count, int(flags)
-        )
-        if rc != 0:
-            for index in range(part_count):
-                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-        return rc
+        part_count = len(native_parts)
+        for index, native in enumerate(native_parts):
+            rc = lib().zlink_send_part_rid(
+                self._handle,
+                ctypes.byref(target),
+                ctypes.byref(native),
+                int(flags),
+                _part_flag(index, part_count),
+            )
+            if rc != 0:
+                err = lib().zlink_errno()
+                _close_native_parts(native_parts, index)
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
+        return 0
 
     def _set_raw_option(self, setter, option, value):
         ptr, size, keepalive = _send_buffer(value)
@@ -966,38 +1003,56 @@ class _PublisherSocket(_Socket):
         topic_bytes = _validated_c_string_value(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
-        parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
-            parts_array[index] = native
-        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, int(flags))
-        if rc != 0:
-            for index in range(part_count):
-                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+            rc = lib().zlink_publish_part(
+                self._handle,
+                topic_bytes,
+                ctypes.byref(native),
+                int(flags),
+                _part_flag(index, part_count),
+            )
+            if rc != 0:
+                err = lib().zlink_errno()
+                _close_native_parts(native_parts, index)
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
 
 
 class _SubscriberSocket(_Socket):
     def _subscribe_once(self, flags):
-        routing_id = ZlinkRoutingId()
-        parts = ctypes.POINTER(ZlinkMsg)()
-        part_count = ctypes.c_size_t()
+        routing_id = ctypes.POINTER(ZlinkRoutingId)()
         topic_buf = ctypes.create_string_buffer(256)
-        topic_len = ctypes.c_size_t(len(topic_buf))
-        rc = lib().zlink_subscribe(
-            self._handle,
-            ctypes.byref(routing_id),
-            ctypes.byref(parts),
-            ctypes.byref(part_count),
-            topic_buf,
-            ctypes.byref(topic_len),
-            flags,
-        )
-        if rc != 0:
-            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+        parts = []
+        try:
+            while True:
+                topic_len = ctypes.c_size_t()
+                native_part = ZlinkMsg()
+                has_more = ctypes.c_int()
+                rc = lib().zlink_subscribe_part(
+                    self._handle,
+                    ctypes.byref(routing_id),
+                    topic_buf,
+                    len(topic_buf),
+                    ctypes.byref(topic_len),
+                    ctypes.byref(native_part),
+                    ctypes.byref(has_more),
+                    int(flags),
+                )
+                if rc != 0:
+                    _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+                parts.append(native_part)
+                if has_more.value == 0:
+                    break
+        except Exception:
+            _close_native_parts(parts)
+            raise
 
-        owner = _ReceivedPartsOwner(parts, int(part_count.value))
+        part_count = len(parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native_part in enumerate(parts):
+            parts_array[index] = native_part
+        owner = _ReceivedPartsOwner(parts_array, part_count)
         topic = _decode_topic_text(topic_buf.raw[: topic_len.value])
-        routing = _routing_id_bytes(routing_id)
+        routing = _routing_id_bytes(routing_id.contents) if routing_id else None
         return TopicMessage(topic, owner, routing)
 
     def subscribe(self, *, flags=0):

@@ -53,8 +53,9 @@
 ### 3.1 Core 데이터 평면
 
 1. `.NET` `Socket.Send/Receive`는 바이트 버퍼 기반 단일 프레임 모델에 강하게 묶여 있다.
-2. 최신 `core` 공개 계약은 `zlink_send()` / `zlink_recv()`의 multipart 배열 모델과
-   `zlink_recv_handler()` / `zlink_subscribe_handler()` 기반 callback 모델을 중심으로 설명한다.
+2. 최신 `core` 공개 계약은 `zlink_send_part()` / `zlink_recv_part()` 중심의
+   multipart substrate와 `zlink_recv_handler()` / `zlink_subscribe_handler()`
+   기반 callback 모델을 중심으로 설명한다.
 3. `Message.More`, `zlink_msg_more`, `zlink_msg_get`, `zlink_msg_set`,
    `zlink_msg_send`, `zlink_msg_recv` 같은 구형 전제가 남아 있다.
 4. 최신 header에는 `zlink_msg_init_data`, `zlink_msg_refcnt`,
@@ -638,9 +639,9 @@ public sealed class ServiceMonitor : IDisposable
    - `zlink_registry_*_snapshot`, `topology_*`,
      `member_peers`, `member_peer_metadata`
    - `zlink_spot_node_*_snapshot/query`
-   - `zlink_publish`, `zlink_subscribe`,
+   - `zlink_publish_part`, `zlink_subscribe_part`,
      `zlink_set_subscription`, `zlink_unset_subscription`
-   - `zlink_send_rid`
+   - `zlink_send_part_rid`
 4. `NativeTypes.cs`에 최신 struct/enum mirror를 추가한다.
    - routing id
    - socket/service monitor open options

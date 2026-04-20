@@ -652,8 +652,8 @@ receiver.SetTlsServer(cert: certPath, key: keyPath);
 | `zlink_socket(ctx, type)` | `new Socket(ctx, SocketType.Pair)` 등 |
 | `zlink_bind(s, endpoint)` | `socket.Bind(endpoint)` |
 | `zlink_connect(s, endpoint)` | `socket.Connect(endpoint)` |
-| `zlink_send(s, buf, len, flags)` | `socket.Send(ReadOnlySpan<byte>, SendFlags)` |
-| `zlink_recv(s, buf, len, flags)` | `socket.Receive(Span<byte>, ReceiveFlags)` |
+| `zlink_send_part(s, &part, flags, ZLINK_PART_FINAL)` | `socket.Send(ReadOnlySpan<byte>, SendFlags)` |
+| `zlink_recv_part(s, &source_rid, &part, &has_more, flags)` | `socket.Receive(Span<byte>, ReceiveFlags)` |
 | `zlink_setsockopt(s, opt, val)` | `socket.SetOption(SocketOption.XXX, val)` |
 | `zlink_getsockopt(s, opt)` | `socket.GetOption<int>(SocketOption.XXX)` |
 | `zlink_poll(items, n, timeout)` | `Poller.Poll(timeoutMs)` |

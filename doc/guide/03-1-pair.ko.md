@@ -111,7 +111,7 @@ if (rc == ZLINK_RECV_OK) {
 
     | Language | Source |
     |----------|--------|
-    | C | [pair_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_recv_sample.c) |
+    | C | [pair_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pair_recv_sample.c) |
     | C++ | [pair_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_recv_sample.cpp) |
     | Java | [PairRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairRecvSample.java) |
     | Python | [pair_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_recv.py) |

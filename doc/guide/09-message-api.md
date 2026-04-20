@@ -429,8 +429,8 @@ Request-reply uses dedicated typed API surfaces:
 - **DEALER/ROUTER**: `zlink_dealer_request()`, `zlink_router_request()`,
   `zlink_router_reply()`, `zlink_router_recv()`
   -- see [DEALER Guide](03-3-dealer.md), [ROUTER Guide](03-4-router.md)
-- **SPOT routed request-reply**: `zlink_spot_request_router()`,
-  `zlink_spot_reply_spot()`, `zlink_spot_reply_router()`,
+- **SPOT routed request-reply**: `zlink_spot_reply_spot()`,
+  `zlink_spot_reply_router()`,
   `zlink_spot_handler()`, `zlink_spot_recv()`
   -- see [SPOT Guide](07-3-spot.md)
 - **SPOT channel request-reply**: `zlink_spot_request_channel()`,

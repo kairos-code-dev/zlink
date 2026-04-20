@@ -46,6 +46,7 @@ async function main() {
         console.log('[registry-query] service: "sample" -> snapshot: found');
     }
     finally {
+        node.close();
         discovery.close();
         query.close();
         registry.close();

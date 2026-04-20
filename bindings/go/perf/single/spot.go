@@ -29,13 +29,14 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	waitForSpotReady(publisher, subscriber)
+	perfcommon.PostReadySettle(cfg.pattern)
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
-		perfcommon.StampPayload(payload)
+		perfcommon.StampWindowPayload(payload, window.ActiveAt)
 		err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
@@ -55,7 +56,7 @@ func waitForSpotReady(publisher *zlink.Spot, subscriber *zlink.Spot) {
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "spot perf endpoint",
 		Probe: func() (bool, error) {
-			perfcommon.StampPayload(payload)
+			perfcommon.StampProbePayload(payload)
 			err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {
@@ -85,7 +86,7 @@ func drainSpotOnce(subscriber *zlink.Spot, stats *perfcommon.Stats, activeAt tim
 	}
 	part, err := message.SinglePartOrError()
 	if err == nil && stats != nil {
-		perfcommon.RecordMessageLatency(stats, activeAt, part)
+		perfcommon.RecordMessageLatency(stats, activeAt, len(part.Data()), part)
 	}
 	_ = message.Close()
 	return true

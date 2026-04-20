@@ -106,6 +106,13 @@ final class PerfPubSub {
             }, "single-pubsub-recv");
             recvThread.start();
 
+            long warmupEnd = System.nanoTime() + config.warmupSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < warmupEnd) {
+                try (Message warmup = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                    SingleSendLoops.runWithRetry(() -> pub.publish(TOPIC, List.of(warmup)));
+                }
+            }
             metrics.startActiveWindow();
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
@@ -116,7 +123,7 @@ final class PerfPubSub {
             }
             senderDone.set(true);
             PerfUtil.join(recvThread, "pubsub receiver",
-                Duration.ofSeconds(config.durationSeconds() + 10L));
+                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 10L));
             if (failure.get() != null) {
                 throw new IllegalStateException("pubsub receiver failed", failure.get());
             }

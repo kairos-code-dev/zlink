@@ -503,6 +503,40 @@ int zlink_socket_xpub_recv_internal (void *socket_,
     return 0;
 }
 
+zlink_recv_result_t zlink_xpub_recv_part (void *xpub_,
+                                           const zlink_routing_id_t **source_rid_out_,
+                                           int *subscribed_out_,
+                                           char *topic_id_buf_,
+                                           size_t topic_id_capacity_,
+                                           size_t *topic_id_len_out_,
+                                           zlink_recv_flags_t flags_)
+{
+    if (!subscribed_out_ || !topic_id_len_out_) {
+        errno = EFAULT;
+        return ZLINK_RECV_INVALID_HANDLE;
+    }
+    *topic_id_len_out_ = topic_id_capacity_;
+    zlink_routing_id_t tmp_rid;
+    memset (&tmp_rid, 0, sizeof (tmp_rid));
+    const int rc = zlink_socket_xpub_recv_internal (
+      xpub_, &tmp_rid, subscribed_out_, topic_id_buf_, topic_id_len_out_,
+      static_cast<zlink_send_flags_t> (flags_));
+    if (rc != 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN)
+            return ZLINK_RECV_NO_DATA;
+        if (err == ETERM)
+            return ZLINK_RECV_TERMINATED;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    if (source_rid_out_) {
+        static thread_local zlink_routing_id_t tl_rid;
+        tl_rid = tmp_rid;
+        *source_rid_out_ = &tl_rid;
+    }
+    return ZLINK_RECV_OK;
+}
+
 int zlink_socket_recv_internal (void *socket_,
                                 zlink_routing_id_t *source_rid_out_,
                                 zlink_msg_t **parts_out_,

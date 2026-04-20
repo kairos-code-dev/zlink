@@ -102,16 +102,19 @@ final class PerfRouterRouter {
 
             Thread traffic = SingleSendLoops.oneWaySend(
                 () -> sender.send(ROUTER1, List.of(PerfUtil.payload(
+                    config.size(), (byte) PerfUtil.PHASE_WARMUP, System.nanoTime()))),
+                () -> sender.send(ROUTER1, List.of(PerfUtil.payload(
                     config.size(), (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime()))),
                 () -> sender.send(ROUTER1, List.of(PerfUtil.payload(
                     config.size(), (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime()))),
+                config.warmupSeconds(),
                 config.durationSeconds(),
                 metrics::startActiveWindow,
                 failure,
                 finished);
             traffic.start();
             PerfUtil.await(finished, "router/router receiver",
-                Duration.ofSeconds(config.durationSeconds() + 30L));
+                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 30L));
             PerfUtil.join(traffic, "router/router sender", Duration.ofSeconds(10));
             PerfUtil.join(receiverThread, "router/router receiver thread",
                 Duration.ofSeconds(10));

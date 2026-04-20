@@ -1,6 +1,8 @@
 package perfcommon
 
 import (
+	"os"
+	"strconv"
 	"time"
 
 	"zlink"
@@ -13,20 +15,63 @@ type BenchmarkWindow struct {
 
 func NewBenchmarkWindow(warmup, duration time.Duration) BenchmarkWindow {
 	now := time.Now()
+	if warmup < 0 {
+		warmup = 0
+	}
+	activeAt := now.Add(warmup)
 	return BenchmarkWindow{
-		StopAt:   now.Add(duration),
-		ActiveAt: now,
+		StopAt:   activeAt.Add(duration),
+		ActiveAt: activeAt,
 	}
 }
 
-func RecordMessageLatency(stats *Stats, activeAt time.Time, part *zlink.Message) {
-	if sentAt, ok := SentAtFromMessage(part); ok && time.Now().After(activeAt) {
+func StampWindowPayload(payload []byte, activeAt time.Time) {
+	if time.Now().Before(activeAt) {
+		StampProbePayload(payload)
+		return
+	}
+	StampPayload(payload)
+}
+
+func RecordMessageLatency(stats *Stats, activeAt time.Time, msgSize int, part *zlink.Message) {
+	if sentAt, ok := SentAtFromMessage(part, msgSize); ok && time.Now().After(activeAt) {
 		stats.Add(sentAt)
 	}
 }
 
-func RecordBytesLatency(stats *Stats, activeAt time.Time, payload []byte) {
-	if sentAt, ok := SentAtFromBytes(payload); ok && time.Now().After(activeAt) {
+func RecordBytesLatency(stats *Stats, activeAt time.Time, msgSize int, payload []byte) {
+	if sentAt, ok := SentAtFromBytes(payload, msgSize); ok && time.Now().After(activeAt) {
 		stats.Add(sentAt)
 	}
+}
+
+func PostReadySettle(pattern string) {
+	duration := readySettleDuration(pattern)
+	if duration <= 0 {
+		return
+	}
+	time.Sleep(duration)
+}
+
+func readySettleDuration(pattern string) time.Duration {
+	switch pattern {
+	case "PUBSUB":
+		return durationFromEnv("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", time.Second)
+	case "SPOT":
+		return durationFromEnv("PERF_SINGLE_SPOT_READY_SETTLE_MS", time.Second)
+	default:
+		return 0
+	}
+}
+
+func durationFromEnv(name string, fallback time.Duration) time.Duration {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return fallback
+	}
+	return time.Duration(value) * time.Millisecond
 }

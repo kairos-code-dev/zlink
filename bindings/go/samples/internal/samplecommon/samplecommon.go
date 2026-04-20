@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -20,8 +19,7 @@ var counter uint64
 
 func Must(err error) {
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		panic(err)
 	}
 }
 
@@ -110,8 +108,7 @@ func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
 		Must(out.err)
 		return out.event
 	case <-time.After(5 * time.Second):
-		fmt.Fprintln(os.Stderr, "timed out waiting for monitor event")
-		os.Exit(1)
+		Must(fmt.Errorf("timed out waiting for monitor event"))
 		return nil
 	}
 }

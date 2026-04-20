@@ -97,8 +97,8 @@
   - 특화 옵션은 socket-family별 dedicated API
   - routing id / subscription은 전용 API
 - 메시지 계층:
-  - canonical send/recv는 `zlink_send`, `zlink_send_rid`, `zlink_recv`,
-    `zlink_publish`, `zlink_subscribe`
+  - canonical send/recv는 `zlink_send_part`, `zlink_send_part_rid`,
+    `zlink_recv_part`, `zlink_publish_part`, `zlink_subscribe_part`
   - raw helper는 공개 표면의 중심이 아니다
 - 콜백/이벤트 계층:
   - recv / subscribe / send-ready handler

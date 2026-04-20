@@ -34,16 +34,26 @@ async function main() {
         }
         const sent = 'ping';
         dealer.send(Buffer.from(sent));
-        const request = router.recv();
-        const recvReq = request.parts[0].data().toString();
-        assert.equal(recvReq, sent);
-        assert.ok(request.routingId instanceof zlink.RoutingId);
         const reply = 'pong';
-        router.send(request.routingId, Buffer.from(reply));
+        const request = router.recv();
+        try {
+            const recvReq = request.parts[0].data().toString();
+            assert.equal(recvReq, sent);
+            assert.ok(request.routingId instanceof zlink.RoutingId);
+            router.send(request.routingId, Buffer.from(reply));
+        }
+        finally {
+            request.close();
+        }
         const response = dealer.recv();
-        const recv = response.parts[0].data().toString();
-        assert.equal(recv, reply);
-        console.log(`[dealer-router/recv] send: "${sent}" \u2192 recv: "${recv}"`);
+        try {
+            const recv = response.parts[0].data().toString();
+            assert.equal(recv, reply);
+            console.log(`[dealer-router/recv] send: "${sent}" \u2192 recv: "${recv}"`);
+        }
+        finally {
+            response.close();
+        }
     }
     finally {
         dealer.close();

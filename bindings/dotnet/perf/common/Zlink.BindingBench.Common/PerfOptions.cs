@@ -103,10 +103,10 @@ public sealed record PerfOptions(
             string.Empty,
             recvMode,
             PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5),
-            0,
+            PerfEnv.ReadNonNegative("PERF_SINGLE_WARMUP_SECONDS", 0),
             PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200),
             PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200),
-            0,
+            PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000),
             0,
             0,
             Math.Max(1, PerfEnv.ReadPositive("PERF_CLIENTS", 1)),
@@ -145,28 +145,37 @@ public sealed record PerfOptions(
             size,
             endpoint,
             recvMode,
-            PerfEnv.ReadPositive("PERF_DURATION_SECONDS", 5),
-            PerfEnv.ReadNonNegative("PERF_WARMUP_SECONDS", 2),
-            PerfEnv.ReadPositive("PERF_SNDTIMEO_MS", 200),
-            PerfEnv.ReadPositive("PERF_RCVTIMEO_MS", 200),
-            PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 200),
+            PerfEnv.ReadPositive("PERF_MULTI_DURATION_SECONDS",
+                PerfEnv.ReadPositive("PERF_DURATION_SECONDS", 5)),
+            PerfEnv.ReadNonNegative("PERF_MULTI_WARMUP_SECONDS",
+                PerfEnv.ReadNonNegative("PERF_WARMUP_SECONDS", 2)),
+            PerfEnv.ReadPositive("PERF_MULTI_SNDTIMEO_MS",
+                PerfEnv.ReadPositive("PERF_SNDTIMEO_MS", 200)),
+            PerfEnv.ReadPositive("PERF_MULTI_RCVTIMEO_MS",
+                PerfEnv.ReadPositive("PERF_RCVTIMEO_MS", 200)),
+            PerfEnv.ReadPositive("PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+                PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 5000)),
             PerfEnv.ReadNonNegative("PERF_CLIENT_POLL_TIMEOUT_MS", 0),
             PerfEnv.ReadNonNegative("PERF_STREAM_TIMEOUT_MS", 5000),
             clients,
-            PerfEnv.ReadPositive("PERF_LATENCY_SAMPLE_CAP", 200000),
+            PerfEnv.ReadPositive("PERF_MULTI_LATENCY_SAMPLE_CAP",
+                PerfEnv.ReadPositive("PERF_LATENCY_SAMPLE_CAP", 200000)),
             PerfEnv.ReadPositive("PERF_IO_THREADS", 4),
             ResolveMultiMaxSockets(clients),
             0,
             0,
             0,
-            ResolveMultiHwmDefault(pattern),
-            PerfEnv.ReadNonNegative("PERF_SNDHWM", 0),
-            PerfEnv.ReadNonNegative("PERF_RCVHWM", 0),
+            PerfEnv.ReadPositive("PERF_MULTI_HWM", ResolveMultiHwmDefault(pattern)),
+            PerfEnv.ReadNonNegative("PERF_MULTI_SNDHWM",
+                PerfEnv.ReadNonNegative("PERF_SNDHWM", 0)),
+            PerfEnv.ReadNonNegative("PERF_MULTI_RCVHWM",
+                PerfEnv.ReadNonNegative("PERF_RCVHWM", 0)),
             0,
             0,
             0,
             0,
-            PerfEnv.ReadNonNegative("PERF_SERVER_BIND_PORT", 0),
+            PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT",
+                PerfEnv.ReadNonNegative("PERF_SERVER_BIND_PORT", 0)),
             PerfEnv.ReadNonNegative("PERF_ACTIVE_WARMUP", 0) == 1,
             PerfEnv.ReadPositive("PERF_PUBSUB_XPUB_NODROP", 1),
             PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1));
@@ -186,8 +195,16 @@ public sealed record PerfOptions(
 
     public int ResolveMultiHwm(string specificName)
     {
-        int specific = PerfEnv.ReadNonNegative(specificName, 0);
-        return specific > 0 ? specific : MultiHwm;
+        return specificName switch
+        {
+            "PERF_MULTI_SNDHWM" or "PERF_SNDHWM" => MultiSndHwm > 0
+                ? MultiSndHwm
+                : MultiHwm,
+            "PERF_MULTI_RCVHWM" or "PERF_RCVHWM" => MultiRcvHwm > 0
+                ? MultiRcvHwm
+                : MultiHwm,
+            _ => MultiHwm,
+        };
     }
 
     private static int ResolveSingleWarmupCount(string pattern)
@@ -232,9 +249,8 @@ public sealed record PerfOptions(
 
     private static int ResolveMultiHwmDefault(string pattern)
     {
-        return pattern.Equals("STREAM", StringComparison.OrdinalIgnoreCase)
-            ? 10
-            : 100;
+        _ = pattern;
+        return 1000;
     }
 
     private static int ResolveMultiMaxSockets(int clients)

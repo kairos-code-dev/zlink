@@ -217,8 +217,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertFalse(hasattr(spot, "send_to_spot"))
                     self.assertFalse(hasattr(spot, "request_to_spot"))
                     self.assertTrue(hasattr(spot, "reply_to_spot"))
-                    self.assertTrue(hasattr(spot, "send_to_router"))
-                    self.assertTrue(hasattr(spot, "request_to_router"))
                     self.assertTrue(hasattr(spot, "reply_to_router"))
                     self.assertTrue(hasattr(spot, "recv_routed"))
                     self.assertTrue(hasattr(spot, "on_routed_receive"))

@@ -52,6 +52,8 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     def jniOsIncludeDir = new File(jniIncludeDir, 'linux')
     inputs.file(source)
     inputs.dir(new File(repoRoot, 'core/include'))
+    inputs.dir(new File(repoRoot, 'core/src'))
+    inputs.dir(new File(repoRoot, 'core/build/core'))
     inputs.dir(linkDir)
     inputs.dir(jniIncludeDir)
     inputs.dir(jniOsIncludeDir)
@@ -59,13 +61,15 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     doFirst {
         outputDir.mkdirs()
     }
-    commandLine 'cc',
+    commandLine 'c++',
         '-shared',
         '-fPIC',
-        '-std=c11',
+        '-std=c++17',
         '-O2',
         '-pthread',
         '-I', new File(repoRoot, 'core/include').absolutePath,
+        '-I', new File(repoRoot, 'core/src').absolutePath,
+        '-I', new File(repoRoot, 'core/build/core').absolutePath,
         '-I', jniIncludeDir.absolutePath,
         '-I', jniOsIncludeDir.absolutePath,
         '-L', linkDir.absolutePath,

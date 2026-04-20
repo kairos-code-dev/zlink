@@ -1,5 +1,7 @@
 [스펙 목차](../../README.ko.md)
 
+[초안 묶음](./README.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md)
+
 # Draft -- ZLink Framework Overview
 
 > 이 문서는 **구현 전 초안**이다.
@@ -9,7 +11,7 @@
 ## 1. 한 줄 정의
 
 `ZLink Framework`는 zlink 바인딩 위에 올라가서, 기존 애플리케이션 프레임워크에서
-**gateway나 전용 로드밸런서 없이도** `channel_name` 기준의 직접 channel 호출,
+**gateway나 전용 로드밸런서 없이도** `channel name` 기준의 직접 channel 호출,
 pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상위
 계층이다.
 
@@ -59,7 +61,7 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 
 `ZLink Framework`는 이와 다른 방향을 기본으로 본다.
 
-- 호출자는 gateway 주소 대신 `channel_name`을 기준으로 요청한다.
+- 호출자는 gateway 주소 대신 `channel name`을 기준으로 요청한다.
 - framework runtime이 channel마다 별도 outbound socket을 만든다.
 - Discovery가 그 channel view 안의 provider 위치를 숨긴다.
 - framework는 그 channel 안의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.

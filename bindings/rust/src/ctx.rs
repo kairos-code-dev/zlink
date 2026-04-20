@@ -114,7 +114,7 @@ impl Context {
     }
 }
 
-impl<'a> ContextOptions<'a> {
+impl ContextOptions<'_> {
     pub fn io_threads(&self) -> Result<i32, ConfigError> {
         self.context
             .get_int_option(ffi::zlink_ctx_option_t::ZLINK_IO_THREADS as i32)

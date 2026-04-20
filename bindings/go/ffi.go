@@ -47,14 +47,6 @@ static inline int zlink_socket_monitor_handler_go(void *m, uintptr_t userdata) {
     return zlink_socket_monitor_handler(m, (zlink_socket_monitor_handler_fn)goZlinkMonitorTrampoline, (void *)userdata);
 }
 
-static inline int zlink_dealer_request_go(void *dealer, zlink_msg_t *parts, size_t part_count, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_dealer_request(dealer, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, 0, timeout_ms);
-}
-
-static inline int zlink_router_request_go(void *router, const zlink_routing_id_t *peer_rid, zlink_msg_t *parts, size_t part_count, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_router_request(router, peer_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, 0, timeout_ms);
-}
-
 static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {
     return zlink_discovery_resolve_spot(discovery, spot_rid, owner_node_rid_out);
 }

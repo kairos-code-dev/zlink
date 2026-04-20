@@ -94,31 +94,6 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress(
 
 ## Spot 데이터 평면 계약
 
-### Routed send/request to ROUTER
-
-```c
-zlink_submit_result_t zlink_spot_send_router(
-  void *spot,
-  const zlink_routing_id_t *peer_rid,
-  zlink_msg_t *parts,
-  size_t part_count,
-  zlink_send_flags_t flags);
-
-zlink_submit_result_t zlink_spot_request_router(
-  void *spot,
-  const zlink_routing_id_t *peer_rid,
-  zlink_msg_t *parts,
-  size_t part_count,
-  zlink_reply_handler_fn handler,
-  void *userdata,
-  zlink_send_flags_t flags,
-  uint32_t timeout_ms);
-```
-
-- 이 경로는 특정 peer `ROUTER`를 직접 지정해 보낸다.
-- public `Spot` 표면에는 더 이상 `dest_node_rid + dest_spot_rid`를 받는
-  direct send/request 함수가 없다.
-
 ### Channel send/request
 
 ```c
@@ -144,6 +119,7 @@ zlink_submit_result_t zlink_spot_request_channel(
 - lookup 키는 `channel_name`이다.
 - 같은 `channel_name`에 attach된 `DEALER`가 없으면 send/request는 실패한다.
 - channel request의 reply 귀속은 요청을 보낸 `DEALER`에 고정된다.
+- `Spot`에서는 direct `rid`로 `ROUTER`를 지정해 ordinary send/request를 하지 않는다.
 
 ### Topic publish/subscribe
 

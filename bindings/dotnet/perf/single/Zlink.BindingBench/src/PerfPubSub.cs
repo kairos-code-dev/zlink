@@ -80,6 +80,8 @@ internal static class PerfPubSub
         }
         catch (Exception ex)
         {
+            if (TryPrintUnsupportedTransportFailure("PUBSUB", transport, size, ex))
+                return 0;
             Console.Error.WriteLine($"single_pubsub_error:{ex}");
             return 2;
         }

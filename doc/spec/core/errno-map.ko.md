@@ -117,8 +117,8 @@ typedef enum zlink_submit_result_t
 | Send | `zlink_send`, `zlink_send_rid`, `zlink_publish` |
 | Socket request | `zlink_dealer_request`, `zlink_router_request` |
 | Socket reply | `zlink_router_reply` |
-| SPOT request | `zlink_spot_request_router`, `zlink_spot_request_channel`, `zlink_router_request_spot` |
-| SPOT send | `zlink_spot_send_router`, `zlink_spot_send_channel`, `zlink_router_send_spot` |
+| SPOT request | `zlink_spot_request_channel`, `zlink_router_request_spot` |
+| SPOT send | `zlink_spot_send_channel`, `zlink_router_send_spot` |
 | SPOT reply | `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 
 ---
@@ -481,7 +481,7 @@ reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새
 
 ### SPOT request 함수
 
-| Result | `zlink_spot_request_router` | `zlink_spot_request_channel` | `zlink_router_request_spot` |
+| Result | `zlink_spot_request_channel` | `zlink_router_request_spot` |
 |---|---|---|---|
 | `OK` | Y | Y | Y |
 | `BACKPRESSURED` | Y | Y | Y |
@@ -505,7 +505,7 @@ reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새
 
 ### SPOT send 함수
 
-| Result | `zlink_spot_send_router` | `zlink_spot_send_channel` | `zlink_spot_publish` | `zlink_router_send_spot` |
+| Result | `zlink_spot_send_channel` | `zlink_spot_publish` | `zlink_router_send_spot` |
 |---|---|---|---|---|
 | `OK` | Y | Y | Y | Y |
 | `BACKPRESSURED` | Y | Y | Y | Y |
@@ -554,7 +554,7 @@ reply는 이미 진행 중인 request에 대한 응답이라 admission 판정을
 
 | Result enum | 함수 |
 |---|---|
-| `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_router`, `zlink_spot_request_channel`, `zlink_router_request_spot`, `zlink_spot_send_router`, `zlink_spot_send_channel`, `zlink_spot_publish`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
+| `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_channel`, `zlink_router_request_spot`, `zlink_spot_send_channel`, `zlink_spot_publish`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
 | `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_spot_subscribe`, `zlink_spot_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
 | `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |

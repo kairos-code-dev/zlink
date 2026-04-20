@@ -25,8 +25,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(server)
 
 	stats := perfcommon.NewStats()
-	stopAt := time.Now().Add(cfg.duration)
-	activeAt := time.Now()
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
 	type routerClient struct {
 		ctx     *zlink.Context
@@ -78,8 +77,8 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 			defer wg.Done()
 
 			payload := perfcommon.PreparePayload(cfg.msgSize)
-			for time.Now().Before(stopAt) {
-				perfcommon.StampPayload(payload)
+			for time.Now().Before(window.StopAt) {
+				perfcommon.StampWindowPayload(payload, window.ActiveAt)
 				err := socket.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 				if err != nil {
 					if perfcommon.IsTransient(err) {
@@ -99,7 +98,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 				}
 				part, err := reply.SinglePartOrError()
 				if err == nil {
-					if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
+					if sentAt, ok := perfcommon.SentAtFromMessage(part, cfg.msgSize); ok && time.Now().After(window.ActiveAt) {
 						stats.Add(sentAt)
 					}
 				}
@@ -116,7 +115,7 @@ func waitForRouterClientReady(client *zlink.RouterSocket, serverID zlink.Routing
 	payload := perfcommon.PreparePayload(64)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		perfcommon.StampPayload(payload)
+		perfcommon.StampProbePayload(payload)
 		err := client.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {

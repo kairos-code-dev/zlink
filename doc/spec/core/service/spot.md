@@ -90,32 +90,6 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress(
 
 ## Spot data-plane contract
 
-### Routed send/request to ROUTER
-
-```c
-zlink_submit_result_t zlink_spot_send_router(
-  void *spot,
-  const zlink_routing_id_t *peer_rid,
-  zlink_msg_t *parts,
-  size_t part_count,
-  zlink_send_flags_t flags);
-
-zlink_submit_result_t zlink_spot_request_router(
-  void *spot,
-  const zlink_routing_id_t *peer_rid,
-  zlink_msg_t *parts,
-  size_t part_count,
-  zlink_reply_handler_fn handler,
-  void *userdata,
-  zlink_send_flags_t flags,
-  uint32_t timeout_ms);
-```
-
-These functions target a concrete peer `ROUTER`.
-
-The public `Spot` surface no longer exposes direct SPOT send/request functions
-that take `dest_node_rid + dest_spot_rid`.
-
 ### Channel send/request
 
 ```c
@@ -140,6 +114,7 @@ zlink_submit_result_t zlink_spot_request_channel(
 - Channel calls always use an attached `DEALER`.
 - Lookup is keyed by `channel_name`.
 - The request reply is bound to the specific dealer selected for that request.
+- `Spot` does not expose ordinary send/request that targets a `ROUTER` by direct `rid`.
 
 ### Topic publish/subscribe
 

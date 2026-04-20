@@ -10,7 +10,7 @@
 #include "../../common/perf_latency_sampler.hpp"
 #include "../../common/perf_monitor_wait.hpp"
 #include "../../common/perf_socket_compat.hpp"
-#include "../../../../../core/bench/with_zmq/multi/common/bench_multi_resource.hpp"
+#include "../../../../../bindings/c/bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
 #include <chrono>

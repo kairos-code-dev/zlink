@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md)
+
 # Draft -- ZLink Framework ASP.NET Core Registry Integration
 
 > 이 문서는 **구현 전 초안**이다.
@@ -77,8 +79,7 @@ Registry만 올리고 서비스 handler는 등록하지 않는 구성도 가능�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelId = "api";
-    options.NodeName = "api-1";
+    options.ChannelName = "api";
     options.UseDiscovery(registry =>
     {
         registry.Add("tcp://127.0.0.1:5551");
@@ -334,8 +335,7 @@ builder.Services.AddZLinkRegistry(registry =>
 // --- 서비스 런타임 ---
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelId = "api";
-    options.NodeName = "api-1";
+    options.ChannelName = "api";
     options.UseDiscovery(discovery =>
     {
         discovery.Add("tcp://127.0.0.1:5551");
@@ -403,8 +403,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelId = "dashboard";
-    options.NodeName = "dashboard-1";
+    options.ChannelName = "dashboard";
     options.UseDiscovery(discovery =>
     {
         discovery.Add("tcp://registry-1:5551");

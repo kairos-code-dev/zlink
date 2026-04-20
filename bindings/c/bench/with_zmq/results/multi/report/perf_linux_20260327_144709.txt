@@ -1,0 +1,8 @@
+
+## PATTERN: MULTI_PUBSUB
+  > Benchmarking libzmq for MULTI_PUBSUB...
+  > Benchmarking zlink for MULTI_PUBSUB...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|

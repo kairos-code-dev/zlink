@@ -7,7 +7,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../common/Zlink.BindingBench.Common/Zlink.BindingBench.Common.csproj" />
-    <ProjectReference Include="../../../src/Zlink/Zlink.csproj" />
+    <ProjectReference Include="../../common/Zlink.BindingBench.Common/Zlink.BindingBench.Common.csproj"
+      SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
 </Project>

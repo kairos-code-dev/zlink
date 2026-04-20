@@ -1,4 +1,12 @@
 rootProject.name = 'zlink-java'
+include ':zlink-codec-protobuf'
+project(':zlink-codec-protobuf').projectDir = file('codec/zlink-codec-protobuf')
+include ':zlink-codec-json'
+project(':zlink-codec-json').projectDir = file('codec/zlink-codec-json')
+include ':zlink-codec-messagepack'
+project(':zlink-codec-messagepack').projectDir = file('codec/zlink-codec-messagepack')
+include ':zlink-ext-netty'
+project(':zlink-ext-netty').projectDir = file('codec/zlink-ext-netty')
 include ':samples'
 project(':samples').projectDir = file('samples/Zlink.Samples')
 include ':perf-single'

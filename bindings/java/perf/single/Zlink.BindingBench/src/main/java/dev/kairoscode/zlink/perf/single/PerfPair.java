@@ -85,6 +85,14 @@ final class PerfPair {
 
             Thread traffic = new Thread(() -> {
                 try {
+                    long warmupEnd = System.nanoTime()
+                        + config.warmupSeconds() * 1_000_000_000L;
+                    while (System.nanoTime() < warmupEnd) {
+                        try (Message warmup = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                            sender.send(warmup);
+                        }
+                    }
                     metrics.startActiveWindow();
                     long activeEnd = System.nanoTime()
                         + config.durationSeconds() * 1_000_000_000L;
@@ -110,7 +118,7 @@ final class PerfPair {
             }, "single-pair-sender");
             traffic.start();
             PerfUtil.await(finished, "pair receiver",
-                Duration.ofSeconds(config.durationSeconds() + 10L));
+                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "pair sender", Duration.ofSeconds(10));
             PerfUtil.join(receiverThread, "pair receiver thread",
                 Duration.ofSeconds(10));

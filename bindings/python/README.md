@@ -23,8 +23,8 @@ API directly. The public contract is:
   `ref_count`
 - receive and subscribe return domain objects such as `Received`,
   `TopicMessage`, `RoutingId`, and `SubscriptionEvent`
-- request/reply surfaces use `request`, `reply`, `request_to_router`,
-  `request_to_spot`, `recv_routed`, and `reply_to_router`
+- request/reply surfaces use `request`, `reply`, `request_to_spot`,
+  `recv_routed`, and `reply_to_router`
 - raw public option bags like `setsockopt` and `getsockopt` are not exposed
 - typed option families are exposed through properties and capability objects
 - monitor sockets use canonical `monitor_open()`, `recv()`, and `snapshot()`
@@ -73,8 +73,7 @@ Examples of policy-enforced capability boundaries:
   it exposes `publish(service_name, topic, ...)`, `send_channel`,
   `request_channel`, `subscribe`, `receive_subscription_event`,
   `set_subscription`, `unset_subscription`, `on_send_ready`,
-  `reply_to_spot`, `send_to_router`,
-  `request_to_router`, `reply_to_router`, `recv_routed`,
+  `reply_to_spot`, `reply_to_router`, `recv_routed`,
   `on_routed_receive`, and `on_dispatch_event`, but not direct `recv` / `send`
 - `attach_discovery()` is only available on the discovery-aware socket subset,
   and after `attach_discovery` the native lifecycle contract blocks manual

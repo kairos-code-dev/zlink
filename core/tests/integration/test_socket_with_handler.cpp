@@ -253,7 +253,7 @@ void test_raw_subscribe_recv_returns_topic_and_payload ()
     char topic[32];
     memset (topic, 0, sizeof (topic));
     size_t topic_len = sizeof (topic);
-    TEST_ASSERT_SUCCESS_ERRNO (::zlink_subscribe (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (
       sub, &source_rid, &parts, &part_count, topic, &topic_len, 0));
     TEST_ASSERT_EQUAL_UINT (0, source_rid.size);
     TEST_ASSERT_TRUE (topic_len >= 5);

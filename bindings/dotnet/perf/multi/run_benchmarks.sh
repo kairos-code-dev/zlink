@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROJECT="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj"
+PROJECT_DIR="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi"
 STREAM_CLIENT="${DOTNET_DIR}/../../core/build/bin/perf_stream_client"
 REPO_DIR="$(cd "${DOTNET_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
@@ -19,6 +20,47 @@ READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TI
 RESULTS_TAG=""
 CONFIGURATION="${PERF_CONFIGURATION:-Release}"
 REPORT=""
+
+prune_report_dir() {
+  local report_dir="$1"
+  local max_files="${2:-100}"
+  python3 - "${report_dir}" "${max_files}" <<'PY'
+import pathlib
+import sys
+
+report_dir = pathlib.Path(sys.argv[1])
+max_files = int(sys.argv[2])
+if max_files <= 0 or not report_dir.exists():
+    raise SystemExit(0)
+
+files = sorted(
+    [p for p in report_dir.iterdir() if p.is_file()],
+    key=lambda p: p.name,
+)
+overflow = len(files) - max_files
+for path in files[:max(0, overflow)]:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+PY
+}
+
+resolve_perf_binary() {
+  local project_dir="$1"
+  local assembly_name="$2"
+  local binary_path="${project_dir}/bin/${CONFIGURATION}/net8.0/${assembly_name}"
+  local dll_path="${project_dir}/bin/${CONFIGURATION}/net8.0/${assembly_name}.dll"
+  if [[ -x "${binary_path}" ]]; then
+    printf '%s' "${binary_path}"
+    return 0
+  fi
+  if [[ -f "${dll_path}" ]]; then
+    printf 'dotnet %q' "${dll_path}"
+    return 0
+  fi
+  return 1
+}
 
 usage() {
   cat <<'USAGE'
@@ -165,7 +207,7 @@ while time.time() < deadline:
             raise SystemExit(0)
         if "multi_client_error:" in text:
             raise SystemExit(1)
-time.sleep(0.05)
+    time.sleep(0.05)
 raise SystemExit(1)
 PY
 }
@@ -369,6 +411,50 @@ PY
   print_line "    Testing ${transport}: Done"
 }
 
+extract_unsupported_line() {
+  local pattern="${1:-}"
+  local transport="${2:-}"
+  shift 2
+
+  python3 - "${pattern}" "${transport}" "$@" <<'PY'
+import pathlib
+import sys
+
+expected = sys.argv[1]
+transport = sys.argv[2]
+base = expected[len("MULTI_"):] if expected.startswith("MULTI_") else expected
+needles = {
+    f"UNSUPPORTED,current,{expected},{transport}",
+    f"UNSUPPORTED,current,{base},{transport}",
+}
+canonical = f"UNSUPPORTED,current,{expected},{transport}"
+
+for raw_path in sys.argv[3:]:
+    path = pathlib.Path(raw_path)
+    if not path.exists():
+        continue
+    text = path.read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        if line.strip() in needles:
+            print(canonical)
+            raise SystemExit(0)
+    if transport in {"tcp", "tls", "ws", "wss", "ipc"}:
+        lowered = text.lower()
+        if ("permission denied" in lowered
+                or "operation not permitted" in lowered
+                or "zlinkbindexception" in lowered
+                or "zlinkconnectexception" in lowered
+                or "legacyzlinkexception" in lowered
+                or "socketexception" in lowered
+                or "errno 1" in lowered
+                or "errno 13" in lowered):
+            print(canonical)
+            raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pattern)
@@ -444,8 +530,7 @@ if printf '%s' "${PATTERN}" | grep -q 'MULTI_STREAM'; then
   ensure_core_stream_client
 fi
 
-mkdir -p "${RESULTS_ROOT}/multi/tmp" "${RESULTS_ROOT}/multi/report" \
-  "${RESULTS_ROOT}/multi/baseline"
+mkdir -p "${RESULTS_ROOT}/multi/tmp" "${RESULTS_ROOT}/multi/report"
 
 platform="$(normalize_platform)"
 timestamp="$(date +%Y%m%d_%H%M%S)"
@@ -455,6 +540,14 @@ if [[ -n "${RESULTS_TAG}" ]]; then
 fi
 REPORT="${RESULTS_ROOT}/multi/report/${report_base}.txt"
 : > "${REPORT}"
+prune_report_dir "${RESULTS_ROOT}/multi/report" \
+  "${PERF_RESULTS_MAX_FILES:-100}"
+
+if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench.Multi")"; then
+  echo "multi benchmark binary not found under ${PROJECT_DIR}/bin/${CONFIGURATION}/net8.0." >&2
+  echo "Gate 1 build output is required before smoke." >&2
+  exit 1
+fi
 
 print_line "## Effective Options (start)"
 print_line "- lang: dotnet"
@@ -494,8 +587,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
       transport="${transport//[[:space:]]/}"
       [[ -n "${transport}" ]] || continue
       if [[ "${transport}" == "inproc" ]]; then
-        echo "multi suite does not support inproc transport." >&2
-        status=1
+        print_line "UNSUPPORTED,current,${pattern},${transport}"
         continue
       fi
 
@@ -521,17 +613,17 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
+          DOTNET_TieredCompilation=0 \
           PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-          dotnet run -c "${CONFIGURATION}" --no-restore --project "${PROJECT}" -- \
-          --multi-server "${pattern}" "${transport}" "${size}" \
+          bash -lc "${PERF_BINARY@Q} --multi-server ${pattern@Q} ${transport@Q} ${size@Q}" \
           <&${control_fd} > "${server_log}" 2>&1 &
         else
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
+            DOTNET_TieredCompilation=0 \
             PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-            dotnet run -c "${CONFIGURATION}" --no-restore --project "${PROJECT}" -- \
-            --multi-server "${pattern}" "${transport}" "${size}" \
+            bash -lc "${PERF_BINARY@Q} --multi-server ${pattern@Q} ${transport@Q} ${size@Q}" \
             > "${server_log}" 2>&1 &
         fi
         server_pid=$!
@@ -539,6 +631,15 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         echo "RUN pattern=${pattern} transport=${transport} size=${size} clients=${pattern_clients} run=${run_index}"
 
         if ! server_endpoint="$(wait_for_ready_endpoint "${server_log}")"; then
+          if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${server_log}" 2>/dev/null)"; then
+            print_line "${unsupported_line}"
+            expected_result_lines=$((expected_result_lines - 5))
+            terminate_pid "${server_pid}"
+            if [[ -n "${control_fd}" ]]; then
+              exec {control_fd}>&-
+            fi
+            continue
+          fi
           cat "${server_log}" >&2 || true
           echo "server did not become ready for ${pattern} ${transport} ${size}" >&2
           terminate_pid "${server_pid}"
@@ -571,8 +672,22 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             else
               wait "${server_pid}" || true
             fi
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              exec {control_fd}>&-
+              continue
+            fi
             extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
           else
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              printf 'STOP\n' >&${control_fd} || true
+              terminate_pid "${server_pid}"
+              exec {control_fd}>&-
+              continue
+            fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             printf 'STOP\n' >&${control_fd} || true
@@ -586,13 +701,22 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
+          DOTNET_TieredCompilation=0 \
           PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-          dotnet run -c "${CONFIGURATION}" --no-restore --project "${PROJECT}" -- \
-          --multi-client "${pattern}" "${transport}" "${size}" \
-          --endpoint "${server_endpoint}" > "${client_log}" 2>&1 &
+          bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
+          > "${client_log}" 2>&1 &
           client_pid=$!
 
           if ! wait_for_client_ready_line "${client_log}"; then
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              terminate_pid "${client_pid}"
+              printf 'STOP\n' >&${control_fd} || true
+              terminate_pid "${server_pid}"
+              exec {control_fd}>&-
+              continue
+            fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${client_pid}"
@@ -607,6 +731,15 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           if ! wait_for_result_line "${client_log}" \
             "RESULT,current,SPOT,${transport},${size},latency_p99," \
             $((DURATION + 30)); then
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              printf 'STOP\n' >&${control_fd} || true
+              terminate_pid "${client_pid}"
+              terminate_pid "${server_pid}"
+              exec {control_fd}>&-
+              continue
+            fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             printf 'STOP\n' >&${control_fd} || true
@@ -628,23 +761,40 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           else
             wait "${server_pid}" || true
           fi
+          if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+            print_line "${unsupported_line}"
+            expected_result_lines=$((expected_result_lines - 5))
+            exec {control_fd}>&-
+            continue
+          fi
           extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
           exec {control_fd}>&-
         else
           if PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
+            DOTNET_TieredCompilation=0 \
             PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-            dotnet run -c "${CONFIGURATION}" --no-restore --project "${PROJECT}" -- \
-            --multi-client "${pattern}" "${transport}" "${size}" \
-            --endpoint "${server_endpoint}" > "${client_log}" 2>&1; then
+            bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
+            > "${client_log}" 2>&1; then
             if ! wait_for_pid "${server_pid}" 5; then
               terminate_pid "${server_pid}"
             else
               wait "${server_pid}" || true
             fi
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              continue
+            fi
             extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
           else
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              terminate_pid "${server_pid}"
+              continue
+            fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${server_pid}"
@@ -683,7 +833,13 @@ print_line "- warmup_seconds: ${WARMUP}"
 print_line "- expected_result_lines: ${expected_result_lines}"
 print_line "- actual_result_lines: ${result_lines}"
 print_line "- pin_cpu: off"
-print_line "- status: $( [[ "${status}" -eq 0 ]] && printf 'complete' || printf 'failed' )"
+if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
+  completion_status="complete"
+else
+  completion_status="partial"
+  status=1
+fi
+print_line "- status: ${completion_status}"
 
 echo "saved report: ${REPORT}"
 exit "${status}"

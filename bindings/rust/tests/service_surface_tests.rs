@@ -1,5 +1,9 @@
 //! Service surface tests - verify channel/query/introspection APIs exist.
 
+use std::future::Future;
+use std::pin::pin;
+use std::task::{Context as TaskContext, Poll, Waker};
+
 use zlink::*;
 
 fn reserve_tcp_port() -> u16 {
@@ -7,6 +11,16 @@ fn reserve_tcp_port() -> u16 {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     port
+}
+
+fn block_on_ready<F: Future>(future: F) -> F::Output {
+    let waker = Waker::noop();
+    let mut future = pin!(future);
+    let mut cx = TaskContext::from_waker(waker);
+    match future.as_mut().poll(&mut cx) {
+        Poll::Ready(output) => output,
+        Poll::Pending => panic!("future unexpectedly pending"),
+    }
 }
 
 #[test]
@@ -46,7 +60,11 @@ fn spot_callback_surfaces_exist() {
     let _ = spot.admission_state().unwrap();
     let _ = spot.set_admission_state(AdmissionState::Serving);
     let _ = spot.routing_id().unwrap();
-    let _ = spot.publish("svc-surface", "topic", Message::copy_from(b"payload").unwrap());
+    let _ = spot.publish(
+        "svc-surface",
+        "topic",
+        Message::copy_from(b"payload").unwrap(),
+    );
     let _ = spot.publish_with_flags(
         "svc-surface",
         "topic",
@@ -59,7 +77,11 @@ fn spot_callback_surfaces_exist() {
         Message::copy_from(b"payload").unwrap(),
         SendFlags::DONT_WAIT,
     );
-    let _ = spot.request_channel("svc-surface", Message::copy_from(b"payload").unwrap(), std::time::Duration::from_millis(1));
+    let _ = block_on_ready(spot.request_channel(
+        "svc-surface",
+        Message::copy_from(b"payload").unwrap(),
+        std::time::Duration::from_millis(1),
+    ));
     let _ = spot.request_channel_callback(
         "svc-surface",
         Message::copy_from(b"payload").unwrap(),

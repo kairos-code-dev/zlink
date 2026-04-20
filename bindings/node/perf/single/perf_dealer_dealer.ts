@@ -14,10 +14,8 @@ const {
 } = require('../common/perf_metrics');
 const {
   benchmarkEndpoint,
-  drainRecvNow,
   drainRecvSocket,
   waitForConnectionReady,
-  trySocketSend
 } = require('./perf_single_common');
 
 async function runDealerDealerBenchmark(msgSize, options) {
@@ -30,15 +28,18 @@ async function runDealerDealerBenchmark(msgSize, options) {
     server.bind(endpoint);
     await waitForConnectionReady(client, () => client.connect(endpoint));
 
-    const startedAtNs = process.hrtime.bigint();
-    const runId = createRunId();
-    const collector = createMetricCollector({ runId, msgSize });
+    const activeStartNs = process.hrtime.bigint();
+    const activeStopNs = activeStartNs
+      + BigInt(Math.floor(options.duration * 1_000_000_000));
+    const runId = createRunId(options.runId ?? 1);
+    const collector = createMetricCollector({
+      runId,
+      msgSize,
+      activeStartNs,
+      activeStopNs
+    });
     const payload = createPayload(msgSize);
     let seq = 1n;
-    const warmupUntilNs = startedAtNs
-      + BigInt(Math.floor(options.warmup * 1_000_000_000));
-    const stopAtNs = startedAtNs
-      + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
     let stop = false;
 
     const recvTask = drainRecvSocket(
@@ -50,33 +51,23 @@ async function runDealerDealerBenchmark(msgSize, options) {
       () => stop
     );
 
-    while (process.hrtime.bigint() < stopAtNs) {
-      for (let i = 0; i < 256 && process.hrtime.bigint() < stopAtNs; i += 1) {
+    while (process.hrtime.bigint() < activeStopNs) {
+      for (let i = 0; i < 256 && process.hrtime.bigint() < activeStopNs; i += 1) {
         stampPayload(payload, {
-          phase: process.hrtime.bigint() < warmupUntilNs ? 0 : 1,
+          phase: 1,
           runId,
           msgSize,
           seq
         });
-        if (!trySocketSend(client, payload)) {
-          break;
-        }
+        client.send(payload);
         seq += 1n;
       }
-      drainRecvNow(server, (received) => {
-        const header = decodeMetricHeader(received.parts[0].data());
-        collector.record(header, currentEpochNs());
-      });
       if ((Number(seq) & 0x03) === 0) {
         await sleepImmediate();
       }
     }
-
-    for (let i = 0; i < 4; i += 1) {
-      drainRecvNow(server, (received) => {
-        const header = decodeMetricHeader(received.parts[0].data());
-        collector.record(header, currentEpochNs());
-      });
+    const drainDeadlineNs = activeStopNs + 250_000_000n;
+    while (process.hrtime.bigint() < drainDeadlineNs) {
       await sleepImmediate();
     }
     stop = true;

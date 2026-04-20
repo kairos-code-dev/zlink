@@ -79,16 +79,19 @@ final class PerfDealerDealer {
 
             Thread traffic = SingleSendLoops.oneWaySend(
                 () -> sender.send(List.of(PerfUtil.payload(config.size(),
+                    (byte) PerfUtil.PHASE_WARMUP, System.nanoTime()))),
+                () -> sender.send(List.of(PerfUtil.payload(config.size(),
                     (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime()))),
                 () -> sender.send(List.of(PerfUtil.payload(config.size(),
                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime()))),
+                config.warmupSeconds(),
                 config.durationSeconds(),
                 metrics::startActiveWindow,
                 failure,
                 finished);
             traffic.start();
             PerfUtil.await(finished, "dealer/dealer receiver",
-                Duration.ofSeconds(config.durationSeconds() + 10L));
+                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "dealer/dealer sender", Duration.ofSeconds(10));
             PerfUtil.join(receiverThread, "dealer/dealer receiver thread",
                 Duration.ofSeconds(10));

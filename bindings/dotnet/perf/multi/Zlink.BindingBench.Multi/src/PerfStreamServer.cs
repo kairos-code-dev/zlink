@@ -21,8 +21,9 @@ internal static class PerfStreamServer
     {
         if (!IsCoreStreamServerTransport(options.Transport))
         {
-            Console.WriteLine($"UNSUPPORTED,current,{Pattern},{options.Transport}");
-            return 0;
+            return PerfRunner.PrintUnsupported(Pattern, options.Transport,
+                options.Size,
+                "transport_not_supported");
         }
 
         int ioTimeoutMs = options.StreamTimeoutMs;

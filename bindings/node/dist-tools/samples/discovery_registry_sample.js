@@ -44,6 +44,7 @@ async function main() {
         console.log('[discovery-registry] service: "sample" -> discovered');
     }
     finally {
+        node.close();
         discovery.close();
         registry.close();
         ctx.close();

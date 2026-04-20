@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 import struct
 import time
@@ -48,6 +49,57 @@ def parse_server_args(argv):
     parser.add_argument("--clients", type=int, default=4)
     parser.add_argument("--msg-size", type=int, default=256)
     return parser.parse_args(argv)
+
+
+def _env_int(name, default):
+    value = os.environ.get(name)
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def resolve_multi_send_hwm():
+    return _env_int("PERF_MULTI_SNDHWM", _env_int("PERF_MULTI_HWM", 1000))
+
+
+def resolve_multi_recv_hwm():
+    return _env_int("PERF_MULTI_RCVHWM", _env_int("PERF_MULTI_HWM", 1000))
+
+
+def resolve_multi_send_timeout_ms():
+    return _env_int("PERF_MULTI_SNDTIMEO_MS", 200)
+
+
+def resolve_multi_recv_timeout_ms():
+    return _env_int("PERF_MULTI_RCVTIMEO_MS", 200)
+
+
+def resolve_multi_spot_ready_settle_s():
+    return _env_int("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000) / 1000.0
+
+
+def resolve_multi_spot_control_settle_s():
+    return _env_int("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25) / 1000.0
+
+
+def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
+    send_hwm = resolve_multi_send_hwm()
+    recv_hwm = resolve_multi_recv_hwm()
+    send_timeout_ms = resolve_multi_send_timeout_ms()
+    recv_timeout_ms = (
+        resolve_multi_recv_timeout_ms()
+        if receive_timeout_ms is None
+        else receive_timeout_ms
+    )
+    for sock in sockets:
+        sock.options.linger_ms = 0
+        sock.options.send_high_water_mark = send_hwm
+        sock.options.receive_high_water_mark = recv_hwm
+        sock.options.send_timeout_ms = send_timeout_ms
+        sock.options.receive_timeout_ms = recv_timeout_ms
 
 
 def encode_len32be(payload):

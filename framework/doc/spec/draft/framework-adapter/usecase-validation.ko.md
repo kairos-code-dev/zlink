@@ -1,5 +1,7 @@
 [스펙 목차](../../README.ko.md)
 
+[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [.NET](./dotnet/README.ko.md)
+
 # Draft -- ZLink Framework Use Case Validation
 
 > 이 문서는 **구현 전 초안**이다.
@@ -17,7 +19,7 @@ use case를 설명할 틀을 갖추었는지를 본다.
 
 - 맞는 상호작용 모델이 있는가
 - message model이 필요한 metadata를 담을 수 있는가
-- channel_name과 연결 방식이 설명되는가
+- channel name과 연결 방식이 설명되는가
 - 프레임워크 사용자가 익숙한 API로 올릴 수 있는가
 
 ## 3. use case별 점검

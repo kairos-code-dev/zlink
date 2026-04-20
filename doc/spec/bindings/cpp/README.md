@@ -750,6 +750,58 @@ class message_t {
 };
 ```
 
+### Codec Extensions
+
+The binding exposes separate codec extension libraries. The distribution
+library names and public header names are fixed to:
+
+- `zlink-codec-protobuf`
+- `zlink-codec-json`
+- `zlink-codec-messagepack`
+
+- `<zlink/codec/protobuf.hpp>`
+- `<zlink/codec/json.hpp>`
+- `<zlink/codec/messagepack.hpp>`
+
+These are separate public headers layered on top of the core `<zlink/...>`
+surface. They must not force codec dependencies on users who only include the
+core binding headers.
+
+JSON codec baseline: `nlohmann/json`.
+MessagePack codec baseline: `msgpack-c`.
+
+```cpp
+namespace zlink::codec::protobuf {
+
+template<class T>
+T parse(const message_t& message);
+
+template<class T>
+message_t to_message(const T& value);
+
+} // namespace zlink::codec::protobuf
+
+namespace zlink::codec::json {
+
+template<class T>
+T parse(const message_t& message);
+
+template<class T>
+message_t to_message(const T& value);
+
+} // namespace zlink::codec::json
+
+namespace zlink::codec::messagepack {
+
+template<class T>
+T parse(const message_t& message);
+
+template<class T>
+message_t to_message(const T& value);
+
+} // namespace zlink::codec::messagepack
+```
+
 ### routing_id_t
 
 Immutable binary-safe routing identity value object (1-255 bytes).
@@ -1838,26 +1890,6 @@ class spot_t {
     /// @throws submit_error_t
     void reply_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
                        uint64_t request_seq, message_t message, send_flags_t flags = send_flags_t::none);
-
-    // --- routed send (spot → router) ---
-    /// @throws submit_error_t
-    void send_to_router(const routing_id_t& peer_rid, message_t& part, send_flags_t flags = send_flags_t::none);
-    /// @throws submit_error_t
-    void send_to_router(const routing_id_t& peer_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
-
-    // --- routed request (spot → router, coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_router(const routing_id_t& peer_rid,
-                                                             message_t message,
-                                                             std::chrono::milliseconds timeout = {});
-
-    // --- routed request (spot → router, callback; callback receives request_result_t) ---
-    /// @throws submit_error_t
-    void request_to_router(const routing_id_t& peer_rid,
-                           message_t message,
-                           std::function<void(request_result_t, std::vector<message_t>)> callback,
-                           send_flags_t flags = send_flags_t::none,
-                           std::chrono::milliseconds timeout = {});
 
     // --- routed reply (spot → router) ---
     /// @throws submit_error_t

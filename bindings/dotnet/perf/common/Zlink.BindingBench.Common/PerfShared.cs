@@ -4,17 +4,19 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Net;
 using System.Threading;
+using System.Net.Sockets;
 using Zlink;
-using TcpListener = System.Net.Sockets.TcpListener;
 
 public static class PerfShared
 {
     public const int ErrnoEintr = 4;
     public const int ErrnoEagain = 11;
-    public const uint PerfMetricMagic = 0x4D50_4631u;
-    public const int PerfMetricHeaderSize = 32;
+    public const int ErrnoEperm = 1;
+    public const int ErrnoEaccess = 13;
+    public const uint PerfMetricMagic = 0x5A4C_4E4Bu;
+    public const int PerfMetricHeaderSize = 29;
+    private static int _nextPort = InitializePortSeed();
 
     public static long TimestampNs()
     {
@@ -108,7 +110,7 @@ public static class PerfShared
 
         if (transport == "ipc")
         {
-            string path = $"/tmp/zlink-bench-{name}-{GetPort()}.sock";
+            string path = $"/tmp/zlink-bench-{name}-{Guid.NewGuid():N}.sock";
             TryDeleteFile(path);
             AppDomain.CurrentDomain.ProcessExit += (_, _) => TryDeleteFile(path);
             return $"ipc://{path}";
@@ -147,8 +149,34 @@ public static class PerfShared
     public static int PrintUnsupported(string pattern, string transport,
         int size, string reason)
     {
-        Console.WriteLine($"UNSUPPORTED,{pattern},{transport},{size},{reason}");
+        _ = size;
+        _ = reason;
+        Console.WriteLine($"UNSUPPORTED,current,{pattern},{transport}");
         return 0;
+    }
+
+    public static bool TryPrintUnsupportedTransportFailure(string pattern,
+        string transport, int size, Exception ex)
+    {
+        if (!IsSandboxRestrictedTransport(transport))
+            return false;
+
+        if (IsSandboxRestrictedNetworkException(ex))
+        {
+            PrintUnsupported(pattern, transport, size,
+                "sandbox_network_restricted");
+            return true;
+        }
+
+        if (!TryResolvePermissionErrno(ex, out int errno)
+            || !IsPermissionRestrictedErrno(errno))
+        {
+            return false;
+        }
+
+        PrintUnsupported(pattern, transport, size,
+            $"sandbox_network_restricted_errno_{errno}");
+        return true;
     }
 
     public static void StampHeader(Span<byte> header, long tsNs)
@@ -176,12 +204,12 @@ public static class PerfShared
         BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(0, 4),
             PerfMetricMagic);
         BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(4, 4), runId);
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(8, 4), phase);
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(12, 4),
+        payload[8] = checked((byte)phase);
+        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(9, 4),
             (uint)Math.Max(0, msgSize));
-        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(16, 8), seq);
-        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(24, 8),
-            sentTsNs);
+        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(13, 8), seq);
+        BinaryPrimitives.WriteInt64LittleEndian(payload.Slice(21, 8),
+            checked((long)sentTsNs));
         return true;
     }
 
@@ -194,11 +222,11 @@ public static class PerfShared
 
         uint magic = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(0, 4));
         uint runId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(4, 4));
-        uint phase = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(8, 4));
-        uint msgSize = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(12, 4));
-        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(16, 8));
-        ulong sentTsNs = BinaryPrimitives.ReadUInt64LittleEndian(
-            payload.Slice(24, 8));
+        uint phase = payload[8];
+        uint msgSize = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(9, 4));
+        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(13, 8));
+        ulong sentTsNs = checked((ulong)BinaryPrimitives.ReadInt64LittleEndian(
+            payload.Slice(21, 8)));
 
         header = new PerfMetricHeader(magic, runId, phase, msgSize, seq,
             sentTsNs);
@@ -215,6 +243,15 @@ public static class PerfShared
     {
         ErrorCode code = ZlinkException.MapErrorCode(errno);
         return code == ErrorCode.EIntr || errno == ErrnoEintr;
+    }
+
+    public static bool IsSandboxRestrictedTransport(string transport)
+    {
+        return string.Equals(transport, "tcp", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(transport, "tls", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(transport, "ws", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(transport, "wss", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(transport, "ipc", StringComparison.OrdinalIgnoreCase);
     }
 
     public static void TryDisposeQuietly(IDisposable? disposable)
@@ -278,13 +315,85 @@ public static class PerfShared
         }
     }
 
+    private static int InitializePortSeed()
+    {
+        int pid = Environment.ProcessId;
+        int tick = Environment.TickCount & 0x7FFFFFFF;
+        return 20000 + Math.Abs(((pid * 131) ^ tick) % 20000);
+    }
+
     private static int GetPort()
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
+        while (true)
+        {
+            int next = Interlocked.Increment(ref _nextPort);
+            if (next <= 59999)
+                return next;
+
+            int reset = InitializePortSeed();
+            Interlocked.CompareExchange(ref _nextPort, reset, next);
+        }
+    }
+
+    private static bool IsPermissionRestrictedErrno(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return errno == ErrnoEperm
+               || errno == ErrnoEaccess
+               || code == ErrorCode.EAccess;
+    }
+
+    private static bool IsSandboxRestrictedNetworkException(Exception ex)
+    {
+        if (ex is SocketException
+            || ex is ZlinkBindException
+            || ex is ZlinkConnectException
+            || ex is ZlinkException)
+        {
+            return true;
+        }
+
+        return ex.InnerException != null
+               && IsSandboxRestrictedNetworkException(ex.InnerException);
+    }
+
+    private static bool TryResolvePermissionErrno(Exception ex, out int errno)
+    {
+        switch (ex)
+        {
+            case ZlinkException zlinkEx when zlinkEx.InternalErrno != 0:
+                errno = zlinkEx.InternalErrno;
+                return true;
+            case SocketException socketEx when socketEx.NativeErrorCode != 0:
+                errno = socketEx.NativeErrorCode;
+                return true;
+        }
+
+        if (ex.InnerException != null
+            && TryResolvePermissionErrno(ex.InnerException, out errno))
+        {
+            return true;
+        }
+
+        string text = ex.ToString();
+        if (text.IndexOf("errno 1", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("operation not permitted",
+                StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            errno = ErrnoEperm;
+            return true;
+        }
+
+        if (text.IndexOf("errno 13", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("permission denied",
+                StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            errno = ErrnoEaccess;
+            return true;
+        }
+
+        errno = 0;
+        return false;
     }
 }
 

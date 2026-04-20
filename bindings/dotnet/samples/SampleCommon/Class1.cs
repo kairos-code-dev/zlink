@@ -99,25 +99,23 @@ public static class SampleSupport
     public static string ReceiveUtf8(MessageSocketBase socket, int timeoutMs)
     {
         _ = timeoutMs;
-        Received received = socket.Recv();
+        using Received received = socket.Recv();
         if (received.Parts.Count == 0)
             throw new InvalidOperationException(
                 "Expected at least one message part.");
-        using Message message = received.Parts[0];
-        return Encoding.UTF8.GetString(message.AsReadOnlySpan());
+        return Encoding.UTF8.GetString(received.Parts[0].AsReadOnlySpan());
     }
 
     public static string SubscribeUtf8(SubscriberSocketBase socket, out string topic,
         int timeoutMs)
     {
         _ = timeoutMs;
-        TopicMessage subscribed = socket.Subscribe();
+        using TopicMessage subscribed = socket.Subscribe();
         topic = subscribed.Topic;
         if (subscribed.Parts.Count == 0)
             throw new InvalidOperationException(
                 "Expected at least one subscribed message part.");
-        using Message message = subscribed.Parts[0];
-        return Encoding.UTF8.GetString(message.AsReadOnlySpan());
+        return Encoding.UTF8.GetString(subscribed.Parts[0].AsReadOnlySpan());
     }
 
     public static TcpClient ConnectRawClient(int port)

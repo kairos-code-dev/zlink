@@ -172,8 +172,9 @@ fn request_reply_surface_exists() {
     let _router_request = RouterSocket::request;
     let _router_request_callback =
         RouterSocket::request_callback::<fn(Result<Vec<Message>, RequestError>)>;
-    let _router_reply =
-        |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message| socket.reply(rid, seq, msg);
+    let _router_reply = |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message| {
+        socket.reply(rid, seq, msg)
+    };
     let _router_reply_with_flags =
         |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message, flags: SendFlags| {
             socket.reply_with_flags(rid, seq, msg, flags)

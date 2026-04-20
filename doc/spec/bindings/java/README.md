@@ -10,6 +10,7 @@ All types live in the `dev.kairoscode.zlink` package.
 Service types live in `dev.kairoscode.zlink.service.registry`,
 `dev.kairoscode.zlink.service.discovery`, and
 `dev.kairoscode.zlink.service.spot`.
+Netty buffer extension types live in `dev.kairoscode.zlink.netty`.
 
 Only the packages and types listed in this document are public contract.
 `dev.kairoscode.zlink.internal` and other implementation packages are internal.
@@ -511,7 +512,6 @@ public final class Message implements AutoCloseable {
     static Message copyOf(byte[] data, int offset, int length);      // @throws ConfigException
     static Message copyOfUtf8(String value);                         // @throws ConfigException
     static Message copyOf(ByteBuffer data);                          // @throws ConfigException
-    static Message copyOf(ByteBuf buf);                              // @throws ConfigException
     static Message copyOf(ByteSpan span);                            // @throws ConfigException
     static Message copyOf(MemorySegment data);                       // @throws ConfigException
     static Message copyOf(MemorySegment data, long offset, long length); // @throws ConfigException
@@ -541,7 +541,6 @@ public final class Message implements AutoCloseable {
     int copyTo(byte[] destination);
     int copyTo(byte[] destination, int offset);
     int copyTo(ByteBuffer destination);
-    int copyTo(ByteBuf destination);
     boolean tryCopyTo(ByteBuffer destination);
 
     // --- batch close ---
@@ -549,6 +548,107 @@ public final class Message implements AutoCloseable {
     static void closeAll(Iterable<? extends Message> parts);         // @throws CloseException
 
     void close();                                                    // @throws CloseException
+}
+```
+
+`Message` core contract stays on JDK-owned buffer types such as `byte[]`,
+`ByteBuffer`, and `MemorySegment`. Third-party network buffer types such as
+Netty `ByteBuf` are kept out of the core artifact so the base Java binding
+does not take a mandatory Netty dependency.
+
+### Codec Extensions
+
+The binding exposes separate codec extension libraries. The exported public
+distribution artifacts and public package names are fixed to:
+
+- Maven `zlink-codec-protobuf`
+- Maven `zlink-codec-json`
+- Maven `zlink-codec-messagepack`
+
+- `dev.kairoscode.zlink.codec.protobuf`
+- `dev.kairoscode.zlink.codec.json`
+- `dev.kairoscode.zlink.codec.messagepack`
+
+These packages are separate public modules layered on top of the core binding.
+They must not be merged into `dev.kairoscode.zlink`.
+
+JSON codec baseline: `Jackson`.
+MessagePack codec baseline: `jackson-dataformat-msgpack`.
+
+```java
+package dev.kairoscode.zlink.codec.protobuf;
+
+public final class ProtobufCodec {
+    public static <T extends com.google.protobuf.MessageLite> T parseProto(
+        dev.kairoscode.zlink.Message message,
+        com.google.protobuf.Parser<T> parser);
+
+    public static dev.kairoscode.zlink.Message toMessage(
+        com.google.protobuf.MessageLite value);
+}
+```
+
+```java
+package dev.kairoscode.zlink.codec.json;
+
+public final class JsonCodec {
+    public static <T> T parseJson(
+        dev.kairoscode.zlink.Message message,
+        Class<T> type);
+
+    public static dev.kairoscode.zlink.Message toMessage(Object value);
+}
+```
+
+```java
+package dev.kairoscode.zlink.codec.messagepack;
+
+public final class MessagePackCodec {
+    public static <T> T parseMessagePack(
+        dev.kairoscode.zlink.Message message,
+        Class<T> type);
+
+    public static dev.kairoscode.zlink.Message toMessage(Object value);
+}
+```
+
+### Netty Buffer Extension
+
+Netty `ByteBuf` support is a separate public extension layered on top of the
+core binding. It must not be merged into `dev.kairoscode.zlink`.
+
+The exported public distribution artifact and public package name are fixed to:
+
+- Maven `zlink-ext-netty`
+- `dev.kairoscode.zlink.netty`
+
+This extension exists because `ByteBuf` is valuable in Java network stacks,
+but it is still a third-party dependency. Keeping it separate lets the core
+binding remain JDK-only while Netty users still get a convenient adapter.
+
+Ownership rules:
+
+- `copyOf(ByteBuf)` copies the readable bytes between `readerIndex` and
+  `writerIndex`.
+- `copyOf(ByteBuf)` must not change `readerIndex` or `writerIndex`.
+- the extension must not call `retain()` or `release()` on caller-owned
+  `ByteBuf`.
+- `copyTo(Message, ByteBuf)` copies the full message at the current
+  `writerIndex`.
+- `copyTo(Message, ByteBuf)` may advance `writerIndex` by the copied byte
+  count, but must not change `readerIndex`.
+- `copyTo(Message, ByteBuf)` must not call `retain()` or `release()`.
+
+```java
+package dev.kairoscode.zlink.netty;
+
+public final class NettyMessages {
+    public static dev.kairoscode.zlink.Message copyOf(
+        io.netty.buffer.ByteBuf source);
+
+    public static int copyTo(
+        dev.kairoscode.zlink.Message message,
+        io.netty.buffer.ByteBuf destination);
 }
 ```
 
@@ -1216,42 +1316,6 @@ public final class Spot implements AutoCloseable {
                      long requestSeq, List<Message> parts);                              // @throws SubmitException
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                      long requestSeq, List<Message> parts, SendFlags flags);             // @throws SubmitException
-
-    // --- routed send (spot -> router) ---
-    void sendToRouter(RoutingId peerRid, Message part);                                  // @throws SubmitException
-    void sendToRouter(RoutingId peerRid, Message part, SendFlags flags);                 // @throws SubmitException
-    void sendToRouter(RoutingId peerRid, List<Message> parts);                           // @throws SubmitException
-    void sendToRouter(RoutingId peerRid, List<Message> parts, SendFlags flags);          // @throws SubmitException
-
-    // --- routed request (spot -> router, async, no flags) ---
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, Message part);        // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, Message part,
-                                                Duration timeout);                       // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid, List<Message> parts,
-                                                Duration timeout);                       // @throws SubmitException; future completes with RequestException on failure
-
-    // --- routed request (spot -> router, callback, blocking submit) ---
-    void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, List<Message>> callback);             // @throws SubmitException; callback receives RequestResult
-    void requestToRouter(RoutingId peerRid, Message part,
-                         BiConsumer<RequestResult, List<Message>> callback,
-                         Duration timeout);                                              // @throws SubmitException; callback receives RequestResult
-    void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, List<Message>> callback);             // @throws SubmitException; callback receives RequestResult
-    void requestToRouter(RoutingId peerRid, List<Message> parts,
-                         BiConsumer<RequestResult, List<Message>> callback,
-                         Duration timeout);                                              // @throws SubmitException; callback receives RequestResult
-    boolean tryRequestToRouter(RoutingId peerRid, Message part,
-                               BiConsumer<RequestResult, List<Message>> callback);       // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequestToRouter(RoutingId peerRid, Message part,
-                               BiConsumer<RequestResult, List<Message>> callback,
-                               Duration timeout);                                        // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequestToRouter(RoutingId peerRid, List<Message> parts,
-                               BiConsumer<RequestResult, List<Message>> callback);       // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequestToRouter(RoutingId peerRid, List<Message> parts,
-                               BiConsumer<RequestResult, List<Message>> callback,
-                               Duration timeout);                                        // @throws SubmitException; false only on temporary backpressure
 
     // --- routed reply (spot -> router) ---
     void replyToRouter(RoutingId peerRid, long requestSeq, Message message);                  // @throws SubmitException

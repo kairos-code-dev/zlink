@@ -1,10 +1,6 @@
 package main
 
 import (
-	"runtime"
-	"sync"
-	"time"
-
 	"zlink"
 	"zlink/perf/internal/perfcommon"
 )
@@ -36,71 +32,8 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.WaitConnected(serverMon, clientMon)
 	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
-	stopDealerEchoServer := startDealerEchoServer(server)
-	defer stopDealerEchoServer()
 
-	stats := perfcommon.NewStats()
-	payload := perfcommon.PreparePayload(cfg.msgSize)
-	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
-
-	for time.Now().Before(window.StopAt) {
-		perfcommon.StampPayload(payload)
-		err := client.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
-			perfcommon.Must(err)
-		}
-		reply, err := client.Recv(zlink.RecvFlagsNone)
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
-			perfcommon.Must(err)
-		}
-		part, err := reply.SinglePartOrError()
-		perfcommon.Must(err)
-		runtime.KeepAlive(reply)
-		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
-		perfcommon.Must(reply.Close())
-		runtime.KeepAlive(part)
-		runtime.KeepAlive(reply)
-	}
-
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
-}
-
-func startDealerEchoServer(server *zlink.DealerSocket) func() {
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
-	stop := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			received, err := server.Recv(zlink.RecvFlagsNone)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				return
-			}
-			err = server.Send(zlink.SendFlagsNone, perfcommon.CloneMessages(received.Parts())...)
-			if err != nil && !perfcommon.IsTransient(err) {
-				perfcommon.Must(err)
-			}
-			perfcommon.Must(received.Close())
-			runtime.KeepAlive(received)
-		}
-	}()
-	return func() {
-		close(stop)
-		wg.Wait()
-	}
+	return runSingleOneWay(cfg, server, func(payload []byte) error {
+		return client.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
+	})
 }

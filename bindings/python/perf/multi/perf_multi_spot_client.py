@@ -13,13 +13,13 @@ from perf_multi_common import (
     is_active_message,
     parse_client_args,
     print_result_lines,
+    resolve_multi_spot_control_settle_s,
+    resolve_multi_spot_ready_settle_s,
     result_metrics,
 )
 
 
 SERVICE_NAME = "spot-svc"
-READY_SETTLE_S = 1.0
-CONTROL_SETTLE_S = 0.025
 READY_TIMEOUT_S = 15.0
 START_TIMEOUT_S = 15.0
 DRAIN_GRACE_S = 0.5
@@ -56,6 +56,8 @@ def main(argv=None):
 
     latencies = []
     received_count = 0
+    ready_settle_s = resolve_multi_spot_ready_settle_s()
+    control_settle_s = resolve_multi_spot_control_settle_s()
     recv_lock = threading.Lock()
     runner_connected = threading.Event()
     runner_start = threading.Event()
@@ -154,8 +156,8 @@ def main(argv=None):
         if not (control_connected.is_set() and runner_connected.is_set()):
             raise RuntimeError("control connection handshake timeout")
 
-        time.sleep(READY_SETTLE_S)
-        time.sleep(CONTROL_SETTLE_S)
+        time.sleep(ready_settle_s)
+        time.sleep(control_settle_s)
         ready_sender[0].sendall(b"CONNECTED\n")
         ready_sender[0].sendall(f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8"))
         print(f"CLIENT_READY,{args.msg_size}", flush=True)

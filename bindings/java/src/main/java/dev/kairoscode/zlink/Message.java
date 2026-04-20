@@ -5,7 +5,6 @@ package dev.kairoscode.zlink;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
-import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -239,36 +238,6 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
-    /** Copies the readable bytes from the {@code ByteBuf} without advancing it. */
-    public static Message copyOf(ByteBuf buf) {
-        Objects.requireNonNull(buf, "buf");
-        int length = buf.readableBytes();
-        Message msg = new Message(length);
-        if (length <= 0)
-            return msg;
-        int readerIndex = buf.readerIndex();
-        if (buf.hasMemoryAddress()) {
-            MemorySegment src = MemorySegment.ofAddress(buf.memoryAddress() + readerIndex)
-                .reinterpret(length);
-            MemorySegment.copy(src, 0, msg.dataSegment(length), 0, length);
-            return msg;
-        }
-        try {
-            ByteBuffer src = buf.nioBufferCount() == 1
-                ? buf.internalNioBuffer(readerIndex, length)
-                : buf.nioBuffer(readerIndex, length);
-            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, msg.dataSegment(length), 0,
-                length);
-            return msg;
-        } catch (UnsupportedOperationException ex) {
-            byte[] tmp = new byte[length];
-            buf.getBytes(readerIndex, tmp);
-            MemorySegment.copy(MemorySegment.ofArray(tmp), 0, msg.dataSegment(length), 0,
-                length);
-            return msg;
-        }
-    }
-
     /** Copies the bytes described by the span into a new frame. */
     public static Message copyOf(ByteSpan span) {
         Objects.requireNonNull(span, "span");
@@ -295,7 +264,7 @@ public final class Message implements AutoCloseable {
     }
 
     /** Borrows the remaining bytes from a direct {@link ByteBuffer}. */
-    static Message wrapDirect(ByteBuffer data) {
+    public static Message wrapDirect(ByteBuffer data) {
         Objects.requireNonNull(data, "data");
         if (!data.isDirect())
             throw new IllegalArgumentException("wrapDirect requires a direct ByteBuffer");
@@ -344,52 +313,6 @@ public final class Message implements AutoCloseable {
         msg.more = false;
         msg.cacheBorrowedPayload(slice, (int) length);
         msg.zeroCopyAnchor = data;
-        return msg;
-    }
-
-    /** Borrows the readable bytes from a direct {@code ByteBuf}. */
-    static Message wrapDirect(ByteBuf buf) {
-        Objects.requireNonNull(buf, "buf");
-        int length = buf.readableBytes();
-        if (length == 0)
-            return wrapNative(MemorySegment.NULL, 0, 0);
-        int readerIndex = buf.readerIndex();
-        if (buf.hasMemoryAddress()) {
-            MemorySegment seg = MemorySegment.ofAddress(buf.memoryAddress() + readerIndex)
-                .reinterpret(length);
-            Message msg = new Message(true);
-            int rc = NativeMsg.msgInitData(msg.msg, seg, length, MemorySegment.NULL,
-                MemorySegment.NULL);
-            if (rc != 0) {
-                msg.arena.close();
-                msg.closed = true;
-                throw ZlinkException.fromLastError("zlink_msg_init_data");
-            }
-            msg.valid = true;
-            msg.recvArmed = false;
-            msg.more = false;
-            msg.cacheBorrowedPayload(seg, length);
-            msg.zeroCopyAnchor = buf;
-            return msg;
-        }
-        ByteBuffer nio = buf.nioBufferCount() == 1
-            ? buf.internalNioBuffer(readerIndex, length)
-            : buf.nioBuffer(readerIndex, length);
-        if (!nio.isDirect())
-            throw new IllegalArgumentException("wrapDirect requires a direct ByteBuf backing");
-        Message msg = new Message(true);
-        int rc = NativeMsg.msgInitData(msg.msg, MemorySegment.ofBuffer(nio), length,
-            MemorySegment.NULL, MemorySegment.NULL);
-        if (rc != 0) {
-            msg.arena.close();
-            msg.closed = true;
-            throw ZlinkException.fromLastError("zlink_msg_init_data");
-        }
-        msg.valid = true;
-        msg.recvArmed = false;
-        msg.more = false;
-        msg.cacheBorrowedPayload(MemorySegment.ofBuffer(nio), length);
-        msg.zeroCopyAnchor = buf;
         return msg;
     }
 
@@ -555,18 +478,6 @@ public final class Message implements AutoCloseable {
         dst.limit(size);
         MemorySegment.copy(dataSegment(), 0, MemorySegment.ofBuffer(dst), 0, size);
         destination.position(destination.position() + size);
-        return size;
-    }
-
-    public int copyTo(ByteBuf destination) {
-        Objects.requireNonNull(destination, "destination");
-        int size = size();
-        if (destination.writableBytes() < size)
-            throw new IllegalArgumentException("destination buffer too small");
-        if (size == 0)
-            return 0;
-        destination.setBytes(destination.writerIndex(), dataSegment().asByteBuffer());
-        destination.writerIndex(destination.writerIndex() + size);
         return size;
     }
 

@@ -88,7 +88,7 @@ impl_common_access!(
 );
 
 #[allow(private_bounds)]
-impl<'a, T> CommonSocketOptions<'a, T>
+impl<T> CommonSocketOptions<'_, T>
 where
     T: CommonSocketOptionAccess,
 {
@@ -256,7 +256,7 @@ impl<'a, T> PubSocketOptions<'a, T> {
 }
 
 #[allow(private_bounds)]
-impl<'a, T> PubSocketOptions<'a, T>
+impl<T> PubSocketOptions<'_, T>
 where
     T: PubSocketOptionAccess,
 {
@@ -301,7 +301,7 @@ impl<'a, T> SubSocketOptions<'a, T> {
 }
 
 #[allow(private_bounds)]
-impl<'a, T> SubSocketOptions<'a, T>
+impl<T> SubSocketOptions<'_, T>
 where
     T: SubSocketOptionAccess,
 {

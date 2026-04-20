@@ -93,7 +93,6 @@ publish/subscribe를 함께 수행한다.
   일반 `PUB`에서 SPOT topic plane으로 publish를 넣는 전용 입력 경로
 - data plane:
   `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
-  `zlink_spot_send_router()` / `zlink_spot_request_router()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /
   `zlink_spot_subscription_event()`
 - readable 알림은 한 콜백 surface로 통합:

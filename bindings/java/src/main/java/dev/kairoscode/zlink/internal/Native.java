@@ -2,9 +2,11 @@ package dev.kairoscode.zlink.internal;
 
 import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.service.spot.SpotServiceAttachmentRole;
 import dev.kairoscode.zlink.service.spot.SpotServiceMonitorEvent;
@@ -17,10 +19,13 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class Native {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
+    private static final int ERRNO_EINTR = 4;
     public static final int PART_FINAL = 0;
     public static final int PART_MORE = 1;
     private static final ThreadLocal<MultipartReceiveScratch>
@@ -28,20 +33,25 @@ public final class Native {
             ThreadLocal.withInitial(MultipartReceiveScratch::new);
 
     private static final class MultipartReceiveScratch {
-        private final Arena arena = Arena.ofConfined();
-        private final MemorySegment routingId = arena.allocate(
-            NativeLayouts.ROUTING_ID_LAYOUT);
-        private final MemorySegment partsOut = arena.allocate(
-            ValueLayout.ADDRESS);
-        private final MemorySegment countOut = arena.allocate(
-            ValueLayout.JAVA_LONG);
+        private MemorySegment parts = MemorySegment.NULL;
+        private long partCount;
         private final MultipartReceive result = new MultipartReceive();
 
         private void reset() {
-            routingId.set(ValueLayout.JAVA_BYTE,
-                NativeLayouts.ROUTING_ID_SIZE_OFFSET, (byte) 0);
-            partsOut.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);
-            countOut.set(ValueLayout.JAVA_LONG, 0, 0L);
+            parts = MemorySegment.NULL;
+            partCount = 0L;
+        }
+
+        private MemorySegment allocateParts(long newPartCount) {
+            reset();
+            if (newPartCount <= 0) {
+                return MemorySegment.NULL;
+            }
+            parts = Arena.ofAuto().allocate(
+                NativeLayouts.MSG_LAYOUT.byteSize() * newPartCount,
+                NativeLayouts.MSG_LAYOUT.byteAlignment());
+            partCount = newPartCount;
+            return parts;
         }
     }
 
@@ -73,17 +83,24 @@ public final class Native {
     }
 
     private static MethodHandle unsupportedLegacyDowncall(
-      String name, FunctionDescriptor fd) {
+        String name, FunctionDescriptor fd) {
         MethodType methodType = fd.toMethodType();
         UnsupportedOperationException failure =
           new UnsupportedOperationException(
-            "Legacy Java binding API '" + name
-              + "' is not part of the canonical core header surface.");
+            "Legacy native symbol '" + name
+              + "' is not part of the canonical zlink surface.");
         MethodHandle throwing = MethodHandles.throwException(
           methodType.returnType(), UnsupportedOperationException.class);
         throwing = MethodHandles.insertArguments(throwing, 0, failure);
         return MethodHandles.dropArguments(throwing, 0,
           methodType.parameterArray());
+    }
+
+    private static MethodHandle optionalDowncall(String name,
+                                                 FunctionDescriptor fd) {
+        return LOOKUP.find(name)
+          .map(symbol -> LINKER.downcallHandle(symbol, fd))
+          .orElse(null);
     }
 
     private static final MethodHandle MH_VERSION = downcall("zlink_version",
@@ -128,18 +145,10 @@ public final class Native {
             "zlink_send_ready_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SEND = downcall("zlink_send",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-                    ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SEND_PART = downcall("zlink_send_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SEND_RID = downcall("zlink_send_rid",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SEND_PART_RID = downcall(
             "zlink_send_part_rid",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -150,10 +159,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_RECV = downcall("zlink_recv",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_RECV_PART = downcall("zlink_recv_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -174,17 +179,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_SEND_MSG = downcall("zlink_stream_send_msg",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SOCKET_PEER_ROUTING_ID =
-      unsupportedLegacyDowncall("zlink_socket_peer_routing_id",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-          ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SOCKET_PEER_COUNT =
-      unsupportedLegacyDowncall("zlink_socket_peer_count",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SOCKET_PEERS =
-      unsupportedLegacyDowncall("zlink_socket_peers",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-          ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SETSOCKOPT = downcall("zlink_set_option",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_GETSOCKOPT = downcall("zlink_get_option",
@@ -241,20 +235,11 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PUBLISH = downcall("zlink_publish",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_PUBLISH_PART = downcall(
             "zlink_publish_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SUBSCRIBE = downcall("zlink_subscribe",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SUBSCRIBE_PART = downcall(
             "zlink_subscribe_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -262,11 +247,12 @@ public final class Native {
                     ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SUBSCRIPTION_EVENT = downcall(
-            "zlink_subscription_event",
+    private static final MethodHandle MH_XPUB_RECV_PART = downcall(
+            "zlink_xpub_recv_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
 
     private static final MethodHandle MH_POLL = downcall("zlink_poll",
@@ -283,54 +269,33 @@ public final class Native {
     private static final MethodHandle MH_POLLER_ADD = downcall("zlink_poller_add",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_ADD_SPOT_SUB = unsupportedLegacyDowncall(
-        "zlink_poller_add_spot_sub",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_ADD_SPOT_PUB = unsupportedLegacyDowncall(
-        "zlink_poller_add_spot_pub",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_ADD_RECEIVER = unsupportedLegacyDowncall(
-        "zlink_poller_add_receiver",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_ADD_SPOT_SUB = MH_POLLER_ADD;
+    private static final MethodHandle MH_POLLER_ADD_SPOT_PUB = MH_POLLER_ADD;
+    private static final MethodHandle MH_POLLER_ADD_RECEIVER = MH_POLLER_ADD;
     private static final MethodHandle MH_POLLER_ADD_FD = downcall("zlink_poller_add_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_MODIFY = downcall("zlink_poller_modify",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_MODIFY_SPOT_SUB = unsupportedLegacyDowncall(
-        "zlink_poller_modify_spot_sub",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_MODIFY_SPOT_PUB = unsupportedLegacyDowncall(
-        "zlink_poller_modify_spot_pub",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_MODIFY_RECEIVER = unsupportedLegacyDowncall(
-        "zlink_poller_modify_receiver",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_MODIFY_SPOT_SUB =
+        MH_POLLER_MODIFY;
+    private static final MethodHandle MH_POLLER_MODIFY_SPOT_PUB =
+        MH_POLLER_MODIFY;
+    private static final MethodHandle MH_POLLER_MODIFY_RECEIVER =
+        MH_POLLER_MODIFY;
     private static final MethodHandle MH_POLLER_MODIFY_FD = downcall("zlink_poller_modify_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_REMOVE = downcall("zlink_poller_remove",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_POLLER_REMOVE_SPOT_SUB = unsupportedLegacyDowncall(
-        "zlink_poller_remove_spot_sub",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS));
-    private static final MethodHandle MH_POLLER_REMOVE_SPOT_PUB = unsupportedLegacyDowncall(
-        "zlink_poller_remove_spot_pub",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS));
-    private static final MethodHandle MH_POLLER_REMOVE_RECEIVER = unsupportedLegacyDowncall(
-        "zlink_poller_remove_receiver",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS));
+    private static final MethodHandle MH_POLLER_REMOVE_SPOT_SUB =
+        MH_POLLER_REMOVE;
+    private static final MethodHandle MH_POLLER_REMOVE_SPOT_PUB =
+        MH_POLLER_REMOVE;
+    private static final MethodHandle MH_POLLER_REMOVE_RECEIVER =
+        MH_POLLER_REMOVE;
     private static final MethodHandle MH_POLLER_REMOVE_FD = downcall("zlink_poller_remove_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
@@ -345,8 +310,6 @@ public final class Native {
 
     private static final MethodHandle MH_MONITOR_OPEN = downcall("zlink_socket_monitor_open",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MONITOR = unsupportedLegacyDowncall("zlink_socket_monitor",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_MONITOR_HANDLER = downcall(
       "zlink_socket_monitor_handler",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -454,33 +417,17 @@ public final class Native {
       "zlink_thread_join",
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
-    private static final MethodHandle MH_ROUTER_REQUEST_SPOT = downcall(
-      "zlink_router_request_spot",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_REQUEST_SPOT_PART = downcall(
       "zlink_router_request_spot_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_ROUTER_REPLY_SPOT = downcall(
-      "zlink_router_reply_spot",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_ROUTER_REPLY_SPOT_PART = downcall(
       "zlink_router_reply_spot_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
         ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_ROUTER_SEND_SPOT = downcall(
-      "zlink_router_send_spot",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_SEND_SPOT_PART = downcall(
       "zlink_router_send_spot_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -490,13 +437,13 @@ public final class Native {
       "zlink_router_handler",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_ROUTER_SPOT_RECV = downcall(
-      "zlink_router_recv",
+    private static final MethodHandle MH_ROUTER_RECV_PART = downcall(
+      "zlink_router_recv_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_ROUTER_RECV_PART = downcall(
-      "zlink_router_recv_part",
+    private static final MethodHandle MH_JAVA_ROUTER_RECV = optionalDowncall(
+      "zlink_java_router_recv_compat",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
@@ -517,91 +464,32 @@ public final class Native {
         ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT));
 
-    private static final MethodHandle MH_SPOT_SEND_CHANNEL = downcall(
-      "zlink_spot_send_channel",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_SEND_CHANNEL_PART = downcall(
       "zlink_spot_send_channel_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
         ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_SEND_ROUTER = downcall(
-      "zlink_spot_send_router",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_SEND_ROUTER_PART = downcall(
-      "zlink_spot_send_router_part",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-        ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_REQUEST_ROUTER = downcall(
-      "zlink_spot_request_router",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_REQUEST_ROUTER_PART = downcall(
-      "zlink_spot_request_router_part",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-        ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_REPLY_SPOT = downcall(
-      "zlink_spot_reply_spot",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_SPOT_REPLY_SPOT_PART = downcall(
       "zlink_spot_reply_spot_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
         ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_REPLY_ROUTER = downcall(
-      "zlink_spot_reply_router",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_SPOT_REPLY_ROUTER_PART = downcall(
       "zlink_spot_reply_router_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_PUBLISH = downcall(
-      "zlink_spot_publish",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_PUBLISH_PART = downcall(
       "zlink_spot_publish_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_SUBSCRIBE = downcall(
-      "zlink_spot_subscribe",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS,
-        ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_SUBSCRIBE_PART = downcall(
       "zlink_spot_subscribe_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_SUBSCRIPTION_EVENT = downcall(
-      "zlink_spot_subscription_event",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_REQUEST_CHANNEL = downcall(
-      "zlink_spot_request_channel",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
         ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_REQUEST_CHANNEL_PART = downcall(
       "zlink_spot_request_channel_part",
@@ -617,11 +505,6 @@ public final class Native {
       "zlink_spot_dispatch_event_handler",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_RECV = downcall(
-      "zlink_spot_recv",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_RECV_PART = downcall(
       "zlink_spot_recv_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -730,42 +613,78 @@ public final class Native {
                     ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
 
-    private static final MethodHandle MH_PROVIDER_NEW = unsupportedLegacyDowncall("zlink_receiver_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_SET_OPTION = unsupportedLegacyDowncall("zlink_receiver_set_option",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_REGISTRY_SETSOCKOPT = unsupportedLegacyDowncall("zlink_registry_setsockopt",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_PROVIDER_BIND = unsupportedLegacyDowncall("zlink_receiver_bind",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_CONN = unsupportedLegacyDowncall("zlink_receiver_connect_registry",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_REG = unsupportedLegacyDowncall("zlink_receiver_register",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_PROVIDER_UPD = unsupportedLegacyDowncall("zlink_receiver_update_weight",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_PROVIDER_UNREG = unsupportedLegacyDowncall("zlink_receiver_unregister",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_RESULT = unsupportedLegacyDowncall("zlink_receiver_register_result",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_TLS = unsupportedLegacyDowncall("zlink_receiver_set_tls_server",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_RECV = unsupportedLegacyDowncall("zlink_receiver_recv",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_LAST_ENDPOINT = unsupportedLegacyDowncall("zlink_receiver_last_endpoint",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_PEER_INFO = unsupportedLegacyDowncall("zlink_receiver_peer_info",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_SET_ROUTING_ID = unsupportedLegacyDowncall("zlink_receiver_set_routing_id",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_PROVIDER_ROUTING_ID = unsupportedLegacyDowncall("zlink_receiver_routing_id",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_ROUTER_PEERS = unsupportedLegacyDowncall("zlink_receiver_router_peers",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_DESTROY = unsupportedLegacyDowncall("zlink_receiver_destroy",
+    private static final MethodHandle MH_PROVIDER_NEW =
+        unsupportedLegacyDowncall("zlink_receiver_new",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_BIND =
+        unsupportedLegacyDowncall("zlink_receiver_bind",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_CONN =
+        unsupportedLegacyDowncall("zlink_receiver_connect_registry",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_REG =
+        unsupportedLegacyDowncall("zlink_receiver_register",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_PROVIDER_UPD =
+        unsupportedLegacyDowncall("zlink_receiver_update_weight",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_PROVIDER_UNREG =
+        unsupportedLegacyDowncall("zlink_receiver_unregister",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_RESULT =
+        unsupportedLegacyDowncall("zlink_receiver_register_result",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_TLS =
+        unsupportedLegacyDowncall("zlink_receiver_set_tls_server",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_RECV =
+        unsupportedLegacyDowncall("zlink_receiver_recv",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_LAST_ENDPOINT =
+        unsupportedLegacyDowncall("zlink_receiver_last_endpoint",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_PEER_INFO =
+        unsupportedLegacyDowncall("zlink_receiver_peer_info",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_ROUTER_PEERS =
+        unsupportedLegacyDowncall("zlink_receiver_router_peers",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_DESTROY =
+        unsupportedLegacyDowncall("zlink_receiver_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_SET_OPTION =
+        unsupportedLegacyDowncall("zlink_receiver_set_option",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_REGISTRY_SETSOCKOPT =
+        unsupportedLegacyDowncall("zlink_registry_setsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_PROVIDER_SET_ROUTING_ID =
+        unsupportedLegacyDowncall("zlink_receiver_set_routing_id",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_PROVIDER_ROUTING_ID =
+        unsupportedLegacyDowncall("zlink_receiver_routing_id",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_SPOT_NODE_NEW = downcall("zlink_spot_node_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -835,29 +754,49 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_PUB_PEERS = unsupportedLegacyDowncall("zlink_spot_pub_peers",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_PEERS = unsupportedLegacyDowncall("zlink_spot_sub_peers",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-
-    private static final MethodHandle MH_SPOT_PUB_NEW = unsupportedLegacyDowncall("zlink_spot_pub_new",
+    private static final MethodHandle MH_SPOT_PUB_PEERS =
+        unsupportedLegacyDowncall("zlink_spot_pub_peers",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_PEERS =
+        unsupportedLegacyDowncall("zlink_spot_sub_peers",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_PUB_NEW =
+        unsupportedLegacyDowncall("zlink_spot_pub_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_PUB_DESTROY = unsupportedLegacyDowncall("zlink_spot_pub_destroy",
+    private static final MethodHandle MH_SPOT_PUB_DESTROY =
+        unsupportedLegacyDowncall("zlink_spot_pub_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_PUB_PUBLISH = unsupportedLegacyDowncall("zlink_spot_pub_publish",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_SUB_NEW = unsupportedLegacyDowncall("zlink_spot_sub_new",
+    private static final MethodHandle MH_SPOT_PUB_PUBLISH =
+        unsupportedLegacyDowncall("zlink_spot_pub_publish",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_SUB_NEW =
+        unsupportedLegacyDowncall("zlink_spot_sub_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_DESTROY = unsupportedLegacyDowncall("zlink_spot_sub_destroy",
+    private static final MethodHandle MH_SPOT_SUB_DESTROY =
+        unsupportedLegacyDowncall("zlink_spot_sub_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_SUBSCRIBE = unsupportedLegacyDowncall("zlink_spot_sub_subscribe",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_SUBSCRIBE_PATTERN = unsupportedLegacyDowncall("zlink_spot_sub_subscribe_pattern",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_UNSUBSCRIBE = unsupportedLegacyDowncall("zlink_spot_sub_unsubscribe",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_RECV = unsupportedLegacyDowncall("zlink_spot_sub_recv",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_SUBSCRIBE =
+        unsupportedLegacyDowncall("zlink_spot_sub_subscribe",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_SUBSCRIBE_PATTERN =
+        unsupportedLegacyDowncall("zlink_spot_sub_subscribe_pattern",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_UNSUBSCRIBE =
+        unsupportedLegacyDowncall("zlink_spot_sub_unsubscribe",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_RECV =
+        unsupportedLegacyDowncall("zlink_spot_sub_recv",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
     private Native() {}
 
     public static final class MultipartReceive {
@@ -883,6 +822,105 @@ public final class Native {
 
         public long partCount() {
             return partCount;
+        }
+    }
+
+    private static boolean invalidMultipart(MemorySegment parts,
+                                            long partCount) {
+        return partCount <= 0
+            || parts == null
+            || parts.address() == 0;
+    }
+
+    private static MemorySegment nthPart(MemorySegment parts, long index) {
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+        return parts.asSlice(index * msgSize, msgSize);
+    }
+
+    private static int sendMultipartLoop(MemorySegment socket,
+                                         MemorySegment routingId,
+                                         MemorySegment parts,
+                                         long partCount,
+                                         int flags) {
+        if (invalidMultipart(parts, partCount)) {
+            return SubmitResult.INVALID_ARGUMENT.value();
+        }
+        for (long i = 0; i < partCount; i++) {
+            int partFlag = i + 1 < partCount ? PART_MORE : PART_FINAL;
+            int rc = routingId == null || routingId.address() == 0
+                ? sendPart(socket, nthPart(parts, i), flags, partFlag)
+                : sendPartRid(socket, routingId, nthPart(parts, i), flags,
+                    partFlag);
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        return 0;
+    }
+
+    private static byte[] decodeRoutingIdPointer(MemorySegment routingIdPtr) {
+        if (routingIdPtr == null || routingIdPtr.address() == 0) {
+            return null;
+        }
+        MemorySegment routingId = routingIdPtr.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int routingIdSize = routingId.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (routingIdSize == 0) {
+            return null;
+        }
+        byte[] decoded = new byte[routingIdSize];
+        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+            MemorySegment.ofArray(decoded), 0, routingIdSize);
+        return decoded;
+    }
+
+    private static void copyRoutingIdOut(MemorySegment target,
+                                         MemorySegment routingIdPtr) {
+        if (target == null || target.address() == 0) {
+            return;
+        }
+        target.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+            (byte) 0);
+        if (routingIdPtr == null || routingIdPtr.address() == 0) {
+            return;
+        }
+        MemorySegment routingId = routingIdPtr.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int routingIdSize = routingId.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        target.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+            (byte) routingIdSize);
+        if (routingIdSize > 0) {
+            MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+                target, NativeLayouts.ROUTING_ID_DATA_OFFSET, routingIdSize);
+        }
+    }
+
+    private static MemorySegment materializeParts(MultipartReceiveScratch scratch,
+                                                  List<Message> receivedParts) {
+        MemorySegment parts = scratch.allocateParts(receivedParts.size());
+        long moved = 0L;
+        try {
+            for (int i = 0; i < receivedParts.size(); i++) {
+                InternalAccess.messageMoveTo(receivedParts.get(i),
+                    nthPart(parts, i));
+                receivedParts.get(i).close();
+                moved++;
+            }
+            return parts;
+        } catch (RuntimeException ex) {
+            if (parts.address() != 0 && moved > 0) {
+                NativeMsg.multipartClose(parts, moved);
+            }
+            throw ex;
+        } finally {
+            for (int i = (int) moved; i < receivedParts.size(); i++) {
+                try {
+                    receivedParts.get(i).close();
+                } catch (RuntimeException ignored) {
+                }
+            }
         }
     }
 
@@ -1035,9 +1073,10 @@ public final class Native {
     public static int sendMultipart(MemorySegment socket, MemorySegment parts,
                                     long partCount, int flags) {
         try {
-            return (int) MH_SEND.invokeExact(socket, parts, partCount, flags);
+            return sendMultipartLoop(socket, MemorySegment.NULL, parts,
+                partCount, flags);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_send failed", t);
+            throw new RuntimeException("zlink_send_part failed", t);
         }
     }
 
@@ -1054,10 +1093,10 @@ public final class Native {
                                     MemorySegment parts, long partCount,
                                     int flags) {
         try {
-            return (int) MH_SEND_RID.invokeExact(socket, routingId, parts,
-                partCount, flags);
+            return sendMultipartLoop(socket, routingId, parts, partCount,
+                flags);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_send_rid failed", t);
+            throw new RuntimeException("zlink_send_part_rid failed", t);
         }
     }
 
@@ -1102,25 +1141,55 @@ public final class Native {
         MultipartReceiveScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
         scratch.reset();
         try {
-            int rc = (int) MH_RECV.invokeExact(socket, scratch.routingId,
-                scratch.partsOut, scratch.countOut, flags);
-            if (rc != 0) {
-                return null;
+            while (true) {
+                List<Message> receivedParts = new ArrayList<>();
+                byte[] routingId = null;
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment routingIdOut = arena.allocate(
+                        ValueLayout.ADDRESS);
+                    MemorySegment hasMoreOut = arena.allocate(
+                        ValueLayout.JAVA_INT);
+                    while (true) {
+                        Message part = new Message();
+                        boolean success = false;
+                        try {
+                            int rc = recvPart(socket, routingIdOut,
+                                InternalAccess.messageNativeHandle(part),
+                                hasMoreOut, flags);
+                            if (rc != 0) {
+                                Message.closeAll(receivedParts);
+                                if (errno() == ERRNO_EINTR) {
+                                    break;
+                                }
+                                return null;
+                            }
+                            success = true;
+                            if (receivedParts.isEmpty()) {
+                                routingId = decodeRoutingIdPointer(
+                                    routingIdOut.get(ValueLayout.ADDRESS, 0));
+                            }
+                            InternalAccess.messageFinishReceive(part,
+                                hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                            receivedParts.add(part);
+                            if (!InternalAccess.messageMore(part)) {
+                                MemorySegment parts =
+                                    materializeParts(scratch, receivedParts);
+                                return scratch.result.reset(routingId, parts,
+                                    scratch.partCount);
+                            }
+                        } finally {
+                            if (!success) {
+                                try {
+                                    part.close();
+                                } catch (RuntimeException ignored) {
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            int routingIdSize = scratch.routingId.get(ValueLayout.JAVA_BYTE,
-              NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-            byte[] routingId = null;
-            if (routingIdSize > 0) {
-                routingId = new byte[routingIdSize];
-                MemorySegment.copy(scratch.routingId,
-                  NativeLayouts.ROUTING_ID_DATA_OFFSET,
-                  MemorySegment.ofArray(routingId), 0, routingIdSize);
-            }
-            MemorySegment parts = scratch.partsOut.get(ValueLayout.ADDRESS, 0);
-            long partCount = scratch.countOut.get(ValueLayout.JAVA_LONG, 0);
-            return scratch.result.reset(routingId, parts, partCount);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_recv failed", t);
+            throw new RuntimeException("zlink_recv_part failed", t);
         }
     }
 
@@ -1185,33 +1254,6 @@ public final class Native {
             return (int) MH_STREAM_SEND_MSG.invokeExact(socket, rid, msg, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_send_msg failed", t);
-        }
-    }
-
-    public static int socketPeerRoutingId(MemorySegment socket, int index,
-                                          MemorySegment outRid) {
-        try {
-            return (int) MH_SOCKET_PEER_ROUTING_ID.invokeExact(socket, index,
-              outRid);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_peer_routing_id failed", t);
-        }
-    }
-
-    public static int socketPeerCount(MemorySegment socket) {
-        try {
-            return (int) MH_SOCKET_PEER_COUNT.invokeExact(socket);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_peer_count failed", t);
-        }
-    }
-
-    public static int socketPeers(MemorySegment socket, MemorySegment peers,
-                                  MemorySegment count) {
-        try {
-            return (int) MH_SOCKET_PEERS.invokeExact(socket, peers, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_peers failed", t);
         }
     }
 
@@ -1364,10 +1406,20 @@ public final class Native {
                               MemorySegment parts, long partCount,
                               int flags) {
         try {
-            return (int) MH_PUBLISH.invokeExact(subject, topicId, parts,
-              partCount, flags);
+            if (invalidMultipart(parts, partCount)) {
+                return SubmitResult.INVALID_ARGUMENT.value();
+            }
+            for (long i = 0; i < partCount; i++) {
+                int partFlag = i + 1 < partCount ? PART_MORE : PART_FINAL;
+                int rc = publishPart(subject, topicId,
+                    nthPart(parts, i), flags, partFlag);
+                if (rc != 0) {
+                    return rc;
+                }
+            }
+            return 0;
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_publish failed", t);
+            throw new RuntimeException("zlink_publish_part failed", t);
         }
     }
 
@@ -1389,10 +1441,64 @@ public final class Native {
                                 MemorySegment topicIdLenOut,
                                 int flags) {
         try {
-            return (int) MH_SUBSCRIBE.invokeExact(subject, sourceRidOut,
-              partsOut, partCountOut, topicIdOut, topicIdLenOut, flags);
+            MultipartReceiveScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
+            scratch.reset();
+            while (true) {
+                List<Message> receivedParts = new ArrayList<>();
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment routingIdPtrOut = arena.allocate(
+                        ValueLayout.ADDRESS);
+                    MemorySegment hasMoreOut = arena.allocate(
+                        ValueLayout.JAVA_INT);
+                    long topicCapacity = topicIdLenOut == null
+                        || topicIdLenOut.address() == 0
+                        ? 0L
+                        : Math.max(0L,
+                            topicIdLenOut.get(ValueLayout.JAVA_LONG, 0));
+                    while (true) {
+                        Message part = new Message();
+                        boolean success = false;
+                        try {
+                            int rc = subscribePart(subject, routingIdPtrOut,
+                                topicIdOut, topicCapacity, topicIdLenOut,
+                                InternalAccess.messageNativeHandle(part),
+                                hasMoreOut, flags);
+                            if (rc != 0) {
+                                Message.closeAll(receivedParts);
+                                if (errno() == ERRNO_EINTR) {
+                                    break;
+                                }
+                                return rc;
+                            }
+                            success = true;
+                            if (receivedParts.isEmpty()) {
+                                copyRoutingIdOut(sourceRidOut,
+                                    routingIdPtrOut.get(ValueLayout.ADDRESS, 0));
+                            }
+                            InternalAccess.messageFinishReceive(part,
+                                hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                            receivedParts.add(part);
+                            if (!InternalAccess.messageMore(part)) {
+                                MemorySegment parts = materializeParts(scratch,
+                                    receivedParts);
+                                partsOut.set(ValueLayout.ADDRESS, 0, parts);
+                                partCountOut.set(ValueLayout.JAVA_LONG, 0,
+                                    scratch.partCount);
+                                return 0;
+                            }
+                        } finally {
+                            if (!success) {
+                                try {
+                                    part.close();
+                                } catch (RuntimeException ignored) {
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_subscribe failed", t);
+            throw new RuntimeException("zlink_subscribe_part failed", t);
         }
     }
 
@@ -1420,10 +1526,12 @@ public final class Native {
                                         MemorySegment topicIdLenOut,
                                         int flags) {
         try {
-            return (int) MH_SUBSCRIPTION_EVENT.invokeExact(subject,
-              sourceRidOut, subscribedOut, topicIdOut, topicIdLenOut, flags);
+            return (int) MH_XPUB_RECV_PART.invokeExact(subject, sourceRidOut,
+              subscribedOut, topicIdOut,
+              topicIdLenOut.get(ValueLayout.JAVA_LONG, 0), topicIdLenOut,
+              flags);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_subscription_event failed", t);
+            throw new RuntimeException("zlink_xpub_recv_part failed", t);
         }
     }
 
@@ -1453,11 +1561,9 @@ public final class Native {
 
     public static int monitor(MemorySegment socket, MemorySegment endpoint,
                               int events) {
-        try {
-            return (int) MH_MONITOR.invokeExact(socket, endpoint, events);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_monitor failed", t);
-        }
+        throw new UnsupportedOperationException(
+            "legacy zlink_socket_monitor is not supported; "
+                + "use zlink_socket_monitor_open");
     }
 
     public static MonitorEvent monitorRecv(MemorySegment socket, int flags) {
@@ -1773,23 +1879,6 @@ public final class Native {
         }
     }
 
-    public static int routerRequestSpot(MemorySegment router,
-                                        MemorySegment destNodeRid,
-                                        MemorySegment destSpotRid,
-                                        MemorySegment parts,
-                                        long partCount,
-                                        MemorySegment handler,
-                                        MemorySegment userdata,
-                                        int flags, int timeoutMs) {
-        try {
-            return (int) MH_ROUTER_REQUEST_SPOT.invokeExact(router,
-                destNodeRid, destSpotRid, parts, partCount, handler, userdata,
-                flags, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_request_spot failed", t);
-        }
-    }
-
     public static int routerRequestSpotPart(MemorySegment router,
                                             MemorySegment destNodeRid,
                                             MemorySegment destSpotRid,
@@ -1809,20 +1898,6 @@ public final class Native {
         }
     }
 
-    public static int routerReplySpot(MemorySegment router,
-                                      MemorySegment destNodeRid,
-                                      MemorySegment destSpotRid,
-                                      long requestSeq,
-                                      MemorySegment parts,
-                                      long partCount) {
-        try {
-            return (int) MH_ROUTER_REPLY_SPOT.invokeExact(router, destNodeRid,
-                destSpotRid, requestSeq, parts, partCount);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_reply_spot failed", t);
-        }
-    }
-
     public static int routerReplySpotPart(MemorySegment router,
                                           MemorySegment destNodeRid,
                                           MemorySegment destSpotRid,
@@ -1835,19 +1910,6 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_reply_spot_part failed",
                 t);
-        }
-    }
-
-    public static int routerSendSpot(MemorySegment router,
-                                     MemorySegment destNodeRid,
-                                     MemorySegment destSpotRid,
-                                     MemorySegment parts,
-                                     long partCount, int flags) {
-        try {
-            return (int) MH_ROUTER_SEND_SPOT.invokeExact(router, destNodeRid,
-                destSpotRid, parts, partCount, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_send_spot failed", t);
         }
     }
 
@@ -1883,11 +1945,72 @@ public final class Native {
                                  MemorySegment partsOut,
                                  MemorySegment partCountOut, int flags) {
         try {
-            return (int) MH_ROUTER_SPOT_RECV.invokeExact(router,
-                sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partsOut,
-                partCountOut, flags);
+            if (MH_JAVA_ROUTER_RECV != null) {
+                return (int) MH_JAVA_ROUTER_RECV.invokeExact(router,
+                    sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
+                    partsOut, partCountOut, flags);
+            }
+            MultipartReceiveScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
+            scratch.reset();
+            while (true) {
+                List<Message> receivedParts = new ArrayList<>();
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment nodeRidPtrOut = arena.allocate(
+                        ValueLayout.ADDRESS);
+                    MemorySegment spotRidPtrOut = arena.allocate(
+                        ValueLayout.ADDRESS);
+                    MemorySegment seqOut = arena.allocate(
+                        ValueLayout.JAVA_LONG);
+                    MemorySegment hasMoreOut = arena.allocate(
+                        ValueLayout.JAVA_INT);
+                    while (true) {
+                        Message part = new Message();
+                        boolean success = false;
+                        try {
+                            int rc = routerRecvPart(router, nodeRidPtrOut,
+                                spotRidPtrOut, seqOut,
+                                InternalAccess.messageNativeHandle(part),
+                                hasMoreOut, flags);
+                            if (rc != 0) {
+                                Message.closeAll(receivedParts);
+                                if (errno() == ERRNO_EINTR) {
+                                    break;
+                                }
+                                return rc;
+                            }
+                            success = true;
+                            if (receivedParts.isEmpty()) {
+                                sourceNodeRidOut.set(ValueLayout.ADDRESS, 0,
+                                    nodeRidPtrOut.get(ValueLayout.ADDRESS, 0));
+                                sourceSpotRidOut.set(ValueLayout.ADDRESS, 0,
+                                    spotRidPtrOut.get(ValueLayout.ADDRESS, 0));
+                                requestSeqOut.set(ValueLayout.JAVA_LONG, 0,
+                                    seqOut.get(ValueLayout.JAVA_LONG, 0));
+                            }
+                            InternalAccess.messageFinishReceive(part,
+                                hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                            receivedParts.add(part);
+                            if (!InternalAccess.messageMore(part)) {
+                                MemorySegment parts = materializeParts(scratch,
+                                    receivedParts);
+                                partsOut.set(ValueLayout.ADDRESS, 0, parts);
+                                partCountOut.set(ValueLayout.JAVA_LONG, 0,
+                                    scratch.partCount);
+                                return 0;
+                            }
+                        } finally {
+                            if (!success) {
+                                try {
+                                    part.close();
+                                } catch (RuntimeException ignored) {
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_recv failed", t);
+            throw new RuntimeException("zlink_router_recv_part failed", t);
         }
     }
 
@@ -1951,77 +2074,6 @@ public final class Native {
         }
     }
 
-    public static int spotSendRouter(MemorySegment spot,
-                                     MemorySegment peerRid,
-                                     MemorySegment parts,
-                                     long partCount, int flags) {
-        try {
-            return (int) MH_SPOT_SEND_ROUTER.invokeExact(spot, peerRid, parts,
-                partCount, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_send_router failed", t);
-        }
-    }
-
-    public static int spotSendRouterPart(MemorySegment spot,
-                                         MemorySegment peerRid,
-                                         MemorySegment part,
-                                         int flags,
-                                         int partFlag) {
-        try {
-            return (int) MH_SPOT_SEND_ROUTER_PART.invokeExact(spot, peerRid,
-                part, flags, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_send_router_part failed", t);
-        }
-    }
-
-    public static int spotRequestToRouter(MemorySegment spot,
-                                        MemorySegment peerRid,
-                                        MemorySegment parts,
-                                        long partCount,
-                                        MemorySegment handler,
-                                        MemorySegment userdata,
-                                        int flags, int timeoutMs) {
-        try {
-            return (int) MH_SPOT_REQUEST_ROUTER.invokeExact(spot, peerRid,
-                parts, partCount, handler, userdata, flags, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_request_router failed", t);
-        }
-    }
-
-    public static int spotRequestRouterPart(MemorySegment spot,
-                                            MemorySegment peerRid,
-                                            MemorySegment part,
-                                            MemorySegment handler,
-                                            MemorySegment userdata,
-                                            int flags,
-                                            int partFlag,
-                                            int timeoutMs) {
-        try {
-            return (int) MH_SPOT_REQUEST_ROUTER_PART.invokeExact(spot, peerRid,
-                part, handler, userdata, flags, partFlag, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_request_router_part failed",
-                t);
-        }
-    }
-
-    public static int spotReplySpot(MemorySegment spot,
-                                    MemorySegment destNodeRid,
-                                    MemorySegment destSpotRid,
-                                    long requestSeq,
-                                    MemorySegment parts,
-                                    long partCount) {
-        try {
-            return (int) MH_SPOT_REPLY_SPOT.invokeExact(spot, destNodeRid,
-                destSpotRid, requestSeq, parts, partCount);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_reply_spot failed", t);
-        }
-    }
-
     public static int spotReplySpotPart(MemorySegment spot,
                                         MemorySegment destNodeRid,
                                         MemorySegment destSpotRid,
@@ -2033,19 +2085,6 @@ public final class Native {
                 destNodeRid, destSpotRid, requestSeq, part, partFlag);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_reply_spot_part failed", t);
-        }
-    }
-
-    public static int spotReplyRouter(MemorySegment spot,
-                                      MemorySegment peerRid,
-                                      long requestSeq,
-                                      MemorySegment parts,
-                                      long partCount) {
-        try {
-            return (int) MH_SPOT_REPLY_ROUTER.invokeExact(spot, peerRid,
-                requestSeq, parts, partCount);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_reply_router failed", t);
         }
     }
 
@@ -2081,19 +2120,6 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
                 "zlink_spot_dispatch_event_handler failed", t);
-        }
-    }
-
-    public static int spotRecv(MemorySegment spot, MemorySegment sourceRidOut,
-                               MemorySegment spotRidOut,
-                               MemorySegment requestSeqOut,
-                               MemorySegment partsOut,
-                               MemorySegment partCountOut, int flags) {
-        try {
-            return (int) MH_SPOT_RECV.invokeExact(spot, sourceRidOut,
-                spotRidOut, requestSeqOut, partsOut, partCountOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_recv failed", t);
         }
     }
 
@@ -3102,18 +3128,6 @@ public final class Native {
         }
     }
 
-    public static int spotSendChannel(MemorySegment spot,
-                                      MemorySegment channelName,
-                                      MemorySegment parts, long count,
-                                      int flags) {
-        try {
-            return (int) MH_SPOT_SEND_CHANNEL.invokeExact(spot, channelName,
-              parts, count, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_send_channel failed", t);
-        }
-    }
-
     public static int spotSendChannelPart(MemorySegment spot,
                                           MemorySegment channelName,
                                           MemorySegment part,
@@ -3124,17 +3138,6 @@ public final class Native {
               channelName, part, flags, partFlag);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_send_channel_part failed", t);
-        }
-    }
-
-    public static int spotPublish(MemorySegment spot, MemorySegment serviceName,
-                                  MemorySegment topicId, MemorySegment parts,
-                                  long count, int flags) {
-        try {
-            return (int) MH_SPOT_PUBLISH.invokeExact(spot, serviceName,
-              topicId, parts, count, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_publish failed", t);
         }
     }
 
@@ -3202,24 +3205,6 @@ public final class Native {
         }
     }
 
-    public static int spotSubscribe(MemorySegment spot,
-                                    MemorySegment sourceRidOut,
-                                    MemorySegment partsOut,
-                                    MemorySegment partCountOut,
-                                    MemorySegment serviceNameOut,
-                                    MemorySegment serviceNameLenOut,
-                                    MemorySegment topicIdOut,
-                                    MemorySegment topicIdLenOut,
-                                    int flags) {
-        try {
-            return (int) MH_SPOT_SUBSCRIBE.invokeExact(spot, sourceRidOut,
-              partsOut, partCountOut, serviceNameOut, serviceNameLenOut,
-              topicIdOut, topicIdLenOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_subscribe failed", t);
-        }
-    }
-
     public static int spotSubscribePart(MemorySegment spot,
                                         MemorySegment sourceRidOut,
                                         MemorySegment serviceNameOut,
@@ -3238,38 +3223,6 @@ public final class Native {
               partOut, hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_subscribe_part failed", t);
-        }
-    }
-
-    public static int spotSubscriptionEvent(MemorySegment spot,
-                                            MemorySegment sourceRidOut,
-                                            MemorySegment subscribedOut,
-                                            MemorySegment serviceNameOut,
-                                            MemorySegment serviceNameLenOut,
-                                            MemorySegment topicIdOut,
-                                            MemorySegment topicIdLenOut,
-                                            int flags) {
-        try {
-            return (int) MH_SPOT_SUBSCRIPTION_EVENT.invokeExact(spot,
-              sourceRidOut, subscribedOut, serviceNameOut, serviceNameLenOut,
-              topicIdOut, topicIdLenOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_subscription_event failed", t);
-        }
-    }
-
-    public static int spotRequestChannel(MemorySegment spot,
-                                         MemorySegment channelName,
-                                         MemorySegment parts, long count,
-                                         MemorySegment handler,
-                                         MemorySegment userdata,
-                                         int flags, int timeoutMs) {
-        try {
-            return (int) MH_SPOT_REQUEST_CHANNEL.invokeExact(spot,
-              channelName, parts, count, handler, userdata, flags, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_request_channel failed", t);
         }
     }
 

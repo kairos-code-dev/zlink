@@ -61,6 +61,8 @@ class router_t : public routing_socket_base_t
   private:
     //  Receive peer id and update lookup map
     bool identify_peer (pipe_t *pipe_, bool locally_initiated_);
+    bool adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_);
+    void promote_anonymous_pipe_for_dispatch (pipe_t *pipe_);
     void broadcast_local_admission_state ();
     void send_local_admission_state (pipe_t *pipe_);
     int apply_peer_admission_state (pipe_t *pipe_,

@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [인터페이스](./handler-interfaces.ko.md)
+
 # Draft -- ZLink Framework .NET STREAM Samples
 
 > 이 문서는 **구현 전 초안**이다.
@@ -98,7 +100,7 @@ public sealed class ClientPacketHandler
         {
             case "ClientInput":
             {
-                ClientInput input = body.ParseProto<ClientInput>();
+                ClientInput input = body.Parse<ClientInput>();
 
                 await _client.SendAsync(
                     "play",
@@ -115,7 +117,7 @@ public sealed class ClientPacketHandler
 
             case "Ping":
             {
-                Ping ping = body.ParseProto<Ping>();
+                Ping ping = body.Parse<Ping>();
 
                 await _client.SendAsync(
                     "api",
@@ -143,7 +145,9 @@ public sealed class ClientPacketHandler
   parse한다.
 - application은 recv loop 대신 `HandleAsync(...)`만 구현한다.
 - 다른 서버로의 outbound 호출은 handler가 `IZLinkClient`를 DI로 받아 처리한다.
-- body parse는 `body.ParseProto<T>()` 같은 extension helper를 통해 처리한다.
+- body parse는 `body.Parse<T>()` 같은 extension helper를 통해 처리한다.
+- protobuf generated 타입은 `IMessage<T>` 계열인지 보고 protobuf로 해석한다.
+- 그 밖의 일반 class는 json으로 해석하는 규칙을 샘플 기본값으로 둔다.
 - 이 helper는 내부에서 `Message.AsReadOnlySpan()`를 사용해서 추가 복사를 가능한 한
   피하는 쪽을 기본으로 본다.
 - 즉 stream 핫패스에서는 불필요한 배열 복사와 추가 메모리 할당을 가능한 한
@@ -155,35 +159,41 @@ public sealed class ClientPacketHandler
 - `RouteHeader.MsgId`를 dispatch 기준으로 쓴다.
 - `packet.Payload`를 각 protobuf 타입으로 parse한다.
 
-예를 들면 serializer extension은 아래처럼 분리할 수 있다.
+예를 들면 serializer extension은 아래처럼 하나로 둘 수 있다.
 
 ```csharp
-public static class ProtoMessageExtensions
+public static class MessageExtensions
 {
-    public static T ParseProto<T>(this Message message)
-        where T : IMessage<T>, new()
+    public static T Parse<T>(this Message message)
     {
-        return new MessageParser<T>(() => new T())
-            .ParseFrom(message.AsReadOnlySpan());
-    }
-}
-```
+        if (IsGeneratedProtoMessage(typeof(T)))
+            return ParseGeneratedProto<T>(message);
 
-```csharp
-public static class JsonMessageExtensions
-{
-    public static T ParseJson<T>(this Message message)
-        where T : class
-    {
         return JsonSerializer.Deserialize<T>(message.AsReadOnlySpan())
             ?? throw new InvalidOperationException(
                 $"Failed to deserialize {typeof(T).Name}");
     }
+
+    private static bool IsGeneratedProtoMessage(Type type)
+    {
+        return type.GetInterfaces().Any(iface =>
+            iface.IsGenericType
+            && iface.GetGenericTypeDefinition() == typeof(IMessage<>)
+            && iface.GenericTypeArguments[0] == type);
+    }
 }
 ```
 
-이 구조는 `playhouse/extensions`의 `ProtoPacketExtensions.Parse<T>()`,
-`JsonPacketExtensions.Parse<T>()`와 비슷한 감각이다.
+즉 이 샘플은 아래 규칙을 전제로 한다.
+
+- protobuf generated 타입이면 `body.Parse<T>()`가 protobuf parser를 고른다.
+- 일반 POCO class면 `body.Parse<T>()`가 json parser를 고른다.
+- application은 serializer 이름보다 "이 payload를 어떤 타입으로 읽는가"에 더
+  집중한다.
+
+나중에 같은 타입을 여러 serializer로 처리해야 한다면, 그때는 `ParseProto<T>()`,
+`ParseJson<T>()` 같은 명시형 helper나 context 기반 parse 함수를 따로 두는 편이
+더 안전하다.
 
 ## 4. raw handler 샘플
 

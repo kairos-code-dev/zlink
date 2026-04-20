@@ -9,118 +9,10 @@
 #include "api/recv_result_internal.hpp"
 #include "core/recv_internal.hpp"
 
-namespace
-{
-int recv_service_or_fault (void *handle_,
-                           zlink_routing_id_t *source_rid_out_,
-                           zlink_msg_t **parts_out_,
-                           size_t *part_count_out_,
-                           zlink_send_flags_t flags_)
-{
-    const int service_rc = zlink_service_recv_internal (
-      handle_, source_rid_out_, parts_out_, part_count_out_, flags_);
-    if (service_rc == 0 || errno != EFAULT)
-        return service_rc;
-
-    errno = EFAULT;
-    return -1;
-}
-
-int recv_subscribe_service_or_fault (void *subject_,
-                                     zlink_routing_id_t *source_rid_out_,
-                                     zlink_msg_t **parts_out_,
-                                     size_t *part_count_out_,
-                                     char *topic_id_out_,
-                                     size_t *topic_id_len_out_,
-                                     zlink_send_flags_t flags_)
-{
-    const int service_rc = zlink_service_subscribe_recv_internal (
-      subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-      topic_id_len_out_, flags_);
-    if (service_rc == 0 || errno != EFAULT)
-        return service_rc;
-
-    errno = EFAULT;
-    return -1;
-}
-
-} // namespace
-
-int zlink_xpub_recv (void *s_,
-                     zlink_routing_id_t *source_rid_out_,
-                     int *subscribed_out_,
-                     char *topic_id_out_,
-                     size_t *topic_id_len_,
-                     zlink_send_flags_t flags_)
-{
-    return zlink_socket_xpub_recv_internal (s_, source_rid_out_,
-                                            subscribed_out_, topic_id_out_,
-                                            topic_id_len_, flags_);
-}
-
-zlink_recv_result_t zlink_recv (void *s_,
-                               zlink_routing_id_t *source_rid_out_,
-                               zlink_msg_t **parts_out_,
-                               size_t *part_count_out_,
-                               zlink_recv_flags_t flags_)
-{
-    if (!s_) {
-        errno = EFAULT;
-        return ZLINK_RECV_INVALID_HANDLE;
-    }
-    const int socket_rc = zlink_socket_recv_internal (
-      s_, source_rid_out_, parts_out_, part_count_out_,
-      static_cast<zlink_send_flags_t> (flags_));
-    if (socket_rc == 0 || errno != EFAULT)
-        return zlink::recv_result_internal::from_rc (socket_rc);
-
-    return zlink::recv_result_internal::from_rc (
-      recv_service_or_fault (
-        s_, source_rid_out_, parts_out_, part_count_out_,
-        static_cast<zlink_send_flags_t> (flags_)));
-}
-
-zlink_recv_result_t zlink_subscribe (void *subject_,
-                                    zlink_routing_id_t *source_rid_out_,
-                                    zlink_msg_t **parts_out_,
-                                    size_t *part_count_out_,
-                                    char *topic_id_out_,
-                                    size_t *topic_id_len_out_,
-                                    zlink_recv_flags_t flags_)
-{
-    if (!subject_) {
-        errno = EFAULT;
-        return ZLINK_RECV_INVALID_HANDLE;
-    }
-    const int socket_rc = zlink_socket_subscribe_recv_internal (
-      subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-      topic_id_len_out_, static_cast<zlink_send_flags_t> (flags_));
-    if (socket_rc == 0 || errno != EFAULT)
-        return zlink::recv_result_internal::from_rc (socket_rc);
-
-    return zlink::recv_result_internal::from_rc (
-      recv_subscribe_service_or_fault (
-        subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-        topic_id_len_out_, static_cast<zlink_send_flags_t> (flags_)));
-}
-
-zlink_recv_result_t zlink_subscription_event (void *subject_,
-                                              zlink_routing_id_t *source_rid_out_,
-                                              int *subscribed_out_,
-                                              char *topic_id_out_,
-                                              size_t *topic_id_len_out_,
-                                              zlink_recv_flags_t flags_)
-{
-    return zlink::recv_result_internal::from_rc (
-      zlink_xpub_recv (subject_, source_rid_out_, subscribed_out_,
-                       topic_id_out_, topic_id_len_out_,
-                       static_cast<zlink_send_flags_t> (flags_)));
-}
-
 zlink_recv_result_t zlink_recv_part (void *s_,
                                      const zlink_routing_id_t **source_rid_out_,
                                      zlink_msg_t *part_out_,
-                                     int *has_more_out_,
+                                     zlink_part_flag_t *has_more_out_,
                                      zlink_recv_flags_t flags_)
 {
     if (!s_ || !part_out_ || !has_more_out_) {
@@ -263,8 +155,9 @@ zlink_recv_result_t zlink_recv_part (void *s_,
     {
         std::lock_guard<std::mutex> lock (helper_state->mutex);
         *has_more_out_ =
-          helper_state->recv.next_part_index
-          < helper_state->recv.buffered_parts.size ();
+          (helper_state->recv.next_part_index
+           < helper_state->recv.buffered_parts.size ())
+            ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
     }
     zlink::part_helper_internal::complete_recv_step (helper_state,
                                                      *has_more_out_);
@@ -277,7 +170,7 @@ zlink_recv_result_t zlink_subscribe_part (void *subject_,
                                           size_t topic_id_capacity_,
                                           size_t *topic_id_len_out_,
                                           zlink_msg_t *part_out_,
-                                          int *has_more_out_,
+                                          zlink_part_flag_t *has_more_out_,
                                           zlink_recv_flags_t flags_)
 {
     if (!subject_ || !topic_id_len_out_ || !part_out_ || !has_more_out_) {
@@ -450,8 +343,9 @@ zlink_recv_result_t zlink_subscribe_part (void *subject_,
     {
         std::lock_guard<std::mutex> lock (helper_state->mutex);
         *has_more_out_ =
-          helper_state->recv.next_part_index
-          < helper_state->recv.buffered_parts.size ();
+          (helper_state->recv.next_part_index
+           < helper_state->recv.buffered_parts.size ())
+            ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
     }
     zlink::part_helper_internal::complete_recv_step (helper_state,
                                                      *has_more_out_);

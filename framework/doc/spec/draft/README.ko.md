@@ -1,5 +1,7 @@
 # ZLink Framework Draft
 
+[Framework 스펙](../README.ko.md) | [Framework Adapter 초안](./framework-adapter/README.ko.md)
+
 이 디렉토리는 `ZLink Framework`의 구현 전 초안을 모아 둔다.
 
 draft 문서는 현재 공개 계약이 아니다.

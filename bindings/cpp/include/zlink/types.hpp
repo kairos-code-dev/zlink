@@ -1187,11 +1187,18 @@ enum class subject_kind : uint32_t
     pattern = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
 };
 
+enum class admission_state_t : int
+{
+    serving = ZLINK_ADMISSION_SERVING,
+    draining = ZLINK_ADMISSION_DRAINING
+};
+
 struct member_peer_entry_t
 {
     member_peer_entry_t ()
         : service_type (service_type::socket), service_role (service_role::invalid),
-          service_name (), endpoint (), routing_id (std::nullopt), value (0)
+          service_name (), endpoint (), routing_id (std::nullopt),
+          admission_state (admission_state_t::serving), value (0)
     {
     }
 
@@ -1204,6 +1211,8 @@ struct member_peer_entry_t
                         ? std::optional<routing_id_t> (
                             routing_id_t (entry_.routing_id))
                         : std::nullopt),
+          admission_state (
+            static_cast<zlink::admission_state_t> (entry_.admission_state)),
           value (entry_.value)
     {
     }
@@ -1213,6 +1222,7 @@ struct member_peer_entry_t
     std::string service_name;
     std::string endpoint;
     std::optional<routing_id_t> routing_id;
+    zlink::admission_state_t admission_state;
     int64_t value;
 };
 
@@ -1382,7 +1392,8 @@ struct spot_node_peer_entry_t
     spot_node_peer_entry_t ()
         : service_name (), local_endpoint (), peer_endpoint (),
           source (spot_peer_source::manual), state (spot_peer_state::configured),
-          connected_since_ms (0), last_changed_ms (0)
+          admission_state (admission_state_t::serving), connected_since_ms (0),
+          last_changed_ms (0)
     {
     }
 
@@ -1392,6 +1403,8 @@ struct spot_node_peer_entry_t
           peer_endpoint (fixed_string_to_string (entry_.peer_endpoint)),
           source (static_cast<spot_peer_source> (entry_.source)),
           state (static_cast<spot_peer_state> (entry_.state)),
+          admission_state (
+            static_cast<admission_state_t> (entry_.admission_state)),
           connected_since_ms (entry_.connected_since_ms),
           last_changed_ms (entry_.last_changed_ms)
     {
@@ -1402,6 +1415,7 @@ struct spot_node_peer_entry_t
     std::string peer_endpoint;
     spot_peer_source source;
     spot_peer_state state;
+    admission_state_t admission_state;
     uint64_t connected_since_ms;
     uint64_t last_changed_ms;
 };

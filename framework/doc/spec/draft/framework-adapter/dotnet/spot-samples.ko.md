@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md)
+
 # Draft -- ZLink Framework .NET SPOT Samples
 
 > 이 문서는 **구현 전 초안**이다.
@@ -130,12 +132,7 @@ public interface IZLinkSpotClient
     ValueTask<TReply> RequestChannelAsync<TReply>(
         string channelName,
         IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestChannelAsync<TReply>(
-        string channelName,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
+        ZLinkRequestOptions? options = null,
         CancellationToken cancellationToken = default);
 
     ValueTask PublishAsync<TEvent>(
@@ -163,8 +160,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelId = "play";
-    options.NodeName = "play-1";
+    options.ChannelName = "play";
     options.Codecs.AddProtobuf();
 
     options.UseDiscovery(registry =>
@@ -310,7 +306,10 @@ public sealed class StageStateUpdatedHandler
                 StageRid = spot.SpotRid.ToString(),
                 UserCount = message.UserCount
             },
-            TimeSpan.FromMilliseconds(200),
+            new ZLinkRequestOptions
+            {
+                Timeout = TimeSpan.FromMilliseconds(200)
+            },
             cancellationToken);
     }
 }

@@ -1,0 +1,1 @@
+Error: unsupported pattern 'MULTI_DEALER_ROUTER'. Use router_router.

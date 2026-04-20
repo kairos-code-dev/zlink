@@ -36,15 +36,13 @@ from `bindings/README.md` for CLI names, defaults, result file naming, and the
 
 - single:
   - patterns: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `SPOT`
-  - supported `--recv` labels: `callback`
-  - required receive mode: `callback`
+  - public receive surface: `recv`
   - default transports: `inproc,tcp` and `ipc` on Linux
   - default sizes: `64,256,1024,65536,131072,262144`
 - multi:
   - entrypoint: `./perf/run_benchmarks_multi.sh`
-  - default recv patterns: `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_STREAM`
-  - default callback patterns: `MULTI_SPOT`, `MULTI_STREAM`
-  - callback-capable patterns in source: `MULTI_SPOT`, `MULTI_STREAM`
+  - default patterns: `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_STREAM`
+  - public receive surface: `recv`
   - default transports: `tcp,tls,ws,wss`
   - default clients: `100` and `10000` for `MULTI_STREAM`
   - default sizes: `64,256,1024,65536,131072,262144`
@@ -62,8 +60,6 @@ from `bindings/README.md` for CLI names, defaults, result file naming, and the
 - Multi reports normalize pattern names to `MULTI_*` in the saved report even
   when the underlying process emits the base pattern token.
 - Multi STREAM keeps a single canonical `MULTI_STREAM` public surface.
-- Callback mode is selected only through `--recv callback`; there is no
-  separate callback-only STREAM pattern or binary surface.
 - Multi STREAM uses the shared core stream client path required by policy.
 
 ## Execution
@@ -76,22 +72,24 @@ Examples:
 python3 ./perf/run_comparison.py PAIR --duration 1
 ```
 
-The runners build and execute the local benchmark projects with `dotnet run`.
+The shell runners execute the existing Release benchmark outputs produced by the
+Gate 1 `dotnet build` step.
 Multi runs spawn separate server/client processes and write raw logs under
 `results/multi/tmp/` before extracting report metrics.
-The single runner rejects `--recv recv` and only exposes the callback-mode
-surface today, which matches the current managed implementation.
+Managed runs set `DOTNET_TieredCompilation=0` to reduce per-size startup
+variance.
 
 ## Results
 
 Results are stored under:
 
-- `results/single/{tmp,report,baseline}`
-- `results/multi/{tmp,report,baseline}`
+- `results/single/report`
+- `results/multi/report`
+- `results/multi/tmp`
 
 Report filenames follow:
 
-- `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`
+- `perf_dotnet_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
 
 Saved reports start with:
 

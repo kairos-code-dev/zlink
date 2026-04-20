@@ -107,7 +107,7 @@ function parseCommonArgs(argv, defaults) {
 
 function resolveSinglePatternNames(pattern) {
   return pattern === 'ALL'
-    ? ['PAIR', 'PUBSUB', 'DEALER_DEALER', 'DEALER_ROUTER', 'ROUTER_ROUTER', 'SPOT']
+    ? ['PAIR', 'PUBSUB', 'DEALER_DEALER', 'DEALER_ROUTER', 'ROUTER_ROUTER', 'SPOT', 'SPOT_REQREP']
     : pattern.split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
 }
 
@@ -127,6 +127,7 @@ function resolveMultiPatternNames(pattern) {
       'MULTI_ROUTER_ROUTER',
       'MULTI_PUBSUB',
       'MULTI_SPOT',
+      'MULTI_SPOT_REQREP',
       'MULTI_STREAM'
     ]
     : pattern.split(',').map(normalizeMultiPatternName).filter(Boolean);
@@ -149,7 +150,9 @@ function defaultMultiClients(patternNames, explicitClients) {
   if (explicitClients) {
     return null;
   }
-  return 8;
+  const onlyStream = patternNames.length > 0
+    && patternNames.every((name) => name === 'MULTI_STREAM');
+  return onlyStream ? 10000 : 100;
 }
 
 module.exports = {

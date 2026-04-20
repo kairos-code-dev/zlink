@@ -178,13 +178,12 @@ internal static partial class PerfRunner
         BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(0, 4),
             PerfMetricMagic);
         BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(4, 4), runId);
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(8, 4),
-            (uint)phase);
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(12, 4),
+        payload[8] = (byte)phase;
+        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(9, 4),
             (uint)Math.Max(0, msgSize));
-        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(16, 8), seq);
-        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(24, 8),
-            sentTsNs);
+        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(13, 8), seq);
+        BinaryPrimitives.WriteInt64LittleEndian(payload.Slice(21, 8),
+            checked((long)sentTsNs));
         return true;
     }
 
@@ -199,14 +198,13 @@ internal static partial class PerfRunner
             4));
         uint runId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(4,
             4));
-        uint phase = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(8,
+        uint phase = payload[8];
+        uint msgSize = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(9,
             4));
-        uint msgSize = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(12,
-            4));
-        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(16,
+        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(13,
             8));
-        ulong sentTsNs = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(
-            24, 8));
+        ulong sentTsNs = checked((ulong)BinaryPrimitives.ReadInt64LittleEndian(
+            payload.Slice(21, 8)));
 
         header = new PerfMetricHeader(magic, runId, phase, msgSize, seq,
             sentTsNs);

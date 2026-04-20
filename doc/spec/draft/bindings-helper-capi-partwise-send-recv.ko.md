@@ -290,13 +290,6 @@ rollback에 의존하는 방식과도 맞는다.
 한다.
 
 ```c
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_router_part (
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_);
-
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_channel_part (
   void *spot_,
   const char *channel_name_,
@@ -311,16 +304,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish_part (
   zlink_msg_t *part_,
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *part_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_,
-  uint32_t timeout_ms_);
 
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_channel_part (
   void *spot_,

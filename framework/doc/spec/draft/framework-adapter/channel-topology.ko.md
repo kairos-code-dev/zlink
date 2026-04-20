@@ -1,5 +1,7 @@
 [스펙 목차](../../README.ko.md)
 
+[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md)
+
 # Draft -- ZLink Framework Channel Topology
 
 > 이 문서는 **구현 전 초안**이다.
@@ -23,24 +25,24 @@
 
 ## 2. channel grouping
 
-현재 초안은 provider grouping의 기준을 `channel_name`으로 본다.
+현재 초안은 provider grouping의 기준을 `channel name`으로 본다.
 
 예를 들면 아래처럼 묶는다.
 
-- `api.profile`
-- `api.inventory`
+- `profile`
+- `inventory`
 - `api.payment`
 - `game.stage.sync`
 
-클라이언트는 endpoint 주소보다 `channel_name`을 먼저 기준으로 삼는다.
+클라이언트는 endpoint 주소보다 `channel name`을 먼저 기준으로 삼는다.
 현재 방향에서는 framework runtime도 이 기준을 그대로 따른다. 즉 outbound 요청
 경로는 "노드 하나에 모든 channel을 합쳐 관리하는 연결"보다, "접근하려는
 channel마다 별도 outbound socket을 두는 구조"를 기본으로 본다.
 
-- `api.profile`에 처음 요청하면 `api.profile` 전용 channel을 만든다.
+- `profile`에 처음 요청하면 `profile` 전용 channel을 만든다.
 - 이 channel은 그 channel view에 묶인 `Discovery`와 `DEALER(client)` outbound
   socket을 가진다.
-- 같은 `channel_name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
+- 같은 `channel name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
 - framework는 그 channel에 대한 `rid` 집합과 상태만 관리하면 된다.
 
 수동 연결을 쓰면 그 channel의 provider 집합을 직접 설정한다. 운영 점검이나 제어
@@ -81,8 +83,8 @@ section 3을 참고한다.
 
 예를 들면 아래처럼 보는 편이 자연스럽다.
 
-- `IZLinkClient`가 `api.profile`에 요청하면 framework는 `api.profile` channel을 쓴다.
-- `IZLinkClient`가 `api.inventory`에 요청하면 framework는 `api.inventory` channel을 쓴다.
+- `IZLinkClient`가 `profile`에 요청하면 framework는 `profile` channel을 쓴다.
+- `IZLinkClient`가 `inventory`에 요청하면 framework는 `inventory` channel을 쓴다.
 - api 서버는 각 channel group에 대해 request handler를 제공한다.
 
 즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 channel마다 별도
@@ -96,7 +98,7 @@ outbound socket을 가질 수 있다. 현재 초안은 이 channel별 outbound s
 ### 5.1 Discovery
 
 - 운영 환경 기본값으로 적합하다.
-- channel_name 기준 provider grouping과 자동 갱신에 유리하다.
+- channel name 기준 provider grouping과 자동 갱신에 유리하다.
 - 각 channel이 자기 channel view를 독립적으로 유지하기에 적합하다.
 - 일반 요청 경로에서는 다른 channel topology를 매번 조회하지 않고, 현재 channel
   view와 `rid` 집합만 보면 된다.

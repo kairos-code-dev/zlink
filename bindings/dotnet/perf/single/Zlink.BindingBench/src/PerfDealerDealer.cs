@@ -98,7 +98,7 @@ internal static class PerfDealerDealer
             TryCleanup(sender, receiver, ep);
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
             try
             {
@@ -108,6 +108,11 @@ internal static class PerfDealerDealer
             {
             }
             TryCleanup(sender, receiver, ep);
+            if (TryPrintUnsupportedTransportFailure("DEALER_DEALER", transport,
+                    size, ex))
+            {
+                return 0;
+            }
             return 2;
         }
         finally
@@ -150,8 +155,8 @@ internal static class PerfDealerDealer
                     {
                         while (true)
                         {
-                            if (!receiver.RecvNoWait(out Received? maybe)
-                                || maybe is null)
+                            Received? maybe = receiver.RecvNoWait();
+                            if (maybe is null)
                                 break;
 
                             using (maybe)

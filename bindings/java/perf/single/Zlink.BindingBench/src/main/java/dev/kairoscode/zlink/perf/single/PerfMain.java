@@ -10,15 +10,21 @@ public final class PerfMain {
 
     public static void main(String[] args) {
         PerfUtil.Config config = PerfUtil.parseSingleArgs(args);
-        PerfUtil.Result result = switch (config.pattern()) {
-            case "PAIR" -> PerfPair.run(config);
-            case "PUBSUB" -> PerfPubSub.run(config);
-            case "DEALER_DEALER" -> PerfDealerDealer.run(config);
-            case "DEALER_ROUTER" -> PerfDealerRouter.run(config);
-            case "ROUTER_ROUTER" -> PerfRouterRouter.run(config);
-            case "SPOT" -> PerfSpot.run(config);
-            default -> throw new IllegalArgumentException("unsupported pattern: " + config.pattern());
-        };
-        System.out.println(result.toLine());
+        PerfUtil.Result result;
+        try {
+            result = switch (config.pattern()) {
+                case "PAIR" -> PerfPair.run(config);
+                case "PUBSUB" -> PerfPubSub.run(config);
+                case "DEALER_DEALER" -> PerfDealerDealer.run(config);
+                case "DEALER_ROUTER" -> PerfDealerRouter.run(config);
+                case "ROUTER_ROUTER" -> PerfRouterRouter.run(config);
+                case "SPOT" -> PerfSpot.run(config);
+                default -> throw new IllegalArgumentException(
+                    "unsupported pattern: " + config.pattern());
+            };
+        } catch (Throwable failure) {
+            result = PerfUtil.classifyFailure(config, failure);
+        }
+        System.out.println(result.toLine("java"));
     }
 }

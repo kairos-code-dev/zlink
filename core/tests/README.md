@@ -143,7 +143,7 @@ SPOT default note:
 ## Notes
 
 - Some scenario-style e2e tests still live outside `core/tests/` because they
-  are tied to benchmark/source-stack fixtures under `core/bench/`.
+  are tied to benchmark/source-stack fixtures under `bindings/c/bench/`.
 - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
   Its top-level CTest entry is intentionally not registered; use the
   `test_thread_safe_scaling_raw` and `test_thread_safe_scaling_spot` cases

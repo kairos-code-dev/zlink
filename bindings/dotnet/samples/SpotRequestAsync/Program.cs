@@ -21,8 +21,8 @@ Task responderTask = Task.Run(() =>
     using Received received = responderRouter.Recv();
     RoutingId routingId = received.RoutingId
         ?? throw new InvalidOperationException("missing routing id");
-    using Message requestPart = received.Parts[0];
-    SampleSupport.EnsureEqual("spot-ping", requestPart.GetString(), "request");
+    string requestPayload = received.Parts[0].GetString();
+    SampleSupport.EnsureEqual("spot-ping", requestPayload, "request");
     using var reply = Message.FromString("spot-pong");
     responderRouter.Reply(routingId, received.RequestSeq ?? 0UL, reply);
 });

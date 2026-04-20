@@ -5,6 +5,7 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
+    apply_multi_socket_options,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
@@ -26,7 +27,7 @@ def main(argv=None):
         sockets = [zlink.SubSocket(ctx) for _ in range(args.clients)]
         try:
             for sock in sockets:
-                sock.options.linger_ms = 0
+                apply_multi_socket_options(sock)
                 sock.connect(args.endpoint)
                 sock.set_subscription(TOPIC)
             print(f"CLIENT_READY,{args.msg_size}", flush=True)

@@ -343,7 +343,7 @@ public abstract class Socket implements AutoCloseable {
         int rc = Native.sendMultipartU32(handle, rid, part.nativeHandle(), 1,
             effectiveFlags);
         if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_send_rid");
+            throw ZlinkException.fromLastError("zlink_java_send_u32");
         part.markTransferred();
     }
 
@@ -371,7 +371,7 @@ public abstract class Socket implements AutoCloseable {
             rc = Native.sendMultipartU32(handle, rid, nativeMsg, 1,
                 flag.getValue());
             if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send_rid");
+                throw ZlinkException.fromLastError("zlink_java_send_u32");
             success = true;
         } finally {
             if (!success) {
@@ -398,7 +398,7 @@ public abstract class Socket implements AutoCloseable {
             rc = Native.sendMultipartU32(handle, rid, nativeMsg, 1,
                 flag.getValue());
             if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send_rid");
+                throw ZlinkException.fromLastError("zlink_java_send_u32");
             success = true;
         } finally {
             if (!success) {
@@ -1193,7 +1193,7 @@ public abstract class Socket implements AutoCloseable {
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            throwPartSubmitFailure("zlink_send");
+            throwPartSubmitFailure("zlink_send_part");
         }
     }
 
@@ -1210,7 +1210,7 @@ public abstract class Socket implements AutoCloseable {
                 continue;
             if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
                 return false;
-            throw ZlinkException.fromLastError("zlink_send");
+            throw ZlinkException.fromLastError("zlink_send_part");
         }
     }
 
@@ -1224,7 +1224,7 @@ public abstract class Socket implements AutoCloseable {
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            return classifyNonBlockingSendErrno("zlink_send");
+            return classifyNonBlockingSendErrno("zlink_send_part");
         }
     }
 
@@ -1346,7 +1346,7 @@ public abstract class Socket implements AutoCloseable {
                 && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
                 return null;
             }
-            throw ZlinkException.fromLastError("zlink_recv");
+            throw ZlinkException.fromLastError("zlink_recv_part");
         }
     }
 

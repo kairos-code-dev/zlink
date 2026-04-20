@@ -111,6 +111,8 @@ napi_value create_member_peer_array(napi_env env,
         set_string_property(env, obj, "endpoint", entries[i].endpoint);
         napi_value rid = create_routing_id_value(env, entries[i].routing_id);
         napi_set_named_property(env, obj, "routingId", rid);
+        set_uint32_property(env, obj, "admissionState",
+                            static_cast<uint32_t>(entries[i].admission_state));
         set_int64_property(env, obj, "value", entries[i].value);
         napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
     }

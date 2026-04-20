@@ -48,17 +48,19 @@ public final class SpotRequestAsyncSample {
             CountDownLatch replyLatch = new CountDownLatch(1);
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
-            requesterRouter.requestToSpot(
-                responderNode.routingId(),
-                responderSpot.routingId(),
-                List.of(Message.copyOfUtf8("spot-ping")),
-                (requestResult, replyParts) -> {
-                    resultHolder[0] = requestResult;
-                    replyHolder[0] = replyParts;
-                    replyLatch.countDown();
-                },
-                SendFlags.NONE,
-                Duration.ofSeconds(5));
+            try (Message request = Message.copyOfUtf8("spot-ping")) {
+                requesterRouter.requestToSpot(
+                    responderNode.routingId(),
+                    responderSpot.routingId(),
+                    List.of(request),
+                    (requestResult, replyParts) -> {
+                        resultHolder[0] = requestResult;
+                        replyHolder[0] = replyParts;
+                        replyLatch.countDown();
+                    },
+                    SendFlags.NONE,
+                    Duration.ofSeconds(5));
+            }
             if (!replyLatch.await(5, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("spot request async callback timed out");
             }

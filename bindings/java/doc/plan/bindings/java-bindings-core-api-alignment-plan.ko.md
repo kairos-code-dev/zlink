@@ -57,7 +57,7 @@
   - 특화 옵션은 `zlink_set_router_option`, `zlink_set_pub_option`, `zlink_set_sub_option`, `zlink_set_stream_option`
   - 라우팅 ID / 구독은 전용 API(`zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_subscription`, `zlink_unset_subscription`)
 - 메시지 계층:
-  - canonical send/recv는 `zlink_send`, `zlink_send_rid`, `zlink_recv`, `zlink_publish`, `zlink_subscribe`
+  - canonical send/recv는 `zlink_send_part`, `zlink_send_part_rid`, `zlink_recv_part`, `zlink_publish_part`, `zlink_subscribe_part`
   - raw message frame single-send/single-recv helper가 공개 표면 중심이 아니다
 - 콜백/이벤트 계층:
   - `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`
@@ -67,7 +67,7 @@
   - `Registry`: bind/config/snapshot/query
   - `Discovery`: `(ctx, service_type, service_name)` 기반 단일 service view
   - raw socket discovery attach: `zlink_socket_attach_discovery`
-  - unified `Spot`: `zlink_spot_new`, `zlink_publish`, `zlink_subscribe`, handlers, send-ready, monitor
+  - unified `Spot`: `zlink_spot_new`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, handlers, send-ready, monitor
   - `SpotNode`: topology/lifecycle/snapshot 역할
 
 ### 2.4 정책 위반 코드
@@ -499,11 +499,11 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   - `zlink_msg_recv`
   - `zlink_msg_more`
 - canonical multipart path helper를 추가한다.
-  - `zlink_send`
-  - `zlink_send_rid`
-  - `zlink_recv`
-  - `zlink_publish`
-  - `zlink_subscribe`
+  - `zlink_send_part`
+  - `zlink_send_part_rid`
+  - `zlink_recv_part`
+  - `zlink_publish_part`
+  - `zlink_subscribe_part`
   - `zlink_subscription_event`
 - option family 전용 downcall 추가:
   - `zlink_set_option` / `zlink_get_option`
@@ -545,7 +545,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
 - `zlink_socket` socket type 값, monitor open/recv 시그니처,
   `zlink_routing_id_t` / monitor layout 1차 정렬을 반영했다.
 - `Native` / `NativeLayouts` 에 공식 헤더 기준 누락되어 있던
-  `zlink_subscription_at`, `zlink_publish`, `zlink_subscribe`,
+  `zlink_subscription_at`, `zlink_publish_part`, `zlink_subscribe_part`,
   `zlink_monitor_snapshot`, `zlink_monitor_close`,
   `zlink_service_monitor_open`, `zlink_service_monitor_handler`,
   `zlink_service_monitor_recv`,
@@ -580,13 +580,13 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   direct lookup 을 제거하고 `zlink_msg_refcnt`, `zlink_msg_gets`,
   multipart array close+free 경로를 추가했다.
 - `Socket` / `Message` 는 single-frame legacy helper 를 canonical
-  `zlink_send` / `zlink_recv` 위로 재배선하기 시작했고,
+  `zlink_send_part` / `zlink_recv_part` 위로 재배선하기 시작했고,
   `LibraryLoader` 는 `core/build/lib/libzlink.so` 도 개발용 우선 후보로
   찾도록 보정했다.
 - 이후 core regression
   `core/tests/integration/test_public_inproc_multipart_send.cpp` 와 Java
   regression `src/test/java/dev/kairoscode/zlink/NativeContractTest.java`
-  로 `Socket.sendMessageFrame -> zlink_send` 의 blocking `EINVAL` 를 재현했고,
+  로 `Socket.sendMessageFrame -> zlink_send_part` 의 blocking `EINVAL` 를 재현했고,
   `core/src/core/multipart_send_txn.cpp` 에서 blocking `sndtimeo` 조회 실패 시
   public send fallback 을 타도록 보정해 해소했다.
 - 2026-03-26 현재 `cd bindings/java && ./gradlew test --no-daemon` 는
@@ -716,7 +716,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   디렉터리에서도 저장소 루트의 `core/build/lib/libzlink.so` 를 우선 찾게 했다.
 - 또한 `Socket.publish(...)`, `Socket.subscribe()` 와 `TopicMessage` 를
   추가해 raw `PUB` / `SUB` 의 topic-aware send/recv surface 를
-  `zlink_publish` / `zlink_subscribe` 위로 정렬했다.
+  `zlink_publish_part` / `zlink_subscribe_part` 위로 정렬했다.
 - `SocketSubscriptionContractTest` 에 publish/subscribe blocking/callback
   contract 를 추가했고, `PairCallbackSample` 은
   `SampleSupport.wrapUtf8(...)` 를 사용하도록 바꿔 wrap path sample 검증도
@@ -798,7 +798,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
 - 이후 `service/receiver/Receiver.java` 와 그에 직접 묶인 integration test 를
   제거해 `Receiver` 삭제 방침을 실제 코드에 반영하기 시작했다.
 - `service/spot/Spot.java` 는 split `spot_pub/sub` 대신
-  unified `zlink_spot_new(ctx)` + `zlink_publish` + `zlink_subscribe`
+  unified `zlink_spot_new(ctx)` + `zlink_spot_publish_part` + `zlink_spot_subscribe_part`
   기반 최소 facade 로 다시 작성했고,
   `SpotNode` 도 공식 `bind/connect_peer/disconnect_peer/attach_discovery`
   만 남기는 쪽으로 축소했다.

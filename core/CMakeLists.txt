@@ -1613,66 +1613,10 @@ if(ZLINK_BUILD_TESTS)
 endif()
 
 # -----------------------------------------------------------------------------
-# C samples
-option(ZLINK_BUILD_C_SAMPLES "Build C API samples" OFF)
-if(ZLINK_BUILD_C_SAMPLES)
-  if(NOT ZLINK_BUILD_TESTS)
-    enable_testing()
-  endif()
-  add_subdirectory(samples)
-endif()
-
-# -----------------------------------------------------------------------------
 # benchmarks
-option(BUILD_BENCHMARKS "Build benchmark tools for performance comparison" OFF)
-
-# Process-based core tests spawn helper binaries from core/perf.
-# Build those helpers automatically with tests without enabling the full
-# benchmark comparison tree.
-set(ZLINK_BUILD_TEST_PERF_HELPERS OFF)
-if(ZLINK_BUILD_TESTS AND BUILD_SHARED)
-  set(ZLINK_BUILD_TEST_PERF_HELPERS ON)
-endif()
-
-if((BUILD_BENCHMARKS OR ZLINK_BUILD_TEST_PERF_HELPERS) AND BUILD_SHARED)
-  if(ZLINK_BUILD_TEST_PERF_HELPERS AND NOT BUILD_BENCHMARKS)
-    add_subdirectory(perf)
-  endif()
-
-  if(BUILD_BENCHMARKS)
-  option(ZLINK_BUILD_BENCH_ZMQ "Build ZeroMQ comparison benchmarks" ON)
-  option(ZLINK_BUILD_BENCH_ZLINK "Build zlink benchmarks" ON)
-  option(ZLINK_BUILD_BENCH_BEAST "Build Beast benchmarks" ON)
-  option(ZLINK_BUILD_BENCH_STREAMCOMPARE
-         "Build stream compare benchmarks" ON)
-  option(ZLINK_BUILD_BENCH_ROUTER_COMPARE
-         "Build router compare benchmarks (zlink vs zmq vs gRPC)" ON)
-
-  function(zlink_add_optional_bench option_var preferred_subdir)
-    if(NOT ${option_var})
-      return()
-    endif()
-
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${preferred_subdir}/CMakeLists.txt")
-      add_subdirectory(${preferred_subdir})
-    endif()
-  endfunction()
-
-  zlink_add_optional_bench(ZLINK_BUILD_BENCH_ZMQ
-                           "bench/with_zmq")
-  zlink_add_optional_bench(ZLINK_BUILD_BENCH_ZLINK
-                           "perf")
-  zlink_add_optional_bench(ZLINK_BUILD_BENCH_STREAMCOMPARE
-                           "bench/with_stream")
-  zlink_add_optional_bench(ZLINK_BUILD_BENCH_ROUTER_COMPARE
-                           "bench/with_routing")
-
-  if(ZLINK_BUILD_BENCH_BEAST
-     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithbeast/CMakeLists.txt")
-    add_subdirectory(bench/benchwithbeast)
-  endif()
-  endif()
-endif()
+option(BUILD_BENCHMARKS
+       "Deprecated core perf switch. Use bindings/<lang>/perf instead."
+       OFF)
 
 # -----------------------------------------------------------------------------
 # installer

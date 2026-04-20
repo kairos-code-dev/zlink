@@ -26,5 +26,6 @@ dependencies = [
 name = "zlink-perf-multi"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "zlink",
 ]

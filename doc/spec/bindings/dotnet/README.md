@@ -628,6 +628,60 @@ public sealed class Message : IDisposable, IAsyncDisposable
 }
 ```
 
+### Codec Extensions
+
+The binding exposes separate codec extension libraries. The public assembly and
+namespace names are fixed to:
+
+- NuGet `Zlink.Codecs.Protobuf`
+- NuGet `Zlink.Codecs.Json`
+- NuGet `Zlink.Codecs.MessagePack`
+
+- `Zlink.Codecs.Protobuf`
+- `Zlink.Codecs.Json`
+- `Zlink.Codecs.MessagePack`
+
+These extensions are separate public modules layered on top of the core
+binding. They must not be merged into the `Zlink` core assembly.
+
+JSON codec baseline: `System.Text.Json`.
+MessagePack codec baseline: `MessagePack for C#`.
+
+```csharp
+namespace Zlink.Codecs.Protobuf;
+
+public static class ProtobufMessageExtensions
+{
+    T ParseProto<T>(this Message message)
+        where T : Google.Protobuf.IMessage<T>, new();
+
+    Message ToProtoMessage<T>(this T value)
+        where T : Google.Protobuf.IMessage<T>;
+}
+```
+
+```csharp
+namespace Zlink.Codecs.Json;
+
+public static class JsonMessageExtensions
+{
+    T ParseJson<T>(this Message message);
+
+    Message ToJsonMessage<T>(this T value);
+}
+```
+
+```csharp
+namespace Zlink.Codecs.MessagePack;
+
+public static class MessagePackMessageExtensions
+{
+    T ParseMessagePack<T>(this Message message);
+
+    Message ToMessagePackMessage<T>(this T value);
+}
+```
+
 ### RoutingId
 
 Immutable binary-safe routing identity value type (1-255 bytes).
@@ -1423,42 +1477,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                      SendFlags flags = SendFlags.None);
 
     void SendToRouter(RoutingId peerRid, Message message,
-                      SendFlags flags = SendFlags.None);
-    void SendToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
-                      SendFlags flags = SendFlags.None);
-
-    // --- routed request (spot -> router, async, blocking submit, no flags) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid, Message message,
-                                                      TimeSpan timeout = default,
-                                                      CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid, IReadOnlyList<Message> parts,
-                                                      TimeSpan timeout = default,
-                                                      CancellationToken ct = default);
-
-    // --- routed request (spot -> router, callback, blocking submit) ---
-    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
-    // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void RequestToRouter(RoutingId peerRid, Message message,
-                         Action<RequestResult, IReadOnlyList<Message>> callback,
-                         TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void RequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
-                         Action<RequestResult, IReadOnlyList<Message>> callback,
-                         TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequestToRouter(RoutingId peerRid, Message message,
-                            Action<RequestResult, IReadOnlyList<Message>> callback,
-                            TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
-                            Action<RequestResult, IReadOnlyList<Message>> callback,
-                            TimeSpan timeout = default);
-
     // --- routed reply (spot -> router) ---
     /// <exception cref="ZlinkSubmitException"/>
     void ReplyToRouter(RoutingId peerRid, ulong requestSequence, Message message,

@@ -1,5 +1,7 @@
 [스펙 목차](../../README.ko.md)
 
+[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md)
+
 # Draft -- ZLink Framework Message Model
 
 > 이 문서는 **구현 전 초안**이다.
@@ -71,8 +73,14 @@ typed request body를 받고, header metadata가 필요하면 context에서 조�
 |-------|------|
 | `protobuf` | typed contract에 적합 |
 | `json` | 빠른 개발과 디버깅에 적합 |
+| `messagepack` | compact binary payload가 필요할 때 적합 |
 
-나중에 필요하면 다른 codec을 추가할 수 있어야 한다.
+이 문서의 기본 예시는 주로 `protobuf`와 `json`을 기준으로 설명한다.
+다만 framework adapter는 transport 본체에 codec 구현을 직접 섞지 않고,
+binding 또는 framework 위에 얹는 별도 codec extension/provider 계층으로
+연결하는 방향을 기본으로 본다.
+
+나중에 필요하면 다른 codec을 같은 방식으로 추가할 수 있어야 한다.
 
 즉 `ZLink Framework`는 "body가 어떤 codec인가"를 handler와 client가 알 수 있게
 해 주되, core transport가 그 codec 내용을 직접 이해하려고 하지는 않는 방향이

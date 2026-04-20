@@ -51,10 +51,15 @@ async function main() {
             await new Promise((resolve) => setTimeout(resolve, 25));
         }
         assert.notEqual(received, null);
-        const recv = received.parts[0].data().toString();
-        assert.equal(received.topic, topic);
-        assert.equal(recv, sent);
-        console.log(`[pubsub/recv] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
+        try {
+            const recv = received.parts[0].data().toString();
+            assert.equal(received.topic, topic);
+            assert.equal(recv, sent);
+            console.log(`[pubsub/recv] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
+        }
+        finally {
+            received.close();
+        }
     }
     finally {
         sub.close();

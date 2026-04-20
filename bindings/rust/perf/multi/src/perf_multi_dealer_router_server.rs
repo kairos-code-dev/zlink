@@ -29,7 +29,17 @@ fn main() {
         "tls" => "tls://0.0.0.0:0".to_string(),
         _ => "tcp://0.0.0.0:0".to_string(),
     };
-    router.bind(&bind_endpoint).expect("bind");
+    if let Err(err) = router.bind(&bind_endpoint) {
+        if common::handle_transport_setup_error(
+            "MULTI_DEALER_ROUTER",
+            &args.transport,
+            "bind",
+            err,
+        ) {
+            return;
+        }
+        panic!("bind: {err}");
+    }
     let endpoint = router.last_endpoint().expect("endpoint");
     common::print_ready(&endpoint);
     let stop = Arc::new(AtomicBool::new(false));

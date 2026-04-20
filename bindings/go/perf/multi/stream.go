@@ -23,7 +23,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 	startMultiStreamEchoServer(server)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
 	var wg sync.WaitGroup
 	for i := 0; i < cfg.clients; i++ {
@@ -37,7 +37,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 			payload := perfcommon.PreparePayload(cfg.msgSize)
 			reply := make([]byte, cfg.msgSize)
 			for time.Now().Before(window.StopAt) {
-				perfcommon.StampPayload(payload)
+				perfcommon.StampWindowPayload(payload, window.ActiveAt)
 				_, err := c.Write(payload)
 				if err != nil {
 					return
@@ -46,7 +46,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 				if err != nil {
 					return
 				}
-				perfcommon.RecordBytesLatency(stats, window.ActiveAt, reply)
+				perfcommon.RecordBytesLatency(stats, window.ActiveAt, cfg.msgSize, reply)
 			}
 		}(conn)
 	}

@@ -23,7 +23,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(router)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
 	type dealerClient struct {
 		ctx     *zlink.Context
@@ -76,7 +76,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 
 			payload := perfcommon.PreparePayload(cfg.msgSize)
 			for time.Now().Before(window.StopAt) {
-				perfcommon.StampPayload(payload)
+				perfcommon.StampWindowPayload(payload, window.ActiveAt)
 				err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 				if err != nil {
 					if perfcommon.IsTransient(err) {
@@ -96,7 +96,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 				}
 				part, err := reply.SinglePartOrError()
 				if err == nil {
-					perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
+					perfcommon.RecordMessageLatency(stats, window.ActiveAt, cfg.msgSize, part)
 				}
 				_ = reply.Close()
 			}
@@ -112,7 +112,7 @@ func waitForDealerReady(dealer *zlink.DealerSocket) {
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "multi dealer/router perf endpoint",
 		Probe: func() (bool, error) {
-			perfcommon.StampPayload(payload)
+			perfcommon.StampProbePayload(payload)
 			err := dealer.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 			if err != nil {
 				if perfcommon.IsTransient(err) {

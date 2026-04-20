@@ -63,6 +63,12 @@ export {
   ConfigError
 };
 
+export const AdmissionState = Object.freeze({
+  Serving: 1,
+  Draining: 2
+} as const);
+export type AdmissionState = typeof AdmissionState[keyof typeof AdmissionState];
+
 const ContextOption = Object.freeze({
   IO_THREADS: 1,
   MAX_SOCKETS: 2,
@@ -130,6 +136,7 @@ export class MonitorEvent {
   static readonly CONNECTION_READY = 0x1000;
   static readonly HANDSHAKE_FAILED_PROTOCOL = 0x2000;
   static readonly HANDSHAKE_FAILED_AUTH = 0x4000;
+  static readonly PEER_ADMISSION_CHANGED = 0x8000;
   static readonly ALL = 0xFFFF;
 
   readonly event: MonitorEventType;
@@ -149,13 +156,14 @@ export class MonitorEvent {
 
 Object.freeze(MonitorEvent);
 
-const ServiceMonitorEvent = Object.freeze({
-  ERROR: 1 << 4,
-  DISCOVERY_SERVICE_UP: 1 << 5,
-  DISCOVERY_SERVICE_DOWN: 1 << 6,
-  DISCOVERY_PROVIDERS_CHANGED: 1 << 7,
-  CLOSED: 1 << 17,
-  ALL: (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 17)
+export const ServiceMonitorEventMask = Object.freeze({
+  error: 1 << 4,
+  discoveryServiceUp: 1 << 5,
+  discoveryServiceDown: 1 << 6,
+  discoveryProvidersChanged: 1 << 7,
+  peerAdmissionChanged: 1 << 8,
+  closed: 1 << 17,
+  all: (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 17)
 } as const);
 export type ServiceMonitorEventMask = number;
 
@@ -185,6 +193,7 @@ export interface MemberPeerEntry {
   readonly serviceName: string;
   readonly endpoint: string;
   readonly routingId: RoutingId;
+  readonly admissionState: AdmissionState;
   readonly value: bigint;
 }
 
@@ -246,6 +255,7 @@ export interface SpotNodePeerEntry {
   readonly peerEndpoint: string;
   readonly source: number;
   readonly state: number;
+  readonly admissionState: AdmissionState;
   readonly connectedSinceMs: bigint;
   readonly lastChangedMs: bigint;
 }
@@ -259,13 +269,13 @@ export interface SpotNodeSubjectEntry {
   readonly lastChangedMs: bigint;
 }
 
-export const SpotServiceAttachmentRole = Object.freeze({
+const SpotServiceAttachmentRole = Object.freeze({
   ROUTER: 1,
   PUB: 2,
   SUB: 3
 } as const);
 
-export interface SpotServiceMonitorEvent {
+interface SpotServiceMonitorEvent {
   readonly serviceName: string;
   readonly role: number;
   readonly event: MonitorEvent;
@@ -471,6 +481,7 @@ function mapMemberPeerEntry(entry: {
   serviceName: string;
   endpoint: string;
   routingId: Buffer;
+  admissionState: number;
   value: number | bigint;
 }): MemberPeerEntry {
   return {
@@ -479,6 +490,7 @@ function mapMemberPeerEntry(entry: {
     serviceName: entry.serviceName,
     endpoint: entry.endpoint,
     routingId: RoutingId.fromBytes(entry.routingId),
+    admissionState: entry.admissionState as AdmissionState,
     value: BigInt(entry.value)
   };
 }
@@ -596,6 +608,7 @@ function mapSpotNodePeerEntry(entry: {
   peerEndpoint: string;
   source: number;
   state: number;
+  admissionState: number;
   connectedSinceMs: number | bigint;
   lastChangedMs: number | bigint;
 }): SpotNodePeerEntry {
@@ -605,6 +618,7 @@ function mapSpotNodePeerEntry(entry: {
     peerEndpoint: entry.peerEndpoint,
     source: entry.source,
     state: entry.state,
+    admissionState: entry.admissionState as AdmissionState,
     connectedSinceMs: BigInt(entry.connectedSinceMs),
     lastChangedMs: BigInt(entry.lastChangedMs)
   };
@@ -725,14 +739,6 @@ class BaseSocket extends NativeHandle {
     requireNative().socketUnbind(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
   }
 
-  connect(endpoint: string): void {
-    requireNative().socketConnect(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
-  }
-
-  disconnect(endpoint: string): void {
-    requireNative().socketDisconnect(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
-  }
-
   setTlsServer(cert: string, key: string, requireClient = 0): void {
     requireNative().socketSetTlsServer(
       this.nativeHandle(),
@@ -765,10 +771,28 @@ class BaseSocket extends NativeHandle {
     return new MonitorSocket(requireNative().monitorOpen(this.nativeHandle(), events | 0));
   }
 
+  getAdmissionState(): AdmissionState {
+    return requireNative().handleGetAdmissionState(this.nativeHandle()) as AdmissionState;
+  }
+
+  setAdmissionState(state: AdmissionState): void {
+    requireNative().handleSetAdmissionState(this.nativeHandle(), state | 0);
+  }
+
   close(): void {
     if (!this._native) return;
     requireNative().socketClose(this._native);
     this._native = null;
+  }
+}
+
+class ConnectableSocket extends BaseSocket {
+  connect(endpoint: string): void {
+    requireNative().socketConnect(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
+  }
+
+  disconnect(endpoint: string): void {
+    requireNative().socketDisconnect(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
   }
 }
 
@@ -1001,7 +1025,7 @@ export class ServiceMonitor extends NativeHandle {
   close(): void { if (this._native) { requireNative().monitorClose(this._native); this._native = null; } }
 }
 
-class SendSocket extends BaseSocket {
+class SendSocket extends ConnectableSocket {
   send(message: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     const payload = normalizeMessageLikePayload(message);
     try {
@@ -1026,7 +1050,7 @@ class SendSocket extends BaseSocket {
   }
 }
 
-class PublisherSocket extends BaseSocket {
+class PublisherSocket extends ConnectableSocket {
   publish(topic: string, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     const normalizedTopic = validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER);
     const normalized = normalizeMessageLikePayload(payload);
@@ -1065,7 +1089,7 @@ class MessageSocket extends SendSocket {
   }
 }
 
-class SubscriberSocket extends BaseSocket {
+class SubscriberSocket extends ConnectableSocket {
   setSubscription(topicOrPattern: string): void {
     requireNative().socketSetOpt(
       this.nativeHandle(),
@@ -1094,7 +1118,7 @@ class SubscriberSocket extends BaseSocket {
   }
 }
 
-class RoutedMessageSocket extends BaseSocket {
+class RoutedMessageSocket extends ConnectableSocket {
   send(routingId: RoutingId, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     const normalized = normalizeMessageLikePayload(payload);
     const parts = Array.isArray(normalized)
@@ -1191,12 +1215,11 @@ export class DealerSocket extends MessageSocket {
   attachDiscovery(discovery: Discovery): void { requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle()); }
   request(message: MessageLike, timeout?: number): Promise<Message[]>;
   request(parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  request(message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  request(parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  request(message: MessageLike, callback: RequestResultCallback, timeout?: number): void;
+  request(parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): void;
   request(
     payloadOrParts: MessageLike | readonly MessageLike[],
     callbackOrTimeout?: RequestResultCallback | number,
-    flags: SendFlags = SendFlags.None,
     timeout = 0
   ): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts)
@@ -1213,7 +1236,7 @@ export class DealerSocket extends MessageSocket {
             replyParts ? replyParts.map((part) => Message.from(part)) : []
           );
         },
-        flags | 0,
+        SendFlags.None,
         timeout | 0,
       );
     }
@@ -1233,6 +1256,38 @@ export class DealerSocket extends MessageSocket {
         timeoutMs | 0
       );
     });
+  }
+  tryRequest(message: MessageLike, callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequest(parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequest(
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callback: RequestResultCallback,
+    timeout = 0
+  ): boolean {
+    const parts = Array.isArray(payloadOrParts)
+      ? toMessageParts(payloadOrParts)
+      : [normalizeMessageLikePayload(payloadOrParts)];
+    try {
+      requireNative().dealerRequest(
+        this.nativeHandle(),
+        parts,
+        (result: number, replyParts: Buffer[] | null) => {
+          callback(
+            result as RequestResult,
+            replyParts ? replyParts.map((part) => Message.from(part)) : []
+          );
+        },
+        SendFlags.DontWait,
+        timeout | 0,
+      );
+      return true;
+    } catch (error) {
+      const submitError = submitNativeError(error, SendFlags.DontWait, 'tryRequest failed');
+      if (submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
   }
 }
 
@@ -1254,13 +1309,12 @@ export class RouterSocket extends RoutedMessageSocket {
   attachDiscovery(discovery: Discovery): void { requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle()); }
   request(routingId: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
   request(routingId: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  request(routingId: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  request(routingId: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
+  request(routingId: RoutingId, message: MessageLike, callback: RequestResultCallback, timeout?: number): void;
+  request(routingId: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): void;
   request(
     routingId: RoutingId,
     payloadOrParts: MessageLike | readonly MessageLike[],
     callbackOrTimeout?: RequestResultCallback | number,
-    flags: SendFlags = SendFlags.None,
     timeout = 0
   ): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
@@ -1272,7 +1326,7 @@ export class RouterSocket extends RoutedMessageSocket {
         peer,
         parts,
         (result: number, replyParts: Buffer[] | null) => callback(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
-        flags | 0,
+        SendFlags.None,
         timeout | 0
       );
     }
@@ -1294,6 +1348,36 @@ export class RouterSocket extends RoutedMessageSocket {
       );
     });
   }
+  tryRequest(routingId: RoutingId, message: MessageLike, callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequest(routingId: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequest(
+    routingId: RoutingId,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callback: RequestResultCallback,
+    timeout = 0
+  ): boolean {
+    const parts = Array.isArray(payloadOrParts)
+      ? toMessageParts(payloadOrParts)
+      : [normalizeMessageLikePayload(payloadOrParts)];
+    const peer = normalizeRoutingId(routingId);
+    try {
+      requireNative().routerRequest(
+        this.nativeHandle(),
+        peer,
+        parts,
+        (result: number, replyParts: Buffer[] | null) => callback(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
+        SendFlags.DontWait,
+        timeout | 0
+      );
+      return true;
+    } catch (error) {
+      const submitError = submitNativeError(error, SendFlags.DontWait, 'tryRequest failed');
+      if (submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
+  }
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): void;
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
@@ -1307,9 +1391,9 @@ export class RouterSocket extends RoutedMessageSocket {
   }
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Message[]> | void {
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, timeout?: number): void;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): void;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, timeout = 0): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
@@ -1320,7 +1404,7 @@ export class RouterSocket extends RoutedMessageSocket {
         spotRid,
         parts,
         (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
-        flags | 0,
+        SendFlags.None,
         timeout | 0
       );
     }
@@ -1342,6 +1426,37 @@ export class RouterSocket extends RoutedMessageSocket {
         timeoutMs | 0
       );
     });
+  }
+  tryRequestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequestToSpot(
+    destNodeRid: RoutingId,
+    destSpotRid: RoutingId,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callback: RequestResultCallback,
+    timeout = 0
+  ): boolean {
+    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    const nodeRid = normalizeRoutingId(destNodeRid);
+    const spotRid = normalizeRoutingId(destSpotRid);
+    try {
+      requireNative().routerSpotRequest(
+        this.nativeHandle(),
+        nodeRid,
+        spotRid,
+        parts,
+        (result: number, replyParts: Buffer[] | null) => callback(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
+        SendFlags.DontWait,
+        timeout | 0
+      );
+      return true;
+    } catch (error) {
+      const submitError = submitNativeError(error, SendFlags.DontWait, 'tryRequestToSpot failed');
+      if (submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
   }
   replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
   replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
@@ -1368,13 +1483,27 @@ export class RouterSocket extends RoutedMessageSocket {
   }
 }
 
-export class StreamSocket extends RoutedMessageSocket {
+export class StreamSocket extends BaseSocket {
   readonly options: StreamSocketOptions;
   constructor(ctx: Context) {
     super(ctx, SocketType.STREAM);
     this.options = new StreamSocketOptions(this);
-    Object.defineProperty(this, 'connect', { value: undefined, configurable: true, enumerable: false, writable: false });
-    Object.defineProperty(this, 'disconnect', { value: undefined, configurable: true, enumerable: false, writable: false });
+  }
+  send(routingId: RoutingId, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+    const normalized = normalizeMessageLikePayload(payload);
+    const parts = Array.isArray(normalized)
+      ? [normalizeRoutingId(routingId), ...normalized]
+      : [normalizeRoutingId(routingId), normalized];
+    requireNative().socketSendParts(this.nativeHandle(), parts, flags | 0);
+  }
+  trySend(routingId: RoutingId, payload: MessageLike | readonly MessageLike[]): boolean {
+    const normalized = normalizeMessageLikePayload(payload);
+    const result = Array.isArray(normalized)
+      ? requireNative().socketSendRoutingNoWaitResultParts(this.nativeHandle(), normalizeRoutingId(routingId), normalized) as number
+      : requireNative().socketSendRoutingNoWaitResult(this.nativeHandle(), normalizeRoutingId(routingId), normalized) as number;
+    if (result === SubmitResult.Ok) return true;
+    if (result === SubmitResult.Backpressured) return false;
+    throw submitErrorFromResult(result as SubmitResult, 'trySend failed');
   }
   recv(flags: RecvFlags = RecvFlags.None): Received {
     let raw;
@@ -1387,6 +1516,15 @@ export class StreamSocket extends RoutedMessageSocket {
     }
     if (!raw) throw new RecvError(RecvResult.NoData, 11, 'recv failed');
     return materializeReceived(raw);
+  }
+  tryRecv(): Received | null {
+    let raw;
+    try {
+      raw = requireNative().socketRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null;
+    } catch (error) {
+      throw recvNativeError(error, RecvFlags.DontWait, 'tryRecv failed');
+    }
+    return raw ? materializeReceived(raw) : null;
   }
   onPacket(handler: StreamPacketHandler): void {
     requireNative().socketStreamAttach(
@@ -1405,6 +1543,9 @@ export class StreamSocket extends RoutedMessageSocket {
       },
       1
     );
+  }
+  onSendReady(handler: SocketSendReadyHandler): void {
+    requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
   }
   setRoutingId(routingId: RoutingId): void {
     requireNative().socketSetOpt(
@@ -1496,7 +1637,7 @@ export class Discovery extends NativeHandle {
       .map((entry) => mapMemberPeerEntry(entry as any));
   }
   memberPeerMetadata(serviceRole: number, endpoint: string): Buffer { return requireNative().discoveryMemberPeerMetadata(this._native, serviceRole, validateCString(endpoint, 'endpoint')) as Buffer; }
-  monitorOpen(events: ServiceMonitorEventMask = ServiceMonitorEvent.ALL): ServiceMonitor { return new ServiceMonitor(requireNative().discoveryOpenMonitor(this._native, events | 0)); }
+  monitorOpen(events: ServiceMonitorEventMask = ServiceMonitorEventMask.all): ServiceMonitor { return new ServiceMonitor(requireNative().discoveryOpenMonitor(this._native, events | 0)); }
   setTlsClient(ca: string, host: string, trust = 0): void { requireNative().discoverySetTlsClient(this._native, validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER), validateCString(host, 'host', Number.MAX_SAFE_INTEGER), trust | 0); }
   close(): void { if (this._native) { requireNative().discoveryDestroy(this._native); this._native = null; } }
 }
@@ -1622,6 +1763,12 @@ export class Spot extends NativeHandle {
   get routingId(): RoutingId {
     return RoutingId.fromBytes(requireNative().handleGetRoutingId(this._native) as Buffer);
   }
+  getAdmissionState(): AdmissionState {
+    return requireNative().handleGetAdmissionState(this._native) as AdmissionState;
+  }
+  setAdmissionState(state: AdmissionState): void {
+    requireNative().handleSetAdmissionState(this._native, state | 0);
+  }
   publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): void;
   publish(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
   publish(
@@ -1695,9 +1842,9 @@ export class Spot extends NativeHandle {
   }
   requestChannel(channelName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
   requestChannel(channelName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  requestChannel(channelName: string, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestChannel(channelName: string, parts: readonly MessageLike[], callback: RequestResultCallback, flags?: SendFlags, timeout?: number): void;
-  requestChannel(channelName: string, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flags: SendFlags = SendFlags.None, timeout = 0): Promise<Message[]> | void {
+  requestChannel(channelName: string, message: MessageLike, callback: RequestResultCallback, timeout?: number): void;
+  requestChannel(channelName: string, parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): void;
+  requestChannel(channelName: string, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, timeout = 0): Promise<Message[]> | void {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     if (typeof callbackOrTimeout === 'function') {
       return void requireNative().spotRequestChannel(
@@ -1705,7 +1852,7 @@ export class Spot extends NativeHandle {
         validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
         parts,
         (result: number, replyParts: Buffer[] | null) => callbackOrTimeout(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
-        flags | 0,
+        SendFlags.None,
         timeout | 0
       );
     }
@@ -1728,6 +1875,33 @@ export class Spot extends NativeHandle {
         timeoutMs | 0
       );
     });
+  }
+  tryRequestChannel(channelName: string, message: MessageLike, callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequestChannel(channelName: string, parts: readonly MessageLike[], callback: RequestResultCallback, timeout?: number): boolean;
+  tryRequestChannel(
+    channelName: string,
+    payloadOrParts: MessageLike | readonly MessageLike[],
+    callback: RequestResultCallback,
+    timeout = 0
+  ): boolean {
+    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    try {
+      requireNative().spotRequestChannel(
+        this._native,
+        validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
+        parts,
+        (result: number, replyParts: Buffer[] | null) => callback(result as RequestResult, replyParts ? replyParts.map((part) => Message.from(part)) : []),
+        SendFlags.DontWait,
+        timeout | 0
+      );
+      return true;
+    } catch (error) {
+      const submitError = submitNativeError(error, SendFlags.DontWait, 'tryRequestChannel failed');
+      if (submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
   }
   private replyToSpotInternal(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly Message[], flags: SendFlags): void {
     normalizeReplyFlags(flags);
@@ -1804,6 +1978,15 @@ export class Spot extends NativeHandle {
   }
 }
 
+export interface PollerEvent {
+  readonly sourceKind: number;
+  readonly socket: BaseSocket | null;
+  readonly fd: number;
+  readonly timer: Timer | null;
+  readonly userData: any;
+  readonly events: number;
+}
+
 export class Poller {
   private _native: unknown | null;
   constructor() { this._native = requireNative().pollerNew(); }
@@ -1816,9 +1999,9 @@ export class Poller {
   addTimer(timer: Timer, userData?: any): void { requireNative().pollerAddTimer(this._native, timer.nativeHandle(), userData ?? null); }
   removeTimer(timer: Timer): void { requireNative().pollerRemoveTimer(this._native, timer.nativeHandle()); }
   get size(): number { return requireNative().pollerSize(this._native) as number; }
-  wait(timeoutMs: number): any {
+  wait(timeoutMs: number): PollerEvent | null {
     try {
-      return requireNative().pollerWait(this._native, timeoutMs | 0);
+      return requireNative().pollerWait(this._native, timeoutMs | 0) as PollerEvent | null;
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : String(error);
       if (/Resource temporarily unavailable|temporarily unavailable|would block|interrupted system call/i.test(message)) {
@@ -1827,9 +2010,9 @@ export class Poller {
       throw error;
     }
   }
-  waitAll(events: number, timeoutMs: number): any[] {
+  waitAll(events: number, timeoutMs: number): PollerEvent[] {
     try {
-      return requireNative().pollerWaitAll(this._native, events | 0, timeoutMs | 0) as any[];
+      return requireNative().pollerWaitAll(this._native, events | 0, timeoutMs | 0) as PollerEvent[];
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : String(error);
       if (/Resource temporarily unavailable|temporarily unavailable|would block|interrupted system call/i.test(message)) {

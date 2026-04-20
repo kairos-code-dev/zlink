@@ -41,7 +41,6 @@ shared CLI:
 
 - `--pattern`
 - `--duration`
-- `--warmup`
 - `--msg-sizes`
 - `--transports`
 - `--runs`
@@ -57,12 +56,18 @@ Patterns:
 - `ROUTER_ROUTER`
 - `SPOT`
 
-Current transport matrix:
+Policy transport matrix:
 
-- `PAIR`: `tcp`
-- `PUBSUB`: `tcp`
-- `DEALER_ROUTER`: `inproc`
-- `SPOT`: `inproc`
+- `PAIR`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
+- `PUBSUB`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
+- `DEALER_DEALER`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
+- `DEALER_ROUTER`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
+- `ROUTER_ROUTER`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
+- `SPOT`: `tcp`, `tls`, `ws`, `wss`
+
+When a selected policy transport is not runnable in the current build or
+environment, the runner emits `UNSUPPORTED,current,...` for that case instead
+of failing the whole benchmark pass.
 
 SPOT measurements use the service-aware public surface:
 `publish(service_name, topic, ...)` on the sender and `subscribe()` on the
@@ -73,6 +78,9 @@ perf path follows the current public contract.
 ## Multi Suite
 
 The multi suite is process-isolated and uses TCP transport.
+The policy transport matrix for the multi suite is `tcp`, `tls`, `ws`, `wss`.
+Cases that are not runnable in the current build or environment are reported as
+`UNSUPPORTED,current,...`.
 
 The multi runner exposes the same common CLI surface plus `--clients`.
 

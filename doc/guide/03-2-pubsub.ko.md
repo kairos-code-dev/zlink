@@ -136,7 +136,7 @@ SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 사용�
 
     | Language | Source |
     |----------|--------|
-    | C | [pubsub_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pubsub_recv_sample.c) |
+    | C | [pubsub_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pubsub_recv_sample.c) |
     | C++ | [pubsub_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_recv_sample.cpp) |
     | Java | [PubSubRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubRecvSample.java) |
     | Python | [pubsub_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_recv.py) |

@@ -3,7 +3,14 @@ import threading
 
 import zlink
 
-from perf_multi_common import TOPIC, new_payload, parse_server_args, stamp_payload, tcp_endpoint
+from perf_multi_common import (
+    TOPIC,
+    apply_multi_socket_options,
+    new_payload,
+    parse_server_args,
+    stamp_payload,
+    tcp_endpoint,
+)
 
 
 def _stdin_stop(stop_event):
@@ -32,7 +39,7 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
-            publisher.options.linger_ms = 0
+            apply_multi_socket_options(publisher)
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
             while not start_event.is_set() and not stop_event.is_set():

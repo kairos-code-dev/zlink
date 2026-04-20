@@ -65,12 +65,22 @@ public sealed class DealerSocket : MessageSocketBase
 
     public void Request(Message part,
         Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+        TimeSpan? timeout = null)
+        => Request(part, callback, SendFlags.None, timeout);
+
+    public void Request(IReadOnlyList<Message> parts,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        TimeSpan? timeout = null)
+        => Request(parts, callback, SendFlags.None, timeout);
+
+    public void Request(Message part,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags, TimeSpan? timeout = null)
         => Request(new[] { part }, callback, flags, timeout);
 
     public void Request(IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+        SendFlags flags, TimeSpan? timeout = null)
         => RequestReplySupport.AttachResultCallback(
             () => RequestAsyncCore(parts, timeout ?? TimeSpan.Zero,
                 CancellationToken.None, (int)flags),
@@ -85,6 +95,32 @@ public sealed class DealerSocket : MessageSocketBase
                 }
                 callback(result, payload);
             });
+
+    public bool TryRequest(Message part,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        TimeSpan? timeout = null)
+        => TryRequest(new[] { part }, callback, timeout);
+
+    public bool TryRequest(IReadOnlyList<Message> parts,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        TimeSpan? timeout = null)
+    {
+        try
+        {
+            Request(parts, callback, SendFlags.DontWait, timeout);
+            return true;
+        }
+        catch (ZlinkException error)
+        {
+            if (RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+            {
+                return false;
+            }
+
+            throw;
+        }
+    }
 
     private unsafe Task<Received> RequestAsyncCore(IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct, int flags = 0)

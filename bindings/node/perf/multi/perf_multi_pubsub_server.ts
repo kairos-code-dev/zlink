@@ -4,47 +4,44 @@
 
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
-const { createPayload, sleepImmediate, stampPayload } = require('../common/perf_metrics');
+const {
+  createPayload,
+  createRunId,
+  sleepImmediate,
+  stampPayload
+} = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
+const { trySocketPublish } = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const pub = new zlink.PubSocket(ctx);
-  const warmupPayload = createPayload(options.msgSize);
-  const activePayload = createPayload(options.msgSize);
-  const stopPayload = createPayload(options.msgSize);
+  const payload = createPayload(options.msgSize);
 
   try {
     pub.bind(options.endpoint);
     console.log(`READY,${options.endpoint}`);
+
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of rl) {
       if (line !== `START,${options.msgSize}`) {
+        if (line === 'STOP') {
+          break;
+        }
         continue;
       }
 
+      const runId = createRunId(1);
+      const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
       let seq = 1n;
-      const warmupUntil = process.hrtime.bigint() + BigInt(Math.floor(options.warmup * 1_000_000_000));
-      while (process.hrtime.bigint() < warmupUntil) {
-        stampPayload(warmupPayload, { phase: 0, runId: 0, msgSize: options.msgSize, seq });
-        pub.publish('perf.topic', warmupPayload);
-        seq += 1n;
+      while (process.hrtime.bigint() < activeStopNs) {
+        stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+        if (trySocketPublish(pub, 'perf.topic', payload)) {
+          seq += 1n;
+          continue;
+        }
         await sleepImmediate();
-      }
-
-      const activeUntil = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
-      while (process.hrtime.bigint() < activeUntil) {
-        stampPayload(activePayload, { phase: 1, runId: 0, msgSize: options.msgSize, seq });
-        pub.publish('perf.topic', activePayload);
-        seq += 1n;
-        await sleepImmediate();
-      }
-
-      for (let i = 0; i < options.clients; i += 1) {
-        stampPayload(stopPayload, { phase: 2, runId: 0, msgSize: options.msgSize, seq });
-        pub.publish('perf.topic', stopPayload);
-        seq += 1n;
       }
       break;
     }

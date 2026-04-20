@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ByteBufferMessageContractTest {
     @Test
@@ -27,8 +27,8 @@ public class ByteBufferMessageContractTest {
     }
 
     @Test
-    public void borrowedWrapApisAreNotPublic() {
-        assertFalse(hasPublicMethod(Message.class, "wrapDirect", ByteBuffer.class));
+    public void wrapDirectByteBufferIsPublic() {
+        assertTrue(hasPublicMethod(Message.class, "wrapDirect", ByteBuffer.class));
     }
 
     private static boolean hasPublicMethod(Class<?> type, String name,

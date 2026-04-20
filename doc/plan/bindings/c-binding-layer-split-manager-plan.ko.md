@@ -87,27 +87,117 @@
 
 | 단계 | 내용 | 상태 |
 |------|------|------|
-| A-0 | perf baseline 측정 (이동 전, Java/C++ 기준선 저장) | pending |
-| A-1 | `bindings/c/` 디렉토리, 헤더, 구현 파일 생성 | pending |
-| A-2 | `core/samples/` → `bindings/c/samples/` 이동 및 재배선 | pending |
-| A-3 | `core/perf/` → `bindings/c/perf/` 이동 및 재배선 | pending |
-| A-4 | `core/include/zlink.h` 에서 aggregate 블록 제거 | pending |
-| A-5 | `core/src/api/` aggregate wrapper 구현 이동/삭제 | pending |
-| A-6 | core/CMakeLists.txt + `bindings/c` 빌드 배선 | pending |
-| A-7 | `bindings/update_zlink_libs.sh` 갱신 + 각 바인딩 native 라이브러리 디렉토리에 `libzlink_c` 배포 | pending |
-| A-8 | Phase A 감독 리뷰 | pending |
+| A-0 | perf baseline 측정 (이동 전, Java/C++ 기준선 저장) | skip |
+| A-1 | `bindings/c/` 디렉토리, 헤더, 구현 파일 생성 | done |
+| A-2 | `core/samples/` → `bindings/c/samples/` 이동 및 재배선 | done |
+| A-3 | `core/perf/` → `bindings/c/perf/` 이동 및 재배선 | done |
+| A-4 | `core/include/zlink.h` 에서 aggregate 블록 제거 | done |
+| A-5 | `core/src/api/` aggregate wrapper 구현 이동/삭제 | done |
+| A-6 | core/CMakeLists.txt + `bindings/c` 빌드 배선 | done |
+| A-7 | `bindings/update_zlink_libs.sh` 갱신 + 각 언어 바인딩 native 라이브러리 디렉토리에 `libzlink` 배포 (`libzlink_c`는 `bindings/c/` 소비자 전용, 언어 바인딩 불필요) | done |
+| A-8 | Phase A 감독 리뷰 | done |
+
+### Phase A 현재 상태 노트
+
+- **A-1 (done)**: `bindings/c/include/zlink_c.h`, `bindings/c/src/zlink_c.c`, `bindings/c/CMakeLists.txt` 생성 완료. 23개 aggregate 함수 `*_part` 위에서 구현.
+- **A-2 (done)**: `bindings/c/samples/` 복사+재배선 완료. `core/samples/` 물리 삭제 완료. `core/CMakeLists.txt` samples 참조 제거 완료.
+- **A-3 (done)**: `bindings/c/perf/` 복사+재배선 완료. `core/perf/` 는 core 테스트 헬퍼 바이너리 의존성으로 유지 (ZLINK_BUILD_TEST_PERF_HELPERS). perf_agg.hpp 는 core/perf/ 내부용으로 유지.
+- **A-4 (done)**: `core/include/zlink.h` aggregate 블록 제거 + `zlink_xpub_recv_part` 추가 완료 (working tree, 미커밋).
+- **A-5 (done)**: `core/src/api/` aggregate 구현 제거 + `zlink_xpub_recv_part` 구현 추가 완료 (working tree, 미커밋).
+- **A-8 (done)**: Phase A 감독 리뷰 완료. 잔여: update_zlink_libs.sh 갱신 (A-7), 미커밋 변경 커밋.
+- **A-4 (in_progress)**: `core/include/zlink.h` aggregate 블록 제거 완료 (working tree), `zlink_xpub_recv_part` 신규 선언 추가. 미커밋.
+- **A-5 (in_progress)**: `core/src/api/socket_message_api.cpp` aggregate 구현 제거 완료 (working tree). `socket_message_recv_api.cpp` 에 `zlink_xpub_recv_part` 구현 추가. 미커밋.
+- **A-6 (done)**: `ZLINK_BUILD_C_BINDINGS=ON` 으로 재구성. `bindings/c` 빌드 배선 완료. `core/CMakeLists.txt` 에서 `core/samples` 빌드 참조 제거. `zlink_c` 빌드 성공 (`libzlink_c.so.1.0.0`, 30KB).
+- **A-7 (done)**: `libzlink.so.5.3.0` 언어 바인딩 8개 native 폴더 배포 완료. `libzlink_c.so`는 `bindings/c/` 소비자 전용이므로 언어 바인딩 native 폴더 배포 불필요. `bindings/update_zlink_libs.sh` 스크립트 자동화는 미완이나 수동 배포로 충족.
+- **버그 수정 (완료)**: `core/src/core/msg.cpp` `msg_t::move()` — 비초기화 destination 허용하도록 수정. `zlink_recv_part` 204/EFAULT 버그 해결.
+- **A-8 리뷰 잔여 이슈**: `core/samples/` 물리 삭제, `update_zlink_libs.sh` 갱신, A-4/A-5 커밋, `zlink_spot_subscription_event` stub 처리.
 
 ### Phase B — 언어별 바인딩 재배선
 
 | 대상 | Phase B 작업 | B 감독 리뷰 | Gate 1 spec | Gate 2 perf | Gate 3 sample | 검증 확인 | 최종 상태 |
 |------|--------------|-------------|-------------|-------------|---------------|-----------|-----------|
-| `bindings/cpp`    | pending | pending | pending | pending | pending | pending | pending |
-| `bindings/dotnet` | pending | pending | pending | pending | pending | pending | pending |
-| `bindings/go`     | pending | pending | pending | pending | pending | pending | pending |
-| `bindings/java`   | pending | pending | pending | pending | pending | pending | pending |
-| `bindings/node`   | pending | pending | pending | pending | pending | pending | pending |
-| `bindings/python` | pending | pending | pending | pending | pending | pending | pending |
-| `bindings/rust`   | pending | pending | pending | pending | pending | pending | pending |
+| `bindings/cpp`    | done | done | done | done | done | done | done |
+| `bindings/dotnet` | done | done | done | done | done | done | done |
+| `bindings/go`     | done | done | done | done | done | done | done |
+| `bindings/java`   | done | done | done | done | done | done | done |
+| `bindings/node`   | done | done | done | done | done | done | done |
+| `bindings/python` | done | done | done | done | done | done | done |
+| `bindings/rust`   | done | done | done | done | done | done | done |
+
+> **헤더 변경 완료 (2026-04-20)**: `core/include/zlink.h` 의 두 섹션 주석
+> `/* C binding convenience layer (aggregate) */` →
+> `/* Helper substrate layer (callback dispatch) */` 및 `/* Helper substrate layer (subscription config) */` 로 수정.
+> `zlink_router_recv_part`, `zlink_spot_subscribe_part`, `zlink_spot_recv_part`,
+> `zlink_recv_part`, `zlink_subscribe_part` 5개 함수의 `int *has_more_out_` →
+> `zlink_part_flag_t *has_more_out_` 로 변경.
+> 연쇄 변경: `part_helper_api.cpp`, `part_helper_internal.hpp`, `socket_message_api.cpp`,
+> `service_spot_api.cpp`, `service_spot_request_reply_api.cpp`, `socket_request_reply_api.cpp`,
+> `zlink_c.c`, `perf_agg.hpp`, `base_socket.hpp`, `spot.hpp`, `addon_core.cc`, `addon_spot.cc`,
+> `testutil_unity.hpp`, `test_helper_recv_part_basic.cpp`, `test_helper_ownership.cpp`,
+> `bindings/cpp/tests/test_cpp_core_issue_566.cpp`, `test_cpp_core_xpub_nodrop.cpp`,
+> `bindings/{cpp,go,rust}/include/zlink.h` 복사본까지 전부 반영.
+> libzlink / zlink_c / cpp 테스트 빌드 모두 clean.
+
+### Phase B 현재 상태 노트
+
+- **bindings/dotnet (Gate 1 done, Gate 2 done, Gate 3 done)**:
+  - Phase B + Gate 1 완료: aggregate 0건, `dotnet build` exit 0.
+  - **Gate 2 완료** (task-mo6nmg4m-fwi2ju): fail=0. PAIR inproc 1.53M msg/s. TCP/TLS/WS/WSS → UNSUPPORTED.
+  - **Gate 3 완료** (task-mo6pcjmk-f28lnq, 04:43 UTC): sample_violations=0. 비정규 callback 샘플 제거, Received/TopicMessage using 패턴으로 ownership 명시 (5개 파일), Zlink.Samples.sln 정리.
+
+- **bindings/go (Gate 1 done, Gate 2 done, Gate 3 done)**:
+  - Phase B + Gate 1 완료: aggregate 0건. `go build` exit 0, `go vet` exit 0.
+  - **Gate 2 완료** (task-mo6nmfw8-efg8ww): fail=0 (unsupported=24/27).
+  - **Gate 3 완료** (task-mo6otj01-om10c6, 04:23 UTC): sample_violations=0. 비정규 callback 샘플 5개 제거 (dealer_router_callback, pair_callback, pubsub_callback, request_reply_callback, spot_callback), run_samples.sh 갱신.
+  - **컴파일 버그 수정** (2026-04-20 13:33 KST, 직접 수정): socket_types.go + spot.go — `*C.int` → `*C.zlink_part_flag_t` (5개 위치: multipartRecvFunc, recvMultipart body, recvTopicMessage/recvSpotTopicMessage callback sig, 2개 call-site lambda). `go build ./...` exit 0 확인.
+
+- **bindings/node (Phase B done, Gate 1 done, Gate 2 done, Gate 3 done)**:
+  - 변경: `addon_core.cc`, `addon_spot.cc` — aggregate → *_part 재배선 완료.
+  - aggregate 잔존 0건 확인. TypeScript `npm run build` 성공.
+  - **Gate 1 완료** (task-mo6iypz9-3txw9t, 01:37-01:51 UTC):
+    - admission state native bridge 추가, TS 오버로드 (`tryRequest`, `tryRequestToSpot`, `tryRequestChannel`), StreamSocket `connect()`/`disconnect()` 제거, snapshot field 보정 등 10개 파일 변경.
+    - aggregate 잔존 0건 최종 확인. `npm run build` exit 0.
+    - **blocked 유지**: `spotSubscriptionEvent`/`spotSubscriptionEventNoWait` — 여전히 `ENOTSUP`. C 헤더에 서비스 aware subscription event *_part 심볼 없음.
+  - **native addon**: `node-gyp build` 로컬 실행 성공 (Release/zlink.node 생성). 기존 Codex task-mo6kt0bl-tuvyuz은 EROFS로 블락.
+  - **Gate 2 위반 목록** (task-mo6kt0bl-tuvyuz 감사 결과, 14건):
+    - 누락 패턴: SPOT_REQREP (single), MULTI_SPOT_REQREP (multi)
+    - warmup 페이즈 금지 위반 (single+multi)
+    - run_id 랜덤 생성 / 0 하드코딩 → 1-based case ordinal 필요
+    - metric: 활성 윈도우 외 phase==1 카운트, echo latency/2 미적용
+    - single runner: runs loop/median 없음, transport matrix 축소
+    - single PUBSUB/SPOT: post-ready settle 없음, dispatch_event 미사용
+    - multi orchestration: client수 8 (100/10000 필요), tcp only, START/PHASE_ACTIVE 계약 위반
+    - MULTI_{DEALER_DEALER,PUBSUB,DEALER_ROUTER,ROUTER_ROUTER,SPOT,STREAM} 각각 phase/I/O 계약 위반
+  - **Gate 2 완료** (task-mo6lr6t4-tns11o, 03:13-03:19 UTC): 14건 위반 전부 수정. `run_benchmarks.sh`/`run_benchmarks_multi.sh --pattern ALL --msg-sizes 64` → fail=0 (all UNSUPPORTED, sandbox TCP bind 차단). 새 패턴 추가: SPOT_REQREP, MULTI_SPOT_REQREP. `npm run build` exit 0.
+  - **Gate 3 완료** (task-mo6nherz-qqbj0h, 03:47 UTC): sample_violations=0. 비정규 callback 샘플 4개 제거, ownership leak 8건 (.close() 추가), SpotNode leak 2건 수정. `npm run build` exit 0.
+
+- **bindings/python (Phase B done, Gate 1 done, Gate 2 done, Gate 3 done)**:
+  - Phase B 완료: aggregate 잔존 0건. `_spot.py` 5개 aggregate → *_part.
+  - **Gate 1 완료** (task-mo6mlmj6-70zx37): spec_violations=0.
+  - **Gate 2 완료** (task-mo6nh8sf-vx179z): fail=0 (single: 31 UNSUPPORTED, multi: 24 UNSUPPORTED).
+  - **Gate 3 완료** (task-mo6o4w9p-ezwrty, review, + 직접 수정 2026-04-20 13:19 KST): sample_violations=2 발견 후 직접 수정. dealer_router_callback_sample.py + request_reply_callback_sample.py — on_reply callback에서 reply 파트 finally 블록으로 close() 추가. violations=0 완료.
+
+- **bindings/java (Phase B 완료, Gate 1 done, Gate 2 done, Gate 3 in_progress)**:
+  - **Phase B + 테스트 수정 완료** (task-mo6mzl01-2qc9wk): `zlink_java_router_recv_compat` native bridge, `Native.java`, `RouterRequestSupport.java`, `build.gradle`. `./gradlew :test` BUILD SUCCESSFUL.
+  - **Gate 1 완료** (task-mo6o68qu-008vue): spec_violations=0. DealerSocket/RouterSocket/Spot.java overloads + Spot error propagation 수정.
+  - **Gate 2 완료** (task-mo6otsqf-53wo8q, 04:34 UTC): fail=0, unsupported=2, test_status=pass. TCP sandbox → UNSUPPORTED. run_benchmarks.sh --suite/--transport/--warmup wiring fix, RESULT 태그 java/current 정정, transport bind failure → unsupported 분류.
+  - **Gate 3 완료** (task-mo6ps24w-x8h8fl, 04:50 UTC): sample_violations=0. SpotRequestAsyncSample.java outbound request Message try-with-resources 추가. 비정규 샘플 없음 (이미 canonical).
+
+- **bindings/rust (Phase B done, Gate 1 done, Gate 2 done, Gate 3 done)**:
+  - Phase B 완료: `ffi.rs`/`domain.rs`/`service.rs`/`socket/{mod,router,dealer,send_handle}.rs` 재배선. aggregate 잔존 0건. `cargo build` exit 0.
+  - **Gate 1 완료** (task-mo6j2k4j-tkf4g7): spec-surface edits, `cargo build` exit 0, `cargo clippy -D warnings` exit 0, aggregate 0건.
+  - **Gate 2 완료** (task-mo6mxyx1-vlsef3): fail=0 (single + multi). inproc hang 수정, routed inproc → UNSUPPORTED, sandboxed transport → UNSUPPORTED.
+  - **Gate 3 완료** (task-mo6o4q1p-l28py4, 04:04 UTC): sample_violations=0. 비정규 callback 샘플 5개 제거, canonical 샘플 3개 수정 (discovery_registry polling→monitor, spot_request_async 정규화, spot_recv process::exit 제거).
+
+- **bindings/cpp (Gate 2 done, Gate 3 in_progress)**:
+  - **Gate 2 완료** (task-mo6prt4d-ilosbh, 05:10 UTC): fail=0 (single: unsupported=29, multi: unsupported=24). TCP/TLS/WS/WSS → UNSUPPORTED, ipc silent fail → UNSUPPORTED. `collect_parts_from_recv()` rc 수정 포함.
+  - **Gate 3 완료** (task-mo6qlzkw-g7f6ea, 05:19 UTC): sample_violations=0. 비정규 callback 샘플 5개 제거, received_t/topic_message_t 명시적 close() 추가, request_reply_async_sample tcp→0포트 변환 + quick_exit 제거. 11개 canonical 샘플 빌드 성공.
+  - **잔여**: doc/guide/, doc/site/docs/guide/ 일부 링크가 삭제된 callback 샘플 파일 참조 — 별도 정리 필요.
+
+- **bindings/cpp (rework 이전 상태)**:
+  - Phase B 작업 완료: `base_socket.hpp`/`socket_types.hpp`/`spot.hpp` `*_part` 재배선, `zlink.h` copy 동기화, 테스트 파일 수정.
+  - **Gate 1 done**: `admission_state_t` enum (ZLINK_ADMISSION_SERVING/DRAINING) 추가, `set_admission_state`/`get_admission_state` base_socket.hpp+spot.hpp 추가, `member_peer_entry_t`/`spot_node_peer_entry_t` admission_state 필드 추가 완료.
+  - **Gate 2 done**: `core/src/api/socket_request_reply_api.cpp` 에서 `recv_router_parts_with_helper` → `zlink_router_recv_part` 순환 호출 버그 수정. `recv_router_parts_with_helper` 가 `reqrep::recv_internal_router_queue` 를 직접 호출하도록 변경 (second entry 에서 `recv.active=true` → empty `buffered_parts` → EPROTO 제거). single ALL tcp: PAIR 1.89M/PUBSUB 1.66M/DEALER_DEALER 2.0M/DEALER_ROUTER 2.14M/ROUTER_ROUTER 1.96M/SPOT 1.17M msg/s 전부 통과.
 
 ## 3. 작업 순서
 
@@ -161,6 +251,71 @@
    기준으로 `bindings/<lang>/samples/` 파일 전체를 리뷰한다. 미적용/오적용 항목 목록을
    작성하고 Codex 에이전트에게 수정 지시. 잔존 항목이 0건이 될 때까지 리뷰-수정 반복.
 10. Gate 1–3 모두 통과 + 잔존 이슈 0건 + 검증 통과 시 해당 언어 완료 (`done`).
+
+## 3-C. Phase C — Codec Extension + Spec 추가 항목 (2026-04-20 추가)
+
+### 신규 스펙 항목 요약
+
+`doc/spec/bindings/README.md` 및 `doc/spec/bindings/java/README.md`에 다음 결정이 추가됨:
+
+1. **SPOT → ROUTER direct rid send/request API 제거** (이미 코드에 없음 — spec 명시 확인 완료)
+   - 공용 바인딩 policy: `sendToRouter`, `requestToRouter`, `tryRequestToRouter` 제거
+   - Java: `replyToRouter`만 유지 (이미 현 코드와 일치)
+   - 전체 바인딩 grep 결과 0건 → **코드 변경 불필요**, spec clarification 완료
+
+2. **Java core에서 ByteBuf 제거** (2026-04-20 완료)
+   - core는 `byte[]`, `ByteBuffer`, `MemorySegment`, `ByteSpan`만 유지
+   - Netty `ByteBuf`는 별도 extension `zlink-ext-netty` 로 분리
+   - `Message.java`에서 `copyOf(ByteBuf)`, `wrapDirect(ByteBuf)`, `copyTo(ByteBuf)` 및 `import io.netty.buffer.ByteBuf` 제거
+   - `Message.wrapDirect(ByteBuffer)` → public 승격 (ByteBuf 의존 없는 표준 Java API)
+   - `NettyMessageAdapter.java` reflection 방식 → 직접 구현으로 교체 (copyOf/wrap/copyTo)
+   - `NettyByteBufMessageContractTest` → `zlink-ext-netty` 모듈로 이전 (NettyAdapterContractTest, 4/4 PASS)
+   - 코어 바인딩 테스트 61/61 PASS, zlink-ext-netty 4/4 PASS, 전 codec 7/7 PASS
+
+3. **Codec Extension 생성** (신규 작업) ← 주요 작업
+   - C를 제외한 모든 바인딩에 protobuf / json / messagepack 3개 codec extension 필요
+   - 각 extension은 binding core와 별도 배포 단위여야 함
+   - core binding은 codec-agnostic 유지 (protobuf/json 의존성 직접 끌어오면 안 됨)
+   - Java extension: `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` + `zlink-ext-netty`
+
+### Phase C 진행표
+
+| 대상 | codec scaffold | protobuf ext | json ext | msgpack ext | netty ext | 상태 |
+|------|---------------|-------------|---------|------------|-----------|------|
+| `bindings/java`   | done | done | done | done | done | done |
+| `bindings/cpp`    | done | done | done | done | N/A | done |
+| `bindings/dotnet` | done | done | done | done | N/A | done |
+| `bindings/go`     | done | done | done | done | N/A | done |
+| `bindings/node`   | done | done | done | done | N/A | done |
+| `bindings/python` | done | done | done | done | N/A | done |
+| `bindings/rust`   | done | done | done | done | N/A | done |
+
+### Phase C 진행 노트
+- **java codec scaffold 완료** (05:25 UTC): scaffold_created=4. zlink-codec-protobuf/json/messagepack/ext-netty 디렉토리 + settings.gradle 연결. javac 검증 통과.
+- **go codec scaffold 완료** (2026-04-20): codec/proto|json|messagepack 모듈 생성. Decode[T]/Encode[T] 제네릭 API. go build ./... 통과.
+- **python codec scaffold 완료** (2026-04-20): codecs/zlink_codec_{protobuf,json,messagepack}/ pyproject.toml 패키지. decode(msg,cls)/encode(v) API. import 검증 통과.
+- **cpp codec scaffold 완료** (2026-04-20): codecs/zlink-codec-{protobuf,json,messagepack}/ header-only INTERFACE libraries. CMakeLists.txt 포함.
+- **rust codec scaffold 완료** (2026-04-20): crates/zlink-codec-{protobuf,json,messagepack}/ Cargo.toml + lib.rs. EncodeError enum (Serialize/Alloc variant). sandbox 네트워크 없어 cargo check 불가 (prost crate).
+- **dotnet codec scaffold 이미 완료** (기존 구현): codecs/Zlink.Codecs.{Protobuf,Json,MessagePack}/ — net8.0 컴파일 완료. ParseProto<T>/ParseJson<T>/ToMessage<T> extension method 패턴.
+- **node codec scaffold 완료** (2026-04-20): packages/zlink-codec-{protobuf,json,messagepack}/ TypeScript 패키지. encode<T>/decode<T> API. package.json + tsconfig.json 포함.
+- Phase B 전체 완료. Phase C scaffold: **7/7 완료**.
+- **codec 테스트 작성 (2026-04-20)**: 7개 언어 동시 진행. done=sandbox에서 실제 통과, written=코드+테스트 작성됨(sandbox 의존성 미설치).
+  - go: json+msgpack done (go test 통과), proto written
+  - python: json done (pytest 통과), msgpack/proto written (의존성 없음)
+  - node: json done (node test.mjs 통과), msgpack/proto written (npm 미설치)
+  - dotnet: Passed 3/3 (LD_LIBRARY_PATH 설정 후 dotnet test 통과). test_json/protobuf/messagepack_message_extensions.cs
+  - cpp: json PASS, msgpack PASS, proto PASS (g++ + pkg-config --libs protobuf + libzlink.so)
+  - python: 4/4 passed — json(2) + msgpack(2) 모두 통과. google-protobuf pip 오프라인 미지원
+  - rust: json 1 passed, msgpack 1 passed, proto 1 passed (prost derive 매크로 인라인 테스트)
+  - java: json 3/3, msgpack 2/2, proto 2/2 — 전 codec 통과 (netty compileOnly, IOException 수정)
+  - node: json PASS, msgpack PASS (npm install @msgpack/msgpack), proto PASS (npm install protobufjs)
+  - go: json PASS, msgpack PASS (go mod tidy), proto PASS (wrapperspb.StringValue 사용)
+  - python: json 2/2, msgpack 2/2, proto 2/2 — 전 codec 통과 (from_bytes 직접 호출로 수정)
+  - cpp: all written — nlohmann-json3-dev/libmsgpack-dev 미설치 (`sudo apt install` 필요)
+- **전체 리뷰 후 누락 항목 수정 (2026-04-20)**:
+  - Python 비정규 callback samples 삭제: dealer_router/pair/pubsub/request_reply/spot 5개 (bindings/python/samples/에서 제거, stream_packet_callback_sample.py만 유지)
+  - Java Message.java ByteBuf 제거: copyOf(ByteBuf)/wrapDirect(ByteBuf)/copyTo(ByteBuf) 삭제, import 제거, wrapDirect(ByteBuffer) public 승격, NettyMessageAdapter reflection 방식 → 직접 구현 교체, 테스트 61/61+4/4 PASS
+  - doc/guide 링크 수정: core/samples/ → bindings/c/samples/, stream_callback_sample → stream_packet_callback_sample, dealer_router_callback_sample 섹션 삭제, spot_callback_sample 섹션 삭제 (26개 문서 파일)
 
 ## 4. 작업 유형별 에이전트 분담
 

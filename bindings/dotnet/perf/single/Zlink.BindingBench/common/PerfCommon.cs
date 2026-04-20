@@ -5,6 +5,14 @@ using Zlink;
 internal static partial class PerfRunner
 {
     internal const int SingleConnectWaitMs = 1000;
+    private static readonly bool SinglePerfDebugEnabled =
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PERF_DEBUG"));
+
+    internal static void DebugLog(string message)
+    {
+        if (SinglePerfDebugEnabled)
+            Console.Error.WriteLine(message);
+    }
 
     internal static bool WaitForConnectionReady(MonitorSocket monitor,
         int timeoutMs)

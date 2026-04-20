@@ -6,6 +6,7 @@ from contextlib import ExitStack
 import zlink
 
 from perf_multi_common import (
+    apply_multi_socket_options,
     latency_ns_from_message,
     is_active_message,
     new_payload,
@@ -32,6 +33,7 @@ def main(argv=None):
                     monitor = stack.enter_context(
                         sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
                     )
+                    apply_multi_socket_options(sock)
                     sock.connect(args.endpoint)
                     monitors.append(monitor)
                 for monitor in monitors:

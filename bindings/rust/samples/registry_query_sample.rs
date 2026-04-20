@@ -29,14 +29,22 @@ fn main() {
     provider
         .attach_discovery(&discovery)
         .expect("attach discovery failed");
-    provider.bind(&service_endpoint).expect("provider bind failed");
-    query.connect(&registry_router).expect("query connect failed");
+    provider
+        .bind(&service_endpoint)
+        .expect("provider bind failed");
+    query
+        .connect(&registry_router)
+        .expect("query connect failed");
 
     sample_support::wait_until(
         || {
             query
                 .snapshot(None)
-                .map(|entries| entries.iter().any(|entry| entry.service_name == SERVICE_NAME))
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .any(|entry| entry.service_name == SERVICE_NAME)
+                })
                 .unwrap_or(false)
         },
         Duration::from_secs(5),

@@ -58,6 +58,10 @@ for f in libzlink-*.tar.gz; do
   tar -xzf "$f" -C extracted
 done
 
+for f in libzlink_c-*.tar.gz; do
+  tar -xzf "$f" -C extracted
+done
+
 for pkg in zlink-node-*.tar.gz; do
   tar -xzf "$pkg" -C extracted
 done
@@ -77,6 +81,20 @@ copy_windows_dll() {
     install -D -m 0755 "$dll" "$dst"
   fi
 }
+copy_windows_c_dll() {
+  pkg_dir="$1"
+  dst="$2"
+  dll=""
+  if [ -d "$pkg_dir/bin" ]; then
+    dll="$(find "$pkg_dir/bin" -maxdepth 1 -type f -name 'zlink_c.dll' | head -n 1 || true)"
+    if [ -z "$dll" ]; then
+      dll="$(find "$pkg_dir/bin" -maxdepth 1 -type f -name 'libzlink_c-*.dll' | head -n 1 || true)"
+    fi
+  fi
+  if [ -n "$dll" ] && [ -f "$dll" ]; then
+    install -D -m 0755 "$dll" "$dst"
+  fi
+}
 
 cd extracted
 
@@ -87,6 +105,9 @@ copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/java/src/main/resour
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/java/src/main/resources/native/darwin-aarch64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/java/src/main/resources/native/windows-x86_64/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/java/src/main/resources/native/windows-aarch64/zlink.dll"
+copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/java/src/main/resources/native/linux-x86_64/libzlink_c.so"
+copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/java/src/main/resources/native/darwin-x86_64/libzlink_c.dylib"
+copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/java/src/main/resources/native/windows-x86_64/zlink_c.dll"
 
 # Python
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/python/src/zlink/native/linux-x86_64/libzlink.so"
@@ -95,6 +116,9 @@ copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/python/src/zlink/nat
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/python/src/zlink/native/darwin-aarch64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/python/src/zlink/native/windows-x86_64/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/python/src/zlink/native/windows-aarch64/zlink.dll"
+copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/python/src/zlink/native/linux-x86_64/libzlink_c.so"
+copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/python/src/zlink/native/darwin-x86_64/libzlink_c.dylib"
+copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/python/src/zlink/native/windows-x86_64/zlink_c.dll"
 
 # .NET
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/dotnet/runtimes/linux-x64/native/libzlink.so"
@@ -103,8 +127,11 @@ copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/dotnet/runtimes/osx-
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/dotnet/runtimes/osx-arm64/native/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/dotnet/runtimes/win-x64/native/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/dotnet/runtimes/win-arm64/native/zlink.dll"
+copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/dotnet/runtimes/linux-x64/native/libzlink_c.so"
+copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/dotnet/runtimes/osx-x64/native/libzlink_c.dylib"
+copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/dotnet/runtimes/win-x64/native/zlink_c.dll"
 
-# Node (libzlink only; zlink.node comes from node prebuilds job)
+# Node (native libs only; zlink.node comes from node prebuilds job)
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/node/prebuilds/linux-x64/libzlink.so"
 copy libzlink-linux-arm64/libzlink.so "$repo_root/bindings/node/prebuilds/linux-arm64/libzlink.so"
 copy libzlink-linux-x64/libzlink.so.5 "$repo_root/bindings/node/prebuilds/linux-x64/libzlink.so.5"
@@ -113,6 +140,9 @@ copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/node/prebuilds/darwi
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/node/prebuilds/darwin-arm64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/node/prebuilds/win32-x64/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/node/prebuilds/win32-arm64/zlink.dll"
+copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/node/prebuilds/linux-x64/libzlink_c.so"
+copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/node/prebuilds/darwin-x64/libzlink_c.dylib"
+copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/node/prebuilds/win32-x64/zlink_c.dll"
 
 copy zlink-node-linux-x64/zlink.node "$repo_root/bindings/node/prebuilds/linux-x64/zlink.node"
 copy zlink-node-linux-arm64/zlink.node "$repo_root/bindings/node/prebuilds/linux-arm64/zlink.node"
@@ -130,6 +160,9 @@ copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/cpp/native/darwin-x8
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/cpp/native/darwin-aarch64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/cpp/native/windows-x86_64/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/cpp/native/windows-aarch64/zlink.dll"
+copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/cpp/native/linux-x86_64/libzlink_c.so"
+copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/cpp/native/darwin-x86_64/libzlink_c.dylib"
+copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/cpp/native/windows-x86_64/zlink_c.dll"
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/cpp/include/zlink.h"
 copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/cpp/include/zlink_utils.h"
 
@@ -140,6 +173,9 @@ copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/go/native/darwin-x86
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/go/native/darwin-aarch64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/go/native/windows-x86_64/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/go/native/windows-aarch64/zlink.dll"
+copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/go/native/linux-x86_64/libzlink_c.so"
+copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/go/native/darwin-x86_64/libzlink_c.dylib"
+copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/go/native/windows-x86_64/zlink_c.dll"
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/go/include/zlink.h"
 copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/go/include/zlink_utils.h"
 
@@ -150,6 +186,9 @@ copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/rust/native/darwin-x
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/rust/native/darwin-aarch64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/rust/native/windows-x86_64/zlink.dll"
 copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/rust/native/windows-aarch64/zlink.dll"
+copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/rust/native/linux-x86_64/libzlink_c.so"
+copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/rust/native/darwin-x86_64/libzlink_c.dylib"
+copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/rust/native/windows-x86_64/zlink_c.dll"
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/rust/include/zlink.h"
 copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/rust/include/zlink_utils.h"
 

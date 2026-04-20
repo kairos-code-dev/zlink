@@ -640,6 +640,85 @@ type MessageLike = Message | Buffer | Uint8Array | string;
 type BufferLike = Buffer | Uint8Array | string;
 ```
 
+### Codec Extensions
+
+The binding exposes separate codec extension packages. The public package names
+are fixed to:
+
+- `@ulalax/zlink-codec-protobuf`
+- `@ulalax/zlink-codec-json`
+- `@ulalax/zlink-codec-messagepack`
+
+These are separate public packages layered on top of the core package. They
+must not be merged into the root package entrypoint.
+
+JSON codec baseline: built-in `JSON.parse` / `JSON.stringify`. Typed validation
+may be layered on top through a schema/parser object.
+MessagePack codec baseline: `@msgpack/msgpack`.
+
+```typescript
+declare module "@ulalax/zlink-codec-protobuf" {
+    export interface ProtoDecoder<T> {
+        decode(data: Uint8Array): T;
+    }
+
+    export interface ProtoEncoder<T> {
+        encode(value: T): Uint8Array;
+    }
+
+    export function parseProto<T>(
+        message: import("@ulalax/zlink").Message,
+        decoder: ProtoDecoder<T>,
+    ): T;
+
+    export function toMessage<T>(
+        value: T,
+        encoder: ProtoEncoder<T>,
+    ): import("@ulalax/zlink").Message;
+}
+```
+
+```typescript
+declare module "@ulalax/zlink-codec-json" {
+    export interface JsonSchema<T> {
+        parse(value: unknown): T;
+    }
+
+    export function parseJson(
+        message: import("@ulalax/zlink").Message,
+    ): unknown;
+
+    export function parseJson<T>(
+        message: import("@ulalax/zlink").Message,
+        schema: JsonSchema<T>,
+    ): T;
+
+    export function toMessage(value: unknown): import("@ulalax/zlink").Message;
+}
+```
+
+```typescript
+declare module "@ulalax/zlink-codec-messagepack" {
+    export interface MessagePackDecoder<T> {
+        decode(data: Uint8Array): T;
+    }
+
+    export interface MessagePackEncoder<T> {
+        encode(value: T): Uint8Array;
+    }
+
+    export function parseMessagePack<T>(
+        message: import("@ulalax/zlink").Message,
+        decoder: MessagePackDecoder<T>,
+    ): T;
+
+    export function toMessage<T>(
+        value: T,
+        encoder: MessagePackEncoder<T>,
+    ): import("@ulalax/zlink").Message;
+}
+```
+
 ### RoutingId
 
 Routing-id value object. Binary-safe, 1-255 bytes, immutable. The binding

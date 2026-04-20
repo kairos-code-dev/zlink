@@ -20,7 +20,7 @@ int main ()
     zlink::message_t outbound = detail::make_message (sent);
     dealer.send (outbound);
 
-    const zlink::received_t inbound = router.recv ();
+    zlink::received_t inbound = router.recv ();
     assert (inbound.routing_id ().has_value ());
     assert (inbound.parts ().size () == 1);
     assert (inbound.parts ()[0].to_string () == detail::k_dealer_router_request);
@@ -28,11 +28,13 @@ int main ()
     const std::string reply_payload = detail::k_dealer_router_reply;
     zlink::message_t reply = detail::make_message (reply_payload);
     router.send (*inbound.routing_id (), reply);
+    inbound.close ();
 
-    const zlink::received_t echoed = dealer.recv ();
+    zlink::received_t echoed = dealer.recv ();
     assert (echoed.parts ().size () == 1);
     const std::string received = echoed.parts ()[0].to_string ();
     assert (received == detail::k_dealer_router_reply);
+    echoed.close ();
     std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n",
                  sent.c_str (), received.c_str ());
     return 0;

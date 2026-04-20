@@ -56,15 +56,34 @@ public final class RouterSocket extends Socket {
         return request(rid, List.of(part));
     }
     public CompletableFuture<List<Message>> request(RoutingId rid, Message part,
+                                                    SendFlags flags) {
+        return request(rid, List.of(part), flags);
+    }
+    public CompletableFuture<List<Message>> request(RoutingId rid, Message part,
                                                     Duration timeout) {
         return request(rid, List.of(part), timeout);
     }
+    public CompletableFuture<List<Message>> request(RoutingId rid, Message part,
+                                                    SendFlags flags,
+                                                    Duration timeout) {
+        return request(rid, List.of(part), flags, timeout);
+    }
     public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts) {
-        return request(rid, parts, Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
+        return request(rid, parts, SendFlags.NONE);
+    }
+    public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
+                                                    SendFlags flags) {
+        return request(rid, parts, flags,
+            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
                                                     Duration timeout) {
-        return routedRequests.request(rid, parts, timeout).thenApply(reply -> {
+        return request(rid, parts, SendFlags.NONE, timeout);
+    }
+    public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
+                                                    SendFlags flags,
+                                                    Duration timeout) {
+        return routedRequests.request(rid, parts, flags, timeout).thenApply(reply -> {
             try (reply) {
                 return RequestReplySupport.cloneReceived(reply).parts();
             }
@@ -146,21 +165,49 @@ public final class RouterSocket extends Socket {
     public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                                           RoutingId destSpotRid,
                                                           Message part,
+                                                          SendFlags flags) {
+        return requestToSpot(destNodeRid, destSpotRid, List.of(part), flags);
+    }
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
+                                                          Message part,
                                                           Duration timeout) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), timeout);
     }
     public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                                           RoutingId destSpotRid,
+                                                          Message part,
+                                                          SendFlags flags,
+                                                          Duration timeout) {
+        return requestToSpot(destNodeRid, destSpotRid, List.of(part), flags,
+          timeout);
+    }
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
                                                           List<Message> parts) {
-        return requestToSpot(destNodeRid, destSpotRid, parts,
+        return requestToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE);
+    }
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
+                                                          List<Message> parts,
+                                                          SendFlags flags) {
+        return requestToSpot(destNodeRid, destSpotRid, parts, flags,
           Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
                                                           RoutingId destSpotRid,
                                                           List<Message> parts,
                                                           Duration timeout) {
-        return spotSupport.requestToSpot(destNodeRid, destSpotRid, parts,
+        return requestToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE,
           timeout);
+    }
+    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                          RoutingId destSpotRid,
+                                                          List<Message> parts,
+                                                          SendFlags flags,
+                                                          Duration timeout) {
+        return spotSupport.requestToSpot(destNodeRid, destSpotRid, parts,
+          timeout, flags);
     }
     public void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part,

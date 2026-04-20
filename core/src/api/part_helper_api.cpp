@@ -6,6 +6,7 @@
 #include <mutex>
 #include <new>
 #include <unordered_map>
+#include <cstdio>
 
 #include "api/part_helper_internal.hpp"
 #include "core/msg.hpp"
@@ -19,6 +20,11 @@ std::unordered_map<void *, std::shared_ptr<zlink::part_helper_internal::handle_s
   g_part_helper_state;
 thread_local bool g_part_helper_aggregate_send_mode = false;
 
+bool routed_part_debug_enabled ()
+{
+    return std::getenv ("ZLINK_ROUTED_PART_DEBUG") != NULL;
+}
+
 bool send_family_requires_routed_scope (
   zlink::part_helper_internal::send_family_t family_)
 {
@@ -27,9 +33,7 @@ bool send_family_requires_routed_scope (
            || family_ == send_family_router_request
            || family_ == send_family_dealer_request
            || family_ == send_family_router_reply
-           || family_ == send_family_spot_send_router
            || family_ == send_family_spot_send_channel
-           || family_ == send_family_spot_request_router
            || family_ == send_family_spot_request_channel
            || family_ == send_family_spot_reply_spot
            || family_ == send_family_spot_reply_router
@@ -275,6 +279,13 @@ int zlink::part_helper_internal::prepare_send_step (
     const std::thread::id current_thread = std::this_thread::get_id ();
     while (state->send.active && state->send.owner_thread != current_thread) {
         if (!aggregate_send_mode_active ()) {
+            if (routed_part_debug_enabled ()) {
+                std::fprintf (stderr,
+                              "[routed-part-debug] prepare_send_step busy "
+                              "family=%d active_family=%d same_thread=0\n",
+                              static_cast<int> (spec_.family),
+                              static_cast<int> (state->send.spec.family));
+            }
             errno = EINVAL;
             return -1;
         }
@@ -295,6 +306,13 @@ int zlink::part_helper_internal::prepare_send_step (
         *first_part_out_ = true;
     } else {
         if (!send_spec_equals (state->send.spec, spec_)) {
+            if (routed_part_debug_enabled ()) {
+                std::fprintf (stderr,
+                              "[routed-part-debug] prepare_send_step spec "
+                              "mismatch family=%d active_family=%d\n",
+                              static_cast<int> (spec_.family),
+                              static_cast<int> (state->send.spec.family));
+            }
             errno = EINVAL;
             return -1;
         }
@@ -366,9 +384,9 @@ void zlink::part_helper_internal::complete_send_step (
 
 void zlink::part_helper_internal::complete_recv_step (
   const std::shared_ptr<handle_state_t> &state_,
-  int has_more_)
+  zlink_part_flag_t has_more_)
 {
-    if (!state_ || has_more_ != 0)
+    if (!state_ || has_more_ != ZLINK_PART_FINAL)
         return;
 
     std::lock_guard<std::mutex> lock (state_->mutex);

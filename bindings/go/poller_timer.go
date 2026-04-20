@@ -11,6 +11,14 @@ extern void goZlinkTimerTrampoline(void *timer_, uint64_t fire_count_, uintptr_t
 static inline int zlink_timer_handler_go_local(void *timer, uintptr_t userdata) {
 	return zlink_timer_handler(timer, (zlink_timer_handler_fn)goZlinkTimerTrampoline, (void *)userdata);
 }
+
+static inline void *zlink_userdata_from_handle(uintptr_t handle) {
+	return (void *)handle;
+}
+
+static inline uintptr_t zlink_handle_from_userdata(void *userdata) {
+	return (uintptr_t)userdata;
+}
 */
 import "C"
 
@@ -450,7 +458,7 @@ func (e *pollerEntry) userDataPtr() unsafe.Pointer {
 	if e == nil || e.handle == 0 {
 		return nil
 	}
-	return unsafe.Pointer(uintptr(e.handle))
+	return C.zlink_userdata_from_handle(C.uintptr_t(e.handle))
 }
 
 func (e *pollerEntry) close() {
@@ -468,7 +476,7 @@ func (p *Poller) eventFromC(raw C.zlink_poller_event_t) *PollerEvent {
 		Events:     int16(raw.events),
 	}
 	if raw.user_data != nil {
-		event.UserData = cgo.Handle(uintptr(raw.user_data)).Value()
+		event.UserData = cgo.Handle(C.zlink_handle_from_userdata(raw.user_data)).Value()
 	}
 	switch raw.source_kind {
 	case C.ZLINK_POLLER_SOURCE_SOCKET:

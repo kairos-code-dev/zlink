@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Zlink.Codecs.Protobuf</PackageId>
+    <Version>5.3.0</Version>
+    <Description>Protobuf codec extension for Zlink</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Zlink/Zlink.csproj" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.*" />
+  </ItemGroup>
+</Project>

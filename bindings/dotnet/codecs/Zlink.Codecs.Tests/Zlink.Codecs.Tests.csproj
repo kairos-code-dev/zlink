@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.6.6" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Zlink">
+      <HintPath>../../src/Zlink/bin/Debug/net8.0/Zlink.dll</HintPath>
+    </Reference>
+    <Reference Include="Zlink.Codecs.Json">
+      <HintPath>../Zlink.Codecs.Json/bin/Debug/net8.0/Zlink.Codecs.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="Zlink.Codecs.Protobuf">
+      <HintPath>../Zlink.Codecs.Protobuf/bin/Debug/net8.0/Zlink.Codecs.Protobuf.dll</HintPath>
+    </Reference>
+    <Reference Include="Zlink.Codecs.MessagePack">
+      <HintPath>../Zlink.Codecs.MessagePack/bin/Debug/net8.0/Zlink.Codecs.MessagePack.dll</HintPath>
+    </Reference>
+    <Reference Include="Google.Protobuf">
+      <HintPath>/home/hep7/.nuget/packages/google.protobuf/3.29.1/lib/netstandard2.0/Google.Protobuf.dll</HintPath>
+    </Reference>
+    <Reference Include="MessagePack">
+      <HintPath>/home/hep7/.nuget/packages/messagepack/3.1.4/lib/net8.0/MessagePack.dll</HintPath>
+    </Reference>
+    <Reference Include="MessagePack.Annotations">
+      <HintPath>/home/hep7/.nuget/packages/messagepack.annotations/3.1.4/lib/netstandard2.0/MessagePack.Annotations.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

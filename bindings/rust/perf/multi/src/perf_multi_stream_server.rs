@@ -17,10 +17,17 @@ fn build_packet_frame(header: &[u8], body: &[u8]) -> Vec<u8> {
 
 fn main() {
     let args = common::MultiArgs::parse();
+    let settings = common::MultiSettings::from_env();
     let ctx = Context::new().expect("context");
     let mut stream = ctx.stream_socket().expect("stream");
-    stream.common_options().set_send_hwm(10).expect("sndhwm");
-    stream.common_options().set_recv_hwm(10).expect("rcvhwm");
+    stream
+        .common_options()
+        .set_send_hwm(settings.hwm)
+        .expect("sndhwm");
+    stream
+        .common_options()
+        .set_recv_hwm(settings.hwm)
+        .expect("rcvhwm");
     stream
         .common_options()
         .set_send_timeout(std::time::Duration::from_secs(5))
@@ -51,7 +58,12 @@ fn main() {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&stream, &tls).expect("stream tls");
     }
-    stream.bind(&bind_endpoint).expect("bind");
+    if let Err(err) = stream.bind(&bind_endpoint) {
+        if common::handle_transport_setup_error("MULTI_STREAM", &args.transport, "bind", err) {
+            return;
+        }
+        panic!("bind: {err}");
+    }
     let endpoint = stream.last_endpoint().expect("endpoint");
     common::print_ready(&endpoint);
     let stop = Arc::new(AtomicBool::new(false));

@@ -60,11 +60,13 @@ int main ()
     assert (inbound.has_value ());
     assert (inbound->topic () == topic);
     assert (inbound->parts ().size () == 1);
+    const std::string received_topic = inbound->topic ();
     const std::string received = inbound->parts ()[0].to_string ();
     assert (received == sent);
+    inbound->close ();
     std::printf (
       "[spot/recv] service: \"%s\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n",
       service_name.c_str (), topic.c_str (), sent.c_str (),
-      inbound->topic ().c_str (), received.c_str ());
+      received_topic.c_str (), received.c_str ());
     return 0;
 }

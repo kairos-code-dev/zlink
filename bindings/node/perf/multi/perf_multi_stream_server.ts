@@ -6,34 +6,32 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { parseMultiArgs } = require('./perf_multi_common');
 
-function frame(buffer) {
-  const framed = Buffer.allocUnsafe(buffer.length + 4);
-  framed.writeUInt32BE(buffer.length, 0);
-  buffer.copy(framed, 4);
-  return framed;
+function buildPacketFrame(header, body) {
+  const headerBytes = header.data();
+  const bodyBytes = body.data();
+  const frame = Buffer.allocUnsafe(6 + headerBytes.length + bodyBytes.length);
+  frame.writeUInt16BE(headerBytes.length, 0);
+  frame.writeUInt32BE(bodyBytes.length, 2);
+  headerBytes.copy(frame, 6);
+  bodyBytes.copy(frame, 6 + headerBytes.length);
+  return frame;
 }
 
 async function main() {
-  const options = parseMultiArgs(process.argv.slice(2), { msgSize: undefined, warmup: undefined, duration: undefined, clients: undefined });
+  const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const stream = new zlink.StreamSocket(ctx);
-  let stop = false;
-
-  const processPacket = (routingId, header, body) => {
-    const payload = body && body.data().length > 0 ? body.data() : header.data();
-    stream.send(routingId, Buffer.from(frame(payload)));
-  };
 
   try {
     stream.bind(options.endpoint);
-    stream.onPacket(processPacket);
+    stream.onPacket((routingId, header, body) => {
+      stream.send(routingId, buildPacketFrame(header, body));
+    });
     console.log(`READY,${options.endpoint}`);
 
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of rl) {
       if (line === 'STOP') {
-        stop = true;
-        stream.close();
         break;
       }
     }

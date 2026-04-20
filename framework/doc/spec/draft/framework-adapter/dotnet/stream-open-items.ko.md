@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [인터페이스](./handler-interfaces.ko.md)
+
 # Draft -- ZLink Framework .NET STREAM Open Items
 
 > 이 문서는 **구현 전 초안**이다.
@@ -30,9 +32,10 @@
 
 ### 2.2 남은 결정 항목
 
-- `ParseProto<T>()`, `ParseJson<T>()`, `ParseMessagePack<T>()`를 `Message` extension으로
-  둘지, serializer service를 통해 노출할지
-- serializer 선택 기준을 `msgId`, `content-type`, 등록 순서 중 무엇으로 둘지
+- `Parse<T>()` 하나로 둘지, `ParseProto<T>()`, `ParseJson<T>()` 같은 명시형 helper도
+  함께 둘지
+- `Parse<T>()`를 둘 경우 serializer 선택 기준을 `IMessage<T>` 여부, `msgId`,
+  `content-type`, 등록 순서 중 무엇으로 둘지
 - serializer helper를 `framework` 기본 패키지에 둘지, 확장 패키지로 나눌지
 - parse 실패 시 예외를 던질지, `TryParse...`를 기본으로 둘지
 - encode helper도 같은 계층에 둘지
@@ -41,7 +44,9 @@
 
 - transport 본체는 `Message`까지만 책임진다.
 - serializer는 extension 패키지로 분리한다.
-- handler 샘플은 `body.ParseProto<T>()` 같은 helper를 기준으로 쓴다.
+- handler 샘플은 `body.Parse<T>()` 같은 helper를 기준으로 쓴다.
+- generated protobuf 타입은 `IMessage<T>` 계열인지 보고 protobuf로 해석한다.
+- 그 밖의 일반 class는 json으로 해석하는 규칙을 기본값으로 둔다.
 - helper 내부는 `Message.AsReadOnlySpan()`를 사용해서 추가 복사를 피한다.
 
 ## 3. write API

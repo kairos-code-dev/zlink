@@ -13,6 +13,52 @@
 
 namespace
 {
+void format_routing_id_debug (const zlink_routing_id_t *rid_,
+                              char *buf_,
+                              size_t buf_size_)
+{
+    if (!buf_ || buf_size_ == 0) {
+        return;
+    }
+
+    if (!rid_ || rid_->size == 0) {
+        std::snprintf (buf_, buf_size_, "<empty>");
+        return;
+    }
+
+    size_t used = 0;
+    for (size_t i = 0; i < rid_->size && used + 4 < buf_size_; ++i) {
+        const unsigned char c = rid_->data[i];
+        const int rc = std::snprintf (buf_ + used,
+                                      buf_size_ - used,
+                                      "%c%02X",
+                                      (c >= 32 && c <= 126)
+                                        ? static_cast<char> (c)
+                                        : '.',
+                                      static_cast<unsigned> (c));
+        if (rc <= 0)
+            break;
+        used += static_cast<size_t> (rc);
+        if (i + 1 < rid_->size && used + 2 < buf_size_) {
+            buf_[used++] = ' ';
+            buf_[used] = '\0';
+        }
+    }
+}
+
+void format_blob_routing_id_debug (const zlink::blob_t &routing_id_,
+                                   char *buf_,
+                                   size_t buf_size_)
+{
+    zlink_routing_id_t rid;
+    rid.size = static_cast<uint8_t> (
+      routing_id_.size () < sizeof (rid.data) ? routing_id_.size ()
+                                              : sizeof (rid.data));
+    if (rid.size > 0)
+        memcpy (rid.data, routing_id_.data (), rid.size);
+    format_routing_id_debug (&rid, buf_, buf_size_);
+}
+
 void clear_dispatch_source_rid (zlink_routing_id_t *rid_, bool *valid_)
 {
     if (!rid_ || !valid_)
@@ -149,6 +195,12 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
     }
 
     const bool routing_id_ok = identify_peer (pipe_, locally_initiated_);
+    if (router_debug_enabled ()) {
+        fprintf (stderr,
+                 "router xattach_pipe: pipe=%p local=%d routing_id_ok=%d\n",
+                 static_cast<void *> (pipe_), locally_initiated_ ? 1 : 0,
+                 routing_id_ok ? 1 : 0);
+    }
     if (routing_id_ok) {
         _fq.attach (pipe_);
         if (local_admission_state () != ZLINK_ADMISSION_SERVING)
@@ -229,6 +281,15 @@ int zlink::router_t::xgetsockopt (int option_,
 
 void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
 {
+    if (router_debug_enabled ()) {
+        char rid_text[160];
+        format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,
+                                      sizeof (rid_text));
+        fprintf (stderr,
+                 "router xpipe_terminated: pipe=%p rid=%s anonymous=%d\n",
+                 static_cast<void *> (pipe_), rid_text,
+                 _anonymous_pipes.count (pipe_) != 0 ? 1 : 0);
+    }
     if (0 == _anonymous_pipes.erase (pipe_)) {
         erase_out_pipe (pipe_);
         _fq.pipe_terminated (pipe_);
@@ -241,10 +302,24 @@ void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
 void zlink::router_t::xread_activated (pipe_t *pipe_)
 {
     const std::set<pipe_t *>::iterator it = _anonymous_pipes.find (pipe_);
+    if (router_debug_enabled ()) {
+        char rid_text[160];
+        format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,
+                                      sizeof (rid_text));
+        fprintf (stderr,
+                 "router xread_activated: pipe=%p anonymous=%d pipe_rid=%s\n",
+                 static_cast<void *> (pipe_), it != _anonymous_pipes.end () ? 1 : 0,
+                 rid_text);
+    }
     if (it == _anonymous_pipes.end ())
         _fq.activated (pipe_);
     else {
         const bool routing_id_ok = identify_peer (pipe_, false);
+        if (router_debug_enabled ()) {
+            fprintf (stderr,
+                     "router xread_activated identify_peer: pipe=%p ok=%d\n",
+                     static_cast<void *> (pipe_), routing_id_ok ? 1 : 0);
+        }
         if (routing_id_ok) {
             _anonymous_pipes.erase (it);
             _fq.attach (pipe_);
@@ -399,6 +474,11 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
         if (out_pipe->admission_state == ZLINK_ADMISSION_DRAINING) {
             _more_out = false;
             errno = ECONNREFUSED;
+            if (router_debug_enabled ()) {
+                fprintf (stderr,
+                         "router xsend_routed: draining rid_size=%u\n",
+                         static_cast<unsigned> (target_rid_->size));
+            }
             return -1;
         }
         _current_out = out_pipe->pipe;
@@ -413,12 +493,29 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
             if (_mandatory) {
                 _more_out = false;
                 errno = pipe_full ? EAGAIN : EHOSTUNREACH;
+                if (router_debug_enabled ()) {
+                    fprintf (stderr,
+                             "router xsend_routed: pipe not writable "
+                             "rid_size=%u errno=%d\n",
+                             static_cast<unsigned> (target_rid_->size),
+                             errno);
+                }
                 return -1;
             }
         }
     } else if (_mandatory) {
         _more_out = false;
         errno = EHOSTUNREACH;
+                if (router_debug_enabled ()) {
+                    char rid_text[160];
+                    format_routing_id_debug (target_rid_, rid_text,
+                                             sizeof (rid_text));
+                    fprintf (stderr,
+                             "router xsend_routed: no out pipe rid_size=%u "
+                             "rid=%s\n",
+                             static_cast<unsigned> (target_rid_->size),
+                             rid_text);
+                }
         return -1;
     }
 
@@ -426,6 +523,11 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
         const bool ok = _more_out ? _current_out->write (msg_)
                                   : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
+            if (router_debug_enabled ()) {
+                fprintf (stderr,
+                         "router xsend_routed: write failed rid_size=%u\n",
+                         static_cast<unsigned> (target_rid_->size));
+            }
             const int rc = msg_->close ();
             errno_assert (rc == 0);
             _current_out->rollback ();
@@ -595,10 +697,7 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     }
 
     zlink_routing_id_t source_rid;
-    if (_dispatch_source_rid_valid)
-        source_rid = _dispatch_source_rid;
-    else
-        copy_router_pipe_source_rid (pipe_, &source_rid);
+    copy_router_pipe_source_rid (pipe_, &source_rid);
 
     invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0],
                                _dispatch_parts.size ());
@@ -834,6 +933,13 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
     pipe_->set_router_socket_routing_id (routing_id);
     add_out_pipe (ZLINK_MOVE (routing_id), pipe_);
+    if (router_debug_enabled ()) {
+        char rid_text[160];
+        format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,
+                                      sizeof (rid_text));
+        fprintf (stderr, "router identify_peer: add out pipe rid=%s\n",
+                 rid_text);
+    }
     if (local_admission_state () != ZLINK_ADMISSION_SERVING)
         send_local_admission_state (pipe_);
 

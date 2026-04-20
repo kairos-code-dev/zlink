@@ -13,7 +13,6 @@ const {
 const {
   sleepImmediate
 } = require('../common/perf_metrics');
-const READY_EVENTS = new Set([MonitorEvent.CONNECTION_READY, MonitorEvent.CONNECTED]);
 const POLLIN = 1;
 
 async function reservePort() {
@@ -99,16 +98,20 @@ function trySocketPublish(socket, topic, payload) {
 
 async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000) {
   const monitor = socket.monitorOpen(MonitorEvent.CONNECTION_READY);
-  const deadline = Date.now() + timeoutMs;
   try {
     if (typeof connectFn === 'function') {
       await connectFn();
     }
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (monitor.snapshot().isReady()) {
-        const event = monitor.recv();
-        if (READY_EVENTS.has(event.event)) {
+      try {
+        const event = monitor.recv(RecvFlags.DontWait);
+        if (event.event === MonitorEvent.CONNECTION_READY) {
           return;
+        }
+      } catch (error) {
+        if (!(error instanceof zlink.RecvError && error.result === RecvResult.NoData)) {
+          throw error;
         }
       }
       await sleepImmediate();
@@ -116,6 +119,13 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000
     throw new Error(`connection ready timeout after ${timeoutMs}ms`);
   } finally {
     monitor.close();
+  }
+}
+
+async function waitForPostReadySettle(timeoutMs) {
+  const deadline = Date.now() + Math.max(0, timeoutMs | 0);
+  while (Date.now() < deadline) {
+    await sleepImmediate();
   }
 }
 
@@ -187,6 +197,7 @@ module.exports = {
   benchmarkEndpoint,
   drainRecvSocket,
   drainRecvNow,
+  waitForPostReadySettle,
   waitForConnectionReady,
   trySocketSend,
   trySocketPublish

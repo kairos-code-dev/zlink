@@ -30,7 +30,7 @@ The exported Go package reflects the shared bindings policy in
 - blocking methods use direct names such as `Send`, `Recv`, `Publish`,
   `Subscribe`
 - non-blocking methods use `Try*`
-- non-blocking send returns `(SendResult, error)`
+- non-blocking submit returns `(false, nil)` only for temporary backpressure
 - non-blocking receive returns `(value, ok, error)`
 - message diagnostics expose `GetProperty` and `RefCount`
 - context options are exposed via `Context.Options()` and `ContextOptions`

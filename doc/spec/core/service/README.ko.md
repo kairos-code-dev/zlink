@@ -53,19 +53,14 @@ SPOT 메시징에서 목적지를 정하는 방식은 크게 세 가지입니다
   호출자가 `channel_name`만 지정하면, attach된 `DEALER`가 해당 channel의
   `ROUTER(server)` 집합 중 하나에 요청을 보냅니다. `Spot` facade의
   `zlink_spot_send_channel()` / `zlink_spot_request_channel()`을 사용합니다.
-- peer routed 방식:
-  호출자가 `peer_rid`를 직접 지정해 같은 SPOT mesh의 특정 peer에게 보냅니다.
-  `Spot` facade의 `zlink_spot_send_router()` / `zlink_spot_request_router()`를
-  사용합니다.
 - ROUTER 쪽 direct SPOT 주소 지정:
   호출자가 `dest_node_rid + dest_spot_rid`를 모두 알고 있고, ROUTER socket의
   `zlink_router_send_spot()` / `zlink_router_request_spot()`을 사용합니다.
   이 방식은 `Spot` facade가 아니라 저수준 ROUTER API에서만 사용할 수 있습니다.
 
-`Spot` public surface에서는 `dest_node_rid + dest_spot_rid`를 직접 받는
-direct send/request 함수가 제거되었습니다. 일반적인 서비스 호출은
-channel 방식이나 peer routed 방식으로 처리하고, concrete destination 직접
-지정이 정말 필요할 때만 ROUTER direct 경로를 사용합니다.
+`Spot` public surface에서는 direct `rid` 기반 ordinary send/request를 제공하지
+않습니다. 일반적인 서비스 호출은 channel 방식으로 처리하고, concrete
+destination 직접 지정이 정말 필요할 때만 ROUTER direct 경로를 사용합니다.
 
 ### 논리 spot_rid 조회
 

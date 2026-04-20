@@ -52,6 +52,7 @@ async function main() {
     assert.equal(entry.endpoint, serviceEndpoint);
     console.log('[registry-query] service: "sample" -> snapshot: found');
   } finally {
+    node.close();
     discovery.close();
     query.close();
     registry.close();

@@ -5,16 +5,19 @@ import time
 import zlink
 
 from perf_common import (
+    apply_single_socket_options,
     benchmark_run_id,
     latency_ns_from_message,
     is_active_message,
     new_payload,
     parse_single_args,
     print_result_lines,
+    resolve_single_endpoint,
+    resolve_single_pubsub_ready_settle_s,
+    resolve_single_pubsub_recv_timeout_ms,
     result_metrics,
     recv_nonblocking,
     stamp_payload,
-    tcp_endpoint,
 )
 
 
@@ -28,21 +31,24 @@ def main(argv=None):
     latencies = []
 
     def send_loop(publisher):
-        warmup_end = time.perf_counter() + args.warmup
-        while time.perf_counter() < warmup_end:
-            publisher.publish(TOPIC, stamp_payload(payload, phase=0))
-
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
-            publisher.publish(TOPIC, stamp_payload(payload, phase=1))
+            publisher.publish(TOPIC, stamp_payload(payload, phase=1, run_id=run_id))
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
-                endpoint = tcp_endpoint("pubsub")
+                endpoint = resolve_single_endpoint(args.transport, "pubsub")
+                apply_single_socket_options(
+                    publisher,
+                    subscriber,
+                    receive_timeout_ms=resolve_single_pubsub_recv_timeout_ms(),
+                )
                 publisher.bind(endpoint)
                 subscriber.set_subscription(TOPIC)
                 subscriber.connect(endpoint)
-                time.sleep(1.0)
+                wait_seconds = resolve_single_pubsub_ready_settle_s()
+                if wait_seconds > 0:
+                    time.sleep(wait_seconds)
 
                 sender = threading.Thread(
                     target=send_loop, args=(publisher,), daemon=True
@@ -76,7 +82,7 @@ def main(argv=None):
                     elapsed_s=args.duration,
                     latencies_ns=latencies,
                 )
-                print_result_lines("PUBSUB", "tcp", args.msg_size, metrics)
+                print_result_lines("PUBSUB", args.transport, args.msg_size, metrics)
 
 
 if __name__ == "__main__":

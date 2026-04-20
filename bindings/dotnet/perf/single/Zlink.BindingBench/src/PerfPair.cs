@@ -82,6 +82,8 @@ internal static class PerfPair
         }
         catch (Exception ex)
         {
+            if (TryPrintUnsupportedTransportFailure("PAIR", transport, size, ex))
+                return 0;
             Console.Error.WriteLine($"single_pair_error:{ex}");
             return 2;
         }

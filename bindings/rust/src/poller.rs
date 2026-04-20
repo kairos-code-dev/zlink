@@ -35,7 +35,7 @@ pub struct PollTarget<'a> {
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> PollTarget<'a> {
+impl PollTarget<'_> {
     pub(crate) fn raw(&self) -> *mut c_void {
         self.handle
     }
@@ -204,11 +204,11 @@ impl Poller {
         }
         let n = rc as usize;
         let mut out = Vec::with_capacity(n);
-        for i in 0..n {
+        for event in raw.iter().take(n) {
             out.push(PollEvent {
-                fd: raw[i].fd as RawFd,
-                user_data: (!raw[i].user_data.is_null()).then_some(raw[i].user_data),
-                events: raw[i].events,
+                fd: event.fd as RawFd,
+                user_data: (!event.user_data.is_null()).then_some(event.user_data),
+                events: event.events,
             });
         }
         Ok(out)

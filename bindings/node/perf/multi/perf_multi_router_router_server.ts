@@ -5,10 +5,10 @@
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { drainRecvSocket } = require('./perf_multi_runtime');
+const { drainRecvSocket, trySocketSend } = require('./perf_multi_runtime');
 
 async function main() {
-  const options = parseMultiArgs(process.argv.slice(2), { msgSize: undefined, warmup: undefined, duration: undefined, clients: undefined });
+  const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const router = new zlink.RouterSocket(ctx);
   let stop = false;
@@ -18,11 +18,17 @@ async function main() {
       zlink.RoutingId.fromBytes(Buffer.from('multi-router-router-server', 'ascii'))
     );
     router.bind(options.endpoint);
-    const receiveLoop = drainRecvSocket(
+    const recvTask = drainRecvSocket(
       router,
       (received) => {
-        if (received.routingId) {
-          router.send(received.routingId, received.parts.map((part) => part.data()));
+        if (!received.routingId) {
+          return;
+        }
+        while (!trySocketSend(
+          router,
+          received.routingId,
+          received.parts.map((part) => part.data())
+        )) {
         }
       },
       () => stop
@@ -36,8 +42,7 @@ async function main() {
         break;
       }
     }
-
-    await receiveLoop;
+    await recvTask;
   } finally {
     router.close();
     ctx.close();

@@ -10,7 +10,12 @@ set(SPLIT_ONLY_TEST_TARGETS)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
 
-set(STREAM_SCENARIO_ROOT "${ZLINK_CORE_SOURCE_DIR}/bench/with_stream/stacks")
+set(STREAM_SCENARIO_ROOT
+    "${ZLINK_REPO_ROOT}/bindings/c/bench/with_stream/stacks")
+if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
+  set(STREAM_SCENARIO_ROOT
+      "${ZLINK_CORE_SOURCE_DIR}/bench/with_stream/stacks")
+endif()
 if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
   set(STREAM_SCENARIO_ROOT
       "${ZLINK_CORE_SOURCE_DIR}/bench/benchwithstreamcompare/stacks")
@@ -343,6 +348,15 @@ endif()
 target_sources(
   test_scenario_stream_client
   PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
+
+if(TARGET zlink_c)
+  if(TARGET test_scenario_stream_zlink)
+    target_link_libraries(test_scenario_stream_zlink PRIVATE zlink_c)
+  endif()
+  if(TARGET test_scenario_stream_zlink_packet)
+    target_link_libraries(test_scenario_stream_zlink_packet PRIVATE zlink_c)
+  endif()
+endif()
 
 if(TARGET test_spot_pubsub_scenario)
   target_sources(

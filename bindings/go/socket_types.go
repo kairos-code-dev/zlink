@@ -24,12 +24,12 @@ static inline int zlink_stream_packet_handler_go_local(void *s, uintptr_t userda
     return zlink_stream_packet_handler(s, (zlink_stream_packet_handler_fn)goZlinkStreamPacketTrampoline, (void *)userdata);
 }
 
-static inline int zlink_router_request_spot_go_local(void *router, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_router_request_spot(router, dest_node_rid, dest_spot_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+static inline int zlink_router_request_spot_part_go_local(void *router, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_router_request_spot_part(router, dest_node_rid, dest_spot_rid, part, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, part_flag, timeout_ms);
 }
 
-static inline int zlink_router_send_spot_go_local(void *router, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags) {
-    return zlink_router_send_spot(router, dest_node_rid, dest_spot_rid, parts, part_count, flags);
+static inline int zlink_router_send_spot_part_go_local(void *router, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag) {
+    return zlink_router_send_spot_part(router, dest_node_rid, dest_spot_rid, part, flags, part_flag);
 }
 */
 import "C"
@@ -233,6 +233,9 @@ type preparedMultipart struct {
 	parts  []*Message
 }
 
+type multipartSubmitFunc func(*C.zlink_msg_t, C.zlink_part_flag_t) error
+type multipartRecvFunc func(*C.zlink_msg_t, *C.zlink_part_flag_t) error
+
 func prepareMultipart(parts []*Message) (*preparedMultipart, error) {
 	if len(parts) == 0 {
 		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
@@ -296,6 +299,91 @@ func (p *preparedMultipart) restore() error {
 	}
 	closeNativeMultipart(p.native, len(p.native))
 	return nil
+}
+
+func markPartsMoved(parts []*Message) {
+	for _, part := range parts {
+		if part != nil {
+			part.moved()
+		}
+	}
+}
+
+func submitPreparedMultipart(prepared *preparedMultipart, submit multipartSubmitFunc) error {
+	if prepared == nil || len(prepared.native) == 0 {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	for i := range prepared.native {
+		partFlag := C.zlink_part_flag_t(C.ZLINK_PART_FINAL)
+		if i+1 < len(prepared.native) {
+			partFlag = C.ZLINK_PART_MORE
+		}
+		if err := submit(&prepared.native[i], partFlag); err != nil {
+			if i+1 < len(prepared.native) {
+				closeNativeMultipart(prepared.native[i+1:], len(prepared.native)-(i+1))
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func submitMultipartFromClones(parts []*Message, consumeOriginal bool, submit multipartSubmitFunc) error {
+	cloned, err := cloneParts(parts)
+	if err != nil {
+		return err
+	}
+	prepared, err := prepareMultipart(cloned)
+	if err != nil {
+		closeMessageSlice(cloned)
+		return err
+	}
+	err = submitPreparedMultipart(prepared, submit)
+	prepared.commit()
+	if err != nil {
+		return err
+	}
+	if consumeOriginal {
+		markPartsMoved(parts)
+	}
+	return nil
+}
+
+func recvMultipart(recv multipartRecvFunc) ([]*Message, error) {
+	native := make([]C.zlink_msg_t, 0, 1)
+	for {
+		var part C.zlink_msg_t
+		if err := configErrorFromResult(C.zlink_msg_init(&part)); err != nil {
+			closeNativeMultipart(native, len(native))
+			return nil, err
+		}
+
+		var hasMore C.zlink_part_flag_t
+		if err := recv(&part, &hasMore); err != nil {
+			_ = configErrorFromResult(C.zlink_msg_close(&part))
+			closeNativeMultipart(native, len(native))
+			return nil, err
+		}
+
+		native = append(native, C.zlink_msg_t{})
+		last := len(native) - 1
+		if err := configErrorFromResult(C.zlink_msg_init(&native[last])); err != nil {
+			_ = configErrorFromResult(C.zlink_msg_close(&part))
+			closeNativeMultipart(native[:last], last)
+			return nil, err
+		}
+		if err := configErrorFromResult(C.zlink_msg_move(&native[last], &part)); err != nil {
+			_ = configErrorFromResult(C.zlink_msg_close(&part))
+			closeNativeMultipart(native, len(native))
+			return nil, err
+		}
+
+		if hasMore == 0 {
+			break
+		}
+	}
+
+	return takeParts(&native[0], C.size_t(len(native)))
 }
 
 func takeParts(ptr *C.zlink_msg_t, partCount C.size_t) ([]*Message, error) {
@@ -418,48 +506,51 @@ func setTLSClient(handle unsafe.Pointer, caCertPath string, hostname string, tru
 }
 
 func recvTopicMessage(
-	call func(*C.zlink_routing_id_t, **C.zlink_msg_t, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*TopicMessage, error) {
-	var rid C.zlink_routing_id_t
-	var parts *C.zlink_msg_t
-	var partCount C.size_t
+	var sourceRID *C.zlink_routing_id_t
 	topicBuf := make([]byte, recvTopicBufferCap)
 	topicLen := C.size_t(len(topicBuf))
-	if err := call(&rid, &parts, &partCount, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
-		return nil, err
-	}
-	clonedParts, err := takeParts(parts, partCount)
+	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
+		return call(&sourceRID, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, part, hasMore, C.zlink_recv_flags_t(flags))
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &TopicMessage{
-		routingID: routingIDFromC(rid),
+		routingID: routingIDFromCPtr(sourceRID),
 		topic:     string(topicBuf[:int(topicLen)]),
 		parts:     clonedParts,
 	}, nil
 }
 
 func recvSpotTopicMessage(
-	call func(*C.zlink_routing_id_t, **C.zlink_msg_t, *C.size_t, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*TopicMessage, error) {
-	var rid C.zlink_routing_id_t
-	var parts *C.zlink_msg_t
-	var partCount C.size_t
+	var sourceRID *C.zlink_routing_id_t
 	serviceBuf := make([]byte, recvTopicBufferCap)
 	serviceLen := C.size_t(len(serviceBuf))
 	topicBuf := make([]byte, recvTopicBufferCap)
 	topicLen := C.size_t(len(topicBuf))
-	if err := call(&rid, &parts, &partCount, (*C.char)(unsafe.Pointer(&serviceBuf[0])), &serviceLen, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
-		return nil, err
-	}
-	clonedParts, err := takeParts(parts, partCount)
+	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
+		return call(
+			&sourceRID,
+			(*C.char)(unsafe.Pointer(&serviceBuf[0])),
+			&serviceLen,
+			(*C.char)(unsafe.Pointer(&topicBuf[0])),
+			&topicLen,
+			part,
+			hasMore,
+			C.zlink_recv_flags_t(flags),
+		)
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &TopicMessage{
-		routingID:   routingIDFromC(rid),
+		routingID:   routingIDFromCPtr(sourceRID),
 		serviceName: string(serviceBuf[:int(serviceLen)]),
 		topic:       string(topicBuf[:int(topicLen)]),
 		parts:       clonedParts,
@@ -600,18 +691,9 @@ type directSocket struct {
 }
 
 func (s *directSocket) Send(flags SendFlags, parts ...*Message) error {
-	prepared, err := prepareMultipart(parts)
-	if err != nil {
-		return err
-	}
-	if err := submitErrorFromResult(C.zlink_send(s.raw(), prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return restoreErr
-		}
-		return err
-	}
-	prepared.commit()
-	return nil
+	return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
+	})
 }
 
 func (s *directSocket) TrySend(parts ...*Message) (bool, error) {
@@ -627,18 +709,15 @@ func (s *directSocket) TrySend(parts ...*Message) (bool, error) {
 }
 
 func (s *directSocket) Recv(flags RecvFlags) (*Received, error) {
-	var rid C.zlink_routing_id_t
-	var parts *C.zlink_msg_t
-	var partCount C.size_t
-	if err := recvErrorFromResult(C.zlink_recv(s.raw(), &rid, &parts, &partCount, C.zlink_recv_flags_t(flags))); err != nil {
-		return nil, err
-	}
-	clonedParts, err := takeParts(parts, partCount)
+	var sourceRID *C.zlink_routing_id_t
+	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
+		return recvErrorFromResult(C.zlink_recv_part(s.raw(), &sourceRID, part, hasMore, C.zlink_recv_flags_t(flags)))
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &Received{
-		routingID: routingIDFromC(rid),
+		routingID: routingIDFromCPtr(sourceRID),
 		parts:     clonedParts,
 	}, nil
 }
@@ -678,21 +757,11 @@ type publishSocket struct {
 }
 
 func (s *publishSocket) Publish(topic string, flags SendFlags, parts ...*Message) error {
-	prepared, err := prepareMultipart(parts)
-	if err != nil {
-		return err
-	}
-	err = s.withCString(topic, func(cstr *C.char) error {
-		return submitErrorFromResult(C.zlink_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags)))
+	return s.withCString(topic, func(cstr *C.char) error {
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
+		})
 	})
-	if err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return restoreErr
-		}
-		return err
-	}
-	prepared.commit()
-	return nil
 }
 
 type routedSocket struct {
@@ -700,19 +769,10 @@ type routedSocket struct {
 }
 
 func (s *routedSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error {
-	prepared, err := prepareMultipart(parts)
-	if err != nil {
-		return err
-	}
 	rid := target.toC()
-	if err := submitErrorFromResult(C.zlink_send_rid(s.raw(), &rid, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return restoreErr
-		}
-		return err
-	}
-	prepared.commit()
-	return nil
+	return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))
+	})
 }
 
 func (s *routedSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error) {
@@ -728,138 +788,106 @@ func (s *routedSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, err
 }
 
 func (s *routedSocket) SendToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) error {
-	prepared, err := prepareMultipart(parts)
-	if err != nil {
-		return err
-	}
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
-	if err := submitErrorFromResult(C.zlink_router_send_spot_go_local(s.raw(), &node, &spot, prepared.ptr(), prepared.count(), C.zlink_send_flags_t(flags))); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return restoreErr
-		}
-		return err
-	}
-	prepared.commit()
-	return nil
+	return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_router_send_spot_part_go_local(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
+	})
 }
 
-func (s *routedSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
+func (s *routedSocket) requestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error) {
 	if callback == nil {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	resultCh, err := s.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
+	ok, err := submitBackpressureResult(err)
 	if err != nil {
-		return err
+		return false, err
 	}
-	go func() {
-		result := <-resultCh
-		callback(result.result, result.parts)
-	}()
-	return nil
+	if !ok {
+		return false, nil
+	}
+	dispatchRequestCallback(resultCh, callback)
+	return true, nil
+}
+
+func (s *routedSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, timeout time.Duration, parts ...*Message) error {
+	_, err := s.requestToSpot(destNodeRid, destSpotRid, callback, SendFlagsNone, timeout, parts...)
+	return err
+}
+
+func (s *routedSocket) TryRequestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, timeout time.Duration, parts ...*Message) (bool, error) {
+	return s.requestToSpot(destNodeRid, destSpotRid, callback, SendFlagsDontWait, timeout, parts...)
 }
 
 func (s *routedSocket) reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
 	if err := validateReplyFlags(flags); err != nil {
 		return err
 	}
-	cloned, err := cloneParts(parts)
-	if err != nil {
-		return err
-	}
-	prepared, err := prepareMultipart(cloned)
-	if err != nil {
-		closeMessageSlice(cloned)
-		return err
-	}
 	target := rid.toC()
-	if err := submitErrorFromResult(C.zlink_router_reply(s.raw(), &target, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return restoreErr
-		}
-		return err
-	}
-	prepared.commit()
-	return nil
+	return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_router_reply_part(s.raw(), &target, C.uint64_t(requestSeq), part, partFlag))
+	})
 }
 
 func (s *routedSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
 	if err := validateReplyFlags(flags); err != nil {
 		return err
 	}
-	cloned, err := cloneParts(parts)
-	if err != nil {
-		return err
-	}
-	prepared, err := prepareMultipart(cloned)
-	if err != nil {
-		closeMessageSlice(cloned)
-		return err
-	}
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
-	if err := submitErrorFromResult(C.zlink_router_reply_spot(s.raw(), &node, &spot, C.uint64_t(requestSeq), prepared.ptr(), prepared.count())); err != nil {
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return restoreErr
-		}
-		return err
-	}
-	prepared.commit()
-	return nil
+	return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_router_reply_spot_part(s.raw(), &node, &spot, C.uint64_t(requestSeq), part, partFlag))
+	})
 }
 
 func (s *routedSocket) directRecv(flags RecvFlags) (*Received, error) {
-	recvOnce := func(recvFlags RecvFlags) (*C.zlink_routing_id_t, *C.zlink_routing_id_t, C.uint64_t, *C.zlink_msg_t, C.size_t, error) {
+	recvOnce := func(recvFlags RecvFlags) (*C.zlink_routing_id_t, *C.zlink_routing_id_t, C.uint64_t, []*Message, error) {
 		var nodeRID *C.zlink_routing_id_t
 		var spotRID *C.zlink_routing_id_t
 		var requestSeq C.uint64_t
-		var parts *C.zlink_msg_t
-		var partCount C.size_t
-		if err := recvErrorFromResult(C.zlink_router_recv(s.raw(), &nodeRID, &spotRID, &requestSeq, &parts, &partCount, C.zlink_recv_flags_t(recvFlags))); err != nil {
-			return nil, nil, 0, nil, 0, err
+		parts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
+			return recvErrorFromResult(C.zlink_router_recv_part(s.raw(), &nodeRID, &spotRID, &requestSeq, part, hasMore, C.zlink_recv_flags_t(recvFlags)))
+		})
+		if err != nil {
+			return nil, nil, 0, nil, err
 		}
-		return nodeRID, spotRID, requestSeq, parts, partCount, nil
+		return nodeRID, spotRID, requestSeq, parts, nil
 	}
 
 	var nodeRID *C.zlink_routing_id_t
 	var spotRID *C.zlink_routing_id_t
 	var requestSeq C.uint64_t
-	var parts *C.zlink_msg_t
-	var partCount C.size_t
+	var parts []*Message
 	if flags == RecvFlagsNone {
-		primedNodeRID, primedSpotRID, primedRequestSeq, primedParts, primedPartCount, primedErr := recvOnce(RecvFlagsDontWait)
+		primedNodeRID, primedSpotRID, primedRequestSeq, primedParts, primedErr := recvOnce(RecvFlagsDontWait)
 		if primedErr == nil {
 			nodeRID = primedNodeRID
 			spotRID = primedSpotRID
 			requestSeq = primedRequestSeq
 			parts = primedParts
-			partCount = primedPartCount
 		} else {
 			var recvErr *RecvError
 			if !errors.As(primedErr, &recvErr) || recvErr.Result != RecvNoData {
 				return nil, primedErr
 			}
 			var err error
-			nodeRID, spotRID, requestSeq, parts, partCount, err = recvOnce(flags)
+			nodeRID, spotRID, requestSeq, parts, err = recvOnce(flags)
 			if err != nil {
 				return nil, err
 			}
 		}
 	} else {
 		var err error
-		nodeRID, spotRID, requestSeq, parts, partCount, err = recvOnce(flags)
+		nodeRID, spotRID, requestSeq, parts, err = recvOnce(flags)
 		if err != nil {
 			return nil, err
 		}
 	}
-	clonedParts, err := takeParts(parts, partCount)
-	if err != nil {
-		return nil, err
-	}
 	received := &Received{
 		routingID:     routingIDFromCPtr(nodeRID),
 		spotRID:       routingIDFromCPtr(spotRID),
-		parts:         clonedParts,
+		parts:         parts,
 		requestSeq:    uint64(requestSeq),
 		hasRequestSeq: requestSeq != 0,
 	}
@@ -909,20 +937,20 @@ func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flag
 	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
-	if err := submitErrorFromResult(C.zlink_router_request_spot_go_local(
-		s.raw(),
-		&node,
-		&spot,
-		prepared.ptr(),
-		prepared.count(),
-		C.zlink_send_flags_t(flags),
-		C.uint32_t(requestTimeoutMillis(timeout)),
-		C.uintptr_t(handle),
-	)); err != nil {
+	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_router_request_spot_part_go_local(
+			s.raw(),
+			&node,
+			&spot,
+			part,
+			C.zlink_send_flags_t(flags),
+			partFlag,
+			C.uint32_t(requestTimeoutMillis(timeout)),
+			C.uintptr_t(handle),
+		))
+	}); err != nil {
 		handle.Delete()
-		if restoreErr := prepared.restore(); restoreErr != nil {
-			return nil, restoreErr
-		}
+		prepared.commit()
 		return nil, err
 	}
 	prepared.commit()
@@ -946,8 +974,8 @@ func (s *subscribeSocket) UnsetSubscription(filter string) error {
 }
 
 func (s *subscribeSocket) Subscribe(flags RecvFlags) (*TopicMessage, error) {
-	return recvTopicMessage(func(rid *C.zlink_routing_id_t, parts **C.zlink_msg_t, partCount *C.size_t, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
-		return recvErrorFromResult(C.zlink_subscribe(s.raw(), rid, parts, partCount, topic, topicLen, recvFlags))
+	return recvTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_subscribe_part(s.raw(), rid, topic, recvTopicBufferCap, topicLen, part, hasMore, recvFlags))
 	}, flags)
 }
 
@@ -957,7 +985,16 @@ type xpubSubscribeSocket struct {
 
 func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error) {
 	return recvSubscriptionEvent(func(rid *C.zlink_routing_id_t, subscribed *C.int, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
-		return recvErrorFromResult(C.zlink_subscription_event(s.raw(), rid, subscribed, topic, topicLen, recvFlags))
+		var sourceRID *C.zlink_routing_id_t
+		if err := recvErrorFromResult(C.zlink_xpub_recv_part(s.raw(), &sourceRID, subscribed, topic, recvTopicBufferCap, topicLen, recvFlags)); err != nil {
+			return err
+		}
+		if sourceRID != nil {
+			*rid = *sourceRID
+		} else {
+			*rid = C.zlink_routing_id_t{}
+		}
+		return nil
 	}, flags)
 }
 
@@ -1133,12 +1170,20 @@ func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) ([]*Messag
 	return (&dealerRequestSupport{socket: s}).Request(timeout, msgs...)
 }
 
-func (s *DealerSocket) RequestCallback(parts [][]byte, callback RequestReplyCallback, flags SendFlags, timeout time.Duration) error {
+func (s *DealerSocket) RequestCallback(parts [][]byte, callback RequestReplyCallback, timeout time.Duration) error {
 	msgs, err := bytePartsToMessages(parts)
 	if err != nil {
 		return err
 	}
-	return (&dealerRequestSupport{socket: s}).RequestCallback(callback, flags, timeout, msgs...)
+	return (&dealerRequestSupport{socket: s}).RequestCallback(callback, timeout, msgs...)
+}
+
+func (s *DealerSocket) TryRequestCallback(parts [][]byte, callback RequestReplyCallback, timeout time.Duration) (bool, error) {
+	msgs, err := bytePartsToMessages(parts)
+	if err != nil {
+		return false, err
+	}
+	return (&dealerRequestSupport{socket: s}).TryRequestCallback(callback, timeout, msgs...)
 }
 
 type RouterSocket struct {
@@ -1212,12 +1257,20 @@ func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.D
 	return (&routerRequestSupport{socket: s}).Request(peerRid, timeout, msgs...)
 }
 
-func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, callback RequestReplyCallback, flags SendFlags, timeout time.Duration) error {
+func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, callback RequestReplyCallback, timeout time.Duration) error {
 	msgs, err := bytePartsToMessages(parts)
 	if err != nil {
 		return err
 	}
-	return (&routerRequestSupport{socket: s}).RequestCallback(peerRid, callback, flags, timeout, msgs...)
+	return (&routerRequestSupport{socket: s}).RequestCallback(peerRid, callback, timeout, msgs...)
+}
+
+func (s *RouterSocket) TryRequestCallback(peerRid RoutingID, parts [][]byte, callback RequestReplyCallback, timeout time.Duration) (bool, error) {
+	msgs, err := bytePartsToMessages(parts)
+	if err != nil {
+		return false, err
+	}
+	return (&routerRequestSupport{socket: s}).TryRequestCallback(peerRid, callback, timeout, msgs...)
 }
 
 func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {

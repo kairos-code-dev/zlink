@@ -2,9 +2,11 @@
 
 'use strict';
 
+const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
+  createRunId,
   decodeMetricHeader,
   currentEpochNs,
   summarizeMetrics
@@ -16,15 +18,7 @@ async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const subs = [];
-  const collector = createMetricCollector({
-    runId: 0,
-    msgSize: options.msgSize
-  });
-  let stopResolve;
-  const stopped = new Promise((resolve) => {
-    stopResolve = resolve;
-  });
-  let stopCount = 0;
+  let collector = null;
   let stop = false;
 
   try {
@@ -33,7 +27,6 @@ async function main() {
       sub.setSubscription('perf.topic');
       subs.push(sub);
     }
-
     for (const sub of subs) {
       await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
     }
@@ -41,38 +34,46 @@ async function main() {
     const recvTasks = subs.map((sub) => drainRecvSocket(
       sub,
       (received) => {
-        const header = decodeMetricHeader(received.parts[0].data());
-        if (!header) {
+        if (!collector) {
           return;
         }
-        if (header.phase === 2) {
-          stopCount += 1;
-          if (stopCount >= options.clients) {
-            stopResolve();
-          }
-          return;
-        }
-        collector.record(header, currentEpochNs());
+        collector.record(
+          decodeMetricHeader(received.parts[0].data()),
+          currentEpochNs()
+        );
       },
       () => stop
     ));
 
-    console.log('CLIENT_READY');
-    await Promise.race([
-      stopped,
-      new Promise((resolve) => setTimeout(resolve, Math.ceil((options.warmup + options.duration + 2) * 1000)))
-    ]);
-    stop = true;
+    console.log(`CLIENT_READY,${options.msgSize}`);
+    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+    for await (const line of rl) {
+      if (line === `PHASE_ACTIVE,${options.msgSize}`) {
+        const activeStartNs = process.hrtime.bigint();
+        const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+        collector = createMetricCollector({
+          runId: createRunId(1),
+          msgSize: options.msgSize,
+          activeStartNs,
+          activeStopNs
+        });
+        while (process.hrtime.bigint() < activeStopNs + 250_000_000n) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        stop = true;
+        break;
+      }
+    }
+
     await Promise.all(recvTasks);
-    const result = await collector.finish();
-    const resultLines = summarizeMetrics(
+    const result = collector ? await collector.finish() : { latenciesNs: [] };
+    for (const line of summarizeMetrics(
       'MULTI_PUBSUB',
       'tcp',
       options.msgSize,
       result.latenciesNs,
       options.duration
-    );
-    for (const line of resultLines) {
+    )) {
       console.log(line);
     }
   } finally {

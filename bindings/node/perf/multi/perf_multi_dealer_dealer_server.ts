@@ -6,6 +6,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const {
   createMetricCollector,
+  createRunId,
   decodeMetricHeader,
   currentEpochNs,
   summarizeMetrics
@@ -17,10 +18,8 @@ async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const server = new zlink.DealerSocket(ctx);
-  const collector = createMetricCollector({
-    runId: 0,
-    msgSize: options.msgSize
-  });
+  const runId = createRunId(1);
+  let collector = null;
   let stop = false;
 
   try {
@@ -28,8 +27,13 @@ async function main() {
     const recvTask = drainRecvSocket(
       server,
       (received) => {
-        const header = decodeMetricHeader(received.parts[0].data());
-        collector.record(header, currentEpochNs());
+        if (!collector) {
+          return;
+        }
+        collector.record(
+          decodeMetricHeader(received.parts[0].data()),
+          currentEpochNs()
+        );
       },
       () => stop
     );
@@ -37,6 +41,17 @@ async function main() {
     console.log(`READY,${options.endpoint}`);
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of rl) {
+      if (line === `START,${options.msgSize}`) {
+        const activeStartNs = process.hrtime.bigint();
+        const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+        collector = createMetricCollector({
+          runId,
+          msgSize: options.msgSize,
+          activeStartNs,
+          activeStopNs
+        });
+        continue;
+      }
       if (line === 'STOP') {
         stop = true;
         break;
@@ -44,16 +59,15 @@ async function main() {
     }
 
     await recvTask;
-    const result = await collector.finish();
-    const resultLines = summarizeMetrics(
+    const result = collector ? await collector.finish() : { latenciesNs: [] };
+    for (const line of summarizeMetrics(
       'MULTI_DEALER_DEALER',
       'tcp',
       options.msgSize,
       result.latenciesNs,
       options.duration
-    );
-    for (const lineOut of resultLines) {
-      console.log(lineOut);
+    )) {
+      console.log(line);
     }
   } finally {
     server.close();

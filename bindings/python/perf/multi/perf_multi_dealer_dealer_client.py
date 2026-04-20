@@ -5,6 +5,7 @@ from contextlib import ExitStack
 import zlink
 
 from perf_multi_common import (
+    apply_multi_socket_options,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
@@ -31,12 +32,11 @@ def main(argv=None):
                     monitor = stack.enter_context(
                         sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
                     )
+                    apply_multi_socket_options(sock)
                     sock.connect(endpoint)
                     monitors.append(monitor)
                 for monitor in monitors:
                     wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
-                for sock in sockets:
-                    sock.options.receive_timeout_ms = 50
                 print(f"CLIENT_READY,{args.msg_size}", flush=True)
                 command = sys.stdin.readline().strip()
                 if command != f"START,{args.msg_size}":

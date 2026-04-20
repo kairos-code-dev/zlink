@@ -61,10 +61,22 @@ final class RouterRequestSupport implements AutoCloseable {
         return request(routingId, List.of(part));
     }
 
+    public CompletableFuture<Received> request(RoutingId routingId,
+                                               Message part,
+                                               SendFlags flags) {
+        return request(routingId, List.of(part), flags);
+    }
+
     public CompletableFuture<Received> request(RoutingId routingId, List<Message> parts) {
+        return request(routingId, parts, SendFlags.NONE);
+    }
+
+    public CompletableFuture<Received> request(RoutingId routingId,
+                                               List<Message> parts,
+                                               SendFlags flags) {
         return requestInternal(routingId, parts,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS),
-            SendFlags.NONE);
+            flags);
     }
 
     public CompletableFuture<Received> request(RoutingId routingId,
@@ -74,9 +86,23 @@ final class RouterRequestSupport implements AutoCloseable {
     }
 
     public CompletableFuture<Received> request(RoutingId routingId,
+                                               Message part,
+                                               SendFlags flags,
+                                               Duration timeout) {
+        return request(routingId, List.of(part), flags, timeout);
+    }
+
+    public CompletableFuture<Received> request(RoutingId routingId,
                                                List<Message> parts,
                                                Duration timeout) {
-        return requestInternal(routingId, parts, timeout, SendFlags.NONE);
+        return request(routingId, parts, SendFlags.NONE, timeout);
+    }
+
+    public CompletableFuture<Received> request(RoutingId routingId,
+                                               List<Message> parts,
+                                               SendFlags flags,
+                                               Duration timeout) {
+        return requestInternal(routingId, parts, timeout, flags);
     }
 
     public void request(RoutingId routingId,
@@ -452,7 +478,8 @@ final class RouterRequestSupport implements AutoCloseable {
                 sourceSpotRidOut, requestSeqOut, partsOut, partCountOut,
                 flags.value());
             if (rc != 0) {
-                throw new RecvException(RecvResult.fromValue(rc));
+                throw new RecvException(RecvResult.fromValue(rc),
+                    Native.errno());
             }
 
             AggregateRouterReceiveCursor cursor =
@@ -678,7 +705,7 @@ final class RouterRequestSupport implements AutoCloseable {
         private void closeVector() {
             if (!vectorClosed && partsAddr != null && partsAddr.address() != 0) {
                 vectorClosed = true;
-                // zlink_router_recv() returns a library-owned thread-local view.
+                // Native.routerRecv() exposes a thread-local multipart view.
                 // Close the moved-from parts, but do not free the backing array.
                 NativeMsg.multipartClose(partsAddr, partCount);
             }

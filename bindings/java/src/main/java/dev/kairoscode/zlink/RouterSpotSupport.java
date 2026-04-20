@@ -38,6 +38,15 @@ final class RouterSpotSupport {
                                                    RoutingId destSpotRid,
                                                    List<Message> parts,
                                                    Duration timeout) {
+        return requestToSpot(destNodeRid, destSpotRid, parts, timeout,
+          SendFlags.NONE);
+    }
+
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                   RoutingId destSpotRid,
+                                                   List<Message> parts,
+                                                   Duration timeout,
+                                                   SendFlags flags) {
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = RoutedRequestSupport.nextRequestId();
         List<Message> payload = RequestReplySupport.clonePayload(parts);
@@ -46,7 +55,8 @@ final class RouterSpotSupport {
         try {
             submitRouterRequestSpot(destNodeRid, destSpotRid, payload,
                 RoutedRequestSupport.replyCallback(),
-                RoutedRequestSupport.userData(requestId), SendFlags.NONE.value(),
+                RoutedRequestSupport.userData(requestId),
+                Objects.requireNonNull(flags, "flags").value(),
                 RoutedRequestSupport.toTimeoutInt(timeoutMs));
             RequestReplySupport.closeAll(payload);
         } catch (RuntimeException ex) {

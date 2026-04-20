@@ -45,7 +45,7 @@ int spot_subject_recv (void *subject_,
                        size_t *part_count_out_,
                        char *topic_id_out_,
                        size_t *topic_id_len_out_,
-                       zlink_send_flags_t flags_);
+                       zlink_recv_flags_t flags_);
 int spot_subject_set_common_option (void *handle_,
                                     zlink_option_t option_,
                                     const void *optval_,

@@ -59,11 +59,11 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 }
 
 func PrintResult(pattern, transport string, msgSize int, result Result) {
-	fmt.Printf("RESULT,current,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
-	fmt.Printf("RESULT,current,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
-	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
-	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
-	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
+	fmt.Printf("RESULT,go,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
+	fmt.Printf("RESULT,go,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
+	fmt.Printf("RESULT,go,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
+	fmt.Printf("RESULT,go,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
+	fmt.Printf("RESULT,go,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
 }
 
 func Must(err error) {
@@ -74,8 +74,8 @@ func Must(err error) {
 }
 
 func ValidateCommon(transport string, msgSize int) {
-	if msgSize < 8 {
-		Must(fmt.Errorf("msg-size must be >= 8, got %d", msgSize))
+	if msgSize < MetricHeaderSize {
+		Must(fmt.Errorf("msg-size must be >= %d, got %d", MetricHeaderSize, msgSize))
 	}
 	if strings.TrimSpace(transport) == "" {
 		Must(fmt.Errorf("transport must not be empty"))
@@ -142,16 +142,35 @@ type boundEndpointSocket interface {
 }
 
 func BindEndpoint(transport, prefix string) string {
-	id := atomic.AddUint64(&endpointCounter, 1)
 	switch transport {
 	case "tcp", "tls", "ws", "wss":
-		return fmt.Sprintf("%s://127.0.0.1:*", transport)
+		return UniqueEndpoint(transport, prefix)
 	case "inproc":
+		id := atomic.AddUint64(&endpointCounter, 1)
 		return fmt.Sprintf("inproc://%s-%d-%d", prefix, os.Getpid(), id)
 	case "ipc":
-		return "ipc://*"
+		return UniqueEndpoint(transport, prefix)
 	default:
+		id := atomic.AddUint64(&endpointCounter, 1)
 		return fmt.Sprintf("%s://%s-%d-%d", transport, prefix, os.Getpid(), id)
+	}
+}
+
+func FinalizeResult(pattern string, msgSize int, result Result) Result {
+	factor := 1.0
+	if isEchoPattern(pattern) {
+		factor = 2.0
+	}
+	result.Bandwidth = result.Throughput * float64(msgSize) * factor / 1_000_000.0
+	return result
+}
+
+func isEchoPattern(pattern string) bool {
+	switch pattern {
+	case "SPOT_REQREP", "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP":
+		return true
+	default:
+		return false
 	}
 }
 

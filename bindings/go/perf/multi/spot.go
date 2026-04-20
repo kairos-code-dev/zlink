@@ -31,7 +31,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(publisherNode.Bind(endpoint))
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
 	subs := make([]multiSpotSubscriber, 0, cfg.clients)
 	tracker := newMultiSpotReadyTracker(cfg.clients)
@@ -57,7 +57,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
-		perfcommon.StampPayload(payload)
+		perfcommon.StampWindowPayload(payload, window.ActiveAt)
 		err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {

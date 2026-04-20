@@ -31,6 +31,11 @@ internal static partial class PerfRunner
         }
         catch (Exception ex)
         {
+            if (PerfShared.TryPrintUnsupportedTransportFailure(outputPattern,
+                    transport, size, ex))
+            {
+                return 0;
+            }
             Console.Error.WriteLine($"multi_client_error:{ex.GetType().Name}:{ex.Message}\n{ex}");
             return 2;
         }

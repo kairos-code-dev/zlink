@@ -92,9 +92,9 @@ SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
 if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
-  PERF_COMPARISON_SCRIPT="${ROOT_DIR}/core/perf/run_comparison.py"
+  PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/run_comparison.py"
 else
-  PERF_COMPARISON_SCRIPT="${ROOT_DIR}/core/perf/single/run_comparison.py"
+  PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/single/run_comparison.py"
 fi
 
 usage() {

@@ -35,9 +35,14 @@ async function main() {
         const sent = 'hello-pair';
         client.send(Buffer.from(sent));
         const received = server.recv();
-        const recv = received.parts[0].data().toString();
-        assert.equal(recv, sent);
-        console.log(`[pair/recv] send: "${sent}" \u2192 recv: "${recv}"`);
+        try {
+            const recv = received.parts[0].data().toString();
+            assert.equal(recv, sent);
+            console.log(`[pair/recv] send: "${sent}" \u2192 recv: "${recv}"`);
+        }
+        finally {
+            received.close();
+        }
     }
     finally {
         client.close();

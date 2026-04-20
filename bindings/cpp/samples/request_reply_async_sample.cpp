@@ -2,7 +2,7 @@
 
 #include "sample_common.hpp"
 
-#include <cstdlib>
+#include <future>
 #include <thread>
 
 namespace detail
@@ -35,22 +35,23 @@ int main ()
       reinterpret_cast<const uint8_t *> (routing_id_text.data ()),
       routing_id_text.size ());
     dealer_socket.set_routing_id (routing_id);
-    const std::string endpoint = detail::unique_inproc ("request-reply-async");
+    const std::string endpoint = "tcp://127.0.0.1:0";
     assert (router_socket.bind (endpoint) == 0);
-    assert (dealer_socket.connect (endpoint) == 0);
+    const std::string bound_endpoint = router_socket.options ().last_endpoint ();
+    assert (!bound_endpoint.empty ());
+    assert (dealer_socket.connect (bound_endpoint) == 0);
     assert (detail::wait_connected (router_monitor, dealer_monitor));
-    std::this_thread::sleep_for (std::chrono::milliseconds (50));
 
     zlink::message_t warmup = detail::make_message ("warmup");
     dealer_socket.send (warmup);
-    std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    const zlink::received_t warmup_received = router_socket.recv ();
+    zlink::received_t warmup_received = router_socket.recv ();
     assert (warmup_received.parts ().size () == 1);
     assert (warmup_received.parts ()[0].to_string () == "warmup");
+    warmup_received.close ();
 
     std::future<void> request_done = std::async (
       std::launch::async, [&router_socket, &routing_id] () {
-          const zlink::received_t received = router_socket.recv ();
+          zlink::received_t received = router_socket.recv ();
           assert (received.routing_id ().has_value ());
           assert (received.routing_id ()->to_string () == routing_id.to_string ());
           assert (received.parts ().size () == 1);
@@ -61,6 +62,7 @@ int main ()
           zlink::message_t reply =
             detail::make_message (detail::k_dealer_router_reply);
           received.reply (reply);
+          received.close ();
       });
 
     zlink::message_t request =
@@ -75,5 +77,5 @@ int main ()
       "[dealer-router/request-reply/async] send: \"%s\" -> recv: \"%s\"\n",
       detail::k_dealer_router_request, detail::k_dealer_router_reply);
     std::fflush (stdout);
-    std::quick_exit (0);
+    return 0;
 }

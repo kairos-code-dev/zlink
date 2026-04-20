@@ -42,6 +42,7 @@ public final class PerfUtil {
         String transport,
         int size,
         int durationSeconds,
+        int warmupSeconds,
         String recvMode,
         String endpoint,
         int clients,
@@ -97,8 +98,8 @@ public final class PerfUtil {
             return status;
         }
 
-        public String toLine() {
-            return PerfReport.format(this);
+        public String toLine(String libTag) {
+            return PerfReport.format(this, libTag);
         }
     }
 
@@ -168,6 +169,10 @@ public final class PerfUtil {
 
     public static void validateMultiRecvMode(Config config) {
         PerfPolicy.validateMultiRecvMode(config);
+    }
+
+    public static Result classifyFailure(Config config, Throwable failure) {
+        return PerfPolicy.classifyFailure(config, failure);
     }
 
     public static void configureServerTls(Socket socket, String transport) {

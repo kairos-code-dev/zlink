@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md)
+
 # Draft -- ZLink Framework ASP.NET Core STREAM Integration
 
 > 이 문서는 **구현 전 초안**이다.
@@ -113,8 +115,8 @@ builder.Services.AddZLinkFramework(options =>
 ## 5. serializer 계층
 
 `playhouse/extensions`를 보면 protobuf/json/messagepack 지원을 transport 본체에
-직접 섞지 않고, `Parse<T>()`, `OfProto(...)` 같은 확장 메서드 계층으로 얹는다.
-`STREAM`도 같은 감각이 자연스럽다.
+직접 섞지 않고, 별도 codec extension/helper 계층으로 얹는다. `STREAM`도 같은
+감각이 자연스럽다.
 
 즉 framework 기본 표면은 아래 정도로 유지한다.
 
@@ -122,18 +124,19 @@ builder.Services.AddZLinkFramework(options =>
 - `IZLinkStreamRawHandler`
 - `Message`
 
-그리고 객체 변환은 별도 확장 패키지나 serializer provider가 맡는다.
+그리고 객체 변환은 binding core `Message` 자체가 아니라, 그 위에 얹는 별도
+확장 패키지나 serializer provider가 맡는다.
 
 예를 들면:
 
 ```csharp
-ClientInput input = body.ParseProto<ClientInput>();
-ChatRequest request = body.ParseJson<ChatRequest>();
+ClientInput input = body.Parse<ClientInput>();
+ChatRequest request = body.Parse<ChatRequest>();
 ```
 
 이 구조의 장점은 아래와 같다.
 
-- protobuf/json/messagepack을 transport 인터페이스에 고정하지 않는다.
+- protobuf/json/messagepack dependency를 transport core에 고정하지 않는다.
 - serializer를 추가 패키지로 분리하기 쉽다.
 - `Message.AsReadOnlySpan()` 기반 helper를 써서 불필요한 복사를 줄이기 쉽다.
 - `playhouse/extensions`와 비슷한 사용 경험을 만들 수 있다.

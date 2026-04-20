@@ -153,13 +153,31 @@ required_assets=(
   "libzlink-macos-arm64.tar.gz"
   "libzlink-windows-x64.tar.gz"
   "libzlink-windows-arm64.tar.gz"
+  "libzlink_c-linux-x64.tar.gz"
+  "libzlink_c-macos-x64.tar.gz"
+  "libzlink_c-windows-x64.tar.gz"
 )
 missing_assets=()
+optional_libzlink_c_assets_found=0
 for a in "${required_assets[@]}"; do
-  if ! grep -Fxq "${a}" <<< "${assets}"; then
-    missing_assets+=("${a}")
+  if grep -Fxq "${a}" <<< "${assets}"; then
+    case "${a}" in
+      libzlink_c-*.tar.gz)
+        optional_libzlink_c_assets_found=$((optional_libzlink_c_assets_found + 1))
+        ;;
+    esac
+    continue
   fi
+  case "${a}" in
+    libzlink_c-*.tar.gz)
+      continue
+      ;;
+  esac
+  missing_assets+=("${a}")
 done
+if [[ "${optional_libzlink_c_assets_found}" -eq 0 ]]; then
+  echo "[WARN] libzlink_c assets not found in release, skipping"
+fi
 if [[ "${#missing_assets[@]}" -gt 0 ]]; then
   echo "Error: release '${tag_name}' (${repo_name}) is missing required core assets:" >&2
   printf '  - %s\n' "${missing_assets[@]}" >&2
@@ -396,6 +414,7 @@ libs = {
     "dotnet": os.path.join(repo_root, "bindings/dotnet/runtimes/linux-x64/native/libzlink.so"),
     "java": os.path.join(repo_root, "bindings/java/src/main/resources/native/linux-x86_64/libzlink.so"),
     "cpp": os.path.join(repo_root, "bindings/cpp/native/linux-x86_64/libzlink.so"),
+    "c_binding": os.path.join(repo_root, "bindings/cpp/native/linux-x86_64/libzlink_c.so"),
     "go": os.path.join(repo_root, "bindings/go/native/linux-x86_64/libzlink.so"),
     "rust": os.path.join(repo_root, "bindings/rust/native/linux-x86_64/libzlink.so"),
 }
@@ -403,8 +422,14 @@ libs = {
 failed = False
 for name, path in libs.items():
     if not os.path.exists(path):
+        if name == "c_binding":
+            print(f"{name}: [WARN] MISSING ({path})")
+            continue
         print(f"{name}: MISSING ({path})")
         failed = True
+        continue
+    if name == "c_binding":
+        print(f"{name}: PRESENT ({path})")
         continue
     lib = ctypes.CDLL(os.path.abspath(path))
     fn = lib.zlink_version

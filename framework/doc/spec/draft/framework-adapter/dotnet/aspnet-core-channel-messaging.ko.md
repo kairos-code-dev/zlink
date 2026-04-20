@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Registry](./aspnet-core-registry.ko.md)
+
 # Draft -- ZLink Framework ASP.NET Core Channel Messaging
 
 > 이 문서는 **구현 전 초안**이다.
@@ -10,7 +12,7 @@
 
 `ASP.NET Core` 애플리케이션에서 아래 경험을 제공하는 것이 목표다.
 
-- `channel_name` 기준 direct call
+- `channel name` 기준 direct call
 - DI로 주입되는 공용 outbound client
 - event publish
 - channel별 `Discovery` 기반 요청
@@ -51,8 +53,7 @@ handler/controller 안에서도 똑같이 쓸 수 있어야 한다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelId = "api";
-    options.NodeName = "api-1";
+    options.ChannelName = "api";
     options.UseDiscovery(registry =>
     {
         registry.Add("tcp://registry1:5551");
@@ -69,12 +70,11 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ChannelId = "api";
-    options.NodeName = "api-1";
+    options.ChannelName = "api";
 
     options.ConfigureManualConnections(connections =>
     {
-        connections.Add("api.profile", peers =>
+        connections.Add("profile", peers =>
         {
             peers.Connect(
                 targetRid: RoutingId.Parse("01HZX..."),
@@ -103,8 +103,8 @@ builder.Services.AddZLinkFramework(options =>
 핵심은 아래 네 점이다.
 
 - `IZLinkClient`는 DI로 주입된다.
-- 호출 대상은 gateway 주소가 아니라 `channel_name`
-- runtime은 접근한 `channel_name`마다 별도 outbound channel을 만든다.
+- 호출 대상은 gateway 주소가 아니라 `channel name`
+- runtime은 접근한 `channel name`마다 별도 outbound channel을 만든다.
 - 각 channel은 그 channel 전용 `Discovery`와 outbound socket을 가진다.
 
 ### 3.3 handler 등록
@@ -116,11 +116,13 @@ builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 또는 endpoint-style registration도 가능하지만, 1차 초안은 DI와 attribute 기반을
 우선 검토한다.
 
-현재 1차 attribute 후보는 아래처럼 둔다.
+현재 1차 attribute 후보는 아래처럼 둔다. 기본 packet key는 payload 타입 이름을
+쓰고, 정말 필요할 때만 `PacketName`을 override하는 방향을 기준으로 본다.
 
 ```csharp
-[ZLinkRequest("profile.get")]
-[ZLinkSend("profile.refresh-cache")]
+[ZLinkRequest]
+[ZLinkSend]
+[ZLinkEvent(PacketName = "profile.cache-invalidated")]
 ```
 
 이 등록 모델에서 중요한 점은 handler 인스턴스 생성도 `.NET DI`가 맡는다는 것이다.
@@ -128,7 +130,7 @@ builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 한다. 따라서 constructor injection은 일반 `ASP.NET Core` 서비스와 같은 방식으로
 동작해야 한다.
 
-여기서 `channelId`는 route prefix가 아니라 앱이 속한 channel 묶음 식별자이므로,
+여기서 `channelName`은 route prefix가 아니라 앱이 속한 local channel 이름이므로,
 handler class attribute보다 등록 옵션에 두는 편을 현재 방향으로 본다.
 
 ## 4. 서버 쪽 프로그래밍 모델 초안
@@ -154,14 +156,14 @@ public sealed class UserHandlers
         _client = client;
     }
 
-    [ZLinkRequest("user.get")]
+    [ZLinkRequest]
     public async ValueTask<UserReply> GetUserAsync(
         UserRequest request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         var account = await _client.RequestAsync(
-            "api.account",
+            "account",
             new GetAccountRequest { AccountId = request.AccountId },
             cancellationToken);
 
@@ -181,14 +183,17 @@ public sealed class UserHandlers
 - `CancellationToken`으로 timeout/cancel을 연결한다.
 - handler class는 `UserHandlers`, `ItemHandlers`처럼 주제별로 묶어도 된다.
 - 패킷 하나당 class 하나로 쪼개도 된다.
-- 실제 dispatch key는 class 이름이 아니라 `user.get` 같은 메시지 이름이다.
+- 기본 dispatch key는 request payload 타입 이름이다.
+- 예: `UserRequest`는 기본적으로 `UserRequest` packet으로 매핑된다.
+- 같은 이름 충돌이나 외부 계약 때문에 다른 키가 필요할 때만 `PacketName`을
+  explicit override한다.
 
 ### 4.2 event handler
 
 ```csharp
 public sealed class CacheEventHandlers
 {
-    [ZLinkEvent("cache.invalidate")]
+    [ZLinkEvent(PacketName = "cache.invalidate")]
     public ValueTask HandleAsync(
         CacheInvalidateEvent message,
         ZLinkEventContext context,
@@ -203,7 +208,7 @@ request-response와 event는 분리된 표면으로 보이는 편이 좋다.
 
 ### 4.3 inbound dispatch 시퀀스
 
-아래 시퀀스는 `"profile.get"` 요청이 들어왔을 때 runtime이 handler를 찾고,
+아래 시퀀스는 `GetProfileRequest` packet이 들어왔을 때 runtime이 handler를 찾고,
 DI로 handler를 resolve해서 응답을 돌려주는 흐름을 보여 준다. 이때 channel
 runtime은 `Discovery` 기반 자동 연결과 수동 연결 구성을 둘 다 가질 수 있다.
 
@@ -225,9 +230,9 @@ sequenceDiagram
     participant SVC as IProfileService
 
     Note over RT,MC: startup or first-use stage
-    RT->>CH: GetOrCreateChannel("api.profile")
+    RT->>CH: GetOrCreateChannel("profile")
     alt discovery-based connection
-        CH->>DISC: Attach channel view("api.profile")
+        CH->>DISC: Attach channel view("profile")
         DISC-->>CH: provider rid set / endpoint updates
     else manual connection
         CH->>MC: Load configured peers/endpoints
@@ -235,12 +240,12 @@ sequenceDiagram
     end
     Note over CH: channel can support both modes
 
-    RP->>RT: request frame(pattern=profile.get, body, headers)
+    RP->>RT: request frame(packet=GetProfileRequest, body, headers)
     RT->>CH: Select inbound session / validate route
     CH-->>RT: session ready
 
     RT->>DSP: OnRequest(frame)
-    DSP->>REG: ResolveEndpoint("profile.get")
+    DSP->>REG: ResolveEndpoint("GetProfileRequest")
     REG-->>DSP: EndpointInfo
     Note over REG,DSP: handlerType=ProfileHandlers<br/>method=HandleAsync<br/>requestType=ProfileRequest<br/>replyType=ProfileReply
 
@@ -314,6 +319,9 @@ attribute 매핑과 `IZLinkClient`를 함께 쓴다"를 기본으로 본다.
 
 - `channelName` 기준 호출 -- Discovery가 대상을 선택
 
+그리고 기본 packet key는 request/message 타입 이름으로 해석한다.
+`PacketName`, `Timeout` 같은 변형은 별도 options로 모은다.
+
 즉 특정 channel의 `ROUTER(server)`를 `rid`로 직접 지정해 호출하는 표면은 두지
 않는다. `rid`를 넣는 routed 호출은 SPOT spot-to-spot 경로에서만 다룬다.
 
@@ -329,7 +337,7 @@ app.MapPost("/profiles/get", async (
     CancellationToken cancellationToken) =>
 {
     var reply = await client.RequestAsync(
-        "api.profile",
+        "profile",
         new GetProfileRequest { AccountId = request.AccountId },
         cancellationToken);
 
@@ -342,7 +350,7 @@ app.MapPost("/profiles/get", async (
 - 기존 웹 요청 처리 중 다른 내부 서버 호출
 - ZLink handler와 HTTP handler가 같은 outbound 호출 방식을 공유
 - framework 내부 공통 helper
-- 특정 요청만 별도 timeout으로 보내기
+- 특정 요청만 별도 timeout이나 packet name override로 보내기
 
 ## 6. ASP.NET Core middleware, 서비스 AOP, handler pipeline
 
@@ -360,7 +368,7 @@ app.Use(async (context, next) =>
 });
 ```
 
-즉 위 같은 middleware는 HTTP endpoint에는 적용되지만, `ZLinkRequest(...)`
+즉 위 같은 middleware는 HTTP endpoint에는 적용되지만, `ZLinkRequest`
 handler에는 바로 연결되지 않는다.
 
 ### 6.2 서비스 레이어 AOP
@@ -379,7 +387,7 @@ public sealed class UserHandlers
         _service = service;
     }
 
-    [ZLinkRequest("user.get")]
+    [ZLinkRequest]
     public Task<UserReply> GetUserAsync(
         UserRequest request,
         ZLinkRequestContext context,
@@ -405,8 +413,8 @@ logging, validation, authorization, metrics, exception mapping 같은 공통 처
 
 ### 7.1 기본 방향
 
-- 호출자는 `channel_name`만 지정한다.
-- `IZLinkClient`는 접근한 `channel_name`마다 별도 channel을 lazy하게 만든다.
+- 호출자는 `channel name`만 지정한다.
+- `IZLinkClient`는 접근한 `channel name`마다 별도 channel을 lazy하게 만든다.
 - 각 channel은 그 channel view에 묶인 `Discovery`와 outbound socket을 가진다.
 - Discovery가 현재 channel view의 provider 목록을 유지한다.
 - framework는 그 channel의 `rid` 집합과 연결 상태를 보고 요청을 보낸다.
@@ -420,7 +428,7 @@ logging, validation, authorization, metrics, exception mapping 같은 공통 처
 
 즉 아래 방향을 기본으로 본다.
 
-- `IZLinkClient`는 gateway 주소가 아니라 `channel_name`으로 요청한다.
+- `IZLinkClient`는 gateway 주소가 아니라 `channel name`으로 요청한다.
 - `ZLink Framework`는 그 channel 전용 outbound 경로로 직접 요청을 보낸다.
 - 같은 channel 안의 여러 provider는 그 channel 안에서만 관리한다.
 
@@ -432,12 +440,15 @@ logging, validation, authorization, metrics, exception mapping 같은 공통 처
 - body codec = `protobuf` 또는 `json`
 
 `.NET` 표면에서는 codec 등록과 serializer 선택을 아래처럼 보이게 할 수 있다.
+이때 `options.Codecs.*`는 binding core에 codec 구현을 직접 섞는다는 뜻이 아니라,
+별도 codec extension/provider를 framework registry에 등록하는 흐름으로 본다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
     options.Codecs.AddJson();
+    options.Codecs.AddMessagePack();
 });
 ```
 

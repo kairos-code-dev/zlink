@@ -83,7 +83,7 @@ void test_recv_part_returns_caller_owned_message_handle ()
     zlink_msg_t recv_b;
     zlink_msg_init (&recv_a);
     zlink_msg_init (&recv_b);
-    int has_more = -1;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_part (receiver, NULL, &recv_a, &has_more,

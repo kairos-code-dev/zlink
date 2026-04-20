@@ -52,6 +52,7 @@ async function main() {
     assert.equal(entry.endpoint, serviceEndpoint);
     console.log('[discovery-registry] service: "sample" -> discovered');
   } finally {
+    node.close();
     discovery.close();
     registry.close();
     ctx.close();

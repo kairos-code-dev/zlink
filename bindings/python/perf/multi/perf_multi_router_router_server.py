@@ -3,7 +3,7 @@ import threading
 
 import zlink
 
-from perf_multi_common import parse_server_args, tcp_endpoint
+from perf_multi_common import apply_multi_socket_options, parse_server_args, tcp_endpoint
 
 
 def main(argv=None):
@@ -20,6 +20,7 @@ def main(argv=None):
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as router:
             router.set_routing_id(b"SERVER")
+            apply_multi_socket_options(router)
             router.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
 

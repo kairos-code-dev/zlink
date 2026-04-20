@@ -206,7 +206,8 @@ public final class Spot implements AutoCloseable {
     public void publish(String serviceName, String topicId,
                         List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
-        publishInternal(serviceName, topicId, parts, flags == SendFlags.DONT_WAIT);
+        publishInternal(serviceName, topicId, parts,
+          flags == SendFlags.DONT_WAIT);
     }
 
     public void sendChannel(String channelName, Message part) {
@@ -234,13 +235,52 @@ public final class Spot implements AutoCloseable {
     }
 
     public CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                           Message part,
+                                                           SendFlags flags) {
+        return requestChannel(channelName, List.of(part), flags);
+    }
+
+    public CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                           Message part,
+                                                           Duration timeout) {
+        return requestChannel(channelName, List.of(part), timeout);
+    }
+
+    public CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                           Message part,
+                                                           SendFlags flags,
+                                                           Duration timeout) {
+        return requestChannel(channelName, List.of(part), flags, timeout);
+    }
+
+    public CompletableFuture<List<Message>> requestChannel(String channelName,
                                                            List<Message> parts) {
-        return requestChannelInternal(channelName, parts,
+        return requestChannel(channelName, parts, SendFlags.NONE);
+    }
+
+    public CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                           List<Message> parts,
+                                                           SendFlags flags) {
+        return requestChannel(channelName, parts, flags,
           Duration.ofMillis(5_000L));
     }
 
-    private SendResult publishInternal(String serviceName, String topicId,
-                                       Message part, boolean nonBlocking) {
+    public CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                           List<Message> parts,
+                                                           Duration timeout) {
+        return requestChannel(channelName, parts, SendFlags.NONE, timeout);
+    }
+
+    public CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                           List<Message> parts,
+                                                           SendFlags flags,
+                                                           Duration timeout) {
+        Objects.requireNonNull(flags, "flags");
+        return requestChannelInternal(channelName, parts, timeout, flags);
+    }
+
+    private void publishInternal(String serviceName, String topicId,
+                                 Message part, boolean nonBlocking) {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(part, "part");
         if (!nonBlocking && InternalAccess.inCallback()) {
@@ -251,16 +291,16 @@ public final class Spot implements AutoCloseable {
             int rc = spotPublishPartOnce(serviceName, topicId, part,
                 nonBlocking ? SEND_DONTWAIT : 0, Native.PART_FINAL);
             if (rc == 0)
-                return SendResult.SENT;
+                return;
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            return classifyNonBlockingSendErrno("zlink_spot_publish_part");
+            throw submitFailure("zlink_spot_publish_part");
         }
     }
 
-    private SendResult publishInternal(String serviceName, String topicId,
-                                       List<Message> parts, boolean nonBlocking) {
+    private void publishInternal(String serviceName, String topicId,
+                                 List<Message> parts, boolean nonBlocking) {
         validateMessages(parts, "parts");
         if (!nonBlocking && InternalAccess.inCallback()) {
             throw new IllegalStateException(
@@ -278,10 +318,9 @@ public final class Spot implements AutoCloseable {
                 int errno = Native.errno();
                 if (errno == ERRNO_EINTR)
                     continue;
-                return classifyNonBlockingSendErrno("zlink_spot_publish_part");
+                throw submitFailure("zlink_spot_publish_part");
             }
         }
-        return SendResult.SENT;
     }
 
     private void sendChannelInternal(String channelName, List<Message> parts,
@@ -303,13 +342,14 @@ public final class Spot implements AutoCloseable {
                 int errno = Native.errno();
                 if (errno == ERRNO_EINTR)
                     continue;
-                throw ZlinkException.fromLastError("zlink_spot_send_channel_part");
+                throw submitFailure("zlink_spot_send_channel_part");
             }
         }
     }
 
     private CompletableFuture<List<Message>> requestChannelInternal(
-      String channelName, List<Message> parts, Duration timeout) {
+      String channelName, List<Message> parts, Duration timeout,
+      SendFlags flags) {
         long timeoutMs = timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         List<Message> payload = clonePayload(parts);
@@ -317,7 +357,8 @@ public final class Spot implements AutoCloseable {
           timeoutMs);
         try {
             submitSpotRequestChannel(channelName, payload, REPLY_CALLBACK,
-                MemorySegment.ofAddress(requestId), SendFlags.NONE.value(),
+                MemorySegment.ofAddress(requestId),
+                Objects.requireNonNull(flags, "flags").value(),
                 toTimeoutInt(timeoutMs));
             closeAll(payload);
         } catch (RuntimeException ex) {
@@ -333,13 +374,13 @@ public final class Spot implements AutoCloseable {
         });
     }
 
-    private SendResult classifyNonBlockingSendErrno(String apiName) {
+    private SubmitException submitFailure(String apiName) {
         int errno = Native.errno();
         if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
-            return SendResult.BACKPRESSURED;
+            return new SubmitException(SubmitResult.BACKPRESSURED, errno);
         if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN
             || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
-            return SendResult.NOT_READY;
+            return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
         }
         throw ZlinkException.fromLastError(apiName);
     }
@@ -408,7 +449,7 @@ public final class Spot implements AutoCloseable {
         Objects.requireNonNull(flags, "flags");
         if (flags == RecvFlags.DONT_WAIT) {
             return receiveTopicMessage(true).orElseThrow(
-                () -> new RecvException(RecvResult.NO_DATA));
+                () -> new RecvException(RecvResult.NO_DATA, ERRNO_EAGAIN));
         }
         return receiveTopicMessage(false).orElseThrow(
             () -> new IllegalStateException(
@@ -427,7 +468,8 @@ public final class Spot implements AutoCloseable {
     public SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags) {
         Objects.requireNonNull(flags, "flags");
         return receiveSubscriptionEvent(flags == RecvFlags.DONT_WAIT)
-          .orElseThrow(() -> new RecvException(RecvResult.NO_DATA));
+          .orElseThrow(() -> new RecvException(RecvResult.NO_DATA,
+            ERRNO_EAGAIN));
     }
 
     public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -452,80 +494,6 @@ public final class Spot implements AutoCloseable {
                             SendFlags flags) {
         routedSupport.replyToSpot(destNodeRid, destSpotRid, requestSeq, parts,
           flags);
-    }
-
-    public void sendToRouter(RoutingId peerRid, Message part) {
-        sendToRouter(peerRid, List.of(part), SendFlags.NONE);
-    }
-
-    public void sendToRouter(RoutingId peerRid, Message part, SendFlags flags) {
-        sendToRouter(peerRid, List.of(part), flags);
-    }
-
-    public void sendToRouter(RoutingId peerRid, List<Message> parts) {
-        sendToRouter(peerRid, parts, SendFlags.NONE);
-    }
-
-    public void sendToRouter(RoutingId peerRid, List<Message> parts,
-                             SendFlags flags) {
-        routedSupport.sendToRouter(peerRid, parts, flags);
-    }
-
-    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                                            Message part) {
-        return requestToRouter(peerRid, List.of(part));
-    }
-
-    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                                            Message part,
-                                                            Duration timeout) {
-        return requestToRouter(peerRid, List.of(part), timeout);
-    }
-
-    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                                            List<Message> parts) {
-        return requestToRouter(peerRid, parts, Duration.ofMillis(5_000L));
-    }
-
-    public CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                                            List<Message> parts,
-                                                            Duration timeout) {
-        return routedSupport.requestToRouter(peerRid, parts, timeout);
-    }
-
-    public void requestToRouter(RoutingId peerRid, Message part,
-                                BiConsumer<RequestResult, List<Message>> callback) {
-        requestToRouter(peerRid, List.of(part), callback);
-    }
-
-    public void requestToRouter(RoutingId peerRid, Message part,
-                                BiConsumer<RequestResult, List<Message>> callback,
-                                SendFlags flags) {
-        requestToRouter(peerRid, List.of(part), callback, flags);
-    }
-
-    public void requestToRouter(RoutingId peerRid, Message part,
-                                BiConsumer<RequestResult, List<Message>> callback,
-                                SendFlags flags, Duration timeout) {
-        requestToRouter(peerRid, List.of(part), callback, flags, timeout);
-    }
-
-    public void requestToRouter(RoutingId peerRid, List<Message> parts,
-                                BiConsumer<RequestResult, List<Message>> callback) {
-        requestToRouter(peerRid, parts, callback, SendFlags.NONE,
-          Duration.ofMillis(5_000L));
-    }
-
-    public void requestToRouter(RoutingId peerRid, List<Message> parts,
-                                BiConsumer<RequestResult, List<Message>> callback,
-                                SendFlags flags) {
-        requestToRouter(peerRid, parts, callback, flags, Duration.ofMillis(5_000L));
-    }
-
-    public void requestToRouter(RoutingId peerRid, List<Message> parts,
-                                BiConsumer<RequestResult, List<Message>> callback,
-                                SendFlags flags, Duration timeout) {
-        routedSupport.requestToRouter(peerRid, parts, callback, flags, timeout);
     }
 
     public void replyToRouter(RoutingId peerRid, long requestSeq, Message message) {
@@ -847,20 +815,14 @@ public final class Spot implements AutoCloseable {
                 rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
                   (byte) 0);
                 MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
-                MemorySegment serviceOut = arena.allocate(TOPIC_CAPACITY);
-                MemorySegment serviceLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-                serviceLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
                 MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
                 MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
                 topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
 
-                int rc = Native.spotSubscriptionEvent(handle, rid,
-                  subscribedOut, serviceOut, serviceLenOut, topicOut,
-                  topicLenOut, nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
+                int rc = Native.subscriptionEvent(handle, rid, subscribedOut,
+                  topicOut, topicLenOut,
+                  nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
                 if (rc == 0) {
-                    String serviceName = decodeTopic(serviceOut,
-                      normalizeTopicLength(serviceOut, TOPIC_CAPACITY,
-                        serviceLenOut.get(ValueLayout.JAVA_LONG, 0)));
                     int topicLength = normalizeTopicLength(topicOut,
                       TOPIC_CAPACITY, topicLenOut.get(ValueLayout.JAVA_LONG, 0));
                     String topicId = topicLength == 0 ? "" : new String(
@@ -868,8 +830,7 @@ public final class Spot implements AutoCloseable {
                         ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
                     return Optional.of(new SubscriptionEvent(
                       Optional.ofNullable(readRoutingId(rid)), topicId,
-                      serviceName.isEmpty() ? Optional.empty()
-                        : Optional.of(serviceName),
+                      Optional.empty(),
                       subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
                 RecvResult result;
@@ -879,8 +840,7 @@ public final class Spot implements AutoCloseable {
                     int errno = Native.errno();
                     if (errno == ERRNO_EINTR)
                         continue;
-                    throw ZlinkException.fromLastError(
-                      "zlink_spot_subscription_event");
+                    throw ZlinkException.fromLastError("zlink_xpub_recv_part");
                 }
                 if (result == RecvResult.NO_DATA && nonBlocking) {
                     return Optional.empty();
@@ -1055,7 +1015,7 @@ public final class Spot implements AutoCloseable {
                 int errno = Native.errno();
                 if (errno == ERRNO_EINTR)
                     continue;
-                throw new SubmitException(SubmitResult.NOT_CONNECTED, errno);
+                throw submitFailure("zlink_spot_request_channel_part");
             }
         }
     }

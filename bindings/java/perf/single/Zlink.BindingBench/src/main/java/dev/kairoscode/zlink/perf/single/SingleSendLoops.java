@@ -22,12 +22,17 @@ final class SingleSendLoops {
     private SingleSendLoops() {
     }
 
-    static Thread oneWaySend(SendAction activeSend, SendAction stopSend,
+    static Thread oneWaySend(SendAction warmupSend, SendAction activeSend,
+                             SendAction stopSend, int warmupSeconds,
                              int durationSeconds, Runnable startActiveWindow,
                              AtomicReference<Throwable> failure,
                              CountDownLatch finished) {
         return new Thread(() -> {
             try {
+                long warmupEnd = System.nanoTime() + warmupSeconds * 1_000_000_000L;
+                while (System.nanoTime() < warmupEnd) {
+                    runWithRetry(warmupSend);
+                }
                 startActiveWindow.run();
                 long activeEnd = System.nanoTime() + durationSeconds * 1_000_000_000L;
                 while (System.nanoTime() < activeEnd) {

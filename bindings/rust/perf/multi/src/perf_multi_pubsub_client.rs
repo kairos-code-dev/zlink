@@ -15,10 +15,8 @@ fn main() {
 
     for _ in 0..settings.clients {
         let sub = ctx.sub_socket().expect("sub");
+        sub.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
         sub.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
-        sub.common_options()
-            .set_recv_timeout(Duration::from_millis(1))
-            .expect("recv timeout");
         sub.connect(&args.endpoint).expect("connect");
         sub.set_subscription(TOPIC).expect("subscribe");
         sockets.push(sub);
@@ -40,7 +38,7 @@ fn main() {
         return;
     }
 
-    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds + 2);
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut latency_stats = common::LatencyStats::new();
     let mut active_count: u64 = 0;
 
@@ -51,7 +49,7 @@ fn main() {
                 match sub.subscribe_with_flags(RecvFlags::DONT_WAIT) {
                     Ok(topic_msg) => {
                         let data = common::message_payload(topic_msg.parts());
-                        if common::decode_phase(data) != common::PHASE_ACTIVE {
+                        if !common::is_valid_active_message(data, args.msg_size) {
                             continue;
                         }
                         let sent_ts_ns = common::decode_sent_ts_ns(data);

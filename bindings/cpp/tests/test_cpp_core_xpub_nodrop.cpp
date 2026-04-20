@@ -1,5 +1,7 @@
 #include "test_helpers.hpp"
 
+#include <zlink_c.h>
+
 #include <cerrno>
 
 int main ()
@@ -32,11 +34,16 @@ int main ()
     int send_count = 0;
     const int max_attempts = 256;
     for (int i = 0; i < max_attempts; ++i) {
-        const int rc = zlink_send (pub.handle (), NULL, 0, ZLINK_DONTWAIT);
-        if (rc == 0) {
+        zlink_msg_t part;
+        assert (zlink_msg_init (&part) == 0);
+        const zlink_submit_result_t rc = zlink_send_part (
+          pub.handle (), &part,
+          static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT), ZLINK_PART_FINAL);
+        if (rc == ZLINK_SUBMIT_OK) {
             ++send_count;
             continue;
         }
+        assert (zlink_msg_close (&part) == 0);
         assert (zlink_errno () == EAGAIN);
         break;
     }
@@ -45,15 +52,24 @@ int main ()
     int recv_count = 0;
     int idle_rounds = 0;
     while (true) {
-        const int rc = zlink_recv (sub.handle (), NULL, 0, ZLINK_DONTWAIT);
-        if (rc == -1) {
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_msg_t part;
+        assert (zlink_msg_init (&part) == 0);
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        const zlink_recv_result_t rc = zlink_recv_part (
+          sub.handle (), &source_rid, &part, &has_more,
+          static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
+        if (rc != ZLINK_RECV_OK) {
+            assert (zlink_msg_close (&part) == 0);
             assert (zlink_errno () == EAGAIN);
             if (++idle_rounds > 200)
                 break;
             sleep_ms (1);
             continue;
         }
-        assert (rc == 0);
+        assert (!has_more);
+        assert (zlink_msg_size (&part) == 0);
+        assert (zlink_msg_close (&part) == 0);
         idle_rounds = 0;
         ++recv_count;
     }

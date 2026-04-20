@@ -1,5 +1,7 @@
 # ZLink Framework 스펙
 
+[Draft 목차](./draft/README.ko.md) | [Framework Adapter 초안](./draft/framework-adapter/README.ko.md)
+
 이 문서 묶음은 zlink `core`와 언어 `bindings` 위에 올라가는
 `ZLink Framework`의 공개 방향과 초안 계약을 정리한다.
 
@@ -14,7 +16,7 @@
 
 이 계층이 노리는 중요한 장점 하나는, 일반적인 웹 서버 환경에서 위치투명성과
 channel 단위 직접 호출을 위해 흔히 두는 별도 gateway나 전용 로드밸런서 없이도
-`channel_name` 기준으로 직접 호출할 수 있다는 점이다.
+`channel name` 기준으로 직접 호출할 수 있다는 점이다.
 
 즉 응용은 gateway 주소나 load balancer 주소보다 논리 channel 이름을 기준으로
 요청을 보낸다. framework runtime은 접근하는 channel마다 별도 outbound runtime을 두고,
@@ -25,7 +27,7 @@ channel 단위 직접 호출을 위해 흔히 두는 별도 gateway나 전용 �
 
 - Discovery 기반 channel view와 자동 연결
 - Registry topology snapshot/query 및 원격 `RegistryQueryClient`
-- `channel_name` 기준 direct request/reply
+- `channel name` 기준 direct request/reply
 - `SPOT` publish/subscribe와 routed request/reply
 - raw `STREAM`의 packet callback 같은 low-level helper
 

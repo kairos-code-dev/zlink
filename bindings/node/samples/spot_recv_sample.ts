@@ -62,11 +62,15 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.notEqual(received, null);
-    assert.equal(received.serviceName, SERVICE_NAME);
-    assert.equal(received.topic, topic);
-    const recv = received.parts[0].data().toString();
-    assert.equal(recv, sent);
-    console.log(`[spot/recv] service: "${SERVICE_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);
+    try {
+      assert.equal(received.serviceName, SERVICE_NAME);
+      assert.equal(received.topic, topic);
+      const recv = received.parts[0].data().toString();
+      assert.equal(recv, sent);
+      console.log(`[spot/recv] service: "${SERVICE_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);
+    } finally {
+      received.close();
+    }
   } finally {
     if (subscriber) {
       subscriber.close();

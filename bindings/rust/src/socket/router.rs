@@ -4,8 +4,9 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use super::{
-    SendHandle, SocketInner, impl_attach_discovery, impl_base_socket, impl_connect,
-    impl_recv_options, impl_routing_id_options, impl_send_options, prepare_send_parts,
+    SendHandle, SocketInner, check_send_result, impl_attach_discovery, impl_base_socket,
+    impl_connect, impl_recv_options, impl_routing_id_options, impl_send_options,
+    prepare_send_parts, submit_part_sequence,
 };
 use crate::ctx::Context;
 use crate::domain::Received;
@@ -20,13 +21,15 @@ use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, RouterSocketOptions};
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+type RequestCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
+type SpotReplyCallback = Box<dyn FnOnce(Result<Vec<Message>, crate::error::RequestError>) + Send>;
 
 struct BlockingRouterRequestState {
     tx: mpsc::Sender<Result<Vec<Message>, RequestError>>,
 }
 
 struct CallbackRouterRequestState {
-    callback: Option<Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>>,
+    callback: Option<RequestCallback>,
     native_parts: Vec<ffi::zlink_msg_t>,
 }
 
@@ -129,9 +132,21 @@ impl RouterSocket {
         peer_rid: &RoutingId,
         parts: &[&[u8]],
         callback: F,
-        flags: SendFlags,
         timeout: Option<Duration>,
     ) -> Result<(), SubmitError>
+    where
+        F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
+    {
+        self.request_callback_with_flags(peer_rid, parts, callback, SendFlags::NONE, timeout)
+    }
+
+    pub fn try_request_callback<F>(
+        &self,
+        peer_rid: &RoutingId,
+        parts: &[&[u8]],
+        callback: F,
+        timeout: Option<Duration>,
+    ) -> Result<bool, SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -145,25 +160,52 @@ impl RouterSocket {
             callback: Some(Box::new(callback)),
             native_parts,
         });
-        let rc = unsafe {
-            ffi::zlink_router_request(
-                self.inner.handle,
-                peer_rid.as_raw(),
-                state.native_parts.as_mut_ptr(),
-                state.native_parts.len(),
-                router_callback_request_callback,
-                (&mut *state as *mut CallbackRouterRequestState).cast(),
-                flags.bits(),
-                timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT)),
-            )
-        };
-        let submit_result = check_submit_rc(rc);
-        if let Err(err) = submit_result {
-            drop(state);
-            return Err(err);
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let userdata = (&mut *state as *mut CallbackRouterRequestState).cast();
+        let rc = submit_part_sequence(
+            state.native_parts.as_mut_slice(),
+            |part, part_flag, is_final| unsafe {
+                ffi::zlink_router_request_part(
+                    self.inner.handle,
+                    peer_rid.as_raw(),
+                    part,
+                    ffi::ZLINK_DONTWAIT,
+                    part_flag,
+                    if is_final { timeout_ms } else { 0 },
+                    if is_final {
+                        Some(router_callback_request_callback)
+                    } else {
+                        None
+                    },
+                    if is_final {
+                        userdata
+                    } else {
+                        std::ptr::null_mut()
+                    },
+                )
+            },
+        )?;
+        match check_send_result(rc) {
+            Ok(crate::domain::SendResult::Sent) => {
+                let _ = Box::into_raw(state);
+                Ok(true)
+            }
+            Ok(crate::domain::SendResult::Backpressured) => {
+                drop(state);
+                Ok(false)
+            }
+            Ok(crate::domain::SendResult::NotReady) => {
+                drop(state);
+                Err(SubmitError::new(
+                    crate::error::SubmitResult::NotConnected,
+                    libc::ENOTCONN,
+                ))
+            }
+            Err(err) => {
+                drop(state);
+                Err(err)
+            }
         }
-        let _ = Box::into_raw(state);
-        Ok(())
     }
 
     pub fn reply(
@@ -203,16 +245,16 @@ impl RouterSocket {
     ) -> Result<(), SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = super::prepare_send_parts(&mut parts)?;
-        let rc = unsafe {
-            ffi::zlink_router_send_spot(
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_router_send_spot_part(
                 self.inner.handle,
                 dest_node_rid.as_raw(),
                 dest_spot_rid.as_raw(),
-                native.as_mut_ptr(),
-                native.len(),
+                part,
                 flags.bits(),
+                part_flag,
             )
-        };
+        })?;
         drop(parts);
         check_submit_rc(rc)
     }
@@ -262,19 +304,28 @@ impl RouterSocket {
         let state_ptr = Box::into_raw(Box::new(RouterSpotReplyCallbackState {
             callback: Some(Box::new(callback)),
         }));
-        let rc = unsafe {
-            ffi::zlink_router_request_spot(
+        let timeout_ms = timeout_to_ms(timeout);
+        let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
+            ffi::zlink_router_request_spot_part(
                 self.inner.handle,
                 dest_node_rid.as_raw(),
                 dest_spot_rid.as_raw(),
-                native.as_mut_ptr(),
-                native.len(),
-                router_spot_reply_callback,
-                state_ptr.cast(),
+                part,
+                if is_final {
+                    Some(router_spot_reply_callback)
+                } else {
+                    None
+                },
+                if is_final {
+                    state_ptr.cast()
+                } else {
+                    std::ptr::null_mut()
+                },
                 flags.bits(),
-                timeout_to_ms(timeout),
+                part_flag,
+                if is_final { timeout_ms } else { 0 },
             )
-        };
+        })?;
         if rc != 0 {
             unsafe {
                 drop(Box::from_raw(state_ptr));
@@ -312,16 +363,16 @@ impl RouterSocket {
         }
         let mut parts = parts.into_parts();
         let mut native = super::prepare_send_parts(&mut parts)?;
-        let rc = unsafe {
-            ffi::zlink_router_reply_spot(
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_router_reply_spot_part(
                 self.inner.handle,
                 dest_node_rid.as_raw(),
                 dest_spot_rid.as_raw(),
                 request_seq,
-                native.as_mut_ptr(),
-                native.len(),
+                part,
+                part_flag,
             )
-        };
+        })?;
         drop(parts);
         check_submit_rc(rc)
     }
@@ -384,6 +435,61 @@ impl RouterSocket {
             )
         })
     }
+
+    fn request_callback_with_flags<F>(
+        &self,
+        peer_rid: &RoutingId,
+        parts: &[&[u8]],
+        callback: F,
+        flags: SendFlags,
+        timeout: Option<Duration>,
+    ) -> Result<(), SubmitError>
+    where
+        F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
+    {
+        let mut messages = parts
+            .iter()
+            .map(|part| Message::from_bytes(part))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(submit_error_from_config)?;
+        let native_parts = prepare_send_parts(&mut messages)?;
+        let mut state = Box::new(CallbackRouterRequestState {
+            callback: Some(Box::new(callback)),
+            native_parts,
+        });
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let userdata = (&mut *state as *mut CallbackRouterRequestState).cast();
+        let rc = submit_part_sequence(
+            state.native_parts.as_mut_slice(),
+            |part, part_flag, is_final| unsafe {
+                ffi::zlink_router_request_part(
+                    self.inner.handle,
+                    peer_rid.as_raw(),
+                    part,
+                    flags.bits(),
+                    part_flag,
+                    if is_final { timeout_ms } else { 0 },
+                    if is_final {
+                        Some(router_callback_request_callback)
+                    } else {
+                        None
+                    },
+                    if is_final {
+                        userdata
+                    } else {
+                        std::ptr::null_mut()
+                    },
+                )
+            },
+        )?;
+        let submit_result = check_submit_rc(rc);
+        if let Err(err) = submit_result {
+            drop(state);
+            return Err(err);
+        }
+        let _ = Box::into_raw(state);
+        Ok(())
+    }
 }
 
 impl_base_socket!(RouterSocket);
@@ -398,8 +504,7 @@ fn router_received_from_raw(
     source_node_rid: *const ffi::zlink_routing_id_t,
     source_spot_rid: *const ffi::zlink_routing_id_t,
     request_seq: u64,
-    parts_ptr: *mut ffi::zlink_msg_t,
-    part_count: usize,
+    parts: Vec<Message>,
 ) -> Received {
     let rid = if source_node_rid.is_null() {
         RoutingId::from_raw(ffi::zlink_routing_id_t {
@@ -415,7 +520,6 @@ fn router_received_from_raw(
         let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
         if rid.is_empty() { None } else { Some(rid) }
     };
-    let parts = super::take_parts(parts_ptr, part_count);
     if let Some(spot_rid) = spot_rid {
         if request_seq == 0 {
             let mut received = Received::new(Some(rid), parts);
@@ -435,31 +539,56 @@ fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>,
     let mut source_node_rid = ptr::null();
     let mut source_spot_rid = ptr::null();
     let mut request_seq = 0u64;
-    let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
-    let mut part_count: usize = 0;
-    let rc = unsafe {
-        ffi::zlink_router_recv(
-            handle,
-            &mut source_node_rid,
-            &mut source_spot_rid,
-            &mut request_seq,
-            &mut parts_ptr,
-            &mut part_count,
-            flags,
-        )
-    };
-    if rc == crate::error::RecvResult::NoData as i32 {
-        return Ok(None);
+    let mut parts = Vec::new();
+    let mut recv_flags = flags;
+
+    loop {
+        let mut part = std::mem::MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        let mut has_more = 0;
+        let mut current_source_node_rid = ptr::null();
+        let mut current_source_spot_rid = ptr::null();
+        let mut current_request_seq = 0u64;
+        let rc = unsafe {
+            ffi::zlink_router_recv_part(
+                handle,
+                &mut current_source_node_rid,
+                &mut current_source_spot_rid,
+                &mut current_request_seq,
+                part.as_mut_ptr(),
+                &mut has_more,
+                recv_flags,
+            )
+        };
+        if parts.is_empty() {
+            if rc == crate::error::RecvResult::NoData as i32 {
+                return Ok(None);
+            }
+            if rc != 0 {
+                let errno = unsafe { ffi::zlink_errno() };
+                if errno == libc::EAGAIN {
+                    return Ok(None);
+                }
+                return Err(check_recv_rc(rc).unwrap_err());
+            }
+            source_node_rid = current_source_node_rid;
+            source_spot_rid = current_source_spot_rid;
+            request_seq = current_request_seq;
+        } else if rc != 0 {
+            return Err(check_recv_rc(rc).unwrap_err());
+        }
+
+        parts.push(unsafe { crate::message::Message::from_raw(part.assume_init()) });
+        if has_more == 0 {
+            return Ok(Some(router_received_from_raw(
+                handle,
+                source_node_rid,
+                source_spot_rid,
+                request_seq,
+                parts,
+            )));
+        }
+        recv_flags = ffi::ZLINK_DONTWAIT;
     }
-    check_recv_rc(rc)?;
-    Ok(Some(router_received_from_raw(
-        handle,
-        source_node_rid,
-        source_spot_rid,
-        request_seq,
-        parts_ptr,
-        part_count,
-    )))
 }
 
 fn submit_router_request(
@@ -473,18 +602,23 @@ fn submit_router_request(
 ) -> Result<(), SubmitError> {
     let mut parts = parts.into_parts();
     let mut native = prepare_send_parts(&mut parts)?;
-    let rc = unsafe {
-        ffi::zlink_router_request(
+    let timeout_ms = timeout_to_ms(timeout);
+    let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
+        ffi::zlink_router_request_part(
             handle,
             peer_rid.as_raw(),
-            native.as_mut_ptr(),
-            native.len(),
-            callback,
-            userdata,
+            part,
             flags.bits(),
-            timeout_to_ms(timeout),
+            part_flag,
+            if is_final { timeout_ms } else { 0 },
+            if is_final { Some(callback) } else { None },
+            if is_final {
+                userdata
+            } else {
+                std::ptr::null_mut()
+            },
         )
-    };
+    })?;
     check_submit_rc(rc)
 }
 
@@ -500,15 +634,9 @@ fn submit_router_reply(
     }
     let mut parts = parts.into_parts();
     let mut native = prepare_send_parts(&mut parts)?;
-    let rc = unsafe {
-        ffi::zlink_router_reply(
-            handle,
-            rid.as_raw(),
-            request_seq,
-            native.as_mut_ptr(),
-            native.len(),
-        )
-    };
+    let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+        ffi::zlink_router_reply_part(handle, rid.as_raw(), request_seq, part, part_flag)
+    })?;
     check_submit_rc(rc)
 }
 
@@ -577,7 +705,7 @@ unsafe extern "C" fn router_callback_request_callback(
 }
 
 struct RouterSpotReplyCallbackState {
-    callback: Option<Box<dyn FnOnce(Result<Vec<Message>, crate::error::RequestError>) + Send>>,
+    callback: Option<SpotReplyCallback>,
 }
 
 unsafe extern "C" fn router_spot_reply_callback(

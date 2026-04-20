@@ -496,6 +496,50 @@ func (m *Message) GetProperty(name string) (string, bool, error)
 func (m *Message) Close() error
 ```
 
+### Codec Extensions
+
+The binding exposes separate codec extension modules. The public package paths
+and distribution module paths are fixed to:
+
+- `zlink/codec/proto`
+- `zlink/codec/json`
+- `zlink/codec/messagepack`
+
+These are separate public packages layered on top of the core `zlink`
+package. They must not be folded into the root package as required
+dependencies.
+
+JSON codec baseline: `encoding/json`.
+MessagePack codec baseline: `vmihailenco/msgpack/v5`.
+
+```go
+package proto
+
+func Parse[T google.golang.org/protobuf/proto.Message](
+    message *zlink.Message,
+) (T, error)
+
+func ToMessage(
+    value google.golang.org/protobuf/proto.Message,
+) (*zlink.Message, error)
+```
+
+```go
+package json
+
+func Parse[T any](message *zlink.Message) (T, error)
+func ParseInto(message *zlink.Message, out any) error
+func ToMessage(value any) (*zlink.Message, error)
+```
+
+```go
+package messagepack
+
+func Parse[T any](message *zlink.Message) (T, error)
+func ParseInto(message *zlink.Message, out any) error
+func ToMessage(value any) (*zlink.Message, error)
+```
+
 ### RoutingID
 
 Immutable binary-safe routing id value (1-255 bytes).
@@ -668,7 +712,7 @@ const (
 )
 
 // RequestReplyCallback is invoked on completion of a callback-based request
-// (e.g. RouterSocket.RequestToSpot, Spot.RequestChannel, Spot.RequestToRouter).
+// (e.g. RouterSocket.RequestToSpot, Spot.RequestChannel).
 // The RequestResult conveys completion status; the []*Message slice carries
 // reply parts (nil/empty on failure; non-empty only for RequestOK).
 type RequestReplyCallback func(RequestResult, []*Message)
@@ -1133,21 +1177,6 @@ func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64
 
 // --- routed send (spot → router) ---
 // SendToRouter submits parts routed to a router peer. Returns *SubmitError on failure.
-func (s *Spot) SendToRouter(peerRid RoutingID, flags SendFlags, parts ...*Message) error
-
-// --- routed request (spot → router, callback, blocking submit) ---
-// timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure; the callback receives a
-// RequestResult which maps to *RequestError for failures.
-func (s *Spot) RequestToRouter(peerRid RoutingID,
-    callback RequestReplyCallback,
-    timeout time.Duration, parts ...*Message) error
-// TryRequestToRouter performs a callback-based routed request with nonblocking submit.
-// Returns (false, nil) only for temporary backpressure.
-func (s *Spot) TryRequestToRouter(peerRid RoutingID,
-    callback RequestReplyCallback,
-    timeout time.Duration, parts ...*Message) (bool, error)
-
 // --- routed reply (spot → router) ---
 // ReplyToRouter submits a routed reply. Returns *SubmitError on failure.
 func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64,

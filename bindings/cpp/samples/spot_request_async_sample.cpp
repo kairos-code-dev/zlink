@@ -2,9 +2,7 @@
 
 #include "sample_common.hpp"
 
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
+#include <future>
 #include <thread>
 
 int main ()
@@ -14,6 +12,8 @@ int main ()
     zlink::service::spot_t requester = requester_node.create_spot ();
     zlink::router_socket_t responder_router (ctx);
     zlink::dealer_socket_t requester_dealer (ctx);
+    zlink::monitor_handle_t responder_monitor = responder_router.monitor_handle ();
+    zlink::monitor_handle_t requester_monitor = requester_dealer.monitor_handle ();
     assert (requester_node.valid ());
     assert (requester.valid ());
     assert (responder_router.valid ());
@@ -23,46 +23,39 @@ int main ()
     const std::string endpoint = detail::unique_tcp ("spot-channel-request");
     assert (responder_router.bind (endpoint) == 0);
     assert (requester_dealer.connect (endpoint) == 0);
+    assert (detail::wait_connected (responder_monitor, requester_monitor));
     requester_node.attach_channel_dealer_manual (channel_name, requester_dealer);
 
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::atomic<bool> done (false);
-    zlink::request_result_t result = zlink::request_result_t::terminated;
-    std::vector<zlink::message_t> reply_parts;
+    std::promise<std::pair<zlink::request_result_t, std::vector<zlink::message_t>>>
+      reply_promise;
+    std::future<std::pair<zlink::request_result_t, std::vector<zlink::message_t>>>
+      reply_future = reply_promise.get_future ();
 
     std::thread responder ([&responder_router] {
-        const zlink::received_t received = responder_router.recv ();
+        zlink::received_t received = responder_router.recv ();
         assert (received.parts ().size () == 1);
         assert (received.request_seq ().has_value ());
         assert (received.parts ()[0].to_string () == "spot-ping");
         zlink::message_t reply = detail::make_message ("spot-pong");
         received.reply (reply);
+        received.close ();
     });
 
     std::vector<zlink::message_t> request_parts;
     request_parts.push_back (detail::make_message ("spot-ping"));
     requester.request_channel (
       channel_name, request_parts,
-      [&mutex, &cv, &done, &result, &reply_parts] (
+      [&reply_promise] (
         zlink::request_result_t request_result_,
         std::vector<zlink::message_t> reply_parts_) {
-          {
-              std::lock_guard<std::mutex> lock (mutex);
-              result = request_result_;
-              reply_parts = std::move (reply_parts_);
-          }
-          done.store (true, std::memory_order_release);
-          cv.notify_one ();
+          reply_promise.set_value (
+            std::make_pair (request_result_, std::move (reply_parts_)));
       },
       zlink::send_flags_t::none, std::chrono::milliseconds (5000));
 
-    {
-        std::unique_lock<std::mutex> lock (mutex);
-        cv.wait_for (lock, std::chrono::seconds (5),
-                     [&done] { return done.load (std::memory_order_acquire); });
-    }
-    assert (done.load (std::memory_order_acquire));
+    auto reply_result = detail::wait_future (reply_future, 5000);
+    const zlink::request_result_t result = reply_result.first;
+    std::vector<zlink::message_t> reply_parts = std::move (reply_result.second);
     assert (result == zlink::request_result_t::ok);
     assert (reply_parts.size () == 1);
     const std::string reply = reply_parts[0].to_string ();

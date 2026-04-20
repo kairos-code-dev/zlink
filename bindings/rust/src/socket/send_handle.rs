@@ -5,7 +5,7 @@ use crate::ffi;
 use crate::flags::SendFlags;
 use crate::message::{IntoMultipart, RoutingId};
 
-use super::prepare_send_parts;
+use super::{prepare_send_parts, submit_part_sequence};
 
 /// A lightweight, cloneable handle for sending messages on a socket.
 ///
@@ -15,9 +15,9 @@ use super::prepare_send_parts;
 /// the duration of any sends through this handle.
 ///
 /// # Safety contract
-/// The underlying `zlink_send` / `zlink_send_rid` calls are thread-safe in the
-/// core C library, so calling `send` or `send_to` from a callback thread is
-/// valid as long as the socket has not been closed.
+/// The underlying `zlink_send_part` / `zlink_send_part_rid` calls are
+/// thread-safe in the core C library, so calling `send` or `send_to` from a
+/// callback thread is valid as long as the socket has not been closed.
 ///
 /// # Example
 /// ```no_run
@@ -61,9 +61,9 @@ impl SendHandle {
         let mut parts = parts.into_parts();
         let mut native =
             prepare_send_parts(&mut parts).map_err(|_| crate::error::submit_state_error())?;
-        let rc = unsafe {
-            ffi::zlink_send(self.handle, native.as_mut_ptr(), native.len(), flags.bits())
-        };
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_send_part(self.handle, part, flags.bits(), part_flag)
+        })?;
         drop(parts);
         check_submit_rc(rc)
     }
@@ -86,15 +86,9 @@ impl SendHandle {
         let mut parts = parts.into_parts();
         let mut native =
             prepare_send_parts(&mut parts).map_err(|_| crate::error::submit_state_error())?;
-        let rc = unsafe {
-            ffi::zlink_send_rid(
-                self.handle,
-                target.as_raw(),
-                native.as_mut_ptr(),
-                native.len(),
-                flags.bits(),
-            )
-        };
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_send_part_rid(self.handle, target.as_raw(), part, flags.bits(), part_flag)
+        })?;
         drop(parts);
         check_submit_rc(rc)
     }

@@ -12,11 +12,11 @@ const TOPIC: &str = "room:lobby";
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
-    let mut registry = Registry::new(&ctx).expect("registry failed");
-    let mut discovery =
+    let registry = Registry::new(&ctx).expect("registry failed");
+    let discovery =
         Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery failed");
-    let mut publisher_node = SpotNode::new(&ctx).expect("publisher node failed");
-    let mut subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
+    let publisher_node = SpotNode::new(&ctx).expect("publisher node failed");
+    let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
     let registry_pub = sample_support::tcp_endpoint();
     let registry_router = sample_support::tcp_endpoint();
     let publisher_endpoint = sample_support::tcp_endpoint();
@@ -33,12 +33,16 @@ fn main() {
     subscriber_node
         .attach_discovery(&discovery)
         .expect("attach_discovery failed");
-    publisher_node.bind(&publisher_endpoint).expect("bind failed");
+    publisher_node
+        .bind(&publisher_endpoint)
+        .expect("bind failed");
     subscriber_node
         .bind(&subscriber_endpoint)
         .expect("bind failed");
-    let mut publisher = publisher_node.create_spot().expect("publisher spot failed");
-    let mut subscriber = subscriber_node.create_spot().expect("subscriber spot failed");
+    let publisher = publisher_node.create_spot().expect("publisher spot failed");
+    let subscriber = subscriber_node
+        .create_spot()
+        .expect("subscriber spot failed");
     subscriber
         .set_subscription(TOPIC)
         .expect("set_subscription failed");
@@ -63,15 +67,11 @@ fn main() {
                     message.topic(),
                     payload
                 );
-                subscriber.close().expect("subscriber close failed");
-                publisher.close().expect("publisher close failed");
-                subscriber_node.close().expect("subscriber node close failed");
-                publisher_node.close().expect("publisher node close failed");
-                discovery.close().expect("discovery close failed");
-                registry.close().expect("registry close failed");
-                std::process::exit(0);
+                return;
             }
-            Err(err) if err.code() == RecvResult::NoData || err.internal_errno() == libc::ENOENT => {
+            Err(err)
+                if err.code() == RecvResult::NoData || err.internal_errno() == libc::ENOENT =>
+            {
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(err) => panic!("subscribe failed: {err}"),

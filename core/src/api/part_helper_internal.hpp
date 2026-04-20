@@ -27,10 +27,8 @@ enum send_family_t
     send_family_publish,
     send_family_router_request,
     send_family_dealer_request,
-    send_family_spot_send_router,
     send_family_spot_send_channel,
     send_family_spot_publish,
-    send_family_spot_request_router,
     send_family_spot_request_channel,
     send_family_spot_reply_spot,
     send_family_spot_reply_router,
@@ -139,7 +137,7 @@ int prepare_recv_step (void *handle_,
 void complete_send_step (const std::shared_ptr<handle_state_t> &state_,
                          zlink_part_flag_t part_flag_);
 void complete_recv_step (const std::shared_ptr<handle_state_t> &state_,
-                         int has_more_);
+                         zlink_part_flag_t has_more_);
 void abort_send_step (const std::shared_ptr<handle_state_t> &state_);
 void abort_recv_step (const std::shared_ptr<handle_state_t> &state_);
 int reject_if_send_sequence_open (void *handle_);

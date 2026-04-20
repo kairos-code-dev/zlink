@@ -5,6 +5,7 @@ import socket
 import statistics
 import struct
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -17,19 +18,26 @@ HEADER_MAGIC = 0x5A4C4E4B
 HEADER_FORMAT = "<IIBIQq"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 _zlink = None
-_run_id = None
 _seq = 0
+_port_counter = 0
+_port_seed = uuid.uuid4().int % 30000
 
 
-def _current_run_id():
-    global _run_id
-    if _run_id is None:
-        _run_id = uuid.uuid4().int & 0xFFFFFFFF
-    return _run_id
+def _env_int(name, default):
+    value = os.environ.get(name)
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
 
 
 def benchmark_run_id():
-    return _current_run_id()
+    run_id = _env_int("PERF_RUN_ID", 1)
+    if run_id <= 0:
+        return 1
+    return run_id & 0xFFFFFFFF
 
 
 def _next_seq():
@@ -86,7 +94,7 @@ def payload_phase(data):
 
 
 def stamp_payload(payload, phase=0, *, run_id=None, seq=None):
-    header_run_id = _current_run_id() if run_id is None else (run_id & 0xFFFFFFFF)
+    header_run_id = benchmark_run_id() if run_id is None else (run_id & 0xFFFFFFFF)
     header_seq = _next_seq() if seq is None else seq
     struct.pack_into(
         HEADER_FORMAT,
@@ -140,12 +148,29 @@ def unique_endpoint(prefix):
     return f"inproc://py-perf-{prefix}-{os.getpid()}-{uuid.uuid4().hex}"
 
 
+def _reserve_tcp_port():
+    global _port_counter
+    _port_counter = (_port_counter + 1) % 300
+    return 20000 + ((_port_seed + _port_counter) % 30000)
+
+
 def tcp_endpoint(prefix="perf"):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return f"tcp://127.0.0.1:{port}"
+    _ = prefix
+    return f"tcp://127.0.0.1:{_reserve_tcp_port()}"
+
+
+def transport_endpoint(transport, prefix="perf"):
+    transport = transport.lower()
+    if transport in {"tcp", "tls", "ws", "wss"}:
+        return f"{transport}://127.0.0.1:{_reserve_tcp_port()}"
+    if transport == "inproc":
+        return unique_endpoint(prefix)
+    if transport == "ipc":
+        sock_path = Path(tempfile.gettempdir()) / (
+            f"zlink-py-perf-{prefix}-{os.getpid()}-{uuid.uuid4().hex}.sock"
+        )
+        return f"ipc://{sock_path}"
+    raise ValueError(f"unsupported transport: {transport}")
 
 
 def wait_monitor_event(monitor, event_mask, *, timeout_ms=DEFAULT_READY_TIMEOUT_MS):

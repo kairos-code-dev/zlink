@@ -176,7 +176,9 @@ fn take_message(raw: *mut ffi::zlink_msg_t) -> Message {
     }
 }
 
-unsafe extern "C" fn stream_packet_trampoline<F: Fn(RoutingId, Message, Message) + Send + 'static>(
+unsafe extern "C" fn stream_packet_trampoline<
+    F: Fn(RoutingId, Message, Message) + Send + 'static,
+>(
     _stream: *mut c_void,
     source_rid: *const ffi::zlink_routing_id_t,
     header: *mut ffi::zlink_msg_t,

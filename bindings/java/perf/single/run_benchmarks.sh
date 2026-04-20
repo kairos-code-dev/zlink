@@ -10,6 +10,7 @@ TRANSPORTS=""
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 RUNS=1
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
+WARMUP="${PERF_SINGLE_WARMUP_SECONDS:-0}"
 RESULTS_TAG=""
 BUILD_DIR=""
 OUTPUT_PATH=""
@@ -29,10 +30,12 @@ Usage: perf/single/run_benchmarks.sh [options]
 
 Options:
   --pattern NAME         Pattern list or ALL.
+  --transport NAME       Single transport override.
   --transports LIST      Transport list override.
   --msg-sizes LIST       Payload sizes.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
+  --warmup N             Warmup duration seconds.
   --build-dir PATH       Build directory override.
   --reuse-build          Reuse existing installDist output.
   --clean-build          Delete build dir before installDist.
@@ -52,10 +55,11 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pattern) PATTERN="${2:-}"; shift ;;
-    --transports) TRANSPORTS="${2:-}"; shift ;;
+    --transport|--transports) TRANSPORTS="${2:-}"; shift ;;
     --msg-sizes) MSG_SIZES="${2:-}"; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
+    --warmup) WARMUP="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --clean-build) CLEAN_BUILD=1 ;;
@@ -77,6 +81,11 @@ done
 
 if ! [[ "${RUNS}" =~ ^[0-9]+$ ]] || [[ "${RUNS}" -lt 1 ]]; then
   echo "--runs must be >= 1" >&2
+  exit 1
+fi
+
+if ! [[ "${WARMUP}" =~ ^[0-9]+$ ]]; then
+  echo "--warmup must be >= 0" >&2
   exit 1
 fi
 
@@ -149,17 +158,33 @@ resolve_build_dir() {
   fi
 }
 
+ensure_single_runner() {
+  local build_dir="$1"
+  local runner_path="$2"
+  local install_dir="${build_dir}/install"
+  local dist_zip="${build_dir}/distributions/zlink-java-perf-single.zip"
+  if [[ -x "${runner_path}" ]]; then
+    return 0
+  fi
+  if [[ -f "${dist_zip}" ]]; then
+    mkdir -p "${install_dir}"
+    unzip -qo "${dist_zip}" -d "${install_dir}"
+  fi
+}
+
 mkdir -p "${RESULTS_ROOT}/single/report"
 cd "${ROOT_DIR}"
 PROJECT_BUILD_DIR="$(resolve_build_dir)"
+RUNNER="${PROJECT_BUILD_DIR}/install/zlink-java-perf-single/bin/zlink-java-perf-single"
 if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
   rm -rf "${PROJECT_BUILD_DIR}"
 fi
-if [[ "${REUSE_BUILD}" -eq 0 ]]; then
+ensure_single_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
+if [[ "${REUSE_BUILD}" -eq 0 && ! -x "${RUNNER}" ]]; then
   "${JAVA_BINDINGS_DIR}/gradlew" --no-daemon -p "${JAVA_BINDINGS_DIR}" \
     -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-single:installDist >/dev/null
 fi
-RUNNER="${PROJECT_BUILD_DIR}/install/zlink-java-perf-single/bin/zlink-java-perf-single"
+ensure_single_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
 if [[ ! -x "${RUNNER}" ]]; then
   if [[ "${REUSE_BUILD}" -eq 1 ]]; then
     echo "runner not found for --reuse-build: ${RUNNER}" >&2
@@ -204,7 +229,7 @@ for pattern in "${patterns[@]}"; do
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
         cmd=("${runner_cmd[@]}" "${pattern}" "${transport}" "${size}" \
-          --duration "${DURATION}")
+          --duration "${DURATION}" --warmup "${WARMUP}")
         if [[ -n "${IO_THREADS}" ]]; then
           cmd+=(--io-threads "${IO_THREADS}")
         fi
@@ -216,6 +241,9 @@ for pattern in "${patterns[@]}"; do
         fi
         cmd+=(--sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}")
         output="$("${cmd[@]}")"
+        if printf '%s\n' "${output}" | grep -q '^UNSUPPORTED,'; then
+          continue
+        fi
         while IFS= read -r line; do
           [[ "${line}" == RESULT,* ]] || continue
           IFS=',' read -r tag lib result_pattern result_transport result_size metric value <<< "${line}"
@@ -237,7 +265,7 @@ for pattern in "${patterns[@]}"; do
 done
 
 python3 - "${tmp_metrics}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" \
+  "${RUNS}" "${DURATION}" "${WARMUP}" "${RESULTS_TAG}" "${PIN_CPU}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
   "${RCVTIMEO_MS}" "${OUTPUT_PATH}" <<'PY'
 import csv
@@ -245,7 +273,7 @@ import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
+metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, warmup, results_tag, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
@@ -322,6 +350,7 @@ def emit_effective_options(section):
     emit(f"- recv_hwm: {recv_hwm or 'default(binding)'}")
     emit(f"- send_timeout_ms: {sndtimeo_ms}")
     emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
+    emit(f"- warmup_seconds: {warmup}")
     emit(f"- duration_seconds: {duration}")
     if results_tag:
         emit(f"- results_tag: {results_tag}")
@@ -355,7 +384,7 @@ for pattern in patterns:
             for metric in all_metrics:
                 if rows[key].get(metric):
                     result_lines.append(
-                        f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
+                        f"RESULT,java,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
                     )
         emit("")
 

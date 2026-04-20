@@ -484,13 +484,15 @@ int zlink::msg_t::move (msg_t &src_)
         return -1;
     }
 
-    int rc = close ();
-    if (unlikely (rc < 0))
-        return rc;
+    if (check ()) {
+        int rc = close ();
+        if (unlikely (rc < 0))
+            return rc;
+    }
 
     *this = src_;
 
-    rc = src_.init ();
+    const int rc = src_.init ();
     if (unlikely (rc < 0))
         return rc;
 

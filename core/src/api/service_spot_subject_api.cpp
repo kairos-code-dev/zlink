@@ -20,7 +20,7 @@ int zlink_service_subscribe_recv_internal (void *subject_,
                                            size_t *part_count_out_,
                                            char *topic_id_out_,
                                            size_t *topic_id_len_out_,
-                                           zlink_send_flags_t flags_)
+                                           zlink_recv_flags_t flags_)
 {
     return spot_subject_recv (subject_, source_rid_out_, parts_out_,
                               part_count_out_, topic_id_out_, topic_id_len_out_,

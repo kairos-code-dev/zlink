@@ -33,8 +33,18 @@ final class DealerRequestSupport implements AutoCloseable {
         return request(List.of(part));
     }
 
+    public CompletableFuture<Received> request(Message part, SendFlags flags) {
+        return request(List.of(part), flags);
+    }
+
     public CompletableFuture<Received> request(List<Message> parts) {
-        return request(parts, Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
+        return request(parts, SendFlags.NONE);
+    }
+
+    public CompletableFuture<Received> request(List<Message> parts,
+                                               SendFlags flags) {
+        return request(parts,
+            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS), flags);
     }
 
     public void request(Message part, BiConsumer<RequestResult, Received> callback) {
@@ -77,12 +87,23 @@ final class DealerRequestSupport implements AutoCloseable {
     }
 
     public CompletableFuture<Received> request(List<Message> parts, Duration timeout) {
-        return requestInternal(parts, timeout, SendFlags.NONE);
+        return request(parts, timeout, SendFlags.NONE);
     }
 
     public CompletableFuture<Received> request(Message part, Duration timeout,
                                                SendFlags flags) {
-        return requestInternal(List.of(part), timeout, flags);
+        return request(List.of(part), timeout, flags);
+    }
+
+    public CompletableFuture<Received> request(Message part, SendFlags flags,
+                                               Duration timeout) {
+        return request(List.of(part), timeout, flags);
+    }
+
+    public CompletableFuture<Received> request(List<Message> parts,
+                                               Duration timeout,
+                                               SendFlags flags) {
+        return requestInternal(parts, timeout, flags);
     }
 
     private CompletableFuture<Received> requestInternal(List<Message> parts,

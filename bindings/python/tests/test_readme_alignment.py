@@ -29,7 +29,6 @@ class ReadmeAlignmentTests(unittest.TestCase):
         self.assertIn("monitor_open()", readme)
         self.assertIn("MonitorEventMask", readme)
         self.assertIn("async context manager cleanup", readme)
-        self.assertIn("request_to_router", readme)
         self.assertIn("recv_routed", readme)
         self.assertIn("Timer", readme)
         self.assertIn("Stopwatch", readme)

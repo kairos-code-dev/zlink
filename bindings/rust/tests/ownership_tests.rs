@@ -114,7 +114,11 @@ fn multipart_recv_shape_matches_callback_shape() {
     b1.send(parts).unwrap();
     let direct = a1.recv().unwrap();
     let direct_count = direct.parts().len();
-    let direct_data: Vec<Vec<u8>> = direct.parts().iter().map(|p| p.as_bytes().to_vec()).collect();
+    let direct_data: Vec<Vec<u8>> = direct
+        .parts()
+        .iter()
+        .map(|p| p.as_bytes().to_vec())
+        .collect();
 
     // Direct recv path with the same frame ownership semantics.
     let mut a2 = ctx.pair_socket().unwrap();

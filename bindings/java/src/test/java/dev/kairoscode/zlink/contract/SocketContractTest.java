@@ -299,10 +299,6 @@ public class SocketContractTest {
 
         assertTrue(hasPublicMethod(Spot.class, "replyToSpot",
             RoutingId.class, RoutingId.class, long.class, Message.class));
-        assertTrue(hasPublicMethod(Spot.class, "sendToRouter",
-            RoutingId.class, Message.class));
-        assertTrue(hasPublicMethod(Spot.class, "requestToRouter",
-            RoutingId.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "replyToRouter",
             RoutingId.class, long.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "recvRouted"));

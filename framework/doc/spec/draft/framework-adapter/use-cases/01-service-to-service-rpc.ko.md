@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[use case 목록](./README.ko.md) | [Framework 초안 묶음](../README.ko.md) | [검증](../usecase-validation.ko.md)
+
 # Draft Use Case -- Service To Service RPC
 
 > 이 문서는 **구현 전 초안**이다.
@@ -34,7 +36,7 @@
 여기서 중요한 차별점은 위치투명성을 위해 별도 gateway를 강제하지 않는다는
 점이다. 기존 웹 시스템에서는 서비스 주소를 숨기기 위해 gateway를 두는 경우가
 많고, provider 선택을 위해 전용 load balancer를 앞단에 두기도 한다.
-현재 방향에서는 `channel_name`과 channel별 `Discovery`만으로 직접
+현재 방향에서는 `channel name`과 channel별 `Discovery`만으로 직접
 location-transparent 호출이 가능해야 한다.
 
 ## 3. 필요한 능력

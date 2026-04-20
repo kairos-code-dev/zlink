@@ -575,8 +575,6 @@ SPOT routed 네이밍은 두 축을 함께 가져간다.
   - `request_channel(channel_name, parts, callback, flags, timeout)`
   - `publish(service_name, topic, parts, flags)`
   - `reply_to_spot(dest_node_rid, dest_spot_rid, request_seq, parts, flags)`
-  - `send_to_router(peer_rid, parts, flags)`
-  - `request_to_router(peer_rid, parts, callback, flags, timeout)`
   - `reply_to_router(peer_rid, request_seq, parts, flags)`
 
 새 SPOT 바인딩 표면에서는 예전 `send_service` / `request_service` 대신
@@ -1098,7 +1096,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | `setSubscription` / `unsetSubscription` | Y |
 | `sendChannel` / `requestChannel` | Y |
 | `replyToSpot` | Optional typed routed reply surface |
-| `sendToRouter` / `requestToRouter` / `replyToRouter` | Optional typed routed surface |
+| `replyToRouter` | Optional typed routed reply surface |
 | `onDispatchEvent` | Y |
 | `onRoutedReceive` | Y |
 | `onSendReady` | Y |
@@ -1498,7 +1496,6 @@ int zlink_router_recv(void *router, const zlink_routing_id_t **peer_rid_out,
 
 ```c
 int zlink_spot_reply_spot(void *spot, ...);
-int zlink_spot_request_router(void *spot, ...);
 int zlink_spot_reply_router(void *spot, ...);
 int zlink_router_request_spot(void *router, ...);
 int zlink_router_reply_spot(void *router, ...);
@@ -1699,11 +1696,6 @@ SPOT routed direct messaging 은 특정 Router peer 또는 routed reply 대상�
 직접적인 spot 대상 ordinary send/request는 router 표면에서만 다룬다.
 
 ```c
-/* spot -> router */
-int zlink_spot_send_router(void *spot,
-    const zlink_routing_id_t *peer_rid,
-    zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags);
-
 /* router -> spot */
 int zlink_router_send_spot(void *router,
     const zlink_routing_id_t *dest_node_rid,
@@ -2097,6 +2089,10 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
 - 설계 규칙:
   - adapter 는 input-side convenience 여야 한다. canonical return type 을
     바꾸지 않는다.
+  - 언어 표준 라이브러리나 런타임이 아닌 **third-party buffer type** 은
+    가능하면 core binding 이 아니라 별도 extension module 로 분리한다.
+    예를 들어 Java `ByteBuffer` 는 core 에 둘 수 있지만, Netty `ByteBuf` 는
+    별도 Netty extension 에 두는 방향이 맞다.
   - adapter 지원 여부 때문에 overload 폭이 과도하게 늘어나면 안 된다.
     가능하면 `MessageLike`, `IntoMultipart`, buffer protocol 같은 **한 개의
     통합 진입점**으로 흡수한다.
@@ -2106,6 +2102,104 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
     사용자가 추측하게 두면 안 된다.
   - "지원 가능" 과 "zero-copy 보장" 을 혼동하지 않는다. zero-copy 보장이
     불가능하면 문서에 copy 가능성을 명시한다.
+
+### Codec / Serializer Extension Module Policy
+- `Message` 와 multipart transport 자체는 계속 canonical binding core contract 다.
+- protobuf / json / messagepack codec-aware domain conversion 은
+  **binding core 위에 올라가는 정식 별도 extension contract** 로 취급한다.
+- 단, `C` binding 은 예외다. `C`는 raw transport contract 를 기본 public surface 로
+  유지하며, codec-aware domain conversion 을 기본 binding contract 로 요구하지
+  않는다.
+- 따라서 `Parse(...)`, `Serialize(...)`, `ToMessage(...)`, `FromMessage(...)`
+  같은 helper 를 public 으로 노출할 수 있다. 다만 이 helper 는 binding core
+  package/module 에 섞으면 안 된다.
+- Required rules:
+  - binding core package/module 은 codec-agnostic 해야 한다.
+  - binding core 가 protobuf/json/messagepack dependency 를 필수 의존성으로
+    끌고 들어오면 안 된다.
+  - `C` binding 은 raw byte/message contract 만 정식으로 유지하면 되며,
+    protobuf/json helper 를 public contract 로 추가할 의무가 없다.
+  - `C`를 제외한 binding 은 codec extension layer 를 public contract 로 두며,
+    `protobuf`, `json`, `messagepack` 세 codec 을 지원해야 한다.
+  - `C`를 제외한 binding 의 `protobuf`, `json`, `messagepack` extension 은
+    각각 **core binding 과 별도 배포 단위** 로 제공해야 한다.
+  - third-party buffer adapter extension 도 같은 원칙을 따른다.
+    core binding 과 별도 배포 단위로 제공해야 하며, core binding 이 그
+    extension dependency 를 필수로 요구하면 안 된다.
+  - codec extension 은 core binding 에 의존할 수 있지만, core binding 이 codec
+    extension 에 의존하면 안 된다.
+  - codec extension 이 추가되어도 canonical recv/request/reply contract 는 계속
+    `Message`, `List<Message>`, `Received`, `TopicMessage` 기준으로 유지한다.
+  - codec extension 은 transport 결과 타입을 domain object 로 바꾸는 helper 를
+    추가할 수 있지만, raw transport contract 자체를 대체하면 안 된다.
+  - serializer 선택 규칙은 public contract 로 명시해야 한다.
+    예: type marker 기반 선택, explicit parser object, schema object.
+- 이유:
+  - raw transport 사용자에게 특정 codec dependency 를 강제하지 않기 위함이다.
+  - 언어별 codec 생태계 선택이 다르므로 core binding 이 한 구현체에 잠기지
+    않게 하기 위함이다.
+  - high-level domain helper 와 low-level transport ownership 계약을 분리해서
+    변경 파급을 줄이기 위함이다.
+
+JSON codec baseline by language:
+
+| Language | JSON baseline |
+|---|---|
+| C | none required |
+| C++ | `nlohmann/json` |
+| .NET | `System.Text.Json` |
+| Java | `Jackson` |
+| Node | built-in `JSON.parse` / `JSON.stringify` |
+| Python | stdlib `json` |
+| Go | `encoding/json` |
+| Rust | `serde_json` |
+
+- 이 표는 "json codec extension 을 public 으로 노출할 때 기본으로 삼는 구현체"를
+  뜻한다.
+- 다른 json 라이브러리를 추가 지원할 수는 있다. 다만 public contract 와 sample,
+  test, 기본 동작 기준은 위 표를 따른다.
+- Node 는 built-in JSON 이 plain object encode/decode 의 기준이며, typed
+  validation 은 별도 schema/parser object 위에 얹을 수 있다.
+
+MessagePack codec baseline by language:
+
+| Language | MessagePack baseline |
+|---|---|
+| C | none required |
+| C++ | `msgpack-c` |
+| .NET | `MessagePack for C#` |
+| Java | `jackson-dataformat-msgpack` |
+| Node | `@msgpack/msgpack` |
+| Python | `msgpack` |
+| Go | `vmihailenco/msgpack/v5` |
+| Rust | `rmp-serde` |
+
+- 이 표는 "messagepack codec extension 을 public 으로 노출할 때 기본으로 삼는
+  구현체"를 뜻한다.
+- 다른 messagepack 라이브러리를 추가 지원할 수는 있다. 다만 public contract 와
+  sample, test, 기본 동작 기준은 위 표를 따른다.
+
+Repository placement and distribution units for codec extension modules:
+
+| Language | Core binding root | Codec extension distribution units | Repo root |
+|---|---|---|---|
+| C | `bindings/c/include/zlink/`, `bindings/c/src/` | none required | n/a |
+| C++ | `bindings/cpp/include/zlink/` | `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` | `bindings/cpp/codecs/zlink-codec-protobuf/`, `bindings/cpp/codecs/zlink-codec-json/`, `bindings/cpp/codecs/zlink-codec-messagepack/` |
+| .NET | `bindings/dotnet/src/Zlink/` | NuGet `Zlink.Codecs.Protobuf`, NuGet `Zlink.Codecs.Json`, NuGet `Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack/` |
+| Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | Maven `zlink-codec-protobuf`, Maven `zlink-codec-json`, Maven `zlink-codec-messagepack` | `bindings/java/codecs/zlink-codec-protobuf/`, `bindings/java/codecs/zlink-codec-json/`, `bindings/java/codecs/zlink-codec-messagepack/` |
+| Node | `bindings/node/src/` | npm `@ulalax/zlink-codec-protobuf`, npm `@ulalax/zlink-codec-json`, npm `@ulalax/zlink-codec-messagepack` | `bindings/node/packages/zlink-codec-protobuf/`, `bindings/node/packages/zlink-codec-json/`, `bindings/node/packages/zlink-codec-messagepack/` |
+| Python | `bindings/python/src/zlink/` | PyPI `zlink-codec-protobuf`, PyPI `zlink-codec-json`, PyPI `zlink-codec-messagepack` | `bindings/python/codecs/zlink_codec_protobuf/`, `bindings/python/codecs/zlink_codec_json/`, `bindings/python/codecs/zlink_codec_messagepack/` |
+| Go | `bindings/go/` | Go module `zlink/codec/proto`, Go module `zlink/codec/json`, Go module `zlink/codec/messagepack` | `bindings/go/codec/proto/`, `bindings/go/codec/json/`, `bindings/go/codec/messagepack/` |
+| Rust | `bindings/rust/src/` | crate `zlink-codec-protobuf`, crate `zlink-codec-json`, crate `zlink-codec-messagepack` | `bindings/rust/crates/zlink-codec-protobuf/`, `bindings/rust/crates/zlink-codec-json/`, `bindings/rust/crates/zlink-codec-messagepack/` |
+
+- placement rules:
+  - codec helper source 를 core socket/message namespace 와 같은 디렉터리에 직접
+    섞지 않는다.
+  - 언어별 spec 문서(`doc/spec/bindings/<lang>/README.md`)는 해당 binding 이 이
+    codec extension 을 public 으로 노출할 때, **배포 패키지 이름**과 그 안의
+    public package / namespace / crate / module 이름을 함께 명시해야 한다.
+  - sample 과 tests 도 core binding sample/test 와 codec extension sample/test 를
+    분리한다.
 
 ### External Buffer Attach / Release Hook Policy
 - C API 의 `zlink_msg_init_data(..., zlink_free_fn*, hint)` 는 **external buffer

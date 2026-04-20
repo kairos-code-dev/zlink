@@ -38,13 +38,14 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	_, err = publisher.ReceiveSubscriptionEvent(zlink.RecvFlagsNone)
 	perfcommon.Must(err)
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.PostReadySettle(cfg.pattern)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(0, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 
 	for time.Now().Before(window.StopAt) {
-		perfcommon.StampPayload(payload)
+		perfcommon.StampWindowPayload(payload, window.ActiveAt)
 		err := publisher.Publish(
 			"bench.topic",
 			zlink.SendFlagsNone,
@@ -69,7 +70,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := received.SinglePartOrError()
 		if err == nil {
-			perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
+			perfcommon.RecordMessageLatency(stats, window.ActiveAt, cfg.msgSize, part)
 		}
 		_ = received.Close()
 	}

@@ -60,7 +60,7 @@ int spot_dispatch_subscribe_recv_internal (void *spot_,
                                           size_t *part_count_out_,
                                           char *topic_id_out_,
                                           size_t *topic_id_len_out_,
-                                          zlink_send_flags_t flags_);
+                                          zlink_recv_flags_t flags_);
 int spot_dispatch_queue_subscribe_message (
   void *spot_,
   const zlink_routing_id_t *source_rid_,
@@ -118,14 +118,14 @@ int spot_sub_recv_internal (void *sub_,
                             size_t *part_count_,
                             char *topic_id_out_,
                             size_t *topic_id_len_,
-                            zlink_send_flags_t flags_);
+                            zlink_recv_flags_t flags_);
 int spot_node_recv_internal (void *node_,
                              zlink_routing_id_t *source_rid_out_,
                              zlink_msg_t **parts_,
                              size_t *part_count_,
                              char *topic_id_out_,
                              size_t *topic_id_len_,
-                             zlink_send_flags_t flags_);
+                             zlink_recv_flags_t flags_);
 extern "C" void zlink_spot_notify_dispatch_event (
   void *spot_,
   zlink_spot_dispatch_event_t event_);
@@ -337,12 +337,12 @@ int zlink_service_recv_internal (void *handle_,
                                  zlink_routing_id_t *source_rid_out_,
                                  zlink_msg_t **parts_out_,
                                  size_t *part_count_out_,
-                                 zlink_send_flags_t flags_);
+                                 zlink_recv_flags_t flags_);
 int zlink_service_subscribe_recv_internal (void *subject_,
                                            zlink_routing_id_t *source_rid_out_,
                                            zlink_msg_t **parts_out_,
                                            size_t *part_count_out_,
                                            char *topic_id_out_,
                                            size_t *topic_id_len_out_,
-                                           zlink_send_flags_t flags_);
+                                           zlink_recv_flags_t flags_);
 #endif

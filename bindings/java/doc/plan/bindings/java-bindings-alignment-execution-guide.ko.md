@@ -219,7 +219,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
   direct lookup 을 제거하고 `zlink_msg_refcnt` / `zlink_msg_gets` /
   `zlink_multipart_close + free()` 경로를 추가했다.
 - `Native` / `NativeLayouts` 에 공식 헤더 기준 누락되어 있던
-  `zlink_subscription_at`, `zlink_publish`, `zlink_subscribe`,
+  `zlink_subscription_at`, `zlink_publish_part`, `zlink_subscribe_part`,
   `zlink_monitor_snapshot`, `zlink_monitor_close`,
   `zlink_service_monitor_open`, `zlink_service_monitor_handler`,
   `zlink_service_monitor_recv`,
@@ -248,7 +248,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 - `Socket` / `Message` 에 single-frame legacy surface 를 canonical
   multipart send/recv 위에서 재구성하기 시작했고, Java loader가
   `core/build/lib/libzlink.so` 도 개발용 우선 후보로 찾도록 보정했다.
-- 2026-03-26 현재 `Socket.sendMessageFrame -> zlink_send` 경로의 `EINVAL`
+- 2026-03-26 현재 `Socket.sendMessageFrame -> zlink_send_part` 경로의 `EINVAL`
   blocker 는 core `logical_multipart_send` 의 blocking `sndtimeo` 조회 실패를
   public send fallback 으로 흡수하도록 보정해 해소했다.
 - 재현은 core regression
@@ -379,7 +379,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
   저장소 루트의 `core/build/lib/libzlink.so` 를 찾도록 상향 탐색으로 보강했다.
 - 또한 `Socket.publish(...)`, `Socket.subscribe()` 와 `TopicMessage`
   public helper 를 추가해 `PUB` / `SUB` canonical path 를
-  `zlink_publish` / `zlink_subscribe` 위로 직접 연결했다.
+  `zlink_publish_part` / `zlink_subscribe_part` 위로 직접 연결했다.
 - `SocketSubscriptionContractTest` 에 publish/subscribe blocking/callback
   contract 를 보강했고, `PairCallbackSample` 은 `SampleSupport.wrapUtf8(...)`
   를 사용하도록 바꿔 wrap path sample 검증도 실제 runtime 으로 고정했다.
@@ -594,7 +594,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 - 다만 sample runtime 은 아직 green 이 아니다.
 - 다만 sample runtime 은 아직 green 이 아니다.
   2026-03-26 현재 `:samples:runPairRecv` 가
-  `Socket.send(...) -> zlink_send failed: EINVAL` 로 실패하므로
+  `Socket.send(...) -> zlink_send_part failed: EINVAL` 로 실패하므로
   Slice 5 는 계속 진행중이다.
 - 이후 `LibraryLoader` dev library 탐색 보강, `Socket.publish(...)` /
   `Socket.subscribe()` 추가, STREAM raw client sample 정렬을 거쳐

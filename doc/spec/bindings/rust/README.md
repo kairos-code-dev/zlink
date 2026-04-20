@@ -626,6 +626,9 @@ impl Message {
     /// Copy a `bytes::BytesMut` buffer into an owned zlink message.
     /// # Errors: ConfigError
     pub fn copy_from_bytes_mut(data: bytes::BytesMut) -> Result<Self, ConfigError>;
+    /// Copy bytes into an owned zlink message.
+    /// # Errors: ConfigError
+    pub fn from_bytes(data: &[u8]) -> Result<Self, ConfigError>;
     pub fn as_bytes(&self) -> &[u8];
     pub fn size(&self) -> usize;
     pub fn ref_count(&self) -> i32;
@@ -636,6 +639,59 @@ impl Message {
 // Public input adapters are copy-based only; generic external-buffer attach
 // with a release hook is not part of the Rust public surface.
 ```
+
+### Codec Extensions
+
+The binding exposes separate codec extension crates. The Cargo crate names and
+Rust import crate names are fixed to:
+
+- crate `zlink-codec-protobuf` -> `zlink_codec_protobuf`
+- crate `zlink-codec-json` -> `zlink_codec_json`
+- crate `zlink-codec-messagepack` -> `zlink_codec_messagepack`
+
+These are separate public crates layered on top of the core `zlink` crate.
+They must not become required dependencies of the core crate.
+
+JSON codec baseline: `serde_json`.
+MessagePack codec baseline: `rmp-serde`.
+
+```rust
+// zlink_codec_protobuf
+pub fn decode<T>(message: &zlink::Message) -> Result<T, Error>
+where
+    T: prost::Message + Default;
+
+pub fn encode<T>(value: &T) -> Result<zlink::Message, Error>
+where
+    T: prost::Message;
+```
+
+```rust
+// zlink_codec_json
+pub fn decode<T>(message: &zlink::Message) -> Result<T, Error>
+where
+    T: serde::de::DeserializeOwned;
+
+pub fn encode<T>(value: &T) -> Result<zlink::Message, Error>
+where
+    T: serde::Serialize;
+```
+
+```rust
+// zlink_codec_messagepack
+pub fn decode<T>(message: &zlink::Message) -> Result<T, Error>
+where
+    T: serde::de::DeserializeOwned;
+
+pub fn encode<T>(value: &T) -> Result<zlink::Message, Error>
+where
+    T: serde::Serialize;
+```
+Each codec crate defines its own `Error` type. The helper reads from
+`Message::as_bytes()` and creates new frames with `Message::from_bytes()`.
+
+These extension crates are optional. The core `zlink` crate must not depend on
+them.
 
 ### RoutingId
 
@@ -1439,32 +1495,6 @@ impl Spot {
     /// # Errors: SubmitError
     pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
         request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-
-    // --- routed send (spot → router) ---
-    /// # Errors: SubmitError
-    pub fn send_to_router(&self, peer_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_to_router_with_flags(&self, peer_rid: &RoutingId,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-
-    // --- routed request (spot → router, async) — no flags ---
-    // Duration::ZERO uses the socket default timeout.
-    // Submit failure yields SubmitError; request failure yields RequestError;
-    // both unify under ZlinkError at this API seam.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request_to_router(&self, peer_rid: RoutingId,
-        parts: impl IntoMultipart, timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
-
-    // --- routed request (spot → router, callback) ---
-    // Duration::ZERO uses the socket default timeout.
-    // The callback receives Result<Vec<Message>, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
-    pub fn request_to_router_callback<F>(&self, peer_rid: RoutingId,
-        parts: impl IntoMultipart, callback: F,
-        flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 
     // --- routed reply (spot → router) ---
     /// # Errors: SubmitError

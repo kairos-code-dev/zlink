@@ -54,6 +54,38 @@ async function waitForLine(processRef, expected, label, timeoutMs) {
         });
     });
 }
+async function waitForPrefix(processRef, prefix, label, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        let done = false;
+        const seen = processRef.__seenLines.find((line) => line.startsWith(prefix));
+        if (seen) {
+            resolve(seen);
+            return;
+        }
+        const timeout = setTimeout(() => {
+            if (!done) {
+                done = true;
+                reject(new Error(`${label} timeout waiting for ${prefix}`));
+            }
+        }, timeoutMs);
+        processRef.once('exit', (code) => {
+            if (!done) {
+                done = true;
+                clearTimeout(timeout);
+                reject(new Error(`${label} exited before ${prefix}: ${code}`));
+            }
+        });
+        processRef.__waiters.push((line) => {
+            if (!done && line.startsWith(prefix)) {
+                done = true;
+                clearTimeout(timeout);
+                resolve(line);
+                return true;
+            }
+            return false;
+        });
+    });
+}
 function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
     child.__waiters = [];
     child.__seenLines = [];
@@ -64,7 +96,7 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
                 return;
             }
         }
-        if (line.startsWith(resultPrefix)) {
+        if (line.startsWith(resultPrefix) || line.startsWith('UNSUPPORTED,') || line.startsWith('SKIP,')) {
             resultLines.push(line);
             return;
         }
@@ -143,23 +175,6 @@ async function stopServer(server, label, timeoutMs = 5000) {
                 throw error;
             }
         }
-        const terminated = await Promise.race([
-            waitForExit(server).then((code) => [code]),
-            new Promise((resolve) => {
-                timer = setTimeout(() => resolve(null), timeoutMs);
-            })
-        ]);
-        if (terminated !== null) {
-            return;
-        }
-        try {
-            process.kill(-server.pid, 'SIGKILL');
-        }
-        catch (error) {
-            if (!error || error.code !== 'ESRCH') {
-                throw error;
-            }
-        }
         await waitForExit(server);
     }
     finally {
@@ -168,20 +183,34 @@ async function stopServer(server, label, timeoutMs = 5000) {
         }
     }
 }
+function clientReadyLine(msgSize) {
+    return `CLIENT_READY,${msgSize}`;
+}
+function phaseActiveLine(msgSize) {
+    return `PHASE_ACTIVE,${msgSize}`;
+}
+function startLine(msgSize) {
+    return `START,${msgSize}`;
+}
 async function spawnMultiPair(serverScript, clientScript, args) {
     const serverPath = path.join(__dirname, serverScript);
     const clientPath = path.join(__dirname, clientScript);
     const resultLines = [];
-    let endpoint;
-    let controlEndpoint;
-    let sharedArgs;
-    let server;
-    if (args.pattern === 'MULTI_SPOT') {
-        endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    let endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    let sharedArgs = [
+        '--endpoint', endpoint,
+        '--transport', args.transport,
+        '--msg-size', String(args.msgSize),
+        '--warmup', String(args.warmup),
+        '--duration', String(args.duration),
+        '--clients', String(args.clients)
+    ];
+    if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
         const peerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-        controlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+        const controlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
         sharedArgs = [
             '--endpoint', endpoint,
+            '--transport', args.transport,
             '--peer-endpoint', peerEndpoint,
             '--control-endpoint', controlEndpoint,
             '--msg-size', String(args.msgSize),
@@ -189,66 +218,40 @@ async function spawnMultiPair(serverScript, clientScript, args) {
             '--duration', String(args.duration),
             '--clients', String(args.clients)
         ];
-        server = spawn(process.execPath, [serverPath, ...sharedArgs], {
-            cwd: process.cwd(),
-            stdio: ['pipe', 'pipe', 'pipe'],
-            detached: true
-        });
-        attachProcessCapture(server, resultLines);
-        await waitForLine(server, `READY,${endpoint}`, serverScript, 5000);
-        await waitForLine(server, `CONTROL_READY,${controlEndpoint}`, serverScript, 5000);
     }
-    else {
-        const port = await reservePort();
-        endpoint = `tcp://127.0.0.1:${port}`;
-        sharedArgs = [
-            '--endpoint', endpoint,
-            '--msg-size', String(args.msgSize),
-            '--warmup', String(args.warmup),
-            '--duration', String(args.duration),
-            '--clients', String(args.clients)
-        ];
-        server = spawn(process.execPath, [serverPath, ...sharedArgs], {
-            cwd: process.cwd(),
-            stdio: ['pipe', 'pipe', 'pipe'],
-            detached: true
-        });
-        attachProcessCapture(server, resultLines);
-        await waitForLine(server, `READY,${endpoint}`, serverScript, 5000);
+    const server = spawn(process.execPath, [serverPath, ...sharedArgs], {
+        cwd: process.cwd(),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: true
+    });
+    attachProcessCapture(server, resultLines);
+    await waitForLine(server, `READY,${endpoint}`, serverScript, 10_000);
+    if (args.pattern === 'MULTI_SPOT_REQREP') {
+        const routeLine = await waitForPrefix(server, 'ROUTE_READY,', serverScript, 10_000);
+        const [, serverNodeRid, serverSpotRid] = routeLine.split(',');
+        sharedArgs.push('--server-node-rid', serverNodeRid);
+        sharedArgs.push('--server-spot-rid', serverSpotRid);
     }
     const client = spawn(process.execPath, [clientPath, ...sharedArgs], {
         cwd: process.cwd(),
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         detached: true
     });
     attachProcessCapture(client, resultLines);
-    const clientReadyLine = args.pattern === 'MULTI_SPOT'
-        ? `CLIENT_READY,${args.msgSize}`
-        : 'CLIENT_READY';
-    await waitForLine(client, clientReadyLine, clientScript, 10000);
-    if (args.pattern !== 'MULTI_SPOT' && server.stdin.writable) {
-        server.stdin.write(`START,${args.msgSize}\n`);
+    await waitForLine(client, clientReadyLine(args.msgSize), clientScript, 20_000);
+    if (server.stdin.writable) {
+        server.stdin.write(`${startLine(args.msgSize)}\n`);
     }
-    const firstExit = await Promise.race([
-        waitForExit(client).then((code) => ({ side: 'client', code })),
-        waitForExit(server).then((code) => ({ side: 'server', code }))
-    ]);
-    if (firstExit.side === 'server') {
-        if (firstExit.code !== 0 || args.pattern !== 'MULTI_SPOT') {
-            await Promise.allSettled([terminateProcessTree(client, 1000)]);
-            throw new Error(`server failed early (${serverScript}): ${firstExit.code}`);
+    if (client.stdin.writable) {
+        client.stdin.write(`${startLine(args.msgSize)}\n`);
+        if (args.pattern === 'MULTI_DEALER_DEALER' || args.pattern === 'MULTI_PUBSUB') {
+            client.stdin.write(`${phaseActiveLine(args.msgSize)}\n`);
         }
-        const clientExitCode = await waitForExit(client);
-        if (clientExitCode !== 0) {
-            await Promise.allSettled([terminateProcessTree(client, 1000)]);
-            throw new Error(`client failed (${clientScript}): ${clientExitCode}`);
-        }
-        await flushProcessOutput();
-        return resultLines;
     }
-    if (firstExit.code !== 0) {
-        await Promise.allSettled([terminateProcessTree(server, 1000), terminateProcessTree(client, 1000)]);
-        throw new Error(`client failed (${clientScript}): ${firstExit.code}`);
+    const clientExitCode = await waitForExit(client);
+    if (clientExitCode !== 0) {
+        await Promise.allSettled([terminateProcessTree(server, 1000)]);
+        throw new Error(`client failed (${clientScript}): ${clientExitCode}`);
     }
     await flushProcessOutput();
     try {
@@ -264,5 +267,6 @@ module.exports = {
     attachProcessCapture,
     spawnMultiPair,
     stopServer,
-    waitForLine
+    waitForLine,
+    waitForPrefix
 };

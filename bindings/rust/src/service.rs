@@ -8,16 +8,15 @@ use crate::domain::{Received, SubscriptionEvent, TopicMessage};
 use crate::error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
     RequestError, SubmitError, ZlinkError, check_bind_rc, check_close_rc, check_config_rc,
-    check_connect_rc,
-    check_handler_rc, check_rc, check_recv_rc, check_submit_rc, config_validation_error, last_errno,
-    submit_not_supported_error, submit_validation_error,
+    check_connect_rc, check_handler_rc, check_rc, check_recv_rc, check_submit_rc,
+    config_validation_error, last_errno, submit_not_supported_error, submit_validation_error,
 };
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
-use crate::monitor::MonitorEventType;
 use crate::socket::{
-    CallbackBox, cstr_buf_to_string, prepare_send_parts, send_ready_trampoline, take_parts,
+    CallbackBox, cstr_buf_to_string, prepare_send_parts, routing_id_from_ptr,
+    send_ready_trampoline, submit_part_sequence, take_parts,
 };
 
 // ---------------------------------------------------------------------------
@@ -516,20 +515,33 @@ pub enum SpotServiceAttachmentRole {
     Sub,
 }
 
+#[allow(dead_code)]
 impl SpotServiceAttachmentRole {
     fn to_raw(self) -> ffi::zlink_spot_service_attachment_role_t {
         match self {
-            Self::Router => ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER,
-            Self::Pub => ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_PUB,
-            Self::Sub => ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_SUB,
+            Self::Router => {
+                ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER
+            }
+            Self::Pub => {
+                ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_PUB
+            }
+            Self::Sub => {
+                ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_SUB
+            }
         }
     }
 
     fn from_raw(raw: ffi::zlink_spot_service_attachment_role_t) -> Self {
         match raw {
-            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_PUB => Self::Pub,
-            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_SUB => Self::Sub,
-            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER => Self::Router,
+            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_PUB => {
+                Self::Pub
+            }
+            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_SUB => {
+                Self::Sub
+            }
+            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER => {
+                Self::Router
+            }
         }
     }
 }
@@ -757,7 +769,7 @@ impl Discovery {
     }
 
     pub fn monitor_open(&self) -> Result<crate::monitor::ServiceMonitor, ConfigError> {
-        Ok(crate::monitor::ServiceMonitor::open(self)?)
+        crate::monitor::ServiceMonitor::open(self)
     }
 
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError> {
@@ -1112,22 +1124,22 @@ impl Spot {
         parts: impl IntoMultipart,
         flags: SendFlags,
     ) -> Result<(), SubmitError> {
-        let c_service_name =
-            fixed_cstring_config(service_name, "service_name").map_err(|_| submit_validation_error())?;
+        let c_service_name = fixed_cstring_config(service_name, "service_name")
+            .map_err(|_| submit_validation_error())?;
         let c_topic =
             fixed_cstring_config(topic, "topic").map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
-        let rc = unsafe {
-            ffi::zlink_spot_publish(
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_spot_publish_part(
                 self.handle,
                 c_service_name.as_ptr(),
                 c_topic.as_ptr(),
-                native.as_mut_ptr(),
-                native.len(),
+                part,
                 flags.bits(),
+                part_flag,
             )
-        };
+        })?;
         drop(parts);
         check_submit_rc(rc)
     }
@@ -1146,24 +1158,24 @@ impl Spot {
         parts: impl IntoMultipart,
         flags: SendFlags,
     ) -> Result<(), SubmitError> {
-        let c_channel_name =
-            fixed_cstring_config(channel_name, "channel_name").map_err(|_| submit_validation_error())?;
+        let c_channel_name = fixed_cstring_config(channel_name, "channel_name")
+            .map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
-        let rc = unsafe {
-            ffi::zlink_spot_send_channel(
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_spot_send_channel_part(
                 self.handle,
                 c_channel_name.as_ptr(),
-                native.as_mut_ptr(),
-                native.len(),
+                part,
                 flags.bits(),
+                part_flag,
             )
-        };
+        })?;
         drop(parts);
         check_submit_rc(rc)
     }
 
-    pub fn request_channel(
+    pub async fn request_channel(
         &self,
         channel_name: &str,
         parts: impl IntoMultipart,
@@ -1200,25 +1212,34 @@ impl Spot {
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
-        let c_channel_name =
-            fixed_cstring_config(channel_name, "channel_name").map_err(|_| submit_validation_error())?;
+        let c_channel_name = fixed_cstring_config(channel_name, "channel_name")
+            .map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
             callback: Some(Box::new(callback)),
         }));
-        let rc = unsafe {
-            ffi::zlink_spot_request_channel(
+        let timeout_ms = timeout_to_timeout_ms(timeout);
+        let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
+            ffi::zlink_spot_request_channel_part(
                 self.handle,
                 c_channel_name.as_ptr(),
-                native.as_mut_ptr(),
-                native.len(),
-                spot_reply_callback,
-                state_ptr.cast(),
+                part,
+                if is_final {
+                    Some(spot_reply_callback)
+                } else {
+                    None
+                },
+                if is_final {
+                    state_ptr.cast()
+                } else {
+                    std::ptr::null_mut()
+                },
                 flags.bits(),
-                timeout_to_timeout_ms(timeout),
+                part_flag,
+                if is_final { timeout_ms } else { 0 },
             )
-        };
+        })?;
         if rc != 0 {
             unsafe {
                 drop(Box::from_raw(state_ptr));
@@ -1254,40 +1275,15 @@ impl Spot {
     }
 
     pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError> {
-        let mut source_rid = ffi::zlink_routing_id_t {
-            size: 0,
-            data: [0; 255],
-        };
-        let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
-        let mut part_count: usize = 0;
         let mut service_buf = [0i8; 256];
-        let mut service_len: usize = 256;
         let mut topic_buf = [0i8; 256];
-        let mut topic_len: usize = 256;
-
-        let rc = unsafe {
-            ffi::zlink_spot_subscribe(
-                self.handle,
-                &mut source_rid,
-                &mut parts_ptr,
-                &mut part_count,
-                service_buf.as_mut_ptr(),
-                &mut service_len,
-                topic_buf.as_mut_ptr(),
-                &mut topic_len,
-                flags.bits(),
-            )
-        };
-        check_recv_rc(rc)?;
-
-        let routing_id = if source_rid.size == 0 {
-            None
-        } else {
-            Some(RoutingId::from_raw(source_rid))
-        };
-        let service_name = cstr_buf_to_string(&service_buf, service_len);
-        let topic = cstr_buf_to_string(&topic_buf, topic_len);
-        let parts = take_parts(parts_ptr, part_count);
+        let (routing_id, service_name, topic, parts) = recv_spot_subscribed_parts(
+            self.handle,
+            &mut service_buf,
+            &mut topic_buf,
+            flags.bits(),
+        )?
+        .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))?;
         Ok(TopicMessage::new(
             routing_id,
             Some(service_name),
@@ -1304,94 +1300,11 @@ impl Spot {
         &self,
         flags: RecvFlags,
     ) -> Result<SubscriptionEvent, RecvError> {
-        let mut source_rid = ffi::zlink_routing_id_t {
-            size: 0,
-            data: [0; 255],
-        };
-        let mut subscribed: i32 = 0;
-        let mut service_buf = [0i8; 256];
-        let mut service_len: usize = 256;
-        let mut topic_buf = [0i8; 256];
-        let mut topic_len: usize = 256;
-
-        let rc = unsafe {
-            ffi::zlink_spot_subscription_event(
-                self.handle,
-                &mut source_rid,
-                &mut subscribed,
-                service_buf.as_mut_ptr(),
-                &mut service_len,
-                topic_buf.as_mut_ptr(),
-                &mut topic_len,
-                flags.bits(),
-            )
-        };
-        check_recv_rc(rc)?;
-
-        let routing_id = if source_rid.size == 0 {
-            None
-        } else {
-            Some(RoutingId::from_raw(source_rid))
-        };
-        let service_name = cstr_buf_to_string(&service_buf, service_len);
-        let topic = cstr_buf_to_string(&topic_buf, topic_len);
-        Ok(SubscriptionEvent::new(
-            routing_id,
-            Some(service_name),
-            subscribed != 0,
-            topic,
+        let _ = flags;
+        Err(RecvError::new(
+            crate::error::RecvResult::NotSupported,
+            libc::ENOTSUP,
         ))
-    }
-
-    pub(crate) fn try_receive_subscription_event(
-        &self,
-    ) -> Result<Option<SubscriptionEvent>, RecvError> {
-        let mut source_rid = ffi::zlink_routing_id_t {
-            size: 0,
-            data: [0; 255],
-        };
-        let mut subscribed: i32 = 0;
-        let mut service_buf = [0i8; 256];
-        let mut service_len: usize = 256;
-        let mut topic_buf = [0i8; 256];
-        let mut topic_len: usize = 256;
-
-        let rc = unsafe {
-            ffi::zlink_spot_subscription_event(
-                self.handle,
-                &mut source_rid,
-                &mut subscribed,
-                service_buf.as_mut_ptr(),
-                &mut service_len,
-                topic_buf.as_mut_ptr(),
-                &mut topic_len,
-                ffi::ZLINK_DONTWAIT as u32,
-            )
-        };
-        if rc == RecvResult::NoData as i32 {
-            return Ok(None);
-        }
-        if rc != 0 {
-            let errno = unsafe { ffi::zlink_errno() };
-            if errno == libc::EAGAIN {
-                return Ok(None);
-            }
-            return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
-        }
-
-        let routing_id = if source_rid.size == 0 {
-            None
-        } else {
-            Some(RoutingId::from_raw(source_rid))
-        };
-        let service_name = cstr_buf_to_string(&service_buf, service_len);
-        let topic = cstr_buf_to_string(&topic_buf, topic_len);
-        Ok(Some(SubscriptionEvent::new(
-            routing_id,
-            Some(service_name),
-            subscribed != 0,
-            topic,
-        )))
     }
 
     pub fn reply_to_spot(
@@ -1423,108 +1336,17 @@ impl Spot {
         }
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
-        let rc = unsafe {
-            ffi::zlink_spot_reply_spot(
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_spot_reply_spot_part(
                 self.handle,
                 dest_node_rid.as_raw(),
                 dest_spot_rid.as_raw(),
                 request_seq,
-                native.as_mut_ptr(),
-                native.len(),
+                part,
+                part_flag,
             )
-        };
+        })?;
         drop(parts);
-        check_submit_rc(rc)
-    }
-
-    pub fn send_to_router(
-        &self,
-        peer_rid: &RoutingId,
-        parts: impl IntoMultipart,
-    ) -> Result<(), SubmitError> {
-        self.send_to_router_with_flags(peer_rid, parts, SendFlags::NONE)
-    }
-
-    pub fn send_to_router_with_flags(
-        &self,
-        peer_rid: &RoutingId,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<(), SubmitError> {
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = unsafe {
-            ffi::zlink_spot_send_router(
-                self.handle,
-                peer_rid.as_raw(),
-                native.as_mut_ptr(),
-                native.len(),
-                flags.bits(),
-            )
-        };
-        drop(parts);
-        check_submit_rc(rc)
-    }
-
-    pub async fn request_to_router(
-        &self,
-        peer_rid: RoutingId,
-        parts: impl IntoMultipart,
-        timeout: Duration,
-    ) -> Result<Vec<Message>, ZlinkError> {
-        let (tx, rx) = mpsc::channel();
-        self.request_to_router_callback(
-            peer_rid,
-            parts,
-            move |result| {
-                let _ = tx.send(result);
-            },
-            SendFlags::NONE,
-            timeout,
-        )?;
-        rx.recv()
-            .unwrap_or_else(|_| {
-                Err(RequestError::new(
-                    crate::error::RequestResult::ProtocolError,
-                    libc::EINVAL,
-                ))
-            })
-            .map_err(ZlinkError::from)
-    }
-
-    pub fn request_to_router_callback<F>(
-        &self,
-        peer_rid: RoutingId,
-        parts: impl IntoMultipart,
-        callback: F,
-        flags: SendFlags,
-        timeout: Duration,
-    ) -> Result<(), SubmitError>
-    where
-        F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
-    {
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
-            callback: Some(Box::new(callback)),
-        }));
-        let rc = unsafe {
-            ffi::zlink_spot_request_router(
-                self.handle,
-                peer_rid.as_raw(),
-                native.as_mut_ptr(),
-                native.len(),
-                spot_reply_callback,
-                state_ptr.cast(),
-                flags.bits(),
-                timeout_to_timeout_ms(timeout),
-            )
-        };
-        if rc != 0 {
-            unsafe {
-                drop(Box::from_raw(state_ptr));
-            }
-        }
         check_submit_rc(rc)
     }
 
@@ -1549,15 +1371,15 @@ impl Spot {
         }
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
-        let rc = unsafe {
-            ffi::zlink_spot_reply_router(
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_spot_reply_router_part(
                 self.handle,
                 peer_rid.as_raw(),
                 request_seq,
-                native.as_mut_ptr(),
-                native.len(),
+                part,
+                part_flag,
             )
-        };
+        })?;
         drop(parts);
         check_submit_rc(rc)
     }
@@ -1567,31 +1389,8 @@ impl Spot {
     }
 
     pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
-        let mut source_node_rid = ptr::null();
-        let mut source_spot_rid = ptr::null();
-        let mut request_seq = 0u64;
-        let mut parts_ptr: *mut ffi::zlink_msg_t = ptr::null_mut();
-        let mut part_count: usize = 0;
-        let rc = unsafe {
-            ffi::zlink_spot_recv(
-                self.handle,
-                &mut source_node_rid,
-                &mut source_spot_rid,
-                &mut request_seq,
-                &mut parts_ptr,
-                &mut part_count,
-                flags.bits(),
-            )
-        };
-        check_recv_rc(rc)?;
-        Ok(spot_received_from_raw(
-            self.handle,
-            source_node_rid,
-            source_spot_rid,
-            request_seq,
-            parts_ptr,
-            part_count,
-        ))
+        recv_spot_routed_parts(self.handle, flags.bits())?
+            .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
     }
 
     pub fn on_routed_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
@@ -1655,8 +1454,12 @@ impl Spot {
     }
 }
 
+type SpotReplyCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
+type SpotSubscribedParts =
+    Result<Option<(Option<RoutingId>, String, String, Vec<Message>)>, RecvError>;
+
 struct SpotReplyCallbackState {
-    callback: Option<Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>>,
+    callback: Option<SpotReplyCallback>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1704,23 +1507,141 @@ fn borrowed_parts_to_messages(parts: *mut ffi::zlink_msg_t, part_count: usize) -
     out
 }
 
+fn recv_spot_subscribed_parts(
+    handle: *mut c_void,
+    service_buf: &mut [i8; 256],
+    topic_buf: &mut [i8; 256],
+    flags: ffi::zlink_recv_flags_t,
+) -> SpotSubscribedParts {
+    let mut routing_id = None;
+    let mut service_name = String::new();
+    let mut topic = String::new();
+    let mut parts = Vec::new();
+    let mut recv_flags = flags;
+
+    loop {
+        let mut source_rid_ptr = ptr::null();
+        let mut service_name_len = service_buf.len();
+        let mut topic_len = topic_buf.len();
+        let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        let mut has_more = 0;
+        let rc = unsafe {
+            ffi::zlink_spot_subscribe_part(
+                handle,
+                &mut source_rid_ptr,
+                service_buf.as_mut_ptr(),
+                service_buf.len(),
+                &mut service_name_len,
+                topic_buf.as_mut_ptr(),
+                topic_buf.len(),
+                &mut topic_len,
+                part.as_mut_ptr(),
+                &mut has_more,
+                recv_flags,
+            )
+        };
+
+        if parts.is_empty() {
+            if rc == RecvResult::NoData as i32 {
+                return Ok(None);
+            }
+            if rc != 0 {
+                let errno = unsafe { ffi::zlink_errno() };
+                if errno == libc::EAGAIN {
+                    return Ok(None);
+                }
+                return Err(check_recv_rc(rc).unwrap_err());
+            }
+            routing_id = routing_id_from_ptr(source_rid_ptr);
+            service_name = cstr_buf_to_string(service_buf, service_name_len);
+            topic = cstr_buf_to_string(topic_buf, topic_len);
+        } else if rc != 0 {
+            return Err(check_recv_rc(rc).unwrap_err());
+        }
+
+        parts.push(unsafe { Message::from_raw(part.assume_init()) });
+        if has_more == 0 {
+            return Ok(Some((routing_id, service_name, topic, parts)));
+        }
+        recv_flags = ffi::ZLINK_DONTWAIT;
+    }
+}
+
 fn spot_received_from_raw(
     handle: *mut c_void,
     source_node_rid: *const ffi::zlink_routing_id_t,
     source_spot_rid: *const ffi::zlink_routing_id_t,
     request_seq: u64,
-    parts_ptr: *mut ffi::zlink_msg_t,
-    part_count: usize,
+    parts: Vec<Message>,
 ) -> Received {
     let node_rid = unsafe { RoutingId::from_raw(*source_node_rid) };
     let spot_rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
-    let parts = take_parts(parts_ptr, part_count);
     if request_seq == 0 {
         let mut received = Received::new(Some(node_rid), parts);
         received.spot_rid = Some(spot_rid);
         received
     } else {
         Received::with_spot_reply_context(handle, node_rid, spot_rid, request_seq, parts)
+    }
+}
+
+fn recv_spot_routed_parts(
+    handle: *mut c_void,
+    flags: ffi::zlink_recv_flags_t,
+) -> Result<Option<Received>, RecvError> {
+    let mut source_node_rid = ptr::null();
+    let mut source_spot_rid = ptr::null();
+    let mut request_seq = 0;
+    let mut parts = Vec::new();
+    let mut recv_flags = flags;
+
+    loop {
+        let mut current_source_node_rid = ptr::null();
+        let mut current_source_spot_rid = ptr::null();
+        let mut current_request_seq = 0;
+        let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        let mut has_more = 0;
+        let rc = unsafe {
+            ffi::zlink_spot_recv_part(
+                handle,
+                &mut current_source_node_rid,
+                &mut current_source_spot_rid,
+                &mut current_request_seq,
+                part.as_mut_ptr(),
+                &mut has_more,
+                recv_flags,
+            )
+        };
+
+        if parts.is_empty() {
+            if rc == RecvResult::NoData as i32 {
+                return Ok(None);
+            }
+            if rc != 0 {
+                let errno = unsafe { ffi::zlink_errno() };
+                if errno == libc::EAGAIN {
+                    return Ok(None);
+                }
+                return Err(check_recv_rc(rc).unwrap_err());
+            }
+            source_node_rid = current_source_node_rid;
+            source_spot_rid = current_source_spot_rid;
+            request_seq = current_request_seq;
+        } else if rc != 0 {
+            return Err(check_recv_rc(rc).unwrap_err());
+        }
+
+        parts.push(unsafe { Message::from_raw(part.assume_init()) });
+        if has_more == 0 {
+            return Ok(Some(spot_received_from_raw(
+                handle,
+                source_node_rid,
+                source_spot_rid,
+                request_seq,
+                parts,
+            )));
+        }
+        recv_flags = ffi::ZLINK_DONTWAIT;
     }
 }
 
@@ -1838,7 +1759,9 @@ impl Registry {
         Ok(RegistryStatus::from_raw(&raw))
     }
 
-    pub fn service_summary_snapshot(&self) -> Result<Vec<RegistryServiceSummaryEntry>, ConfigError> {
+    pub fn service_summary_snapshot(
+        &self,
+    ) -> Result<Vec<RegistryServiceSummaryEntry>, ConfigError> {
         self.service_summary_query_opt(None)
     }
 

@@ -169,7 +169,7 @@ int zlink_service_recv_internal (void *handle_,
                                  zlink_routing_id_t *source_rid_out_,
                                  zlink_msg_t **parts_out_,
                                  size_t *part_count_out_,
-                                 zlink_send_flags_t flags_)
+                                 zlink_recv_flags_t flags_)
 {
     const zlink::service_handle_resolution_t resolved =
       zlink::resolve_service_handle (handle_);

@@ -1,5 +1,7 @@
 [스펙 목차](../../README.ko.md)
 
+[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](./dotnet/README.ko.md)
+
 # Draft -- ZLink Framework API
 
 > 이 문서는 **구현 전 초안**이다.
@@ -38,7 +40,7 @@
 - 공용 outbound client를 DI로 주입한다.
 - 요청 메서드는 async 중심으로 제공한다.
 - codec, timeout, target channel을 설정할 수 있다.
-- gateway 주소나 load balancer 주소 대신 `channel_name` 기준 호출을 기본으로
+- gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
 - framework runtime은 접근하는 channel마다 별도 outbound runtime을 관리할 수
   있어야 한다.

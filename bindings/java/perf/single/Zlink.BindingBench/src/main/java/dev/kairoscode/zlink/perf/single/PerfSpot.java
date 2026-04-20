@@ -100,6 +100,14 @@ final class PerfSpot {
             PerfUtil.await(ready, "spot local probe ready", Duration.ofSeconds(10));
 
             Thread traffic = new Thread(() -> {
+                long warmupEnd = System.nanoTime()
+                    + config.warmupSeconds() * 1_000_000_000L;
+                while (System.nanoTime() < warmupEnd) {
+                    try (Message m = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                        publisher.publish(SERVICE_NAME, topic, List.of(m));
+                    }
+                }
                 metrics.startActiveWindow();
                 long activeEnd = System.nanoTime()
                     + config.durationSeconds() * 1_000_000_000L;
@@ -119,7 +127,7 @@ final class PerfSpot {
             }, "single-spot-sender");
             traffic.start();
             PerfUtil.await(finished, "spot receiver",
-                Duration.ofSeconds(config.durationSeconds() + 10L));
+                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "spot sender", Duration.ofSeconds(10));
             PerfUtil.join(receiverThread, "spot receiver thread", Duration.ofSeconds(10));
             if (failure.get() != null) {

@@ -1337,16 +1337,17 @@ internal sealed class SocketKernel : IDisposable
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            nuint topicLength = TopicBufferSize;
-            ZlinkRoutingId nativeRoutingId = default;
-            int rc = NativeMethods.zlink_subscription_event(Handle,
-                (IntPtr)(&nativeRoutingId), out int subscribedInt, topicBuffer,
-                ref topicLength, flags);
+            int rc = NativeMethods.zlink_xpub_recv_part(Handle,
+                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
+                (nuint)topicBuffer.Length, out nuint topicLength, flags);
             if (rc != 0)
                 throw ZlinkException.CreateRecvException(
                     NativeMethods.zlink_errno());
 
-            RoutingId? routingId = RoutingIdCodec.ToRoutingId(ref nativeRoutingId);
+            byte[]? routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
+            RoutingId? routingId = routingIdBytes == null
+                ? null
+                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
             string topic = DecodeTopic(topicBuffer, topicLength);
             return new SubscriptionEvent(routingId, null, topic,
                 subscribedInt != 0);
@@ -1587,29 +1588,54 @@ internal sealed class SocketKernel : IDisposable
         out byte[]? routingIdBytes, out byte[]? spotRidBytes,
         out ulong requestSequence, bool allowNoData)
     {
+        List<ZlinkMsg> nativeParts = new();
         routingIdBytes = null;
         spotRidBytes = null;
         requestSequence = 0;
-
-        int rc = NativeMethods.zlink_router_recv(Handle, out IntPtr sourceNodeRid,
-            out IntPtr sourceSpotRid, out requestSequence, out IntPtr parts,
-            out nuint partCount, flags);
-        if (rc != 0)
+        try
         {
-            int errno = NativeMethods.zlink_errno();
-            if (allowNoData
-                && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+            while (true)
             {
-                return null;
+                ZlinkMsg part = default;
+                int initRc = NativeMethods.zlink_msg_init(ref part);
+                ZlinkException.ThrowIfError(initRc);
+                bool initialized = true;
+                int rc = NativeMethods.zlink_router_recv_part(Handle,
+                    out IntPtr sourceNodeRid, out IntPtr sourceSpotRid,
+                    out ulong receivedRequestSequence, ref part, out int hasMore,
+                    flags);
+                if (rc != 0)
+                {
+                    if (initialized)
+                        NativeMethods.zlink_msg_close(ref part);
+                    int errno = NativeMethods.zlink_errno();
+                    if (allowNoData && nativeParts.Count == 0
+                        && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
+                        return null;
+                    }
+
+                    throw ZlinkException.CreateRecvException(errno);
+                }
+
+                initialized = false;
+                if (nativeParts.Count == 0)
+                {
+                    routingIdBytes = CopyRoutingIdBytes(sourceNodeRid);
+                    spotRidBytes = CopyRoutingIdBytes(sourceSpotRid);
+                    requestSequence = receivedRequestSequence;
+                }
+                nativeParts.Add(MoveStoredPart(ref part));
+                if (hasMore == 0)
+                    break;
             }
 
-            throw ZlinkException.CreateRecvException(errno);
+            return MultipartMessageCollection.FromNativeParts(nativeParts.ToArray());
         }
-
-        routingIdBytes = CopyRoutingIdBytes(sourceNodeRid);
-        spotRidBytes = CopyRoutingIdBytes(sourceSpotRid);
-        Message[] messages = Message.FromNativeVector(parts, partCount);
-        return MultipartMessageCollection.FromMessages(messages);
+        catch
+        {
+            CloseNativeParts(nativeParts);
+            throw;
+        }
     }
 
     private unsafe MultipartMessageCollection? ReceiveSubscribedParts(int flags,

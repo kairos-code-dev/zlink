@@ -18,6 +18,7 @@ MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RUNS=1
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
+WARMUP="${PERF_MULTI_WARMUP_SECONDS:-0}"
 RESULTS_TAG=""
 BUILD_DIR=""
 OUTPUT_PATH=""
@@ -54,11 +55,13 @@ Usage: perf/multi/run_benchmarks.sh [options]
 
 Options:
   --pattern NAME         Pattern list or ALL.
+  --transport NAME       Single transport override.
   --transports LIST      Transport list override.
   --msg-sizes LIST       Payload sizes.
   --clients N            Client count.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
+  --warmup N             Warmup duration seconds.
   --build-dir PATH       Build directory override.
   --reuse-build          Reuse existing installDist output.
   --clean-build          Delete build dir before installDist.
@@ -88,11 +91,12 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pattern) PATTERN="${2:-}"; shift ;;
-    --transports) TRANSPORTS="${2:-}"; shift ;;
+    --transport|--transports) TRANSPORTS="${2:-}"; shift ;;
     --msg-sizes) MSG_SIZES="${2:-}"; explicit_msg_sizes=1; shift ;;
     --clients) CLIENTS="${2:-}"; explicit_clients=1; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
+    --warmup) WARMUP="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --clean-build) CLEAN_BUILD=1 ;;
@@ -129,6 +133,11 @@ fi
 
 if ! [[ "${CLIENTS}" =~ ^[0-9]+$ ]] || [[ "${CLIENTS}" -lt 1 ]]; then
   echo "--clients must be >= 1" >&2
+  exit 1
+fi
+
+if ! [[ "${WARMUP}" =~ ^[0-9]+$ ]]; then
+  echo "--warmup must be >= 0" >&2
   exit 1
 fi
 
@@ -193,17 +202,28 @@ pick_endpoint() {
       echo "${transport}://127.0.0.1:${SERVER_BIND_PORT}"
       return
     fi
-    local port
-    port="$(python3 - <<'PY'
+    echo "${transport}://127.0.0.1:$(pick_port)"
+  fi
+}
+
+pick_port() {
+  local port
+  port="$(python3 - <<'PY'
 import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
+try:
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    print(s.getsockname()[1])
+    s.close()
+except OSError:
+    print("")
 PY
 )"
-    echo "${transport}://127.0.0.1:${port}"
+  if [[ "${port}" =~ ^[0-9]+$ ]] && [[ "${port}" -gt 0 ]]; then
+    printf '%s\n' "${port}"
+    return
   fi
+  printf '%s\n' "$((20000 + (RANDOM % 20000)))"
 }
 
 wait_for_tcp_endpoint() {
@@ -252,7 +272,7 @@ wait_for_pid_or_kill() {
     fi
     sleep_ms 100
   done
-  wait "${pid}"
+  wait "${pid}" 2>/dev/null || true
 }
 
 validate_pattern_mode() {
@@ -293,6 +313,20 @@ resolve_build_dir() {
     printf '%s' "${BUILD_DIR%/}/perf-multi"
   else
     printf '%s' "${ROOT_DIR}/multi/Zlink.BindingBench.Multi/build"
+  fi
+}
+
+ensure_multi_runner() {
+  local build_dir="$1"
+  local runner_path="$2"
+  local install_dir="${build_dir}/install"
+  local dist_zip="${build_dir}/distributions/zlink-java-perf-multi.zip"
+  if [[ -x "${runner_path}" ]]; then
+    return 0
+  fi
+  if [[ -f "${dist_zip}" ]]; then
+    mkdir -p "${install_dir}"
+    unzip -qo "${dist_zip}" -d "${install_dir}"
   fi
 }
 
@@ -507,6 +541,10 @@ case_status() {
     printf 'unsupported,%s\n' "${unsupported_line##*,}"
     return 0
   fi
+  if grep -Eqi 'operation not permitted|address already in use|permission denied|protocol not supported|errno=1|errno=98' "${source_file}"; then
+    printf 'unsupported,transport_bind_failed\n'
+    return 0
+  fi
   local fail_line
   fail_line="$(awk -F',' -v pattern="${prefix}" -v transport="${transport}" -v size="${size}" \
     '$1=="FAIL" && $3==pattern && $4==transport && $5==size {print $0; exit}' "${source_file}")"
@@ -540,14 +578,16 @@ if [[ -n "${OUTPUT_PATH}" ]]; then
 fi
 cd "${ROOT_DIR}"
 PROJECT_BUILD_DIR="$(resolve_build_dir)"
+RUNNER="${PROJECT_BUILD_DIR}/install/zlink-java-perf-multi/bin/zlink-java-perf-multi"
 if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
   rm -rf "${PROJECT_BUILD_DIR}"
 fi
-if [[ "${REUSE_BUILD}" -eq 0 ]]; then
+ensure_multi_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
+if [[ "${REUSE_BUILD}" -eq 0 && ! -x "${RUNNER}" ]]; then
   "${JAVA_BINDINGS_DIR}/gradlew" --no-daemon -p "${JAVA_BINDINGS_DIR}" \
     -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-multi:installDist >/dev/null
 fi
-RUNNER="${PROJECT_BUILD_DIR}/install/zlink-java-perf-multi/bin/zlink-java-perf-multi"
+ensure_multi_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
 if [[ ! -x "${RUNNER}" ]]; then
   if [[ "${REUSE_BUILD}" -eq 1 ]]; then
     echo "runner not found for --reuse-build: ${RUNNER}" >&2
@@ -601,6 +641,20 @@ append_metrics() {
     echo "missing required RESULT lines for ${public_pattern}/${transport}/${size} run=${run}" >&2
     exit 1
   fi
+}
+
+early_server_status() {
+  local public_pattern="$1"
+  local transport="$2"
+  local size="$3"
+  local source_file="$4"
+  local server_pid="$5"
+  if kill -0 "${server_pid}" 2>/dev/null; then
+    printf 'running,-\n'
+    return 0
+  fi
+  wait "${server_pid}" 2>/dev/null || true
+  case_status "${public_pattern}" "${transport}" "${size}" "${source_file}"
 }
 
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
@@ -710,7 +764,7 @@ for pattern_index in "${!patterns[@]}"; do
           exec 3<>"${fifo}"
           stream_server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
             --endpoint "${endpoint}" --clients "${pattern_clients}" \
-            --duration "${DURATION}" --control-port 0 \
+            --duration "${DURATION}" --warmup "${WARMUP}" --control-port 0 \
             --io-threads "${pattern_server_io_threads}" \
             --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
             --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}" \
@@ -755,17 +809,10 @@ for pattern_index in "${!patterns[@]}"; do
         fi
 
         endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
-        control_port="$(python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-)"
+        control_port="$(pick_port)"
         server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
           --endpoint "${endpoint}" --clients "${pattern_clients}" \
-          --duration "${DURATION}" --control-port "${control_port}" \
+          --duration "${DURATION}" --warmup "${WARMUP}" --control-port "${control_port}" \
           --io-threads "${pattern_server_io_threads}" \
           --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
           --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}")
@@ -778,9 +825,21 @@ PY
         server_cmd+=(--connect-concurrency "${CONNECT_CONCURRENCY:-$( [[ "${pattern_clients}" -ge 10000 ]] && echo 1024 || echo 128 )}")
         "${server_cmd[@]}" >"${server_log}" 2>&1 &
         server_pid=$!
+        sleep_ms 100
+        status_record="$(early_server_status "${pattern}" "${transport}" "${size}" "${server_log}" "${server_pid}")"
+        case "${status_record%%,*}" in
+          unsupported)
+            transport_unsupported=1
+            break
+            ;;
+          fail)
+            transport_failures=$((transport_failures + 1))
+            continue
+            ;;
+        esac
         client_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-client "${pattern}" "${transport}" "${size}" \
           --endpoint "${endpoint}" --clients "${pattern_clients}" \
-          --duration "${DURATION}" --control-port "${control_port}" \
+          --duration "${DURATION}" --warmup "${WARMUP}" --control-port "${control_port}" \
           --io-threads "${pattern_client_io_threads}" \
           --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
           --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}")
@@ -847,7 +906,7 @@ PY
 done
 
 python3 - "${tmp_metrics}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
-  "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
+  "${display_clients}" "${RUNS}" "${DURATION}" "${WARMUP}" "${RESULTS_TAG}" \
   "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
   "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
   "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" "${SERVER_BIND_PORT}" \
@@ -857,7 +916,7 @@ import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path = sys.argv[1:]
+metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, warmup, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
@@ -941,6 +1000,7 @@ def emit_effective_options(section):
     emit(f"- connect_ready_timeout_ms: {connect_ready_timeout_ms}")
     emit(f"- monitor_hwm: {monitor_hwm}")
     emit(f"- server_bind_port: {server_bind_port}")
+    emit(f"- warmup_seconds: {warmup}")
     emit(f"- duration_seconds: {duration}")
     if results_tag:
         emit(f"- results_tag: {results_tag}")

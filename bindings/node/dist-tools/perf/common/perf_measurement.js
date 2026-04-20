@@ -83,9 +83,11 @@ function computeMetrics(latenciesNs, durationSeconds, msgSize, bandwidthMultipli
     };
 }
 function isEchoPattern(pattern) {
-    return pattern === 'MULTI_DEALER_ROUTER'
+    return pattern === 'SPOT_REQREP'
+        || pattern === 'MULTI_DEALER_ROUTER'
         || pattern === 'MULTI_ROUTER_ROUTER'
-        || pattern === 'MULTI_STREAM';
+        || pattern === 'MULTI_STREAM'
+        || pattern === 'MULTI_SPOT_REQREP';
 }
 function summarizeMetrics(pattern, transport, msgSize, latenciesNs, durationSeconds) {
     const metrics = computeMetrics(latenciesNs, durationSeconds, msgSize, isEchoPattern(pattern) ? 2 : 1);
@@ -126,13 +128,23 @@ function primaryMetricsFromResultLines(pattern, msgSize, lines) {
 function sleepImmediate() {
     return new Promise((resolve) => setImmediate(resolve));
 }
-function createRunId() {
-    return (Math.random() * 0xffffffff) >>> 0;
+function createRunId(caseOrdinal = 1) {
+    if (!Number.isInteger(caseOrdinal) || caseOrdinal <= 0) {
+        throw new Error(`invalid run id ordinal: ${caseOrdinal}`);
+    }
+    return caseOrdinal >>> 0;
 }
 function createMetricCollector(config) {
     const latenciesNs = [];
     const runId = config.runId >>> 0;
     const msgSize = config.msgSize >>> 0;
+    const activeStartNs = config.activeStartNs === undefined
+        ? 0n
+        : BigInt(config.activeStartNs);
+    const activeStopNs = config.activeStopNs === undefined
+        ? BigInt('0xffffffffffffffff')
+        : BigInt(config.activeStopNs);
+    const rttDivisor = config.roundTrip ? 2n : 1n;
     let accepted = 0;
     let rejected = 0;
     let closed = false;
@@ -150,12 +162,15 @@ function createMetricCollector(config) {
             }
             const sentTsNs = BigInt(header.sentTsNs);
             const recvTsNs = BigInt(receivedAtNs);
+            if (recvTsNs < activeStartNs || recvTsNs > activeStopNs) {
+                return;
+            }
             if (recvTsNs < sentTsNs) {
                 rejected += 1;
                 return;
             }
             accepted += 1;
-            latenciesNs.push(Number(recvTsNs - sentTsNs));
+            latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
         },
         async finish() {
             closed = true;

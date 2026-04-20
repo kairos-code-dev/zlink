@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Registry](./aspnet-core-registry.ko.md)
+
 # Draft -- ZLink Framework .NET Interface Catalog
 
 > 이 문서는 **구현 전 초안**이다.
@@ -243,24 +245,25 @@ public interface IZLinkMessageSerializer
 }
 ```
 
-실사용 표면은 아래처럼 extension helper로 얹는 쪽을 기본으로 본다.
+실사용 표면은 아래처럼 binding core `Message` 자체가 아니라, 별도 codec
+extension/helper 계층으로 얹는 쪽을 기본으로 본다.
 
 ```csharp
-public static class ProtoMessageExtensions
+public static class MessageExtensions
 {
-    public static T ParseProto<T>(this Message message)
-        where T : IMessage<T>, new();
-}
-
-public static class JsonMessageExtensions
-{
-    public static T ParseJson<T>(this Message message)
-        where T : class;
+    public static T Parse<T>(this Message message);
 }
 ```
 
-즉 transport가 serializer를 직접 내장하는 구조보다, `Message` 위에 protobuf/json
-helper를 얹는 구조가 `playhouse/extensions`와 더 가깝고 문서도 단순하게 읽힌다.
+이 초안에서는 아래 규칙을 기본으로 본다.
+
+- `T`가 generated protobuf 타입이고 `IMessage<T>` 계열이면 protobuf로 해석한다.
+- 그 밖의 일반 class면 json으로 해석한다.
+
+즉 transport가 serializer를 직접 내장하는 구조보다, `Message` 위에 type 기준
+parse helper를 얹는 구조가 `playhouse/extensions`와 더 가깝고 문서도 단순하게
+읽힌다. 이때 `Parse<T>()`는 binding core의 필수 인스턴스 메서드가 아니라,
+framework 또는 codec extension package가 제공하는 public helper로 보는 편이 맞다.
 
 ## 5. Client 인터페이스
 
@@ -277,24 +280,39 @@ DI로 주입되며, ZLink handler와 기존 ASP.NET Core HTTP handler 양쪽에�
 즉 일반 channel messaging에서는 특정 `ROUTER(server)`를 `rid`로 직접 지정해
 호출하지 않는다. `rid`를 넣는 routed 호출은 SPOT spot-to-spot 경로에만 남긴다.
 
+packet key는 매번 별도 문자열을 받기보다, 기본적으로 payload 타입의
+`Type.Name`으로 해석하는 쪽을 기준으로 본다. 예를 들면
+`GetProfileRequest`는 기본적으로 `GetProfileRequest` packet으로 매핑된다.
+
+이 기본 규칙만으로 충분하지 않은 경우를 위해 `PacketName`, `Timeout` 같은 변형
+값은 별도 `options` 객체로 모은다. 이렇게 하면 `packetName`, `timeout`,
+`CancellationToken` 조합마다 overload를 계속 늘리지 않아도 된다.
+
 ```csharp
+public sealed class ZLinkSendOptions
+{
+    public string? PacketName { get; init; }
+}
+
+public sealed class ZLinkRequestOptions
+{
+    public string? PacketName { get; init; }
+    public TimeSpan? Timeout { get; init; }
+}
+
 public interface IZLinkClient
 {
     // --- channelName 기준 ---
     ValueTask SendAsync<TMessage>(
         string channelName,
         TMessage message,
+        ZLinkSendOptions? options = null,
         CancellationToken cancellationToken = default);
 
     ValueTask<TReply> RequestAsync<TReply>(
         string channelName,
         IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestAsync<TReply>(
-        string channelName,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
+        ZLinkRequestOptions? options = null,
         CancellationToken cancellationToken = default);
 
     // --- timer ---
@@ -313,6 +331,15 @@ public interface IZLinkClient
 runtime은 접근한 `channelName`마다 별도 outbound channel을 lazy하게 만든다.
 각 channel은 그 channel 전용 `Discovery`와 outbound socket을 가진다.
 
+packet key 해석 규칙은 아래 순서를 기본으로 본다.
+
+1. `options.PacketName`이 있으면 그것을 사용한다.
+2. 없으면 payload 타입에 선언된 packet metadata를 본다.
+3. 그것도 없으면 `Type.Name`을 packet key로 사용한다.
+
+즉 simple case에서는 타입 이름만으로 충분하고, 모호하거나 충돌하는 경우에만
+explicit `PacketName`을 쓰게 한다.
+
 ### 5.2 IZLinkSpotClient
 
 SPOT outbound 호출을 위한 client다.
@@ -330,17 +357,13 @@ public interface IZLinkSpotClient
     ValueTask SendChannelAsync<TMessage>(
         string channelName,
         TMessage message,
+        ZLinkSendOptions? options = null,
         CancellationToken cancellationToken = default);
 
     ValueTask<TReply> RequestChannelAsync<TReply>(
         string channelName,
         IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestChannelAsync<TReply>(
-        string channelName,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
+        ZLinkRequestOptions? options = null,
         CancellationToken cancellationToken = default);
 
     ValueTask SendToAsync<TMessage>(
@@ -353,13 +376,7 @@ public interface IZLinkSpotClient
         RoutingId targetRid,
         RoutingId spotRid,
         IZLinkRequest<TReply> request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> RequestToAsync<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IZLinkRequest<TReply> request,
-        TimeSpan timeout,
+        ZLinkRequestOptions? options = null,
         CancellationToken cancellationToken = default);
 
     ValueTask PublishAsync<TEvent>(
@@ -386,6 +403,8 @@ public interface IZLinkSpotClient
 - 다른 channel send/request는 attach된 channel client를 통해 푼다.
 - `SendToAsync(...)` / `RequestToAsync(...)`는 spot-to-spot routed 호출에만 쓴다.
   일반 channel `ROUTER(server)`를 `rid`로 직접 지정하는 용도는 아니다.
+- channel send/request와 마찬가지로 `PacketName`, `Timeout`은 options로 모아
+  overload를 최소화한다.
 - timer callback은 가능하면 같은 spot 실행 문맥에서 실행되는 편이 더
   자연스럽다. 이 부분은 하부 C API 계약(`zlink_spot_timer_new`)을 따른다.
 
@@ -535,6 +554,21 @@ handler는 메서드 시그니처만으로 request/reply 타입을 읽을 수 �
 필수는 아니다. 반면 client 호출부에서는 `RequestAsync`의 반환 타입 추론을 위해
 이 marker를 쓰는 편이 맞다.
 
+기본 packet key는 `Type.Name`을 쓴다. 예: `GetProfileRequest`.
+이 기본 이름이 맞지 않을 때는 payload 타입에 explicit metadata를 둘 수 있다.
+
+```csharp
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct,
+    AllowMultiple = false)]
+public sealed class ZLinkPacketAttribute : Attribute
+{
+    public ZLinkPacketAttribute(string packetName);
+    public string PacketName { get; }
+}
+```
+
+이 metadata는 outbound 기본 해석과 inbound handler 기본 매핑 양쪽에서 함께 쓴다.
+
 ## 10. Registry 조회 인터페이스
 
 Registry 조회 인터페이스는 infrastructure 성격이므로 상세 정의는
@@ -561,16 +595,16 @@ topology snapshot만 제공한다.
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkRequestAttribute : Attribute
 {
-    public ZLinkRequestAttribute(string pattern);
-    public string Pattern { get; }
+    public ZLinkRequestAttribute();
+    public string? PacketName { get; init; }
     public string? ServiceName { get; init; }
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkSendAttribute : Attribute
 {
-    public ZLinkSendAttribute(string pattern);
-    public string Pattern { get; }
+    public ZLinkSendAttribute();
+    public string? PacketName { get; init; }
     public string? ServiceName { get; init; }
 }
 ```
@@ -581,8 +615,8 @@ public sealed class ZLinkSendAttribute : Attribute
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkEventAttribute : Attribute
 {
-    public ZLinkEventAttribute(string pattern);
-    public string Pattern { get; }
+    public ZLinkEventAttribute();
+    public string? PacketName { get; init; }
     public string? ServiceName { get; init; }
 }
 ```
@@ -595,8 +629,8 @@ public sealed class ZLinkEventAttribute : Attribute
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkSpotRequestAttribute : Attribute
 {
-    public ZLinkSpotRequestAttribute(string pattern);
-    public string Pattern { get; }
+    public ZLinkSpotRequestAttribute();
+    public string? PacketName { get; init; }
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
@@ -637,8 +671,8 @@ attribute 기반 handler의 메서드 시그니처는 아래 규칙을 따른다
 - request handler 반환: `ValueTask<T>` 또는 `Task<T>`
 - send handler 반환: `ValueTask` (1차 권장)
 
-framework가 강제하는 것은 class 구조가 아니라, 메시지 이름 하나는 하나의
-handler에만 매핑된다는 규칙이다. 주제별 handler 묶음(`UserHandlers`)과 패킷별
+framework가 강제하는 것은 class 구조가 아니라, resolved packet key 하나는
+하나의 handler에만 매핑된다는 규칙이다. 주제별 handler 묶음(`UserHandlers`)과 패킷별
 단일 class(`UserGetHandler`) 둘 다 허용한다.
 
 ## 13. DI 동작 기준
@@ -650,14 +684,14 @@ handler에만 매핑된다는 규칙이다. 주제별 handler 묶음(`UserHandle
 - framework는 별도 객체 생성기를 두기보다, `ASP.NET Core`가 쓰는
   `IServiceProvider`를 기준으로 handler invocation을 구성한다.
 
-`channelId`는 route prefix가 아니라 애플리케이션이 속한 channel 묶음 식별자다.
-handler class attribute보다 등록 옵션(`options.ChannelId = "api"`)에 두는 편을
+`channelName`은 route prefix가 아니라 애플리케이션이 속한 local channel 이름이다.
+handler class attribute보다 등록 옵션(`options.ChannelName = "api"`)에 두는 편을
 현재 방향으로 본다.
 
 ## 14. 아직 확정하지 않는 것
 
 - request/send를 인터페이스와 attribute 중 어느 쪽을 앞면으로 둘지
-- `channelId`를 등록 옵션에서만 둘지, 별도 attribute도 허용할지
+- `channelName`을 등록 옵션에서만 둘지, 별도 attribute도 허용할지
 - pub/sub을 `IZLinkEventHandler<>`와 `IZLinkTopicHandler<>` 중 무엇으로 둘지
 - `ZLinkRequestContext`와 `ZLinkSendContext`를 하나의 공통 context로 합칠지
 - stream을 packet 중심으로 고정할지, session 중심으로 올릴지

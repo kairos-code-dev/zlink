@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[Framework 초안 묶음](../README.ko.md) | [개요](../overview.ko.md) | [검증](../usecase-validation.ko.md)
+
 # Draft -- ZLink Framework Use Cases
 
 > 이 문서는 **구현 전 초안**이다.

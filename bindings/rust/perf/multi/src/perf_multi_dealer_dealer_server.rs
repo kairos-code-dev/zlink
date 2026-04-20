@@ -3,7 +3,7 @@
 mod common;
 
 use std::io::{self, BufRead};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use zlink::*;
 
 fn main() {
@@ -12,11 +12,8 @@ fn main() {
 
     let ctx = Context::new().expect("context");
     let server = ctx.dealer_socket().expect("dealer");
+    server.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
     server.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
-    server
-        .common_options()
-        .set_recv_timeout(Duration::from_millis(1))
-        .expect("recv timeout");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&server, &tls).expect("server tls");
@@ -28,7 +25,17 @@ fn main() {
         "tls" => "tls://0.0.0.0:0".to_string(),
         _ => "tcp://0.0.0.0:0".to_string(),
     };
-    server.bind(&bind_endpoint).expect("bind");
+    if let Err(err) = server.bind(&bind_endpoint) {
+        if common::handle_transport_setup_error(
+            "MULTI_DEALER_DEALER",
+            &args.transport,
+            "bind",
+            err,
+        ) {
+            return;
+        }
+        panic!("bind: {err}");
+    }
     let endpoint = server.last_endpoint().expect("endpoint");
     common::print_ready(&endpoint);
 
@@ -48,17 +55,39 @@ fn main() {
         return;
     }
 
-    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds + 1);
+    let deadline = Instant::now() + std::time::Duration::from_secs(settings.duration_seconds);
+    let mut latency = common::LatencyStats::new();
+    let mut active_count = 0u64;
     while Instant::now() < deadline {
         loop {
             match server.recv_with_flags(RecvFlags::DONT_WAIT) {
                 Ok(received) => {
-                    let _ = received.parts();
+                    let data = common::message_payload(received.parts());
+                    if common::is_valid_active_message(data, args.msg_size) {
+                        let sent_ts_ns = common::decode_sent_ts_ns(data);
+                        latency.record_ns(
+                            common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
+                        );
+                        active_count += 1;
+                    }
                 }
                 Err(err) if err.code == RecvResult::NoData => break,
                 Err(_) => break,
             }
         }
-        std::thread::sleep(Duration::from_millis(1));
+        std::thread::yield_now();
     }
+
+    let stats = latency.finish();
+    let final_stats = common::StatsResult {
+        count: active_count,
+        ..stats
+    };
+    common::print_result(
+        "MULTI_DEALER_DEALER",
+        &args.transport,
+        args.msg_size,
+        settings.duration_seconds,
+        &final_stats,
+    );
 }

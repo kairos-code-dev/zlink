@@ -60,6 +60,13 @@ pub const ZLINK_DONTWAIT: zlink_send_flags_t = 0x0001;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_part_flag_t {
+    ZLINK_PART_FINAL = 0,
+    ZLINK_PART_MORE = 1,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_send_result_t {
     ZLINK_SEND_RESULT_SENT = 0,
     ZLINK_SEND_RESULT_BACKPRESSURED = 1,
@@ -783,10 +790,7 @@ unsafe extern "C" {
         optval: *mut c_void,
         optvallen: *mut usize,
     ) -> c_int;
-    pub fn zlink_set_admission_state(
-        handle: *mut c_void,
-        state: zlink_admission_state_t,
-    ) -> c_int;
+    pub fn zlink_set_admission_state(handle: *mut c_void, state: zlink_admission_state_t) -> c_int;
     pub fn zlink_get_admission_state(
         handle: *mut c_void,
         state: *mut zlink_admission_state_t,
@@ -868,101 +872,101 @@ unsafe extern "C" {
     pub fn zlink_socket_attach_discovery(socket: *mut c_void, discovery: *mut c_void) -> c_int;
 
     // -- Send / recv -------------------------------------------------------
-    pub fn zlink_send(
+    pub fn zlink_send_part(
         socket: *mut c_void,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_send_rid(
+    pub fn zlink_send_part_rid(
         socket: *mut c_void,
         target_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_dealer_request(
+    pub fn zlink_dealer_request_part(
         dealer: *mut c_void,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        handler: zlink_reply_handler_fn,
-        userdata: *mut c_void,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
         timeout_ms: u32,
+        handler: Option<zlink_reply_handler_fn>,
+        userdata: *mut c_void,
     ) -> c_int;
-    pub fn zlink_router_request(
+    pub fn zlink_router_request_part(
         router: *mut c_void,
         peer_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        handler: zlink_reply_handler_fn,
-        userdata: *mut c_void,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
         timeout_ms: u32,
+        handler: Option<zlink_reply_handler_fn>,
+        userdata: *mut c_void,
     ) -> c_int;
-    pub fn zlink_router_reply(
+    pub fn zlink_router_reply_part(
         router: *mut c_void,
         peer_rid: *const zlink_routing_id_t,
         request_seq: u64,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
     pub fn zlink_router_handler(
         router: *mut c_void,
         handler: zlink_router_handler_fn,
         userdata: *mut c_void,
     ) -> c_int;
-    pub fn zlink_router_recv(
+    pub fn zlink_router_recv_part(
         router: *mut c_void,
         source_node_rid_out: *mut *const zlink_routing_id_t,
         source_spot_rid_out: *mut *const zlink_routing_id_t,
         request_seq_out: *mut u64,
-        parts_out: *mut *mut zlink_msg_t,
-        part_count_out: *mut usize,
-        flags: zlink_send_flags_t,
+        part_out: *mut zlink_msg_t,
+        has_more_out: *mut c_int,
+        flags: zlink_recv_flags_t,
     ) -> c_int;
-    pub fn zlink_router_request_spot(
+    pub fn zlink_router_request_spot_part(
         router: *mut c_void,
         dest_node_rid: *const zlink_routing_id_t,
         dest_spot_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        handler: zlink_reply_handler_fn,
+        part: *mut zlink_msg_t,
+        handler: Option<zlink_reply_handler_fn>,
         userdata: *mut c_void,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
         timeout_ms: u32,
     ) -> c_int;
-    pub fn zlink_router_reply_spot(
+    pub fn zlink_router_reply_spot_part(
         router: *mut c_void,
         dest_node_rid: *const zlink_routing_id_t,
         dest_spot_rid: *const zlink_routing_id_t,
         request_seq: u64,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_router_send_spot(
+    pub fn zlink_router_send_spot_part(
         router: *mut c_void,
         dest_node_rid: *const zlink_routing_id_t,
         dest_spot_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_recv(
+    pub fn zlink_recv_part(
         socket: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
-        parts_out: *mut *mut zlink_msg_t,
-        part_count_out: *mut usize,
-        flags: zlink_send_flags_t,
+        source_rid_out: *mut *const zlink_routing_id_t,
+        part_out: *mut zlink_msg_t,
+        has_more_out: *mut c_int,
+        flags: zlink_recv_flags_t,
     ) -> c_int;
 
     // -- Publish / subscribe -----------------------------------------------
-    pub fn zlink_publish(
+    pub fn zlink_publish_part(
         subject: *mut c_void,
         topic_id: *const c_char,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
     pub fn zlink_set_subscription(handle: *mut c_void, filter: *const c_char) -> c_int;
     pub fn zlink_unset_subscription(handle: *mut c_void, filter: *const c_char) -> c_int;
@@ -973,22 +977,24 @@ unsafe extern "C" {
         filter_len_inout: *mut usize,
         is_pattern_out: *mut c_int,
     ) -> c_int;
-    pub fn zlink_subscribe(
+    pub fn zlink_subscribe_part(
         subject: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
-        parts_out: *mut *mut zlink_msg_t,
-        part_count_out: *mut usize,
+        source_rid_out: *mut *const zlink_routing_id_t,
         topic_id_out: *mut c_char,
+        topic_id_capacity: usize,
         topic_id_len_out: *mut usize,
-        flags: zlink_send_flags_t,
+        part_out: *mut zlink_msg_t,
+        has_more_out: *mut c_int,
+        flags: zlink_recv_flags_t,
     ) -> c_int;
-    pub fn zlink_subscription_event(
+    pub fn zlink_xpub_recv_part(
         subject: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
+        source_rid_out: *mut *const zlink_routing_id_t,
         subscribed_out: *mut c_int,
         topic_id_out: *mut c_char,
+        topic_id_capacity: usize,
         topic_id_len_out: *mut usize,
-        flags: zlink_send_flags_t,
+        flags: zlink_recv_flags_t,
     ) -> c_int;
 
     // -- Multipart close ---------------------------------------------------
@@ -1103,84 +1109,58 @@ unsafe extern "C" {
         channel_name: *const c_char,
         dealer: *mut c_void,
     ) -> c_int;
-    pub fn zlink_spot_node_attach_pub_ingress(node: *mut c_void, pub_socket: *mut c_void)
-        -> c_int;
-    pub fn zlink_spot_reply_spot(
+    pub fn zlink_spot_node_attach_pub_ingress(node: *mut c_void, pub_socket: *mut c_void) -> c_int;
+    pub fn zlink_spot_reply_spot_part(
         spot: *mut c_void,
         dest_node_rid: *const zlink_routing_id_t,
         dest_spot_rid: *const zlink_routing_id_t,
         request_seq: u64,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_spot_send_router(
-        spot: *mut c_void,
-        peer_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        flags: zlink_send_flags_t,
-    ) -> c_int;
-    pub fn zlink_spot_request_router(
-        spot: *mut c_void,
-        peer_rid: *const zlink_routing_id_t,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        handler: zlink_reply_handler_fn,
-        userdata: *mut c_void,
-        flags: zlink_send_flags_t,
-        timeout_ms: u32,
-    ) -> c_int;
-    pub fn zlink_spot_reply_router(
+    pub fn zlink_spot_reply_router_part(
         spot: *mut c_void,
         peer_rid: *const zlink_routing_id_t,
         request_seq: u64,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_spot_send_channel(
+    pub fn zlink_spot_send_channel_part(
         spot: *mut c_void,
         channel_name: *const c_char,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_spot_request_channel(
+    pub fn zlink_spot_request_channel_part(
         spot: *mut c_void,
         channel_name: *const c_char,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        handler: zlink_reply_handler_fn,
+        part: *mut zlink_msg_t,
+        handler: Option<zlink_reply_handler_fn>,
         userdata: *mut c_void,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
         timeout_ms: u32,
     ) -> c_int;
-    pub fn zlink_spot_publish(
+    pub fn zlink_spot_publish_part(
         spot: *mut c_void,
         service_name: *const c_char,
         topic_id: *const c_char,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
+        part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_spot_subscribe(
+    pub fn zlink_spot_subscribe_part(
         spot: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
-        parts_out: *mut *mut zlink_msg_t,
-        part_count_out: *mut usize,
+        source_rid_out: *mut *const zlink_routing_id_t,
         service_name_out: *mut c_char,
+        service_name_capacity: usize,
         service_name_len_out: *mut usize,
         topic_id_out: *mut c_char,
+        topic_id_capacity: usize,
         topic_id_len_out: *mut usize,
-        flags: zlink_recv_flags_t,
-    ) -> c_int;
-    pub fn zlink_spot_subscription_event(
-        spot: *mut c_void,
-        source_rid_out: *mut zlink_routing_id_t,
-        subscribed_out: *mut c_int,
-        service_name_out: *mut c_char,
-        service_name_len_out: *mut usize,
-        topic_id_out: *mut c_char,
-        topic_id_len_out: *mut usize,
+        part_out: *mut zlink_msg_t,
+        has_more_out: *mut c_int,
         flags: zlink_recv_flags_t,
     ) -> c_int;
     pub fn zlink_spot_handler(
@@ -1193,14 +1173,14 @@ unsafe extern "C" {
         handler: zlink_spot_dispatch_event_handler_fn,
         userdata: *mut c_void,
     ) -> c_int;
-    pub fn zlink_spot_recv(
+    pub fn zlink_spot_recv_part(
         spot: *mut c_void,
         source_rid_out: *mut *const zlink_routing_id_t,
         spot_rid_out: *mut *const zlink_routing_id_t,
         request_seq_out: *mut u64,
-        parts_out: *mut *mut zlink_msg_t,
-        part_count_out: *mut usize,
-        flags: zlink_send_flags_t,
+        part_out: *mut zlink_msg_t,
+        has_more_out: *mut c_int,
+        flags: zlink_recv_flags_t,
     ) -> c_int;
 
     // -- Spot / registry snapshot -------------------------------------------

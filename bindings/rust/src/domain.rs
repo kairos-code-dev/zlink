@@ -7,7 +7,7 @@ use crate::error::{
 use crate::ffi;
 use crate::flags::SendFlags;
 use crate::message::{IntoMultipart, Message, RoutingId};
-use crate::socket::prepare_send_parts;
+use crate::socket::{prepare_send_parts, submit_part_sequence};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendResult {
@@ -17,19 +17,12 @@ pub enum SendResult {
 }
 
 impl SendResult {
-    pub(crate) fn from_raw(raw: crate::ffi::zlink_send_result_t) -> Self {
-        match raw {
-            crate::ffi::zlink_send_result_t::ZLINK_SEND_RESULT_SENT => Self::Sent,
-            crate::ffi::zlink_send_result_t::ZLINK_SEND_RESULT_BACKPRESSURED => Self::Backpressured,
-            crate::ffi::zlink_send_result_t::ZLINK_SEND_RESULT_NOT_READY => Self::NotReady,
-        }
-    }
-
     pub fn is_sent(&self) -> bool {
         matches!(self, Self::Sent)
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum ReplyContext {
     Router {
         handle: *mut c_void,
@@ -53,30 +46,30 @@ impl ReplyContext {
                 handle,
                 routing_id,
                 request_seq,
-            } => unsafe {
-                ffi::zlink_router_reply(
+            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+                ffi::zlink_router_reply_part(
                     *handle,
                     routing_id.as_raw(),
                     *request_seq,
-                    native.as_mut_ptr(),
-                    native.len(),
+                    part,
+                    part_flag,
                 )
-            },
+            })?,
             Self::Spot {
                 handle,
                 node_rid,
                 spot_rid,
                 request_seq,
-            } => unsafe {
-                ffi::zlink_spot_reply_spot(
+            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+                ffi::zlink_spot_reply_spot_part(
                     *handle,
                     node_rid.as_raw(),
                     spot_rid.as_raw(),
                     *request_seq,
-                    native.as_mut_ptr(),
-                    native.len(),
+                    part,
+                    part_flag,
                 )
-            },
+            })?,
         };
         check_submit_rc(rc)
     }
@@ -96,20 +89,6 @@ impl Received {
             routing_id,
             spot_rid: None,
             request_seq: None,
-            parts,
-            reply_context: None,
-        }
-    }
-
-    pub(crate) fn with_request_seq(
-        routing_id: Option<RoutingId>,
-        parts: Vec<Message>,
-        request_seq: u64,
-    ) -> Self {
-        Self {
-            routing_id,
-            spot_rid: None,
-            request_seq: Some(request_seq),
             parts,
             reply_context: None,
         }

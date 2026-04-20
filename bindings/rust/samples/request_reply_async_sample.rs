@@ -41,7 +41,7 @@ fn main() {
     let ctx = Context::new().expect("context creation failed");
     let endpoint = sample_support::tcp_endpoint();
 
-    let mut router_socket = ctx.router_socket().expect("router socket failed");
+    let router_socket = ctx.router_socket().expect("router socket failed");
     let dealer_socket = ctx.dealer_socket().expect("dealer socket failed");
     let router_monitor = SocketMonitor::open(&router_socket).expect("router monitor open failed");
     let dealer_monitor = SocketMonitor::open(&dealer_socket).expect("dealer monitor open failed");
@@ -57,16 +57,21 @@ fn main() {
 
     let (request_done_tx, request_done_rx) = mpsc::channel();
     let expected_routing_id = routing_id.clone();
-    let mut router_thread = router_socket;
+    let router_thread = router_socket;
     thread::spawn(move || {
         let received = router_thread.recv().expect("router recv failed");
         assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "ping");
         assert_eq!(
-            received.routing_id().expect("missing routing id").as_bytes(),
+            received
+                .routing_id()
+                .expect("missing routing id")
+                .as_bytes(),
             expected_routing_id.as_bytes()
         );
         received
-            .reply(vec![Message::copy_from(b"pong").expect("reply message failed")])
+            .reply(vec![
+                Message::copy_from(b"pong").expect("reply message failed"),
+            ])
             .expect("reply send failed");
         request_done_tx.send(()).expect("request done send failed");
     });

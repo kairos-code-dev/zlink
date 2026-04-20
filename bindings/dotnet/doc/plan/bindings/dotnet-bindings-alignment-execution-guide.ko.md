@@ -196,7 +196,7 @@ dotnet run --project /home/hep7/project/kairos/zlink/bindings/dotnet/samples/Spo
   green 확인 완료
 - `dotnet build` green 재확인 완료
 - native export diff는 intentionally-unbound helper
-  (`zlink_poller_wait`, `zlink_subscription_at`, `zlink_subscription_event`,
+  (`zlink_poller_wait`, `zlink_subscription_at`, `zlink_xpub_recv_part`,
   `zlink_thread_start`, `zlink_thread_join`)만 남고, missing export 참조는 0건으로 정리됨
 
 완료 기준:

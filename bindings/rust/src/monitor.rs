@@ -111,7 +111,7 @@ pub struct MonitorTarget<'a> {
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> MonitorTarget<'a> {
+impl MonitorTarget<'_> {
     fn raw(&self) -> *mut c_void {
         self.handle
     }
@@ -123,7 +123,7 @@ pub struct ServiceMonitorTarget<'a> {
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> ServiceMonitorTarget<'a> {
+impl ServiceMonitorTarget<'_> {
     fn raw(&self) -> *mut c_void {
         self.handle
     }

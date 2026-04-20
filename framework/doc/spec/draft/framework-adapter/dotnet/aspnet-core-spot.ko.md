@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [STREAM](./aspnet-core-stream.ko.md)
+
 # Draft -- ZLink Framework ASP.NET Core SPOT Integration
 
 > 이 문서는 **구현 전 초안**이다.
@@ -239,7 +241,10 @@ await client.SendChannelAsync(
 var reply = await client.RequestChannelAsync(
     "orders",
     new GetStageStateRequest(),
-    TimeSpan.FromMilliseconds(200),
+    new ZLinkRequestOptions
+    {
+        Timeout = TimeSpan.FromMilliseconds(200)
+    },
     cancellationToken);
 ```
 

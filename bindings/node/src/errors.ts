@@ -13,7 +13,8 @@ export const SubmitResult = Object.freeze({
   ThreadViolation: 9,
   OutOfMemory: 10,
   SeqExhausted: 11,
-  InternalError: 12
+  InternalError: 12,
+  NotAdmitted: 13
 } as const);
 export type SubmitResult = typeof SubmitResult[keyof typeof SubmitResult];
 
@@ -190,6 +191,7 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 107:
         case 113:
         case 110: return SubmitResult.NotConnected;
+        case 111: return SubmitResult.NotAdmitted;
         case 2: return SubmitResult.NotFound;
         case 125: return SubmitResult.Terminated;
         case 14: return SubmitResult.InvalidHandle;

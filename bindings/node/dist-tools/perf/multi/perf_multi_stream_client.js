@@ -2,25 +2,28 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const net = require('node:net');
+const readline = require('node:readline');
 const { once } = require('node:events');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-function frame(buffer) {
-    const framed = Buffer.allocUnsafe(buffer.length + 4);
-    framed.writeUInt32BE(buffer.length, 0);
-    buffer.copy(framed, 4);
-    return framed;
+function buildPacketFrame(body) {
+    const frame = Buffer.allocUnsafe(6 + body.length);
+    frame.writeUInt16BE(0, 0);
+    frame.writeUInt32BE(body.length, 2);
+    body.copy(frame, 6);
+    return frame;
 }
 function parseFrames(state, chunk) {
     state.buffer = Buffer.concat([state.buffer, chunk]);
     const payloads = [];
-    while (state.buffer.length >= 4) {
-        const payloadLength = state.buffer.readUInt32BE(0);
-        const frameLength = payloadLength + 4;
+    while (state.buffer.length >= 6) {
+        const headerSize = state.buffer.readUInt16BE(0);
+        const bodySize = state.buffer.readUInt32BE(2);
+        const frameLength = 6 + headerSize + bodySize;
         if (state.buffer.length < frameLength) {
             break;
         }
-        payloads.push(state.buffer.subarray(4, frameLength));
+        payloads.push(state.buffer.subarray(6 + headerSize, frameLength));
         state.buffer = state.buffer.subarray(frameLength);
     }
     return payloads;
@@ -33,8 +36,7 @@ function createFrameReader(socket) {
     };
     const flushWaiters = () => {
         while (state.pending.length > 0 && state.waiters.length > 0) {
-            const waiter = state.waiters.shift();
-            waiter.resolve(state.pending.shift());
+            state.waiters.shift().resolve(state.pending.shift());
         }
     };
     const onData = (chunk) => {
@@ -44,11 +46,6 @@ function createFrameReader(socket) {
             flushWaiters();
         }
     };
-    const onError = (error) => {
-        while (state.waiters.length > 0) {
-            state.waiters.shift().reject(error);
-        }
-    };
     const onClose = () => {
         const error = new Error('stream socket closed');
         while (state.waiters.length > 0) {
@@ -56,7 +53,7 @@ function createFrameReader(socket) {
         }
     };
     socket.on('data', onData);
-    socket.on('error', onError);
+    socket.on('error', onClose);
     socket.on('close', onClose);
     return {
         async nextFrame() {
@@ -69,77 +66,72 @@ function createFrameReader(socket) {
         },
         close() {
             socket.off('data', onData);
-            socket.off('error', onError);
+            socket.off('error', onClose);
             socket.off('close', onClose);
         }
     };
 }
 async function connectStreamSocket(endpoint) {
     const url = new URL(endpoint);
-    const port = Number(url.port);
-    const host = url.hostname || '127.0.0.1';
-    const socket = net.createConnection({ host, port });
+    const socket = net.createConnection({
+        host: url.hostname || '127.0.0.1',
+        port: Number(url.port)
+    });
     socket.setNoDelay(true);
     await once(socket, 'connect');
     return socket;
 }
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const runId = createRunId();
-    const collector = createMetricCollector({
-        runId,
-        msgSize: options.msgSize
-    });
+    const runId = createRunId(1);
     const sockets = [];
     const readers = [];
     const payloads = [];
     try {
-        for (let i = 0; i < options.clients; i += 1) {
-            const socket = await connectStreamSocket(options.endpoint);
+        const connected = await Promise.all(Array.from({ length: options.clients }, async () => connectStreamSocket(options.endpoint)));
+        for (const socket of connected) {
             sockets.push(socket);
             readers.push(createFrameReader(socket));
-            payloads.push({
-                warmup: createPayload(options.msgSize),
-                active: createPayload(options.msgSize)
+            payloads.push(createPayload(options.msgSize));
+        }
+        if (sockets.length !== options.clients) {
+            throw new Error(`connect_ok mismatch: ${sockets.length}/${options.clients}`);
+        }
+        console.log(`CLIENT_READY,${options.msgSize}`);
+        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+        for await (const line of rl) {
+            if (line !== `START,${options.msgSize}`) {
+                continue;
+            }
+            const activeStartNs = process.hrtime.bigint();
+            const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+            const collector = createMetricCollector({
+                runId,
+                msgSize: options.msgSize,
+                activeStartNs,
+                activeStopNs,
+                roundTrip: true
             });
-        }
-        console.log('CLIENT_READY');
-        const warmupUntilNs = process.hrtime.bigint()
-            + BigInt(Math.floor(options.warmup * 1_000_000_000));
-        let seq = 1n;
-        while (process.hrtime.bigint() < warmupUntilNs) {
-            for (let i = 0; i < sockets.length; i += 1) {
-                const payload = payloads[i].warmup;
-                stampPayload(payload, { phase: 0, runId, msgSize: options.msgSize, seq });
-                if (!sockets[i].write(frame(payload))) {
-                    await once(sockets[i], 'drain');
+            let seq = 1n;
+            while (process.hrtime.bigint() < activeStopNs) {
+                for (let i = 0; i < sockets.length; i += 1) {
+                    stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
+                    if (!sockets[i].write(buildPacketFrame(payloads[i]))) {
+                        await once(sockets[i], 'drain');
+                    }
+                    const echoed = await readers[i].nextFrame();
+                    collector.record(decodeMetricHeader(echoed), currentEpochNs());
+                    seq += 1n;
                 }
-                await readers[i].nextFrame();
-                seq += 1n;
             }
-        }
-        const stopAtNs = process.hrtime.bigint()
-            + BigInt(Math.floor(options.duration * 1_000_000_000));
-        while (process.hrtime.bigint() < stopAtNs) {
-            for (let i = 0; i < sockets.length; i += 1) {
-                const payload = payloads[i].active;
-                stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-                if (!sockets[i].write(frame(payload))) {
-                    await once(sockets[i], 'drain');
-                }
-                const echoed = await readers[i].nextFrame();
-                collector.record(decodeMetricHeader(echoed), currentEpochNs());
-                seq += 1n;
+            const result = await collector.finish();
+            for (const metricLine of summarizeMetrics('MULTI_STREAM', 'tcp', options.msgSize, result.latenciesNs, options.duration)) {
+                console.log(metricLine);
             }
-        }
-        const result = await collector.finish();
-        const lines = summarizeMetrics('MULTI_STREAM', 'tcp', options.msgSize, result.latenciesNs, options.duration);
-        for (const line of lines) {
-            console.log(line);
+            break;
         }
     }
     finally {
-        await collector.close();
         for (const reader of readers) {
             reader.close();
         }

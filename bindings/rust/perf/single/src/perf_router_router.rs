@@ -2,26 +2,63 @@
 
 mod common;
 
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zlink::*;
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
-    let bind_endpoint = config.endpoint("router-router");
+    let Some(bind_endpoint) = common::resolve_endpoint_or_emit_unsupported(
+        "ROUTER_ROUTER",
+        &config.transport,
+        "router-router",
+    ) else {
+        return;
+    };
 
     let ctx = Context::new().expect("context");
-    let mut receiver = ctx.router_socket().expect("receiver");
+    let receiver = ctx.router_socket().expect("receiver");
     let sender = ctx.router_socket().expect("sender");
     receiver
         .common_options()
-        .set_recv_timeout(Duration::from_millis(1))
-        .expect("recv timeout");
+        .set_send_hwm(common::resolve_single_send_hwm())
+        .expect("receiver sndhwm");
+    receiver
+        .common_options()
+        .set_recv_hwm(common::resolve_single_recv_hwm())
+        .expect("receiver rcvhwm");
+    sender
+        .common_options()
+        .set_send_hwm(common::resolve_single_send_hwm())
+        .expect("sender sndhwm");
+    sender
+        .common_options()
+        .set_recv_hwm(common::resolve_single_recv_hwm())
+        .expect("sender rcvhwm");
+    sender
+        .common_options()
+        .set_send_timeout(common::resolve_single_send_timeout())
+        .expect("sender sndtimeo");
+    sender
+        .common_options()
+        .set_recv_timeout(common::resolve_single_send_timeout())
+        .expect("sender rcvtimeo");
+    receiver
+        .common_options()
+        .set_recv_timeout(common::resolve_single_send_timeout())
+        .expect("receiver rcvtimeo");
 
     let sender_rid = RoutingId::from_bytes(b"perf-rr-sender");
     sender.set_routing_id(&sender_rid).expect("set rid");
     let receiver_rid = RoutingId::from_bytes(b"perf-rr-receiver");
     receiver.set_routing_id(&receiver_rid).expect("set rid");
+    receiver
+        .router_options()
+        .set_mandatory(true)
+        .expect("receiver mandatory");
+    sender
+        .router_options()
+        .set_mandatory(true)
+        .expect("sender mandatory");
     sender
         .router_options()
         .set_connect_routing_id(&receiver_rid)
@@ -35,66 +72,107 @@ fn main() {
 
     let receiver_mon = SocketMonitor::open(&receiver).expect("receiver monitor");
     let mon = SocketMonitor::open(&sender).expect("monitor");
-    receiver.bind(&bind_endpoint).expect("bind");
+    if let Err(err) = receiver.bind(&bind_endpoint) {
+        if common::handle_transport_setup_error("ROUTER_ROUTER", &config.transport, "bind", err) {
+            return;
+        }
+        panic!("bind: {err}");
+    }
     let endpoint = receiver.last_endpoint().unwrap_or(bind_endpoint);
-    sender.connect(&endpoint).expect("connect");
-    common::wait_monitor_ready(&receiver_mon);
-    common::wait_monitor_ready(&mon);
+    if let Err(err) = sender.connect(&endpoint) {
+        if common::handle_transport_setup_error("ROUTER_ROUTER", &config.transport, "connect", err)
+        {
+            return;
+        }
+        panic!("connect: {err}");
+    }
+    let ready_timeout = common::resolve_single_ready_timeout();
+    let target = receiver_rid.clone();
+    common::wait_monitor_ready(&receiver_mon, ready_timeout, "router-router receiver");
+    common::wait_monitor_ready(&mon, ready_timeout, "router-router sender");
+    if config.transport == "inproc" {
+        std::thread::sleep(Duration::from_millis(50));
+    } else {
+        common::wait_send_probe_ready(
+            "router/router perf endpoint",
+            config.size,
+            ready_timeout,
+            |msg| sender.send(&target, msg),
+            || {
+                let mut saw_probe = false;
+                loop {
+                    match receiver.recv_with_flags(RecvFlags::DONT_WAIT) {
+                        Ok(received) => {
+                            let data = common::message_payload(received.parts());
+                            if common::is_valid_message(data, config.size) {
+                                saw_probe = true;
+                            }
+                        }
+                        Err(err) if err.code() == RecvResult::NoData => break,
+                        Err(_) => break,
+                    }
+                }
+                saw_probe
+            },
+        );
+    }
+    sender
+        .send(&target, Message::copy_from(b"PING").expect("router ping"))
+        .expect("router handshake send");
+    let handshake = match receiver.recv() {
+        Ok(received) => received,
+        Err(err) => {
+            if common::handle_local_route_handshake_error(
+                "ROUTER_ROUTER",
+                &config.transport,
+                "handshake_recv",
+                err,
+            ) {
+                return;
+            }
+            panic!("receiver handshake recv: {err}");
+        }
+    };
+    let reply_rid = handshake.routing_id().expect("receiver handshake rid").clone();
+    assert_eq!(handshake.parts()[0].as_bytes(), b"PING");
+    receiver
+        .send(&reply_rid, Message::copy_from(b"PONG").expect("router pong"))
+        .expect("receiver handshake reply");
+    let handshake_reply = match sender.recv() {
+        Ok(received) => received,
+        Err(err) => {
+            if common::handle_local_route_handshake_error(
+                "ROUTER_ROUTER",
+                &config.transport,
+                "handshake_reply_recv",
+                err,
+            ) {
+                return;
+            }
+            panic!("sender handshake recv: {err}");
+        }
+    };
+    assert_eq!(handshake_reply.parts()[0].as_bytes(), b"PONG");
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let sender_done = common::CompletionSignal::new();
-    let receiver_done = sender_done.clone();
-    let target = receiver_rid.clone();
-
-    let receiver_thread = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(config.duration_seconds + 20);
-        let mut idle_since: Option<Instant> = None;
-
-        loop {
-            if Instant::now() >= deadline {
-                break;
-            }
-
-            let mut saw_message = false;
-            loop {
-                match receiver.recv() {
-                    Ok(received) => {
-                        let data = common::message_payload(received.parts());
-                        common::handle_recv(data, config.size, &stats);
-                        saw_message = true;
-                    }
-                    Err(_) => break,
-                }
-            }
-            if saw_message {
-                idle_since = None;
-            }
-
-            if receiver_done.is_done() {
-                idle_since.get_or_insert_with(Instant::now);
-                if idle_since
-                    .map(|since| since.elapsed() >= Duration::from_millis(250))
-                    .unwrap_or(false)
-                {
-                    break;
-                }
-            }
+    let deadline = std::time::Instant::now() + Duration::from_secs(config.duration_seconds);
+    let mut seq: u64 = 0;
+    let mut buf = vec![0u8; config.size.max(common::HEADER_SIZE)];
+    while std::time::Instant::now() < deadline {
+        common::encode_header(&mut buf, common::PHASE_ACTIVE, config.size as u32, seq);
+        seq += 1;
+        if sender
+            .send(&target, Message::copy_from(&buf).expect("active msg"))
+            .is_err()
+        {
+            continue;
         }
-    });
-
-    let a = Duration::from_secs(config.duration_seconds);
-    let sz = config.size;
-    common::send_loop(
-        a,
-        sz,
-        common::PHASE_ACTIVE,
-        |msg| {
-            let _ = sender.send(&target, msg);
-        },
-    );
-    sender_done.signal_done();
-    receiver_thread.join().expect("join");
+        if let Ok(received) = receiver.recv() {
+            let data = common::message_payload(received.parts());
+            common::handle_recv(data, config.size, &stats);
+        }
+    }
 
     let result = collector.finish();
     common::print_result("ROUTER_ROUTER", &config.transport, config.size, config.duration_seconds, &result);

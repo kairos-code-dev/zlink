@@ -36,7 +36,8 @@ final class PerfMultiDealerDealer {
             PerfUtil.Metrics metrics = new PerfUtil.Metrics();
             metrics.startActiveWindow();
             long stopAt = System.nanoTime()
-                + Duration.ofSeconds(config.durationSeconds()).plusMillis(500L).toNanos();
+                + Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds())
+                    .plusMillis(500L).toNanos();
             while (System.nanoTime() < stopAt) {
                 try (var received = server.recv()) {
                     PerfUtil.Header header = PerfUtil.decodeHeader(
@@ -83,6 +84,13 @@ final class PerfMultiDealerDealer {
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
+                long warmupEnd = System.nanoTime() + config.warmupSeconds() * 1_000_000_000L;
+                while (System.nanoTime() < warmupEnd) {
+                    try (Message m = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                        sendUntilDeadline(client, m, warmupEnd);
+                    }
+                }
                 long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                 while (System.nanoTime() < activeEnd) {
                     try (Message m = PerfUtil.payload(config.size(),

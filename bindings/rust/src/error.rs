@@ -191,26 +191,6 @@ impl ZlinkError {
             last_errno(),
         ))
     }
-
-    pub(crate) fn validation(message: impl Into<String>) -> Self {
-        let _ = message.into();
-        Self::Config(ConfigError::new(
-            ConfigResult::InvalidArgument,
-            libc::EINVAL,
-        ))
-    }
-
-    pub(crate) fn state(message: impl Into<String>) -> Self {
-        let _ = message.into();
-        Self::Config(ConfigError::new(
-            ConfigResult::InvalidArgument,
-            libc::EINVAL,
-        ))
-    }
-
-    pub(crate) fn native(code: i32, _message: impl Into<String>) -> Self {
-        Self::Config(ConfigError::new(config_result_from_errno(code), code))
-    }
 }
 
 impl fmt::Display for ZlinkError {
@@ -264,16 +244,6 @@ fn submit_result_from_errno(err: i32) -> SubmitResult {
         x if x == emthread() => SubmitResult::ThreadViolation,
         libc::ENOMEM | libc::ENOBUFS => SubmitResult::OutOfMemory,
         _ => SubmitResult::InternalError,
-    }
-}
-
-fn request_result_from_errno(err: i32) -> RequestResult {
-    match err {
-        0 => RequestResult::Ok,
-        libc::ETIMEDOUT => RequestResult::TimedOut,
-        libc::ENOENT => RequestResult::NotFound,
-        x if x == eterm() => RequestResult::Terminated,
-        _ => RequestResult::ProtocolError,
     }
 }
 
@@ -367,10 +337,6 @@ pub(crate) fn submit_state_error() -> SubmitError {
     SubmitError::new(SubmitResult::InvalidState, libc::EINVAL)
 }
 
-pub(crate) fn request_state_error() -> RequestError {
-    RequestError::new(RequestResult::ProtocolError, libc::EINVAL)
-}
-
 pub(crate) fn request_error_from_submit(err: SubmitError) -> RequestError {
     RequestError::new(RequestResult::ProtocolError, err.internal_errno())
 }
@@ -384,10 +350,6 @@ pub(crate) fn request_error_from_result(code: RequestResult) -> RequestError {
         RequestResult::ProtocolError => libc::EPROTO,
     };
     RequestError::new(code, internal_errno)
-}
-
-pub(crate) fn config_error_from_errno(err: i32) -> ConfigError {
-    ConfigError::new(config_result_from_errno(err), err)
 }
 
 pub(crate) fn recv_state_error() -> RecvError {
@@ -414,14 +376,6 @@ pub(crate) fn check_submit_rc(rc: i32) -> Result<(), SubmitError> {
             submit_result_from_errno(last_errno()),
             last_errno(),
         ))
-    }
-}
-
-pub(crate) fn check_request_errno(err: i32) -> Result<(), RequestError> {
-    if err == 0 {
-        Ok(())
-    } else {
-        Err(RequestError::new(request_result_from_errno(err), err))
     }
 }
 

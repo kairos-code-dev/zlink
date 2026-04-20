@@ -6,6 +6,7 @@ import time
 import zlink
 
 from perf_multi_common import (
+    apply_multi_socket_options,
     new_payload,
     parse_server_args,
     safe_poll,
@@ -38,6 +39,7 @@ def main(argv=None):
         sockets = [zlink.DealerSocket(ctx) for _ in range(args.clients)]
         try:
             for sock, endpoint in zip(sockets, endpoints):
+                apply_multi_socket_options(sock)
                 sock.bind(endpoint)
 
             print(f"READY,{';'.join(endpoints)}", flush=True)

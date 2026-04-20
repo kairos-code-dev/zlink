@@ -1,0 +1,15 @@
+[package]
+name = "zlink-codec-messagepack"
+version = "5.3.0"
+edition = "2024"
+rust-version = "1.85"
+description = "MessagePack codec extension for the zlink Rust bindings"
+license = "MPL-2.0"
+
+[dependencies]
+rmp-serde = "1"
+serde = "1"
+zlink = { path = "../.." }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }

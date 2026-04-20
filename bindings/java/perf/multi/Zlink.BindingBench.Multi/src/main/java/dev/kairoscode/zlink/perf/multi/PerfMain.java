@@ -21,27 +21,33 @@ public final class PerfMain {
         if (!serverRole && !clientRole) {
             throw new IllegalArgumentException("unsupported role: " + args[0]);
         }
-        PerfUtil.Result result = switch (config.pattern()) {
-            case "DEALER_DEALER" -> serverRole
-                ? PerfMultiDealerDealer.runServer(config)
-                : PerfMultiDealerDealer.runClient(config);
-            case "DEALER_ROUTER" -> serverRole
-                ? PerfMultiDealerRouter.runServer(config)
-                : PerfMultiDealerRouter.runClient(config);
-            case "ROUTER_ROUTER" -> serverRole
-                ? PerfMultiRouterRouter.runServer(config)
-                : PerfMultiRouterRouter.runClient(config);
-            case "PUBSUB" -> serverRole
-                ? PerfMultiPubSub.runServer(config)
-                : PerfMultiPubSub.runClient(config);
-            case "SPOT" -> serverRole
-                ? PerfMultiSpot.runServer(config)
-                : PerfMultiSpot.runClient(config);
-            case "STREAM" -> serverRole
-                ? PerfMultiStream.runServer(config)
-                : PerfMultiStream.runClient(config);
-            default -> throw new IllegalArgumentException("unsupported pattern: " + config.pattern());
-        };
-        System.out.println(result.toLine());
+        PerfUtil.Result result;
+        try {
+            result = switch (config.pattern()) {
+                case "DEALER_DEALER" -> serverRole
+                    ? PerfMultiDealerDealer.runServer(config)
+                    : PerfMultiDealerDealer.runClient(config);
+                case "DEALER_ROUTER" -> serverRole
+                    ? PerfMultiDealerRouter.runServer(config)
+                    : PerfMultiDealerRouter.runClient(config);
+                case "ROUTER_ROUTER" -> serverRole
+                    ? PerfMultiRouterRouter.runServer(config)
+                    : PerfMultiRouterRouter.runClient(config);
+                case "PUBSUB" -> serverRole
+                    ? PerfMultiPubSub.runServer(config)
+                    : PerfMultiPubSub.runClient(config);
+                case "SPOT" -> serverRole
+                    ? PerfMultiSpot.runServer(config)
+                    : PerfMultiSpot.runClient(config);
+                case "STREAM" -> serverRole
+                    ? PerfMultiStream.runServer(config)
+                    : PerfMultiStream.runClient(config);
+                default -> throw new IllegalArgumentException(
+                    "unsupported pattern: " + config.pattern());
+            };
+        } catch (Throwable failure) {
+            result = PerfUtil.classifyFailure(config, failure);
+        }
+        System.out.println(result.toLine("current"));
     }
 }

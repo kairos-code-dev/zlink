@@ -26,13 +26,18 @@ async function main() {
         const sent = 'hello-stream';
         client.write(Buffer.from(sent));
         const received = stream.recv();
-        assert.ok(received.routingId instanceof zlink.RoutingId);
-        const recv = received.parts[0].data().toString();
-        assert.equal(recv, sent);
-        stream.send(received.routingId, Buffer.from(sent));
-        const [reply] = await once(client, 'data');
-        assert.equal(reply.toString(), sent);
-        console.log(`[stream/recv] send: "${sent}" \u2192 recv: "${recv}"`);
+        try {
+            assert.ok(received.routingId instanceof zlink.RoutingId);
+            const recv = received.parts[0].data().toString();
+            assert.equal(recv, sent);
+            stream.send(received.routingId, Buffer.from(sent));
+            const [reply] = await once(client, 'data');
+            assert.equal(reply.toString(), sent);
+            console.log(`[stream/recv] send: "${sent}" \u2192 recv: "${recv}"`);
+        }
+        finally {
+            received.close();
+        }
     }
     finally {
         if (client) {

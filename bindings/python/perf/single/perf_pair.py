@@ -5,6 +5,7 @@ import time
 import zlink
 
 from perf_common import (
+    apply_single_socket_options,
     benchmark_run_id,
     latency_ns_from_message,
     is_active_message,
@@ -13,8 +14,8 @@ from perf_common import (
     parse_single_args,
     print_result_lines,
     result_metrics,
+    resolve_single_endpoint,
     stamp_payload,
-    tcp_endpoint,
 )
 
 
@@ -25,10 +26,6 @@ def main(argv=None):
     latencies = []
 
     def send_loop(client):
-        warmup_end = time.perf_counter() + args.warmup
-        while time.perf_counter() < warmup_end:
-            client.send(stamp_payload(new_payload(args.msg_size), phase=0, run_id=run_id))
-
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
             client.send(stamp_payload(new_payload(args.msg_size), phase=1, run_id=run_id))
@@ -36,7 +33,8 @@ def main(argv=None):
     with zlink.Context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
-                endpoint = tcp_endpoint("pair")
+                endpoint = resolve_single_endpoint(args.transport, "pair")
+                apply_single_socket_options(server, client)
                 server.bind(endpoint)
                 client.connect(endpoint)
                 time.sleep(0.05)
@@ -69,7 +67,7 @@ def main(argv=None):
                     elapsed_s=args.duration,
                     latencies_ns=latencies,
                 )
-                print_result_lines("PAIR", "tcp", args.msg_size, metrics)
+                print_result_lines("PAIR", args.transport, args.msg_size, metrics)
 
 
 if __name__ == "__main__":

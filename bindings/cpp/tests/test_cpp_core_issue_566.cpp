@@ -1,5 +1,7 @@
 #include "test_helpers.hpp"
 
+#include <zlink_c.h>
+
 #include <cstdio>
 #include <cstring>
 
@@ -34,17 +36,42 @@ int main ()
 
         for (int attempt = 0; attempt < 500; ++attempt) {
             (void) zlink_poll (NULL, 0, 2);
-            const int rc = zlink_send (router, routing_id, 10, ZLINK_SNDMORE);
-            if (rc == -1 && zlink_errno () == EHOSTUNREACH)
+            zlink_msg_t routing_part;
+            assert (zlink_msg_init_size (&routing_part, 10) == 0);
+            std::memcpy (zlink_msg_data (&routing_part), routing_id, 10);
+            const zlink_submit_result_t rc = zlink_send_part (
+              router, &routing_part, static_cast<zlink_send_flags_t> (0),
+              ZLINK_PART_MORE);
+            if (rc != ZLINK_SUBMIT_OK && zlink_errno () == EHOSTUNREACH) {
+                assert (zlink_msg_close (&routing_part) == 0);
                 continue;
-            assert (rc == 10);
-            assert (zlink_send (router, "HELLO", 5, 0) == 5);
+            }
+            assert (rc == ZLINK_SUBMIT_OK);
+
+            zlink_msg_t hello_part;
+            assert (zlink_msg_init_size (&hello_part, 5) == 0);
+            std::memcpy (zlink_msg_data (&hello_part), "HELLO", 5);
+            assert (
+              zlink_send_part (router, &hello_part,
+                               static_cast<zlink_send_flags_t> (0),
+                               ZLINK_PART_FINAL)
+              == ZLINK_SUBMIT_OK);
             break;
         }
 
         char buf[16];
         std::memset (buf, 0, sizeof (buf));
-        assert (zlink_recv (dealer, buf, sizeof (buf), 0) == 5);
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_msg_t recv_part;
+        assert (zlink_msg_init (&recv_part) == 0);
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        assert (zlink_recv_part (dealer, &source_rid, &recv_part, &has_more,
+                                 static_cast<zlink_recv_flags_t> (0))
+                == ZLINK_RECV_OK);
+        assert (!has_more);
+        assert (zlink_msg_size (&recv_part) == 5);
+        std::memcpy (buf, zlink_msg_data (&recv_part), zlink_msg_size (&recv_part));
+        assert (zlink_msg_close (&recv_part) == 0);
         assert (std::memcmp (buf, "HELLO", 5) == 0);
 
         const int zero = 0;

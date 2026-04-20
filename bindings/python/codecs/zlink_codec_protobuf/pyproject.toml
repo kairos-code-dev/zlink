@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zlink-codec-protobuf"
+version = "5.3.0"
+description = "Protobuf codec helpers for zlink Python bindings"
+license = { text = "MPL-2.0" }
+authors = [{ name = "ulalax" }]
+requires-python = ">=3.9"
+dependencies = [
+    "zlink>=5.3.0",
+    "protobuf>=4.21",
+]
+
+[project.urls]
+Homepage = "https://github.com/ulala-x/zlink"
+Repository = "https://github.com/ulala-x/zlink"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv.sources]
+zlink = { path = "../../", editable = true }

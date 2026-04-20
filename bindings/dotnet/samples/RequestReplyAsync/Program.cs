@@ -28,8 +28,8 @@ Task serverTask = Task.Run(() =>
         using Received received = routerSocket.Recv();
         RoutingId routingId = received.RoutingId
             ?? throw new InvalidOperationException("missing routing id");
-        using Message part = received.Parts[0];
-        SampleSupport.EnsureEqual("ping", part.GetString(), "request");
+        string requestPayload = received.Parts[0].GetString();
+        SampleSupport.EnsureEqual("ping", requestPayload, "request");
         using var reply = Message.FromString("pong");
         routerSocket.Reply(routingId, received.RequestSeq ?? 0UL, reply);
     }

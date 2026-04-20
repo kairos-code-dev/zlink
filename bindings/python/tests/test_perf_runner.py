@@ -30,10 +30,10 @@ class PerfRunnerTests(unittest.TestCase):
             [
                 sys.executable,
                 str(PERF_DIR / "single" / "perf_pair.py"),
+                "--transport",
+                "inproc",
                 "--duration",
                 "0.2",
-                "--warmup",
-                "0.1",
                 "--msg-size",
                 "64",
             ],
@@ -47,7 +47,7 @@ class PerfRunnerTests(unittest.TestCase):
             },
         )
         self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
-        self.assertIn("RESULT,current,PAIR,tcp,64,throughput,", result.stdout)
+        self.assertIn("RESULT,current,PAIR,inproc,64,throughput,", result.stdout)
 
     def test_single_runner_writes_policy_style_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -58,8 +58,8 @@ class PerfRunnerTests(unittest.TestCase):
                     "PAIR",
                     "--msg-sizes",
                     "64",
-                    "--warmup",
-                    "0.1",
+                    "--transports",
+                    "inproc",
                     "--duration",
                     "0.2",
                     "--results-dir",
@@ -78,7 +78,7 @@ class PerfRunnerTests(unittest.TestCase):
             reports = list(Path(tmpdir).glob("perf_python_single_linux_*_smoke.txt"))
             self.assertEqual(len(reports), 1)
             report_text = reports[0].read_text(encoding="utf-8")
-            self.assertIn("RESULT,current,PAIR,tcp,64,throughput,", report_text)
+            self.assertIn("RESULT,current,PAIR,inproc,64,throughput,", report_text)
             self.assertRegex(
                 reports[0].name,
                 r"^perf_python_single_linux_\d{8}_\d{6}_smoke\.txt$",

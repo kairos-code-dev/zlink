@@ -20,13 +20,14 @@ int main ()
     const size_t request_size = std::strlen (request);
     client.send_all (request, request_size);
 
-    const zlink::received_t inbound = server.recv ();
+    zlink::received_t inbound = server.recv ();
     assert (inbound.routing_id ().has_value ());
     assert (inbound.parts ().size () == 1);
     assert (inbound.parts ()[0].to_string () == detail::k_stream_payload);
 
     zlink::message_t reply = detail::make_message (detail::k_stream_payload);
     server.send (*inbound.routing_id (), reply);
+    inbound.close ();
 
     char response[64];
     const int received = client.recv_exact (response, request_size);

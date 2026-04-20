@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[Framework Adapter 초안](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Registry](./aspnet-core-registry.ko.md)
+
 # Draft -- ZLink Framework For .NET
 
 > 이 문서는 **구현 전 초안**이다.
@@ -70,7 +72,7 @@ DI, hosted service, handler 모델을 제공하는 것이다.
 
 - `ASP.NET Core`의 DI와 hosted service 모델에 맞춘다.
 - handler, client, filter 생성은 같은 `.NET DI` 컨테이너를 기준으로 맞춘다.
-- `channel_name` 기준 direct call을 기본으로 둔다.
+- `channel name` 기준 direct call을 기본으로 둔다.
 - gateway나 전용 load balancer 없이 channel별 `Discovery`로 직접 호출한다.
 - `SPOT`도 별도 low-level runtime이 아니라, framework lifecycle 안에서
   다룰 수 있어야 한다.

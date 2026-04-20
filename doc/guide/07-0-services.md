@@ -85,7 +85,6 @@ channel send/request, peer routed communication, and publish/subscribe.
   an external `PUB` into the SPOT topic plane.
 - Data plane:
   `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
-  `zlink_spot_send_router()` / `zlink_spot_request_router()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /
   `zlink_spot_subscription_event()`.
 - Readable notifications share one callback surface:

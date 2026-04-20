@@ -71,6 +71,7 @@ internal static class PerfDealerRouter
                 if (!(WaitForConnectionReady(receiverMonitor!, SingleConnectWaitMs)
                     && WaitForConnectionReady(senderMonitor!, SingleConnectWaitMs)))
                 {
+                    DebugLog("single_dealer_router_error:connection_not_ready");
                     ctx.Shutdown();
                     TryCleanup(sender, receiver, ep);
                     return 2;
@@ -86,8 +87,17 @@ internal static class PerfDealerRouter
             }
 
             if (!RunPrimer(sender, receiver, Math.Max(size, sizeof(long)),
-                    recvTimeoutMs))
+                    recvTimeoutMs, out bool primerUnsupported))
             {
+                if (primerUnsupported)
+                {
+                    ctx.Shutdown();
+                    TryCleanup(sender, receiver, ep);
+                    PrintUnsupported("DEALER_ROUTER", transport, size,
+                        "dotnet_router_inproc_protocol_error");
+                    return 0;
+                }
+                DebugLog("single_dealer_router_error:primer_failed");
                 ctx.Shutdown();
                 TryCleanup(sender, receiver, ep);
                 return 2;
@@ -101,6 +111,7 @@ internal static class PerfDealerRouter
                     durationSeconds, recvTimeoutMs, latCount,
                     out long received, out var latencySamples))
             {
+                DebugLog("single_dealer_router_error:active_failed");
                 ctx.Shutdown();
                 TryCleanup(sender, receiver, ep);
                 return 2;
@@ -114,7 +125,7 @@ internal static class PerfDealerRouter
             TryCleanup(sender, receiver, ep);
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
             try
             {
@@ -123,6 +134,12 @@ internal static class PerfDealerRouter
             catch
             {
             }
+            if (TryPrintUnsupportedTransportFailure("DEALER_ROUTER", transport,
+                    size, ex))
+            {
+                return 0;
+            }
+            DebugLog($"single_dealer_router_error:exception:{ex}");
             return 2;
         }
         finally
@@ -133,37 +150,46 @@ internal static class PerfDealerRouter
     }
 
     private static bool RunPrimer(DealerSocket sender, RouterSocket receiver,
-        int payloadSize, int recvTimeoutMs)
+        int payloadSize, int recvTimeoutMs, out bool unsupportedProtocol)
     {
+        unsupportedProtocol = false;
         var payload = new byte[payloadSize];
         Array.Fill(payload, (byte)'p');
-        StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
-        using var poller = new Poller();
-        var events = new PollEvent[1];
-        poller.Add(receiver, PollEvents.PollIn);
-
-        try
-        {
-            using var message = Message.FromBytes(payload);
-            sender.Send(message);
-        }
-        catch
-        {
-            return false;
-        }
-
         long deadline = DeadlineTicksFromMilliseconds(Math.Max(1000, recvTimeoutMs));
         while (Stopwatch.GetTimestamp() < deadline)
         {
-            if (!WaitForInput(poller, events, 10))
+            StampHeader(payload.AsSpan(0, sizeof(long)), TimestampNs());
+            try
+            {
+                using var message = Message.FromBytes(payload);
+                sender.Send(message);
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno)
+                                            || IsTransientNetworkError(
+                                                ex.InternalErrno))
+            {
+                Thread.Sleep(1);
                 continue;
-            if (!receiver.RecvNoWait(out Received? received) || received == null)
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"single_dealer_router_error:primer_failure:{ex}");
+                return false;
+            }
+
+            if (!TryReceive(receiver, out Received? received,
+                    out unsupportedProtocol))
+            {
+                Thread.Sleep(1);
                 continue;
+            }
+
             using (received)
             {
-                if (received.Parts.Count != 1)
+                if (!TryGetPayloadPart(received, out Message payloadPart))
                     continue;
-                return received.Parts[0].Size == payloadSize;
+                return payloadPart.Size == payloadSize;
             }
         }
 
@@ -188,43 +214,38 @@ internal static class PerfDealerRouter
         var recvThread = new Thread(() =>
         {
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            using var poller = new Poller();
-            var events = new PollEvent[1];
-            poller.Add(receiver, PollEvents.PollIn);
 
             try
             {
                 while (true)
                 {
                     bool done = Volatile.Read(ref senderDone) != 0;
-                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
-                    if (WaitForInput(poller, events, timeoutMs))
+                    if (TryReceive(receiver, out Received? receivedMessage,
+                            out _))
                     {
-                        while (true)
+                        using (receivedMessage)
                         {
-                            if (!receiver.RecvNoWait(out Received? receivedMessage)
-                                || receivedMessage == null)
-                                break;
-                            using (receivedMessage)
+                            if (!TryGetPayloadPart(receivedMessage,
+                                    out Message payloadMessage))
                             {
-                                if (receivedMessage.Parts.Count != 1)
-                                    continue;
-                                Message payloadMessage = receivedMessage.Parts[0];
-                                if (payloadMessage.Size != payloadSize)
-                                    continue;
-                                ReadOnlySpan<byte> payload =
-                                    payloadMessage.AsReadOnlySpan();
-                                if (payload.Length < sizeof(long))
-                                    continue;
-                                long sentNs = DecodeHeader(payload[..sizeof(long)]);
-                                long nowNs = TimestampNs();
-                                double latencyNs = Math.Max(0L, nowNs - sentNs);
-                                Interlocked.Increment(ref received);
-                                ReservoirSample(samples, latencyNs,
-                                    ref sampleSeen, latCount, ref rng);
-                                lastRecvTicks = Stopwatch.GetTimestamp();
+                                continue;
                             }
+
+                            if (payloadMessage.Size != payloadSize)
+                                continue;
+                            ReadOnlySpan<byte> payload =
+                                payloadMessage.AsReadOnlySpan();
+                            if (payload.Length < sizeof(long))
+                                continue;
+                            long sentNs = DecodeHeader(payload[..sizeof(long)]);
+                            long nowNs = TimestampNs();
+                            double latencyNs = Math.Max(0L, nowNs - sentNs);
+                            Interlocked.Increment(ref received);
+                            ReservoirSample(samples, latencyNs,
+                                ref sampleSeen, latCount, ref rng);
+                            lastRecvTicks = Stopwatch.GetTimestamp();
                         }
+
                         continue;
                     }
 
@@ -233,11 +254,14 @@ internal static class PerfDealerRouter
                     {
                         break;
                     }
+
+                    Thread.Sleep(1);
                 }
             }
             catch (Exception ex)
             {
                 recvError = ex;
+                DebugLog($"single_dealer_router_error:recv_thread:{ex}");
             }
         });
         recvThread.IsBackground = true;
@@ -273,9 +297,60 @@ internal static class PerfDealerRouter
         latencySamples = samples;
         receivedOut = received;
         if (sendFailed || recvError != null)
+        {
+            if (sendFailed)
+                DebugLog("single_dealer_router_error:send_failed");
             return false;
+        }
 
         return received > 0 && latencySamples.Count > 0;
+    }
+
+    private static bool TryReceive(RouterSocket receiver,
+        out Received? receivedMessage, out bool unsupportedProtocol)
+    {
+        unsupportedProtocol = false;
+        try
+        {
+            receivedMessage = receiver.Recv(RecvFlags.DontWait);
+            return true;
+        }
+        catch (ZlinkRecvException ex)
+        {
+            unsupportedProtocol = IsInprocProtocolUnsupported(ex.InternalErrno);
+            receivedMessage = null;
+            return false;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
+        {
+            receivedMessage = null;
+            return false;
+        }
+    }
+
+    private static bool IsInprocProtocolUnsupported(int errno)
+    {
+        return errno == 71;
+    }
+
+    private static bool TryGetPayloadPart(Received received,
+        out Message payloadPart)
+    {
+        if (received.IsSinglePart)
+        {
+            payloadPart = received.FirstPart();
+            return true;
+        }
+
+        if (received.RoutingId != null && received.Parts.Count > 0)
+        {
+            payloadPart = received.Parts[received.Parts.Count - 1];
+            return true;
+        }
+
+        payloadPart = default!;
+        return false;
     }
 
     private static bool IsInterrupted(int errno)

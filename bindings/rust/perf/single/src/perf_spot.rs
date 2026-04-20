@@ -2,86 +2,176 @@
 
 mod common;
 
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Condvar, Mutex,
+};
 use std::thread;
 use std::time::{Duration, Instant};
+
 use zlink::*;
+
+const SERVICE_NAME: &str = "perf-spot-svc";
+const TOPIC: &str = "bench.topic";
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
-    let bind_endpoint = config.endpoint("spot");
+    let Some(bind_endpoint) =
+        common::resolve_endpoint_or_emit_unsupported("SPOT", &config.transport, "spot")
+    else {
+        return;
+    };
 
     let ctx = Context::new().expect("context");
-    let pub_sock = ctx.pub_socket().expect("pub");
-    let sub_sock = ctx.sub_socket().expect("sub");
-    sub_sock
-        .common_options()
-        .set_recv_timeout(Duration::from_millis(1))
-        .expect("recv timeout");
-
+    let publisher_node = SpotNode::new(&ctx).expect("publisher node");
+    let subscriber_node = SpotNode::new(&ctx).expect("subscriber node");
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
-        common::setup_raw_tls_server(&pub_sock, &tls).expect("pub tls");
-        common::setup_raw_tls_client(&sub_sock, &tls).expect("sub tls");
+        let pem = common::load_tls_pem(&tls);
+        publisher_node
+            .set_tls_server(&pem.cert, &pem.key, false)
+            .expect("publisher tls");
+        subscriber_node
+            .set_tls_client(&pem.ca, "localhost", false)
+            .expect("subscriber tls");
     }
+    let publisher = publisher_node.create_spot().expect("publisher spot");
+    let mut subscriber = subscriber_node.create_spot().expect("subscriber spot");
+    subscriber
+        .set_subscription(TOPIC)
+        .expect("set subscription");
 
-    let pub_mon = SocketMonitor::open(&pub_sock).expect("pub monitor");
-    let mon = SocketMonitor::open(&sub_sock).expect("monitor");
-    pub_sock.bind(&bind_endpoint).expect("bind");
-    let endpoint = pub_sock.last_endpoint().unwrap_or(bind_endpoint);
-    sub_sock.connect(&endpoint).expect("connect");
-    sub_sock.set_subscription("").expect("subscribe");
-    common::wait_monitor_ready(&pub_mon);
-    common::wait_monitor_ready(&mon);
+    if let Err(err) = publisher_node.bind(&bind_endpoint) {
+        if common::handle_transport_setup_error("SPOT", &config.transport, "bind", err) {
+            return;
+        }
+        panic!("bind: {err}");
+    }
+    let endpoint = publisher_node.last_endpoint().expect("endpoint");
+    subscriber_node.connect_peer(&endpoint).expect("connect peer");
+    common::wait_spot_peer_connected(
+        &subscriber_node,
+        common::resolve_single_ready_timeout(),
+        "spot subscriber",
+    );
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let sender_done = common::CompletionSignal::new();
-    let receiver_done = sender_done.clone();
+    let ready_state = Arc::new((Mutex::new(false), Condvar::new()));
+    let active_collect = Arc::new(AtomicBool::new(false));
+    let last_recv_ns = Arc::new(AtomicU64::new(0));
 
-    let receiver_thread = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(config.duration_seconds + 20);
-        let mut idle_since: Option<Instant> = None;
+    let subscriber_ptr = (&subscriber as *const Spot) as usize;
+    subscriber
+        .on_dispatch_event({
+            let ready_state = Arc::clone(&ready_state);
+            let active_collect = Arc::clone(&active_collect);
+            let last_recv_ns = Arc::clone(&last_recv_ns);
+            move |event| {
+                if event != SpotDispatchEvent::SubscribeReadable {
+                    return;
+                }
 
-        loop {
-            if Instant::now() >= deadline {
-                break;
-            }
+                let subscriber = unsafe { &*(subscriber_ptr as *const Spot) };
+                loop {
+                    match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+                        Ok(received) => {
+                            let data = common::message_payload(received.parts());
+                            if !common::is_valid_message(data, config.size) {
+                                continue;
+                            }
 
-            let mut saw_message = false;
-            loop {
-                match sub_sock.subscribe() {
-                    Ok(topic_msg) => {
-                        let data = common::message_payload(topic_msg.parts());
-                        common::handle_recv(data, config.size, &stats);
-                        saw_message = true;
+                            last_recv_ns.store(common::now_ns(), Ordering::Release);
+                            if active_collect.load(Ordering::Acquire) {
+                                common::handle_recv(data, config.size, &stats);
+                            } else {
+                                let (lock, condvar) = &*ready_state;
+                                let mut ready = lock.lock().expect("ready lock");
+                                *ready = true;
+                                condvar.notify_all();
+                            }
+                        }
+                        Err(err) if err.code() == RecvResult::NoData => break,
+                        Err(err) => panic!("spot subscribe drain failed: {err}"),
                     }
-                    Err(_) => break,
                 }
             }
-            if saw_message {
-                idle_since = None;
-            }
+        })
+        .expect("on dispatch event");
 
-            if receiver_done.is_done() {
-                idle_since.get_or_insert_with(Instant::now);
-                if idle_since
-                    .map(|since| since.elapsed() >= Duration::from_millis(250))
-                    .unwrap_or(false)
-                {
-                    break;
-                }
-            }
+    let probe_deadline = Instant::now() + Duration::from_secs(10);
+    let mut probe = vec![0u8; config.size.max(common::HEADER_SIZE)];
+    common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
+
+    loop {
+        if Instant::now() >= probe_deadline {
+            panic!("single SPOT ready probe timed out");
         }
-    });
 
-    let a = Duration::from_secs(config.duration_seconds);
-    let sz = config.size;
-    common::send_loop(a, sz, common::PHASE_ACTIVE, |msg| {
-        let _ = pub_sock.publish("P", msg);
-    });
-    sender_done.signal_done();
-    receiver_thread.join().expect("join");
+        match publisher.publish(
+            SERVICE_NAME,
+            TOPIC,
+            Message::copy_from(&probe).expect("probe message"),
+        ) {
+            Ok(()) => {}
+            Err(err)
+                if matches!(
+                    err.code(),
+                    SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+            Err(err) => panic!("probe publish: {err}"),
+        }
+
+        let (lock, condvar) = &*ready_state;
+        let ready = lock.lock().expect("ready lock");
+        let (ready, _) = condvar
+            .wait_timeout_while(ready, Duration::from_millis(50), |ready| !*ready)
+            .expect("ready wait");
+        if *ready {
+            break;
+        }
+    }
+
+    thread::sleep(common::resolve_single_spot_ready_settle());
+
+    active_collect.store(true, Ordering::Release);
+    common::send_loop(
+        Duration::from_secs(config.duration_seconds),
+        config.size,
+        common::PHASE_ACTIVE,
+        |msg| {
+            publisher
+                .publish(SERVICE_NAME, TOPIC, msg)
+                .expect("active publish");
+        },
+    );
+    active_collect.store(false, Ordering::Release);
+
+    let idle_drain = Duration::from_millis(common::resolve_single_idle_drain_ms());
+    let mut idle_since = Instant::now();
+    let mut last_seen = last_recv_ns.load(Ordering::Acquire);
+    loop {
+        let current = last_recv_ns.load(Ordering::Acquire);
+        if current != last_seen {
+            last_seen = current;
+            idle_since = Instant::now();
+        }
+        if idle_since.elapsed() >= idle_drain {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 
     let result = collector.finish();
-    common::print_result("SPOT", &config.transport, config.size, config.duration_seconds, &result);
+    common::print_result(
+        "SPOT",
+        &config.transport,
+        config.size,
+        config.duration_seconds,
+        &result,
+    );
 }

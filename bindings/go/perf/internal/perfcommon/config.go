@@ -9,6 +9,7 @@ type SingleConfig struct {
 	Pattern   string
 	Transport string
 	MsgSize   int
+	Warmup    time.Duration
 	Duration  time.Duration
 }
 
@@ -16,26 +17,29 @@ type MultiConfig struct {
 	Pattern   string
 	Transport string
 	MsgSize   int
+	Warmup    time.Duration
 	Duration  time.Duration
 	Clients   int
 }
 
-func LoadSingleConfig(pattern, transport string, msgSize, duration int) SingleConfig {
+func LoadSingleConfig(pattern, transport string, msgSize, warmup, duration int) SingleConfig {
 	cfg := SingleConfig{
 		Pattern:   strings.ToUpper(pattern),
 		Transport: strings.ToLower(transport),
 		MsgSize:   msgSize,
+		Warmup:    time.Duration(warmup) * time.Second,
 		Duration:  time.Duration(duration) * time.Second,
 	}
 	ValidateCommon(cfg.Transport, cfg.MsgSize)
 	return cfg
 }
 
-func LoadMultiConfig(pattern, transport string, msgSize, duration int, clients int) MultiConfig {
+func LoadMultiConfig(pattern, transport string, msgSize, warmup, duration int, clients int) MultiConfig {
 	cfg := MultiConfig{
 		Pattern:   strings.ToUpper(pattern),
 		Transport: strings.ToLower(transport),
 		MsgSize:   msgSize,
+		Warmup:    time.Duration(warmup) * time.Second,
 		Duration:  time.Duration(duration) * time.Second,
 		Clients:   clients,
 	}

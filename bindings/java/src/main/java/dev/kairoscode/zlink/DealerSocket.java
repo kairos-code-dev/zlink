@@ -44,14 +44,31 @@ public final class DealerSocket extends Socket {
     Optional<Received> recvNoWait() { return super.recvNoWait(); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(Message part) { return request(List.of(part)); }
+    public CompletableFuture<List<Message>> request(Message part, SendFlags flags) {
+        return request(List.of(part), flags);
+    }
     public CompletableFuture<List<Message>> request(Message part, Duration timeout) {
         return request(List.of(part), timeout);
     }
+    public CompletableFuture<List<Message>> request(Message part, SendFlags flags,
+                                                    Duration timeout) {
+        return request(List.of(part), flags, timeout);
+    }
     public CompletableFuture<List<Message>> request(List<Message> parts) {
-        return request(parts, Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
+        return request(parts, SendFlags.NONE);
+    }
+    public CompletableFuture<List<Message>> request(List<Message> parts,
+                                                    SendFlags flags) {
+        return request(parts, flags,
+            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public CompletableFuture<List<Message>> request(List<Message> parts, Duration timeout) {
-        return dealerRequests.request(parts, timeout).thenApply(reply -> {
+        return request(parts, SendFlags.NONE, timeout);
+    }
+    public CompletableFuture<List<Message>> request(List<Message> parts,
+                                                    SendFlags flags,
+                                                    Duration timeout) {
+        return dealerRequests.request(parts, timeout, flags).thenApply(reply -> {
             try (reply) {
                 debug("dealer request thenApply parts=" + reply.parts().size());
                 return RequestReplySupport.cloneReceived(reply).parts();

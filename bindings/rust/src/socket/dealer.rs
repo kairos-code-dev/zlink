@@ -15,18 +15,20 @@ use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, DealerSocketOptions};
 
 use super::{
-    SendHandle, SocketInner, impl_attach_discovery, impl_base_socket, impl_connect,
-    impl_recv_options, impl_routing_id_options, impl_send_options, prepare_send_parts,
+    SendHandle, SocketInner, check_send_result, impl_attach_discovery, impl_base_socket,
+    impl_connect, impl_recv_options, impl_routing_id_options, impl_send_options,
+    prepare_send_parts, submit_part_sequence,
 };
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+type RequestCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
 
 struct BlockingRequestState {
     tx: mpsc::Sender<Result<Vec<Message>, RequestError>>,
 }
 
 struct CallbackRequestState {
-    callback: Option<Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>>,
+    callback: Option<RequestCallback>,
     native_parts: Vec<ffi::zlink_msg_t>,
 }
 
@@ -110,9 +112,20 @@ impl DealerSocket {
         &self,
         parts: &[&[u8]],
         callback: F,
-        flags: SendFlags,
         timeout: Option<Duration>,
     ) -> Result<(), SubmitError>
+    where
+        F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
+    {
+        self.request_callback_with_flags(parts, callback, SendFlags::NONE, timeout)
+    }
+
+    pub fn try_request_callback<F>(
+        &self,
+        parts: &[&[u8]],
+        callback: F,
+        timeout: Option<Duration>,
+    ) -> Result<bool, SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -126,24 +139,51 @@ impl DealerSocket {
             callback: Some(Box::new(callback)),
             native_parts,
         });
-        let rc = unsafe {
-            ffi::zlink_dealer_request(
-                self.inner.handle,
-                state.native_parts.as_mut_ptr(),
-                state.native_parts.len(),
-                dealer_callback_request_callback,
-                (&mut *state as *mut CallbackRequestState).cast(),
-                flags.bits(),
-                timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT)),
-            )
-        };
-        let submit_result = check_submit_rc(rc);
-        if let Err(err) = submit_result {
-            drop(state);
-            return Err(err);
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let userdata = (&mut *state as *mut CallbackRequestState).cast();
+        let rc = submit_part_sequence(
+            state.native_parts.as_mut_slice(),
+            |part, part_flag, is_final| unsafe {
+                ffi::zlink_dealer_request_part(
+                    self.inner.handle,
+                    part,
+                    ffi::ZLINK_DONTWAIT,
+                    part_flag,
+                    if is_final { timeout_ms } else { 0 },
+                    if is_final {
+                        Some(dealer_callback_request_callback)
+                    } else {
+                        None
+                    },
+                    if is_final {
+                        userdata
+                    } else {
+                        std::ptr::null_mut()
+                    },
+                )
+            },
+        )?;
+        match check_send_result(rc) {
+            Ok(crate::domain::SendResult::Sent) => {
+                let _ = Box::into_raw(state);
+                Ok(true)
+            }
+            Ok(crate::domain::SendResult::Backpressured) => {
+                drop(state);
+                Ok(false)
+            }
+            Ok(crate::domain::SendResult::NotReady) => {
+                drop(state);
+                Err(SubmitError::new(
+                    crate::error::SubmitResult::NotConnected,
+                    libc::ENOTCONN,
+                ))
+            }
+            Err(err) => {
+                drop(state);
+                Err(err)
+            }
         }
-        let _ = Box::into_raw(state);
-        Ok(())
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
@@ -174,6 +214,59 @@ impl DealerSocket {
             ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_PROBE,
             enabled,
         )
+    }
+
+    fn request_callback_with_flags<F>(
+        &self,
+        parts: &[&[u8]],
+        callback: F,
+        flags: SendFlags,
+        timeout: Option<Duration>,
+    ) -> Result<(), SubmitError>
+    where
+        F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
+    {
+        let mut messages = parts
+            .iter()
+            .map(|part| Message::from_bytes(part))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(submit_error_from_config)?;
+        let native_parts = prepare_send_parts(&mut messages)?;
+        let mut state = Box::new(CallbackRequestState {
+            callback: Some(Box::new(callback)),
+            native_parts,
+        });
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let userdata = (&mut *state as *mut CallbackRequestState).cast();
+        let rc = submit_part_sequence(
+            state.native_parts.as_mut_slice(),
+            |part, part_flag, is_final| unsafe {
+                ffi::zlink_dealer_request_part(
+                    self.inner.handle,
+                    part,
+                    flags.bits(),
+                    part_flag,
+                    if is_final { timeout_ms } else { 0 },
+                    if is_final {
+                        Some(dealer_callback_request_callback)
+                    } else {
+                        None
+                    },
+                    if is_final {
+                        userdata
+                    } else {
+                        std::ptr::null_mut()
+                    },
+                )
+            },
+        )?;
+        let submit_result = check_submit_rc(rc);
+        if let Err(err) = submit_result {
+            drop(state);
+            return Err(err);
+        }
+        let _ = Box::into_raw(state);
+        Ok(())
     }
 }
 
@@ -210,17 +303,22 @@ fn submit_dealer_request(
 ) -> Result<(), SubmitError> {
     let mut parts = parts.into_parts();
     let mut native = prepare_send_parts(&mut parts)?;
-    let rc = unsafe {
-        ffi::zlink_dealer_request(
+    let timeout_ms = timeout_to_ms(timeout);
+    let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
+        ffi::zlink_dealer_request_part(
             handle,
-            native.as_mut_ptr(),
-            native.len(),
-            callback,
-            userdata,
+            part,
             flags.bits(),
-            timeout_to_ms(timeout),
+            part_flag,
+            if is_final { timeout_ms } else { 0 },
+            if is_final { Some(callback) } else { None },
+            if is_final {
+                userdata
+            } else {
+                std::ptr::null_mut()
+            },
         )
-    };
+    })?;
     check_submit_rc(rc)
 }
 

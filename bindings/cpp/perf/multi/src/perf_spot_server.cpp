@@ -327,6 +327,13 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     if (!perf::multi::configure_spot_control_tls (control_node, transport_))
         return false;
 
+    zlink::service::spot_t spot = node.create_spot ();
+    if (!spot.valid ())
+        return false;
+    zlink::service::spot_t control_spot = control_node.create_spot ();
+    if (!control_spot.valid ())
+        return false;
+
     const int base_port = settings.server_bind_port > 0
                             ? settings.server_bind_port
                             : 39500 + (bench_pid () % 1000) * 8;
@@ -337,13 +344,6 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     const std::string control_endpoint =
       perf::multi::bind_spot_endpoint (control_node, transport_, base_port + 256);
     if (control_endpoint.empty ())
-        return false;
-
-    zlink::service::spot_t spot = node.create_spot ();
-    if (!spot.valid ())
-        return false;
-    zlink::service::spot_t control_spot = control_node.create_spot ();
-    if (!control_spot.valid ())
         return false;
 
     spot.options ().send_hwm (settings.sndhwm);

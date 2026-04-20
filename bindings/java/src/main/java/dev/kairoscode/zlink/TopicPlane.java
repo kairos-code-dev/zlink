@@ -99,7 +99,7 @@ final class TopicPlane {
                         || errno == Socket.ERRNO_EWOULDBLOCK_WIN)) {
                     throw new RecvException(RecvResult.NO_DATA, errno);
                 }
-                throw ZlinkException.fromErrno("zlink_subscription_event", errno);
+                throw ZlinkException.fromErrno("zlink_xpub_recv_part", errno);
             }
 
             int topicLength = Socket.normalizeTopicLength(topicOut, Socket.TOPIC_CAPACITY,
@@ -152,7 +152,7 @@ final class TopicPlane {
                 || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
                 return Optional.empty();
             }
-            throw ZlinkException.fromLastError("zlink_subscription_event");
+            throw ZlinkException.fromLastError("zlink_xpub_recv_part");
         }
     }
 

@@ -5,6 +5,28 @@
 #include <string.h>
 
 #include "zlink.h"
+#include "api/recv_result_internal.hpp"
+#include "api/socket_api_internal.hpp"
+#include "api/socket_request_reply_internal.hpp"
+
+namespace reqrep = zlink::socket_reqrep_internal;
+
+extern "C" int zlink_router_enable_spot_receive(void *router_);
+
+#ifdef __cplusplus
+#define ZLINK_JAVA_EXPORT extern "C"
+#define ZLINK_JAVA_GET_ARRAY_CRITICAL(env_, array_) \
+    static_cast<jbyte *>((env_)->GetPrimitiveArrayCritical((array_), NULL))
+#define ZLINK_JAVA_RELEASE_ARRAY_CRITICAL(env_, array_, ptr_, mode_) \
+    (env_)->ReleasePrimitiveArrayCritical((array_), (ptr_), (mode_))
+#else
+#define ZLINK_JAVA_EXPORT
+#define ZLINK_JAVA_GET_ARRAY_CRITICAL(env_, array_) \
+    (jbyte *) (*(env_))->GetPrimitiveArrayCritical((env_), (array_), NULL)
+#define ZLINK_JAVA_RELEASE_ARRAY_CRITICAL(env_, array_, ptr_, mode_) \
+    (*(env_))->ReleasePrimitiveArrayCritical((env_), (array_), (ptr_), \
+      (mode_))
+#endif
 
 typedef struct zlink_java_reqrep_state_t {
     pthread_mutex_t mutex;
@@ -105,14 +127,102 @@ static int zlink_java_reqrep_wait(zlink_java_reqrep_state_t *state,
     return 0;
 }
 
-int zlink_java_dealer_request_sync(void *dealer,
-                                   zlink_msg_t *parts,
-                                   size_t part_count,
-                                   int flags,
-                                   uint32_t timeout_ms,
-                                   int *request_result_out,
-                                   zlink_msg_t **reply_parts_out,
-                                   size_t *reply_part_count_out) {
+static int zlink_java_validate_router_socket(void *router,
+                                             int expected_type) {
+    socket_handle_t handle = as_socket_handle(router);
+    if (!handle.socket) {
+        return -1;
+    }
+    if (socket_type(handle) != expected_type) {
+        errno = EINVAL;
+        return -1;
+    }
+    return 0;
+}
+
+ZLINK_JAVA_EXPORT int zlink_java_router_recv_compat(
+  void *router,
+  const zlink_routing_id_t **source_node_rid_out,
+  const zlink_routing_id_t **source_spot_rid_out,
+  uint64_t *request_seq_out,
+  zlink_msg_t **parts_out,
+  size_t *part_count_out,
+  zlink_recv_flags_t flags) {
+    if (!source_node_rid_out || !source_spot_rid_out || !request_seq_out
+        || !parts_out || !part_count_out) {
+        errno = EFAULT;
+        return (int) ZLINK_RECV_INVALID_HANDLE;
+    }
+    if (zlink_java_validate_router_socket(router, ZLINK_CORE_SOCKET_ROUTER)
+        != 0) {
+        return (int) zlink::recv_result_internal::from_errno(errno);
+    }
+
+    socket_handle_t handle = as_socket_handle(router);
+    if (!handle.socket) {
+        return (int) zlink::recv_result_internal::from_errno(EFAULT);
+    }
+    if (zlink_router_enable_spot_receive(router) != 0) {
+        return (int) zlink::recv_result_internal::from_errno(errno);
+    }
+
+    std::shared_ptr<reqrep::socket_request_reply_state_t> state =
+      reqrep::find_request_reply_state(handle);
+
+    if (!state) {
+        int direct_rc = reqrep::recv_router_message_direct(
+          handle, source_node_rid_out, source_spot_rid_out, request_seq_out,
+          parts_out, part_count_out, flags);
+        if (direct_rc == 0) {
+            return (int) ZLINK_RECV_OK;
+        }
+        return (int) zlink::recv_result_internal::from_errno(errno);
+    }
+
+    std::unique_lock<std::mutex> lock(state->mutex);
+    bool has_recv_queue = state->recv_queue.rx || state->recv_queue.tx;
+    bool can_drain_direct =
+      !has_recv_queue && !state->internal_dispatch_installed
+      && state->pending_requests.empty() && state->pending_sequences.empty();
+    lock.unlock();
+
+    if (can_drain_direct) {
+        int direct_rc = reqrep::recv_router_message_direct(
+          handle, source_node_rid_out, source_spot_rid_out, request_seq_out,
+          parts_out, part_count_out, flags);
+        if (direct_rc == 0) {
+            return (int) ZLINK_RECV_OK;
+        }
+        return (int) zlink::recv_result_internal::from_errno(errno);
+    }
+
+    if (reqrep::ensure_recv_queue_ready(state) != 0
+        || reqrep::ensure_internal_dispatch_installed(state) != 0) {
+        return (int) zlink::recv_result_internal::from_errno(errno);
+    }
+
+    int timeout_ms = -1;
+    size_t timeout_size = sizeof(timeout_ms);
+    if (handle.socket->getsockopt(ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout_ms,
+                                  &timeout_size)
+        != 0) {
+        return (int) zlink::recv_result_internal::from_errno(errno);
+    }
+
+    return (int) zlink::recv_result_internal::from_rc(
+      reqrep::recv_internal_router_queue(
+        &state->recv_queue, source_node_rid_out, source_spot_rid_out,
+        request_seq_out, parts_out, part_count_out, flags, timeout_ms));
+}
+
+ZLINK_JAVA_EXPORT int zlink_java_dealer_request_sync(void *dealer,
+                                                     zlink_msg_t *parts,
+                                                     size_t part_count,
+                                                     int flags,
+                                                     uint32_t timeout_ms,
+                                                     int *request_result_out,
+                                                     zlink_msg_t **reply_parts_out,
+                                                     size_t *reply_part_count_out) {
     zlink_java_reqrep_state_t state;
     zlink_submit_result_t submit_result;
 
@@ -144,15 +254,16 @@ int zlink_java_dealer_request_sync(void *dealer,
       reply_parts_out, reply_part_count_out);
 }
 
-int zlink_java_router_request_sync(void *router,
-                                   const zlink_routing_id_t *peer_rid,
-                                   zlink_msg_t *parts,
-                                   size_t part_count,
-                                   int flags,
-                                   uint32_t timeout_ms,
-                                   int *request_result_out,
-                                   zlink_msg_t **reply_parts_out,
-                                   size_t *reply_part_count_out) {
+ZLINK_JAVA_EXPORT int zlink_java_router_request_sync(
+  void *router,
+  const zlink_routing_id_t *peer_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  int flags,
+  uint32_t timeout_ms,
+  int *request_result_out,
+  zlink_msg_t **reply_parts_out,
+  size_t *reply_part_count_out) {
     zlink_java_reqrep_state_t state;
     zlink_submit_result_t submit_result;
 
@@ -184,15 +295,15 @@ int zlink_java_router_request_sync(void *router,
       reply_parts_out, reply_part_count_out);
 }
 
-uintptr_t zlink_java_msg_data_addr(zlink_msg_t *msg) {
+ZLINK_JAVA_EXPORT uintptr_t zlink_java_msg_data_addr(zlink_msg_t *msg) {
     return (uintptr_t) zlink_msg_data(msg);
 }
 
-int zlink_java_send_u32(void *socket,
-                        uint32_t routing_id,
-                        zlink_msg_t *parts,
-                        size_t part_count,
-                        int flags) {
+ZLINK_JAVA_EXPORT int zlink_java_send_u32(void *socket,
+                                          uint32_t routing_id,
+                                          zlink_msg_t *parts,
+                                          size_t part_count,
+                                          int flags) {
     zlink_routing_id_t rid;
     rid.size = 4;
     rid.data[0] = (uint8_t) (routing_id >> 24);
@@ -214,29 +325,29 @@ int zlink_java_send_u32(void *socket,
     return (int) ZLINK_SUBMIT_OK;
 }
 
-uint64_t zlink_java_bench_noop_u64(uint64_t value) {
+ZLINK_JAVA_EXPORT uint64_t zlink_java_bench_noop_u64(uint64_t value) {
     return value + 1u;
 }
 
-void zlink_java_bench_copy_to_native(const uint8_t *src,
-                                     uint8_t *dst,
-                                     size_t len) {
+ZLINK_JAVA_EXPORT void zlink_java_bench_copy_to_native(const uint8_t *src,
+                                                       uint8_t *dst,
+                                                       size_t len) {
     if (len == 0) {
         return;
     }
     memcpy(dst, src, len);
 }
 
-void zlink_java_bench_copy_to_heap(const uint8_t *src,
-                                   uint8_t *dst,
-                                   size_t len) {
+ZLINK_JAVA_EXPORT void zlink_java_bench_copy_to_heap(const uint8_t *src,
+                                                     uint8_t *dst,
+                                                     size_t len) {
     if (len == 0) {
         return;
     }
     memcpy(dst, src, len);
 }
 
-JNIEXPORT jlong JNICALL
+ZLINK_JAVA_EXPORT JNIEXPORT jlong JNICALL
 Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniNoop0(
   JNIEnv *env,
   jclass cls,
@@ -246,7 +357,7 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniNoop0(
     return (jlong) zlink_java_bench_noop_u64((uint64_t) value);
 }
 
-JNIEXPORT void JNICALL
+ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
 Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToNative0(
   JNIEnv *env,
   jclass cls,
@@ -260,7 +371,7 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToNative0(
     if (src == NULL || length < 0 || offset < 0) {
         return;
     }
-    src_ptr = (*env)->GetPrimitiveArrayCritical(env, src, NULL);
+    src_ptr = ZLINK_JAVA_GET_ARRAY_CRITICAL(env, src);
     if (src_ptr == NULL) {
         return;
     }
@@ -268,10 +379,10 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToNative0(
       (const uint8_t *) (src_ptr + offset),
       (uint8_t *) (uintptr_t) dst_address,
       (size_t) length);
-    (*env)->ReleasePrimitiveArrayCritical(env, src, src_ptr, JNI_ABORT);
+    ZLINK_JAVA_RELEASE_ARRAY_CRITICAL(env, src, src_ptr, JNI_ABORT);
 }
 
-JNIEXPORT void JNICALL
+ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
 Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToHeap0(
   JNIEnv *env,
   jclass cls,
@@ -285,7 +396,7 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToHeap0(
     if (dst == NULL || length < 0 || offset < 0) {
         return;
     }
-    dst_ptr = (*env)->GetPrimitiveArrayCritical(env, dst, NULL);
+    dst_ptr = ZLINK_JAVA_GET_ARRAY_CRITICAL(env, dst);
     if (dst_ptr == NULL) {
         return;
     }
@@ -293,10 +404,10 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToHeap0(
       (const uint8_t *) (uintptr_t) src_address,
       (uint8_t *) (dst_ptr + offset),
       (size_t) length);
-    (*env)->ReleasePrimitiveArrayCritical(env, dst, dst_ptr, 0);
+    ZLINK_JAVA_RELEASE_ARRAY_CRITICAL(env, dst, dst_ptr, 0);
 }
 
-JNIEXPORT void JNICALL
+ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
 Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitClose0(
   JNIEnv *env,
   jclass cls,
@@ -312,7 +423,7 @@ Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitClose0(
     zlink_msg_close(msg);
 }
 
-JNIEXPORT void JNICALL
+ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
 Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitSizeClose0(
   JNIEnv *env,
   jclass cls,
@@ -329,7 +440,7 @@ Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitSizeClose0(
     zlink_msg_close(msg);
 }
 
-JNIEXPORT void JNICALL
+ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
 Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgMovePath0(
   JNIEnv *env,
   jclass cls,
@@ -358,7 +469,7 @@ Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgMovePath0(
     zlink_msg_close(dst);
 }
 
-JNIEXPORT void JNICALL
+ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
 Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgCopyPath0(
   JNIEnv *env,
   jclass cls,

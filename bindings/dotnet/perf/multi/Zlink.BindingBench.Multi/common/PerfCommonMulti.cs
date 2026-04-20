@@ -9,11 +9,11 @@ internal static partial class PerfRunner
 
     internal const int MaxStreamFrameBytes = 16 * 1024 * 1024;
 
-    internal enum PerfPhase : uint
+    internal enum PerfPhase : byte
     {
-        Unknown = 0,
-        Warmup = 1,
-        Active = 2,
+        Warmup = 0,
+        Active = 1,
+        Cooldown = 2,
     }
 
     internal static string NormalizePerfPattern(string pattern)
@@ -187,8 +187,8 @@ internal static partial class PerfRunner
     internal static void ApplyMultiSocketOptions(SocketBase socket,
         PerfOptions options)
     {
-        int sndHwm = options.ResolveMultiHwm("PERF_SNDHWM");
-        int rcvHwm = options.ResolveMultiHwm("PERF_RCVHWM");
+        int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
+        int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
         int sndTimeo = ResolveMultiSndTimeoutMs(options);
         int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
 

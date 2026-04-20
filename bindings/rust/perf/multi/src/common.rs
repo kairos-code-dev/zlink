@@ -1,11 +1,11 @@
+#![allow(dead_code)]
+
 //! Multi perf common utilities.
-//! Protocol: server prints "READY,<endpoint>", client receives endpoint via CLI.
-//! Stop: client sends STOP_TOKEN, server detects and exits.
 
 #[path = "backpressure.rs"]
 pub mod backpressure;
 
-use std::sync::OnceLock;
+use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, ZlinkError};
@@ -13,25 +13,26 @@ use zlink::Message;
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
 pub const HEADER_SIZE: usize = 29;
+pub const PHASE_WARMUP: u8 = 0;
 pub const PHASE_ACTIVE: u8 = 1;
+pub const PHASE_COOLDOWN: u8 = 2;
 pub const MAGIC: u32 = 0x5A4C_4E4B; // "ZLNK"
-
-fn process_run_id() -> u32 {
-    static RUN_ID: OnceLock<u32> = OnceLock::new();
-    *RUN_ID.get_or_init(|| {
-        let pid = std::process::id();
-        let stamp = now_ns() as u32;
-        stamp ^ pid.rotate_left(13)
-    })
-}
+pub const BENCHMARK_RUN_ID: u32 = 1;
 
 pub fn encode_header(buf: &mut [u8], phase: u8, msg_size: u32, seq: u64) {
     buf[0..4].copy_from_slice(&MAGIC.to_le_bytes());
-    buf[4..8].copy_from_slice(&process_run_id().to_le_bytes());
+    buf[4..8].copy_from_slice(&BENCHMARK_RUN_ID.to_le_bytes());
     buf[8] = phase;
     buf[9..13].copy_from_slice(&msg_size.to_le_bytes());
     buf[13..21].copy_from_slice(&seq.to_le_bytes());
     buf[21..29].copy_from_slice(&(now_ns() as i64).to_le_bytes());
+}
+
+pub fn decode_magic(data: &[u8]) -> u32 {
+    if data.len() < HEADER_SIZE {
+        return 0;
+    }
+    u32::from_le_bytes(data[0..4].try_into().unwrap())
 }
 
 pub fn decode_phase(data: &[u8]) -> u8 {
@@ -46,6 +47,13 @@ pub fn decode_msg_size(data: &[u8]) -> u32 {
         return 0;
     }
     u32::from_le_bytes(data[9..13].try_into().unwrap())
+}
+
+pub fn decode_run_id(data: &[u8]) -> u32 {
+    if data.len() < HEADER_SIZE {
+        return 0;
+    }
+    u32::from_le_bytes(data[4..8].try_into().unwrap())
 }
 
 pub fn decode_sent_ts_ns(data: &[u8]) -> i64 {
@@ -64,6 +72,12 @@ pub fn now_ns() -> u64 {
 }
 
 pub struct TlsPaths {
+    pub cert: String,
+    pub key: String,
+    pub ca: String,
+}
+
+pub struct TlsPem {
     pub cert: String,
     pub key: String,
     pub ca: String,
@@ -172,8 +186,61 @@ pub fn setup_raw_tls_client<S: RawTlsSocket>(socket: &S, tls: &TlsPaths) -> Resu
     Ok(())
 }
 
+pub fn load_tls_pem(tls: &TlsPaths) -> TlsPem {
+    TlsPem {
+        cert: fs::read_to_string(&tls.cert).expect("read tls cert"),
+        key: fs::read_to_string(&tls.key).expect("read tls key"),
+        ca: fs::read_to_string(&tls.ca).expect("read tls ca"),
+    }
+}
+
+pub fn emit_unsupported(pattern: &str, transport: &str, reason: &str) {
+    println!("UNSUPPORTED,{pattern},{transport},{reason}");
+    use std::io::Write;
+    std::io::stdout().flush().ok();
+}
+
+pub fn is_transport_unsupported_error(err: &ZlinkError) -> bool {
+    matches!(
+        err.internal_errno(),
+        libc::EPERM | libc::EACCES | libc::ENOTSUP | libc::EADDRINUSE | libc::EINVAL
+    )
+}
+
+pub fn handle_transport_setup_error<E>(
+    pattern: &str,
+    transport: &str,
+    stage: &str,
+    err: E,
+) -> bool
+where
+    E: Into<ZlinkError> + Copy,
+{
+    let err = err.into();
+    if is_transport_unsupported_error(&err) {
+        emit_unsupported(
+            pattern,
+            transport,
+            &format!("{stage}_errno_{}", err.internal_errno()),
+        );
+        return true;
+    }
+    false
+}
+
 pub fn is_stop_token(data: &[u8]) -> bool {
     data == STOP_TOKEN
+}
+
+pub fn is_valid_message(data: &[u8], expected_size: usize) -> bool {
+    data.len() >= HEADER_SIZE
+        && decode_magic(data) == MAGIC
+        && decode_run_id(data) == BENCHMARK_RUN_ID
+        && decode_msg_size(data) as usize == expected_size
+}
+
+pub fn is_valid_active_message(data: &[u8], expected_size: usize) -> bool {
+    is_valid_message(data, expected_size) && decode_phase(data) == PHASE_ACTIVE
 }
 
 // -- Latency stats -----------------------------------------------------------
@@ -230,13 +297,27 @@ pub struct PhaseResult {
     pub latency_p99_ns: f64,
 }
 
-pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> PhaseResult {
+fn bandwidth_multiplier(pattern: &str) -> f64 {
+    match pattern {
+        "MULTI_DEALER_ROUTER" | "MULTI_ROUTER_ROUTER" | "MULTI_STREAM" | "MULTI_SPOT_REQREP" => {
+            2.0
+        }
+        _ => 1.0,
+    }
+}
+
+pub fn build_phase_result(
+    pattern: &str,
+    size: usize,
+    duration_s: u64,
+    stats: &StatsResult,
+) -> PhaseResult {
     let throughput = if duration_s == 0 {
         0.0
     } else {
         stats.count as f64 / duration_s as f64
     };
-    let bandwidth = throughput * size as f64 / 1_000_000.0;
+    let bandwidth = throughput * size as f64 * bandwidth_multiplier(pattern) / 1_000_000.0;
 
     PhaseResult { throughput, bandwidth, latency_mean_ns: stats.mean_ns, latency_p95_ns: stats.p95_ns, latency_p99_ns: stats.p99_ns }
 }
@@ -253,7 +334,7 @@ pub fn print_phase_result(key: &str, phase: &PhaseResult) {
 
 pub fn print_result(pattern: &str, transport: &str, size: usize, duration_s: u64, stats: &StatsResult) {
     let key = format!("RESULT,current,{pattern},{transport},{size}");
-    let phase = build_phase_result(size, duration_s, stats);
+    let phase = build_phase_result(pattern, size, duration_s, stats);
     print_phase_result(&key, &phase);
 }
 
@@ -276,7 +357,7 @@ impl MultiSettings {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
-            hwm: env_or("PERF_MULTI_HWM", 100) as i32,
+            hwm: env_or("PERF_MULTI_HWM", 1000) as i32,
         }
     }
 }

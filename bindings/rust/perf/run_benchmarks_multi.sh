@@ -232,6 +232,48 @@ wait_for_file_line() {
     return 1
 }
 
+wait_for_file_prefix() {
+    local file_path="$1"
+    local prefix="$2"
+    local timeout_seconds="$3"
+    local deadline=$((SECONDS + timeout_seconds))
+    while (( SECONDS < deadline )); do
+        if [[ -f "${file_path}" ]]; then
+            local line
+            line="$(awk -v prefix="${prefix}" 'index($0, prefix) == 1 { print; exit }' "${file_path}" 2>/dev/null || true)"
+            if [[ -n "${line}" ]]; then
+                printf '%s\n' "${line}"
+                return 0
+            fi
+        fi
+        sleep 0.1
+    done
+    return 1
+}
+
+read_first_case_signal() {
+    local file_path="$1"
+    awk '/^(READY,|UNSUPPORTED,)/ { print; exit }' "${file_path}" 2>/dev/null || true
+}
+
+wait_for_ready_or_unsupported() {
+    local file_path="$1"
+    local timeout_seconds="$2"
+    local deadline=$((SECONDS + timeout_seconds))
+    while (( SECONDS < deadline )); do
+        if [[ -f "${file_path}" ]]; then
+            local line
+            line="$(read_first_case_signal "${file_path}")"
+            if [[ -n "${line}" ]]; then
+                printf '%s\n' "${line}"
+                return 0
+            fi
+        fi
+        sleep 0.1
+    done
+    return 1
+}
+
 for run in $(seq 1 "${RUNS}"); do
     [[ "${RUNS}" -gt 1 ]] && echo "--- Run ${run}/${RUNS} ---"
     for pat in "${PATTERNS[@]}"; do
@@ -265,6 +307,7 @@ for run in $(seq 1 "${RUNS}"); do
             for size in "${SIZE_LIST[@]}"; do
                 case_status="success"
                 case_reason=""
+                CLIENT_OUTPUT=""
                 SRV_OUT=$(mktemp)
                 SERVER_FIFO="$(mktemp -u)"
                 mkfifo "${SERVER_FIFO}"
@@ -275,15 +318,19 @@ for run in $(seq 1 "${RUNS}"); do
 
                 # Wait for READY
                 ENDPOINT=""
-                for _attempt in $(seq 1 ${SERVER_READY_TIMEOUT}); do
-                    sleep 0.5
-                    READY_LINE=$(head -1 "${SRV_OUT}" 2>/dev/null || true)
-                    if [[ "${READY_LINE}" == READY,* ]]; then
-                        ENDPOINT="${READY_LINE#READY,}"
-                        ENDPOINT="${ENDPOINT//0.0.0.0/127.0.0.1}"
-                        break
-                    fi
-                done
+                READY_LINE="$(wait_for_ready_or_unsupported "${SRV_OUT}" "${SERVER_READY_TIMEOUT}" || true)"
+                if [[ "${READY_LINE}" == UNSUPPORTED,* ]]; then
+                    case_status="unsupported"
+                    case_reason="${READY_LINE//,/;}"
+                    shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
+                    rm -f "${SRV_OUT}"
+                    printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+                    continue
+                fi
+                if [[ "${READY_LINE}" == READY,* ]]; then
+                    ENDPOINT="${READY_LINE#READY,}"
+                    ENDPOINT="${ENDPOINT//0.0.0.0/127.0.0.1}"
+                fi
 
                 if [[ -z "${ENDPOINT}" ]]; then
                     case_status="fail"
@@ -292,6 +339,23 @@ for run in $(seq 1 "${RUNS}"); do
                     rm -f "${SRV_OUT}"
                     printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
                     continue
+                fi
+
+                CONTROL_ENDPOINT=""
+                if [[ "${pat}" == "MULTI_SPOT" ]]; then
+                    CONTROL_LINE="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_READY," "${SERVER_READY_TIMEOUT}" || true)"
+                    if [[ "${CONTROL_LINE}" == CONTROL_READY,* ]]; then
+                        CONTROL_ENDPOINT="${CONTROL_LINE#CONTROL_READY,}"
+                        CONTROL_ENDPOINT="${CONTROL_ENDPOINT//0.0.0.0/127.0.0.1}"
+                    fi
+                    if [[ -z "${CONTROL_ENDPOINT}" ]]; then
+                        case_status="fail"
+                        case_reason="control_ready_timeout"
+                        shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
+                        rm -f "${SRV_OUT}"
+                        printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+                        continue
+                    fi
                 fi
 
                 if [[ "${pat}" == "MULTI_DEALER_DEALER" || "${pat}" == "MULTI_PUBSUB" ]]; then
@@ -334,18 +398,79 @@ for run in $(seq 1 "${RUNS}"); do
                     exec {CLIENT_CONTROL_FD}>&- || true
                     OUTPUT=""
                     if [[ -f "${CLIENT_OUT}" ]]; then
-                        OUTPUT="$(cat "${CLIENT_OUT}")"
+                        CLIENT_OUTPUT="$(cat "${CLIENT_OUT}")"
                     fi
                     if [[ -s "${CLIENT_ERR}" ]]; then
-                        if [[ -n "${OUTPUT}" ]]; then
-                            OUTPUT+=$'\n'
+                        if [[ -n "${CLIENT_OUTPUT}" ]]; then
+                            CLIENT_OUTPUT+=$'\n'
                         fi
-                        OUTPUT+="$(cat "${CLIENT_ERR}")"
+                        CLIENT_OUTPUT+="$(cat "${CLIENT_ERR}")"
+                    fi
+                    rm -f "${CLIENT_OUT}" "${CLIENT_ERR}"
+                elif [[ "${pat}" == "MULTI_SPOT" ]]; then
+                    CLIENT_OUT="$(mktemp)"
+                    CLIENT_ERR="$(mktemp)"
+                    CLIENT_FIFO="$(mktemp -u)"
+                    mkfifo "${CLIENT_FIFO}"
+                    "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT},${CONTROL_ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
+                    CLIENT_PID=$!
+                    exec {CLIENT_CONTROL_FD}> "${CLIENT_FIFO}"
+                    rm -f "${CLIENT_FIFO}"
+
+                    CLIENT_CONTROL_LINE="$(wait_for_file_prefix "${CLIENT_OUT}" "CLIENT_CONTROL_ENDPOINT," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+                    if [[ "${CLIENT_CONTROL_LINE}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
+                        case_status="fail"
+                        case_reason="client_control_endpoint_timeout"
+                    else
+                        CLIENT_CONTROL_ENDPOINT="${CLIENT_CONTROL_LINE#CLIENT_CONTROL_ENDPOINT,}"
+                        printf 'CONNECT_CONTROL,%s\n' "${CLIENT_CONTROL_ENDPOINT}" >&"${SERVER_CONTROL_FD}" || true
+                        SERVER_CONTROL_CONNECTED="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+                        if [[ "${SERVER_CONTROL_CONNECTED}" != "CONTROL_CONNECTED,${CLIENT_CONTROL_ENDPOINT}" ]]; then
+                            case_status="fail"
+                            case_reason="control_connect_timeout"
+                        fi
+                    fi
+
+                    if [[ "${case_status}" == "success" ]]; then
+                        CLIENT_READY_LINE="$(wait_for_file_prefix "${CLIENT_OUT}" "CLIENT_READY," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+                        if [[ "${CLIENT_READY_LINE}" != "CLIENT_READY,${size}" ]]; then
+                            case_status="fail"
+                            case_reason="client_ready_timeout_or_invalid"
+                        else
+                            printf 'START,%s\n' "${size}" >&"${SERVER_CONTROL_FD}" || true
+                            printf 'START,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
+                        fi
+                    fi
+
+                    if [[ "${case_status}" == "success" ]]; then
+                        if ! wait_for_pid "${CLIENT_PID}" "${CLIENT_TIMEOUT_SECONDS}"; then
+                            case_status="fail"
+                            case_reason="binary_exit_or_timeout"
+                            kill "${CLIENT_PID}" 2>/dev/null || true
+                            wait "${CLIENT_PID}" 2>/dev/null || true
+                        elif ! wait "${CLIENT_PID}"; then
+                            case_status="fail"
+                            case_reason="binary_exit_or_timeout"
+                        fi
+                    else
+                        kill "${CLIENT_PID}" 2>/dev/null || true
+                        wait "${CLIENT_PID}" 2>/dev/null || true
+                    fi
+
+                    exec {CLIENT_CONTROL_FD}>&- || true
+                    if [[ -f "${CLIENT_OUT}" ]]; then
+                        CLIENT_OUTPUT="$(cat "${CLIENT_OUT}")"
+                    fi
+                    if [[ -s "${CLIENT_ERR}" ]]; then
+                        if [[ -n "${CLIENT_OUTPUT}" ]]; then
+                            CLIENT_OUTPUT+=$'\n'
+                        fi
+                        CLIENT_OUTPUT+="$(cat "${CLIENT_ERR}")"
                     fi
                     rm -f "${CLIENT_OUT}" "${CLIENT_ERR}"
                 elif [[ "${pat}" == "MULTI_STREAM" ]]; then
-                    if ! OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${STREAM_CLIENT}" \
-                        --transport tcp \
+                    if ! CLIENT_OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${STREAM_CLIENT}" \
+                        --transport "${transport}" \
                         --pattern STREAM \
                         --sizes "${size}" \
                         --runs 1 \
@@ -359,14 +484,25 @@ for run in $(seq 1 "${RUNS}"); do
                         case_reason="binary_exit_or_timeout"
                     fi
                 else
-                    if ! OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1)"; then
+                    if ! CLIENT_OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1)"; then
                         case_status="fail"
                         case_reason="binary_exit_or_timeout"
                     fi
                 fi
 
                 shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
+                SERVER_OUTPUT=""
+                if [[ -f "${SRV_OUT}" ]]; then
+                    SERVER_OUTPUT="$(cat "${SRV_OUT}")"
+                fi
                 rm -f "${SRV_OUT}"
+                OUTPUT="${SERVER_OUTPUT}"
+                if [[ -n "${CLIENT_OUTPUT}" ]]; then
+                    if [[ -n "${OUTPUT}" ]]; then
+                        OUTPUT+=$'\n'
+                    fi
+                    OUTPUT+="${CLIENT_OUTPUT}"
+                fi
                 if [[ "${case_status}" == "success" ]]; then
                     unsupported_line="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^UNSUPPORTED,/ {print; exit}')"
                     if [[ -n "${unsupported_line}" ]]; then

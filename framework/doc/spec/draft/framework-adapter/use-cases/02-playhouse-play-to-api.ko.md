@@ -1,5 +1,7 @@
 [스펙 목차](../../../README.ko.md)
 
+[use case 목록](./README.ko.md) | [Framework 초안 묶음](../README.ko.md) | [검증](../usecase-validation.ko.md)
+
 # Draft Use Case -- Playhouse Play To API
 
 > 이 문서는 **구현 전 초안**이다.
@@ -39,8 +41,8 @@ play 서버 개발자는 raw socket을 직접 열고 multipart framing을 손으
 
 예를 들면 아래처럼 나뉠 수 있다.
 
-- `api.profile`
-- `api.inventory`
+- `profile`
+- `inventory`
 - `api.payment`
 
 play 서버가 여러 api channel에 요청을 보내야 한다면, 내부적으로는 channel별
@@ -49,13 +51,13 @@ outbound client나 connection pool이 필요하다. 이때 사용자가 raw `DEA
 client를 관리하는 편이 낫다.
 
 이 모델에서는 중간 gateway나 전용 로드밸런서를 별도로 두지 않아도 된다.
-play 서버는 `api.profile`, `api.inventory` 같은 `channel_name`만 기준으로
+play 서버는 `profile`, `inventory` 같은 `channel name`만 기준으로
 요청하고, 실제 provider 위치와 선택은 Discovery와 adapter가 숨긴다.
 
 ## 4. 필요한 능력
 
 - request-response
-- channel_name 단위 provider grouping
+- channel name 단위 provider grouping
 - Discovery를 통한 대상 자동 발견
 - 필요하면 수동 endpoint 설정
 - channel별 client 분리
@@ -74,7 +76,7 @@ play 서버는 `api.profile`, `api.inventory` 같은 `channel_name`만 기준으
 - `request context`
 
 즉 사용자는 "dealer를 하나 더 만들까"보다
-"`api.profile` client를 하나 더 등록할까"를 먼저 보게 된다.
+"`profile` client를 하나 더 등록할까"를 먼저 보게 된다.
 
 ## 6. 이 use case가 설계에 주는 요구
 

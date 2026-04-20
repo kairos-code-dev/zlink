@@ -4,6 +4,8 @@
 
 #include "services/spot/spot_node.hpp"
 
+#include "api/recv_result_internal.hpp"
+#include "api/socket_message_api_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "sockets/socket_base.hpp"
 
@@ -77,10 +79,10 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
 
         size_t service_len = *service_name_len_out_;
         zlink_recv_result_t rc =
-          zlink_subscribe ((*subs)[ready_index].socket, source_rid_out_,
-                           parts_out_, part_count_out_, topic_id_out_,
-                           topic_id_len_out_,
-                           static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
+          recv_result_internal::from_rc (zlink_socket_subscribe_recv_internal (
+            (*subs)[ready_index].socket, source_rid_out_, parts_out_,
+            part_count_out_, topic_id_out_, topic_id_len_out_,
+            static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
         if (rc == ZLINK_RECV_NO_DATA) {
             if ((flags_ & ZLINK_DONTWAIT) != 0) {
                 errno = EAGAIN;
@@ -141,11 +143,10 @@ int spot_node_t::service_subscription_event_recv (
 
         size_t service_len = *service_name_len_out_;
         zlink_recv_result_t rc =
-          zlink_subscription_event ((*subs)[ready_index].socket,
-                                    source_rid_out_, subscribed_out_,
-                                    topic_id_out_, topic_id_len_out_,
-                                    static_cast<zlink_recv_flags_t> (
-                                      ZLINK_DONTWAIT));
+          recv_result_internal::from_rc (zlink_socket_xpub_recv_internal (
+            (*subs)[ready_index].socket, source_rid_out_, subscribed_out_,
+            topic_id_out_, topic_id_len_out_,
+            static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
         if (rc == ZLINK_RECV_NO_DATA) {
             if ((flags_ & ZLINK_DONTWAIT) != 0) {
                 errno = EAGAIN;

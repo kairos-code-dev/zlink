@@ -5,7 +5,7 @@
 // The public surface follows the shared bindings policy in bindings/README.md:
 //   - multipart-only public send/receive APIs
 //   - blocking methods use direct names and non-blocking methods use Try*
-//   - non-blocking send returns an explicit SendResult, not a bool
+//   - non-blocking submit returns `(false, nil)` only for temporary backpressure
 //   - non-blocking receive reports only "no data" via the ok result
 //   - message diagnostics expose GetProperty and RefCount
 //   - context options are exposed through Context.Options() as ContextOptions

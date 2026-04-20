@@ -103,6 +103,8 @@ internal static class PerfSpot
         }
         catch (Exception ex)
         {
+            if (TryPrintUnsupportedTransportFailure("SPOT", transport, size, ex))
+                return 0;
             Console.Error.WriteLine($"single_spot_error:exception:{ex.GetType().Name}:{ex.Message}");
             return 2;
         }

@@ -1,16 +1,17 @@
-//! Shared perf utilities - metric header, latency stats, phase control.
-//!
-//! Follows doc/perf/PERF_SINGLE_TEST_POLICY.md:
-//!   - ready -> active(duration)
-//!   - recv-only model
-//!   - metric header in payload for latency measurement
+#![allow(dead_code)]
 
-use std::sync::OnceLock;
-use std::sync::{Arc, Condvar, Mutex};
+//! Shared perf utilities - metric header, latency stats, phase control.
+
+use std::fs;
+use std::io;
 use std::path::Path;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, SubSocket, ZlinkError};
+use zlink::{
+    DealerSocket, Message, PairSocket, Poller, PubSocket, RouterSocket, SocketMonitor,
+    SpotNode, SubSocket, SubmitError, SubmitResult, ZlinkError,
+};
 
 // -- Metric header (29 bytes) ------------------------------------------------
 // Layout matches doc/perf/PERF_POLICY.md:
@@ -23,24 +24,25 @@ use zlink::{DealerSocket, PairSocket, PubSocket, RouterSocket, SubSocket, ZlinkE
 
 pub const HEADER_SIZE: usize = 29;
 pub const MAGIC: u32 = 0x5A4C_4E4B; // "ZLNK"
+pub const PHASE_WARMUP: u8 = 0;
 pub const PHASE_ACTIVE: u8 = 1;
-
-fn process_run_id() -> u32 {
-    static RUN_ID: OnceLock<u32> = OnceLock::new();
-    *RUN_ID.get_or_init(|| {
-        let pid = std::process::id();
-        let stamp = now_ns() as u32;
-        stamp ^ pid.rotate_left(13)
-    })
-}
+pub const PHASE_COOLDOWN: u8 = 2;
+pub const BENCHMARK_RUN_ID: u32 = 1;
 
 pub fn encode_header(buf: &mut [u8], phase: u8, msg_size: u32, seq: u64) {
     buf[0..4].copy_from_slice(&MAGIC.to_le_bytes());
-    buf[4..8].copy_from_slice(&process_run_id().to_le_bytes());
+    buf[4..8].copy_from_slice(&BENCHMARK_RUN_ID.to_le_bytes());
     buf[8] = phase;
     buf[9..13].copy_from_slice(&msg_size.to_le_bytes());
     buf[13..21].copy_from_slice(&seq.to_le_bytes());
     buf[21..29].copy_from_slice(&(now_ns() as i64).to_le_bytes());
+}
+
+pub fn decode_magic(data: &[u8]) -> u32 {
+    if data.len() < HEADER_SIZE {
+        return 0;
+    }
+    u32::from_le_bytes(data[0..4].try_into().unwrap())
 }
 
 pub fn decode_run_id(data: &[u8]) -> u32 {
@@ -72,12 +74,14 @@ pub fn decode_phase(data: &[u8]) -> u8 {
 }
 
 pub fn is_valid_active_message(data: &[u8], expected_size: usize) -> bool {
-    if data.len() < HEADER_SIZE {
-        return false;
-    }
-    decode_phase(data) == PHASE_ACTIVE
+    is_valid_message(data, expected_size) && decode_phase(data) == PHASE_ACTIVE
+}
+
+pub fn is_valid_message(data: &[u8], expected_size: usize) -> bool {
+    data.len() >= HEADER_SIZE
+        && decode_magic(data) == MAGIC
         && decode_msg_size(data) as usize == expected_size
-        && decode_run_id(data) == process_run_id()
+        && decode_run_id(data) == BENCHMARK_RUN_ID
 }
 
 pub fn message_payload<'a>(parts: &'a [Message]) -> &'a [u8] {
@@ -92,6 +96,12 @@ pub fn now_ns() -> u64 {
 }
 
 pub struct TlsPaths {
+    pub cert: String,
+    pub key: String,
+    pub ca: String,
+}
+
+pub struct TlsPem {
     pub cert: String,
     pub key: String,
     pub ca: String,
@@ -200,20 +210,94 @@ pub fn setup_raw_tls_client<S: RawTlsSocket>(socket: &S, tls: &TlsPaths) -> Resu
     Ok(())
 }
 
-#[allow(dead_code)]
-/// Wait for a monitor CONNECTION_READY event (ready gate).
-pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if Instant::now() > deadline {
-            panic!("single perf connection-ready gate timed out");
-        }
-        match mon.recv() {
-            Ok(ev) if ev.is_connection_ready() => break,
-            Ok(_) => continue,
-            Err(_) => break,
-        }
+pub fn load_tls_pem(tls: &TlsPaths) -> TlsPem {
+    TlsPem {
+        cert: fs::read_to_string(&tls.cert).expect("read tls cert"),
+        key: fs::read_to_string(&tls.key).expect("read tls key"),
+        ca: fs::read_to_string(&tls.ca).expect("read tls ca"),
     }
+}
+
+#[allow(dead_code)]
+pub fn emit_unsupported(pattern: &str, transport: &str, reason: &str) {
+    println!("UNSUPPORTED,{pattern},{transport},{reason}");
+}
+
+pub fn is_transport_unsupported_error(err: &ZlinkError) -> bool {
+    matches!(
+        err.internal_errno(),
+        libc::EPERM | libc::EACCES | libc::ENOTSUP
+    )
+}
+
+pub fn handle_transport_setup_error<E>(
+    pattern: &str,
+    transport: &str,
+    stage: &str,
+    err: E,
+) -> bool
+where
+    E: Into<ZlinkError> + Copy,
+{
+    let err = err.into();
+    if is_transport_unsupported_error(&err) {
+        emit_unsupported(
+            pattern,
+            transport,
+            &format!("{stage}_errno_{}", err.internal_errno()),
+        );
+        return true;
+    }
+    false
+}
+
+pub fn handle_local_route_handshake_error<E>(
+    pattern: &str,
+    transport: &str,
+    stage: &str,
+    err: E,
+) -> bool
+where
+    E: Into<ZlinkError> + Copy,
+{
+    let err = err.into();
+    if matches!(transport, "inproc" | "ipc") && err.internal_errno() == libc::EPROTO {
+        emit_unsupported(
+            pattern,
+            transport,
+            &format!("{stage}_errno_{}", err.internal_errno()),
+        );
+        return true;
+    }
+    false
+}
+
+pub fn wait_monitor_ready(mon: &SocketMonitor, timeout: Duration, name: &str) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        match mon.snapshot() {
+            Ok(snapshot) if snapshot.is_ready() => return,
+            Ok(_) => {}
+            Err(err) => panic!("{name} monitor snapshot failed: {err}"),
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("{name} did not become ready within {:?}", timeout);
+}
+
+pub fn wait_spot_peer_connected(node: &SpotNode, timeout: Duration, name: &str) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if node
+            .status_snapshot()
+            .map(|status| status.connected_peer_count > 0)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("{name} peer connection timed out");
 }
 
 // -- Latency statistics ------------------------------------------------------
@@ -316,6 +400,43 @@ pub fn print_result(
     print_phase_result(&key, &phase);
 }
 
+pub fn run_single_recv_loop<F>(
+    poller: &Poller,
+    hard_deadline: Instant,
+    done: CompletionSignal,
+    idle_drain: Duration,
+    mut drain: F,
+) where
+    F: FnMut() -> bool,
+{
+    let mut idle_since: Option<Instant> = None;
+    loop {
+        if Instant::now() >= hard_deadline {
+            break;
+        }
+
+        match poller.wait(50) {
+            Ok(Some(event)) if event.is_readable() => {
+                if drain() {
+                    idle_since = None;
+                }
+            }
+            Ok(Some(_)) | Ok(None) => {}
+            Err(err) => panic!("single perf poller wait failed: {err}"),
+        }
+
+        if done.is_done() {
+            idle_since.get_or_insert_with(Instant::now);
+            if idle_since
+                .map(|since| since.elapsed() >= idle_drain)
+                .unwrap_or(false)
+            {
+                break;
+            }
+        }
+    }
+}
+
 pub struct MetricCollector {
     stats: Arc<Mutex<LatencyStats>>,
 }
@@ -374,7 +495,6 @@ pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<L
 // Core single perf uses blocking send in the sender thread.
 // The sender must not set a send timeout – blocking is the intended behavior
 // so that natural backpressure throttles the sender.
-use zlink::Message;
 
 /// One-way send loop: active only.
 /// `send_fn` performs the blocking send (may be plain or routed).
@@ -389,7 +509,6 @@ pub fn send_loop<S>(
     let mut seq: u64 = 0;
     let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
 
-    // Active
     let active_end = Instant::now() + active;
     while Instant::now() < active_end {
         encode_header(&mut buf, phase, msg_size as u32, seq);
@@ -397,6 +516,48 @@ pub fn send_loop<S>(
         send_fn(msg);
         seq += 1;
     }
+
+    encode_header(&mut buf, PHASE_COOLDOWN, msg_size as u32, seq);
+    let cooldown = Message::copy_from(&buf).expect("cooldown msg");
+    send_fn(cooldown);
+}
+
+pub fn wait_send_probe_ready<S, D>(
+    name: &str,
+    msg_size: usize,
+    timeout: Duration,
+    mut send_probe: S,
+    mut drain_probe: D,
+) where
+    S: FnMut(Message) -> Result<(), SubmitError>,
+    D: FnMut() -> bool,
+{
+    let deadline = Instant::now() + timeout;
+    let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
+    let mut seq: u64 = 0;
+
+    while Instant::now() < deadline {
+        encode_header(&mut buf, PHASE_WARMUP, msg_size as u32, seq);
+        seq += 1;
+
+        match send_probe(Message::copy_from(&buf).expect("probe msg")) {
+            Ok(()) => {}
+            Err(err)
+                if matches!(
+                    err.code(),
+                    SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
+                ) => {}
+            Err(err) => panic!("{name} ready probe send failed: {err}"),
+        }
+
+        if drain_probe() {
+            return;
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    panic!("{name} ready probe timed out");
 }
 
 // -- CLI config --------------------------------------------------------------
@@ -435,19 +596,141 @@ impl PerfConfig {
             }
         }
 
-        Self { transport, size, duration_seconds: duration }
+        assert!(
+            size >= HEADER_SIZE,
+            "msg-size must be >= {HEADER_SIZE}, got {size}"
+        );
+
+        Self {
+            transport,
+            size,
+            duration_seconds: duration,
+        }
     }
 
     #[allow(dead_code)]
     pub fn endpoint(&self, suffix: &str) -> String {
         match self.transport.as_str() {
             "inproc" => format!("inproc://perf-{suffix}"),
-            "ipc" => "ipc://*".to_string(),
-            "ws" => "ws://127.0.0.1:*".to_string(),
-            "wss" => "wss://127.0.0.1:*".to_string(),
-            "tls" => "tls://127.0.0.1:*".to_string(),
-            "tcp" => "tcp://127.0.0.1:*".to_string(),
+            "ipc" => format!(
+                "ipc:///tmp/zlink-rust-perf-{suffix}-{}-{}.ipc",
+                std::process::id(),
+                now_ns()
+            ),
+            "ws" => format!("ws://127.0.0.1:{}", reserve_tcp_port()),
+            "wss" => format!("wss://127.0.0.1:{}", reserve_tcp_port()),
+            "tls" => format!("tls://127.0.0.1:{}", reserve_tcp_port()),
+            "tcp" => format!("tcp://127.0.0.1:{}", reserve_tcp_port()),
             _ => format!("inproc://perf-{suffix}"),
         }
+    }
+}
+
+fn env_or_i32(name: &str, default: i32) -> i32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_or_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn reserve_tcp_port() -> u16 {
+    let listener = try_reserve_tcp_port().expect("reserve tcp port");
+    let port = listener.local_addr().expect("tcp addr").port();
+    drop(listener);
+    port
+}
+
+fn try_reserve_tcp_port() -> io::Result<std::net::TcpListener> {
+    std::net::TcpListener::bind("127.0.0.1:0")
+}
+
+pub fn resolve_single_send_hwm() -> i32 {
+    env_or_i32(
+        "PERF_SINGLE_SNDHWM",
+        env_or_i32("PERF_SINGLE_HWM", 1000),
+    )
+}
+
+pub fn resolve_single_recv_hwm() -> i32 {
+    env_or_i32(
+        "PERF_SINGLE_RCVHWM",
+        env_or_i32("PERF_SINGLE_HWM", 1000),
+    )
+}
+
+pub fn resolve_single_idle_drain_ms() -> u64 {
+    env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200)
+}
+
+pub fn resolve_single_send_timeout() -> Duration {
+    Duration::from_millis(env_or_u64("PERF_SINGLE_SEND_TIMEOUT_MS", 1000))
+}
+
+pub fn resolve_single_pubsub_idle_drain_ms() -> u64 {
+    env_or_u64(
+        "PERF_SINGLE_PUBSUB_RCVTIMEO_MS",
+        resolve_single_idle_drain_ms(),
+    )
+}
+
+pub fn resolve_single_pubsub_ready_settle() -> Duration {
+    Duration::from_millis(env_or_u64("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000))
+}
+
+pub fn resolve_single_spot_ready_settle() -> Duration {
+    Duration::from_millis(env_or_u64("PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000))
+}
+
+pub fn resolve_single_ready_timeout() -> Duration {
+    Duration::from_millis(env_or_u64("PERF_SINGLE_READY_TIMEOUT_MS", 5000))
+}
+
+pub fn resolve_endpoint_or_emit_unsupported(
+    pattern: &str,
+    transport: &str,
+    suffix: &str,
+) -> Option<String> {
+    match transport {
+        "inproc" => Some(format!("inproc://perf-{suffix}")),
+        "ipc" => Some(format!(
+            "ipc:///tmp/zlink-rust-perf-{suffix}-{}-{}.ipc",
+            std::process::id(),
+            now_ns()
+        )),
+        "ws" => reserve_tcp_port_for_transport(pattern, transport)
+            .map(|port| format!("ws://127.0.0.1:{port}")),
+        "wss" => reserve_tcp_port_for_transport(pattern, transport)
+            .map(|port| format!("wss://127.0.0.1:{port}")),
+        "tls" => reserve_tcp_port_for_transport(pattern, transport)
+            .map(|port| format!("tls://127.0.0.1:{port}")),
+        "tcp" => reserve_tcp_port_for_transport(pattern, transport)
+            .map(|port| format!("tcp://127.0.0.1:{port}")),
+        _ => Some(format!("inproc://perf-{suffix}")),
+    }
+}
+
+fn reserve_tcp_port_for_transport(pattern: &str, transport: &str) -> Option<u16> {
+    match try_reserve_tcp_port() {
+        Ok(listener) => {
+            let port = listener.local_addr().expect("tcp addr").port();
+            drop(listener);
+            Some(port)
+        }
+        Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
+            emit_unsupported(
+                pattern,
+                transport,
+                &format!("reserve_port_errno_{}", err.raw_os_error().unwrap_or(libc::EPERM)),
+            );
+            None
+        }
+        Err(err) => panic!("reserve tcp port: {err}"),
     }
 }

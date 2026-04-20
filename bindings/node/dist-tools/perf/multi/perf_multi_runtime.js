@@ -4,7 +4,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { MonitorEvent, RecvFlags, RecvResult } = zlink;
 const { sleepImmediate } = require('../common/perf_metrics');
-const READY_EVENTS = new Set([MonitorEvent.CONNECTION_READY, MonitorEvent.CONNECTED]);
 const POLLIN = 1;
 function recvNoWait(socket) {
     try {
@@ -30,16 +29,21 @@ function subscribeNoWait(socket) {
 }
 async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000) {
     const monitor = socket.monitorOpen(MonitorEvent.CONNECTION_READY);
-    const deadline = Date.now() + timeoutMs;
     try {
         if (typeof connectFn === 'function') {
             await connectFn();
         }
+        const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
-            if (monitor.snapshot().isReady()) {
-                const event = monitor.recv();
-                if (READY_EVENTS.has(event.event)) {
+            try {
+                const event = monitor.recv(RecvFlags.DontWait);
+                if (event.event === MonitorEvent.CONNECTION_READY) {
                     return;
+                }
+            }
+            catch (error) {
+                if (!(error instanceof zlink.RecvError && error.result === RecvResult.NoData)) {
+                    throw error;
                 }
             }
             await sleepImmediate();
@@ -48,6 +52,38 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000
     }
     finally {
         monitor.close();
+    }
+}
+function trySocketSend(socket, ...args) {
+    try {
+        socket.send(...args, zlink.SendFlags.DontWait);
+        return true;
+    }
+    catch (error) {
+        if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+            return false;
+        }
+        const text = String(error && error.message ? error.message : error);
+        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
+            return false;
+        }
+        throw error;
+    }
+}
+function trySocketPublish(socket, topic, payload) {
+    try {
+        socket.publish(topic, payload, zlink.SendFlags.DontWait);
+        return true;
+    }
+    catch (error) {
+        if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
+            return false;
+        }
+        const text = String(error && error.message ? error.message : error);
+        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
+            return false;
+        }
+        throw error;
     }
 }
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
@@ -97,5 +133,9 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
 }
 module.exports = {
     drainRecvSocket,
+    recvNoWait,
+    subscribeNoWait,
+    trySocketPublish,
+    trySocketSend,
     waitForConnectionReady
 };

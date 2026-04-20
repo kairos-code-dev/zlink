@@ -535,21 +535,35 @@ class _ReceivedPartsOwner:
 
 
 def _recv_native_parts(handle, flags):
-    routing_id = ZlinkRoutingId()
-    parts = ctypes.POINTER(ZlinkMsg)()
-    part_count = ctypes.c_size_t()
-    rc = lib().zlink_recv(
-        handle,
-        ctypes.byref(routing_id),
-        ctypes.byref(parts),
-        ctypes.byref(part_count),
-        int(flags),
-    )
-    if rc != 0:
-        _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-    return _routing_id_bytes(routing_id), _ReceivedPartsOwner(
-        parts, int(part_count.value)
-    )
+    routing_id = ctypes.POINTER(ZlinkRoutingId)()
+    native_parts = []
+    try:
+        while True:
+            native_part = ZlinkMsg()
+            has_more = ctypes.c_int()
+            rc = lib().zlink_recv_part(
+                handle,
+                ctypes.byref(routing_id),
+                ctypes.byref(native_part),
+                ctypes.byref(has_more),
+                int(flags),
+            )
+            if rc != 0:
+                _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+            native_parts.append(native_part)
+            if has_more.value == 0:
+                break
+    except Exception:
+        for native_part in native_parts:
+            lib().zlink_msg_close(ctypes.byref(native_part))
+        raise
+
+    part_count = len(native_parts)
+    parts_array = (ZlinkMsg * part_count)()
+    for index, native_part in enumerate(native_parts):
+        parts_array[index] = native_part
+    routing = _routing_id_bytes(routing_id.contents) if routing_id else None
+    return routing, _ReceivedPartsOwner(parts_array, part_count)
 
 
 def _recv_native_parts_no_wait(handle):

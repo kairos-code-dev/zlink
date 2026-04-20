@@ -5,8 +5,8 @@ from pathlib import Path
 
 
 def main() -> int:
-    runner = Path(__file__).resolve().parents[1] / "run_policy_bench.py"
-    cmd = [sys.executable, str(runner), "--binding", "cpp", "--suite", "multi"]
+    runner = Path(__file__).resolve().parents[1] / "run_comparison.py"
+    cmd = [sys.executable, str(runner)]
     cmd.extend(sys.argv[1:])
     return subprocess.call(cmd)
 

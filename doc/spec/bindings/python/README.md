@@ -538,6 +538,52 @@ class Message:
     # supports `with` and `async with` — __exit__ raises CloseError
 ```
 
+### Codec Extensions
+
+The binding exposes separate codec extension packages. The distribution package
+names and import module names are fixed to:
+
+- PyPI `zlink-codec-protobuf` -> import `zlink_codec_protobuf`
+- PyPI `zlink-codec-json` -> import `zlink_codec_json`
+- PyPI `zlink-codec-messagepack` -> import `zlink_codec_messagepack`
+
+These are separate public modules layered on top of the core `zlink` package.
+They must not be merged into `zlink.__init__` as unconditional dependencies,
+and they do not extend a shared `zlink.codec.*` namespace.
+
+JSON codec baseline: stdlib `json`.
+MessagePack codec baseline: `msgpack`.
+
+```python
+# zlink_codec_protobuf
+from typing import Any, TypeVar
+
+TProto = TypeVar("TProto")
+
+def parse_proto(message: Message, message_type: type[TProto]) -> TProto: ...
+def to_message(value: Any) -> Message: ...
+```
+
+```python
+# zlink_codec_json
+from typing import Any, TypeVar
+
+TJson = TypeVar("TJson")
+
+def parse_json(message: Message, cls: type[TJson]) -> TJson: ...
+def to_message(value: Any) -> Message: ...
+```
+
+```python
+# zlink_codec_messagepack
+from typing import Any, TypeVar
+
+TMessagePack = TypeVar("TMessagePack")
+
+def parse_messagepack(message: Message, cls: type[TMessagePack]) -> TMessagePack: ...
+def to_message(value: Any) -> Message: ...
+```
+
 ### RoutingId
 
 Binary-safe immutable value type (1-255 bytes). Construction from a raw
@@ -1121,33 +1167,6 @@ class Spot:
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
                       request_seq: int,
                       payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
-
-    # --- routed send (spot → router) ---
-    def send_to_router(self, peer_rid: RoutingId,
-                       payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
-
-    # --- routed request (spot → router, async) — no flags ---
-    # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request_to_router(self, peer_rid: RoutingId,
-                                payload: Message | bytes | list,
-                                *, timeout: int = 0) -> list[Message]: ...
-
-    # --- routed request (spot → router, callback, blocking submit) — raises on submit failure ---
-    # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure. Callback receives RequestResult;
-    #   non-OK indicates request-completion failure (RequestError semantics).
-    # Callback receives an empty list on failure.
-    def request_to_router(self, peer_rid: RoutingId,
-                          payload: Message | bytes | list,
-                          callback: Callable[[RequestResult, list[Message]], None],
-                          *, timeout: int = 0) -> None: ...
-    # --- routed request (spot → router, callback, nonblocking submit) ---
-    # Returns False only for temporary backpressure.
-    def try_request_to_router(self, peer_rid: RoutingId,
-                              payload: Message | bytes | list,
-                              callback: Callable[[RequestResult, list[Message]], None],
-                              *, timeout: int = 0) -> bool: ...
 
     # --- routed reply (spot → router) ---
     def reply_to_router(self, peer_rid: RoutingId, request_seq: int,

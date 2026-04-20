@@ -100,6 +100,13 @@ func NewMessage(data []byte) (*Message, error) {
 	return m, nil
 }
 
+// NewMessageFromBytes creates a message from a byte slice. The current Go
+// binding uses the owned-message path; the helper exists so codec extensions
+// can target a stable constructor.
+func NewMessageFromBytes(data []byte) (*Message, error) {
+	return NewMessage(data)
+}
+
 func (m *Message) clone() (*Message, error) {
 	dup := &Message{}
 	if err := configErrorFromResult(ConfigResult(C.zlink_msg_init(&dup.msg))); err != nil {
@@ -133,6 +140,11 @@ func (m *Message) Data() []byte {
 	}
 	ptr := C.zlink_msg_data(&m.msg)
 	return unsafe.Slice((*byte)(ptr), size)
+}
+
+// Bytes returns the message payload as a byte slice.
+func (m *Message) Bytes() []byte {
+	return m.Data()
 }
 
 func (m *Message) Size() int {

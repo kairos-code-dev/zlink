@@ -68,7 +68,7 @@ zlink_recv_result_t recv_router_part_with_retry (
   const zlink_routing_id_t **source_spot_rid_out_,
   uint64_t *request_seq_out_,
   zlink_msg_t *part_out_,
-  int *has_more_out_)
+  zlink_part_flag_t *has_more_out_)
 {
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
@@ -95,7 +95,7 @@ zlink_recv_result_t recv_subscribe_part_with_retry (
   size_t topic_id_capacity_,
   size_t *topic_id_len_out_,
   zlink_msg_t *part_out_,
-  int *has_more_out_)
+  zlink_part_flag_t *has_more_out_)
 {
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
@@ -163,7 +163,7 @@ void publish_and_recv_subscribe_part_eventually (void *pub_,
                                                  size_t topic_id_capacity_,
                                                  size_t *topic_id_len_out_,
                                                  zlink_msg_t *part_out_,
-                                                 int *has_more_out_,
+                                                 zlink_part_flag_t *has_more_out_,
                                                  zlink_recv_result_t expected_rc_,
                                                  int expected_errno_)
 {
@@ -243,7 +243,7 @@ void test_recv_part_reads_each_part_and_tracks_has_more ()
         zlink_msg_init (&part);
         const zlink_routing_id_t *part_source_rid =
           reinterpret_cast<const zlink_routing_id_t *> (0x1);
-        int has_more = -1;
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_recv_part (receiver, &part_source_rid, &part, &has_more,
                            static_cast<zlink_recv_flags_t> (0)));
@@ -297,7 +297,7 @@ void test_router_recv_part_metadata_view_invalidates_on_next_recv_like_call ()
     uint64_t first_request_seq = 0;
     zlink_msg_t part;
     zlink_msg_init (&part);
-    int has_more = -1;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     TEST_ASSERT_SUCCESS_ERRNO (recv_router_part_with_retry (
       router, &first_source_rid, &first_spot_rid, &first_request_seq, &part,
       &has_more));
@@ -322,7 +322,7 @@ void test_router_recv_part_metadata_view_invalidates_on_next_recv_like_call ()
     const zlink_routing_id_t *second_spot_rid = NULL;
     uint64_t second_request_seq = 0;
     zlink_msg_init (&part);
-    has_more = -1;
+    has_more = ZLINK_PART_FINAL;
     TEST_ASSERT_SUCCESS_ERRNO (recv_router_part_with_retry (
       router, &second_source_rid, &second_spot_rid, &second_request_seq,
       &part, &has_more));
@@ -366,7 +366,7 @@ void test_subscribe_part_reports_needed_topic_size_and_recovers_after_emsgsize (
     size_t topic_len = 0;
     zlink_msg_t payload;
     zlink_msg_init (&payload);
-    int has_more = -1;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     publish_and_recv_subscribe_part_eventually (
       pub, sub, "topic-1", small_topic, sizeof (small_topic), &topic_len,
       &payload, &has_more, ZLINK_RECV_INTERNAL_ERROR, EMSGSIZE);
@@ -380,7 +380,7 @@ void test_subscribe_part_reports_needed_topic_size_and_recovers_after_emsgsize (
     char sentinel[4] = {'k', 'e', 'e', 'p'};
     topic_len = 0;
     zlink_msg_init (&payload);
-    has_more = -1;
+    has_more = ZLINK_PART_FINAL;
     publish_and_recv_subscribe_part_eventually (
       pub, sub, "topic-2", sentinel, 0, &topic_len, &payload, &has_more,
       ZLINK_RECV_OK, 0);

@@ -5,6 +5,7 @@ import queue
 import zlink
 
 from perf_multi_common import (
+    apply_multi_socket_options,
     parse_len32be_frames,
     parse_server_args,
     tcp_endpoint,
@@ -24,6 +25,7 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         with zlink.StreamSocket(ctx) as server:
+            apply_multi_socket_options(server)
             server.options.tcp_no_delay = True
             server.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)

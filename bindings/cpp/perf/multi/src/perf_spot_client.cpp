@@ -887,7 +887,8 @@ bool perf_spot_client (const std::string &transport_,
         return false;
 
     if (!perf::multi::is_supported_transport (transport_)) {
-        std::cout << "UNSUPPORTED," << k_pattern << "," << transport_ << std::endl;
+        std::cout << "UNSUPPORTED,current," << k_pattern << "," << transport_
+                  << std::endl;
         return true;
     }
 

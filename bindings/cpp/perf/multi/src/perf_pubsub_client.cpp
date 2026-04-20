@@ -20,7 +20,7 @@ namespace {
 static const char *k_pattern_env = "PUBSUB";
 static const char *k_pattern_result = "MULTI_PUBSUB";
 static const char *k_topic = "bench";
-static const uint32_t k_run_id = 1;
+static const uint32_t k_run_id = 1U;
 struct phase_config_t
 {
     int active_seconds;
@@ -334,7 +334,8 @@ bool perf_pubsub_client (const std::string &transport,
     perf::multi::set_perf_pattern_env (k_pattern_env);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << k_pattern_result << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED,current," << k_pattern_result << ","
+                  << transport << std::endl;
         return true;
     }
 

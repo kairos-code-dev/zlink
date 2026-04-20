@@ -69,7 +69,8 @@ void run_pattern_pair (const std::string &transport,
     if (!perf::single::transport_available (transport)) {
         if (perf_debug_enabled ())
             std::cerr << "pair: transport unavailable" << std::endl;
-        std::cout << "UNSUPPORTED,PAIR," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",PAIR," << transport
+                  << std::endl;
         return;
     }
 
@@ -115,7 +116,7 @@ void run_pattern_pair (const std::string &transport,
       std::max<size_t> (msg_size, perf_single_metric::header_size ()), '\0');
     const size_t payload_size = payload.size ();
 
-    const uint32_t run_id = 1;
+    const uint32_t run_id = 1U;
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<unsigned long long> received_count (0);
     std::atomic<bool> sender_ok (true);

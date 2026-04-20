@@ -125,7 +125,8 @@ bool perf_pubsub_server (const std::string &transport, size_t msg_size)
     perf::multi::set_perf_pattern_env ("PUBSUB");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED,MULTI_PUBSUB," << transport << std::endl;
+        std::cout << "UNSUPPORTED,current,MULTI_PUBSUB," << transport
+                  << std::endl;
         return true;
     }
 
@@ -159,7 +160,7 @@ bool perf_pubsub_server (const std::string &transport, size_t msg_size)
 
     std::vector<char> payload (
       std::max<size_t> (msg_size, perf_metric::header_size ()), 'p');
-    const uint32_t run_id = 1;
+    const uint32_t run_id = 1U;
     uint64_t seq = 1;
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;

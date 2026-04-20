@@ -99,6 +99,11 @@ int resolve_single_pubsub_recv_timeout_ms ()
                                resolve_single_recv_timeout_ms ());
 }
 
+int resolve_single_pubsub_ready_settle_ms ()
+{
+    return parse_positive_env ("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000);
+}
+
 int resolve_single_socket_hwm (bool send_)
 {
     const int base_hwm = parse_positive_env ("PERF_SINGLE_HWM", 1000);
@@ -278,13 +283,6 @@ bool transport_available (const std::string &transport)
     return true;
 }
 
-static const int SETTLE_TIME_MS = 100;
-
-void settle ()
-{
-    std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
-}
-
 bool setup_connected_pair (perf_socket_t &bind_socket_,
                            perf_socket_t &connect_socket_,
                            const std::string &transport_,
@@ -299,9 +297,9 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     apply_single_hwm (connect_socket_);
 
     zlink::monitor_handle_t bind_monitor = zlink::monitor_handle_t::open (
-      bind_socket_, zlink::monitor_event::connection_ready_changed);
+      bind_socket_, zlink::monitor_event::connection_ready);
     zlink::monitor_handle_t connect_monitor = zlink::monitor_handle_t::open (
-      connect_socket_, zlink::monitor_event::connection_ready_changed);
+      connect_socket_, zlink::monitor_event::connection_ready);
     if (!bind_monitor.valid () || !connect_monitor.valid ())
         return false;
 
@@ -316,18 +314,14 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     apply_single_benchmark_socket_options (connect_socket_, transport_);
     if (!wait_socket_monitor_event (
           bind_monitor,
-          static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
-          -1,
+          static_cast<uint64_t> (zlink::monitor_event::connection_ready),
           10000)
         || !wait_socket_monitor_event (
           connect_monitor,
-          static_cast<uint64_t> (
-            zlink::monitor_event::connection_ready_changed),
-          -1,
+          static_cast<uint64_t> (zlink::monitor_event::connection_ready),
           10000)) {
         return false;
     }
-    settle ();
     return true;
 }
 

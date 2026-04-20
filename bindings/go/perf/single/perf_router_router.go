@@ -16,6 +16,10 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	client, err := ctx.RouterSocket()
 	perfcommon.Must(err)
 	defer client.Close()
+	serverMon := perfcommon.OpenMonitor(server)
+	defer serverMon.Close()
+	clientMon := perfcommon.OpenMonitor(client)
+	defer clientMon.Close()
 
 	serverID := zlink.NewRoutingID([]byte("ROUTER1"))
 	clientID := zlink.NewRoutingID([]byte("ROUTER2"))
@@ -31,6 +35,7 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(client.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
+	perfcommon.WaitConnected(serverMon, clientMon)
 	perfcommon.Must(client.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.Must(client.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
 	waitSingleRouteReady("router/router perf endpoint", func(payload []byte) error {

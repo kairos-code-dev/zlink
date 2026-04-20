@@ -11,7 +11,6 @@ mkdir -p "${GOCACHE}" "${GOTMPDIR}"
 
 PATTERN="ALL"
 DURATION="5"
-WARMUP="2"
 MSG_SIZES="64,256,1024,65536,131072,262144"
 TRANSPORTS=""
 RUNS="1"
@@ -27,7 +26,6 @@ Usage: bindings/go/perf/run_benchmarks_multi.sh [options]
 Options:
   --pattern NAME
   --duration N
-  --warmup N
   --msg-sizes LIST
   --transports LIST
   --runs N
@@ -71,7 +69,6 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage; exit 0 ;;
     --pattern) PATTERN="$2"; shift 2 ;;
     --duration) DURATION="$2"; shift 2 ;;
-    --warmup) WARMUP="$2"; shift 2 ;;
     --msg-sizes) MSG_SIZES="$2"; shift 2 ;;
     --transports) TRANSPORTS="$2"; shift 2 ;;
     --runs) RUNS="$2"; shift 2 ;;
@@ -174,17 +171,17 @@ count_result_lines() {
   echo "## Effective Options (start)"
   echo "- lang: go"
   echo "- suite: multi"
-  echo "- pattern: ${PATTERN}"
-  echo "- duration: ${DURATION}s"
-  echo "- warmup: ${WARMUP}s"
-  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- patterns: ${PATTERN}"
+  echo "- runs: ${RUNS}"
   echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- msg_sizes: ${MSG_SIZES}"
   if [[ -n "${CLIENTS}" ]]; then
     echo "- clients: ${CLIENTS}"
   else
     echo "- clients: auto (default=100, stream=10000)"
   fi
-  echo "- runs: ${RUNS}"
+  echo "- pin_cpu: off"
+  echo "- duration_seconds: ${DURATION}"
   echo
 } > "${RESULTS_FILE}"
 
@@ -216,7 +213,6 @@ for run in $(seq 1 "${RUNS}"); do
           --pattern "${pattern}" \
           --transport "${transport}" \
           --msg-size "${size}" \
-          --warmup "${WARMUP}" \
           --duration "${DURATION}" \
           --clients "${resolved_clients}" \
           > "${case_log}" 2>&1; then
@@ -253,20 +249,17 @@ done
   echo "## Effective Options (result)"
   echo "- lang: go"
   echo "- suite: multi"
-  echo "- pattern: ${PATTERN}"
-  echo "- duration: ${DURATION}s"
-  echo "- warmup: ${WARMUP}s"
-  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- patterns: ${PATTERN}"
+  echo "- runs: ${RUNS}"
   echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- msg_sizes: ${MSG_SIZES}"
   if [[ -n "${CLIENTS}" ]]; then
     echo "- clients: ${CLIENTS}"
   else
     echo "- clients: auto (default=100, stream=10000)"
   fi
-  echo "- runs: ${RUNS}"
-  echo "- result_lines: ${result_lines}"
-  echo "- unsupported: ${unsupported}"
-  echo "- fail: ${fail}"
+  echo "- pin_cpu: off"
+  echo "- duration_seconds: ${DURATION}"
   if [[ "${fail}" -eq 0 ]]; then
     echo "- status: complete"
   else

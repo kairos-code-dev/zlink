@@ -25,7 +25,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(server)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	type routerClient struct {
 		ctx     *zlink.Context

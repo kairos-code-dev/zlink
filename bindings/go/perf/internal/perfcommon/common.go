@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,7 @@ type Stats struct {
 	count uint64
 	mu    sync.Mutex
 	latNs []float64
+	sumNs float64
 }
 
 type Result struct {
@@ -33,14 +35,19 @@ type Result struct {
 }
 
 func NewStats() *Stats {
-	return &Stats{}
+	return &Stats{
+		latNs: make([]float64, 0, latencySampleCap()),
+	}
 }
 
 func (s *Stats) Add(sentAt time.Time) {
-	atomic.AddUint64(&s.count, 1)
 	latencyNs := float64(time.Since(sentAt).Nanoseconds())
+	atomic.AddUint64(&s.count, 1)
 	s.mu.Lock()
-	s.latNs = append(s.latNs, latencyNs)
+	s.sumNs += latencyNs
+	if len(s.latNs) < latencySampleCap() {
+		s.latNs = append(s.latNs, latencyNs)
+	}
 	s.mu.Unlock()
 }
 
@@ -49,21 +56,40 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 	defer s.mu.Unlock()
 	sort.Float64s(s.latNs)
 	count := atomic.LoadUint64(&s.count)
+	latencyMean := 0.0
+	if count > 0 {
+		latencyMean = s.sumNs / float64(count)
+	}
 	return Result{
 		Throughput:   float64(count) / duration.Seconds(),
 		Bandwidth:    float64(count*uint64(msgSize)) / duration.Seconds() / 1_000_000.0,
-		LatencyNs:    percentile(s.latNs, 50),
+		LatencyNs:    latencyMean,
 		LatencyP95Ns: percentile(s.latNs, 95),
 		LatencyP99Ns: percentile(s.latNs, 99),
 	}
 }
 
 func PrintResult(pattern, transport string, msgSize int, result Result) {
-	fmt.Printf("RESULT,go,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
-	fmt.Printf("RESULT,go,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
-	fmt.Printf("RESULT,go,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
-	fmt.Printf("RESULT,go,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
-	fmt.Printf("RESULT,go,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
+	fmt.Printf("RESULT,current,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
+}
+
+func latencySampleCap() int {
+	raw := os.Getenv("PERF_SINGLE_LATENCY_SAMPLE_CAP")
+	if raw == "" {
+		raw = os.Getenv("PERF_MULTI_LATENCY_SAMPLE_CAP")
+	}
+	if raw == "" {
+		return 200000
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 200000
+	}
+	return value
 }
 
 func Must(err error) {
@@ -232,34 +258,25 @@ func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 }
 
 func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		type result struct {
-			event *zlink.MonitorEvent
-			err   error
-		}
-		ch := make(chan result, 1)
-		go func() {
-			event, err := mon.Recv()
-			ch <- result{event: event, err: err}
-		}()
-		select {
-		case out := <-ch:
-			if out.err != nil {
-				if IsTransient(out.err) {
-					time.Sleep(50 * time.Millisecond)
-					continue
-				}
-				Must(out.err)
-			}
-			if out.event != nil {
-				return out.event
-			}
-		case <-time.After(50 * time.Millisecond):
-		}
+	type result struct {
+		event *zlink.MonitorEvent
+		err   error
 	}
-	Must(fmt.Errorf("timed out waiting for monitor event"))
-	return nil
+	ch := make(chan result, 1)
+	go func() {
+		event, err := mon.Recv()
+		ch <- result{event: event, err: err}
+	}()
+	select {
+	case out := <-ch:
+		if out.err != nil {
+			Must(out.err)
+		}
+		return out.event
+	case <-time.After(5 * time.Second):
+		Must(fmt.Errorf("timed out waiting for monitor event"))
+		return nil
+	}
 }
 
 func PreparePayload(size int) []byte {

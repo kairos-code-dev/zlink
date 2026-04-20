@@ -11,7 +11,6 @@ type benchmarkConfig struct {
 	pattern   string
 	transport string
 	msgSize   int
-	warmup    time.Duration
 	duration  time.Duration
 }
 
@@ -19,7 +18,6 @@ var (
 	pattern   = flag.String("pattern", "PAIR", "")
 	transport = flag.String("transport", "tcp", "")
 	msgSize   = flag.Int("msg-size", 64, "")
-	warmup    = flag.Int("warmup", 2, "")
 	duration  = flag.Int("duration", 5, "")
 )
 
@@ -30,14 +28,12 @@ func main() {
 		*pattern,
 		*transport,
 		*msgSize,
-		*warmup,
 		*duration,
 	)
 	cfg := benchmarkConfig{
 		pattern:   loaded.Pattern,
 		transport: loaded.Transport,
 		msgSize:   loaded.MsgSize,
-		warmup:    loaded.Warmup,
 		duration:  loaded.Duration,
 	}
 
@@ -55,6 +51,8 @@ func main() {
 		result = runRouterRouter(cfg)
 	case "SPOT":
 		result = runSpot(cfg)
+	case "SPOT_REQREP":
+		result = runSpotReqRep(cfg)
 	default:
 		perfcommon.Must(
 			&unsupportedPatternError{pattern: cfg.pattern},

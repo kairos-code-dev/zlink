@@ -16,6 +16,10 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 	dealer, err := ctx.DealerSocket()
 	perfcommon.Must(err)
 	defer dealer.Close()
+	routerMon := perfcommon.OpenMonitor(router)
+	defer routerMon.Close()
+	dealerMon := perfcommon.OpenMonitor(dealer)
+	defer dealerMon.Close()
 
 	rid := zlink.NewRoutingID([]byte("perf-dealer"))
 
@@ -28,6 +32,7 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(dealer.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(router, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(dealer, cfg.transport)
+	perfcommon.WaitConnected(routerMon, dealerMon)
 	perfcommon.Must(dealer.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
 	perfcommon.Must(dealer.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
 	waitSingleRouteReady("dealer/router perf endpoint", func(payload []byte) error {

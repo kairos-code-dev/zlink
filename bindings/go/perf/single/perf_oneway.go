@@ -18,7 +18,7 @@ func runSingleOneWay(
 	send func([]byte) error,
 ) perfcommon.Result {
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 
 	sendDone := make(chan struct{})
@@ -34,21 +34,22 @@ func runSingleOneWay(
 				perfcommon.Must(err)
 			}
 		}
+		perfcommon.StampCooldownPayload(payload)
+		err := send(payload)
+		if err != nil && !perfcommon.IsTransient(err) {
+			perfcommon.Must(err)
+		}
 	}()
 
 	for time.Now().Before(window.StopAt) {
-		if !drainSingleOneWay(receiver, stats, cfg.msgSize, window.ActiveAt, true) {
-			time.Sleep(50 * time.Microsecond)
-		}
+		_ = drainSingleOneWay(receiver, stats, cfg.msgSize, window.ActiveAt, true)
 	}
 
 	<-sendDone
 
-	idleDrainDeadline := time.Now().Add(500 * time.Millisecond)
+	idleDrainDeadline := time.Now().Add(perfcommon.SingleIdleDrainDuration())
 	for time.Now().Before(idleDrainDeadline) {
-		if !drainSingleOneWay(receiver, nil, cfg.msgSize, window.ActiveAt, false) {
-			time.Sleep(50 * time.Microsecond)
-		}
+		_ = drainSingleOneWay(receiver, nil, cfg.msgSize, window.ActiveAt, false)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -89,12 +90,8 @@ func waitSingleRouteReady(
 	if err := send(payload); err != nil {
 		perfcommon.Must(fmt.Errorf("%s ready probe send: %w", name, err))
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
-			return
-		}
-		time.Sleep(50 * time.Microsecond)
+	if drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
+		return
 	}
 	perfcommon.Must(fmt.Errorf("%s did not become ready", name))
 }

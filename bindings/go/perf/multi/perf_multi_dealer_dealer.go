@@ -21,7 +21,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	defer serverMon.Close()
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	recvStopAt := window.StopAt.Add(500 * time.Millisecond)
 
 	type dealerClient struct {

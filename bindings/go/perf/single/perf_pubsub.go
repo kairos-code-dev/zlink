@@ -41,38 +41,69 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.PostReadySettle(cfg.pattern)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
+	sendDone := make(chan struct{})
 
-	for time.Now().Before(window.StopAt) {
-		perfcommon.StampWindowPayload(payload, window.ActiveAt)
+	go func() {
+		defer close(sendDone)
+		for time.Now().Before(window.StopAt) {
+			perfcommon.StampWindowPayload(payload, window.ActiveAt)
+			err := publisher.Publish(
+				"bench.topic",
+				zlink.SendFlagsNone,
+				perfcommon.NewMessage(payload),
+			)
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				perfcommon.Must(err)
+			}
+		}
+		perfcommon.StampCooldownPayload(payload)
 		err := publisher.Publish(
 			"bench.topic",
 			zlink.SendFlagsNone,
 			perfcommon.NewMessage(payload),
 		)
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
+		if err != nil && !perfcommon.IsTransient(err) {
 			perfcommon.Must(err)
 		}
+	}()
 
-		received, err := subscriber.Subscribe(zlink.RecvFlagsNone)
+	for time.Now().Before(window.StopAt) {
+		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
 		}
-		if received == nil {
+		if message == nil {
 			continue
 		}
-		part, err := received.SinglePartOrError()
+		part, err := message.SinglePartOrError()
 		if err == nil {
 			perfcommon.RecordMessageLatency(stats, window.ActiveAt, cfg.msgSize, part)
 		}
-		_ = received.Close()
+		_ = message.Close()
+	}
+
+	<-sendDone
+	idleDrainDeadline := time.Now().Add(perfcommon.SingleIdleDrainDuration())
+	for time.Now().Before(idleDrainDeadline) {
+		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(err)
+		}
+		if message == nil {
+			continue
+		}
+		_ = message.Close()
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)

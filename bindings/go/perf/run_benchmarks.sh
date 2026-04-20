@@ -11,7 +11,6 @@ mkdir -p "${GOCACHE}" "${GOTMPDIR}"
 
 PATTERN="ALL"
 DURATION="5"
-WARMUP="2"
 MSG_SIZES="64,256,1024,65536,131072,262144"
 TRANSPORTS=""
 RUNS="1"
@@ -26,7 +25,6 @@ Usage: bindings/go/perf/run_benchmarks.sh [options]
 Options:
   --pattern NAME
   --duration N
-  --warmup N
   --msg-sizes LIST
   --transports LIST
   --runs N
@@ -50,7 +48,7 @@ Options:
   -h, --help
 
 Notes:
-  - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT
+  - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,SPOT_REQREP
 USAGE
 }
 
@@ -59,7 +57,6 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage; exit 0 ;;
     --pattern) PATTERN="$2"; shift 2 ;;
     --duration) DURATION="$2"; shift 2 ;;
-    --warmup) WARMUP="$2"; shift 2 ;;
     --msg-sizes) MSG_SIZES="$2"; shift 2 ;;
     --transports) TRANSPORTS="$2"; shift 2 ;;
     --runs) RUNS="$2"; shift 2 ;;
@@ -97,7 +94,7 @@ trap cleanup EXIT
 
 IFS=',' read -r -a SIZES <<< "${MSG_SIZES}"
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
+  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT" "SPOT_REQREP")
 else
   IFS=',' read -r -a PATTERNS <<< "${PATTERN}"
 fi
@@ -110,7 +107,7 @@ fi
 
 pattern_transports() {
   case "$1" in
-    SPOT) echo "tcp tls ws wss" ;;
+    SPOT|SPOT_REQREP) echo "tcp tls ws wss" ;;
     *)
       if [[ "${PLATFORM}" == "windows" ]]; then
         echo "tcp tls ws wss inproc"
@@ -176,18 +173,18 @@ count_result_lines() {
   echo "## Effective Options (start)"
   echo "- lang: go"
   echo "- suite: single"
-  echo "- pattern: ${PATTERN}"
-  echo "- duration: ${DURATION}s"
-  echo "- warmup: ${WARMUP}s"
-  echo "- msg_sizes: ${MSG_SIZES}"
-  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- patterns: ${PATTERN}"
   echo "- runs: ${RUNS}"
+  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- pin_cpu: off"
   echo
 } > "${RESULTS_FILE}"
 
 result_lines=0
 unsupported=0
 fail=0
+expected_cases=0
 
 for run in $(seq 1 "${RUNS}"); do
   for pattern in "${PATTERNS[@]}"; do
@@ -204,12 +201,12 @@ for run in $(seq 1 "${RUNS}"); do
 
       transport_unsupported=0
       for size in "${SIZES[@]}"; do
+        expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
         if go run ./perf/single \
           --pattern "${pattern}" \
           --transport "${transport}" \
           --msg-size "${size}" \
-          --warmup "${WARMUP}" \
           --duration "${DURATION}" \
           > "${case_log}" 2>&1; then
           append_case_output "${case_log}"
@@ -224,6 +221,7 @@ for run in $(seq 1 "${RUNS}"); do
           if is_unsupported_output "${case_log}"; then
             echo "UNSUPPORTED,current,${pattern},${transport}" >> "${RESULTS_FILE}"
             unsupported=$((unsupported + 1))
+            expected_cases=$((expected_cases - 1))
             transport_unsupported=1
             break
           fi
@@ -241,24 +239,23 @@ for run in $(seq 1 "${RUNS}"); do
 done
 
 {
+  expected_result_lines=$((expected_cases * 5))
   echo
   echo "## Effective Options (result)"
   echo "- lang: go"
   echo "- suite: single"
-  echo "- pattern: ${PATTERN}"
-  echo "- duration: ${DURATION}s"
-  echo "- warmup: ${WARMUP}s"
-  echo "- msg_sizes: ${MSG_SIZES}"
-  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- patterns: ${PATTERN}"
   echo "- runs: ${RUNS}"
-  echo "- result_lines: ${result_lines}"
-  echo "- unsupported: ${unsupported}"
-  echo "- fail: ${fail}"
-  if [[ "${fail}" -eq 0 ]]; then
+  echo "- transports: ${TRANSPORTS:-auto}"
+  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- pin_cpu: off"
+  if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; then
     echo "- status: complete"
   else
     echo "- status: partial"
   fi
+  echo "- expected_result_lines: ${expected_result_lines}"
+  echo "- actual_result_lines: ${result_lines}"
 } >> "${RESULTS_FILE}"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then

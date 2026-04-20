@@ -13,15 +13,11 @@ type BenchmarkWindow struct {
 	ActiveAt time.Time
 }
 
-func NewBenchmarkWindow(warmup, duration time.Duration) BenchmarkWindow {
+func NewBenchmarkWindow(duration time.Duration) BenchmarkWindow {
 	now := time.Now()
-	if warmup < 0 {
-		warmup = 0
-	}
-	activeAt := now.Add(warmup)
 	return BenchmarkWindow{
-		StopAt:   activeAt.Add(duration),
-		ActiveAt: activeAt,
+		StopAt:   now.Add(duration),
+		ActiveAt: now,
 	}
 }
 
@@ -57,11 +53,15 @@ func readySettleDuration(pattern string) time.Duration {
 	switch pattern {
 	case "PUBSUB":
 		return durationFromEnv("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", time.Second)
-	case "SPOT":
+	case "SPOT", "SPOT_REQREP":
 		return durationFromEnv("PERF_SINGLE_SPOT_READY_SETTLE_MS", time.Second)
 	default:
 		return 0
 	}
+}
+
+func SingleIdleDrainDuration() time.Duration {
+	return durationFromEnv("PERF_SINGLE_RCVTIMEO_MS", 200*time.Millisecond)
 }
 
 func durationFromEnv(name string, fallback time.Duration) time.Duration {

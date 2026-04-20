@@ -43,6 +43,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	var readySeen atomic.Bool
 	var activeCollect atomic.Bool
+	readySignal := make(chan struct{}, 1)
 
 	perfcommon.Must(subscriber.OnDispatchEvent(func(event zlink.SpotDispatchEvent) {
 		if event != zlink.SpotDispatchEventSubscribeReadable {
@@ -55,10 +56,11 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 			cfg.msgSize,
 			&activeCollect,
 			&readySeen,
+			readySignal,
 		)
 	}))
 
-	waitForSpotReady(publisher, cfg.msgSize, &readySeen)
+	waitForSpotReady(publisher, cfg.msgSize, readySignal)
 	perfcommon.PostReadySettle(cfg.pattern)
 	activeCollect.Store(true)
 
@@ -89,6 +91,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 			cfg.msgSize,
 			&activeCollect,
 			&readySeen,
+			readySignal,
 		) {
 			continue
 		}
@@ -104,6 +107,7 @@ func drainSingleSpotReadable(
 	msgSize int,
 	activeCollect *atomic.Bool,
 	readySeen *atomic.Bool,
+	readySignal chan<- struct{},
 ) bool {
 	processed := false
 	for {
@@ -125,27 +129,30 @@ func drainSingleSpotReadable(
 					perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
 				}
 			} else if _, ok := perfcommon.SentAtFromMessage(part, msgSize); ok {
-				readySeen.Store(true)
+				if readySeen.CompareAndSwap(false, true) {
+					select {
+					case readySignal <- struct{}{}:
+					default:
+					}
+				}
 			}
 		}
 		_ = message.Close()
 	}
 }
 
-func waitForSpotReady(publisher *zlink.Spot, msgSize int, readySeen *atomic.Bool) {
+func waitForSpotReady(publisher *zlink.Spot, msgSize int, ready <-chan struct{}) {
 	payload := perfcommon.PreparePayload(msgSize)
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "spot perf endpoint",
-		Probe: func() (bool, error) {
+		Start: func() error {
 			perfcommon.StampProbePayload(payload)
 			err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 			if err != nil {
-				if perfcommon.IsTransient(err) {
-					return false, nil
-				}
-				return false, err
+				return err
 			}
-			return readySeen.Load(), nil
+			return nil
 		},
+		Ready: ready,
 	}))
 }

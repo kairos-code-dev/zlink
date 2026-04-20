@@ -35,6 +35,18 @@ cleanup_report_dir() {
   done
 }
 
+resolve_results_dir() {
+  local dir="$1"
+  case "${dir}" in
+    */single/report|*/report)
+      echo "${dir}"
+      ;;
+    *)
+      echo "${dir}/single/report"
+      ;;
+  esac
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bindings/go/perf/run_benchmarks.sh [options]
@@ -133,6 +145,7 @@ TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
   TAG_SUFFIX="_${RESULTS_TAG}"
 fi
+RESULTS_DIR="$(resolve_results_dir "${RESULTS_DIR}")"
 RESULTS_FILE="${RESULTS_DIR}/perf_go_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"

@@ -12,7 +12,8 @@ type ReadyConfig struct {
 	MinEvents int
 	Timeout   time.Duration
 	Name      string
-	Probe     func() (bool, error)
+	Start     func() error
+	Ready     <-chan struct{}
 }
 
 func WaitReady(cfg ReadyConfig) error {
@@ -28,10 +29,15 @@ func WaitReady(cfg ReadyConfig) error {
 	if cfg.Monitor != nil {
 		return waitMonitorReady(cfg.Monitor, maxReadyEvents(cfg.MinEvents), timeout, name)
 	}
-	if cfg.Probe == nil {
+	if cfg.Start != nil {
+		if err := cfg.Start(); err != nil {
+			return err
+		}
+	}
+	if cfg.Ready == nil {
 		return fmt.Errorf("%s ready wait is not configured", name)
 	}
-	return waitProbeReady(cfg.Probe, timeout, name)
+	return waitProbeReady(cfg.Ready, timeout, name)
 }
 
 func WaitConnected(monitors ...*zlink.SocketMonitor) {

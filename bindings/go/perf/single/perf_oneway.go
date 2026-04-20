@@ -9,6 +9,7 @@ import (
 )
 
 type recvSocket interface {
+	zlink.SocketTarget
 	Recv(zlink.RecvFlags) (*zlink.Received, error)
 }
 
@@ -20,6 +21,8 @@ func runSingleOneWay(
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
+	poller := perfcommon.NewSocketPoller(receiver, perfcommon.ZLinkPollIn)
+	defer poller.Close()
 
 	sendDone := make(chan struct{})
 	go func() {
@@ -42,14 +45,38 @@ func runSingleOneWay(
 	}()
 
 	for time.Now().Before(window.StopAt) {
-		_ = drainSingleOneWay(receiver, stats, cfg.msgSize, window.ActiveAt, true)
+		timeout := time.Until(window.StopAt)
+		if timeout <= 0 {
+			break
+		}
+		event, err := poller.Wait(timeout)
+		if err != nil {
+			perfcommon.Must(err)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		for drainSingleOneWay(receiver, stats, cfg.msgSize, window.ActiveAt, true) {
+		}
 	}
 
 	<-sendDone
 
 	idleDrainDeadline := time.Now().Add(perfcommon.SingleIdleDrainDuration())
 	for time.Now().Before(idleDrainDeadline) {
-		_ = drainSingleOneWay(receiver, nil, cfg.msgSize, window.ActiveAt, false)
+		timeout := time.Until(idleDrainDeadline)
+		if timeout <= 0 {
+			break
+		}
+		event, err := poller.Wait(timeout)
+		if err != nil {
+			perfcommon.Must(err)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		for drainSingleOneWay(receiver, nil, cfg.msgSize, window.ActiveAt, false) {
+		}
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -62,7 +89,7 @@ func drainSingleOneWay(
 	activeAt time.Time,
 	countActive bool,
 ) bool {
-	received, err := receiver.Recv(zlink.RecvFlagsNone)
+	received, err := receiver.Recv(zlink.RecvFlagsDontWait)
 	if err != nil {
 		if perfcommon.IsTransient(err) {
 			return false
@@ -86,13 +113,26 @@ func waitSingleRouteReady(
 	receiver recvSocket,
 ) {
 	payload := perfcommon.PreparePayload(64)
+	poller := perfcommon.NewSocketPoller(receiver, perfcommon.ZLinkPollIn)
+	defer poller.Close()
 	perfcommon.StampProbePayload(payload)
 	if err := send(payload); err != nil {
 		perfcommon.Must(fmt.Errorf("%s ready probe send: %w", name, err))
 	}
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
-		if drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
+		timeout := time.Until(deadline)
+		if timeout <= 0 {
+			break
+		}
+		event, err := poller.Wait(timeout)
+		if err != nil {
+			perfcommon.Must(err)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		for drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
 			return
 		}
 	}

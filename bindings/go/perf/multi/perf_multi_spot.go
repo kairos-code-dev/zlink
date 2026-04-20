@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync/atomic"
 	"time"
 
 	"zlink"
@@ -37,6 +38,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 
 	subs := make([]multiSpotSubscriber, 0, cfg.clients)
 	tracker := newMultiSpotReadyTracker(cfg.clients)
+	var activeCollect atomic.Bool
 
 	for i := 0; i < cfg.clients; i++ {
 		node, err := ctx.SpotNode()
@@ -48,6 +50,21 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		perfcommon.ApplyMultiHWM(spot, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(spot, cfg.transport)
 		perfcommon.Must(spot.SetSubscription("bench."))
+		index := i
+		perfcommon.Must(spot.OnDispatchEvent(func(event zlink.SpotDispatchEvent) {
+			if event != zlink.SpotDispatchEventSubscribeReadable {
+				return
+			}
+			_ = drainMultiSpotSubscriber(
+				index,
+				multiSpotSubscriber{node: node, spot: spot},
+				stats,
+				window.ActiveAt,
+				cfg.msgSize,
+				tracker,
+				&activeCollect,
+			)
+		}))
 		subs = append(subs, multiSpotSubscriber{node: node, spot: spot})
 	}
 	defer func() {
@@ -57,7 +74,8 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		}
 	}()
 
-	waitForMultiSpotReady(publisher, subs, tracker)
+	waitForMultiSpotReady(publisher, tracker)
+	activeCollect.Store(true)
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
@@ -69,7 +87,6 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 			}
 			perfcommon.Must(err)
 		}
-		_ = drainMultiSpotOnce(subs, stats, window.ActiveAt, cfg.msgSize, tracker)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)

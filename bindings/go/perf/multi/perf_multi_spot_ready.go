@@ -2,7 +2,6 @@ package main
 
 import (
 	"sync"
-	"time"
 
 	"zlink"
 	"zlink/perf/internal/perfcommon"
@@ -11,11 +10,14 @@ import (
 type multiSpotReadyTracker struct {
 	mu        sync.Mutex
 	readySeen []bool
+	signaled  bool
+	readyCh   chan struct{}
 }
 
 func newMultiSpotReadyTracker(clientCount int) *multiSpotReadyTracker {
 	return &multiSpotReadyTracker{
 		readySeen: make([]bool, clientCount),
+		readyCh:   make(chan struct{}, 1),
 	}
 }
 
@@ -30,6 +32,19 @@ func (t *multiSpotReadyTracker) markLocked(index int) {
 		return
 	}
 	t.readySeen[index] = true
+	if t.signaled {
+		return
+	}
+	for _, ready := range t.readySeen {
+		if !ready {
+			return
+		}
+	}
+	t.signaled = true
+	select {
+	case t.readyCh <- struct{}{}:
+	default:
+	}
 }
 
 func (t *multiSpotReadyTracker) countReady() int {
@@ -46,24 +61,20 @@ func (t *multiSpotReadyTracker) countReady() int {
 
 func waitForMultiSpotReady(
 	publisher *zlink.Spot,
-	subs []multiSpotSubscriber,
 	tracker *multiSpotReadyTracker,
 ) {
 	serviceName := "bench"
 	payload := perfcommon.PreparePayload(64)
 	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
 		Name: "multi spot perf endpoint",
-		Probe: func() (bool, error) {
+		Start: func() error {
 			perfcommon.StampProbePayload(payload)
 			err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 			if err != nil {
-				if perfcommon.IsTransient(err) {
-					return false, nil
-				}
-				return false, err
+				return err
 			}
-			_ = drainMultiSpotOnce(subs, nil, time.Now().Add(24*time.Hour), 64, tracker)
-			return tracker.countReady() >= len(subs), nil
+			return nil
 		},
+		Ready: tracker.readyCh,
 	}))
 }

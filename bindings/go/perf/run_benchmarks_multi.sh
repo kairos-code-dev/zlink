@@ -40,6 +40,18 @@ cleanup_report_dir() {
   done
 }
 
+resolve_results_dir() {
+  local dir="$1"
+  case "${dir}" in
+    */multi/report|*/report)
+      echo "${dir}"
+      ;;
+    *)
+      echo "${dir}/multi/report"
+      ;;
+  esac
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bindings/go/perf/run_benchmarks_multi.sh [options]
@@ -166,6 +178,7 @@ TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
   TAG_SUFFIX="_${RESULTS_TAG}"
 fi
+RESULTS_DIR="$(resolve_results_dir "${RESULTS_DIR}")"
 RESULTS_FILE="${RESULTS_DIR}/perf_go_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
@@ -282,7 +295,7 @@ progress_case_row() {
   local pattern="$1"
   local size="$2"
   local case_log="$3"
-  if grep -Eq '^UNSUPPORTED,' "${case_log}'; then
+  if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
     printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED"
     return
   fi

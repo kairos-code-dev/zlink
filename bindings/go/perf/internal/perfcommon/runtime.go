@@ -94,6 +94,13 @@ func MultiReadyTimeout() time.Duration {
 	return durationFromEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5*time.Second)
 }
 
+func NewSocketPoller(socket zlink.SocketTarget, events int16) *zlink.Poller {
+	poller, err := zlink.NewPoller()
+	Must(err)
+	Must(poller.AddSocket(socket, events))
+	return poller
+}
+
 func durationFromEnv(name string, fallback time.Duration) time.Duration {
 	raw := os.Getenv(name)
 	if raw == "" {

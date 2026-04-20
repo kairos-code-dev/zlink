@@ -38,6 +38,8 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SinglePubSubRecvTimeout()))
 	perfcommon.PostReadySettle(cfg.pattern)
+	poller := perfcommon.NewSocketPoller(subscriber, perfcommon.ZLinkPollIn)
+	defer poller.Close()
 
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
@@ -72,37 +74,63 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	}()
 
 	for time.Now().Before(window.StopAt) {
-		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		timeout := time.Until(window.StopAt)
+		if timeout <= 0 {
+			break
+		}
+		event, err := poller.Wait(timeout)
 		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
 			perfcommon.Must(err)
 		}
-		if message == nil {
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		part, err := message.SinglePartOrError()
-		if err == nil {
-			perfcommon.RecordMessageLatency(stats, window.ActiveAt, cfg.msgSize, part)
+		for {
+			message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					break
+				}
+				perfcommon.Must(err)
+			}
+			if message == nil {
+				break
+			}
+			part, err := message.SinglePartOrError()
+			if err == nil {
+				perfcommon.RecordMessageLatency(stats, window.ActiveAt, cfg.msgSize, part)
+			}
+			_ = message.Close()
 		}
-		_ = message.Close()
 	}
 
 	<-sendDone
 	idleDrainDeadline := time.Now().Add(perfcommon.SingleIdleDrainDuration())
 	for time.Now().Before(idleDrainDeadline) {
-		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		timeout := time.Until(idleDrainDeadline)
+		if timeout <= 0 {
+			break
+		}
+		event, err := poller.Wait(timeout)
 		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
 			perfcommon.Must(err)
 		}
-		if message == nil {
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		_ = message.Close()
+		for {
+			message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					break
+				}
+				perfcommon.Must(err)
+			}
+			if message == nil {
+				break
+			}
+			_ = message.Close()
+		}
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)

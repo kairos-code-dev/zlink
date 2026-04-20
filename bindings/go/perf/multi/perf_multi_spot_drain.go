@@ -1,40 +1,47 @@
 package main
 
 import (
+	"sync/atomic"
 	"time"
 
 	"zlink"
 	"zlink/perf/internal/perfcommon"
 )
 
-func drainMultiSpotOnce(
-	subs []multiSpotSubscriber,
+func drainMultiSpotSubscriber(
+	index int,
+	sub multiSpotSubscriber,
 	stats *perfcommon.Stats,
 	activeAt time.Time,
 	msgSize int,
 	tracker *multiSpotReadyTracker,
-) int {
-	processed := 0
-	for index, sub := range subs {
+	activeCollect *atomic.Bool,
+) bool {
+	processed := false
+	for {
 		message, err := sub.spot.Subscribe(zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
-				continue
+				return processed
 			}
 			perfcommon.Must(err)
 		}
 		if message == nil {
-			continue
+			return processed
 		}
-		processed++
-		part, err := message.SinglePartOrError()
-		if err == nil && stats != nil {
-			perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
-		}
-		if tracker != nil {
-			tracker.mark(index)
+		processed = true
+		part, partErr := message.SinglePartOrError()
+		if partErr == nil {
+			if activeCollect != nil && activeCollect.Load() {
+				if stats != nil {
+					perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
+				}
+			} else if tracker != nil {
+				if _, ok := perfcommon.SentAtFromMessage(part, 64); ok {
+					tracker.mark(index)
+				}
+			}
 		}
 		_ = message.Close()
 	}
-	return processed
 }

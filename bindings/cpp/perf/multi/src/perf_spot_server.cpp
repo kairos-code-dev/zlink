@@ -283,7 +283,9 @@ bool run_phase (zlink::service::spot_t &spot_,
 
 } // namespace
 
-bool perf_spot_server (const std::string &transport_, size_t msg_size_)
+bool perf_spot_server (const std::string &lib_name,
+                       const std::string &transport_,
+                       size_t msg_size_)
 {
     perf::multi::set_perf_pattern_env ("SPOT");
     ensure_multi_spot_mesh_pub_budget_default ();
@@ -292,7 +294,8 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
         return false;
 
     if (!perf::multi::is_supported_transport (transport_)) {
-        std::cout << "UNSUPPORTED,current," << k_pattern << "," << transport_
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
+                  << transport_
                   << std::endl;
         return true;
     }
@@ -417,9 +420,10 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
                   const bench_multi_resource_metrics_t resource_metrics =
                     perf::multi::finish_resource_probe(resource_probe_start);
                   perf::multi::print_server_resource_metrics(
-                    "current", k_pattern, transport_, current_size, resource_metrics);
+                    lib_name, k_pattern, transport_, current_size,
+                    resource_metrics);
                   perf::multi::print_server_queue_metrics(
-                    "current",
+                    lib_name,
                     k_pattern,
                     transport_,
                     current_size,
@@ -435,13 +439,14 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
 
 int main (int argc, char **argv)
 {
-    if (argc < 3) {
-        std::cerr << "usage: <transport> <size>" << std::endl;
+    if (argc < 4) {
+        std::cerr << "usage: <lib_name> <transport> <size>" << std::endl;
         return 1;
     }
 
-    const std::string transport = argv[1];
-    const size_t size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    const std::string lib_name = argv[1];
+    const std::string transport = argv[2];
+    const size_t size = static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
     if (size == 0)
         return 1;
 
@@ -450,5 +455,5 @@ int main (int argc, char **argv)
     perf::multi::start_server_control_watcher (&g_control_connect_gate,
                                                &g_start_gate);
 
-    return perf_spot_server (transport, size) ? 0 : 1;
+    return perf_spot_server (lib_name, transport, size) ? 0 : 1;
 }

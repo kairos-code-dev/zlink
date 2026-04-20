@@ -109,12 +109,15 @@ bool try_send_reply (zlink::socket_t &sock,
 
 } // namespace
 
-bool perf_router_router_server (const std::string &transport, size_t msg_size)
+bool perf_router_router_server (const std::string &lib_name,
+                                const std::string &transport,
+                                size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("ROUTER_ROUTER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED,current,MULTI_ROUTER_ROUTER," << transport
+        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_ROUTER_ROUTER,"
+                  << transport
                   << std::endl;
         return true;
     }
@@ -260,13 +263,13 @@ bool perf_router_router_server (const std::string &transport, size_t msg_size)
     const bench_multi_resource_metrics_t resource_metrics =
       perf::multi::finish_resource_probe (resource_probe_start);
     perf::multi::print_server_resource_metrics (
-      "current",
+      lib_name,
       "MULTI_ROUTER_ROUTER",
       transport,
       msg_size,
       resource_metrics);
     perf::multi::print_server_queue_metrics (
-      "current",
+      lib_name,
       "MULTI_ROUTER_ROUTER",
       transport,
       msg_size,
@@ -276,15 +279,16 @@ bool perf_router_router_server (const std::string &transport, size_t msg_size)
 
 int main (int argc, char **argv)
 {
-    if (argc < 3) {
-        std::cerr << "usage: <transport> <size>" << std::endl;
+    if (argc < 4) {
+        std::cerr << "usage: <lib_name> <transport> <size>" << std::endl;
         return 1;
     }
 
-    const std::string transport = argv[1];
-    const size_t size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    const std::string lib_name = argv[1];
+    const std::string transport = argv[2];
+    const size_t size = static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
     if (size == 0)
         return 1;
 
-    return perf_router_router_server (transport, size) ? 0 : 1;
+    return perf_router_router_server (lib_name, transport, size) ? 0 : 1;
 }

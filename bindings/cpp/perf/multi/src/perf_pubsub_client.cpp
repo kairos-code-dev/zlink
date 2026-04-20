@@ -42,10 +42,12 @@ class pubsub_client_bench_t
 {
   public:
     pubsub_client_bench_t (const std::string &transport,
+                           const std::string &lib_name,
                            size_t msg_size,
                            const std::string &endpoint,
                            const perf::multi::multi_bench_settings_t &settings)
         : _transport (transport),
+          _lib_name (lib_name),
           _msg_size (msg_size),
           _endpoint (endpoint),
           _settings (settings),
@@ -262,6 +264,7 @@ class pubsub_client_bench_t
     void print_result () const
     {
         perf::multi::print_client_result_lines (
+          _lib_name,
           k_pattern_result,
           _transport,
           _msg_size,
@@ -274,6 +277,7 @@ class pubsub_client_bench_t
 
   private:
     const std::string _transport;
+    const std::string _lib_name;
     const size_t _msg_size;
     const std::string _endpoint;
     const perf::multi::multi_bench_settings_t _settings;
@@ -295,14 +299,16 @@ class pubsub_client_bench_t
 
 } // namespace
 
-bool perf_pubsub_client (const std::string &transport,
+bool perf_pubsub_client (const std::string &lib_name,
+                         const std::string &transport,
                          size_t msg_size,
                          const std::string &endpoint)
 {
     perf::multi::set_perf_pattern_env (k_pattern_env);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED,current," << k_pattern_result << ","
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result
+                  << ","
                   << transport << std::endl;
         return true;
     }
@@ -310,7 +316,8 @@ bool perf_pubsub_client (const std::string &transport,
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
 
-    pubsub_client_bench_t bench (transport, msg_size, endpoint, settings);
+    pubsub_client_bench_t bench (transport, lib_name, msg_size, endpoint,
+                                 settings);
     if (!bench.run ()) {
         std::cerr << "PUBSUB_CLIENT_FAIL,stage=" << bench.failure_stage ()
                   << ",transport=" << transport << ",size=" << msg_size
@@ -324,13 +331,15 @@ bool perf_pubsub_client (const std::string &transport,
 
 int main (int argc, char **argv)
 {
-    if (argc < 3) {
-        std::cerr << "usage: <transport> <size> --endpoint <endpoint>" << std::endl;
+    if (argc < 4) {
+        std::cerr << "usage: <lib_name> <transport> <size> --endpoint <endpoint>"
+                  << std::endl;
         return 1;
     }
 
-    const std::string transport = argv[1];
-    const size_t size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    const std::string lib_name = argv[1];
+    const std::string transport = argv[2];
+    const size_t size = static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
     if (size == 0)
         return 1;
 
@@ -340,5 +349,5 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    return perf_pubsub_client (transport, size, endpoint) ? 0 : 1;
+    return perf_pubsub_client (lib_name, transport, size, endpoint) ? 0 : 1;
 }

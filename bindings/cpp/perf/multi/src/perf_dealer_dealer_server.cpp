@@ -12,12 +12,15 @@
 #include <cstring>
 #include <vector>
 
-bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
+bool perf_dealer_dealer_server (const std::string &lib_name,
+                                const std::string &transport,
+                                size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("DEALER_DEALER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED,current,MULTI_DEALER_DEALER," << transport
+        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_DEALER_DEALER,"
+                  << transport
                   << std::endl;
         return true;
     }
@@ -139,7 +142,7 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
       / static_cast<double> (std::max (1, active_seconds));
     const double bandwidth =
       throughput * static_cast<double> (msg_size) / 1000000.0;
-    perf::multi::print_result ("current",
+    perf::multi::print_result (lib_name,
                                "MULTI_DEALER_DEALER",
                                transport,
                                msg_size,
@@ -165,15 +168,16 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
 
 int main (int argc, char **argv)
 {
-    if (argc < 3) {
-        std::cerr << "usage: <transport> <size>" << std::endl;
+    if (argc < 4) {
+        std::cerr << "usage: <lib_name> <transport> <size>" << std::endl;
         return 1;
     }
 
-    const std::string transport = argv[1];
-    const size_t size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    const std::string lib_name = argv[1];
+    const std::string transport = argv[2];
+    const size_t size = static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
     if (size == 0)
         return 1;
 
-    return perf_dealer_dealer_server (transport, size) ? 0 : 1;
+    return perf_dealer_dealer_server (lib_name, transport, size) ? 0 : 1;
 }

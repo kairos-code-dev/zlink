@@ -81,7 +81,7 @@ inline size_t resolve_multi_default_clients (const std::string &pattern)
 inline int resolve_multi_default_hwm (const std::string &pattern, size_t)
 {
     (void) pattern;
-    return 100;
+    return 1000;
 }
 
 inline multi_bench_settings_t resolve_multi_bench_settings ()

@@ -589,6 +589,7 @@ inline void print_client_resource_metrics (
 }
 
 inline void print_client_result_lines (
+  const std::string &lib,
   const std::string &pattern,
   const std::string &transport,
   size_t size,
@@ -604,7 +605,7 @@ inline void print_client_result_lines (
     const double bandwidth =
       throughput * static_cast<double> (size) * bandwidth_multiplier / 1000000.0;
 
-    print_result ("current",
+    print_result (lib,
                   pattern,
                   transport,
                   size,
@@ -613,7 +614,7 @@ inline void print_client_result_lines (
                   latency.mean_ns,
                   latency.p95_ns,
                   latency.p99_ns);
-    print_client_resource_metrics ("current", pattern, transport, size, metrics);
+    print_client_resource_metrics (lib, pattern, transport, size, metrics);
 }
 
 inline void print_cpu_mem_metrics (const std::string &lib,

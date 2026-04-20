@@ -367,11 +367,13 @@ class spot_client_bench_t
 {
   public:
     spot_client_bench_t (const std::string &transport_,
+                         const std::string &lib_name_,
                          const std::vector<size_t> &msg_sizes_,
                          const std::string &endpoint_,
                          const std::string &control_endpoint_,
-                         const perf::multi::multi_bench_settings_t &settings_)
+                          const perf::multi::multi_bench_settings_t &settings_)
         : _transport (transport_),
+          _lib_name (lib_name_),
           _msg_size (msg_sizes_.empty () ? 64 : msg_sizes_[0]),
           _msg_sizes (msg_sizes_),
           _ready_payload (endpoint_),
@@ -834,6 +836,7 @@ class spot_client_bench_t
     void print_result ()
     {
         perf::multi::print_spot_client_result_lines (k_pattern,
+                                                     _lib_name,
                                                      _transport,
                                                      _msg_size,
                                                      _active_count,
@@ -843,6 +846,7 @@ class spot_client_bench_t
     }
 
     const std::string _transport;
+    const std::string _lib_name;
     size_t _msg_size;
     const std::vector<size_t> _msg_sizes;
     const std::string _ready_payload;
@@ -876,7 +880,8 @@ class spot_client_bench_t
 
 } // namespace
 
-bool perf_spot_client (const std::string &transport_,
+bool perf_spot_client (const std::string &lib_name,
+                       const std::string &transport_,
                        const std::vector<size_t> &msg_sizes_,
                        const std::string &endpoint_,
                        const std::string &control_endpoint_)
@@ -887,7 +892,8 @@ bool perf_spot_client (const std::string &transport_,
         return false;
 
     if (!perf::multi::is_supported_transport (transport_)) {
-        std::cout << "UNSUPPORTED,current," << k_pattern << "," << transport_
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
+                  << transport_
                   << std::endl;
         return true;
     }
@@ -895,7 +901,7 @@ bool perf_spot_client (const std::string &transport_,
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
     spot_client_bench_t bench (
-      transport_, msg_sizes_, endpoint_, control_endpoint_, settings);
+      transport_, lib_name, msg_sizes_, endpoint_, control_endpoint_, settings);
     const bool ok = bench.run ();
     if (!ok && perf_debug_enabled ())
         std::cerr << "spot client failed errno=" << errno << std::endl;
@@ -905,15 +911,17 @@ bool perf_spot_client (const std::string &transport_,
 
 int main (int argc, char **argv)
 {
-    if (argc < 3) {
+    if (argc < 4) {
         std::cerr
-          << "usage: <transport> <size> [--endpoint ENDPOINT] [--control-endpoint ENDPOINT]"
+          << "usage: <lib_name> <transport> <size> [--endpoint ENDPOINT] [--control-endpoint ENDPOINT]"
           << std::endl;
         return 1;
     }
 
-    const std::string transport = argv[1];
-    const size_t msg_size = static_cast<size_t> (std::strtoull (argv[2], NULL, 10));
+    const std::string lib_name = argv[1];
+    const std::string transport = argv[2];
+    const size_t msg_size =
+      static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
     const std::string endpoint = perf::multi::parse_endpoint_arg (argc, argv);
     const std::string control_endpoint = control_endpoint_arg (argc, argv);
     if (msg_size == 0 || endpoint.empty () || control_endpoint.empty ())
@@ -923,7 +931,8 @@ int main (int argc, char **argv)
     perf::multi::reset_start_signal_state (&g_start_gate);
     perf::multi::start_client_start_watcher (&g_start_gate);
 
-    return perf_spot_client (transport, msg_sizes, endpoint, control_endpoint)
+    return perf_spot_client (
+             lib_name, transport, msg_sizes, endpoint, control_endpoint)
              ? 0
              : 1;
 }

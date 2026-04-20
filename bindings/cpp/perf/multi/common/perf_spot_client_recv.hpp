@@ -64,6 +64,7 @@ inline void collect_spot_recv_thread_metrics (
 }
 
 inline void print_spot_client_result_lines (
+  const std::string &lib_,
   const char *pattern_,
   const std::string &transport_,
   size_t msg_size_,
@@ -78,7 +79,7 @@ inline void print_spot_client_result_lines (
     const double bandwidth =
       throughput * static_cast<double> (msg_size_) / 1000000.0;
 
-    print_result ("current",
+    print_result (lib_,
                   pattern_,
                   transport_,
                   msg_size_,
@@ -88,7 +89,7 @@ inline void print_spot_client_result_lines (
                   latency_.p95_ns,
                   latency_.p99_ns);
     print_client_resource_metrics (
-      "current", pattern_, transport_, msg_size_, resource_metrics_);
+      lib_, pattern_, transport_, msg_size_, resource_metrics_);
 }
 
 } // namespace multi

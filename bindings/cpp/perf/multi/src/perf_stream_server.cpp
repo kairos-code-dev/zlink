@@ -45,12 +45,15 @@ inline void emit_requested_queue_probe (const std::string &transport)
 
 } // namespace
 
-bool perf_stream_server (const std::string &transport, size_t)
+bool perf_stream_server (const std::string &lib_name,
+                         const std::string &transport,
+                         size_t)
 {
     perf::multi::set_perf_pattern_env (k_pattern);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED,current," << k_pattern << "," << transport
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
+                  << transport
                   << std::endl;
         return true;
     }
@@ -174,23 +177,24 @@ bool perf_stream_server (const std::string &transport, size_t)
     perf::multi::clear_session (&g_stream_session);
 
     perf::multi::print_server_queue_metrics (
-      "current", k_pattern, transport, 0,
+      lib_name, k_pattern, transport, 0,
       perf::multi::server_queue_stats_t ());
     return rc == 0;
 }
 
 int main (int argc, char **argv)
 {
-    if (argc < 2) {
-        std::cerr << "usage: <transport> [size]" << std::endl;
+    if (argc < 3) {
+        std::cerr << "usage: <lib_name> <transport> [size]" << std::endl;
         return 1;
     }
 
-    const std::string transport = argv[1];
+    const std::string lib_name = argv[1];
+    const std::string transport = argv[2];
     const size_t size =
-      argc >= 3
-        ? static_cast<size_t> (std::strtoull (argv[2], NULL, 10))
+      argc >= 4
+        ? static_cast<size_t> (std::strtoull (argv[3], NULL, 10))
         : 0;
 
-    return perf_stream_server (transport, size) ? 0 : 1;
+    return perf_stream_server (lib_name, transport, size) ? 0 : 1;
 }

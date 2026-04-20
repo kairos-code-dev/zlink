@@ -94,9 +94,9 @@ void run_pattern_pubsub (const std::string &transport,
     (void) publisher_socket.set (zlink::pub_options::nodrop, 1);
 
     zlink::monitor_handle_t pub_monitor = zlink::monitor_handle_t::open (
-      publisher, zlink::monitor_event::connection_ready_changed);
+      publisher, zlink::monitor_event::connection_ready);
     zlink::monitor_handle_t sub_monitor = zlink::monitor_handle_t::open (
-      subscriber, zlink::monitor_event::connection_ready_changed);
+      subscriber, zlink::monitor_event::connection_ready);
     if (!pub_monitor.valid () || !sub_monitor.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "pubsub: invalid monitors" << std::endl;
@@ -120,12 +120,13 @@ void run_pattern_pubsub (const std::string &transport,
       zlink::socket_options::rcvtimeo, recv_timeout);
     (void) subscriber.set_subscription (std::string (k_topic));
 
-    std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    std::this_thread::sleep_for (std::chrono::milliseconds (
+      perf::single::resolve_single_pubsub_ready_settle_ms ()));
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
 
-    const uint32_t run_id = static_cast<uint32_t> (perf_single_metric::now_ns ());
+    const uint32_t run_id = 1U;
     const int duration_s =
       std::max (1, perf::single::resolve_single_duration_seconds ());
     std::atomic<unsigned long long> sent_count (0);

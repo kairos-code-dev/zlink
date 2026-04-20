@@ -77,7 +77,7 @@ class dealer_dealer_client_bench_t
           _poll_events (),
           _payload (std::max<size_t> (msg_size, perf_metric::header_size ()),
                     k_payload_fill),
-          _run_id (static_cast<uint32_t> (perf_metric::now_ns ())),
+          _run_id (1U),
           _seq (1),
           _phase_cfg (),
           _result ()

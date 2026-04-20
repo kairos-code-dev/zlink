@@ -7,7 +7,6 @@
 #include "../../common/perf_socket_compat.hpp"
 #include "../../common/perf_tls.hpp"
 
-#include <atomic>
 #include <chrono>
 #include <cerrno>
 #include <climits>
@@ -15,12 +14,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <condition_variable>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace perf {
@@ -55,6 +51,7 @@ size_t resolve_single_latency_sample_cap ();
 int resolve_single_send_timeout_ms ();
 int resolve_single_recv_timeout_ms ();
 int resolve_single_pubsub_recv_timeout_ms ();
+int resolve_single_pubsub_ready_settle_ms ();
 int resolve_single_socket_hwm (bool send_);
 
 bool bench_debug_enabled ();
@@ -109,7 +106,6 @@ typedef bool (*phase_send_fn_t) (void *userdata_,
                                  size_t size_);
 
 #include "perf_single_report.hpp"
-#include "perf_single_callback_receiver.hpp"
 
 } // namespace single
 } // namespace perf

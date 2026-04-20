@@ -94,7 +94,7 @@ class router_router_client_bench_t
           _socket_states (),
           _poller (),
           _poll_events (),
-          _run_id (static_cast<uint32_t> (perf_metric::now_ns ())),
+          _run_id (1U),
           _seq (1),
           _server_id ("SERVER"),
           _server_rid (zlink::empty_routing_id ()),

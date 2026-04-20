@@ -92,7 +92,7 @@ function writeReport(reportDir, lang, suite, options, renderedSections, completi
     const maxFiles = suite === 'multi'
         ? Number(process.env.PERF_RESULTS_MAX_FILES || 100)
         : 100;
-    retainLatestFiles(reportDir, Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 100);
+    const keepCount = Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 100;
     const stamp = formatTimestamp(new Date());
     const tag = options.resultsTag ? `_${options.resultsTag}` : '';
     const file = path.join(reportDir, `perf_${lang}_${suite}_${platformName()}_${stamp}${tag}.txt`);
@@ -113,6 +113,7 @@ function writeReport(reportDir, lang, suite, options, renderedSections, completi
     if (options.output) {
         fs.writeFileSync(options.output, `${content}\n`, 'utf8');
     }
+    retainLatestFiles(reportDir, keepCount);
     return file;
 }
 module.exports = {

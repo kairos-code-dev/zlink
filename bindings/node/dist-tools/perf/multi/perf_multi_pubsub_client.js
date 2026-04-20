@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { drainRecvSocket } = require('./perf_multi_runtime');
+const { applySocketPolicy, drainRecvSocket } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -15,6 +15,7 @@ async function main() {
     try {
         for (let i = 0; i < options.clients; i += 1) {
             const sub = new zlink.SubSocket(ctx);
+            applySocketPolicy(sub);
             sub.setSubscription('perf.topic');
             sub.connect(options.endpoint);
             subs.push(sub);

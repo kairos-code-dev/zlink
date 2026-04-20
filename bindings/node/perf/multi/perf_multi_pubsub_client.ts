@@ -12,7 +12,7 @@ const {
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { drainRecvSocket } = require('./perf_multi_runtime');
+const { applySocketPolicy, drainRecvSocket } = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -24,6 +24,7 @@ async function main() {
   try {
     for (let i = 0; i < options.clients; i += 1) {
       const sub = new zlink.SubSocket(ctx);
+      applySocketPolicy(sub);
       sub.setSubscription('perf.topic');
       sub.connect(options.endpoint);
       subs.push(sub);

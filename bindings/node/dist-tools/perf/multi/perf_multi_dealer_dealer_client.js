@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { drainRecvSocket, waitForConnectionReady } = require('./perf_multi_runtime');
+const { applySocketPolicy, drainRecvSocket, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -15,6 +15,7 @@ async function main() {
     try {
         for (let i = 0; i < options.clients; i += 1) {
             const dealer = new zlink.DealerSocket(ctx);
+            applySocketPolicy(dealer);
             dealers.push(dealer);
         }
         for (const dealer of dealers) {
@@ -28,15 +29,10 @@ async function main() {
         }, () => stop));
         console.log(`CLIENT_READY,${options.msgSize}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-        let active = false;
         for await (const line of rl) {
-            if (line === `PHASE_ACTIVE,${options.msgSize}`) {
-                active = true;
+            if (line === `START,${options.msgSize}`) {
                 break;
             }
-        }
-        if (!active) {
-            throw new Error('dealer-dealer client missing PHASE_ACTIVE');
         }
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));

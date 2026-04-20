@@ -2,8 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { applySocketPolicy, benchmarkEndpoint, waitForPostReadySettle } = require('./perf_single_common');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { applySocketPolicy, benchmarkEndpoint, parseSingleBinaryArgs, waitForPostReadySettle } = require('./perf_single_common');
 function tryRecvRouted(spot) {
     try {
         return spot.recvRouted(zlink.RecvFlags.DontWait);
@@ -29,8 +29,8 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     const replier = replierNode.createSpot();
     const endpoint = await benchmarkEndpoint(options.transport, `spot-reqrep-${msgSize}`);
     try {
-        applySocketPolicy(requester);
-        applySocketPolicy(replier);
+        applySocketPolicy(requester, options);
+        applySocketPolicy(replier, options);
         replierNode.bind(endpoint);
         requester.connect(endpoint);
         replier.onDispatchEvent(() => {
@@ -74,7 +74,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
         const onReply = (result, replyParts) => {
             try {
                 if (result === zlink.RequestResult.Ok && replyParts.length > 0) {
-                    collector.record(decodeMetricHeader(replyParts[0].data()), currentEpochNs());
+                    collector.record(decodeMetricHeaderFromParts(replyParts), currentEpochNs());
                 }
             }
             finally {
@@ -118,3 +118,15 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     }
 }
 module.exports = { runSpotReqRepBenchmark };
+if (require.main === module) {
+    (async () => {
+        const options = parseSingleBinaryArgs(process.argv.slice(2));
+        const latenciesNs = await runSpotReqRepBenchmark(options.msgSize, options);
+        for (const line of summarizeMetrics('SPOT_REQREP', options.transport, options.msgSize, latenciesNs, options.duration, options.libName)) {
+            console.log(line);
+        }
+    })().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}

@@ -11,7 +11,11 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, trySocketPublish } = require('./perf_multi_runtime');
+const {
+  POLLOUT,
+  applySocketPolicy,
+  trySocketPublish
+} = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -21,6 +25,9 @@ async function main() {
   const payload = createPayload(options.msgSize);
 
   try {
+    applySocketPolicy(pub, {
+      noDrop: Number(process.env.PERF_MULTI_PUBSUB_XPUB_NODROP ?? 1) !== 0
+    });
     pub.bind(options.endpoint);
     poller.addSocket(pub, POLLOUT);
     console.log(`READY,${options.endpoint}`);

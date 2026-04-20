@@ -6,7 +6,13 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, recvNoWait, trySocketSend } = require('./perf_multi_runtime');
+const {
+  POLLIN,
+  POLLOUT,
+  applySocketPolicy,
+  recvNoWait,
+  trySocketSend
+} = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -17,6 +23,7 @@ async function main() {
   let stop = false;
 
   try {
+    applySocketPolicy(router);
     router.bind(options.endpoint);
     poller.addSocket(router, POLLIN);
     console.log(`READY,${options.endpoint}`);

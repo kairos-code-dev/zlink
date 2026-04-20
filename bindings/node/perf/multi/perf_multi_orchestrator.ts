@@ -249,29 +249,41 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   const serverPath = path.join(__dirname, serverScript);
   const clientPath = path.join(__dirname, clientScript);
   const resultLines = [];
-  let endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  let sharedArgs = [
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  let serverArgs = [
     '--endpoint', endpoint,
     '--transport', args.transport,
     '--msg-size', String(args.msgSize),
     '--duration', String(args.duration),
     '--clients', String(args.clients)
   ];
+  let clientArgs = [...serverArgs];
 
   if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
-    const controlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    sharedArgs = [
+    const serverControlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const clientControlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    serverArgs = [
       '--endpoint', endpoint,
       '--transport', args.transport,
       '--peer-endpoint', endpoint,
-      '--control-endpoint', controlEndpoint,
+      '--control-endpoint', serverControlEndpoint,
+      '--msg-size', String(args.msgSize),
+      '--duration', String(args.duration),
+      '--clients', String(args.clients)
+    ];
+    clientArgs = [
+      '--endpoint', endpoint,
+      '--transport', args.transport,
+      '--peer-endpoint', endpoint,
+      '--control-endpoint', clientControlEndpoint,
+      '--server-control-endpoint', serverControlEndpoint,
       '--msg-size', String(args.msgSize),
       '--duration', String(args.duration),
       '--clients', String(args.clients)
     ];
   }
 
-  const server = spawn(process.execPath, [serverPath, ...sharedArgs], {
+  const server = spawn(process.execPath, [serverPath, ...serverArgs], {
     cwd: process.cwd(),
     env: childEnv(args),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -291,11 +303,11 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   if (args.pattern === 'MULTI_SPOT_REQREP') {
     const routeLine = await waitForPrefix(server, 'ROUTE_READY,', serverScript, 10_000);
     const [, serverNodeRid, serverSpotRid] = routeLine.split(',');
-    sharedArgs.push('--server-node-rid', serverNodeRid);
-    sharedArgs.push('--server-spot-rid', serverSpotRid);
+    clientArgs.push('--server-node-rid', serverNodeRid);
+    clientArgs.push('--server-spot-rid', serverSpotRid);
   }
 
-  const client = spawn(process.execPath, [clientPath, ...sharedArgs], {
+  const client = spawn(process.execPath, [clientPath, ...clientArgs], {
     cwd: process.cwd(),
     env: childEnv(args),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -304,6 +316,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   attachProcessCapture(client, resultLines);
   if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
     const clientControlLine = await waitForPrefix(client, 'CLIENT_CONTROL_ENDPOINT,', clientScript, 20_000);
+    await waitForPrefix(client, 'CONTROL_CONNECTED,', clientScript, 20_000);
     if (server.stdin.writable) {
       server.stdin.write(`CONNECT_CONTROL,${clientControlLine.split(',')[1]}\n`);
     }
@@ -320,7 +333,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   }
   if (client.stdin.writable) {
     client.stdin.write(`${startLine(args.msgSize)}\n`);
-    if (args.pattern === 'MULTI_DEALER_DEALER' || args.pattern === 'MULTI_PUBSUB') {
+    if (args.pattern === 'MULTI_PUBSUB') {
       client.stdin.write(`${phaseActiveLine(args.msgSize)}\n`);
     }
   }

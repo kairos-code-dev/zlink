@@ -2,16 +2,16 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { applySocketPolicy, benchmarkEndpoint, drainRecvSocket, waitForConnectionReady, } = require('./perf_single_common');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { applySocketPolicy, benchmarkEndpoint, drainRecvSocket, parseSingleBinaryArgs, resolveSingleIdleDrainMs, waitForConnectionReady, } = require('./perf_single_common');
 async function runDealerRouterBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     const router = new zlink.RouterSocket(ctx);
     const dealer = new zlink.DealerSocket(ctx);
     const endpoint = await benchmarkEndpoint(options.transport, `dealer-router-${msgSize}`);
     try {
-        applySocketPolicy(router);
-        applySocketPolicy(dealer);
+        applySocketPolicy(router, options);
+        applySocketPolicy(dealer, options);
         router.bind(endpoint);
         await waitForConnectionReady(dealer, () => dealer.connect(endpoint));
         const activeStartNs = currentEpochNs();
@@ -29,7 +29,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
         let seq = 1n;
         let stop = false;
         const recvTask = drainRecvSocket(router, (received) => {
-            const header = decodeMetricHeader(received.parts[0].data());
+            const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
         }, () => stop);
         while (currentEpochNs() < activeStopNs) {
@@ -49,7 +49,8 @@ async function runDealerRouterBenchmark(msgSize, options) {
         }
         stampPayload(payload, { phase: 2, runId, msgSize, seq });
         dealer.send(payload);
-        const drainDeadlineNs = activeStopNs + 250000000n;
+        const drainDeadlineNs = activeStopNs
+            + BigInt(resolveSingleIdleDrainMs(options)) * 1000000n;
         while (currentEpochNs() < drainDeadlineNs) {
             await sleepImmediate();
         }
@@ -65,3 +66,15 @@ async function runDealerRouterBenchmark(msgSize, options) {
     }
 }
 module.exports = { runDealerRouterBenchmark };
+if (require.main === module) {
+    (async () => {
+        const options = parseSingleBinaryArgs(process.argv.slice(2));
+        const latenciesNs = await runDealerRouterBenchmark(options.msgSize, options);
+        for (const line of summarizeMetrics('DEALER_ROUTER', options.transport, options.msgSize, latenciesNs, options.duration, options.libName)) {
+            console.log(line);
+        }
+    })().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}

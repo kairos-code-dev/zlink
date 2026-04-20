@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { trySocketPublish } = require('./perf_multi_runtime');
+const { applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
@@ -27,16 +27,24 @@ async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
     const controlPub = new zlink.PubSocket(ctx);
+    const controlSub = new zlink.SubSocket(ctx);
     const slots = [];
     let collector = null;
     try {
+        applySocketPolicy(controlPub);
+        applySocketPolicy(controlSub);
         controlPub.bind(options.controlEndpoint);
         console.log(`CLIENT_CONTROL_ENDPOINT,${options.controlEndpoint}`);
+        controlSub.setSubscription(CONTROL_TOPIC);
+        await waitForConnectionReady(controlSub, () => controlSub.connect(options.serverControlEndpoint));
+        console.log(`CONTROL_CONNECTED,${options.serverControlEndpoint}`);
         for (let i = 0; i < options.clients; i += 1) {
             const node = new zlink.SpotNode(ctx);
             const dealer = new zlink.DealerSocket(ctx);
+            applySocketPolicy(dealer);
             node.attachChannelDealerManual(SERVICE_NAME, dealer);
             const spot = node.createSpot();
+            applySocketPolicy(spot);
             spot.setSubscription(TOPIC);
             node.connectPeer(options.peerEndpoint);
             slots.push({ node, dealer, spot });
@@ -75,22 +83,38 @@ async function main() {
         }
         console.log(`CLIENT_READY,${options.msgSize}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-        for await (const line of rl) {
-            if (line !== `START,${options.msgSize}`) {
-                continue;
+        let startRequested = false;
+        let startBroadcast = false;
+        (async () => {
+            for await (const line of rl) {
+                if (line === `START,${options.msgSize}`) {
+                    startRequested = true;
+                }
             }
-            const activeStartNs = currentEpochNs();
-            const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
-            collector = createMetricCollector({
-                runId: createRunId(1),
-                msgSize: options.msgSize,
-                activeStartNs,
-                activeStopNs
-            });
-            while (currentEpochNs() < activeStopNs + 250000000n) {
-                await sleepImmediate();
+        })();
+        while (!(startRequested && startBroadcast)) {
+            while (true) {
+                const received = subscribeNoWait(controlSub);
+                if (!received) {
+                    break;
+                }
+                const payloadText = received.parts[0].data().toString('utf8');
+                if (payloadText === `START,${options.msgSize}`) {
+                    startBroadcast = true;
+                }
             }
-            break;
+            await sleepImmediate();
+        }
+        const activeStartNs = currentEpochNs();
+        const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+        collector = createMetricCollector({
+            runId: createRunId(1),
+            msgSize: options.msgSize,
+            activeStartNs,
+            activeStopNs
+        });
+        while (currentEpochNs() < activeStopNs + 250000000n) {
+            await sleepImmediate();
         }
         const result = collector ? await collector.finish() : { latenciesNs: [] };
         for (const metricLine of summarizeMetrics('MULTI_SPOT', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
@@ -98,6 +122,7 @@ async function main() {
         }
     }
     finally {
+        controlSub.close();
         controlPub.close();
         for (const slot of slots) {
             slot.spot.close();

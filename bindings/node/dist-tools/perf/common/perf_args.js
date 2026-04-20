@@ -1,17 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
+const MIN_MSG_SIZE = 29;
 const STANDARD_MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144];
 const STREAM_MSG_SIZES = [64, 256, 1024, 65536];
 const DEFAULT_SINGLE_TRANSPORTS = ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'];
 const DEFAULT_MULTI_TRANSPORTS = ['tcp', 'tls', 'ws', 'wss'];
+function integerEnv(name, fallback) {
+    const raw = process.env[name];
+    if (raw === undefined || raw === '') {
+        return fallback;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+}
 function parseSizeList(value, fallback) {
     if (!value) {
         return fallback;
     }
     return value.split(',').map((part) => {
         const size = Number(part.trim());
-        if (!Number.isFinite(size) || size <= 0) {
+        if (!Number.isFinite(size) || size < MIN_MSG_SIZE) {
             throw new Error(`invalid msg size: ${part}`);
         }
         return size;
@@ -189,9 +198,10 @@ function parseCommonArgs(argv, defaults) {
     return options;
 }
 function resolveSinglePatternNames(pattern) {
-    return pattern === 'ALL'
+    const normalized = String(pattern || 'ALL').trim().toUpperCase();
+    return normalized === 'ALL'
         ? ['PAIR', 'PUBSUB', 'DEALER_DEALER', 'DEALER_ROUTER', 'ROUTER_ROUTER', 'SPOT', 'SPOT_REQREP']
-        : pattern.split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
+        : normalized.split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
 }
 function normalizeMultiPatternName(pattern) {
     const upper = pattern.trim().toUpperCase();
@@ -201,7 +211,8 @@ function normalizeMultiPatternName(pattern) {
     return upper === 'STREAM' ? 'MULTI_STREAM' : `MULTI_${upper}`;
 }
 function resolveMultiPatternNames(pattern) {
-    return pattern === 'ALL'
+    const normalized = String(pattern || 'ALL').trim().toUpperCase();
+    return normalized === 'ALL'
         ? [
             'MULTI_DEALER_DEALER',
             'MULTI_DEALER_ROUTER',
@@ -211,35 +222,57 @@ function resolveMultiPatternNames(pattern) {
             'MULTI_SPOT_REQREP',
             'MULTI_STREAM'
         ]
-        : pattern.split(',').map(normalizeMultiPatternName).filter(Boolean);
+        : normalized.split(',').map(normalizeMultiPatternName).filter(Boolean);
 }
 function defaultSingleMsgSizes() {
-    return STANDARD_MSG_SIZES.slice();
+    return parseSizeList(process.env.PERF_MSG_SIZES, STANDARD_MSG_SIZES.slice());
 }
 function defaultMultiMsgSizes(patternNames, explicitMsgSizes) {
     if (explicitMsgSizes) {
         return null;
     }
+    const envSizes = process.env.PERF_MSG_SIZES;
+    const envStreamSizes = process.env.PERF_MULTI_STREAM_MSG_SIZES;
     const onlyStream = patternNames.length > 0
         && patternNames.every((name) => name === 'MULTI_STREAM');
+    if (onlyStream && envStreamSizes) {
+        return parseSizeList(envStreamSizes, STREAM_MSG_SIZES.slice());
+    }
+    if (envSizes) {
+        return parseSizeList(envSizes, STANDARD_MSG_SIZES.slice());
+    }
     return onlyStream ? STREAM_MSG_SIZES.slice() : STANDARD_MSG_SIZES.slice();
 }
 function defaultMultiClients(patternNames, explicitClients) {
     if (explicitClients) {
         return null;
     }
+    const envClients = integerEnv('PERF_MULTI_CLIENTS', NaN);
+    if (Number.isFinite(envClients) && envClients > 0) {
+        return envClients;
+    }
     const onlyStream = patternNames.length > 0
         && patternNames.every((name) => name === 'MULTI_STREAM');
     return onlyStream ? 10000 : 100;
 }
+function defaultSingleTransports() {
+    return parseStringList(process.env.PERF_TRANSPORTS, DEFAULT_SINGLE_TRANSPORTS.slice());
+}
+function defaultMultiTransports() {
+    return parseStringList(process.env.PERF_TRANSPORTS, DEFAULT_MULTI_TRANSPORTS.slice());
+}
 module.exports = {
     DEFAULT_MULTI_TRANSPORTS,
     DEFAULT_SINGLE_TRANSPORTS,
+    MIN_MSG_SIZE,
     STANDARD_MSG_SIZES,
     STREAM_MSG_SIZES,
     defaultMultiClients,
     defaultMultiMsgSizes,
     defaultSingleMsgSizes,
+    defaultMultiTransports,
+    defaultSingleTransports,
+    integerEnv,
     parseCommonArgs,
     resolveMultiPatternNames,
     resolveSinglePatternNames

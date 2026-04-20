@@ -7,7 +7,7 @@ const path = require('node:path');
 const { once } = require('node:events');
 const zlink = require('../../dist/canonical');
 const { MonitorEvent, RecvFlags, RecvResult } = zlink;
-const { sleepImmediate } = require('../common/perf_metrics');
+const { MIN_MSG_SIZE, integerEnv, sleepImmediate } = require('../common/perf_metrics');
 const POLLIN = 1;
 async function reservePort() {
     const server = net.createServer();
@@ -40,20 +40,22 @@ async function benchmarkEndpoint(transport, token) {
     }
     throw new Error(`unsupported single transport: ${transport}`);
 }
-function integerEnv(name, fallback) {
-    const raw = process.env[name];
-    if (raw === undefined || raw === '') {
-        return fallback;
-    }
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
-}
 function applySocketPolicy(socket, options = {}) {
-    const hwm = integerEnv('PERF_SINGLE_HWM', 1000);
-    const sendHwm = integerEnv('PERF_SINGLE_SNDHWM', hwm);
-    const recvHwm = integerEnv('PERF_SINGLE_RCVHWM', hwm);
-    const sendTimeout = integerEnv('PERF_SINGLE_SNDTIMEO_MS', 200);
-    const recvTimeout = integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200);
+    const hwm = Number.isFinite(options.hwm)
+        ? options.hwm
+        : integerEnv('PERF_SINGLE_HWM', 1000);
+    const sendHwm = Number.isFinite(options.sendHwm)
+        ? options.sendHwm
+        : integerEnv('PERF_SINGLE_SNDHWM', hwm);
+    const recvHwm = Number.isFinite(options.recvHwm)
+        ? options.recvHwm
+        : integerEnv('PERF_SINGLE_RCVHWM', hwm);
+    const sendTimeout = Number.isFinite(options.sendTimeoutMs)
+        ? options.sendTimeoutMs
+        : integerEnv('PERF_SINGLE_SNDTIMEO_MS', 200);
+    const recvTimeout = Number.isFinite(options.recvTimeoutMs)
+        ? options.recvTimeoutMs
+        : integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200);
     if (typeof socket.setSendHighWaterMark === 'function') {
         socket.setSendHighWaterMark(sendHwm);
     }
@@ -157,6 +159,15 @@ async function waitForPostReadySettle(timeoutMs) {
         await sleepImmediate();
     }
 }
+function resolveSingleIdleDrainMs(overrides = {}) {
+    if (Number.isFinite(overrides.idleDrainMs)) {
+        return Math.max(0, overrides.idleDrainMs);
+    }
+    if (Number.isFinite(overrides.recvTimeoutMs)) {
+        return Math.max(0, overrides.recvTimeoutMs);
+    }
+    return integerEnv('PERF_SINGLE_PUBSUB_RCVTIMEO_MS', integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200));
+}
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
     const poller = new zlink.Poller();
     poller.addSocket(socket, POLLIN);
@@ -221,11 +232,35 @@ function drainRecvNow(socket, onMessage) {
         onMessage(received);
     }
 }
+function parseSingleBinaryArgs(argv) {
+    if (argv.length < 3) {
+        throw new Error('usage: <binary> <lib_name> <transport> <size>');
+    }
+    const transport = String(argv[1] || '').trim().toLowerCase();
+    const msgSize = Number(argv[2]);
+    if (!Number.isFinite(msgSize) || msgSize < MIN_MSG_SIZE) {
+        throw new Error(`invalid single msg size: ${argv[2]}`);
+    }
+    return {
+        libName: String(argv[0] || 'current'),
+        transport,
+        msgSize,
+        duration: integerEnv('PERF_SINGLE_DURATION_SECONDS', 5),
+        runId: integerEnv('PERF_RUN_ID', 1),
+        hwm: integerEnv('PERF_SINGLE_HWM', NaN),
+        sendHwm: integerEnv('PERF_SINGLE_SNDHWM', NaN),
+        recvHwm: integerEnv('PERF_SINGLE_RCVHWM', NaN),
+        sendTimeoutMs: integerEnv('PERF_SINGLE_SNDTIMEO_MS', NaN),
+        recvTimeoutMs: integerEnv('PERF_SINGLE_RCVTIMEO_MS', NaN)
+    };
+}
 module.exports = {
     applySocketPolicy,
     benchmarkEndpoint,
     drainRecvSocket,
     drainRecvNow,
+    parseSingleBinaryArgs,
+    resolveSingleIdleDrainMs,
     waitForPostReadySettle,
     waitForConnectionReady,
     trySocketSend,

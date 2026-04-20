@@ -58,9 +58,19 @@ function decodeMetricHeaderFromParts(parts) {
         if (!part || typeof part.data !== 'function') {
             continue;
         }
-        const header = decodeMetricHeader(part.data());
+        const data = part.data();
+        let header = decodeMetricHeader(data);
         if (header) {
             return header;
+        }
+        const magicBytes = Buffer.allocUnsafe(4);
+        magicBytes.writeUInt32LE(METRIC_MAGIC, 0);
+        const offset = data.indexOf(magicBytes);
+        if (offset >= 0 && (data.length - offset) >= HEADER_SIZE) {
+            header = decodeMetricHeader(data.subarray(offset));
+            if (header) {
+                return header;
+            }
         }
     }
     return null;
@@ -102,13 +112,13 @@ function isEchoPattern(pattern) {
         || pattern === 'MULTI_STREAM'
         || pattern === 'MULTI_SPOT_REQREP';
 }
-function summarizeMetrics(pattern, transport, msgSize, latenciesNs, durationSeconds) {
+function summarizeMetrics(pattern, transport, msgSize, latenciesNs, durationSeconds, libName = 'current') {
     const metrics = computeMetrics(latenciesNs, durationSeconds, msgSize, isEchoPattern(pattern) ? 2 : 1);
     return Object.entries(metrics).map(([metric, value]) => {
         const formatted = metric.startsWith('latency')
             ? value.toFixed(6)
             : value.toFixed(2);
-        return `RESULT,current,${pattern},${transport},${msgSize},${metric},${formatted}`;
+        return `RESULT,${libName},${pattern},${transport},${msgSize},${metric},${formatted}`;
     });
 }
 function primaryMetricsFromResultLines(pattern, msgSize, lines) {

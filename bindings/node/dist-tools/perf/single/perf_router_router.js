@@ -2,8 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { applySocketPolicy, benchmarkEndpoint, drainRecvSocket, waitForConnectionReady, } = require('./perf_single_common');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { applySocketPolicy, benchmarkEndpoint, drainRecvSocket, parseSingleBinaryArgs, resolveSingleIdleDrainMs, waitForConnectionReady, } = require('./perf_single_common');
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
 const RECEIVER_ROUTING_ID = zlink.RoutingId.fromBytes(RECEIVER_ID);
@@ -29,8 +29,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const sender = new zlink.RouterSocket(ctx);
     const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
     try {
-        applySocketPolicy(receiver);
-        applySocketPolicy(sender);
+        applySocketPolicy(receiver, options);
+        applySocketPolicy(sender, options);
         receiver.setRoutingId(RECEIVER_ROUTING_ID);
         sender.setRoutingId(SENDER_ROUTING_ID);
         receiver.bind(endpoint);
@@ -51,7 +51,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
         let seq = 1n;
         let stop = false;
         const recvTask = drainRecvSocket(receiver, (received) => {
-            const header = decodeMetricHeader(received.parts[0].data());
+            const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
         }, () => stop);
         while (currentEpochNs() < activeStopNs) {
@@ -71,7 +71,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
         }
         stampPayload(payload, { phase: 2, runId, msgSize, seq });
         sender.send(RECEIVER_ROUTING_ID, payload);
-        const drainDeadlineNs = activeStopNs + 250000000n;
+        const drainDeadlineNs = activeStopNs
+            + BigInt(resolveSingleIdleDrainMs(options)) * 1000000n;
         while (currentEpochNs() < drainDeadlineNs) {
             await sleepImmediate();
         }
@@ -87,3 +88,15 @@ async function runRouterRouterBenchmark(msgSize, options) {
     }
 }
 module.exports = { runRouterRouterBenchmark };
+if (require.main === module) {
+    (async () => {
+        const options = parseSingleBinaryArgs(process.argv.slice(2));
+        const latenciesNs = await runRouterRouterBenchmark(options.msgSize, options);
+        for (const line of summarizeMetrics('ROUTER_ROUTER', options.transport, options.msgSize, latenciesNs, options.duration, options.libName)) {
+            console.log(line);
+        }
+    })().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}

@@ -18,6 +18,7 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applySocketPolicy,
   recvNoWait,
   trySocketSend,
   waitForConnectionReady
@@ -38,6 +39,7 @@ async function main() {
   try {
     for (let i = 0; i < options.clients; i += 1) {
       const router = new zlink.RouterSocket(ctx);
+      applySocketPolicy(router);
       router.setRoutingId(
         zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii'))
       );

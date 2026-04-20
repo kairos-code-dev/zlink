@@ -18,6 +18,7 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applySocketPolicy,
   recvNoWait,
   trySocketSend,
   waitForConnectionReady
@@ -35,6 +36,7 @@ async function main() {
   try {
     for (let i = 0; i < options.clients; i += 1) {
       const dealer = new zlink.DealerSocket(ctx);
+      applySocketPolicy(dealer);
       dealer.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`CLIENT-${i}`, 'ascii')));
       dealers.push(dealer);
       payloads.push(createPayload(options.msgSize));

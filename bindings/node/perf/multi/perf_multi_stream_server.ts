@@ -5,6 +5,7 @@
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { parseMultiArgs } = require('./perf_multi_common');
+const { applySocketPolicy } = require('./perf_multi_runtime');
 
 function buildPacketFrame(header, body) {
   const headerBytes = header.data();
@@ -23,6 +24,7 @@ async function main() {
   const stream = new zlink.StreamSocket(ctx);
 
   try {
+    applySocketPolicy(stream);
     stream.bind(options.endpoint);
     stream.onPacket((routingId, header, body) => {
       stream.send(routingId, buildPacketFrame(header, body));

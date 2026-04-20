@@ -11,7 +11,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, trySocketSend } = require('./perf_multi_runtime');
+const { POLLOUT, applySocketPolicy, trySocketSend } = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -21,6 +21,7 @@ async function main() {
   const payload = createPayload(options.msgSize);
 
   try {
+    applySocketPolicy(server);
     server.bind(options.endpoint);
     poller.addSocket(server, POLLOUT);
     console.log(`READY,${options.endpoint}`);

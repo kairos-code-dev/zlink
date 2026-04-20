@@ -13,6 +13,7 @@ function parseArgs(argv, defaults = {}) {
     endpoint: '',
     peerEndpoint: '',
     controlEndpoint: '',
+    serverControlEndpoint: '',
     transport: 'tcp',
     serverNodeRid: '',
     serverSpotRid: '',
@@ -29,6 +30,8 @@ function parseArgs(argv, defaults = {}) {
       options.peerEndpoint = argv[++i];
     } else if (argv[i] === '--control-endpoint') {
       options.controlEndpoint = argv[++i];
+    } else if (argv[i] === '--server-control-endpoint') {
+      options.serverControlEndpoint = argv[++i];
     } else if (argv[i] === '--transport') {
       options.transport = argv[++i];
     } else if (argv[i] === '--server-node-rid') {

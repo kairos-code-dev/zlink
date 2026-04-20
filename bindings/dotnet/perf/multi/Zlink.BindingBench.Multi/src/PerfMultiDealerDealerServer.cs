@@ -18,6 +18,7 @@ internal static class PerfMultiDealerDealerServer
             "multi-dealer-dealer", options);
 
         using var ctx = new Context();
+        using var pollManager = new PollManager();
         ApplyMultiServerContextOptions(ctx, options);
         using var server = new DealerSocket(ctx);
         ApplyMultiSocketOptions(server, options);
@@ -32,14 +33,12 @@ internal static class PerfMultiDealerDealerServer
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
 
-        var payload = new byte[Math.Max(256, Math.Max(Math.Max(size,
-            PerfMetricHeaderSize), MultiStopToken.Length))];
         var latSamples = new List<double>(latencySampleCap);
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
         const uint expectedRunId = 1;
         long recvCount = 0;
-        if (!RunReceivePhase(server, payload, size, expectedRunId,
+        if (!RunReceivePhase(pollManager, server, size, expectedRunId,
                 PerfPhase.Active, Math.Max(1, durationSeconds), true, true,
                 latSamples, ref sampleSeen, ref rng, ref recvCount))
             return 2;
@@ -60,18 +59,8 @@ internal static class PerfMultiDealerDealerServer
         return 0;
     }
 
-    private static bool RunReceivePhase(SocketBase server, byte[] payload,
-        int msgSize, uint expectedRunId, PerfPhase expectedPhase,
-        double durationSeconds, bool countMessage, bool collectLatency,
-        List<double> latSamples, ref long sampleSeen, ref uint rng)
-    {
-        long recvCount = 0;
-        return RunReceivePhase(server, payload, msgSize, expectedRunId,
-            expectedPhase, durationSeconds, countMessage, collectLatency,
-            latSamples, ref sampleSeen, ref rng, ref recvCount);
-    }
-
-    private static bool RunReceivePhase(SocketBase server, byte[] payload,
+    private static bool RunReceivePhase(PollManager pollManager,
+        DealerSocket server,
         int msgSize, uint expectedRunId, PerfPhase expectedPhase,
         double durationSeconds, bool countMessage, bool collectLatency,
         List<double> latSamples, ref long sampleSeen, ref uint rng,
@@ -82,16 +71,20 @@ internal static class PerfMultiDealerDealerServer
 
         long deadlineTicks = Stopwatch.GetTimestamp()
             + (long)(durationSeconds * Stopwatch.Frequency);
+        var sockets = new[] { (SocketBase)server };
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            int n = ReceiveRetry(server, payload.AsSpan(), RecvFlags.None);
-            if (n <= 0)
+            int timeoutMs = RemainingMilliseconds(deadlineTicks);
+            if (timeoutMs <= 0)
+                break;
+
+            if (PollSocketReadReady(pollManager, sockets, timeoutMs) <= 0
+                || !IsSocketReadReady(pollManager, 0))
+            {
                 continue;
-            if (!HandleReceived(payload.AsSpan(0, n), msgSize, expectedRunId,
-                    expectedPhase, countMessage, collectLatency, latSamples,
-                    ref sampleSeen, ref rng, ref recvCount))
-                return false;
-            if (!DrainRemainingFramesNonBlocking(server, payload, msgSize,
+            }
+
+            if (!DrainReadableSocket(server, deadlineTicks, msgSize,
                     expectedRunId, expectedPhase, countMessage, collectLatency,
                     latSamples, ref sampleSeen, ref rng, ref recvCount))
                 return false;
@@ -100,37 +93,48 @@ internal static class PerfMultiDealerDealerServer
         return true;
     }
 
-    private static bool DrainRemainingFramesNonBlocking(SocketBase server,
-        byte[] payload, int msgSize, uint expectedRunId, PerfPhase expectedPhase,
+    private static bool DrainReadableSocket(DealerSocket server,
+        long deadlineTicks, int msgSize, uint expectedRunId,
+        PerfPhase expectedPhase,
         bool countMessage, bool collectLatency, List<double> latSamples,
         ref long sampleSeen, ref uint rng, ref long recvCount)
     {
         while (true)
         {
-            int n = ReceiveRetry(server, payload.AsSpan(), RecvFlags.DontWait);
-            if (n < 0)
-                return false;
-            if (n == 0)
+            Received? received = TryRecvNoWait(server);
+            if (received == null)
                 return true;
-            if (!HandleReceived(payload.AsSpan(0, n), msgSize, expectedRunId,
-                    expectedPhase, countMessage, collectLatency, latSamples,
-                    ref sampleSeen, ref rng, ref recvCount))
-                return false;
+
+            using (received)
+            {
+                ReadOnlySpan<byte> body = received.FirstPart().AsReadOnlySpan();
+                long recvTicks = Stopwatch.GetTimestamp();
+                if (!HandleReceived(body, recvTicks, deadlineTicks, msgSize,
+                        expectedRunId, expectedPhase, countMessage,
+                        collectLatency, latSamples, ref sampleSeen, ref rng,
+                        ref recvCount))
+                {
+                    return false;
+                }
+            }
         }
     }
 
-    private static bool HandleReceived(ReadOnlySpan<byte> body, int msgSize,
-        uint expectedRunId, PerfPhase expectedPhase, bool countMessage,
+    private static bool HandleReceived(ReadOnlySpan<byte> body, long recvTicks,
+        long deadlineTicks, int msgSize, uint expectedRunId,
+        PerfPhase expectedPhase, bool countMessage,
         bool collectLatency, List<double> latSamples, ref long sampleSeen,
         ref uint rng, ref long recvCount)
     {
         if (IsStopTokenPayload(body))
             return true;
-        if (!TryDecodeMetricHeader(body, out PerfMetricHeader header))
+        if (!PerfRunner.TryDecodeMetricHeader(body, out PerfMetricHeader header))
             return true;
         if (header.RunId != expectedRunId
             || header.MsgSize != (uint)msgSize
             || header.Phase != (uint)expectedPhase)
+            return true;
+        if (recvTicks > deadlineTicks)
             return true;
 
         if (countMessage)
@@ -147,5 +151,23 @@ internal static class PerfMultiDealerDealerServer
         }
 
         return true;
+    }
+
+    private static Received? TryRecvNoWait(DealerSocket socket)
+    {
+        return socket.TryRecv(out Received? received) ? received : null;
+    }
+
+    private static int RemainingMilliseconds(long deadlineTicks)
+    {
+        long nowTicks = Stopwatch.GetTimestamp();
+        if (deadlineTicks <= nowTicks)
+            return 0;
+
+        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
+            / Stopwatch.Frequency;
+        if (remainingMs >= int.MaxValue)
+            return int.MaxValue;
+        return (int)Math.Ceiling(remainingMs);
     }
 }

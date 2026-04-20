@@ -49,9 +49,11 @@ internal static class PerfMultiPubSubClient
             DisposeAllQuietly(monitors);
             monitors.Clear();
 
-            var recv = new byte[Math.Max(256, Math.Max(size, MultiStopToken.Length))];
             var result = RunMultiPubSubClientLoop(pollManager, activeClients,
-                recv, size, latencySampleCap, pollTimeoutMs, durationSeconds);
+                size, latencySampleCap, pollTimeoutMs, durationSeconds);
+
+            if (result.measureCount <= 0)
+                return 2;
 
             PrintResult(options.Pattern, options.Transport, size, result.throughput,
                 result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
@@ -65,10 +67,10 @@ internal static class PerfMultiPubSubClient
     }
 
     private static (double throughput, double latencyNs, double latencyP95Ns,
-        double latencyP99Ns)
+        double latencyP99Ns, long measureCount)
         RunMultiPubSubClientLoop(PollManager pollManager,
-            List<SocketBase> activeClients,
-            byte[] recv, int msgSize, int latencySampleCap, int pollTimeoutMs,
+            List<SocketBase> activeClients, int msgSize, int latencySampleCap,
+            int pollTimeoutMs,
             int durationSeconds)
     {
         const uint expectedRunId = 1;
@@ -92,19 +94,31 @@ internal static class PerfMultiPubSubClient
                 if (!IsSocketReadReady(pollManager, i))
                     continue;
 
-                DrainReadableSocket(activeClients[i], recv.AsSpan(), body =>
+                while (true)
                 {
-                    bool headerOk = TryDecodeMetricHeader(body,
-                        out PerfMetricHeader header);
-                    if (!headerOk
-                        || header.RunId != expectedRunId
-                        || header.MsgSize != (uint)msgSize)
-                    {
-                        return true;
-                    }
+                    TopicMessage? subscribed = TrySubscribeNoWait(
+                        (SubSocket)activeClients[i]);
+                    if (subscribed == null)
+                        break;
 
-                    if (header.Phase == (uint)PerfPhase.Active)
+                    using (subscribed)
                     {
+                        ReadOnlySpan<byte> body = subscribed.FirstPart()
+                            .AsReadOnlySpan();
+                        long recvTicks = Stopwatch.GetTimestamp();
+                        if (recvTicks > benchDeadlineTicks)
+                            continue;
+
+                        bool headerOk = PerfRunner.TryDecodeMetricHeader(body,
+                            out PerfMetricHeader header);
+                        if (!headerOk
+                            || header.RunId != expectedRunId
+                            || header.MsgSize != (uint)msgSize
+                            || header.Phase != (uint)PerfPhase.Active)
+                        {
+                            continue;
+                        }
+
                         measureCount++;
                         ulong nowNs = EpochNs();
                         if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
@@ -114,8 +128,7 @@ internal static class PerfMultiPubSubClient
                                 ref sampleSeen, latencySampleCap, ref rng);
                         }
                     }
-                    return true;
-                });
+                }
             }
         }
 
@@ -128,6 +141,19 @@ internal static class PerfMultiPubSubClient
         double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
         double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
-        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns);
+        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
+    }
+
+    private static TopicMessage? TrySubscribeNoWait(SubSocket socket)
+    {
+        try
+        {
+            return socket.Subscribe(RecvFlags.DontWait);
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
+        {
+            return null;
+        }
     }
 }

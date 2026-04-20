@@ -57,6 +57,9 @@ internal static class PerfMultiDealerRouterClient
 
             TrySendStopToken(activeClients);
 
+            if (result.measureCount <= 0)
+                return 2;
+
             PrintResult(options.Pattern, options.Transport, size, result.throughput,
                 result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
             return 0;
@@ -76,15 +79,14 @@ internal static class PerfMultiDealerRouterClient
         {
             var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
             Array.Fill(payload, (byte)'a');
-            var recv = new byte[Math.Max(256, Math.Max(msgSize, MultiStopToken.Length))];
-            slots[i] = new DealerRouterClientSlot(activeClients[i], payload, recv);
+            slots[i] = new DealerRouterClientSlot(activeClients[i], payload);
         }
 
         return slots;
     }
 
     private static (double throughput, double latencyNs, double latencyP95Ns,
-        double latencyP99Ns)
+        double latencyP99Ns, long measureCount)
         RunMultiDealerRouterClientLoop(PollManager pollManager,
             DealerRouterClientSlot[] slots, int msgSize, int latencySampleCap,
             int pollTimeoutMs, int durationSeconds, int readyTimeoutMs)
@@ -113,13 +115,15 @@ internal static class PerfMultiDealerRouterClient
             {
                 for (int i = 0; i < slots.Length; i++)
                     HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true);
+                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
+                        activeDeadlineTicks: benchDeadlineTicks);
                 continue;
             }
 
             for (int i = 0; i < slots.Length; i++)
                 HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                    runId, PerfPhase.Active, ref seq, metrics, allowSend: true);
+                    runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
+                    activeDeadlineTicks: benchDeadlineTicks);
         }
 
         long benchEndTicks = Stopwatch.GetTimestamp();
@@ -135,7 +139,8 @@ internal static class PerfMultiDealerRouterClient
         double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
         double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
-        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns);
+        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns,
+            metrics.MeasureCount);
     }
 
     private static void TryScheduleIdleSends(DealerRouterClientSlot[] slots,
@@ -171,7 +176,7 @@ internal static class PerfMultiDealerRouterClient
         DealerRouterClientSlot[] slots,
         int slotIndex, PollEvents[] eventMasks,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
-        DealerRouterMetrics metrics, bool allowSend)
+        DealerRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
         DealerRouterClientSlot slot = slots[slotIndex];
 
@@ -208,10 +213,12 @@ internal static class PerfMultiDealerRouterClient
             {
                 ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
                     .AsReadOnlySpan();
-                if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
+                long recvTicks = Stopwatch.GetTimestamp();
+                if (PerfRunner.TryDecodeMetricHeader(body, out PerfMetricHeader header)
                     && header.RunId == runId
                     && header.MsgSize == (uint)msgSize
-                    && header.Phase == (uint)phase)
+                    && header.Phase == (uint)phase
+                    && recvTicks <= activeDeadlineTicks)
                 {
                     metrics.MeasureCount++;
                     if (metrics.LatencySamples != null && header.SentTsNs > 0)
@@ -306,17 +313,14 @@ internal static class PerfMultiDealerRouterClient
 
     private sealed class DealerRouterClientSlot
     {
-        internal DealerRouterClientSlot(SocketBase socket, byte[] payload,
-            byte[] recv)
+        internal DealerRouterClientSlot(SocketBase socket, byte[] payload)
         {
             Socket = socket;
             Payload = payload;
-            Recv = recv;
         }
 
         internal SocketBase Socket { get; }
         internal byte[] Payload { get; }
-        internal byte[] Recv { get; }
         internal bool WaitingForReply { get; set; }
         internal bool WaitingForWritable { get; set; }
     }

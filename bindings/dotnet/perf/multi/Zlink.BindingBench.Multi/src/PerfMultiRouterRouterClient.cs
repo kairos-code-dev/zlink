@@ -58,6 +58,9 @@ internal static class PerfMultiRouterRouterClient
 
             TrySendRouterStopToken(activeClients, serverRoutingId);
 
+            if (result.measureCount <= 0)
+                return 2;
+
             PrintResult(options.Pattern, options.Transport, size, result.throughput,
                 result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
             return 0;
@@ -86,7 +89,7 @@ internal static class PerfMultiRouterRouterClient
     }
 
     private static (double throughput, double latencyNs, double latencyP95Ns,
-        double latencyP99Ns)
+        double latencyP99Ns, long measureCount)
         RunMultiRouterRouterClientLoop(PollManager pollManager,
             RouterRouterClientSlot[] slots, int msgSize, int latencySampleCap,
             int pollTimeoutMs, int durationSeconds, int readyTimeoutMs)
@@ -115,13 +118,15 @@ internal static class PerfMultiRouterRouterClient
             {
                 for (int i = 0; i < slots.Length; i++)
                     HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true);
+                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
+                        activeDeadlineTicks: benchDeadlineTicks);
                 continue;
             }
 
             for (int i = 0; i < slots.Length; i++)
                 HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                    runId, PerfPhase.Active, ref seq, metrics, allowSend: true);
+                    runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
+                    activeDeadlineTicks: benchDeadlineTicks);
         }
 
         long benchEndTicks = Stopwatch.GetTimestamp();
@@ -137,7 +142,8 @@ internal static class PerfMultiRouterRouterClient
         double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
         double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
-        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns);
+        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns,
+            metrics.MeasureCount);
     }
 
     private static void TryScheduleIdleSends(RouterRouterClientSlot[] slots,
@@ -173,7 +179,7 @@ internal static class PerfMultiRouterRouterClient
         RouterRouterClientSlot[] slots,
         int slotIndex, PollEvents[] eventMasks,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
-        RouterRouterMetrics metrics, bool allowSend)
+        RouterRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
         RouterRouterClientSlot slot = slots[slotIndex];
 
@@ -207,10 +213,12 @@ internal static class PerfMultiRouterRouterClient
             {
                 ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
                     .AsReadOnlySpan();
+                long recvTicks = Stopwatch.GetTimestamp();
                 if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
                     && header.RunId == runId
                     && header.MsgSize == (uint)msgSize
-                    && header.Phase == (uint)phase)
+                    && header.Phase == (uint)phase
+                    && recvTicks <= activeDeadlineTicks)
                 {
                     metrics.MeasureCount++;
                     if (metrics.LatencySamples != null && header.SentTsNs > 0)

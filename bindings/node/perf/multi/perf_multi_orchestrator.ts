@@ -221,6 +221,16 @@ function startLine(msgSize) {
 
 function childEnv(args) {
   const env = { ...process.env };
+  if (
+    env.PERF_MULTI_HWM === undefined
+    && env.PERF_MULTI_SNDHWM === undefined
+    && env.PERF_MULTI_RCVHWM === undefined
+    && !Number.isFinite(args.hwm)
+    && !Number.isFinite(args.sendHwm)
+    && !Number.isFinite(args.recvHwm)
+  ) {
+    env.PERF_MULTI_HWM = args.pattern === 'MULTI_STREAM' ? '10' : '100';
+  }
   if (Number.isFinite(args.hwm)) {
     env.PERF_MULTI_HWM = String(args.hwm);
   }
@@ -242,7 +252,38 @@ function childEnv(args) {
   if (Number.isFinite(args.monitorHwm)) {
     env.PERF_MULTI_MONITOR_HWM = String(args.monitorHwm);
   }
+  if (Number.isFinite(args.connectConcurrency)) {
+    env.PERF_MULTI_CONNECT_CONCURRENCY = String(args.connectConcurrency);
+  }
+  if (Number.isFinite(args.ioThreads)) {
+    env.PERF_IO_THREADS = String(args.ioThreads);
+  }
+  if (Number.isFinite(args.serverIoThreads)) {
+    env.PERF_MULTI_SERVER_IO_THREADS = String(args.serverIoThreads);
+  }
+  if (Number.isFinite(args.clientIoThreads)) {
+    env.PERF_MULTI_CLIENT_IO_THREADS = String(args.clientIoThreads);
+  }
   return env;
+}
+
+function resolveMultiTimeoutSeconds(args) {
+  const override = Number(process.env.PERF_MULTI_TIMEOUT_SECONDS || 0);
+  if (Number.isFinite(override) && override > 0) {
+    return Math.trunc(override);
+  }
+  const duration = Math.max(Number(args.duration) || 0, 1);
+  const msgSize = Math.max(Number(args.msgSize) || 0, 64);
+  if (args.pattern === 'MULTI_STREAM') {
+    return Math.max(45, Math.floor(duration * 3) + 20);
+  }
+  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+    return Math.max(90, Math.floor(duration * 6) + 30);
+  }
+  if ((args.transport === 'tls' || args.transport === 'wss') && msgSize >= 131072) {
+    return Math.max(90, Math.floor(duration * 6) + 30);
+  }
+  return Math.max(45, Math.floor(duration * 3) + 20);
 }
 
 async function spawnMultiPair(serverScript, clientScript, args) {
@@ -338,7 +379,23 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     }
   }
 
-  const clientExitCode = await waitForExit(client);
+  const clientTimeoutMs = resolveMultiTimeoutSeconds(args) * 1000;
+  let clientExitCode;
+  try {
+    clientExitCode = await Promise.race([
+      waitForExit(client),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`client timeout after ${clientTimeoutMs}ms`)), clientTimeoutMs);
+      })
+    ]);
+  } catch (error) {
+    await Promise.allSettled([terminateProcessTree(server, 1000), terminateProcessTree(client, 1000)]);
+    const stderrText = Array.isArray(client.__stderrLines) ? client.__stderrLines.join('\n') : '';
+    if (stderrText) {
+      error.message = `${error.message}\n${stderrText}`;
+    }
+    throw error;
+  }
   if (clientExitCode !== 0) {
     const stderrText = Array.isArray(client.__stderrLines) ? client.__stderrLines.join('\n') : '';
     await Promise.allSettled([terminateProcessTree(server, 1000)]);

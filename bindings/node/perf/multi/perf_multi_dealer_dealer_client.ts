@@ -65,9 +65,6 @@ async function main() {
       activeStartNs,
       activeStopNs
     });
-    while (currentEpochNs() < activeStopNs + 250_000_000n) {
-      await new Promise((resolve) => setImmediate(resolve));
-    }
     stop = true;
 
     await Promise.all(recvTasks);

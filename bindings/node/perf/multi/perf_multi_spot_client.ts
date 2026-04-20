@@ -12,7 +12,11 @@ const {
   sleepImmediate,
   summarizeMetrics
 } = require('../common/perf_metrics');
-const { parseMultiArgs } = require('./perf_multi_common');
+const {
+  parseMultiArgs,
+  resolveMultiSpotControlSettleMs,
+  resolveMultiSpotReadySettleMs
+} = require('./perf_multi_common');
 const {
   applySocketPolicy,
   subscribeNoWait,
@@ -89,14 +93,14 @@ async function main() {
       });
     }
 
-    const stabilizationDeadline = Date.now() + 1000;
+    const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
     while (Date.now() < stabilizationDeadline) {
       await sleepImmediate();
     }
     while (!tryControlPublish(controlPub, 'CONNECTED')) {
       await sleepImmediate();
     }
-    const controlSettleDeadline = Date.now() + 25;
+    const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
     while (Date.now() < controlSettleDeadline) {
       await sleepImmediate();
     }
@@ -138,10 +142,6 @@ async function main() {
       activeStartNs,
       activeStopNs
     });
-    while (currentEpochNs() < activeStopNs + 250_000_000n) {
-      await sleepImmediate();
-    }
-
     const result = collector ? await collector.finish() : { latenciesNs: [] };
     for (const metricLine of summarizeMetrics(
       'MULTI_SPOT',

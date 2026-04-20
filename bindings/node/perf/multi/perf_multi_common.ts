@@ -33,7 +33,7 @@ function parseArgs(argv, defaults = {}) {
     } else if (argv[i] === '--server-control-endpoint') {
       options.serverControlEndpoint = argv[++i];
     } else if (argv[i] === '--transport') {
-      options.transport = argv[++i];
+      options.transport = String(argv[++i] || '').trim().toLowerCase();
     } else if (argv[i] === '--server-node-rid') {
       options.serverNodeRid = argv[++i];
     } else if (argv[i] === '--server-spot-rid') {
@@ -79,8 +79,29 @@ async function benchmarkEndpoint(transport, token) {
   throw new Error(`unsupported multi transport: ${transport}`);
 }
 
+function resolveMultiConnectConcurrency(clientCount) {
+  const configured = Number(process.env.PERF_MULTI_CONNECT_CONCURRENCY);
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.trunc(configured);
+  }
+  return clientCount >= 10000 ? 1024 : 128;
+}
+
+function resolveMultiSpotReadySettleMs() {
+  const configured = Number(process.env.PERF_MULTI_SPOT_READY_SETTLE_MS);
+  return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 1000;
+}
+
+function resolveMultiSpotControlSettleMs() {
+  const configured = Number(process.env.PERF_MULTI_SPOT_CONTROL_SETTLE_MS);
+  return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 25;
+}
+
 module.exports = {
   benchmarkEndpoint,
   parseMultiArgs: parseArgs,
-  reservePort
+  reservePort,
+  resolveMultiConnectConcurrency,
+  resolveMultiSpotControlSettleMs,
+  resolveMultiSpotReadySettleMs
 };

@@ -125,27 +125,6 @@ async function main() {
         }
       }
 
-      const drainDeadline = Date.now() + 2000;
-      while (waiting.some(Boolean) && Date.now() < drainDeadline) {
-        let progressed = false;
-        const ready = poller.waitAll(poller.size, 25);
-        for (const event of ready) {
-          const index = event.userData;
-          if (!Number.isInteger(index)) {
-            continue;
-          }
-          if ((event.events & POLLIN) !== 0) {
-            progressed = drainReply(index) || progressed;
-          }
-          if ((event.events & POLLOUT) !== 0) {
-            sendPending[index] = false;
-          }
-        }
-        if (!progressed) {
-          await sleepImmediate();
-        }
-      }
-
       const result = await collector.finish();
       for (const metricLine of summarizeMetrics(
         'MULTI_DEALER_ROUTER',

@@ -14,7 +14,11 @@ const {
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
-const { parseMultiArgs } = require('./perf_multi_common');
+const {
+  parseMultiArgs,
+  resolveMultiSpotControlSettleMs,
+  resolveMultiSpotReadySettleMs
+} = require('./perf_multi_common');
 const {
   applySocketPolicy,
   subscribeNoWait,
@@ -65,14 +69,14 @@ async function main() {
       await waitForConnectionReady(router, () => router.connect(options.peerEndpoint));
     }
 
-    const stabilizationDeadline = Date.now() + 1000;
+    const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
     while (Date.now() < stabilizationDeadline) {
       await sleepImmediate();
     }
     while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
       await sleepImmediate();
     }
-    const controlSettleDeadline = Date.now() + 25;
+    const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
     while (Date.now() < controlSettleDeadline) {
       await sleepImmediate();
     }
@@ -158,10 +162,6 @@ async function main() {
       }
     }
 
-    const drainDeadline = Date.now() + 2000;
-    while (waiting.some(Boolean) && Date.now() < drainDeadline) {
-      await sleepImmediate();
-    }
     const result = await collector.finish();
     for (const metricLine of summarizeMetrics(
       'MULTI_SPOT_REQREP',

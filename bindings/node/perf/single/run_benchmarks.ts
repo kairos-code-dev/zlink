@@ -46,12 +46,21 @@ Measure current zlink Node single-pattern performance.
 Options:
   -h, --help            Show this help.
   --pattern NAME        Pattern list (comma-separated) or ALL.
+  --build-dir PATH      Accepted for policy compatibility.
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional tag in saved result filename.
+  --output PATH         Tee final rendered output to a file.
   --runs N              Iterations per configuration (default: 1).
   --duration N          Override single duration seconds (default: 5).
   --msg-sizes LIST      Comma-separated sizes (default: 64,256,1024,65536,131072,262144).
   --transports LIST     Comma-separated transports (default: policy transport set).
+  --pin-cpu             Record CPU pinning intent in Effective Options.
+  --io-threads N        Override PERF_IO_THREADS for child cases.
+  --hwm N               Override PERF_SINGLE_HWM.
+  --send-hwm N          Override PERF_SINGLE_SNDHWM.
+  --recv-hwm N          Override PERF_SINGLE_RCVHWM.
+  --sndtimeo N          Override PERF_SINGLE_SNDTIMEO_MS.
+  --rcvtimeo N          Override PERF_SINGLE_RCVTIMEO_MS.
 
 Notes:
   - result is saved under perf/results/single/report/ as
@@ -126,6 +135,14 @@ function buildBinaryEnv(options) {
   return env;
 }
 
+function resolveSingleTimeoutSeconds(durationSeconds) {
+  const override = Number(process.env.PERF_SINGLE_TIMEOUT_SECONDS || 0);
+  if (Number.isFinite(override) && override > 0) {
+    return Math.trunc(override);
+  }
+  return Math.max(30, Math.ceil(Number(durationSeconds) * 6) + 15);
+}
+
 async function runSingleCase(scriptName, transport, msgSize, options) {
   const scriptPath = path.join(__dirname, scriptName);
   const child = spawn(
@@ -141,6 +158,13 @@ async function runSingleCase(scriptName, transport, msgSize, options) {
   const stderrLines = [];
   let stdoutBuffer = '';
   let stderrBuffer = '';
+  let timedOut = false;
+  const timeoutMs = resolveSingleTimeoutSeconds(options.duration) * 1000;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    child.kill('SIGTERM');
+    setTimeout(() => child.kill('SIGKILL'), 1000).unref();
+  }, timeoutMs);
 
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
@@ -178,12 +202,22 @@ async function runSingleCase(scriptName, transport, msgSize, options) {
     child.once('error', reject);
     child.once('exit', (code) => resolve(code ?? 1));
   });
+  clearTimeout(timeout);
 
   if (stdoutBuffer.trim()) {
     stdoutLines.push(stdoutBuffer.trim());
   }
   if (stderrBuffer.trim()) {
     stderrLines.push(stderrBuffer.trim());
+  }
+
+  if (timedOut) {
+    const stderrText = stderrLines.join('\n');
+    throw new Error(
+      stderrText
+        ? `single case timeout after ${timeoutMs}ms\n${stderrText}`
+        : `single case timeout after ${timeoutMs}ms`
+    );
   }
 
   if (exitCode !== 0) {

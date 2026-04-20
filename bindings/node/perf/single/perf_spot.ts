@@ -112,8 +112,7 @@ async function runSpotBenchmark(msgSize, options) {
       runId,
       msgSize,
       activeStartNs,
-      activeStopNs,
-      sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
+      activeStopNs
     });
 
     spot.onDispatchEvent(() => {
@@ -126,19 +125,14 @@ async function runSpotBenchmark(msgSize, options) {
     });
 
     while (currentEpochNs() < activeStopNs) {
-      for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
-        stampPayload(payload, {
-          phase: 1,
-          runId,
-          msgSize,
-          seq: seqRef.current
-        });
-        spot.publish(SERVICE_NAME, TOPIC, payload);
-        seqRef.current += 1n;
-      }
-      if (currentEpochNs() < activeStopNs) {
-        await sleepImmediate();
-      }
+      stampPayload(payload, {
+        phase: 1,
+        runId,
+        msgSize,
+        seq: seqRef.current
+      });
+      spot.publish(SERVICE_NAME, TOPIC, payload);
+      seqRef.current += 1n;
     }
     stampPayload(payload, {
       phase: 2,

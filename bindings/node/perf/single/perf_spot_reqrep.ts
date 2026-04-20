@@ -90,8 +90,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
       msgSize,
       activeStartNs,
       activeStopNs,
-      roundTrip: true,
-      sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
+      roundTrip: true
     });
     const payload = createPayload(msgSize);
     let seq = 2n;

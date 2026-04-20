@@ -274,8 +274,8 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        using Message message = Message.FromBytes(slot.Payload);
-        return ((RouterSocket)slot.Socket).TrySend(slot.ServerRoutingId, message);
+        return ((RouterSocket)slot.Socket).SendBorrowedSingleNoWaitResult(
+            slot.ServerRoutingId, slot.Payload) == SendResult.Sent;
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)
@@ -302,10 +302,9 @@ internal static class PerfMultiRouterRouterClient
         {
             try
             {
-                using Message stop = Message.FromBytes(MultiStopToken);
-                ((RouterSocket)activeClients[i]).Send(
-                    RoutingId.FromBytes(serverRoutingId), stop,
-                    SendFlags.DontWait);
+                ((RouterSocket)activeClients[i]).SendBorrowedSingle(
+                    RoutingId.FromBytes(serverRoutingId), MultiStopToken,
+                    (int)SendFlags.DontWait);
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno)

@@ -1,5 +1,4 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -8,27 +7,6 @@ using Zlink;
 internal static partial class PerfRunner
 {
     internal delegate bool PayloadHandler(ReadOnlySpan<byte> payload);
-
-    internal readonly struct PerfMetricHeader
-    {
-        internal readonly uint Magic;
-        internal readonly uint RunId;
-        internal readonly uint Phase;
-        internal readonly uint MsgSize;
-        internal readonly ulong Seq;
-        internal readonly ulong SentTsNs;
-
-        internal PerfMetricHeader(uint magic, uint runId, uint phase,
-            uint msgSize, ulong seq, ulong sentTsNs)
-        {
-            Magic = magic;
-            RunId = runId;
-            Phase = phase;
-            MsgSize = msgSize;
-            Seq = seq;
-            SentTsNs = sentTsNs;
-        }
-    }
 
     internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
         RecvFlags flags = RecvFlags.None)
@@ -202,43 +180,14 @@ internal static partial class PerfRunner
     internal static bool StampMetricHeader(Span<byte> payload, uint runId,
         PerfPhase phase, int msgSize, ulong seq, ulong sentTsNs)
     {
-        if (payload.Length < PerfMetricHeaderSize)
-            return false;
-
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(0, 4),
-            PerfMetricMagic);
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(4, 4), runId);
-        payload[8] = (byte)phase;
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(9, 4),
-            (uint)Math.Max(0, msgSize));
-        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(13, 8), seq);
-        BinaryPrimitives.WriteInt64LittleEndian(payload.Slice(21, 8),
-            checked((long)sentTsNs));
-        return true;
+        return PerfShared.StampMetricHeader(payload, runId, (uint)phase,
+            msgSize, seq, sentTsNs);
     }
 
     internal static bool TryDecodeMetricHeader(ReadOnlySpan<byte> payload,
         out PerfMetricHeader header)
     {
-        header = default;
-        if (payload.Length < PerfMetricHeaderSize)
-            return false;
-
-        uint magic = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(0,
-            4));
-        uint runId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(4,
-            4));
-        uint phase = payload[8];
-        uint msgSize = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(9,
-            4));
-        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(13,
-            8));
-        ulong sentTsNs = checked((ulong)BinaryPrimitives.ReadInt64LittleEndian(
-            payload.Slice(21, 8)));
-
-        header = new PerfMetricHeader(magic, runId, phase, msgSize, seq,
-            sentTsNs);
-        return magic == PerfMetricMagic;
+        return PerfShared.TryDecodeMetricHeader(payload, out header);
     }
 
     internal static bool IsTransientNetworkError(int errno)

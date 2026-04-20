@@ -61,9 +61,8 @@ internal static class PerfMultiPubSubServer
     {
         try
         {
-            using var message = Message.FromBytes(payload);
-            server.Publish(string.Empty, message, SendFlags.DontWait);
-            return true;
+            return server.PublishRawSingleNoWait(string.Empty, payload)
+                == SendResult.Sent;
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))

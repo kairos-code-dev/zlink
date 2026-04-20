@@ -264,8 +264,8 @@ internal static class PerfMultiDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        using Message message = Message.FromBytes(slot.Payload);
-        return ((DealerSocket)slot.Socket).TrySend(message);
+        return ((DealerSocket)slot.Socket)
+            .SendBorrowedSingleNoWaitResult(slot.Payload) == SendResult.Sent;
     }
 
     private static void DisposeReceived(Received? received)

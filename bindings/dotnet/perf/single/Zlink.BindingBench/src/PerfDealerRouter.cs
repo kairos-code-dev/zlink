@@ -132,8 +132,7 @@ internal static class PerfDealerRouter
 
         try
         {
-            using var message = Message.FromBytes(probe);
-            sender.Send(message);
+            sender.SendBorrowedSingle(probe, 0);
         }
         catch (ZlinkRecvException ex)
         {
@@ -268,8 +267,7 @@ internal static class PerfDealerRouter
             seq++;
             try
             {
-                using var message = Message.FromBytes(payload);
-                sender.Send(message);
+                sender.SendBorrowedSingle(payload, 0);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno)

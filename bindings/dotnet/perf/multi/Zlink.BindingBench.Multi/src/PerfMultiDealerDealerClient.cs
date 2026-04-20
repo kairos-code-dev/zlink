@@ -142,25 +142,22 @@ internal static class PerfMultiDealerDealerClient
         StampMetricHeader(slot.Payload.AsSpan(), runId, phase, msgSize,
             seq, EpochNs());
 
-        try
+        SendResult sendResult = ((DealerSocket)slot.Socket)
+            .SendBorrowedSingleNoWaitResult(slot.Payload);
+        if (sendResult == SendResult.Sent)
         {
-            using var message = Message.FromBytes(slot.Payload);
-            bool sent = slot.Socket.TrySend(message);
-            if (sent)
-            {
-                slot.WaitingForWritable = false;
-                seq++;
-            }
-            else
-            {
-                slot.WaitingForWritable = true;
-            }
-            return sent;
+            slot.WaitingForWritable = false;
+            seq++;
+            return true;
         }
-        catch (ZlinkException)
+
+        if (sendResult == SendResult.Backpressured)
         {
-            throw;
+            slot.WaitingForWritable = true;
+            return false;
         }
+
+        throw new ZlinkSubmitException(sendResult, 0);
     }
 
     private static List<SocketBase> CollectSockets(

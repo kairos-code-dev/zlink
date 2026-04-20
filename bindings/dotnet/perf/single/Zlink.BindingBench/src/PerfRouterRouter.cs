@@ -133,8 +133,7 @@ internal static class PerfRouterRouter
 
         try
         {
-            using var message = Message.FromBytes(probe);
-            sender.Send(ReceiverRoutingId, message);
+            sender.SendBorrowedSingle(ReceiverRoutingId, probe, 0);
         }
         catch (ZlinkRecvException ex)
         {
@@ -269,8 +268,7 @@ internal static class PerfRouterRouter
             seq++;
             try
             {
-                using var message = Message.FromBytes(payload);
-                sender.Send(ReceiverRoutingId, message);
+                sender.SendBorrowedSingle(ReceiverRoutingId, payload, 0);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno)

@@ -185,8 +185,8 @@ internal static class PerfSpot
                     seq++;
                     try
                     {
-                        using var message = Message.FromBytes(activePayload);
-                        spotPub.Publish(ServiceName, Topic, message);
+                        spotPub.PublishBorrowedSingle(ServiceName, Topic,
+                            activePayload, 0);
                     }
                     catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                                     || IsWouldBlock(ex.InternalErrno))
@@ -243,8 +243,8 @@ internal static class PerfSpot
             seq++;
             try
             {
-                using var message = Message.FromBytes(probePayload);
-                publisher.Publish(ServiceName, Topic, message);
+                publisher.PublishBorrowedSingle(ServiceName, Topic,
+                    probePayload, 0);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno))

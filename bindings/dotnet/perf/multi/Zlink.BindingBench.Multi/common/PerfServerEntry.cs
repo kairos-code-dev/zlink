@@ -36,4 +36,11 @@ internal static partial class PerfRunner
     {
         return PerfShared.PrintUnsupported(pattern, transport, size, reason);
     }
+
+    internal static int PrintExternalStreamClientError()
+    {
+        Console.Error.WriteLine(
+            "multi_client_error:stream_client_managed_entry_disabled");
+        return 1;
+    }
 }

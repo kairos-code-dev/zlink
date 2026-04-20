@@ -313,8 +313,7 @@ internal static class PerfMultiSpotClient
     private static void SendControlLine(DealerSocket control, string line)
     {
         byte[] payload = Encoding.ASCII.GetBytes(line);
-        using var message = Message.FromBytes(payload);
-        control.Send(message);
+        control.SendBorrowedSingle(payload, 0);
     }
 
     private static bool TryRecvControl(DealerSocket control,

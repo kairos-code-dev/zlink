@@ -20,8 +20,7 @@ internal static class MultiPerfPatternRegistry
                 static options => PerfMultiSpotClient.Run(options)),
             new MultiPerfPattern("STREAM",
                 static options => PerfMultiStreamServer.Run(options),
-                static options => PerfRunner.PrintUnsupported(options.Pattern,
-                    options.Transport, options.Size, "stream_client_external")),
+                static options => PerfRunner.PrintExternalStreamClientError()),
         });
 
     internal static bool TryGet(string pattern, out IPerfPattern perfPattern)

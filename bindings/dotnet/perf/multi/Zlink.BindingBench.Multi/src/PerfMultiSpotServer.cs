@@ -137,8 +137,7 @@ internal static class PerfMultiSpotServer
         byte[] payload = Encoding.ASCII.GetBytes($"START,{msgSize}");
         for (int i = 0; i < peers.Count; i++)
         {
-            using var message = Message.FromBytes(payload);
-            control.Send(peers[i], message);
+            control.SendBorrowedSingle(peers[i], payload, 0);
         }
     }
 
@@ -156,8 +155,11 @@ internal static class PerfMultiSpotServer
                 config.Size, seq++, EpochNs());
             try
             {
-                using var message = Message.FromBytes(payload);
-                spotPub.Publish(ServiceName, Topic, message, SendFlags.DontWait);
+                if (spotPub.PublishBorrowedSingleNoWait(ServiceName, Topic,
+                        payload) != SendResult.Sent)
+                {
+                    continue;
+                }
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))

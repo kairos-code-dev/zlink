@@ -169,8 +169,7 @@ internal static class PerfPubSub
             seq++;
             try
             {
-                using var message = Message.FromBytes(payload);
-                sender.Publish(Topic, message);
+                sender.PublishBorrowedSingle(Topic, payload, 0);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno))

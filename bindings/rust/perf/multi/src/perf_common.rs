@@ -513,9 +513,53 @@ pub struct MultiArgs {
 impl MultiArgs {
     pub fn parse() -> Self {
         let args: Vec<String> = std::env::args().collect();
-        let transport = args.get(1).cloned().unwrap_or_else(|| "tcp".into());
-        let msg_size: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(64);
-        let endpoint = args.get(3).cloned().unwrap_or_default();
+        let mut transport = "tcp".to_string();
+        let mut msg_size: usize = 64;
+        let mut endpoint = String::new();
+        let mut index = 1;
+
+        if args.len() >= 4
+            && !args[1].starts_with('-')
+            && !args[2].starts_with('-')
+            && !args[3].starts_with('-')
+        {
+            if args.len() >= 5 && !args[4].starts_with('-') {
+                transport = args[2].clone();
+                msg_size = args[3].parse().unwrap();
+                endpoint = args[4].clone();
+                index = 5;
+            } else {
+                transport = args[1].clone();
+                msg_size = args[2].parse().unwrap();
+                endpoint = args[3].clone();
+                index = 4;
+            }
+        } else if args.len() >= 3 && !args[1].starts_with('-') && !args[2].starts_with('-') {
+            transport = args[1].clone();
+            msg_size = args[2].parse().unwrap();
+            index = 3;
+        }
+
+        while index < args.len() {
+            match args[index].as_str() {
+                "--transport" if index + 1 < args.len() => {
+                    transport = args[index + 1].clone();
+                    index += 2;
+                }
+                "--msg-size" if index + 1 < args.len() => {
+                    msg_size = args[index + 1].parse().unwrap();
+                    index += 2;
+                }
+                "--endpoint" if index + 1 < args.len() => {
+                    endpoint = args[index + 1].clone();
+                    index += 2;
+                }
+                _ => {
+                    index += 1;
+                }
+            }
+        }
+
         Self {
             transport,
             msg_size,

@@ -575,6 +575,17 @@ impl PerfConfig {
         let mut duration = 5u64;
         let mut transport = "inproc".to_string();
         let mut i = 1;
+
+        if args.len() >= 4
+            && !args[1].starts_with('-')
+            && !args[2].starts_with('-')
+            && !args[3].starts_with('-')
+        {
+            transport = args[2].clone();
+            size = args[3].parse().unwrap();
+            i = 4;
+        }
+
         while i < args.len() {
             match args[i].as_str() {
                 "--msg-size" if i + 1 < args.len() => {

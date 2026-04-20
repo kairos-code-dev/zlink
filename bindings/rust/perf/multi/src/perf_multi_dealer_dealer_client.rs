@@ -63,11 +63,7 @@ fn main() {
     let mut start_seen = false;
     for line in stdin.lock().lines() {
         let line = line.unwrap_or_default();
-        if matches!(
-            line.trim(),
-            text if text == format!("START,{}", args.msg_size)
-                || text == format!("PHASE_ACTIVE,{}", args.msg_size)
-        ) {
+        if line.trim() == format!("START,{}", args.msg_size) {
             start_seen = true;
             break;
         }

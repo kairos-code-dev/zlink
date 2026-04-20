@@ -599,7 +599,9 @@ for run in $(seq 1 "${RUNS}"); do
                     else
                         printf 'START,%s\n' "${size}" >&"${SERVER_CONTROL_FD}" || true
                         printf 'START,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
-                        printf 'PHASE_ACTIVE,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
+                        if [[ "${pat}" == "MULTI_PUBSUB" ]]; then
+                            printf 'PHASE_ACTIVE,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
+                        fi
                     fi
 
                     if [[ "${case_status}" == "success" ]]; then

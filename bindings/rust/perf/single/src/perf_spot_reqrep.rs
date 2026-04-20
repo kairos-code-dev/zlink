@@ -5,38 +5,54 @@ mod common;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
-    mpsc,
 };
 use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::*;
 
-fn wait_spot_reply(
+fn send_spot_request(
     requester: &RouterSocket,
     node_rid: RoutingId,
     spot_rid: RoutingId,
-    parts: Vec<Message>,
-    timeout: Duration,
-) -> Result<Vec<Message>, ZlinkError> {
-    let (tx, rx) = mpsc::sync_channel(1);
-    requester.request_to_spot_callback(
-        node_rid,
-        spot_rid,
-        parts,
-        move |result| {
-            let _ = tx.send(result);
-        },
-        SendFlags::NONE,
-        timeout,
-    )?;
-    match rx.recv_timeout(timeout + Duration::from_millis(50)) {
-        Ok(result) => result.map_err(ZlinkError::from),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            panic!("spot reqrep request timed out after {:?}", timeout);
+    msg: Message,
+) {
+    requester
+        .send_to_spot(&node_rid, &spot_rid, vec![msg])
+        .expect("spot request send");
+}
+
+fn recv_spot_reply(
+    requester: &RouterSocket,
+    poller: &Poller,
+    msg_size: usize,
+    deadline: Instant,
+) -> Option<Vec<Message>> {
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return None;
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("spot reqrep reply channel disconnected");
+
+        let timeout_ms = deadline
+            .saturating_duration_since(now)
+            .as_millis()
+            .clamp(1, i64::MAX as u128) as i64;
+        match poller.wait(timeout_ms) {
+            Ok(Some(event)) if event.is_readable() => loop {
+                match requester.recv_with_flags(RecvFlags::DONT_WAIT) {
+                    Ok(received) => {
+                        let data = common::message_payload(received.parts());
+                        if common::is_valid_message(data, msg_size) {
+                            return Some(received.into_parts());
+                        }
+                    }
+                    Err(err) if err.code() == RecvResult::NoData => break,
+                    Err(err) => panic!("spot reqrep requester recv failed: {err}"),
+                }
+            },
+            Ok(Some(_)) | Ok(None) => {}
+            Err(err) => panic!("spot reqrep requester poller wait failed: {err}"),
         }
     }
 }
@@ -85,6 +101,8 @@ fn main() {
         }
         panic!("connect: {err}");
     }
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&requester, POLLIN).expect("requester poller add");
     let replier_node_rid = replier_node.routing_id().expect("replier node rid");
     let replier_spot_rid = replier.routing_id().expect("replier spot rid");
 
@@ -120,12 +138,17 @@ fn main() {
     let probe_timeout = common::resolve_single_ready_timeout();
     let mut probe = vec![0u8; config.size.max(common::HEADER_SIZE)];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
-    let ready_reply = wait_spot_reply(
+    send_spot_request(
         &requester,
         replier_node_rid.clone(),
         replier_spot_rid.clone(),
-        vec![Message::copy_from(&probe).expect("probe")],
-        probe_timeout,
+        Message::copy_from(&probe).expect("probe"),
+    );
+    let ready_reply = recv_spot_reply(
+        &requester,
+        &poller,
+        config.size,
+        Instant::now() + probe_timeout,
     )
     .expect("ready probe");
     let ready_data = ready_reply
@@ -144,19 +167,25 @@ fn main() {
     let mut payload = vec![0u8; config.size.max(common::HEADER_SIZE)];
     while Instant::now() < active_end {
         common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
-        let reply = wait_spot_reply(
+        send_spot_request(
             &requester,
             replier_node_rid.clone(),
             replier_spot_rid.clone(),
-            vec![Message::copy_from(&payload).expect("request")],
-            probe_timeout,
-        )
-        .expect("active request");
+            Message::copy_from(&payload).expect("request"),
+        );
+        let Some(reply) = recv_spot_reply(
+            &requester,
+            &poller,
+            config.size,
+            Instant::now() + probe_timeout,
+        ) else {
+            panic!("spot reqrep active request timed out after {:?}", probe_timeout);
+        };
         let data = reply
             .first()
             .map(|message| message.as_bytes())
             .unwrap_or(&[]);
-        if common::is_valid_active_message(data, config.size) {
+        if Instant::now() <= active_end && common::is_valid_active_message(data, config.size) {
             let sent_ts_ns = common::decode_sent_ts_ns(data);
             let latency_ns = (common::now_ns() as i64).saturating_sub(sent_ts_ns).max(0) as u64 / 2;
             stats.lock().unwrap().record_ns(latency_ns);

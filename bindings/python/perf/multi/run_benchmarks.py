@@ -33,11 +33,16 @@ DEFAULT_PATTERNS = (
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 DEFAULT_STREAM_MSG_SIZES = ("64", "256", "1024", "65536")
+RAW_TRANSPORTS = (
+    ("tcp", "tls", "ws", "wss")
+    if sys.platform.startswith("win")
+    else ("tcp", "tls", "ws", "wss", "ipc")
+)
 POLICY_TRANSPORTS = {
-    "DEALER_DEALER": ("tcp", "tls", "ws", "wss"),
-    "DEALER_ROUTER": ("tcp", "tls", "ws", "wss"),
-    "ROUTER_ROUTER": ("tcp", "tls", "ws", "wss"),
-    "PUBSUB": ("tcp", "tls", "ws", "wss"),
+    "DEALER_DEALER": RAW_TRANSPORTS,
+    "DEALER_ROUTER": RAW_TRANSPORTS,
+    "ROUTER_ROUTER": RAW_TRANSPORTS,
+    "PUBSUB": RAW_TRANSPORTS,
     "SPOT": ("tcp", "tls", "ws", "wss"),
     "SPOT_REQREP": ("tcp", "tls", "ws", "wss"),
     "STREAM": ("tcp", "tls", "ws", "wss"),
@@ -144,19 +149,44 @@ def _msg_sizes_for_pattern(pattern, requested_msg_sizes):
 
 def _parse_transports(value):
     source = value or os.environ.get("PERF_TRANSPORTS", "")
-    transports = [item.lower() for item in _parse_csv(source or "tcp,tls,ws,wss")]
+    if not source:
+        return None
+    transports = [item.lower() for item in _parse_csv(source)]
     if not transports:
         raise SystemExit("--transports must not be empty")
     return transports
 
 
+def _transports_for_pattern(pattern, transports):
+    if transports is None:
+        return list(POLICY_TRANSPORTS[pattern])
+    return list(transports)
+
+
+def _grouped_option_text(patterns, value_for_pattern, *, prefix="MULTI_"):
+    groups = []
+    for pattern in patterns:
+        values = tuple(value_for_pattern(pattern))
+        if groups and groups[-1][1] == values:
+            groups[-1][0].append(pattern)
+            continue
+        groups.append(([pattern], values))
+    if not groups:
+        return ""
+    if len(groups) == 1:
+        return ",".join(groups[0][1])
+    rendered = []
+    for grouped_patterns, values in groups:
+        rendered.append(
+            f"{','.join(f'{prefix}{pattern}' for pattern in grouped_patterns)}={','.join(values)}"
+        )
+    return "; ".join(rendered)
+
+
 def _selected_configs(patterns, transports, requested_msg_sizes):
     configs = []
     for pattern in patterns:
-        matched = [transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]]
-        if not matched:
-            continue
-        for transport in matched:
+        for transport in _transports_for_pattern(pattern, transports):
             for msg_size in _msg_sizes_for_pattern(pattern, requested_msg_sizes):
                 configs.append((pattern, transport, msg_size))
     if not configs:
@@ -353,6 +383,8 @@ def _terminate_process(proc, *, grace_seconds):
 
 
 def _run_pattern(args, env, pattern, transport, msg_size, clients):
+    if transport == "ipc" and sys.platform.startswith("win"):
+        return f"SKIP,current,MULTI_{pattern},{transport},windows_ipc_unsupported"
     if transport not in RUNNABLE_TRANSPORTS.get(pattern, ()):
         return f"UNSUPPORTED,current,MULTI_{pattern},{transport}"
     server_path = ROOT / f"perf_multi_{pattern.lower()}_server.py"
@@ -636,11 +668,13 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         "suite": "multi",
         "runs": args.runs,
         "patterns": ",".join(f"MULTI_{pattern}" for pattern in patterns),
-        "transports": ",".join(transports),
-        "msg_sizes": (
-            ",".join(requested_msg_sizes)
-            if requested_msg_sizes is not None
-            else "policy-default"
+        "transports": _grouped_option_text(
+            patterns,
+            lambda pattern: _transports_for_pattern(pattern, transports),
+        ),
+        "msg_sizes": _grouped_option_text(
+            patterns,
+            lambda pattern: _msg_sizes_for_pattern(pattern, requested_msg_sizes),
         ),
         "clients": clients,
         "pin_cpu": "on" if args.pin_cpu else "off",
@@ -725,9 +759,7 @@ def main(argv=None):
             _append_line(sections, "===============================================================================")
             _append_line(sections)
         _append_line(sections, f"  > Benchmarking current for MULTI_{pattern}...")
-        pattern_transports = [
-            transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]
-        ]
+        pattern_transports = _transports_for_pattern(pattern, transports)
         pattern_msg_sizes = _msg_sizes_for_pattern(pattern, requested_msg_sizes)
         size_label = ",".join(f"{msg_size}B" for msg_size in pattern_msg_sizes)
         for transport_index, transport in enumerate(pattern_transports):

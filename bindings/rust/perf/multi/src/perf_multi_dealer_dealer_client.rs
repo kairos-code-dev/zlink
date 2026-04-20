@@ -15,8 +15,12 @@ fn main() {
 
     for _ in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
-        sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-        sock.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
+        sock.common_options()
+            .set_send_hwm(settings.send_hwm)
+            .expect("sndhwm");
+        sock.common_options()
+            .set_recv_hwm(settings.recv_hwm)
+            .expect("rcvhwm");
         if matches!(args.transport.as_str(), "tls" | "wss") {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
             common::setup_raw_tls_client(&sock, &tls).expect("client tls");
@@ -46,7 +50,11 @@ fn main() {
     let mut start_seen = false;
     for line in stdin.lock().lines() {
         let line = line.unwrap_or_default();
-        if line.trim() == format!("START,{}", args.msg_size) {
+        if matches!(
+            line.trim(),
+            text if text == format!("START,{}", args.msg_size)
+                || text == format!("PHASE_ACTIVE,{}", args.msg_size)
+        ) {
             start_seen = true;
             break;
         }
@@ -74,8 +82,5 @@ fn main() {
             Err(err) => panic!("send failed: {err}"),
         }
         index += 1;
-        if (index & 0x3ff) == 0 {
-            std::thread::yield_now();
-        }
     }
 }

@@ -220,7 +220,10 @@ pub fn load_tls_pem(tls: &TlsPaths) -> TlsPem {
 
 #[allow(dead_code)]
 pub fn emit_unsupported(pattern: &str, transport: &str, reason: &str) {
-    println!("UNSUPPORTED,{pattern},{transport},{reason}");
+    let _ = reason;
+    println!("UNSUPPORTED,rust,{pattern},{transport}");
+    use std::io::Write;
+    std::io::stdout().flush().ok();
 }
 
 pub fn is_transport_unsupported_error(err: &ZlinkError) -> bool {
@@ -273,31 +276,14 @@ where
 }
 
 pub fn wait_monitor_ready(mon: &SocketMonitor, timeout: Duration, name: &str) {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        match mon.snapshot() {
-            Ok(snapshot) if snapshot.is_ready() => return,
+    let _ = timeout;
+    loop {
+        match mon.recv() {
+            Ok(event) if event.is_connection_ready() => return,
             Ok(_) => {}
-            Err(err) => panic!("{name} monitor snapshot failed: {err}"),
+            Err(err) => panic!("{name} monitor recv failed: {err}"),
         }
-        std::thread::sleep(Duration::from_millis(10));
     }
-    panic!("{name} did not become ready within {:?}", timeout);
-}
-
-pub fn wait_spot_peer_connected(node: &SpotNode, timeout: Duration, name: &str) {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if node
-            .status_snapshot()
-            .map(|status| status.connected_peer_count > 0)
-            .unwrap_or(false)
-        {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    panic!("{name} peer connection timed out");
 }
 
 // -- Latency statistics ------------------------------------------------------
@@ -311,7 +297,7 @@ pub struct LatencyStats {
 impl LatencyStats {
     pub fn new() -> Self {
         Self {
-            samples: Vec::with_capacity(1 << 16),
+            samples: Vec::with_capacity(resolve_single_latency_sample_cap().min(1 << 16)),
             count: 0,
             sum: 0,
         }
@@ -320,7 +306,7 @@ impl LatencyStats {
     pub fn record_ns(&mut self, latency_ns: u64) {
         self.count += 1;
         self.sum += latency_ns;
-        if self.samples.len() < 4 * 1024 * 1024 {
+        if self.samples.len() < resolve_single_latency_sample_cap() {
             self.samples.push(latency_ns);
         }
     }
@@ -375,7 +361,13 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
     };
     let bandwidth = throughput * size as f64 / 1_000_000.0;
 
-    PhaseResult { throughput, bandwidth, latency_mean_ns: stats.mean_ns, latency_p95_ns: stats.p95_ns, latency_p99_ns: stats.p99_ns }
+    PhaseResult {
+        throughput,
+        bandwidth,
+        latency_mean_ns: stats.mean_ns,
+        latency_p95_ns: stats.p95_ns,
+        latency_p99_ns: stats.p99_ns,
+    }
 }
 
 // -- RESULT output -----------------------------------------------------------
@@ -522,44 +514,6 @@ pub fn send_loop<S>(
     send_fn(cooldown);
 }
 
-pub fn wait_send_probe_ready<S, D>(
-    name: &str,
-    msg_size: usize,
-    timeout: Duration,
-    mut send_probe: S,
-    mut drain_probe: D,
-) where
-    S: FnMut(Message) -> Result<(), SubmitError>,
-    D: FnMut() -> bool,
-{
-    let deadline = Instant::now() + timeout;
-    let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
-    let mut seq: u64 = 0;
-
-    while Instant::now() < deadline {
-        encode_header(&mut buf, PHASE_WARMUP, msg_size as u32, seq);
-        seq += 1;
-
-        match send_probe(Message::copy_from(&buf).expect("probe msg")) {
-            Ok(()) => {}
-            Err(err)
-                if matches!(
-                    err.code(),
-                    SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
-                ) => {}
-            Err(err) => panic!("{name} ready probe send failed: {err}"),
-        }
-
-        if drain_probe() {
-            return;
-        }
-
-        std::thread::sleep(Duration::from_millis(5));
-    }
-
-    panic!("{name} ready probe timed out");
-}
-
 // -- CLI config --------------------------------------------------------------
 
 pub struct PerfConfig {
@@ -670,7 +624,7 @@ pub fn resolve_single_idle_drain_ms() -> u64 {
 }
 
 pub fn resolve_single_send_timeout() -> Duration {
-    Duration::from_millis(env_or_u64("PERF_SINGLE_SEND_TIMEOUT_MS", 1000))
+    Duration::from_millis(env_or_u64("PERF_SINGLE_SNDTIMEO_MS", 200))
 }
 
 pub fn resolve_single_pubsub_idle_drain_ms() -> u64 {
@@ -689,7 +643,11 @@ pub fn resolve_single_spot_ready_settle() -> Duration {
 }
 
 pub fn resolve_single_ready_timeout() -> Duration {
-    Duration::from_millis(env_or_u64("PERF_SINGLE_READY_TIMEOUT_MS", 5000))
+    Duration::from_millis(env_or_u64("PERF_CONNECT_READY_TIMEOUT_MS", 5000))
+}
+
+pub fn resolve_single_latency_sample_cap() -> usize {
+    env_or_u64("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200_000) as usize
 }
 
 pub fn resolve_endpoint_or_emit_unsupported(

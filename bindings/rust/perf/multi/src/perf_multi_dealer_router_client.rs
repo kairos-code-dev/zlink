@@ -15,10 +15,17 @@ fn main() {
 
     for index in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
-        sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-        sock.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
         sock.common_options()
-            .set_recv_timeout(Duration::from_millis(1))
+            .set_send_hwm(settings.send_hwm)
+            .expect("sndhwm");
+        sock.common_options()
+            .set_recv_hwm(settings.recv_hwm)
+            .expect("rcvhwm");
+        sock.common_options()
+            .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
+            .expect("send timeout");
+        sock.common_options()
+            .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
             .expect("recv timeout");
         let rid = RoutingId::from_bytes(format!("CLIENT-{index}").as_bytes());
         sock.set_routing_id(&rid).expect("set rid");
@@ -41,7 +48,7 @@ fn main() {
             match mon.recv() {
                 Ok(ev) if ev.is_connection_ready() => break,
                 Ok(_) => continue,
-                Err(_) => thread::sleep(Duration::from_millis(1)),
+                Err(_) => continue,
             }
         }
     }

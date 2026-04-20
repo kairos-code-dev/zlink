@@ -61,25 +61,6 @@ fn main() {
     let ready_timeout = common::resolve_single_ready_timeout();
     common::wait_monitor_ready(&receiver_mon, ready_timeout, "pair receiver");
     common::wait_monitor_ready(&mon, ready_timeout, "pair sender");
-    common::wait_send_probe_ready("pair perf endpoint", config.size, ready_timeout, |msg| {
-        sender.send(msg)
-    }, || {
-        let mut saw_probe = false;
-        loop {
-            match receiver.recv_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(received) => {
-                    let data = common::message_payload(received.parts());
-                    if common::is_valid_message(data, config.size) {
-                        saw_probe = true;
-                    }
-                }
-                Err(err) if err.code() == RecvResult::NoData => break,
-                Err(_) => break,
-            }
-        }
-        saw_probe
-    });
-
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
     let drain_receiver = || {
@@ -100,18 +81,19 @@ fn main() {
 
     let active = Duration::from_secs(config.duration_seconds);
     let idle_drain = Duration::from_millis(common::resolve_single_idle_drain_ms());
-    common::send_loop(active, config.size, common::PHASE_ACTIVE, |msg| {
-        let _ = sender.send(msg);
-        let _ = drain_receiver();
+    let hard_deadline = std::time::Instant::now() + active + idle_drain + ready_timeout;
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&receiver, POLLIN).expect("poller add");
+    let done = common::CompletionSignal::new();
+    let sender_done = done.clone();
+    let send_thread = std::thread::spawn(move || {
+        common::send_loop(active, config.size, common::PHASE_ACTIVE, |msg| {
+            sender.send(msg).expect("active send");
+        });
+        sender_done.signal_done();
     });
-    let mut idle_since = std::time::Instant::now();
-    while idle_since.elapsed() < idle_drain {
-        if drain_receiver() {
-            idle_since = std::time::Instant::now();
-        } else {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    }
+    common::run_single_recv_loop(&poller, hard_deadline, done, idle_drain, drain_receiver);
+    send_thread.join().expect("sender thread");
 
     let result = collector.finish();
     common::print_result("PAIR", &config.transport, config.size, config.duration_seconds, &result);

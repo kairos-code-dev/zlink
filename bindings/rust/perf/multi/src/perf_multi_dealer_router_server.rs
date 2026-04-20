@@ -13,11 +13,17 @@ fn main() {
     let settings = common::MultiSettings::from_env();
     let ctx = Context::new().expect("context");
     let router = ctx.router_socket().expect("router");
-    router.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-    router.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
     router
         .common_options()
-        .set_recv_timeout(Duration::from_millis(1))
+        .set_send_hwm(settings.send_hwm)
+        .expect("sndhwm");
+    router
+        .common_options()
+        .set_recv_hwm(settings.recv_hwm)
+        .expect("rcvhwm");
+    router
+        .common_options()
+        .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
         .expect("recv timeout");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");

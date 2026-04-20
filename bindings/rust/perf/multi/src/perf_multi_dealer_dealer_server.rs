@@ -12,8 +12,18 @@ fn main() {
 
     let ctx = Context::new().expect("context");
     let server = ctx.dealer_socket().expect("dealer");
-    server.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-    server.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
+    server
+        .common_options()
+        .set_send_hwm(settings.send_hwm)
+        .expect("sndhwm");
+    server
+        .common_options()
+        .set_recv_hwm(settings.recv_hwm)
+        .expect("rcvhwm");
+    server
+        .common_options()
+        .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
+        .expect("rcvtimeo");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&server, &tls).expect("server tls");
@@ -55,7 +65,7 @@ fn main() {
         return;
     }
 
-    let deadline = Instant::now() + std::time::Duration::from_secs(settings.duration_seconds);
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut latency = common::LatencyStats::new();
     let mut active_count = 0u64;
     while Instant::now() < deadline {
@@ -75,7 +85,6 @@ fn main() {
                 Err(_) => break,
             }
         }
-        std::thread::yield_now();
     }
 
     let stats = latency.finish();

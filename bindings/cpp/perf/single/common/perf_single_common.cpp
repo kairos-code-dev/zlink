@@ -76,6 +76,11 @@ int resolve_single_pubsub_ready_settle_ms ()
     return parse_positive_env ("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000);
 }
 
+int resolve_single_spot_ready_settle_ms ()
+{
+    return parse_positive_env ("PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000);
+}
+
 int resolve_single_socket_hwm (bool send_)
 {
     const int base_hwm = parse_positive_env ("PERF_SINGLE_HWM", 1000);

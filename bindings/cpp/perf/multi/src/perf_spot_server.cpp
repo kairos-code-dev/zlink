@@ -103,37 +103,6 @@ void ensure_multi_spot_mesh_pub_budget_default ()
 #endif
 }
 
-std::vector<size_t> resolve_msg_sizes (size_t fallback_size_)
-{
-    std::vector<size_t> out;
-    const char *raw = std::getenv ("PERF_MSG_SIZES");
-    if (!raw || !*raw) {
-        out.push_back (fallback_size_);
-        return out;
-    }
-
-    const std::string csv (raw);
-    size_t start = 0;
-    while (start < csv.size ()) {
-        const size_t end = csv.find (',', start);
-        const std::string token =
-          csv.substr (start, end == std::string::npos ? std::string::npos
-                                                      : end - start);
-        char *parse_end = NULL;
-        const unsigned long long parsed =
-          std::strtoull (token.c_str (), &parse_end, 10);
-        if (parse_end && *parse_end == '\0' && parsed > 0)
-            out.push_back (static_cast<size_t> (parsed));
-        if (end == std::string::npos)
-            break;
-        start = end + 1;
-    }
-
-    if (out.empty ())
-        out.push_back (fallback_size_);
-    return out;
-}
-
 int resolve_spot_start_timeout_ms (const perf::multi::multi_bench_settings_t &settings_)
 {
     return std::max (settings_.connect_ready_timeout_ms,
@@ -360,7 +329,7 @@ bool perf_spot_server (const std::string &lib_name,
     control_spot.options ().recv_timeout (settings.rcvtimeo_ms);
     control_spot.set_subscription (k_control_topic);
 
-    const std::vector<size_t> msg_sizes = resolve_msg_sizes (msg_size_);
+    const std::vector<size_t> msg_sizes (1, msg_size_);
 
     perf::multi::print_ready (endpoint);
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;

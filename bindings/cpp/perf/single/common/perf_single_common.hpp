@@ -52,6 +52,7 @@ int resolve_single_send_timeout_ms ();
 int resolve_single_recv_timeout_ms ();
 int resolve_single_pubsub_recv_timeout_ms ();
 int resolve_single_pubsub_ready_settle_ms ();
+int resolve_single_spot_ready_settle_ms ();
 int resolve_single_socket_hwm (bool send_);
 
 bool bench_debug_enabled ();

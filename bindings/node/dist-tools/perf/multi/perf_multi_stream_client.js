@@ -103,7 +103,7 @@ async function main() {
             if (line !== `START,${options.msgSize}`) {
                 continue;
             }
-            const activeStartNs = process.hrtime.bigint();
+            const activeStartNs = currentEpochNs();
             const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
             const collector = createMetricCollector({
                 runId,
@@ -113,7 +113,7 @@ async function main() {
                 roundTrip: true
             });
             let seq = 1n;
-            while (process.hrtime.bigint() < activeStopNs) {
+            while (currentEpochNs() < activeStopNs) {
                 for (let i = 0; i < sockets.length; i += 1) {
                     stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
                     if (!sockets[i].write(buildPacketFrame(payloads[i]))) {
@@ -125,7 +125,7 @@ async function main() {
                 }
             }
             const result = await collector.finish();
-            for (const metricLine of summarizeMetrics('MULTI_STREAM', 'tcp', options.msgSize, result.latenciesNs, options.duration)) {
+            for (const metricLine of summarizeMetrics('MULTI_STREAM', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
                 console.log(metricLine);
             }
             break;

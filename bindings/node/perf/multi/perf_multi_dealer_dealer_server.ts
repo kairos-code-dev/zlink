@@ -5,71 +5,60 @@
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const {
-  createMetricCollector,
+  createPayload,
   createRunId,
-  decodeMetricHeader,
-  currentEpochNs,
-  summarizeMetrics
+  sleepImmediate,
+  stampPayload
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { drainRecvSocket } = require('./perf_multi_runtime');
+const { POLLOUT, trySocketSend } = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const server = new zlink.DealerSocket(ctx);
-  const runId = createRunId(1);
-  let collector = null;
-  let stop = false;
+  const poller = new zlink.Poller();
+  const payload = createPayload(options.msgSize);
 
   try {
     server.bind(options.endpoint);
-    const recvTask = drainRecvSocket(
-      server,
-      (received) => {
-        if (!collector) {
-          return;
-        }
-        collector.record(
-          decodeMetricHeader(received.parts[0].data()),
-          currentEpochNs()
-        );
-      },
-      () => stop
-    );
-
+    poller.addSocket(server, POLLOUT);
     console.log(`READY,${options.endpoint}`);
+
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of rl) {
-      if (line === `START,${options.msgSize}`) {
-        const activeStartNs = process.hrtime.bigint();
-        const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
-        collector = createMetricCollector({
-          runId,
-          msgSize: options.msgSize,
-          activeStartNs,
-          activeStopNs
-        });
+      if (line !== `START,${options.msgSize}`) {
+        if (line === 'STOP') {
+          break;
+        }
         continue;
       }
-      if (line === 'STOP') {
-        stop = true;
-        break;
-      }
-    }
 
-    await recvTask;
-    const result = collector ? await collector.finish() : { latenciesNs: [] };
-    for (const line of summarizeMetrics(
-      'MULTI_DEALER_DEALER',
-      'tcp',
-      options.msgSize,
-      result.latenciesNs,
-      options.duration
-    )) {
-      console.log(line);
+      const runId = createRunId(1);
+      const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
+      let pending = false;
+      let seq = 1n;
+      while (process.hrtime.bigint() < activeStopNs) {
+        if (!pending) {
+          stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+          if (trySocketSend(server, payload)) {
+            seq += 1n;
+            continue;
+          }
+          pending = true;
+        }
+
+        const ready = poller.wait(25);
+        if (!ready || (ready.events & POLLOUT) === 0) {
+          await sleepImmediate();
+          continue;
+        }
+        pending = false;
+      }
+      break;
     }
   } finally {
+    poller.close();
     server.close();
     ctx.close();
   }

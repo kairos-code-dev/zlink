@@ -22,7 +22,7 @@ fn main() {
         return;
     };
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_context();
     let publisher_node = SpotNode::new(&ctx).expect("publisher node");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node");
     if matches!(config.transport.as_str(), "tls" | "wss") {
@@ -108,7 +108,7 @@ fn main() {
                     SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
                 ) =>
             {
-                thread::sleep(Duration::from_millis(10));
+                thread::yield_now();
                 continue;
             }
             Err(err) => panic!("probe publish: {err}"),
@@ -145,7 +145,7 @@ fn main() {
         if idle_since.elapsed() >= idle_drain {
             break;
         }
-        thread::sleep(Duration::from_millis(10));
+        thread::yield_now();
     }
 
     let result = collector.finish();

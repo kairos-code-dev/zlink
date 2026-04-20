@@ -1,4 +1,3 @@
-import os
 import sys
 import threading
 import time
@@ -7,19 +6,22 @@ import zlink
 
 from perf_multi_common import (
     apply_multi_socket_options,
+    benchmark_endpoint,
+    benchmark_run_id,
     new_payload,
     parse_server_args,
-    safe_poll,
     send_nonblocking,
     stamp_payload,
-    tcp_endpoint,
 )
 
 
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
-
-    endpoints = [tcp_endpoint() for _ in range(args.clients)]
+    run_id = benchmark_run_id()
+    endpoints = [
+        benchmark_endpoint(args.transport, f"multi-dealer-dealer-{index}")
+        for index in range(args.clients)
+    ]
     start_event = threading.Event()
     stop_event = threading.Event()
     payload = new_payload(args.msg_size)
@@ -46,8 +48,7 @@ def main(argv=None):
             while not start_event.is_set() and not stop_event.is_set():
                 time.sleep(0.01)
             if stop_event.is_set():
-                sys.stdout.flush()
-                os._exit(0)
+                return
 
             while not stop_event.is_set():
                 made_progress = False
@@ -55,7 +56,7 @@ def main(argv=None):
                     while not stop_event.is_set():
                         if not send_nonblocking(
                             current_sock,
-                            stamp_payload(payload, phase=1),
+                            stamp_payload(payload, phase=1, run_id=run_id),
                         ):
                             break
                         made_progress = True

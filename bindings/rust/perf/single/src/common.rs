@@ -5,12 +5,15 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc, Mutex,
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
-    DealerSocket, Message, PairSocket, Poller, PubSocket, RouterSocket, SocketMonitor,
-    SpotNode, SubSocket, SubmitError, SubmitResult, ZlinkError,
+    Context, DealerSocket, Message, PairSocket, Poller, PubSocket, RouterSocket, SocketMonitor,
+    SubSocket, ZlinkError,
 };
 
 // -- Metric header (29 bytes) ------------------------------------------------
@@ -275,15 +278,37 @@ where
     false
 }
 
-pub fn wait_monitor_ready(mon: &SocketMonitor, timeout: Duration, name: &str) {
-    let _ = timeout;
-    loop {
-        match mon.recv() {
-            Ok(event) if event.is_connection_ready() => return,
-            Ok(_) => {}
-            Err(err) => panic!("{name} monitor recv failed: {err}"),
+pub fn wait_monitor_ready(mon: &mut SocketMonitor, timeout: Duration, name: &str) {
+    let (tx, rx) = mpsc::sync_channel::<Result<(), String>>(1);
+    mon.on_event(move |event| {
+        if event.is_connection_ready() {
+            let _ = tx.send(Ok(()));
+        }
+    })
+    .unwrap_or_else(|err| panic!("{name} monitor handler install failed: {err}"));
+
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => panic!("{name} monitor recv failed: {err}"),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            panic!("{name} connection-ready wait timed out after {:?}", timeout);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("{name} monitor channel disconnected before connection-ready");
         }
     }
+}
+
+pub fn perf_context() -> Context {
+    let ctx = Context::new().expect("context");
+    if let Ok(value) = std::env::var("PERF_IO_THREADS") {
+        if let Ok(io_threads) = value.parse::<i32>() {
+            if io_threads > 0 {
+                ctx.options().set_io_threads(io_threads).expect("set io threads");
+            }
+        }
+    }
+    ctx
 }
 
 // -- Latency statistics ------------------------------------------------------
@@ -359,7 +384,7 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
     } else {
         stats.count as f64 / duration_s as f64
     };
-    let bandwidth = throughput * size as f64 / 1_000_000.0;
+    let bandwidth = throughput * size as f64 * bandwidth_multiplier("PAIR") / 1_000_000.0;
 
     PhaseResult {
         throughput,
@@ -367,6 +392,13 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
         latency_mean_ns: stats.mean_ns,
         latency_p95_ns: stats.p95_ns,
         latency_p99_ns: stats.p99_ns,
+    }
+}
+
+fn bandwidth_multiplier(pattern: &str) -> f64 {
+    match pattern {
+        "SPOT_REQREP" => 2.0,
+        _ => 1.0,
     }
 }
 
@@ -388,7 +420,8 @@ pub fn print_result(
     stats: &StatsResult,
 ) {
     let key = format!("RESULT,current,{pattern},{transport},{size}");
-    let phase = build_phase_result(size, duration_s, stats);
+    let mut phase = build_phase_result(size, duration_s, stats);
+    phase.bandwidth = phase.throughput * size as f64 * bandwidth_multiplier(pattern) / 1_000_000.0;
     print_phase_result(&key, &phase);
 }
 
@@ -451,26 +484,22 @@ impl MetricCollector {
 
 #[derive(Clone)]
 pub struct CompletionSignal {
-    state: Arc<(Mutex<bool>, Condvar)>,
+    state: Arc<AtomicBool>,
 }
 
 impl CompletionSignal {
     pub fn new() -> Self {
         Self {
-            state: Arc::new((Mutex::new(false), Condvar::new())),
+            state: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub fn signal_done(&self) {
-        let (lock, condvar) = &*self.state;
-        let mut done = lock.lock().unwrap();
-        *done = true;
-        condvar.notify_all();
+        self.state.store(true, Ordering::Release);
     }
 
     pub fn is_done(&self) -> bool {
-        let (lock, _) = &*self.state;
-        *lock.lock().unwrap()
+        self.state.load(Ordering::Acquire)
     }
 }
 
@@ -623,8 +652,8 @@ pub fn resolve_single_idle_drain_ms() -> u64 {
     env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200)
 }
 
-pub fn resolve_single_send_timeout() -> Duration {
-    Duration::from_millis(env_or_u64("PERF_SINGLE_SNDTIMEO_MS", 200))
+pub fn resolve_single_recv_timeout() -> Duration {
+    Duration::from_millis(env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200))
 }
 
 pub fn resolve_single_pubsub_idle_drain_ms() -> u64 {

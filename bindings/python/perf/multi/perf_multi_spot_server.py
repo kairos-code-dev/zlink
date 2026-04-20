@@ -9,10 +9,11 @@ import zlink
 from perf_multi_common import (
     TOPIC,
     attach_spot_service_pair,
+    benchmark_endpoint,
+    benchmark_run_id,
     new_payload,
     parse_server_args,
     stamp_payload,
-    tcp_endpoint,
 )
 
 
@@ -36,6 +37,7 @@ def _listen_tcp():
 
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
+    run_id = benchmark_run_id()
     payload = new_payload(args.msg_size)
     stop = threading.Event()
     start_runner = threading.Event()
@@ -100,7 +102,7 @@ def main(argv=None):
     with zlink.Context() as ctx:
         data_node = zlink.SpotNode(ctx)
         service_pair = attach_spot_service_pair(ctx, data_node, SERVICE_NAME)
-        data_node.bind(tcp_endpoint())
+        data_node.bind(benchmark_endpoint(args.transport, "multi-spot"))
         data_endpoint = data_node.last_endpoint()
         data_spot = data_node.create_spot()
 
@@ -127,7 +129,7 @@ def main(argv=None):
             data_spot.publish(
                 SERVICE_NAME,
                 TOPIC,
-                [stamp_payload(payload, phase=1)],
+                [stamp_payload(payload, phase=1, run_id=run_id)],
             )
         sys.stdout.flush()
         try:

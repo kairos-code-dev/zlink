@@ -16,6 +16,8 @@ const {
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
+  POLLIN,
+  POLLOUT,
   recvNoWait,
   trySocketSend,
   waitForConnectionReady
@@ -27,6 +29,8 @@ async function main() {
   const dealers = [];
   const payloads = [];
   const waiting = [];
+  const sendPending = [];
+  const poller = new zlink.Poller();
 
   try {
     for (let i = 0; i < options.clients; i += 1) {
@@ -35,9 +39,11 @@ async function main() {
       dealers.push(dealer);
       payloads.push(createPayload(options.msgSize));
       waiting.push(false);
+      sendPending.push(false);
     }
-    for (const dealer of dealers) {
-      await waitForConnectionReady(dealer, () => dealer.connect(options.endpoint));
+    for (let i = 0; i < dealers.length; i += 1) {
+      await waitForConnectionReady(dealers[i], () => dealers[i].connect(options.endpoint));
+      poller.addSocket(dealers[i], POLLIN | POLLOUT, i);
     }
     console.log(`CLIENT_READY,${options.msgSize}`);
 
@@ -48,7 +54,7 @@ async function main() {
       }
 
       const runId = createRunId(1);
-      const activeStartNs = process.hrtime.bigint();
+      const activeStartNs = currentEpochNs();
       const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
       const collector = createMetricCollector({
         runId,
@@ -59,14 +65,32 @@ async function main() {
       });
       let seq = 1n;
 
-      while (process.hrtime.bigint() < activeStopNs) {
+      const drainReply = (index) => {
+        let progressed = false;
+        while (true) {
+          const echoed = recvNoWait(dealers[index]);
+          if (!echoed) {
+            break;
+          }
+          waiting[index] = false;
+          collector.record(
+            decodeMetricHeader(echoed.parts[0].data()),
+            currentEpochNs()
+          );
+          progressed = true;
+        }
+        return progressed;
+      };
+
+      while (currentEpochNs() < activeStopNs) {
         let progressed = false;
         for (let i = 0; i < dealers.length; i += 1) {
-          if (waiting[i]) {
+          if (waiting[i] || sendPending[i]) {
             continue;
           }
           stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
           if (!trySocketSend(dealers[i], payloads[i])) {
+            sendPending[i] = true;
             continue;
           }
           waiting[i] = true;
@@ -74,36 +98,46 @@ async function main() {
           progressed = true;
         }
         for (let i = 0; i < dealers.length; i += 1) {
-          const echoed = recvNoWait(dealers[i]);
-          if (!echoed) {
+          progressed = drainReply(i) || progressed;
+        }
+        if (progressed) {
+          continue;
+        }
+
+        const ready = poller.waitAll(poller.size, 25);
+        if (ready.length === 0) {
+          await sleepImmediate();
+          continue;
+        }
+        for (const event of ready) {
+          const index = event.userData;
+          if (!Number.isInteger(index)) {
             continue;
           }
-          waiting[i] = false;
-          collector.record(
-            decodeMetricHeader(echoed.parts[0].data()),
-            currentEpochNs()
-          );
-          progressed = true;
-        }
-        if (!progressed) {
-          await sleepImmediate();
+          if ((event.events & POLLOUT) !== 0) {
+            sendPending[index] = false;
+          }
+          if ((event.events & POLLIN) !== 0) {
+            drainReply(index);
+          }
         }
       }
 
       const drainDeadline = Date.now() + 2000;
       while (waiting.some(Boolean) && Date.now() < drainDeadline) {
         let progressed = false;
-        for (let i = 0; i < dealers.length; i += 1) {
-          const echoed = recvNoWait(dealers[i]);
-          if (!echoed) {
+        const ready = poller.waitAll(poller.size, 25);
+        for (const event of ready) {
+          const index = event.userData;
+          if (!Number.isInteger(index)) {
             continue;
           }
-          waiting[i] = false;
-          collector.record(
-            decodeMetricHeader(echoed.parts[0].data()),
-            currentEpochNs()
-          );
-          progressed = true;
+          if ((event.events & POLLIN) !== 0) {
+            progressed = drainReply(index) || progressed;
+          }
+          if ((event.events & POLLOUT) !== 0) {
+            sendPending[index] = false;
+          }
         }
         if (!progressed) {
           await sleepImmediate();
@@ -113,7 +147,7 @@ async function main() {
       const result = await collector.finish();
       for (const metricLine of summarizeMetrics(
         'MULTI_DEALER_ROUTER',
-        'tcp',
+        options.transport,
         options.msgSize,
         result.latenciesNs,
         options.duration
@@ -123,6 +157,7 @@ async function main() {
       break;
     }
   } finally {
+    poller.close();
     for (const dealer of dealers) {
       dealer.close();
     }

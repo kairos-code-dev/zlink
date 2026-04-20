@@ -3,12 +3,16 @@ import threading
 
 import zlink
 
-from perf_multi_common import apply_multi_socket_options, parse_server_args, tcp_endpoint
+from perf_multi_common import (
+    apply_multi_socket_options,
+    benchmark_endpoint,
+    parse_server_args,
+)
 
 
 def main(argv=None):
-    parse_server_args(argv or sys.argv[1:])
-    endpoint = tcp_endpoint()
+    args = parse_server_args(argv or sys.argv[1:])
+    endpoint = benchmark_endpoint(args.transport, "multi-router-router")
     stop = threading.Event()
 
     def wait_stop():

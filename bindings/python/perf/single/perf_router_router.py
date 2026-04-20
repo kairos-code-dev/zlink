@@ -36,7 +36,6 @@ def main(argv=None):
                 b"SERVER",
                 stamp_payload(payload, phase=1, run_id=run_id),
             )
-        )
 
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as server:

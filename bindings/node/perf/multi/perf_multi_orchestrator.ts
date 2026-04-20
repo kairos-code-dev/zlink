@@ -94,6 +94,7 @@ async function waitForPrefix(processRef, prefix, label, timeoutMs) {
 function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
   child.__waiters = [];
   child.__seenLines = [];
+  child.__stderrLines = [];
   collectLines(child.stdout, (line) => {
     child.__seenLines.push(line);
     for (const waiter of child.__waiters) {
@@ -108,6 +109,7 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
     console.log(line);
   });
   collectLines(child.stderr, (line) => {
+    child.__stderrLines.push(line);
     console.error(line);
   });
 }
@@ -161,13 +163,10 @@ async function stopServer(server, label, timeoutMs = 5000) {
     server.stdin.write('STOP\n');
     server.stdin.end();
   }
-  let timer = null;
   try {
     const graceful = await Promise.race([
       once(server, 'exit'),
-      new Promise((resolve) => {
-        timer = setTimeout(() => resolve(null), timeoutMs);
-      })
+      new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs))
     ]);
     if (graceful !== null) {
       const [code] = graceful;
@@ -184,11 +183,27 @@ async function stopServer(server, label, timeoutMs = 5000) {
         throw error;
       }
     }
-    await waitForExit(server);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
+    const terminated = await Promise.race([
+      waitForExit(server).then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs))
+    ]);
+    if (terminated) {
+      return;
     }
+    try {
+      process.kill(-server.pid, 'SIGKILL');
+    } catch (error) {
+      if (!error || error.code !== 'ESRCH') {
+        throw error;
+      }
+    }
+    await waitForExit(server);
+  } catch (error) {
+    const stderrText = Array.isArray(server.__stderrLines) ? server.__stderrLines.join('\n') : '';
+    if (stderrText) {
+      error.message = `${error.message}\n${stderrText}`;
+    }
+    throw error;
   }
 }
 
@@ -204,6 +219,32 @@ function startLine(msgSize) {
   return `START,${msgSize}`;
 }
 
+function childEnv(args) {
+  const env = { ...process.env };
+  if (Number.isFinite(args.hwm)) {
+    env.PERF_MULTI_HWM = String(args.hwm);
+  }
+  if (Number.isFinite(args.sendHwm)) {
+    env.PERF_MULTI_SNDHWM = String(args.sendHwm);
+  }
+  if (Number.isFinite(args.recvHwm)) {
+    env.PERF_MULTI_RCVHWM = String(args.recvHwm);
+  }
+  if (Number.isFinite(args.sendTimeoutMs)) {
+    env.PERF_MULTI_SNDTIMEO_MS = String(args.sendTimeoutMs);
+  }
+  if (Number.isFinite(args.recvTimeoutMs)) {
+    env.PERF_MULTI_RCVTIMEO_MS = String(args.recvTimeoutMs);
+  }
+  if (Number.isFinite(args.connectReadyTimeoutMs)) {
+    env.PERF_MULTI_CONNECT_READY_TIMEOUT_MS = String(args.connectReadyTimeoutMs);
+  }
+  if (Number.isFinite(args.monitorHwm)) {
+    env.PERF_MULTI_MONITOR_HWM = String(args.monitorHwm);
+  }
+  return env;
+}
+
 async function spawnMultiPair(serverScript, clientScript, args) {
   const serverPath = path.join(__dirname, serverScript);
   const clientPath = path.join(__dirname, clientScript);
@@ -213,21 +254,18 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     '--endpoint', endpoint,
     '--transport', args.transport,
     '--msg-size', String(args.msgSize),
-    '--warmup', String(args.warmup),
     '--duration', String(args.duration),
     '--clients', String(args.clients)
   ];
 
   if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
-    const peerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const controlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     sharedArgs = [
       '--endpoint', endpoint,
       '--transport', args.transport,
-      '--peer-endpoint', peerEndpoint,
+      '--peer-endpoint', endpoint,
       '--control-endpoint', controlEndpoint,
       '--msg-size', String(args.msgSize),
-      '--warmup', String(args.warmup),
       '--duration', String(args.duration),
       '--clients', String(args.clients)
     ];
@@ -235,11 +273,20 @@ async function spawnMultiPair(serverScript, clientScript, args) {
 
   const server = spawn(process.execPath, [serverPath, ...sharedArgs], {
     cwd: process.cwd(),
+    env: childEnv(args),
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: true
   });
   attachProcessCapture(server, resultLines);
-  await waitForLine(server, `READY,${endpoint}`, serverScript, 10_000);
+  await waitForLine(
+    server,
+    `READY,${endpoint}`,
+    serverScript,
+    Number.isFinite(args.serverReadyTimeoutMs) ? args.serverReadyTimeoutMs : 10_000
+  );
+  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+    await waitForPrefix(server, 'CONTROL_READY,', serverScript, 10_000);
+  }
 
   if (args.pattern === 'MULTI_SPOT_REQREP') {
     const routeLine = await waitForPrefix(server, 'ROUTE_READY,', serverScript, 10_000);
@@ -250,11 +297,23 @@ async function spawnMultiPair(serverScript, clientScript, args) {
 
   const client = spawn(process.execPath, [clientPath, ...sharedArgs], {
     cwd: process.cwd(),
+    env: childEnv(args),
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: true
   });
   attachProcessCapture(client, resultLines);
-  await waitForLine(client, clientReadyLine(args.msgSize), clientScript, 20_000);
+  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+    const clientControlLine = await waitForPrefix(client, 'CLIENT_CONTROL_ENDPOINT,', clientScript, 20_000);
+    if (server.stdin.writable) {
+      server.stdin.write(`CONNECT_CONTROL,${clientControlLine.split(',')[1]}\n`);
+    }
+  }
+  await waitForLine(
+    client,
+    clientReadyLine(args.msgSize),
+    clientScript,
+    Number.isFinite(args.connectReadyTimeoutMs) ? args.connectReadyTimeoutMs : 20_000
+  );
 
   if (server.stdin.writable) {
     server.stdin.write(`${startLine(args.msgSize)}\n`);
@@ -268,13 +327,22 @@ async function spawnMultiPair(serverScript, clientScript, args) {
 
   const clientExitCode = await waitForExit(client);
   if (clientExitCode !== 0) {
+    const stderrText = Array.isArray(client.__stderrLines) ? client.__stderrLines.join('\n') : '';
     await Promise.allSettled([terminateProcessTree(server, 1000)]);
-    throw new Error(`client failed (${clientScript}): ${clientExitCode}`);
+    const error = new Error(`client failed (${clientScript}): ${clientExitCode}`);
+    if (stderrText) {
+      error.message = `${error.message}\n${stderrText}`;
+    }
+    throw error;
   }
   await flushProcessOutput();
 
   try {
-    await stopServer(server, serverScript);
+    await stopServer(
+      server,
+      serverScript,
+      Number.isFinite(args.serverShutdownTimeoutMs) ? args.serverShutdownTimeoutMs : 5000
+    );
     await flushProcessOutput();
     return resultLines;
   } finally {

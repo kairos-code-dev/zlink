@@ -1,3 +1,4 @@
+#[path = "perf_common.rs"]
 mod common;
 
 use std::io::{self, BufRead};
@@ -10,7 +11,7 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_server_context();
     let pub_sock = ctx.pub_socket().expect("pub");
     pub_sock
         .common_options()
@@ -28,12 +29,7 @@ fn main() {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&pub_sock, &tls).expect("server tls");
     }
-    let bind_endpoint = match args.transport.as_str() {
-        "ws" => "ws://0.0.0.0:0".to_string(),
-        "wss" => "wss://0.0.0.0:0".to_string(),
-        "tls" => "tls://0.0.0.0:0".to_string(),
-        _ => "tcp://0.0.0.0:0".to_string(),
-    };
+    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
     if let Err(err) = pub_sock.bind(&bind_endpoint) {
         if common::handle_transport_setup_error("MULTI_PUBSUB", &args.transport, "bind", err) {
             return;

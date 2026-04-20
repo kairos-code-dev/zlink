@@ -15,7 +15,7 @@ fn main() {
         return;
     };
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_context();
     let receiver = ctx.router_socket().expect("receiver");
     let sender = ctx.router_socket().expect("sender");
     receiver
@@ -36,15 +36,11 @@ fn main() {
         .expect("sender rcvhwm");
     sender
         .common_options()
-        .set_send_timeout(common::resolve_single_send_timeout())
-        .expect("sender sndtimeo");
-    sender
-        .common_options()
-        .set_recv_timeout(common::resolve_single_send_timeout())
+        .set_recv_timeout(common::resolve_single_recv_timeout())
         .expect("sender rcvtimeo");
     receiver
         .common_options()
-        .set_recv_timeout(common::resolve_single_send_timeout())
+        .set_recv_timeout(common::resolve_single_recv_timeout())
         .expect("receiver rcvtimeo");
 
     let sender_rid = RoutingId::from_bytes(b"perf-rr-sender");
@@ -70,8 +66,8 @@ fn main() {
         common::setup_raw_tls_client(&sender, &tls).expect("sender tls");
     }
 
-    let receiver_mon = SocketMonitor::open(&receiver).expect("receiver monitor");
-    let mon = SocketMonitor::open(&sender).expect("monitor");
+    let mut receiver_mon = SocketMonitor::open(&receiver).expect("receiver monitor");
+    let mut mon = SocketMonitor::open(&sender).expect("monitor");
     if let Err(err) = receiver.bind(&bind_endpoint) {
         if common::handle_transport_setup_error("ROUTER_ROUTER", &config.transport, "bind", err) {
             return;
@@ -88,8 +84,8 @@ fn main() {
     }
     let ready_timeout = common::resolve_single_ready_timeout();
     let target = receiver_rid.clone();
-    common::wait_monitor_ready(&receiver_mon, ready_timeout, "router-router receiver");
-    common::wait_monitor_ready(&mon, ready_timeout, "router-router sender");
+    common::wait_monitor_ready(&mut receiver_mon, ready_timeout, "router-router receiver");
+    common::wait_monitor_ready(&mut mon, ready_timeout, "router-router sender");
     sender
         .send(&target, Message::copy_from(b"PING").expect("router ping"))
         .expect("router handshake send");

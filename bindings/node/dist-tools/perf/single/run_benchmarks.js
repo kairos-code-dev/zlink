@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const path = require('node:path');
-const { buildEffectiveOptions, computeMetrics, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatTableRows, parseCommonArgs, resolveSinglePatternNames, summarizeMetrics, writeReport } = require('../common/perf_metrics');
+const { buildEffectiveOptions, completionLines, computeMetrics, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatTableHeader, formatTableRow, parseCommonArgs, patternDirection, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
 const { runPairBenchmark } = require('./perf_pair');
 const { runPubSubBenchmark } = require('./perf_pubsub');
 const { runDealerDealerBenchmark } = require('./perf_dealer_dealer');
@@ -19,24 +19,15 @@ const PATTERNS = {
     SPOT: runSpotBenchmark,
     SPOT_REQREP: runSpotReqRepBenchmark
 };
-const POLICY_TRANSPORTS = {
-    PAIR: ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'],
-    PUBSUB: ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'],
-    DEALER_DEALER: ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'],
-    DEALER_ROUTER: ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'],
-    ROUTER_ROUTER: ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'],
-    SPOT: ['tcp', 'tls', 'ws', 'wss'],
-    SPOT_REQREP: ['tcp', 'tls', 'ws', 'wss']
-};
-const RUNNABLE_TRANSPORTS = {
-    PAIR: [],
-    PUBSUB: [],
-    DEALER_DEALER: [],
-    DEALER_ROUTER: [],
-    ROUTER_ROUTER: [],
-    SPOT: [],
-    SPOT_REQREP: []
-};
+function policyTransports(pattern) {
+    const raw = pattern === 'SPOT' || pattern === 'SPOT_REQREP'
+        ? ['tcp', 'tls', 'ws', 'wss']
+        : ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'];
+    if (process.platform === 'win32') {
+        return raw.filter((transport) => transport !== 'ipc');
+    }
+    return raw;
+}
 function usage() {
     console.log(`Usage: bindings/node/perf/run_benchmarks.sh [options]
 
@@ -49,7 +40,6 @@ Options:
   --results-tag NAME    Optional tag in saved result filename.
   --runs N              Iterations per configuration (default: 1).
   --duration N          Override single duration seconds (default: 5).
-  --warmup N            Accepted for compatibility but ignored.
   --msg-sizes LIST      Comma-separated sizes (default: 64,256,1024,65536,131072,262144).
   --transports LIST     Comma-separated transports (default: policy transport set).
 
@@ -74,18 +64,29 @@ function medianMetrics(metricsList) {
         latency_p99: median(metricsList.map((item) => item.latency_p99))
     };
 }
-function isUnsupported(error) {
-    const text = String(error && error.message ? error.message : error).toLowerCase();
-    return text.includes('protocol not supported')
-        || text.includes('unsupported single transport')
-        || text.includes('listen eperm')
-        || text.includes('operation not permitted');
+function metricLines(pattern, transport, msgSize, metrics) {
+    return [
+        `RESULT,current,${pattern},${transport},${msgSize},throughput,${metrics.throughput.toFixed(2)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},bandwidth,${metrics.bandwidth.toFixed(2)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},latency,${metrics.latency.toFixed(6)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},latency_p95,${metrics.latency_p95.toFixed(6)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},latency_p99,${metrics.latency_p99.toFixed(6)}`
+    ];
+}
+function formatFailureRow(msgSize, label = 'FAIL') {
+    const cell = String(label).padStart(16);
+    return `| ${String(msgSize).padEnd(8)}B | ${cell} | ${'FAIL'.padStart(10)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} |`;
+}
+function isPlatformSkip(pattern, transport) {
+    return process.platform === 'win32' && transport === 'ipc' && pattern !== 'SPOT' && pattern !== 'SPOT_REQREP';
+}
+function errorText(error) {
+    return String(error && error.message ? error.message : error);
 }
 async function main() {
     const options = parseCommonArgs(process.argv.slice(2), {
         pattern: 'ALL',
         duration: 5,
-        warmup: 0,
         msgSizes: defaultSingleMsgSizes(),
         resultsDir: path.join(process.cwd(), 'perf', 'results'),
         transports: DEFAULT_SINGLE_TRANSPORTS
@@ -94,51 +95,61 @@ async function main() {
         usage();
         return;
     }
-    options.warmup = 0;
     const names = resolveSinglePatternNames(options.pattern);
+    const failFast = process.env.PERF_FAIL_FAST === '1';
     const resultLines = [];
-    const reportSections = [];
-    let unsupportedCount = 0;
-    let failCount = 0;
+    const reportLines = [];
+    const failures = [];
+    const skips = [];
+    let unsupportedCombos = 0;
+    let skippedCombos = 0;
     let caseOrdinal = 1;
+    const emit = (line = '') => {
+        console.log(line);
+        reportLines.push(line);
+    };
+    const emitIndented = (prefix, lines) => {
+        for (const line of lines) {
+            emit(`${prefix}${line}`);
+        }
+    };
     console.log('## Effective Options (start)');
     for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'single', patterns: names.join(',') })) {
         console.log(line);
     }
     console.log('');
-    for (const name of names) {
+    for (let patternIndex = 0; patternIndex < names.length; patternIndex += 1) {
+        const name = names[patternIndex];
         const runner = PATTERNS[name];
         if (!runner) {
             throw new Error(`unsupported single pattern: ${name}`);
         }
-        if (reportSections.length > 0) {
-            reportSections.push('===============================================================================');
-            reportSections.push('');
-            console.log('===============================================================================');
-            console.log('');
+        if (patternIndex > 0) {
+            emit('===============================================================================');
+            emit('');
         }
-        console.log(`## PATTERN: ${name}`);
-        reportSections.push(`## PATTERN: ${name}`);
+        emit(`## PATTERN: ${name} (${patternDirection(name)})`);
+        emit('');
+        emit(`  > Benchmarking current for ${name}...`);
         for (const transport of options.transports) {
-            if (!POLICY_TRANSPORTS[name].includes(transport)) {
-                const line = `UNSUPPORTED,current,${name},${transport}`;
-                console.log(line);
-                resultLines.push(line);
-                unsupportedCount += 1;
+            if (isPlatformSkip(name, transport)) {
+                skippedCombos += options.msgSizes.length;
+                skips.push(`${name} current ${transport}: platform constraint`);
+                emit(`    Testing ${transport}: skip Done`);
                 continue;
             }
-            if (!RUNNABLE_TRANSPORTS[name].includes(transport)) {
-                const line = `UNSUPPORTED,current,${name},${transport}`;
-                console.log(line);
-                resultLines.push(line);
-                unsupportedCount += 1;
+            const allowed = policyTransports(name);
+            if (!allowed.includes(transport)) {
+                unsupportedCombos += options.msgSizes.length;
+                emit(`    Testing ${transport}: unsupported Done`);
                 continue;
             }
-            const rows = [];
-            for (const msgSize of options.msgSizes) {
-                const runMetricsList = [];
-                let unsupported = false;
-                for (let run = 1; run <= options.runs; run += 1) {
+            const transportFailuresBefore = failures.length;
+            emit(`    Testing ${transport}:`);
+            if (options.runs === 1) {
+                emitIndented('      ', formatTableHeader());
+                const perSizeMetrics = new Map();
+                for (const msgSize of options.msgSizes) {
                     try {
                         const latenciesNs = await runner(msgSize, {
                             ...options,
@@ -147,60 +158,100 @@ async function main() {
                         });
                         caseOrdinal += 1;
                         const metrics = computeMetrics(latenciesNs, options.duration, msgSize, name === 'SPOT_REQREP' ? 2 : 1);
-                        runMetricsList.push(metrics);
-                        resultLines.push(...summarizeMetrics(name, transport, msgSize, latenciesNs, options.duration));
+                        const row = { pattern: name, msgSize, metrics };
+                        emit(`      ${formatTableRow(row)}`);
+                        perSizeMetrics.set(msgSize, metrics);
                     }
                     catch (error) {
-                        if (isUnsupported(error)) {
-                            const line = `UNSUPPORTED,current,${name},${transport}`;
-                            console.log(line);
-                            resultLines.push(line);
-                            unsupportedCount += 1;
-                            unsupported = true;
-                            break;
+                        failures.push(`${name} current ${transport} ${msgSize}B: ${errorText(error)}`);
+                        emit(`      ${formatFailureRow(msgSize)}`);
+                        if (failFast) {
+                            throw error;
                         }
-                        throw error;
                     }
                 }
-                if (unsupported) {
-                    break;
+                for (const msgSize of options.msgSizes) {
+                    const metrics = perSizeMetrics.get(msgSize);
+                    if (!metrics) {
+                        continue;
+                    }
+                    resultLines.push(...metricLines(name, transport, msgSize, metrics));
                 }
-                if (runMetricsList.length !== options.runs) {
-                    failCount += 1;
-                    continue;
-                }
-                rows.push({
-                    pattern: name,
-                    msgSize,
-                    metrics: options.runs > 1 ? medianMetrics(runMetricsList) : runMetricsList[0]
-                });
             }
-            if (rows.length > 0) {
-                const tableLines = formatTableRows(rows);
-                reportSections.push(`### Transport: ${transport}`);
-                reportSections.push(...tableLines);
-                reportSections.push('');
-                console.log(`### Transport: ${transport}`);
-                for (const line of tableLines) {
-                    console.log(line);
+            else {
+                const runResults = new Map(options.msgSizes.map((msgSize) => [msgSize, []]));
+                for (let run = 1; run <= options.runs; run += 1) {
+                    emit(`      run ${run}/${options.runs}:`);
+                    emitIndented('        ', formatTableHeader());
+                    for (const msgSize of options.msgSizes) {
+                        try {
+                            const latenciesNs = await runner(msgSize, {
+                                ...options,
+                                transport,
+                                runId: caseOrdinal
+                            });
+                            caseOrdinal += 1;
+                            const metrics = computeMetrics(latenciesNs, options.duration, msgSize, name === 'SPOT_REQREP' ? 2 : 1);
+                            runResults.get(msgSize).push(metrics);
+                            emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
+                        }
+                        catch (error) {
+                            failures.push(`${name} current ${transport} ${msgSize}B: ${errorText(error)}`);
+                            emit(`        ${formatFailureRow(msgSize)}`);
+                            if (failFast) {
+                                throw error;
+                            }
+                        }
+                    }
                 }
-                console.log('');
+                emit('      median:');
+                emitIndented('        ', formatTableHeader());
+                for (const msgSize of options.msgSizes) {
+                    const metricsList = runResults.get(msgSize);
+                    if (!metricsList || metricsList.length !== options.runs) {
+                        emit(`        ${formatFailureRow(msgSize)}`);
+                        continue;
+                    }
+                    const metrics = medianMetrics(metricsList);
+                    emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
+                    resultLines.push(...metricLines(name, transport, msgSize, metrics));
+                }
             }
+            const transportFailures = failures.length - transportFailuresBefore;
+            emit(`    Testing ${transport}: ${transportFailures > 0 ? `(failures=${transportFailures}) Done` : 'Done'}`);
         }
     }
-    console.log('## Result Data');
-    for (const line of resultLines) {
+    if (failures.length > 0) {
+        emit('');
+        emit('## Failures');
+        for (const failure of failures) {
+            emit(`- ${failure}`);
+        }
+    }
+    if (skips.length > 0) {
+        emit('');
+        emit('## Skips');
+        for (const skip of skips) {
+            emit(`- ${skip}`);
+        }
+    }
+    const expectedCombos = (names.length * options.transports.length * options.msgSizes.length)
+        - unsupportedCombos
+        - skippedCombos;
+    const expectedResultLines = expectedCombos * 5;
+    const actualResultLines = resultLines.length;
+    const status = expectedResultLines === actualResultLines ? 'complete' : 'partial';
+    console.log('');
+    console.log('## Effective Options (result)');
+    for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'single', patterns: names.join(',') })) {
         console.log(line);
     }
     console.log('');
-    console.log('## Status Summary');
-    console.log(`- result_lines: ${resultLines.length}`);
-    console.log(`- unsupported: ${unsupportedCount}`);
-    console.log(`- fail: ${failCount}`);
-    console.log(`- status: ${failCount === 0 ? 'complete' : 'partial'}`);
-    const report = writeReport(path.join(options.resultsDir, 'single', 'report'), 'node', 'single', resultLines, { ...options, patterns: names.join(',') }, reportSections);
-    console.log(`report=${report}`);
-    if (failCount > 0) {
+    for (const line of completionLines(status, expectedResultLines, actualResultLines)) {
+        console.log(line);
+    }
+    writeReport(path.join(options.resultsDir, 'single', 'report'), 'node', 'single', { ...options, patterns: names.join(',') }, reportLines, completionLines(status, expectedResultLines, actualResultLines));
+    if (status !== 'complete') {
         process.exitCode = 1;
     }
 }

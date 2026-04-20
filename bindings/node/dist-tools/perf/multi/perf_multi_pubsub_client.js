@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { drainRecvSocket, waitForConnectionReady } = require('./perf_multi_runtime');
+const { drainRecvSocket } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -16,10 +16,8 @@ async function main() {
         for (let i = 0; i < options.clients; i += 1) {
             const sub = new zlink.SubSocket(ctx);
             sub.setSubscription('perf.topic');
+            sub.connect(options.endpoint);
             subs.push(sub);
-        }
-        for (const sub of subs) {
-            await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
         }
         const recvTasks = subs.map((sub) => drainRecvSocket(sub, (received) => {
             if (!collector) {
@@ -31,7 +29,7 @@ async function main() {
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
             if (line === `PHASE_ACTIVE,${options.msgSize}`) {
-                const activeStartNs = process.hrtime.bigint();
+                const activeStartNs = currentEpochNs();
                 const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
                 collector = createMetricCollector({
                     runId: createRunId(1),
@@ -39,7 +37,7 @@ async function main() {
                     activeStartNs,
                     activeStopNs
                 });
-                while (process.hrtime.bigint() < activeStopNs + 250000000n) {
+                while (currentEpochNs() < activeStopNs + 250000000n) {
                     await new Promise((resolve) => setImmediate(resolve));
                 }
                 stop = true;
@@ -48,7 +46,7 @@ async function main() {
         }
         await Promise.all(recvTasks);
         const result = collector ? await collector.finish() : { latenciesNs: [] };
-        for (const line of summarizeMetrics('MULTI_PUBSUB', 'tcp', options.msgSize, result.latenciesNs, options.duration)) {
+        for (const line of summarizeMetrics('MULTI_PUBSUB', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
             console.log(line);
         }
     }

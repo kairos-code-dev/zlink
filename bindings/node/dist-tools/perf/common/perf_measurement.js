@@ -5,6 +5,7 @@ const METRIC_MAGIC = 0x5a4c4e4b;
 const HEADER_SIZE = 29;
 const BASE_EPOCH_NS = BigInt(Date.now()) * 1000000n;
 const BASE_HR_NS = process.hrtime.bigint();
+const PRIMARY_METRICS = ['throughput', 'bandwidth', 'latency', 'latency_p95', 'latency_p99'];
 function currentEpochNs() {
     return BASE_EPOCH_NS + (process.hrtime.bigint() - BASE_HR_NS);
 }
@@ -51,6 +52,18 @@ function decodeMetricHeader(buffer) {
         seq: buffer.readBigUInt64LE(13),
         sentTsNs: buffer.readBigInt64LE(21)
     };
+}
+function decodeMetricHeaderFromParts(parts) {
+    for (const part of parts || []) {
+        if (!part || typeof part.data !== 'function') {
+            continue;
+        }
+        const header = decodeMetricHeader(part.data());
+        if (header) {
+            return header;
+        }
+    }
+    return null;
 }
 function latencyNsFromPayload(buffer, receivedAtNs = currentEpochNs()) {
     const header = decodeMetricHeader(buffer);
@@ -108,19 +121,11 @@ function primaryMetricsFromResultLines(pattern, msgSize, lines) {
         if (parts[2] !== pattern || Number(parts[4]) !== msgSize) {
             continue;
         }
-        if (parts[5] === 'throughput'
-            || parts[5] === 'bandwidth'
-            || parts[5] === 'latency'
-            || parts[5] === 'latency_p95'
-            || parts[5] === 'latency_p99') {
+        if (PRIMARY_METRICS.includes(parts[5])) {
             metrics[parts[5]] = Number(parts[6]);
         }
     }
-    if (typeof metrics.throughput !== 'number'
-        || typeof metrics.bandwidth !== 'number'
-        || typeof metrics.latency !== 'number'
-        || typeof metrics.latency_p95 !== 'number'
-        || typeof metrics.latency_p99 !== 'number') {
+    if (PRIMARY_METRICS.some((metric) => typeof metrics[metric] !== 'number')) {
         throw new Error(`missing primary metrics for ${pattern} size ${msgSize}`);
     }
     return metrics;
@@ -145,6 +150,9 @@ function createMetricCollector(config) {
         ? BigInt('0xffffffffffffffff')
         : BigInt(config.activeStopNs);
     const rttDivisor = config.roundTrip ? 2n : 1n;
+    const sampleCap = Number.isFinite(config.sampleCap) && config.sampleCap > 0
+        ? Math.floor(config.sampleCap)
+        : 0;
     let accepted = 0;
     let rejected = 0;
     let closed = false;
@@ -170,7 +178,9 @@ function createMetricCollector(config) {
                 return;
             }
             accepted += 1;
-            latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
+            if (sampleCap === 0 || latenciesNs.length < sampleCap) {
+                latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
+            }
         },
         async finish() {
             closed = true;
@@ -189,11 +199,13 @@ function createMetricCollector(config) {
 module.exports = {
     HEADER_SIZE,
     METRIC_MAGIC,
+    PRIMARY_METRICS,
     computeMetrics,
     createMetricCollector,
     createPayload,
     createRunId,
     decodeMetricHeader,
+    decodeMetricHeaderFromParts,
     currentEpochNs,
     latencyNsFromPayload,
     primaryMetricsFromResultLines,

@@ -4,9 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
-STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
-CORE_BUILD_DIR="${REPO_DIR}/core/build"
+STREAM_BUILD_DIR="${REPO_DIR}/core/build"
+STREAM_CLIENT="${STREAM_BUILD_DIR}/bin/perf_stream_client"
 REUSE_BUILD=0
+CLEAN_BUILD=0
 
 source "$HOME/.cargo/env" 2>/dev/null || true
 
@@ -14,11 +15,37 @@ PATTERN="ALL"
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
-RUNS="${PERF_RUNS:-1}"
+RUNS="1"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
-RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/multi/report}"
-RESULTS_TAG="${PERF_RESULTS_TAG:-}"
+RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
+RESULTS_TAG=""
 OUTPUT_FILE=""
+PIN_CPU=0
+BUILD_DIR=""
+EXPLICIT_MSG_SIZES=0
+COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
+SERVER_IO_THREADS=""
+CLIENT_IO_THREADS=""
+HWM=""
+SEND_HWM=""
+RECV_HWM=""
+SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
+RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
+CONNECT_CONCURRENCY=""
+TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
+PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
+SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
+SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
+CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
+MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-1000}"
+SERVER_BIND_PORT="0"
+ENV_PERF_IO_THREADS="${PERF_IO_THREADS:-}"
+ENV_MULTI_SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-}"
+ENV_MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
+ENV_MULTI_HWM="${PERF_MULTI_HWM:-}"
+ENV_MULTI_SNDHWM="${PERF_MULTI_SNDHWM:-}"
+ENV_MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
+[[ -n "${PERF_MSG_SIZES+x}" ]] && EXPLICIT_MSG_SIZES=1
 
 print_help() {
     cat <<'EOF'
@@ -32,6 +59,28 @@ Options:
   --transports LIST
   --runs N
   --clients N
+  --build-dir PATH
+  --reuse-build
+  --clean-build
+  --pin-cpu
+  --io-threads N
+  --server-io-threads N
+  --client-io-threads N
+  --hwm N
+  --send-hwm N
+  --recv-hwm N
+  --sndtimeo N
+  --rcvtimeo N
+  --send-timeout-ms N
+  --recv-timeout-ms N
+  --connect-concurrency N
+  --transport-transition-ms N
+  --pattern-transition-ms N
+  --server-ready-timeout-ms N
+  --connect-ready-timeout-ms N
+  --monitor-hwm N
+  --server-shutdown-timeout-ms N
+  --server-bind-port N
   --results-dir PATH
   --results-tag NAME
   --output PATH
@@ -49,24 +98,42 @@ while [[ $# -gt 0 ]]; do
             ;;
         --pattern)     PATTERN="$2";     shift 2 ;;
         --duration)    DURATION="$2";    shift 2 ;;
-        --msg-sizes)   MSG_SIZES="$2";   shift 2 ;;
+        --msg-sizes)   MSG_SIZES="$2"; EXPLICIT_MSG_SIZES=1; shift 2 ;;
         --transports)  TRANSPORTS="$2";  shift 2 ;;
         --runs)        RUNS="$2";        shift 2 ;;
         --clients)     CLIENTS="$2";     shift 2 ;;
+        --build-dir)   BUILD_DIR="$2";   shift 2 ;;
+        --io-threads) COMMON_IO_THREADS="$2"; shift 2 ;;
+        --server-io-threads) SERVER_IO_THREADS="$2"; shift 2 ;;
+        --client-io-threads) CLIENT_IO_THREADS="$2"; shift 2 ;;
+        --hwm) HWM="$2"; shift 2 ;;
+        --send-hwm) SEND_HWM="$2"; shift 2 ;;
+        --recv-hwm) RECV_HWM="$2"; shift 2 ;;
+        --sndtimeo|--send-timeout-ms) SNDTIMEO_MS="$2"; shift 2 ;;
+        --rcvtimeo|--recv-timeout-ms) RCVTIMEO_MS="$2"; shift 2 ;;
+        --connect-concurrency) CONNECT_CONCURRENCY="$2"; shift 2 ;;
+        --transport-transition-ms) TRANSPORT_TRANSITION_MS="$2"; shift 2 ;;
+        --pattern-transition-ms) PATTERN_TRANSITION_MS="$2"; shift 2 ;;
+        --server-ready-timeout-ms) SERVER_READY_TIMEOUT_MS="$2"; shift 2 ;;
+        --connect-ready-timeout-ms) CONNECT_READY_TIMEOUT_MS="$2"; shift 2 ;;
+        --monitor-hwm) MONITOR_HWM="$2"; shift 2 ;;
+        --server-shutdown-timeout-ms) SERVER_SHUTDOWN_TIMEOUT_MS="$2"; shift 2 ;;
+        --server-bind-port) SERVER_BIND_PORT="$2"; shift 2 ;;
         --results-dir) RESULTS_DIR="$2"; shift 2 ;;
         --results-tag) RESULTS_TAG="$2"; shift 2 ;;
         --output)      OUTPUT_FILE="$2"; shift 2 ;;
         --reuse-build) REUSE_BUILD=1; shift ;;
-        --clean-build)
-            echo "--clean-build is not supported for the shared core stream client in this runner" >&2
-            exit 1
-            ;;
-        --build-dir|--io-threads|--server-io-threads|--client-io-threads|--hwm|--send-hwm|--recv-hwm|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--connect-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port)
-            shift 2 ;;
-        --pin-cpu) shift ;;
+        --clean-build) CLEAN_BUILD=1; shift ;;
+        --sndbuf|--rcvbuf) shift 2 ;;
+        --pin-cpu) PIN_CPU=1; shift ;;
         *)             echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
+
+if [[ "${REUSE_BUILD}" -eq 1 && "${CLEAN_BUILD}" -eq 1 ]]; then
+    echo "--reuse-build and --clean-build are mutually exclusive" >&2
+    exit 1
+fi
 
 case "$(uname -s)" in
     Linux*)  PLATFORM="linux" ;;
@@ -112,11 +179,12 @@ allowed = {
     "ROUTER_ROUTER",
     "PUBSUB",
     "SPOT",
+    "SPOT_REQREP",
     "STREAM",
 }
 
 if raw == "ALL":
-    print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM")
+    print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM")
     raise SystemExit(0)
 
 items = []
@@ -137,6 +205,38 @@ print(",".join(items))
 PY
 }
 
+default_msg_sizes_for_pattern() {
+    local pattern="$1"
+    if [[ "${EXPLICIT_MSG_SIZES}" -eq 1 ]]; then
+        printf '%s' "${MSG_SIZES}"
+        return
+    fi
+    case "${pattern}" in
+        MULTI_STREAM)
+            printf '%s' "64,256,1024,65536"
+            ;;
+        *)
+            printf '%s' "${MSG_SIZES}"
+            ;;
+    esac
+}
+
+default_io_threads_for_pattern() {
+    local pattern="$1"
+    case "${pattern}" in
+        MULTI_STREAM) printf '%s' "4" ;;
+        *) printf '%s' "2" ;;
+    esac
+}
+
+default_hwm_for_pattern() {
+    local pattern="$1"
+    case "${pattern}" in
+        MULTI_STREAM) printf '%s' "10" ;;
+        *) printf '%s' "100" ;;
+    esac
+}
+
 ensure_core_stream_client() {
     if [[ "${REUSE_BUILD}" -eq 1 ]]; then
         if [[ ! -x "${STREAM_CLIENT}" ]]; then
@@ -146,7 +246,10 @@ ensure_core_stream_client() {
         return
     fi
 
-    cmake -S "${REPO_DIR}" -B "${CORE_BUILD_DIR}" \
+    if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
+        rm -rf "${STREAM_BUILD_DIR}"
+    fi
+    cmake -S "${REPO_DIR}" -B "${STREAM_BUILD_DIR}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DENABLE_LTO=OFF \
         -DBUILD_BENCHMARKS=ON \
@@ -157,15 +260,57 @@ ensure_core_stream_client() {
         -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
         -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
         -DZLINK_CXX_STANDARD=17 >/dev/null
-    cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
+    cmake --build "${STREAM_BUILD_DIR}" --target perf_stream_client >/dev/null
 }
 
-export PERF_MULTI_CLIENTS="${CLIENTS}"
+if [[ -n "${BUILD_DIR}" ]]; then
+    TARGET_DIR="${BUILD_DIR}/rust-multi"
+    STREAM_BUILD_DIR="${BUILD_DIR}/core"
+    STREAM_CLIENT="${STREAM_BUILD_DIR}/bin/perf_stream_client"
+else
+    TARGET_DIR="${SCRIPT_DIR}/multi/target"
+fi
+BIN_DIR="${TARGET_DIR}/release"
+
 export PERF_MULTI_DURATION_SECONDS="${DURATION}"
 export LD_LIBRARY_PATH="${PROJECT_DIR}/native/linux-x86_64:${LD_LIBRARY_PATH:-}"
+export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
+export PERF_MULTI_MONITOR_HWM="${MONITOR_HWM}"
+[[ -n "${CONNECT_CONCURRENCY}" ]] && export PERF_MULTI_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}"
+if [[ -n "${COMMON_IO_THREADS}" ]]; then
+    export PERF_IO_THREADS="${COMMON_IO_THREADS}"
+elif [[ -n "${ENV_PERF_IO_THREADS}" ]]; then
+    export PERF_IO_THREADS="${ENV_PERF_IO_THREADS}"
+else
+    unset PERF_IO_THREADS || true
+fi
+export PERF_MULTI_SNDTIMEO_MS="${SNDTIMEO_MS}"
+export PERF_MULTI_RCVTIMEO_MS="${RCVTIMEO_MS}"
+export PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${CONNECT_READY_TIMEOUT_MS}"
+export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
 
-(cd "${SCRIPT_DIR}/multi" && cargo build --release --quiet)
-BIN_DIR="${SCRIPT_DIR}/multi/target/release"
+RUN_PREFIX=()
+if [[ "${PIN_CPU}" -eq 1 ]]; then
+    if [[ "$(uname -s)" != "Linux" ]]; then
+        echo "--pin-cpu is only supported on Linux in this runner" >&2
+        exit 1
+    fi
+    if ! command -v taskset >/dev/null 2>&1; then
+        echo "--pin-cpu requires taskset" >&2
+        exit 1
+    fi
+    RUN_PREFIX=("taskset" "-c" "0")
+fi
+
+if [[ "${REUSE_BUILD}" -eq 0 ]]; then
+    if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
+        (cd "${SCRIPT_DIR}/multi" && CARGO_TARGET_DIR="${TARGET_DIR}" cargo clean --quiet)
+    fi
+    (cd "${SCRIPT_DIR}/multi" && CARGO_TARGET_DIR="${TARGET_DIR}" cargo build --release --quiet)
+elif [[ ! -x "${BIN_DIR}/perf_multi_dealer_dealer_server" ]]; then
+    echo "existing multi perf binaries not found for --reuse-build: ${BIN_DIR}" >&2
+    exit 1
+fi
 
 PATTERN="$(normalize_patterns "${PATTERN}")"
 IFS=',' read -ra PATTERNS <<< "${PATTERN}"
@@ -173,13 +318,11 @@ if printf '%s\n' "${PATTERNS[@]}" | grep -qx 'MULTI_STREAM'; then
     ensure_core_stream_client
 fi
 
-IFS=',' read -ra SIZE_LIST <<< "${MSG_SIZES}"
 IFS=',' read -ra TRANSPORT_LIST <<< "${TRANSPORTS}"
-
-SERVER_READY_TIMEOUT=10
-SERVER_SHUTDOWN_TIMEOUT=5
 CLIENT_TIMEOUT_SECONDS=$((DURATION + 10))
 ONE_WAY_CLIENT_READY_TIMEOUT=10
+SERVER_READY_TIMEOUT_SECONDS=$(( (SERVER_READY_TIMEOUT_MS + 999) / 1000 ))
+SERVER_SHUTDOWN_TIMEOUT_SECONDS=$(( (SERVER_SHUTDOWN_TIMEOUT_MS + 999) / 1000 ))
 
 TMP_METRICS="$(mktemp)"
 TMP_CASES="$(mktemp)"
@@ -206,7 +349,7 @@ shutdown_server() {
     if kill -0 "${pid}" 2>/dev/null; then
         printf 'STOP\n' >&"${control_fd}" || true
         exec {control_fd}>&- || true
-        if wait_for_pid "${pid}" "${SERVER_SHUTDOWN_TIMEOUT}"; then
+        if wait_for_pid "${pid}" "${SERVER_SHUTDOWN_TIMEOUT_SECONDS}"; then
             return
         fi
         kill "${pid}" 2>/dev/null || true
@@ -276,7 +419,13 @@ wait_for_ready_or_unsupported() {
 
 for run in $(seq 1 "${RUNS}"); do
     [[ "${RUNS}" -gt 1 ]] && echo "--- Run ${run}/${RUNS} ---"
-    for pat in "${PATTERNS[@]}"; do
+    for pat_index in "${!PATTERNS[@]}"; do
+        pat="${PATTERNS[pat_index]}"
+        IFS=',' read -ra SIZE_LIST <<< "$(default_msg_sizes_for_pattern "${pat}")"
+        PATTERN_CLIENTS="${CLIENTS}"
+        if [[ "${pat}" == "MULTI_STREAM" && "${CLIENTS}" == "100" ]]; then
+            PATTERN_CLIENTS="10000"
+        fi
         SERVER_BIN=""
         CLIENT_BIN=""
         case "${pat}" in
@@ -295,6 +444,9 @@ for run in $(seq 1 "${RUNS}"); do
             MULTI_SPOT)
                 SERVER_BIN="${BIN_DIR}/perf_multi_spot_server"
                 CLIENT_BIN="${BIN_DIR}/perf_multi_spot_client" ;;
+            MULTI_SPOT_REQREP)
+                SERVER_BIN="${BIN_DIR}/perf_multi_spot_reqrep_server"
+                CLIENT_BIN="${BIN_DIR}/perf_multi_spot_reqrep_client" ;;
             MULTI_STREAM)
                 SERVER_BIN="${BIN_DIR}/perf_multi_stream_server"
                 CLIENT_BIN="" ;;
@@ -303,22 +455,24 @@ for run in $(seq 1 "${RUNS}"); do
                 continue ;;
         esac
 
-        for transport in "${TRANSPORT_LIST[@]}"; do
+        for transport_index in "${!TRANSPORT_LIST[@]}"; do
+            transport="${TRANSPORT_LIST[transport_index]}"
             for size in "${SIZE_LIST[@]}"; do
+                export PERF_MULTI_CLIENTS="${PATTERN_CLIENTS}"
                 case_status="success"
                 case_reason=""
                 CLIENT_OUTPUT=""
                 SRV_OUT=$(mktemp)
                 SERVER_FIFO="$(mktemp -u)"
                 mkfifo "${SERVER_FIFO}"
-                "${SERVER_BIN}" "${transport}" "${size}" < "${SERVER_FIFO}" > "${SRV_OUT}" 2>&1 &
+                "${RUN_PREFIX[@]}" "${SERVER_BIN}" "${transport}" "${size}" < "${SERVER_FIFO}" > "${SRV_OUT}" 2>&1 &
                 SERVER_PID=$!
                 exec {SERVER_CONTROL_FD}> "${SERVER_FIFO}"
                 rm -f "${SERVER_FIFO}"
 
                 # Wait for READY
                 ENDPOINT=""
-                READY_LINE="$(wait_for_ready_or_unsupported "${SRV_OUT}" "${SERVER_READY_TIMEOUT}" || true)"
+                READY_LINE="$(wait_for_ready_or_unsupported "${SRV_OUT}" "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
                 if [[ "${READY_LINE}" == UNSUPPORTED,* ]]; then
                     case_status="unsupported"
                     case_reason="${READY_LINE//,/;}"
@@ -342,8 +496,8 @@ for run in $(seq 1 "${RUNS}"); do
                 fi
 
                 CONTROL_ENDPOINT=""
-                if [[ "${pat}" == "MULTI_SPOT" ]]; then
-                    CONTROL_LINE="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_READY," "${SERVER_READY_TIMEOUT}" || true)"
+                if [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" ]]; then
+                    CONTROL_LINE="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_READY," "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
                     if [[ "${CONTROL_LINE}" == CONTROL_READY,* ]]; then
                         CONTROL_ENDPOINT="${CONTROL_LINE#CONTROL_READY,}"
                         CONTROL_ENDPOINT="${CONTROL_ENDPOINT//0.0.0.0/127.0.0.1}"
@@ -358,12 +512,28 @@ for run in $(seq 1 "${RUNS}"); do
                     fi
                 fi
 
+                ROUTE_INFO=""
+                if [[ "${pat}" == "MULTI_SPOT_REQREP" ]]; then
+                    ROUTE_LINE="$(wait_for_file_prefix "${SRV_OUT}" "ROUTE_READY," "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
+                    if [[ "${ROUTE_LINE}" == ROUTE_READY,* ]]; then
+                        ROUTE_INFO="${ROUTE_LINE#ROUTE_READY,}"
+                    fi
+                    if [[ -z "${ROUTE_INFO}" ]]; then
+                        case_status="fail"
+                        case_reason="route_ready_timeout"
+                        shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
+                        rm -f "${SRV_OUT}"
+                        printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+                        continue
+                    fi
+                fi
+
                 if [[ "${pat}" == "MULTI_DEALER_DEALER" || "${pat}" == "MULTI_PUBSUB" ]]; then
                     CLIENT_OUT="$(mktemp)"
                     CLIENT_ERR="$(mktemp)"
                     CLIENT_FIFO="$(mktemp -u)"
                     mkfifo "${CLIENT_FIFO}"
-                    "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
+                    "${RUN_PREFIX[@]}" "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
                     CLIENT_PID=$!
                     exec {CLIENT_CONTROL_FD}> "${CLIENT_FIFO}"
                     rm -f "${CLIENT_FIFO}"
@@ -407,12 +577,16 @@ for run in $(seq 1 "${RUNS}"); do
                         CLIENT_OUTPUT+="$(cat "${CLIENT_ERR}")"
                     fi
                     rm -f "${CLIENT_OUT}" "${CLIENT_ERR}"
-                elif [[ "${pat}" == "MULTI_SPOT" ]]; then
+                elif [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" ]]; then
                     CLIENT_OUT="$(mktemp)"
                     CLIENT_ERR="$(mktemp)"
                     CLIENT_FIFO="$(mktemp -u)"
                     mkfifo "${CLIENT_FIFO}"
-                    "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT},${CONTROL_ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
+                    CLIENT_ENDPOINT="${ENDPOINT},${CONTROL_ENDPOINT}"
+                    if [[ "${pat}" == "MULTI_SPOT_REQREP" ]]; then
+                        CLIENT_ENDPOINT="${CLIENT_ENDPOINT},${ROUTE_INFO}"
+                    fi
+                    "${RUN_PREFIX[@]}" "${CLIENT_BIN}" "${transport}" "${size}" "${CLIENT_ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
                     CLIENT_PID=$!
                     exec {CLIENT_CONTROL_FD}> "${CLIENT_FIFO}"
                     rm -f "${CLIENT_FIFO}"
@@ -469,13 +643,13 @@ for run in $(seq 1 "${RUNS}"); do
                     fi
                     rm -f "${CLIENT_OUT}" "${CLIENT_ERR}"
                 elif [[ "${pat}" == "MULTI_STREAM" ]]; then
-                    if ! CLIENT_OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${STREAM_CLIENT}" \
+                    if ! CLIENT_OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${RUN_PREFIX[@]}" "${STREAM_CLIENT}" \
                         --transport "${transport}" \
                         --pattern STREAM \
                         --sizes "${size}" \
                         --runs 1 \
                         --duration "${DURATION}" \
-                        --ccu "${CLIENTS}" \
+                        --ccu "${PATTERN_CLIENTS}" \
                         --io-threads 4 \
                         --print-perf-result 1 \
                         --send-stop-token 0 \
@@ -484,7 +658,7 @@ for run in $(seq 1 "${RUNS}"); do
                         case_reason="binary_exit_or_timeout"
                     fi
                 else
-                    if ! CLIENT_OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1)"; then
+                    if ! CLIENT_OUTPUT="$(timeout "${CLIENT_TIMEOUT_SECONDS}s" "${RUN_PREFIX[@]}" "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1)"; then
                         case_status="fail"
                         case_reason="binary_exit_or_timeout"
                     fi
@@ -508,6 +682,9 @@ for run in $(seq 1 "${RUNS}"); do
                     if [[ -n "${unsupported_line}" ]]; then
                         case_status="unsupported"
                         case_reason="${unsupported_line}"
+                    elif printf '%s\n' "${OUTPUT}" | grep -qi 'protocol not supported'; then
+                        case_status="unsupported"
+                        case_reason="protocol_not_supported"
                     fi
                 fi
                 if [[ "${case_status}" == "success" ]]; then
@@ -532,18 +709,28 @@ for run in $(seq 1 "${RUNS}"); do
                 fi
                 printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
             done
-        done
+        if (( transport_index + 1 < ${#TRANSPORT_LIST[@]} )); then
+            sleep "$(awk "BEGIN { printf \"%.3f\", ${TRANSPORT_TRANSITION_MS} / 1000 }")"
+        fi
     done
+    if (( pat_index + 1 < ${#PATTERNS[@]} )); then
+        sleep "$(awk "BEGIN { printf \"%.3f\", ${PATTERN_TRANSITION_MS} / 1000 }")"
+    fi
 done
-
+    if (( run < RUNS )); then
+        sleep 3
+    fi
+done
 python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" <<'PY'
+  "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" \
+  "${COMMON_IO_THREADS}" "${SERVER_IO_THREADS}" "${CLIENT_IO_THREADS}" "${HWM}" "${SEND_HWM}" \
+  "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" <<'PY'
 import csv
 import math
 import sys
 from collections import defaultdict
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 rows = defaultdict(lambda: defaultdict(list))
@@ -593,7 +780,7 @@ def median(values):
     return (usable[mid - 1] + usable[mid]) / 2.0
 
 def fmt_rate(value):
-    return "N/A" if math.isnan(value) else f"{value / 1000.0:.2f} Kmsg/s"
+    return "N/A" if math.isnan(value) else f"{value / 1000.0:.2f}"
 
 def fmt_bandwidth(value):
     return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
@@ -622,7 +809,15 @@ def emit_effective_options(section):
     emit(f"- transports: {transports_csv}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
     emit(f"- clients: {clients}")
-    emit("- pin_cpu: off")
+    emit(f"- pin_cpu: {'on' if pin_cpu == '1' else 'off'}")
+    emit(f"- io_threads: {common_io_threads or 'default(binding)'}")
+    emit(f"- server_io_threads: {server_io_threads or 'default(binding)'}")
+    emit(f"- client_io_threads: {client_io_threads or 'default(binding)'}")
+    emit(f"- hwm: {hwm or 'default(binding)'}")
+    emit(f"- send_hwm: {send_hwm or 'default(binding)'}")
+    emit(f"- recv_hwm: {recv_hwm or 'default(binding)'}")
+    emit(f"- send_timeout_ms: {sndtimeo_ms}")
+    emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
     emit(f"- duration_seconds: {duration}")
     if results_tag:
         emit(f"- results_tag: {results_tag}")
@@ -632,16 +827,68 @@ emit_effective_options("start")
 emit("===============================================================================")
 emit("")
 
+def pattern_direction(pattern):
+    return "echo" if pattern in {
+        "MULTI_DEALER_ROUTER",
+        "MULTI_ROUTER_ROUTER",
+        "MULTI_STREAM",
+        "MULTI_SPOT_REQREP",
+    } else "one-way"
+
+def rate_unit(pattern):
+    return "Kops/s" if pattern_direction(pattern) == "echo" else "Kmsg/s"
+
+def emit_table_header():
+    emit("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
+    emit("|------|------------|-----------|--------------|-------------|-------------|")
+
+def metric_value_for_run(key, metric, run_index):
+    values = rows[key].get(metric, [])
+    if run_index < len(values):
+        return values[run_index]
+    return math.nan
+
+def emit_case_row(pattern, size, metric_values):
+    emit(
+        f"| {size}B | {fmt_rate(metric_values['throughput'])} {rate_unit(pattern)} | "
+        f"{fmt_bandwidth(metric_values['bandwidth'])} | "
+        f"{fmt_latency_ms(metric_values['latency'])} | "
+        f"{fmt_latency_ms(metric_values['latency_p95'])} | "
+        f"{fmt_latency_ms(metric_values['latency_p99'])} |"
+    )
+
 for pattern_index, pattern in enumerate(patterns):
     if pattern_index:
         emit("===============================================================================")
         emit("")
-    emit(f"## PATTERN: {pattern}")
+    emit(f"## PATTERN: {pattern} ({pattern_direction(pattern)})")
     emit("")
     for transport in pattern_transports[pattern]:
         emit(f"### Transport: {transport}")
-        emit("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
-        emit("|------|------------|-----------|--------------|-------------|-------------|")
+        if runs > 1:
+            for run_index in range(runs):
+                emit(f"run {run_index + 1}/{runs}:")
+                emit_table_header()
+                for size in pattern_sizes[pattern]:
+                    key = (pattern, transport, size)
+                    status, _reason = cases.get(key, ("fail", "missing_case_status"))
+                    if status in {"unsupported", "skip"}:
+                        emit(
+                            f"| {size}B | {status.upper()} | {status.upper()} | "
+                            f"{status.upper()} | {status.upper()} | {status.upper()} |"
+                        )
+                        continue
+                    metric_values = {
+                        metric: metric_value_for_run(key, metric, run_index)
+                        for metric in required_metrics
+                    }
+                    if any(math.isnan(value) for value in metric_values.values()):
+                        emit(f"| {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
+                    else:
+                        emit_case_row(pattern, size, metric_values)
+                emit("")
+            emit("median:")
+        emit_table_header()
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             status, reason = cases.get(key, ("fail", "missing_case_status"))
@@ -657,13 +904,7 @@ for pattern_index, pattern in enumerate(patterns):
             complete_case = all(len(rows[key].get(metric, [])) == runs for metric in required_metrics)
             if complete_case:
                 actual += 5
-                emit(
-                    f"| {size}B | {fmt_rate(metric_values['throughput'])} | "
-                    f"{fmt_bandwidth(metric_values['bandwidth'])} | "
-                    f"{fmt_latency_ms(metric_values['latency'])} | "
-                    f"{fmt_latency_ms(metric_values['latency_p95'])} | "
-                    f"{fmt_latency_ms(metric_values['latency_p99'])} |"
-                )
+                emit_case_row(pattern, size, metric_values)
                 for metric in required_metrics:
                     result_lines.append(
                         f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
@@ -694,6 +935,7 @@ if output_path:
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(text)
 sys.stdout.write(text)
+sys.exit(0 if expected == actual else 1)
 PY
 
 prune_reports "${RESULTS_DIR}"

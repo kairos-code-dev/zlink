@@ -9,6 +9,7 @@ import zlink
 from perf_multi_common import (
     TOPIC,
     attach_spot_service_pair,
+    benchmark_run_id,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
@@ -39,15 +40,6 @@ def _listen_tcp():
     return sock
 
 
-def _wait_connected(node, expected, timeout_s):
-    deadline = time.perf_counter() + timeout_s
-    while time.perf_counter() < deadline:
-        if node.status_snapshot().connected_peer_count >= expected:
-            return
-        time.sleep(0.01)
-    raise RuntimeError("spot data connection timeout")
-
-
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="spot")
     if len(args.endpoint.split(",")) != 2:
@@ -56,6 +48,7 @@ def main(argv=None):
 
     latencies = []
     received_count = 0
+    run_id = benchmark_run_id()
     ready_settle_s = resolve_multi_spot_ready_settle_s()
     control_settle_s = resolve_multi_spot_control_settle_s()
     recv_lock = threading.Lock()
@@ -137,7 +130,11 @@ def main(argv=None):
                 if not parts:
                     continue
                 data = parts[0]
-                if not is_active_message(data, expected_msg_size=args.msg_size, run_id=None):
+                if not is_active_message(
+                    data,
+                    expected_msg_size=args.msg_size,
+                    run_id=run_id,
+                ):
                     continue
                 with recv_lock:
                     latencies.append(latency_ns_from_message(data))
@@ -145,8 +142,6 @@ def main(argv=None):
 
         for _, spot in clients:
             spot.on_dispatch_event(on_dispatch)
-        for node, _ in clients:
-            _wait_connected(node, 1, READY_TIMEOUT_S)
 
         deadline = time.perf_counter() + READY_TIMEOUT_S
         while time.perf_counter() < deadline:
@@ -178,13 +173,17 @@ def main(argv=None):
             time.sleep(0.01)
 
         with recv_lock:
+            if received_count <= 0:
+                raise RuntimeError(
+                    "multi spot benchmark did not receive any active message"
+                )
             metrics = result_metrics(
                 count=received_count,
                 msg_size=args.msg_size,
                 elapsed_s=max(args.duration, 0.001),
                 latencies_ns=list(latencies),
             )
-        print_result_lines("MULTI_SPOT", "tcp", args.msg_size, metrics)
+        print_result_lines("MULTI_SPOT", args.transport, args.msg_size, metrics)
         sys.stdout.flush()
 
         for node, spot in reversed(clients):

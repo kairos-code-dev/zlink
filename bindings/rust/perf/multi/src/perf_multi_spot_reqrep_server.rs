@@ -12,9 +12,6 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
-const SERVICE_NAME: &str = "perf-spot-svc";
-const TOPIC: &str = "bench.topic";
-
 fn control_listener() -> io::Result<(TcpListener, String)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let endpoint = format!(
@@ -29,6 +26,16 @@ fn tcp_addr(endpoint: &str) -> String {
         .strip_prefix("tcp://")
         .expect("tcp control endpoint")
         .to_string()
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn main() {
@@ -47,7 +54,7 @@ fn main() {
         Ok(value) => value,
         Err(err) if err.kind() == ErrorKind::PermissionDenied => {
             common::emit_unsupported(
-                "MULTI_SPOT",
+                "MULTI_SPOT_REQREP",
                 &args.transport,
                 &format!("control_bind_errno_{}", err.raw_os_error().unwrap_or(libc::EPERM)),
             );
@@ -150,17 +157,46 @@ fn main() {
         node.set_tls_server(&pem.cert, &pem.key, false)
             .expect("spot tls");
     }
-    let spot = node.create_spot().expect("spot");
+    let mut spot = node.create_spot().expect("spot");
+    let stop_dispatch = Arc::clone(&stop);
+    let spot_ptr = (&spot as *const Spot) as usize;
+    spot.on_dispatch_event(move |event| {
+        if stop_dispatch.load(Ordering::Acquire) || event != SpotDispatchEvent::RoutedReadable {
+            return;
+        }
+        let spot = unsafe { &*(spot_ptr as *const Spot) };
+        loop {
+            match spot.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
+                Ok(received) => {
+                    let reply = Message::copy_from(common::message_payload(received.parts()))
+                        .expect("reply");
+                    received.reply(vec![reply]).expect("reply");
+                }
+                Err(err) if err.code() == RecvResult::NoData => break,
+                Err(err) => panic!("spot reqrep server recv_routed drain failed: {err}"),
+            }
+        }
+    })
+    .expect("dispatch event");
+
     let data_bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
     if let Err(err) = node.bind(&data_bind_endpoint) {
-        if common::handle_transport_setup_error("MULTI_SPOT", &args.transport, "bind", err) {
+        if common::handle_transport_setup_error("MULTI_SPOT_REQREP", &args.transport, "bind", err)
+        {
             return;
         }
         panic!("bind: {err}");
     }
     let endpoint = node.last_endpoint().expect("endpoint");
+    let node_rid = node.routing_id().expect("node rid");
+    let spot_rid = spot.routing_id().expect("spot rid");
     common::print_ready(&endpoint);
     println!("CONTROL_READY,{control_endpoint}");
+    println!(
+        "ROUTE_READY,{},{}",
+        hex_encode(node_rid.as_bytes()),
+        hex_encode(spot_rid.as_bytes())
+    );
     io::stdout().flush().ok();
 
     let deadline = Instant::now() + Duration::from_secs(20);
@@ -184,7 +220,7 @@ fn main() {
         || !client_connected.load(Ordering::Acquire)
         || ready_count.load(Ordering::Acquire) < settings.clients
     {
-        panic!("spot server handshake timeout");
+        panic!("spot reqrep server handshake timeout");
     }
 
     {
@@ -194,17 +230,7 @@ fn main() {
         stream.flush().expect("flush start");
     }
 
-    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
-    let mut seq = 1u64;
-    while Instant::now() < deadline && !stop.load(Ordering::Acquire) {
-        common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
-        seq += 1;
-        spot.publish(
-            SERVICE_NAME,
-            TOPIC,
-            Message::copy_from(&buf).expect("publish msg"),
-        )
-        .expect("spot publish");
+    while !stop.load(Ordering::Acquire) {
+        thread::yield_now();
     }
 }

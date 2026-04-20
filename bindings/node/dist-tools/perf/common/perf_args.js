@@ -27,7 +27,6 @@ function parseCommonArgs(argv, defaults) {
     const options = {
         pattern: defaults.pattern,
         duration: defaults.duration,
-        warmup: defaults.warmup,
         msgSizes: defaults.msgSizes,
         resultsDir: defaults.resultsDir,
         resultsTag: '',
@@ -35,6 +34,23 @@ function parseCommonArgs(argv, defaults) {
         runs: 1,
         transports: defaults.transports || [],
         clients: defaults.clients,
+        pinCpu: false,
+        ioThreads: undefined,
+        hwm: undefined,
+        sendHwm: undefined,
+        recvHwm: undefined,
+        serverIoThreads: undefined,
+        clientIoThreads: undefined,
+        sendTimeoutMs: undefined,
+        recvTimeoutMs: undefined,
+        connectConcurrency: undefined,
+        transportTransitionMs: undefined,
+        patternTransitionMs: undefined,
+        serverReadyTimeoutMs: undefined,
+        connectReadyTimeoutMs: undefined,
+        monitorHwm: undefined,
+        serverShutdownTimeoutMs: undefined,
+        serverBindPort: undefined,
         msgSizesExplicit: false,
         transportsExplicit: false,
         clientsExplicit: false,
@@ -48,10 +64,6 @@ function parseCommonArgs(argv, defaults) {
         }
         else if (arg === '--duration') {
             options.duration = Number(argv[i + 1]);
-            i += 1;
-        }
-        else if (arg === '--warmup') {
-            options.warmup = Number(argv[i + 1]);
             i += 1;
         }
         else if (arg === '--msg-size') {
@@ -85,6 +97,73 @@ function parseCommonArgs(argv, defaults) {
             options.transportsExplicit = true;
             i += 1;
         }
+        else if (arg === '--pin-cpu') {
+            options.pinCpu = true;
+        }
+        else if (arg === '--io-threads') {
+            options.ioThreads = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--hwm') {
+            options.hwm = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--send-hwm') {
+            options.sendHwm = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--recv-hwm') {
+            options.recvHwm = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--server-io-threads') {
+            options.serverIoThreads = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--client-io-threads') {
+            options.clientIoThreads = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--sndtimeo' || arg === '--send-timeout-ms') {
+            options.sendTimeoutMs = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--rcvtimeo' || arg === '--recv-timeout-ms') {
+            options.recvTimeoutMs = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--connect-concurrency') {
+            options.connectConcurrency = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--transport-transition-ms') {
+            options.transportTransitionMs = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--pattern-transition-ms') {
+            options.patternTransitionMs = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--server-ready-timeout-ms') {
+            options.serverReadyTimeoutMs = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--connect-ready-timeout-ms') {
+            options.connectReadyTimeoutMs = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--monitor-hwm') {
+            options.monitorHwm = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--server-shutdown-timeout-ms') {
+            options.serverShutdownTimeoutMs = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--server-bind-port') {
+            options.serverBindPort = Number(argv[i + 1]);
+            i += 1;
+        }
         else if (arg === '--clients') {
             if (typeof defaults.clients === 'undefined') {
                 throw new Error('--clients is not supported for this runner');
@@ -96,7 +175,7 @@ function parseCommonArgs(argv, defaults) {
         else if (arg === '--build-dir'
             || arg === '--reuse-build'
             || arg === '--clean-build') {
-            if (arg.startsWith('--') && argv[i + 1] && !argv[i + 1].startsWith('--')) {
+            if (arg === '--build-dir' && argv[i + 1] && !argv[i + 1].startsWith('--')) {
                 i += 1;
             }
         }

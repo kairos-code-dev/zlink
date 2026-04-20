@@ -1,5 +1,6 @@
 //! DEALER-DEALER multi client: one-way send workload with N client sockets.
 
+#[path = "perf_common.rs"]
 mod common;
 
 use std::io::{self, BufRead, Write};
@@ -10,7 +11,7 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_client_context();
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
@@ -33,14 +34,9 @@ fn main() {
     for socket in &sockets {
         monitors.push(SocketMonitor::open(socket).expect("monitor"));
     }
-    for monitor in &monitors {
-        loop {
-            match monitor.recv() {
-                Ok(event) if event.is_connection_ready() => break,
-                Ok(_) => continue,
-                Err(err) => panic!("connection-ready wait failed: {err}"),
-            }
-        }
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
+    for monitor in &mut monitors {
+        common::wait_monitor_ready(monitor, ready_timeout, "multi dealer-dealer client");
     }
 
     println!("CLIENT_READY,{}", args.msg_size);

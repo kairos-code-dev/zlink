@@ -13,7 +13,7 @@ fn main() {
         return;
     };
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_context();
     let pub_sock = ctx.pub_socket().expect("pub");
     let sub_sock = ctx.sub_socket().expect("sub");
     pub_sock
@@ -32,19 +32,14 @@ fn main() {
         .common_options()
         .set_recv_hwm(common::resolve_single_recv_hwm())
         .expect("sub rcvhwm");
-    pub_sock
-        .common_options()
-        .set_send_timeout(common::resolve_single_send_timeout())
-        .expect("pub sndtimeo");
-
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&pub_sock, &tls).expect("pub tls");
         common::setup_raw_tls_client(&sub_sock, &tls).expect("sub tls");
     }
 
-    let pub_mon = SocketMonitor::open(&pub_sock).expect("pub monitor");
-    let mon = SocketMonitor::open(&sub_sock).expect("monitor");
+    let mut pub_mon = SocketMonitor::open(&pub_sock).expect("pub monitor");
+    let mut mon = SocketMonitor::open(&sub_sock).expect("monitor");
     if let Err(err) = pub_sock.bind(&bind_endpoint) {
         if common::handle_transport_setup_error("PUBSUB", &config.transport, "bind", err) {
             return;
@@ -60,8 +55,8 @@ fn main() {
     }
     sub_sock.set_subscription("").expect("subscribe");
     let ready_timeout = common::resolve_single_ready_timeout();
-    common::wait_monitor_ready(&pub_mon, ready_timeout, "pubsub publisher");
-    common::wait_monitor_ready(&mon, ready_timeout, "pubsub subscriber");
+    common::wait_monitor_ready(&mut pub_mon, ready_timeout, "pubsub publisher");
+    common::wait_monitor_ready(&mut mon, ready_timeout, "pubsub subscriber");
     std::thread::sleep(common::resolve_single_pubsub_ready_settle());
 
     let collector = common::MetricCollector::new();

@@ -84,13 +84,14 @@ async function runSpotBenchmark(msgSize, options) {
         const seqRef = { current: 1n };
         await waitForProbeReady(spot, payload, runId, msgSize, seqRef);
         await waitForPostReadySettle(Number(process.env.PERF_SINGLE_SPOT_READY_SETTLE_MS ?? 1000));
-        const activeStartNs = process.hrtime.bigint();
+        const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
         const collector = createMetricCollector({
             runId,
             msgSize,
             activeStartNs,
-            activeStopNs
+            activeStopNs,
+            sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
         });
         spot.onDispatchEvent(() => {
             drainSpot(spot, (received) => {
@@ -101,8 +102,8 @@ async function runSpotBenchmark(msgSize, options) {
                 collector.record(decodeMetricHeader(firstPart.data()), currentEpochNs());
             });
         });
-        while (process.hrtime.bigint() < activeStopNs) {
-            for (let i = 0; i < 256 && process.hrtime.bigint() < activeStopNs; i += 1) {
+        while (currentEpochNs() < activeStopNs) {
+            for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
                 stampPayload(payload, {
                     phase: 1,
                     runId,
@@ -112,8 +113,17 @@ async function runSpotBenchmark(msgSize, options) {
                 spot.publish(SERVICE_NAME, TOPIC, payload);
                 seqRef.current += 1n;
             }
-            await sleepImmediate();
+            if (currentEpochNs() < activeStopNs) {
+                await sleepImmediate();
+            }
         }
+        stampPayload(payload, {
+            phase: 2,
+            runId,
+            msgSize,
+            seq: seqRef.current
+        });
+        spot.publish(SERVICE_NAME, TOPIC, payload);
         await waitForPostReadySettle(250);
         const result = await collector.finish();
         return result.latenciesNs;

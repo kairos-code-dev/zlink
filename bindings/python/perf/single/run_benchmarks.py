@@ -1,5 +1,6 @@
 import argparse
 import os
+import statistics
 import subprocess
 import sys
 from pathlib import Path
@@ -8,7 +9,10 @@ from perf_common import (
     build_report_path,
     parse_result_lines,
     render_effective_options,
-    render_markdown_summary,
+    rows_by_case,
+    status_row_text,
+    table_header_lines,
+    throughput_unit,
 )
 
 
@@ -20,6 +24,7 @@ DEFAULT_PATTERNS = (
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "SPOT",
+    "SPOT_REQREP",
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 RAW_TRANSPORTS = ("tcp", "tls", "ws", "wss", "inproc", "ipc")
@@ -31,15 +36,9 @@ POLICY_TRANSPORTS = {
     "DEALER_ROUTER": RAW_TRANSPORTS,
     "ROUTER_ROUTER": RAW_TRANSPORTS,
     "SPOT": SPOT_TRANSPORTS,
+    "SPOT_REQREP": SPOT_TRANSPORTS,
 }
-RUNNABLE_TRANSPORTS = {
-    "PAIR": ("tcp", "inproc", "ipc"),
-    "PUBSUB": ("tcp", "inproc", "ipc"),
-    "DEALER_DEALER": ("tcp", "inproc", "ipc"),
-    "DEALER_ROUTER": ("tcp",),
-    "ROUTER_ROUTER": ("tcp",),
-    "SPOT": (),
-}
+RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 
 def parse_args(argv):
@@ -47,13 +46,21 @@ def parse_args(argv):
     parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
     parser.add_argument("--duration", default="5")
-    parser.add_argument("--warmup", default="0", help=argparse.SUPPRESS)
     parser.add_argument("--msg-sizes", default=",".join(DEFAULT_MSG_SIZES))
     parser.add_argument("--transports", default=",".join(RAW_TRANSPORTS))
     parser.add_argument("--runs", default="1")
     parser.add_argument("--results-dir", default="")
     parser.add_argument("--results-tag", default="")
-    parser.add_argument("--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--output", default="")
+    parser.add_argument("--build-dir", default="")
+    parser.add_argument("--io-threads", default="")
+    parser.add_argument("--hwm", default="")
+    parser.add_argument("--send-hwm", default="")
+    parser.add_argument("--recv-hwm", default="")
+    parser.add_argument("--pin-cpu", action="store_true")
+    parser.add_argument(
+        "--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS
+    )
     return parser.parse_args(argv)
 
 
@@ -93,7 +100,9 @@ def _parse_transports(value):
 def _selected_configs(patterns, transports, msg_sizes):
     configs = []
     for pattern in patterns:
-        matched = [transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]]
+        matched = [
+            transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]
+        ]
         if not matched:
             continue
         for transport in matched:
@@ -104,29 +113,56 @@ def _selected_configs(patterns, transports, msg_sizes):
     return configs
 
 
-def _is_unsupported_output(text):
-    lowered = text.lower()
-    markers = (
-        "protocol not supported",
-        "unsupported transport",
-        "operation not permitted",
-        "permission denied",
-        "listen eperm",
-        "permissionerror: [errno 1]",
-        "binderror(code=0, internal_errno=1)",
-        "binderror(code=502, internal_errno=98)",
-        "internal_errno=98",
-        "unsupported,current,",
-    )
-    return any(marker in lowered for marker in markers)
-
-
 def _parse_status_lines(output):
     rows = []
     for line in output.splitlines():
         if line.startswith("SKIP,") or line.startswith("UNSUPPORTED,"):
             rows.append(line.strip())
     return rows
+
+
+def _grouped_case_metrics(output):
+    return rows_by_case(parse_result_lines(output))
+
+
+def _result_metrics_for_case(output, pattern, transport, msg_size):
+    return _grouped_case_metrics(output).get((pattern, transport, str(msg_size)), {})
+
+
+def _append_line(lines, line=""):
+    print(line, flush=True)
+    lines.append(line)
+
+
+def _metric_row(pattern, msg_size, metrics, *, indent="      "):
+    return (
+        f"{indent}| {int(msg_size):>7}B | "
+        f"{float(metrics.get('throughput', 0.0)) / 1000.0:>16.2f} {throughput_unit(pattern)} | "
+        f"{float(metrics.get('bandwidth', 0.0)):>10.2f} MB/s | "
+        f"{float(metrics.get('latency', 0.0)):>12.6f} ms | "
+        f"{float(metrics.get('latency_p95', 0.0)):>12.6f} ms | "
+        f"{float(metrics.get('latency_p99', 0.0)):>12.6f} ms |"
+    )
+
+
+def _status_row(msg_size, status, *, indent="      "):
+    return indent + status_row_text(int(msg_size), status)
+
+
+def _median_metrics(outputs, pattern, transport, msg_size):
+    metrics_list = [
+        _result_metrics_for_case(output, pattern, transport, msg_size)
+        for output in outputs
+    ]
+    metrics_list = [metrics for metrics in metrics_list if metrics]
+    if not metrics_list:
+        return {}
+    medians = {}
+    for metric in ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99"):
+        values = [float(metrics[metric]) for metrics in metrics_list if metric in metrics]
+        if values:
+            medians[metric] = statistics.median(values)
+    return medians
 
 
 def _run_pattern(args, env, pattern, transport, msg_size):
@@ -161,9 +197,9 @@ def _run_pattern(args, env, pattern, transport, msg_size):
     output = "\n".join(chunk for chunk in chunks if chunk)
     if result.returncode == 0:
         return output
-    if _is_unsupported_output(output):
-        return f"UNSUPPORTED,current,{pattern},{transport}"
-    raise SystemExit(output or f"{pattern} {transport} failed with exit code {result.returncode}")
+    raise SystemExit(
+        output or f"{pattern} {transport} failed with exit code {result.returncode}"
+    )
 
 
 def _build_options(args, patterns, transports, msg_sizes):
@@ -174,6 +210,7 @@ def _build_options(args, patterns, transports, msg_sizes):
         "patterns": ",".join(patterns),
         "transports": ",".join(transports),
         "msg_sizes": ",".join(msg_sizes),
+        "pin_cpu": "on" if args.pin_cpu else "off",
         "duration_seconds": args.duration,
     }
 
@@ -190,27 +227,124 @@ def main(argv=None):
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(args.pythonpath).resolve())
+    if args.io_threads:
+        env["PERF_IO_THREADS"] = args.io_threads
+    if args.hwm:
+        env["PERF_SINGLE_HWM"] = args.hwm
+    if args.send_hwm:
+        env["PERF_SINGLE_SNDHWM"] = args.send_hwm
+    if args.recv_hwm:
+        env["PERF_SINGLE_RCVHWM"] = args.recv_hwm
 
     options = _build_options(args, patterns, transports, msg_sizes)
-    sections = [render_effective_options(options), ""]
+    sections = []
     emitted_chunks = []
     status_lines = []
     fail_count = 0
     case_ordinal = 1
-    for _ in range(runs):
-        for pattern, transport, msg_size in configs:
-            case_env = dict(env)
-            case_env["PERF_RUN_ID"] = str(case_ordinal)
-            case_ordinal += 1
-            try:
-                output = _run_pattern(args, case_env, pattern, transport, msg_size)
-            except SystemExit as exc:
-                fail_count += 1
-                output = str(exc).strip()
-            if output:
-                emitted_chunks.append(output)
-                status_lines.extend(_parse_status_lines(output))
-                sections.append(output)
+
+    _append_line(sections, render_effective_options(options))
+    _append_line(sections)
+
+    for pattern in patterns:
+        _append_line(sections, f"  > Benchmarking current for {pattern}...")
+        pattern_transports = [
+            transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]
+        ]
+        for transport in pattern_transports:
+            _append_line(sections, f"    Testing {transport}:")
+            if runs == 1:
+                for header_line in table_header_lines():
+                    _append_line(sections, f"      {header_line}")
+                for msg_size in msg_sizes:
+                    case_env = dict(env)
+                    case_env["PERF_RUN_ID"] = str(case_ordinal)
+                    case_ordinal += 1
+                    try:
+                        output = _run_pattern(args, case_env, pattern, transport, msg_size)
+                    except SystemExit as exc:
+                        fail_count += 1
+                        output = str(exc).strip()
+                    if output:
+                        emitted_chunks.append(output)
+                        status_lines.extend(_parse_status_lines(output))
+                    metrics = _result_metrics_for_case(output, pattern, transport, msg_size)
+                    if metrics:
+                        _append_line(sections, _metric_row(pattern, msg_size, metrics))
+                    elif output.startswith("UNSUPPORTED,"):
+                        _append_line(sections, _status_row(msg_size, "UNSUPPORTED"))
+                    else:
+                        _append_line(sections, _status_row(msg_size, "FAIL"))
+                suffix = f"(failures={fail_count}) Done" if fail_count else "Done"
+                _append_line(sections, f"    Testing {transport}: {suffix}")
+            else:
+                transport_failures = 0
+                run_outputs = {msg_size: [] for msg_size in msg_sizes}
+                for run_index in range(runs):
+                    _append_line(sections, f"      run {run_index + 1}/{runs}:")
+                    for header_line in table_header_lines():
+                        _append_line(sections, f"        {header_line}")
+                    for msg_size in msg_sizes:
+                        case_env = dict(env)
+                        case_env["PERF_RUN_ID"] = str(case_ordinal)
+                        case_ordinal += 1
+                        try:
+                            output = _run_pattern(args, case_env, pattern, transport, msg_size)
+                        except SystemExit as exc:
+                            fail_count += 1
+                            transport_failures += 1
+                            output = str(exc).strip()
+                        if output:
+                            emitted_chunks.append(output)
+                            status_lines.extend(_parse_status_lines(output))
+                            run_outputs[msg_size].append(output)
+                        metrics = _result_metrics_for_case(output, pattern, transport, msg_size)
+                        if metrics:
+                            _append_line(
+                                sections,
+                                _metric_row(pattern, msg_size, metrics, indent="        "),
+                            )
+                        elif output.startswith("UNSUPPORTED,"):
+                            _append_line(
+                                sections,
+                                _status_row(msg_size, "UNSUPPORTED", indent="        "),
+                            )
+                        else:
+                            _append_line(
+                                sections,
+                                _status_row(msg_size, "FAIL", indent="        "),
+                            )
+                _append_line(sections, "      median:")
+                for header_line in table_header_lines():
+                    _append_line(sections, f"        {header_line}")
+                for msg_size in msg_sizes:
+                    metrics = _median_metrics(
+                        run_outputs[msg_size], pattern, transport, msg_size
+                    )
+                    if metrics:
+                        _append_line(
+                            sections,
+                            _metric_row(pattern, msg_size, metrics, indent="        "),
+                        )
+                    elif any(
+                        output.startswith("UNSUPPORTED,")
+                        for output in run_outputs[msg_size]
+                    ):
+                        _append_line(
+                            sections,
+                            _status_row(msg_size, "UNSUPPORTED", indent="        "),
+                        )
+                    else:
+                        _append_line(
+                            sections,
+                            _status_row(msg_size, "FAIL", indent="        "),
+                        )
+                suffix = (
+                    f"(failures={transport_failures}) Done" if transport_failures else "Done"
+                )
+                _append_line(sections, f"    Testing {transport}: {suffix}")
+        _append_line(sections)
+
     rows = parse_result_lines("\n".join(emitted_chunks))
     skipped_cases = 0
     unsupported_cases = 0
@@ -219,18 +353,25 @@ def main(argv=None):
             skipped_cases += 1
         elif line.startswith("UNSUPPORTED,"):
             unsupported_cases += 1
-    expected_cases = max(0, len(configs) * runs - skipped_cases - unsupported_cases - fail_count)
+    expected_cases = max(
+        0, len(configs) * runs - skipped_cases - unsupported_cases - fail_count
+    )
     expected_result_lines = expected_cases * 5
-    sections.extend(["", render_markdown_summary(rows), "", "## Effective Options (result)"])
-    status = "complete" if fail_count == 0 and len(rows) == expected_result_lines else "partial"
-    sections.append(f"- status: {status}")
-    sections.append(f"- expected_result_lines: {expected_result_lines}")
-    sections.append(f"- actual_result_lines: {len(rows)}")
-    sections.append(f"- skip_cases: {skipped_cases}")
-    sections.append(f"- unsupported_cases: {unsupported_cases}")
-    sections.append(f"- fail: {fail_count}")
-    final_output = "\n".join(section for section in sections if section is not None).rstrip() + "\n"
-    print(final_output, end="")
+    status = (
+        "complete"
+        if fail_count == 0 and len(rows) == expected_result_lines
+        else "partial"
+    )
+
+    _append_line(sections, render_effective_options(options, section="result"))
+    _append_line(sections, "## Completion")
+    _append_line(sections, f"- status: {status}")
+    _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
+    _append_line(sections, f"- actual_result_lines: {len(rows)}")
+    _append_line(sections, f"- skip_cases: {skipped_cases}")
+    _append_line(sections, f"- unsupported_cases: {unsupported_cases}")
+    _append_line(sections, f"- fail: {fail_count}")
+    final_output = "\n".join(sections).rstrip() + "\n"
 
     report_path = build_report_path(
         lang="python",
@@ -239,6 +380,8 @@ def main(argv=None):
         tag=args.results_tag or None,
     )
     report_path.write_text(final_output, encoding="utf-8")
+    if args.output:
+        Path(args.output).write_text(final_output, encoding="utf-8")
     if fail_count > 0:
         raise SystemExit(1)
 

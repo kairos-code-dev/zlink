@@ -6,6 +6,7 @@ import zlink
 from perf_multi_common import (
     TOPIC,
     apply_multi_socket_options,
+    benchmark_run_id,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
@@ -20,6 +21,7 @@ def main(argv=None):
     args = parse_client_args(
         argv or sys.argv[1:], pattern="pubsub"
     )
+    run_id = benchmark_run_id()
     latencies = []
     count = 0
 
@@ -32,7 +34,10 @@ def main(argv=None):
                 sock.set_subscription(TOPIC)
             print(f"CLIENT_READY,{args.msg_size}", flush=True)
             command = sys.stdin.readline().strip()
-            if command != f"START,{args.msg_size}":
+            if command not in {
+                f"START,{args.msg_size}",
+                f"PHASE_ACTIVE,{args.msg_size}",
+            }:
                 raise SystemExit(f"unexpected command: {command}")
 
             started = time.perf_counter()
@@ -55,20 +60,24 @@ def main(argv=None):
                             if not is_active_message(
                                 data,
                                 expected_msg_size=args.msg_size,
-                                run_id=None,
+                                run_id=run_id,
                             ):
                                 continue
                             latencies.append(latency_ns_from_message(data))
                             count += 1
 
             elapsed = time.perf_counter() - started
+            if count <= 0:
+                raise RuntimeError(
+                    "multi pubsub benchmark did not receive any active message"
+                )
             metrics = result_metrics(
                 count=count,
                 msg_size=args.msg_size,
                 elapsed_s=max(args.duration, elapsed),
                 latencies_ns=latencies,
             )
-            print_result_lines("MULTI_PUBSUB", "tcp", args.msg_size, metrics)
+            print_result_lines("MULTI_PUBSUB", args.transport, args.msg_size, metrics)
         finally:
             for sock in sockets:
                 try:

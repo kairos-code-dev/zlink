@@ -5,14 +5,16 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, trySocketPublish } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
+    const poller = new zlink.Poller();
     const payload = createPayload(options.msgSize);
     try {
         pub.bind(options.endpoint);
+        poller.addSocket(pub, POLLOUT);
         console.log(`READY,${options.endpoint}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
@@ -25,18 +27,28 @@ async function main() {
             const runId = createRunId(1);
             const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
             let seq = 1n;
+            let pending = false;
             while (process.hrtime.bigint() < activeStopNs) {
-                stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-                if (trySocketPublish(pub, 'perf.topic', payload)) {
-                    seq += 1n;
+                if (!pending) {
+                    stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+                    if (trySocketPublish(pub, 'perf.topic', payload)) {
+                        seq += 1n;
+                        continue;
+                    }
+                    pending = true;
+                }
+                const ready = poller.wait(25);
+                if (!ready || (ready.events & POLLOUT) === 0) {
+                    await sleepImmediate();
                     continue;
                 }
-                await sleepImmediate();
+                pending = false;
             }
             break;
         }
     }
     finally {
+        poller.close();
         pub.close();
         ctx.close();
     }

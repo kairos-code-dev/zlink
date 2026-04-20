@@ -276,11 +276,12 @@ def _retain_latest_report_files(report_dir, max_files):
 
 
 def build_report_path(*, lang, suite, results_dir=None, tag=None):
-    report_dir = (
-        Path(__file__).resolve().parent / "results" / suite / "report"
+    report_root = (
+        Path(__file__).resolve().parent / "results"
         if results_dir is None
         else Path(results_dir)
     )
+    report_dir = report_root / suite / "report"
     report_dir.mkdir(parents=True, exist_ok=True)
     max_files = (
         _env_int("PERF_RESULTS_MAX_FILES", 100)
@@ -322,6 +323,14 @@ def parse_result_lines(output):
     return rows
 
 
+def rows_by_case(rows):
+    grouped = {}
+    for row in rows:
+        key = (row["pattern"], row["transport"], str(row["size"]))
+        grouped.setdefault(key, {})[row["metric"]] = row["value"]
+    return grouped
+
+
 def pattern_direction_label(pattern):
     if pattern in {
         "SPOT_REQREP",
@@ -340,24 +349,40 @@ def throughput_unit(pattern):
 
 def _metric_row_text(pattern, size, metrics):
     return (
-        f"| {size}B | "
+        f"| {size:>7}B | "
         f"{float(metrics.get('throughput', 0.0)) / 1000.0:>16.2f} {throughput_unit(pattern)} | "
-        f"{float(metrics.get('bandwidth', 0.0)):>9.2f} MB/s | "
-        f"{float(metrics.get('latency', 0.0)):>11.6f} ms | "
-        f"{float(metrics.get('latency_p95', 0.0)):>11.6f} ms | "
-        f"{float(metrics.get('latency_p99', 0.0)):>11.6f} ms |"
+        f"{float(metrics.get('bandwidth', 0.0)):>10.2f} MB/s | "
+        f"{float(metrics.get('latency', 0.0)):>12.6f} ms | "
+        f"{float(metrics.get('latency_p95', 0.0)):>12.6f} ms | "
+        f"{float(metrics.get('latency_p99', 0.0)):>12.6f} ms |"
+    )
+
+
+def table_header_lines():
+    return [
+        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |",
+        "|----------|------------------|--------------|---------------|---------------|---------------|",
+    ]
+
+
+def status_row_text(size, status):
+    return (
+        f"| {size:>7}B | "
+        f"{status:>16} | "
+        f"{status:>12} | "
+        f"{status:>13} | "
+        f"{status:>13} | "
+        f"{status:>13} |"
     )
 
 
 def render_result_tables(rows):
     if not rows:
         return ""
-    grouped = {}
-    for row in rows:
-        key = (row["pattern"], row["transport"], row["size"])
-        grouped.setdefault(key, {})[row["metric"]] = row["value"]
+    grouped = rows_by_case(rows)
     lines = []
     last_pattern = None
+    last_transport = None
     for pattern, transport, size in sorted(grouped):
         if pattern != last_pattern:
             if last_pattern is not None:
@@ -365,12 +390,13 @@ def render_result_tables(rows):
             lines.append(f"## PATTERN: {pattern} ({pattern_direction_label(pattern)})")
             lines.append("")
             last_pattern = pattern
-        if not lines or not lines[-1].startswith("### Transport:") or lines[-1] != f"### Transport: {transport}":
-            if lines and lines[-1] != "":
+            last_transport = None
+        if transport != last_transport:
+            if last_transport is not None:
                 lines.append("")
             lines.append(f"### Transport: {transport}")
-            lines.append("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
-            lines.append("|------|------------|-----------|--------------|-------------|-------------|")
+            lines.extend(table_header_lines())
+            last_transport = transport
         lines.append(_metric_row_text(pattern, size, grouped[(pattern, transport, size)]))
     return "\n".join(lines)
 

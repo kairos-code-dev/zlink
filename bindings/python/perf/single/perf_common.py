@@ -14,6 +14,7 @@ from perf_metrics import (
     HEADER_SIZE,
     benchmark_run_id,
     build_report_path,
+    decode_header,
     extract_metric_payload,
     latency_ns_from_message,
     new_payload,
@@ -27,7 +28,6 @@ from perf_metrics import (
     safe_poll,
     stamp_payload,
     transport_endpoint,
-    unique_endpoint,
     wait_monitor_event,
     _require_zlink,
 )

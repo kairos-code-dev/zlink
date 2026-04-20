@@ -15,7 +15,7 @@ fn main() {
         return;
     };
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_context();
     let router = ctx.router_socket().expect("router");
     let dealer = ctx.dealer_socket().expect("dealer");
     let rid = RoutingId::from_bytes(b"perf-dealer");
@@ -38,15 +38,11 @@ fn main() {
         .expect("dealer rcvhwm");
     dealer
         .common_options()
-        .set_send_timeout(common::resolve_single_send_timeout())
-        .expect("dealer sndtimeo");
-    dealer
-        .common_options()
-        .set_recv_timeout(common::resolve_single_send_timeout())
+        .set_recv_timeout(common::resolve_single_recv_timeout())
         .expect("dealer rcvtimeo");
     router
         .common_options()
-        .set_recv_timeout(common::resolve_single_send_timeout())
+        .set_recv_timeout(common::resolve_single_recv_timeout())
         .expect("router rcvtimeo");
 
     if matches!(config.transport.as_str(), "tls" | "wss") {
@@ -55,8 +51,8 @@ fn main() {
         common::setup_raw_tls_client(&dealer, &tls).expect("dealer tls");
     }
 
-    let router_mon = SocketMonitor::open(&router).expect("router monitor");
-    let mon = SocketMonitor::open(&dealer).expect("monitor");
+    let mut router_mon = SocketMonitor::open(&router).expect("router monitor");
+    let mut mon = SocketMonitor::open(&dealer).expect("monitor");
     if let Err(err) = router.bind(&bind_endpoint) {
         if common::handle_transport_setup_error("DEALER_ROUTER", &config.transport, "bind", err) {
             return;
@@ -72,8 +68,8 @@ fn main() {
         panic!("connect: {err}");
     }
     let ready_timeout = common::resolve_single_ready_timeout();
-    common::wait_monitor_ready(&router_mon, ready_timeout, "dealer-router router");
-    common::wait_monitor_ready(&mon, ready_timeout, "dealer-router dealer");
+    common::wait_monitor_ready(&mut router_mon, ready_timeout, "dealer-router router");
+    common::wait_monitor_ready(&mut mon, ready_timeout, "dealer-router dealer");
     dealer
         .send(Message::copy_from(b"PING").expect("dealer ping"))
         .expect("dealer handshake send");

@@ -6,10 +6,11 @@ import zlink
 from perf_multi_common import (
     TOPIC,
     apply_multi_socket_options,
+    benchmark_endpoint,
+    benchmark_run_id,
     new_payload,
     parse_server_args,
     stamp_payload,
-    tcp_endpoint,
 )
 
 
@@ -22,9 +23,11 @@ def _stdin_stop(stop_event):
 
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
+    run_id = benchmark_run_id()
     stop_event = threading.Event()
     start_event = threading.Event()
-    endpoint = tcp_endpoint()
+    endpoint = benchmark_endpoint(args.transport, "multi-pubsub")
+    payload = new_payload(args.msg_size)
 
     def read_commands():
         for line in sys.stdin:
@@ -47,7 +50,7 @@ def main(argv=None):
             while not stop_event.is_set():
                 publisher.publish(
                     TOPIC,
-                    stamp_payload(new_payload(args.msg_size), phase=1),
+                    stamp_payload(payload, phase=1, run_id=run_id),
                 )
 
 

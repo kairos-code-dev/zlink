@@ -7,6 +7,7 @@ import zlink
 
 from perf_multi_common import (
     apply_multi_socket_options,
+    benchmark_run_id,
     latency_ns_from_message,
     is_active_message,
     new_payload,
@@ -20,6 +21,7 @@ from perf_multi_common import (
 
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="dealer_router")
+    run_id = benchmark_run_id()
     payload = new_payload(args.msg_size)
     results = [None] * args.clients
 
@@ -49,7 +51,7 @@ def main(argv=None):
                             if not is_active_message(
                                 data,
                                 expected_msg_size=args.msg_size,
-                                run_id=None,
+                                run_id=run_id,
                             ):
                                 continue
                             local_latencies.append(latency_ns_from_message(data))
@@ -67,13 +69,19 @@ def main(argv=None):
                 latencies = []
                 for bucket in results:
                     latencies.extend(bucket or [])
+                if not latencies:
+                    raise RuntimeError(
+                        "multi dealer-router benchmark did not receive any active reply"
+                    )
                 metrics = result_metrics(
                     count=len(latencies),
                     msg_size=args.msg_size,
                     elapsed_s=max(args.duration, time.perf_counter() - started),
                     latencies_ns=latencies,
                 )
-                print_result_lines("MULTI_DEALER_ROUTER", "tcp", args.msg_size, metrics)
+                print_result_lines(
+                    "MULTI_DEALER_ROUTER", args.transport, args.msg_size, metrics
+                )
         finally:
             for sock in sockets:
                 try:

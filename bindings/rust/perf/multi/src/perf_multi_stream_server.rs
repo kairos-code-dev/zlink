@@ -1,3 +1,4 @@
+#[path = "perf_common.rs"]
 mod common;
 
 use std::sync::{
@@ -18,23 +19,23 @@ fn build_packet_frame(header: &[u8], body: &[u8]) -> Vec<u8> {
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_server_context();
     let mut stream = ctx.stream_socket().expect("stream");
     stream
         .common_options()
-        .set_send_hwm(settings.hwm)
+        .set_send_hwm(settings.send_hwm)
         .expect("sndhwm");
     stream
         .common_options()
-        .set_recv_hwm(settings.hwm)
+        .set_recv_hwm(settings.recv_hwm)
         .expect("rcvhwm");
     stream
         .common_options()
-        .set_send_timeout(std::time::Duration::from_secs(5))
+        .set_send_timeout(std::time::Duration::from_millis(settings.send_timeout_ms))
         .expect("sndtimeo");
     stream
         .common_options()
-        .set_recv_timeout(std::time::Duration::from_secs(5))
+        .set_recv_timeout(std::time::Duration::from_millis(settings.recv_timeout_ms))
         .expect("rcvtimeo");
     stream
         .common_options()
@@ -48,12 +49,7 @@ fn main() {
             let _ = send_handle.send_to(&routing_id, msg);
         })
         .expect("on_packet");
-    let bind_endpoint = match args.transport.as_str() {
-        "ws" => "ws://0.0.0.0:0".to_string(),
-        "wss" => "wss://0.0.0.0:0".to_string(),
-        "tls" => "tls://0.0.0.0:0".to_string(),
-        _ => "tcp://0.0.0.0:0".to_string(),
-    };
+    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&stream, &tls).expect("stream tls");
@@ -73,6 +69,6 @@ fn main() {
         stop_reader.store(true, Ordering::Release);
     });
     while !stop.load(Ordering::Acquire) {
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::yield_now();
     }
 }

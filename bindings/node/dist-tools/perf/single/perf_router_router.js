@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { benchmarkEndpoint, drainRecvSocket, waitForConnectionReady, } = require('./perf_single_common');
+const { applySocketPolicy, benchmarkEndpoint, drainRecvSocket, waitForConnectionReady, } = require('./perf_single_common');
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
 const RECEIVER_ROUTING_ID = zlink.RoutingId.fromBytes(RECEIVER_ID);
@@ -29,12 +29,14 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const sender = new zlink.RouterSocket(ctx);
     const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
     try {
+        applySocketPolicy(receiver);
+        applySocketPolicy(sender);
         receiver.setRoutingId(RECEIVER_ROUTING_ID);
         sender.setRoutingId(SENDER_ROUTING_ID);
         receiver.bind(endpoint);
         await waitForConnectionReady(sender, () => sender.connect(endpoint));
         await handshake(receiver, sender);
-        const activeStartNs = process.hrtime.bigint();
+        const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
         const runId = createRunId(options.runId ?? 1);
@@ -42,7 +44,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
             runId,
             msgSize,
             activeStartNs,
-            activeStopNs
+            activeStopNs,
+            sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
         });
         const payload = createPayload(msgSize);
         let seq = 1n;
@@ -51,8 +54,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
             const header = decodeMetricHeader(received.parts[0].data());
             collector.record(header, currentEpochNs());
         }, () => stop);
-        while (process.hrtime.bigint() < activeStopNs) {
-            for (let i = 0; i < 256 && process.hrtime.bigint() < activeStopNs; i += 1) {
+        while (currentEpochNs() < activeStopNs) {
+            for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
                 stampPayload(payload, {
                     phase: 1,
                     runId,
@@ -62,12 +65,14 @@ async function runRouterRouterBenchmark(msgSize, options) {
                 sender.send(RECEIVER_ROUTING_ID, payload);
                 seq += 1n;
             }
-            if ((Number(seq) & 0x03) === 0) {
+            if (currentEpochNs() < activeStopNs) {
                 await sleepImmediate();
             }
         }
+        stampPayload(payload, { phase: 2, runId, msgSize, seq });
+        sender.send(RECEIVER_ROUTING_ID, payload);
         const drainDeadlineNs = activeStopNs + 250000000n;
-        while (process.hrtime.bigint() < drainDeadlineNs) {
+        while (currentEpochNs() < drainDeadlineNs) {
             await sleepImmediate();
         }
         stop = true;

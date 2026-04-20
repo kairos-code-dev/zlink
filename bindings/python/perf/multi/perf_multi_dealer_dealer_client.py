@@ -6,6 +6,7 @@ import zlink
 
 from perf_multi_common import (
     apply_multi_socket_options,
+    benchmark_run_id,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
@@ -20,6 +21,7 @@ def main(argv=None):
     endpoints = args.endpoint.split(";")
     if len(endpoints) != args.clients:
         raise SystemExit("endpoint count must match --clients")
+    run_id = benchmark_run_id()
     latencies = []
     count = 0
 
@@ -39,7 +41,10 @@ def main(argv=None):
                     wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
                 print(f"CLIENT_READY,{args.msg_size}", flush=True)
                 command = sys.stdin.readline().strip()
-                if command != f"START,{args.msg_size}":
+                if command not in {
+                    f"START,{args.msg_size}",
+                    f"PHASE_ACTIVE,{args.msg_size}",
+                }:
                     raise SystemExit(f"unexpected command: {command}")
 
                 started = time.perf_counter()
@@ -56,18 +61,24 @@ def main(argv=None):
                         if not is_active_message(
                             data,
                             expected_msg_size=args.msg_size,
-                            run_id=None,
+                            run_id=run_id,
                         ):
                             continue
                         latencies.append(latency_ns_from_message(data))
                         count += 1
+                if count <= 0:
+                    raise RuntimeError(
+                        "multi dealer-dealer benchmark did not receive any active message"
+                    )
                 metrics = result_metrics(
                     count=count,
                     msg_size=args.msg_size,
                     elapsed_s=max(args.duration, time.perf_counter() - started),
                     latencies_ns=latencies,
                 )
-                print_result_lines("MULTI_DEALER_DEALER", "tcp", args.msg_size, metrics)
+                print_result_lines(
+                    "MULTI_DEALER_DEALER", args.transport, args.msg_size, metrics
+                )
         finally:
             for sock in sockets:
                 try:

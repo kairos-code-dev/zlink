@@ -5,6 +5,8 @@ edition = "2024"
 rust-version = "1.85"
 publish = false
 
+[workspace]
+
 [dependencies]
 libc = "0.2"
 zlink = { path = "../.." }
@@ -32,3 +34,7 @@ path = "src/perf_router_router.rs"
 [[bin]]
 name = "perf_spot"
 path = "src/perf_spot.rs"
+
+[[bin]]
+name = "perf_spot_reqrep"
+path = "src/perf_spot_reqrep.rs"

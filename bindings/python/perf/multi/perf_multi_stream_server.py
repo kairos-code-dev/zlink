@@ -6,15 +6,14 @@ import zlink
 
 from perf_multi_common import (
     apply_multi_socket_options,
-    parse_len32be_frames,
+    benchmark_endpoint,
     parse_server_args,
-    tcp_endpoint,
 )
 
 
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
-    endpoint = tcp_endpoint()
+    endpoint = benchmark_endpoint(args.transport, "multi-stream")
     stop = threading.Event()
 
     def wait_stop():

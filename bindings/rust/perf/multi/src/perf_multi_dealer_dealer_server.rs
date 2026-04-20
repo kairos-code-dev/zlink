@@ -1,16 +1,17 @@
 //! DEALER-DEALER multi server: one-way receive sink.
 
+#[path = "perf_common.rs"]
 mod common;
 
 use std::io::{self, BufRead};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use zlink::*;
 
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_server_context();
     let server = ctx.dealer_socket().expect("dealer");
     server
         .common_options()
@@ -29,12 +30,7 @@ fn main() {
         common::setup_raw_tls_server(&server, &tls).expect("server tls");
     }
 
-    let bind_endpoint = match args.transport.as_str() {
-        "ws" => "ws://0.0.0.0:0".to_string(),
-        "wss" => "wss://0.0.0.0:0".to_string(),
-        "tls" => "tls://0.0.0.0:0".to_string(),
-        _ => "tcp://0.0.0.0:0".to_string(),
-    };
+    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
     if let Err(err) = server.bind(&bind_endpoint) {
         if common::handle_transport_setup_error(
             "MULTI_DEALER_DEALER",

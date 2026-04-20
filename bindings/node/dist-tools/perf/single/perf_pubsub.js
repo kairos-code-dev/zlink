@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { benchmarkEndpoint, drainRecvSocket, waitForPostReadySettle, waitForConnectionReady, } = require('./perf_single_common');
+const { applySocketPolicy, benchmarkEndpoint, drainRecvSocket, waitForPostReadySettle, waitForConnectionReady, } = require('./perf_single_common');
 async function runPubSubBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
@@ -11,11 +11,19 @@ async function runPubSubBenchmark(msgSize, options) {
     const endpoint = await benchmarkEndpoint(options.transport, `pubsub-${msgSize}`);
     const topic = 'perf:pubsub';
     try {
+        applySocketPolicy(pub, {
+            noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 1) !== 0
+        });
+        applySocketPolicy(sub, {
+            recvTimeout: Number(process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
+                ?? process.env.PERF_SINGLE_RCVTIMEO_MS
+                ?? 200)
+        });
         pub.bind(endpoint);
         sub.setSubscription(topic);
         await waitForConnectionReady(sub, () => sub.connect(endpoint));
         await waitForPostReadySettle(Number(process.env.PERF_SINGLE_PUBSUB_READY_SETTLE_MS ?? 1000));
-        const activeStartNs = process.hrtime.bigint();
+        const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
         const runId = createRunId(options.runId ?? 1);
@@ -23,7 +31,8 @@ async function runPubSubBenchmark(msgSize, options) {
             runId,
             msgSize,
             activeStartNs,
-            activeStopNs
+            activeStopNs,
+            sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
         });
         const payload = createPayload(msgSize);
         let seq = 1n;
@@ -32,8 +41,8 @@ async function runPubSubBenchmark(msgSize, options) {
             const header = decodeMetricHeader(received.parts[0].data());
             collector.record(header, currentEpochNs());
         }, () => stop);
-        while (process.hrtime.bigint() < activeStopNs) {
-            for (let i = 0; i < 256 && process.hrtime.bigint() < activeStopNs; i += 1) {
+        while (currentEpochNs() < activeStopNs) {
+            for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
                 stampPayload(payload, {
                     phase: 1,
                     runId,
@@ -43,12 +52,14 @@ async function runPubSubBenchmark(msgSize, options) {
                 pub.publish(topic, payload);
                 seq += 1n;
             }
-            if ((Number(seq) & 0x03) === 0) {
+            if (currentEpochNs() < activeStopNs) {
                 await sleepImmediate();
             }
         }
+        stampPayload(payload, { phase: 2, runId, msgSize, seq });
+        pub.publish(topic, payload);
         const drainDeadlineNs = activeStopNs + 250000000n;
-        while (process.hrtime.bigint() < drainDeadlineNs) {
+        while (currentEpochNs() < drainDeadlineNs) {
             await sleepImmediate();
         }
         stop = true;

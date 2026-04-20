@@ -5,34 +5,46 @@
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const {
-  createPayload,
+  createMetricCollector,
   createRunId,
-  sleepImmediate,
-  stampPayload
+  decodeMetricHeader,
+  currentEpochNs,
+  summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const {
-  trySocketSend,
-  waitForConnectionReady
-} = require('./perf_multi_runtime');
+const { drainRecvSocket, waitForConnectionReady } = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const dealers = [];
-  const payloads = [];
+  let collector = null;
+  let stop = false;
 
   try {
     for (let i = 0; i < options.clients; i += 1) {
       const dealer = new zlink.DealerSocket(ctx);
       dealers.push(dealer);
-      payloads.push(createPayload(options.msgSize));
     }
     for (const dealer of dealers) {
       await waitForConnectionReady(dealer, () => dealer.connect(options.endpoint));
     }
-    console.log(`CLIENT_READY,${options.msgSize}`);
 
+    const recvTasks = dealers.map((dealer) => drainRecvSocket(
+      dealer,
+      (received) => {
+        if (!collector) {
+          return;
+        }
+        collector.record(
+          decodeMetricHeader(received.parts[0].data()),
+          currentEpochNs()
+        );
+      },
+      () => stop
+    ));
+
+    console.log(`CLIENT_READY,${options.msgSize}`);
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     let active = false;
     for await (const line of rl) {
@@ -45,22 +57,29 @@ async function main() {
       throw new Error('dealer-dealer client missing PHASE_ACTIVE');
     }
 
-    const runId = createRunId(1);
-    const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
-    let seq = 1n;
-    while (process.hrtime.bigint() < activeStopNs) {
-      let progressed = false;
-      for (let i = 0; i < dealers.length; i += 1) {
-        stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-        if (!trySocketSend(dealers[i], payloads[i])) {
-          continue;
-        }
-        progressed = true;
-        seq += 1n;
-      }
-      if (!progressed) {
-        await sleepImmediate();
-      }
+    const activeStartNs = currentEpochNs();
+    const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+    collector = createMetricCollector({
+      runId: createRunId(1),
+      msgSize: options.msgSize,
+      activeStartNs,
+      activeStopNs
+    });
+    while (currentEpochNs() < activeStopNs + 250_000_000n) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    stop = true;
+
+    await Promise.all(recvTasks);
+    const result = collector ? await collector.finish() : { latenciesNs: [] };
+    for (const line of summarizeMetrics(
+      'MULTI_DEALER_DEALER',
+      options.transport,
+      options.msgSize,
+      result.latenciesNs,
+      options.duration
+    )) {
+      console.log(line);
     }
   } finally {
     for (const dealer of dealers) {

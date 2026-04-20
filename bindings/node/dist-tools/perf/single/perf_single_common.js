@@ -2,6 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const net = require('node:net');
+const os = require('node:os');
+const path = require('node:path');
 const { once } = require('node:events');
 const zlink = require('../../dist/canonical');
 const { MonitorEvent, RecvFlags, RecvResult } = zlink;
@@ -27,10 +29,46 @@ async function benchmarkEndpoint(transport, token) {
     if (transport === 'inproc') {
         return `inproc://perf-${token}-${process.pid}`;
     }
-    if (transport === 'tcp') {
-        return `tcp://127.0.0.1:${await reservePort()}`;
+    if (transport === 'ipc') {
+        return `ipc://${path.join(os.tmpdir(), `zlink-node-perf-${process.pid}-${token}.sock`)}`;
+    }
+    if (transport === 'tcp'
+        || transport === 'tls'
+        || transport === 'ws'
+        || transport === 'wss') {
+        return `${transport}://127.0.0.1:${await reservePort()}`;
     }
     throw new Error(`unsupported single transport: ${transport}`);
+}
+function integerEnv(name, fallback) {
+    const raw = process.env[name];
+    if (raw === undefined || raw === '') {
+        return fallback;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+}
+function applySocketPolicy(socket, options = {}) {
+    const hwm = integerEnv('PERF_SINGLE_HWM', 1000);
+    const sendHwm = integerEnv('PERF_SINGLE_SNDHWM', hwm);
+    const recvHwm = integerEnv('PERF_SINGLE_RCVHWM', hwm);
+    const sendTimeout = integerEnv('PERF_SINGLE_SNDTIMEO_MS', 200);
+    const recvTimeout = integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200);
+    if (typeof socket.setSendHighWaterMark === 'function') {
+        socket.setSendHighWaterMark(sendHwm);
+    }
+    if (typeof socket.setReceiveHighWaterMark === 'function') {
+        socket.setReceiveHighWaterMark(recvHwm);
+    }
+    if (typeof socket.setSendTimeout === 'function') {
+        socket.setSendTimeout(sendTimeout);
+    }
+    if (typeof socket.setReceiveTimeout === 'function') {
+        socket.setReceiveTimeout(options.recvTimeout ?? recvTimeout);
+    }
+    if (typeof socket.setNoDrop === 'function' && options.noDrop !== undefined) {
+        socket.setNoDrop(Boolean(options.noDrop));
+    }
 }
 function recvNoWait(socket) {
     try {
@@ -86,7 +124,7 @@ function trySocketPublish(socket, topic, payload) {
         throw error;
     }
 }
-async function waitForConnectionReady(socket, connectFn = null, timeoutMs = 5000) {
+async function waitForConnectionReady(socket, connectFn = null, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
     const monitor = socket.monitorOpen(MonitorEvent.CONNECTION_READY);
     try {
         if (typeof connectFn === 'function') {
@@ -184,6 +222,7 @@ function drainRecvNow(socket, onMessage) {
     }
 }
 module.exports = {
+    applySocketPolicy,
     benchmarkEndpoint,
     drainRecvSocket,
     drainRecvNow,

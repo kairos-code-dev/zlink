@@ -41,15 +41,35 @@ function throughputUnit(pattern) {
     : 'Kmsg/s';
 }
 
-function formatTableRows(rows) {
+function formatTableHeader() {
   return [
     '| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |',
-    '|----------|------------------|------------|---------------|---------------|---------------|',
-    ...rows.map((row) => {
-      const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
-      const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
-      return `| ${String(row.msgSize).padEnd(8)}B | ${throughput.padStart(16)} | ${bandwidth.padStart(10)} | ${`${row.metrics.latency.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p95.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p99.toFixed(6)} ms`.padStart(13)} |`;
-    })
+    '|----------|------------------|------------|---------------|---------------|---------------|'
+  ];
+}
+
+function formatTableRow(row) {
+  const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
+  const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
+  return `| ${String(row.msgSize).padEnd(8)}B | ${throughput.padStart(16)} | ${bandwidth.padStart(10)} | ${`${row.metrics.latency.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p95.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p99.toFixed(6)} ms`.padStart(13)} |`;
+}
+
+function formatTableRows(rows) {
+  return [
+    ...formatTableHeader(),
+    ...rows.map((row) => formatTableRow(row))
+  ];
+}
+
+function patternDirection(pattern) {
+  return throughputUnit(pattern) === 'Kops/s' ? 'echo' : 'one-way';
+}
+
+function completionLines(status, expected, actual) {
+  return [
+    `- status: ${status}`,
+    `- expected_result_lines: ${expected}`,
+    `- actual_result_lines: ${actual}`
   ];
 }
 
@@ -113,6 +133,10 @@ function writeReport(reportDir, lang, suite, options, renderedSections, completi
 
 module.exports = {
   buildEffectiveOptions,
+  completionLines,
   formatTableRows,
+  formatTableHeader,
+  formatTableRow,
+  patternDirection,
   writeReport
 };

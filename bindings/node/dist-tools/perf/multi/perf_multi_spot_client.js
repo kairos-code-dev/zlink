@@ -31,6 +31,7 @@ async function main() {
     let collector = null;
     try {
         controlPub.bind(options.controlEndpoint);
+        console.log(`CLIENT_CONTROL_ENDPOINT,${options.controlEndpoint}`);
         for (let i = 0; i < options.clients; i += 1) {
             const node = new zlink.SpotNode(ctx);
             const dealer = new zlink.DealerSocket(ctx);
@@ -58,8 +59,15 @@ async function main() {
                 }
             });
         }
-        await new Promise((resolve) => setTimeout(resolve, Number(process.env.PERF_MULTI_SPOT_READY_SETTLE_MS ?? 1000)));
+        const stabilizationDeadline = Date.now() + 1000;
+        while (Date.now() < stabilizationDeadline) {
+            await sleepImmediate();
+        }
         while (!tryControlPublish(controlPub, 'CONNECTED')) {
+            await sleepImmediate();
+        }
+        const controlSettleDeadline = Date.now() + 25;
+        while (Date.now() < controlSettleDeadline) {
             await sleepImmediate();
         }
         while (!tryControlPublish(controlPub, `READY_COUNT,${options.msgSize},${slots.length}`)) {
@@ -71,7 +79,7 @@ async function main() {
             if (line !== `START,${options.msgSize}`) {
                 continue;
             }
-            const activeStartNs = process.hrtime.bigint();
+            const activeStartNs = currentEpochNs();
             const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
             collector = createMetricCollector({
                 runId: createRunId(1),
@@ -79,13 +87,13 @@ async function main() {
                 activeStartNs,
                 activeStopNs
             });
-            while (process.hrtime.bigint() < activeStopNs + 250000000n) {
+            while (currentEpochNs() < activeStopNs + 250000000n) {
                 await sleepImmediate();
             }
             break;
         }
         const result = collector ? await collector.finish() : { latenciesNs: [] };
-        for (const metricLine of summarizeMetrics('MULTI_SPOT', 'tcp', options.msgSize, result.latenciesNs, options.duration)) {
+        for (const metricLine of summarizeMetrics('MULTI_SPOT', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
             console.log(metricLine);
         }
     }

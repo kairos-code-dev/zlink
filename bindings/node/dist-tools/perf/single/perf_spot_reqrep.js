@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-const { benchmarkEndpoint, waitForPostReadySettle } = require('./perf_single_common');
+const { applySocketPolicy, benchmarkEndpoint, waitForPostReadySettle } = require('./perf_single_common');
 function tryRecvRouted(spot) {
     try {
         return spot.recvRouted(zlink.RecvFlags.DontWait);
@@ -27,8 +27,10 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     const requester = new zlink.RouterSocket(ctx);
     const replierNode = new zlink.SpotNode(ctx);
     const replier = replierNode.createSpot();
-    const endpoint = await benchmarkEndpoint('tcp', `spot-reqrep-${msgSize}`);
+    const endpoint = await benchmarkEndpoint(options.transport, `spot-reqrep-${msgSize}`);
     try {
+        applySocketPolicy(requester);
+        applySocketPolicy(replier);
         replierNode.bind(endpoint);
         requester.connect(endpoint);
         replier.onDispatchEvent(() => {
@@ -56,14 +58,15 @@ async function runSpotReqRepBenchmark(msgSize, options) {
         const probeReply = await requester.requestToSpot(replierNode.routingId, replier.routingId, probe, 2000);
         closeMessageParts(probeReply);
         await waitForPostReadySettle(Number(process.env.PERF_SINGLE_SPOT_READY_SETTLE_MS ?? 1000));
-        const activeStartNs = process.hrtime.bigint();
+        const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
         const collector = createMetricCollector({
             runId,
             msgSize,
             activeStartNs,
             activeStopNs,
-            roundTrip: true
+            roundTrip: true,
+            sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
         });
         const payload = createPayload(msgSize);
         let seq = 2n;
@@ -79,9 +82,9 @@ async function runSpotReqRepBenchmark(msgSize, options) {
                 inflight -= 1;
             }
         };
-        while (process.hrtime.bigint() < activeStopNs) {
+        while (currentEpochNs() < activeStopNs) {
             let progressed = false;
-            while (inflight < 64 && process.hrtime.bigint() < activeStopNs) {
+            while (inflight < 1 && currentEpochNs() < activeStopNs) {
                 stampPayload(payload, {
                     phase: 1,
                     runId,

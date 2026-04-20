@@ -2,15 +2,17 @@
 
 //! Multi perf common utilities.
 
-#[path = "backpressure.rs"]
+#[path = "perf_backpressure.rs"]
 pub mod backpressure;
 
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::mpsc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zlink::Message;
 use zlink::{
-    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, ZlinkError,
+    Context, DealerSocket, PairSocket, PubSocket, RouterSocket, SocketMonitor, StreamSocket,
+    SubSocket, ZlinkError,
 };
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
@@ -351,6 +353,60 @@ pub fn print_ready(endpoint: &str) {
     std::io::stdout().flush().ok();
 }
 
+pub fn wait_monitor_ready(mon: &mut SocketMonitor, timeout: Duration, name: &str) {
+    let (tx, rx) = mpsc::sync_channel::<()>(1);
+    mon.on_event(move |event| {
+        if event.is_connection_ready() {
+            let _ = tx.send(());
+        }
+    })
+    .unwrap_or_else(|err| panic!("{name} monitor handler install failed: {err}"));
+
+    match rx.recv_timeout(timeout) {
+        Ok(()) => {}
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            panic!("{name} connection-ready wait timed out after {:?}", timeout);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("{name} monitor channel disconnected before connection-ready");
+        }
+    }
+}
+
+fn perf_context_with_env(primary_env: &str) -> Context {
+    let ctx = Context::new().expect("context");
+    let io_threads = std::env::var(primary_env)
+        .ok()
+        .or_else(|| std::env::var("PERF_IO_THREADS").ok())
+        .and_then(|value| value.parse::<i32>().ok())
+        .filter(|value| *value > 0);
+    if let Some(io_threads) = io_threads {
+        ctx.options().set_io_threads(io_threads).expect("set io threads");
+    }
+    ctx
+}
+
+pub fn perf_server_context() -> Context {
+    perf_context_with_env("PERF_MULTI_SERVER_IO_THREADS")
+}
+
+pub fn perf_client_context() -> Context {
+    perf_context_with_env("PERF_MULTI_CLIENT_IO_THREADS")
+}
+
+pub fn resolve_server_bind_endpoint(transport: &str) -> String {
+    let port = std::env::var("PERF_MULTI_SERVER_BIND_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(0);
+    match transport {
+        "ws" => format!("ws://0.0.0.0:{port}"),
+        "wss" => format!("wss://0.0.0.0:{port}"),
+        "tls" => format!("tls://0.0.0.0:{port}"),
+        _ => format!("tcp://0.0.0.0:{port}"),
+    }
+}
+
 // -- Settings from env -------------------------------------------------------
 
 pub struct MultiSettings {
@@ -367,12 +423,16 @@ impl MultiSettings {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
-            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
-            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
+            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 100)),
+            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 100)),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
             recv_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
         }
     }
+}
+
+pub fn resolve_multi_connect_ready_timeout() -> Duration {
+    Duration::from_millis(env_or("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5_000) as u64)
 }
 
 fn env_or(name: &str, default: usize) -> usize {

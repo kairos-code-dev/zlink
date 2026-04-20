@@ -51,12 +51,16 @@ async function main() {
         controlSub.setSubscription(CONTROL_TOPIC);
         controlSub.connect(options.controlEndpoint);
         console.log(`READY,${options.endpoint}`);
+        console.log(`CONTROL_READY,${options.controlEndpoint}`);
         console.log(`ROUTE_READY,${node.routingId.toBytes().toString('hex')},${spot.routingId.toBytes().toString('hex')}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         (async () => {
             for await (const line of rl) {
                 if (line === `START,${options.msgSize}`) {
                     startRequested = true;
+                }
+                else if (line.startsWith('CONNECT_CONTROL,')) {
+                    continue;
                 }
                 else if (line === 'STOP') {
                     stop = true;

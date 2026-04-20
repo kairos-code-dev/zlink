@@ -11,12 +11,12 @@ function buildEffectiveOptions(options, extraLines) {
         `- runs: ${options.runs}`,
         `- patterns: ${patterns}`,
         `- transports: ${(options.transports || []).join(',') || '-'}`,
-        `- msg_sizes: ${options.msgSizes.join(',')}`,
-        `- duration_seconds: ${options.duration}`,
-        `- warmup_seconds: ${options.warmup}`,
-        `- results_dir: ${options.resultsDir}`,
+        `- msg_sizes: ${(options.msgSizes || []).join(',') || '-'}`,
         `- pin_cpu: ${options.pinCpu ? 'on' : 'off'}`
     ];
+    if (typeof options.duration !== 'undefined') {
+        lines.push(`- duration_seconds: ${options.duration}`);
+    }
     if (typeof options.clients !== 'undefined') {
         lines.push(`- clients: ${options.clients}`);
     }
@@ -37,16 +37,31 @@ function throughputUnit(pattern) {
         ? 'Kops/s'
         : 'Kmsg/s';
 }
-function formatTableRows(rows) {
-    const latencyUnit = 'ms';
+function formatTableHeader() {
     return [
-        `| Size | Throughput | Bandwidth | Lat.Mean(${latencyUnit}) | Lat.P95(${latencyUnit}) | Lat.P99(${latencyUnit}) |`,
-        '|------|------------|-----------|----------------|---------------|---------------|',
-        ...rows.map((row) => {
-            const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
-            const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
-            return `| ${row.msgSize}B | ${throughput} | ${bandwidth} | ${row.metrics.latency.toFixed(6)} | ${row.metrics.latency_p95.toFixed(6)} | ${row.metrics.latency_p99.toFixed(6)} |`;
-        })
+        '| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |',
+        '|----------|------------------|------------|---------------|---------------|---------------|'
+    ];
+}
+function formatTableRow(row) {
+    const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
+    const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
+    return `| ${String(row.msgSize).padEnd(8)}B | ${throughput.padStart(16)} | ${bandwidth.padStart(10)} | ${`${row.metrics.latency.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p95.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p99.toFixed(6)} ms`.padStart(13)} |`;
+}
+function formatTableRows(rows) {
+    return [
+        ...formatTableHeader(),
+        ...rows.map((row) => formatTableRow(row))
+    ];
+}
+function patternDirection(pattern) {
+    return throughputUnit(pattern) === 'Kops/s' ? 'echo' : 'one-way';
+}
+function completionLines(status, expected, actual) {
+    return [
+        `- status: ${status}`,
+        `- expected_result_lines: ${expected}`,
+        `- actual_result_lines: ${actual}`
     ];
 }
 function formatTimestamp(date) {
@@ -72,7 +87,7 @@ function platformName() {
     }
     return 'linux';
 }
-function writeReport(reportDir, lang, suite, resultLines, options, extraSections) {
+function writeReport(reportDir, lang, suite, options, renderedSections, completionLines) {
     fs.mkdirSync(reportDir, { recursive: true });
     const maxFiles = suite === 'multi'
         ? Number(process.env.PERF_RESULTS_MAX_FILES || 100)
@@ -81,24 +96,18 @@ function writeReport(reportDir, lang, suite, resultLines, options, extraSections
     const stamp = formatTimestamp(new Date());
     const tag = options.resultsTag ? `_${options.resultsTag}` : '';
     const file = path.join(reportDir, `perf_${lang}_${suite}_${platformName()}_${stamp}${tag}.txt`);
-    const sections = Array.isArray(extraSections) ? extraSections : [];
+    const sections = Array.isArray(renderedSections) ? renderedSections : [];
+    const completion = Array.isArray(completionLines) ? completionLines : [];
     const content = [
         '## Effective Options (start)',
         ...buildEffectiveOptions({ ...options, lang, suite }),
         '',
         ...sections,
         ...(sections.length > 0 ? [''] : []),
-        '## Result Data',
-        ...resultLines,
-        '',
         '## Effective Options (result)',
         ...buildEffectiveOptions({ ...options, lang, suite }),
-        `- result_lines: ${resultLines.length}`,
-        '## Status Summary',
-        `- result_lines: ${resultLines.length}`,
-        `- status: ${resultLines.length > 0 ? 'complete' : 'partial'}`,
-        `- expected_result_lines: ${resultLines.length}`,
-        `- actual_result_lines: ${resultLines.length}`
+        '',
+        ...completion
     ].join('\n');
     fs.writeFileSync(file, `${content}\n`, 'utf8');
     if (options.output) {
@@ -108,6 +117,10 @@ function writeReport(reportDir, lang, suite, resultLines, options, extraSections
 }
 module.exports = {
     buildEffectiveOptions,
+    completionLines,
     formatTableRows,
+    formatTableHeader,
+    formatTableRow,
+    patternDirection,
     writeReport
 };

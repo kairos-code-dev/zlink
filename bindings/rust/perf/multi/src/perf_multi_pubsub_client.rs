@@ -1,3 +1,4 @@
+#[path = "perf_common.rs"]
 mod common;
 
 use std::io::{self, BufRead, Write};
@@ -10,7 +11,7 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_client_context();
     let mut sockets: Vec<SubSocket> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
@@ -55,7 +56,6 @@ fn main() {
     let mut active_count: u64 = 0;
 
     while Instant::now() < deadline {
-        let mut saw_data = false;
         for sub in &sockets {
             loop {
                 match sub.subscribe_with_flags(RecvFlags::DONT_WAIT) {
@@ -69,7 +69,6 @@ fn main() {
                             common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
                         );
                         active_count += 1;
-                        saw_data = true;
                     }
                     Err(err) if err.code == RecvResult::NoData => break,
                     Err(_) => break,

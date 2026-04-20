@@ -1,3 +1,4 @@
+#[path = "perf_common.rs"]
 mod common;
 
 use std::sync::{Arc, Mutex};
@@ -9,15 +10,19 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
 
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_client_context();
     let server_rid = RoutingId::from_bytes(b"perf-rr-server");
     let mut sockets: Vec<RouterSocket> = Vec::with_capacity(settings.clients);
     let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
 
     for index in 0..settings.clients {
         let sock = ctx.router_socket().expect("router");
-        sock.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-        sock.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
+        sock.common_options()
+            .set_send_hwm(settings.send_hwm)
+            .expect("sndhwm");
+        sock.common_options()
+            .set_recv_hwm(settings.recv_hwm)
+            .expect("rcvhwm");
         sock.common_options()
             .set_recv_timeout(Duration::from_millis(1))
             .expect("recv timeout");
@@ -36,18 +41,9 @@ fn main() {
         monitors.push(mon);
     }
 
-    for mon in &monitors {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if Instant::now() >= deadline {
-                panic!("multi router-router client connection-ready gate timed out");
-            }
-            match mon.recv() {
-                Ok(ev) if ev.is_connection_ready() => break,
-                Ok(_) => continue,
-                Err(_) => thread::sleep(Duration::from_millis(1)),
-            }
-        }
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
+    for mon in &mut monitors {
+        common::wait_monitor_ready(mon, ready_timeout, "multi router-router client");
     }
 
     let latency = Arc::new(Mutex::new(common::LatencyStats::new()));

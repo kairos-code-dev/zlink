@@ -1,3 +1,4 @@
+#[path = "perf_common.rs"]
 mod common;
 
 use std::io::{self, BufRead};
@@ -11,12 +12,18 @@ use zlink::*;
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
-    let ctx = Context::new().expect("context");
+    let ctx = common::perf_server_context();
     let router = ctx.router_socket().expect("router");
     let rid = RoutingId::from_bytes(b"perf-rr-server");
     router.set_routing_id(&rid).expect("set rid");
-    router.common_options().set_send_hwm(settings.hwm).expect("sndhwm");
-    router.common_options().set_recv_hwm(settings.hwm).expect("rcvhwm");
+    router
+        .common_options()
+        .set_send_hwm(settings.send_hwm)
+        .expect("sndhwm");
+    router
+        .common_options()
+        .set_recv_hwm(settings.recv_hwm)
+        .expect("rcvhwm");
     router
         .common_options()
         .set_recv_timeout(Duration::from_millis(1))
@@ -25,12 +32,7 @@ fn main() {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&router, &tls).expect("server tls");
     }
-    let bind_endpoint = match args.transport.as_str() {
-        "ws" => "ws://0.0.0.0:0".to_string(),
-        "wss" => "wss://0.0.0.0:0".to_string(),
-        "tls" => "tls://0.0.0.0:0".to_string(),
-        _ => "tcp://0.0.0.0:0".to_string(),
-    };
+    let bind_endpoint = common::resolve_server_bind_endpoint(&args.transport);
     if let Err(err) = router.bind(&bind_endpoint) {
         if common::handle_transport_setup_error(
             "MULTI_ROUTER_ROUTER",

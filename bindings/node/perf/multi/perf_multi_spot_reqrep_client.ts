@@ -42,6 +42,7 @@ async function main() {
     const serverNodeRid = zlink.RoutingId.fromBytes(Buffer.from(options.serverNodeRid, 'hex'));
     const serverSpotRid = zlink.RoutingId.fromBytes(Buffer.from(options.serverSpotRid, 'hex'));
     controlPub.bind(options.controlEndpoint);
+    console.log(`CLIENT_CONTROL_ENDPOINT,${options.controlEndpoint}`);
     for (let i = 0; i < options.clients; i += 1) {
       const router = new zlink.RouterSocket(ctx);
       routers.push(router);
@@ -52,7 +53,15 @@ async function main() {
       await waitForConnectionReady(router, () => router.connect(options.peerEndpoint));
     }
 
+    const stabilizationDeadline = Date.now() + 1000;
+    while (Date.now() < stabilizationDeadline) {
+      await sleepImmediate();
+    }
     while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
+      await sleepImmediate();
+    }
+    const controlSettleDeadline = Date.now() + 25;
+    while (Date.now() < controlSettleDeadline) {
       await sleepImmediate();
     }
     while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`READY_COUNT,${options.msgSize},${routers.length}`))) {
@@ -67,7 +76,7 @@ async function main() {
       }
 
       const runId = createRunId(1);
-      const activeStartNs = process.hrtime.bigint();
+      const activeStartNs = currentEpochNs();
       const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
       const collector = createMetricCollector({
         runId,
@@ -92,7 +101,7 @@ async function main() {
         }
       };
 
-      while (process.hrtime.bigint() < activeStopNs) {
+      while (currentEpochNs() < activeStopNs) {
         let progressed = false;
         for (let i = 0; i < routers.length; i += 1) {
           if (waiting[i]) {
@@ -125,7 +134,7 @@ async function main() {
       const result = await collector.finish();
       for (const metricLine of summarizeMetrics(
         'MULTI_SPOT_REQREP',
-        'tcp',
+        options.transport,
         options.msgSize,
         result.latenciesNs,
         options.duration

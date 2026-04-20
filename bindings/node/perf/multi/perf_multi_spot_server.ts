@@ -45,12 +45,15 @@ async function main() {
     controlSub.connect(options.controlEndpoint);
 
     console.log(`READY,${options.endpoint}`);
+    console.log(`CONTROL_READY,${options.controlEndpoint}`);
 
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     (async () => {
       for await (const line of rl) {
         if (line === `START,${options.msgSize}`) {
           startRequested = true;
+        } else if (line.startsWith('CONNECT_CONTROL,')) {
+          continue;
         }
       }
     })();

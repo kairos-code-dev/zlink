@@ -1,6 +1,7 @@
 import argparse
 import os
 import signal
+import statistics
 import subprocess
 import sys
 import time
@@ -10,7 +11,10 @@ from perf_multi_common import (
     build_report_path,
     parse_result_lines,
     render_effective_options,
-    render_markdown_summary,
+    rows_by_case,
+    status_row_text,
+    table_header_lines,
+    throughput_unit,
 )
 
 
@@ -23,6 +27,7 @@ DEFAULT_PATTERNS = (
     "ROUTER_ROUTER",
     "PUBSUB",
     "SPOT",
+    "SPOT_REQREP",
     "STREAM",
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
@@ -33,16 +38,10 @@ POLICY_TRANSPORTS = {
     "ROUTER_ROUTER": ("tcp", "tls", "ws", "wss"),
     "PUBSUB": ("tcp", "tls", "ws", "wss"),
     "SPOT": ("tcp", "tls", "ws", "wss"),
+    "SPOT_REQREP": ("tcp", "tls", "ws", "wss"),
     "STREAM": ("tcp", "tls", "ws", "wss"),
 }
-RUNNABLE_TRANSPORTS = {
-    "DEALER_DEALER": ("tcp",),
-    "DEALER_ROUTER": ("tcp",),
-    "ROUTER_ROUTER": ("tcp",),
-    "PUBSUB": ("tcp",),
-    "SPOT": ("tcp",),
-    "STREAM": ("tcp",),
-}
+RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 
 def _ensure_core_stream_client():
@@ -82,6 +81,9 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
     parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
+    parser.add_argument("--build-dir", default="")
+    parser.add_argument("--reuse-build", action="store_true")
+    parser.add_argument("--clean-build", action="store_true")
     parser.add_argument("--duration", default="5")
     parser.add_argument("--msg-sizes", default="")
     parser.add_argument("--transports", default="tcp,tls,ws,wss")
@@ -89,7 +91,27 @@ def parse_args(argv):
     parser.add_argument("--clients", default=None)
     parser.add_argument("--results-dir", default="")
     parser.add_argument("--results-tag", default="")
-    parser.add_argument("--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--output", default="")
+    parser.add_argument("--pin-cpu", action="store_true")
+    parser.add_argument("--io-threads", default="")
+    parser.add_argument("--server-io-threads", default="")
+    parser.add_argument("--client-io-threads", default="")
+    parser.add_argument("--hwm", default="")
+    parser.add_argument("--send-hwm", default="")
+    parser.add_argument("--recv-hwm", default="")
+    parser.add_argument("--sndtimeo", "--send-timeout-ms", dest="send_timeout_ms", default="")
+    parser.add_argument("--rcvtimeo", "--recv-timeout-ms", dest="recv_timeout_ms", default="")
+    parser.add_argument("--connect-concurrency", default="")
+    parser.add_argument("--transport-transition-ms", default="")
+    parser.add_argument("--pattern-transition-ms", default="")
+    parser.add_argument("--server-ready-timeout-ms", default="")
+    parser.add_argument("--connect-ready-timeout-ms", default="")
+    parser.add_argument("--monitor-hwm", default="")
+    parser.add_argument("--server-shutdown-timeout-ms", default="")
+    parser.add_argument("--server-bind-port", default="")
+    parser.add_argument(
+        "--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS
+    )
     return parser.parse_args(argv)
 
 
@@ -204,18 +226,61 @@ def _parse_status_lines(output):
     return rows
 
 
+def _env_int(name, default):
+    value = os.environ.get(name)
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _append_line(lines, line=""):
+    print(line, flush=True)
+    lines.append(line)
+
+
+def _result_metrics_for_case(output, pattern, transport, msg_size):
+    grouped = rows_by_case(parse_result_lines(output))
+    return grouped.get((f"MULTI_{pattern}", transport, str(msg_size)), {})
+
+
+def _metric_row(pattern, msg_size, metrics, *, indent="      "):
+    return (
+        f"{indent}| {int(msg_size):>7}B | "
+        f"{float(metrics.get('throughput', 0.0)) / 1000.0:>16.2f} {throughput_unit(f'MULTI_{pattern}')} | "
+        f"{float(metrics.get('bandwidth', 0.0)):>10.2f} MB/s | "
+        f"{float(metrics.get('latency', 0.0)):>12.6f} ms | "
+        f"{float(metrics.get('latency_p95', 0.0)):>12.6f} ms | "
+        f"{float(metrics.get('latency_p99', 0.0)):>12.6f} ms |"
+    )
+
+
+def _status_row(msg_size, status, *, indent="      "):
+    return indent + status_row_text(int(msg_size), status)
+
+
+def _median_metrics(outputs, pattern, transport, msg_size):
+    metrics_list = [
+        _result_metrics_for_case(output, pattern, transport, msg_size)
+        for output in outputs
+    ]
+    metrics_list = [metrics for metrics in metrics_list if metrics]
+    if not metrics_list:
+        return {}
+    medians = {}
+    for metric in ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99"):
+        values = [float(metrics[metric]) for metrics in metrics_list if metric in metrics]
+        if values:
+            medians[metric] = statistics.median(values)
+    return medians
+
+
 def _is_unsupported_output(text):
     lowered = text.lower()
     markers = (
         "protocol not supported",
-        "unsupported transport",
-        "operation not permitted",
-        "permission denied",
-        "listen eperm",
-        "permissionerror: [errno 1]",
-        "binderror(code=0, internal_errno=1)",
-        "binderror(code=502, internal_errno=98)",
-        "internal_errno=98",
         "unsupported,current,",
     )
     return any(marker in lowered for marker in markers)
@@ -307,6 +372,8 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
         [
             sys.executable,
             str(server_path),
+            "--transport",
+            transport,
             "--clients",
             clients,
             "--msg-size",
@@ -377,7 +444,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 stderr_chunks.append(client_run.stderr.strip())
             return "\n".join(chunk for chunk in stdout_chunks if chunk)
 
-        if pattern == "SPOT":
+        if pattern in {"SPOT", "SPOT_REQREP"}:
             control_ready = _wait_for_prefixed_line(
                 server,
                 "CONTROL_READY,",
@@ -385,19 +452,41 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 stdout_chunks=stdout_chunks,
             )
             control_endpoint = control_ready.split(",", 1)[1]
+            server_node_rid = ""
+            server_spot_rid = ""
+            if pattern == "SPOT_REQREP":
+                route_ready = _wait_for_prefixed_line(
+                    server,
+                    "ROUTE_READY,",
+                    timeout_s=10,
+                    stdout_chunks=stdout_chunks,
+                )
+                _, server_node_rid, server_spot_rid = route_ready.split(",", 2)
+            client_cmd = [
+                sys.executable,
+                str(client_path),
+                "--endpoint",
+                f"{endpoint},{control_endpoint}",
+                "--duration",
+                args.duration,
+                "--msg-size",
+                msg_size,
+                "--clients",
+                clients,
+                "--transport",
+                transport,
+            ]
+            if pattern == "SPOT_REQREP":
+                client_cmd.extend(
+                    [
+                        "--server-node-rid",
+                        server_node_rid,
+                        "--server-spot-rid",
+                        server_spot_rid,
+                    ]
+                )
             client = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(client_path),
-                    "--endpoint",
-                    f"{endpoint},{control_endpoint}",
-                    "--duration",
-                    args.duration,
-                    "--msg-size",
-                    msg_size,
-                    "--clients",
-                    clients,
-                ],
+                client_cmd,
                 cwd=str(ROOT.parent.parent),
                 env=env,
                 stdin=subprocess.PIPE,
@@ -435,7 +524,6 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             server.stdin.flush()
             client.stdin.write(f"START,{msg_size}\n")
             client.stdin.flush()
-            time.sleep(0.05)
             client_stdout, client_stderr = client.communicate(timeout=90)
             if client_stdout:
                 stdout_chunks.append(client_stdout.strip())
@@ -457,6 +545,8 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                     str(client_path),
                     "--endpoint",
                     endpoint,
+                    "--transport",
+                    transport,
                     "--duration",
                     args.duration,
                     "--msg-size",
@@ -480,6 +570,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             server.stdin.write(f"START,{msg_size}\n")
             server.stdin.flush()
             client.stdin.write(f"START,{msg_size}\n")
+            client.stdin.write(f"PHASE_ACTIVE,{msg_size}\n")
             client.stdin.flush()
             client_stdout, client_stderr = client.communicate(timeout=90)
             if client_stdout:
@@ -495,6 +586,8 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                     str(client_path),
                     "--endpoint",
                     endpoint,
+                    "--transport",
+                    transport,
                     "--duration",
                     args.duration,
                     "--msg-size",
@@ -555,8 +648,13 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         "runs": args.runs,
         "patterns": ",".join(f"MULTI_{pattern}" for pattern in patterns),
         "transports": ",".join(transports),
-        "msg_sizes": ",".join(requested_msg_sizes) if requested_msg_sizes is not None else "policy-default",
+        "msg_sizes": (
+            ",".join(requested_msg_sizes)
+            if requested_msg_sizes is not None
+            else "policy-default"
+        ),
         "clients": clients,
+        "pin_cpu": "on" if args.pin_cpu else "off",
         "duration_seconds": args.duration,
     }
 
@@ -574,6 +672,40 @@ def main(argv=None):
 
     env = dict(os.environ)
     env["PYTHONPATH"] = args.pythonpath
+    env["PERF_MULTI_DURATION_SECONDS"] = str(args.duration)
+    if args.io_threads:
+        env["PERF_MULTI_SERVER_IO_THREADS"] = args.io_threads
+        env["PERF_MULTI_CLIENT_IO_THREADS"] = args.io_threads
+    if args.server_io_threads:
+        env["PERF_MULTI_SERVER_IO_THREADS"] = args.server_io_threads
+    if args.client_io_threads:
+        env["PERF_MULTI_CLIENT_IO_THREADS"] = args.client_io_threads
+    if args.hwm:
+        env["PERF_MULTI_HWM"] = args.hwm
+    if args.send_hwm:
+        env["PERF_MULTI_SNDHWM"] = args.send_hwm
+    if args.recv_hwm:
+        env["PERF_MULTI_RCVHWM"] = args.recv_hwm
+    if args.send_timeout_ms:
+        env["PERF_MULTI_SNDTIMEO_MS"] = args.send_timeout_ms
+    if args.recv_timeout_ms:
+        env["PERF_MULTI_RCVTIMEO_MS"] = args.recv_timeout_ms
+    if args.connect_concurrency:
+        env["PERF_MULTI_CONNECT_CONCURRENCY"] = args.connect_concurrency
+    if args.transport_transition_ms:
+        env["PERF_MULTI_TRANSPORT_TRANSITION_MS"] = args.transport_transition_ms
+    if args.pattern_transition_ms:
+        env["PERF_MULTI_PATTERN_TRANSITION_MS"] = args.pattern_transition_ms
+    if args.server_ready_timeout_ms:
+        env["PERF_MULTI_SERVER_READY_TIMEOUT_MS"] = args.server_ready_timeout_ms
+    if args.connect_ready_timeout_ms:
+        env["PERF_MULTI_CONNECT_READY_TIMEOUT_MS"] = args.connect_ready_timeout_ms
+    if args.monitor_hwm:
+        env["PERF_MULTI_MONITOR_HWM"] = args.monitor_hwm
+    if args.server_shutdown_timeout_ms:
+        env["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = args.server_shutdown_timeout_ms
+    if args.server_bind_port:
+        env["PERF_MULTI_SERVER_BIND_PORT"] = args.server_bind_port
     if RUNNER_LIB.exists():
         env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
         lib_dir = str(RUNNER_LIB.parent)
@@ -583,26 +715,136 @@ def main(argv=None):
             else lib_dir
         )
 
+    run_cooldown_ms = _env_int("PERF_MULTI_RUN_COOLDOWN_MS", 3000)
+    transport_transition_ms = _env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
+    pattern_transition_ms = _env_int("PERF_MULTI_PATTERN_TRANSITION_MS", 3000)
+
     options = _build_options(args, patterns, transports, requested_msg_sizes, clients)
-    sections = [render_effective_options(options), ""]
+    sections = []
     emitted_chunks = []
     status_lines = []
     fail_count = 0
     case_ordinal = 1
-    for _ in range(runs):
-        for pattern, transport, msg_size in configs:
-            case_env = dict(env)
-            case_env["PERF_RUN_ID"] = str(case_ordinal)
-            case_ordinal += 1
-            try:
-                output = _run_pattern(args, case_env, pattern, transport, msg_size, clients)
-            except SystemExit as exc:
-                fail_count += 1
-                output = str(exc).strip()
-            if output:
-                emitted_chunks.append(output)
-                status_lines.extend(_parse_status_lines(output))
-                sections.append(output)
+    _append_line(sections, render_effective_options(options))
+    _append_line(sections)
+    for pattern_index, pattern in enumerate(patterns):
+        _append_line(sections, f"  > Benchmarking current for MULTI_{pattern}...")
+        pattern_transports = [
+            transport for transport in transports if transport in POLICY_TRANSPORTS[pattern]
+        ]
+        pattern_msg_sizes = _msg_sizes_for_pattern(pattern, requested_msg_sizes)
+        size_label = ",".join(f"{msg_size}B" for msg_size in pattern_msg_sizes)
+        for transport_index, transport in enumerate(pattern_transports):
+            _append_line(sections, f"    Testing {transport} | {size_label}:")
+            transport_failures = 0
+            run_outputs = {msg_size: [] for msg_size in pattern_msg_sizes}
+            if runs == 1:
+                for header_line in table_header_lines():
+                    _append_line(sections, f"      {header_line}")
+                for msg_size in pattern_msg_sizes:
+                    case_env = dict(env)
+                    case_env["PERF_RUN_ID"] = str(case_ordinal)
+                    case_ordinal += 1
+                    try:
+                        output = _run_pattern(
+                            args, case_env, pattern, transport, msg_size, clients
+                        )
+                    except SystemExit as exc:
+                        fail_count += 1
+                        transport_failures += 1
+                        output = str(exc).strip()
+                    if output:
+                        emitted_chunks.append(output)
+                        status_lines.extend(_parse_status_lines(output))
+                        run_outputs[msg_size].append(output)
+                    metrics = _result_metrics_for_case(output, pattern, transport, msg_size)
+                    if metrics:
+                        _append_line(sections, _metric_row(pattern, msg_size, metrics))
+                    elif output.startswith("UNSUPPORTED,"):
+                        _append_line(sections, _status_row(msg_size, "UNSUPPORTED"))
+                    else:
+                        _append_line(sections, _status_row(msg_size, "FAIL"))
+            else:
+                for run_index in range(runs):
+                    _append_line(sections, f"      run {run_index + 1}/{runs}:")
+                    for header_line in table_header_lines():
+                        _append_line(sections, f"        {header_line}")
+                    for msg_size in pattern_msg_sizes:
+                        case_env = dict(env)
+                        case_env["PERF_RUN_ID"] = str(case_ordinal)
+                        case_ordinal += 1
+                        try:
+                            output = _run_pattern(
+                                args, case_env, pattern, transport, msg_size, clients
+                            )
+                        except SystemExit as exc:
+                            fail_count += 1
+                            transport_failures += 1
+                            output = str(exc).strip()
+                        if output:
+                            emitted_chunks.append(output)
+                            status_lines.extend(_parse_status_lines(output))
+                            run_outputs[msg_size].append(output)
+                        metrics = _result_metrics_for_case(output, pattern, transport, msg_size)
+                        if metrics:
+                            _append_line(
+                                sections,
+                                _metric_row(pattern, msg_size, metrics, indent="        "),
+                            )
+                        elif output.startswith("UNSUPPORTED,"):
+                            _append_line(
+                                sections,
+                                _status_row(msg_size, "UNSUPPORTED", indent="        "),
+                            )
+                        else:
+                            _append_line(
+                                sections,
+                                _status_row(msg_size, "FAIL", indent="        "),
+                            )
+                    if run_index + 1 < runs:
+                        _append_line(sections, f"      [cooldown {run_cooldown_ms}ms]")
+                        time.sleep(run_cooldown_ms / 1000.0)
+                _append_line(sections, "      median:")
+                for header_line in table_header_lines():
+                    _append_line(sections, f"        {header_line}")
+                for msg_size in pattern_msg_sizes:
+                    metrics = _median_metrics(
+                        run_outputs[msg_size], pattern, transport, msg_size
+                    )
+                    if metrics:
+                        _append_line(
+                            sections,
+                            _metric_row(pattern, msg_size, metrics, indent="        "),
+                        )
+                    elif any(
+                        output.startswith("UNSUPPORTED,")
+                        for output in run_outputs[msg_size]
+                    ):
+                        _append_line(
+                            sections,
+                            _status_row(msg_size, "UNSUPPORTED", indent="        "),
+                        )
+                    else:
+                        _append_line(
+                            sections,
+                            _status_row(msg_size, "FAIL", indent="        "),
+                        )
+            suffix = (
+                f"(failures={transport_failures}) Done" if transport_failures else "Done"
+            )
+            _append_line(sections, f"    Testing {transport}: {suffix}")
+            if transport_index + 1 < len(pattern_transports):
+                _append_line(
+                    sections,
+                    f"    [transport cooldown {transport_transition_ms}ms]",
+                )
+                time.sleep(transport_transition_ms / 1000.0)
+        if pattern_index + 1 < len(patterns):
+            _append_line(sections, f"  [pattern cooldown {pattern_transition_ms}ms]")
+            _append_line(sections)
+            time.sleep(pattern_transition_ms / 1000.0)
+        else:
+            _append_line(sections)
     rows = parse_result_lines("\n".join(emitted_chunks))
     skipped_cases = 0
     unsupported_cases = 0
@@ -614,16 +856,20 @@ def main(argv=None):
     total_cases = len(configs) * runs
     expected_cases = max(0, total_cases - skipped_cases - unsupported_cases - fail_count)
     expected_result_lines = expected_cases * 5
-    sections.extend(["", render_markdown_summary(rows), "", "## Effective Options (result)"])
-    status = "complete" if fail_count == 0 and len(rows) == expected_result_lines else "partial"
-    sections.append(f"- status: {status}")
-    sections.append(f"- expected_result_lines: {expected_result_lines}")
-    sections.append(f"- actual_result_lines: {len(rows)}")
-    sections.append(f"- skip_cases: {skipped_cases}")
-    sections.append(f"- unsupported_cases: {unsupported_cases}")
-    sections.append(f"- fail: {fail_count}")
-    final_output = "\n".join(section for section in sections if section is not None).rstrip() + "\n"
-    print(final_output, end="")
+    status = (
+        "complete"
+        if fail_count == 0 and len(rows) == expected_result_lines
+        else "partial"
+    )
+    _append_line(sections, render_effective_options(options, section="result"))
+    _append_line(sections, "## Completion")
+    _append_line(sections, f"- status: {status}")
+    _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
+    _append_line(sections, f"- actual_result_lines: {len(rows)}")
+    _append_line(sections, f"- skip_cases: {skipped_cases}")
+    _append_line(sections, f"- unsupported_cases: {unsupported_cases}")
+    _append_line(sections, f"- fail: {fail_count}")
+    final_output = "\n".join(sections).rstrip() + "\n"
 
     report_path = build_report_path(
         lang="python",
@@ -632,6 +878,8 @@ def main(argv=None):
         tag=args.results_tag or None,
     )
     report_path.write_text(final_output, encoding="utf-8")
+    if args.output:
+        Path(args.output).write_text(final_output, encoding="utf-8")
     if fail_count > 0:
         raise SystemExit(1)
 

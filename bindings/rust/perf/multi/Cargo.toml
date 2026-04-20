@@ -5,6 +5,8 @@ edition = "2024"
 rust-version = "1.85"
 publish = false
 
+[workspace]
+
 [dependencies]
 libc = "0.2"
 zlink = { path = "../.." }
@@ -52,3 +54,11 @@ path = "src/perf_multi_spot_client.rs"
 [[bin]]
 name = "perf_multi_stream_server"
 path = "src/perf_multi_stream_server.rs"
+
+[[bin]]
+name = "perf_multi_spot_reqrep_server"
+path = "src/perf_multi_spot_reqrep_server.rs"
+
+[[bin]]
+name = "perf_multi_spot_reqrep_client"
+path = "src/perf_multi_spot_reqrep_client.rs"

@@ -1,5 +1,5 @@
-import socket
 import os
+import socket
 import sys
 import threading
 import time
@@ -8,6 +8,7 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
+    apply_multi_socket_options,
     attach_spot_service_pair,
     benchmark_run_id,
     latency_ns_from_message,
@@ -111,7 +112,9 @@ def main(argv=None):
         for index in range(args.clients):
             node = zlink.SpotNode(ctx)
             node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
-            service_pairs.append(attach_spot_service_pair(ctx, node, SERVICE_NAME))
+            service_pair = attach_spot_service_pair(ctx, node, SERVICE_NAME)
+            apply_multi_socket_options(service_pair[0])
+            service_pairs.append(service_pair)
             node.connect_peer(data_endpoint)
             spot = node.create_spot()
             spot.set_subscription(TOPIC)
@@ -206,7 +209,7 @@ def main(argv=None):
                 pub_sock.close()
             except Exception:
                 pass
-        os._exit(0)
+        return
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from pathlib import Path
 from perf_multi_common import (
     build_report_path,
     parse_result_lines,
+    pin_current_process_cpu0,
     render_effective_options,
     resolve_multi_timeout_seconds,
     rows_by_case,
@@ -628,7 +629,6 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
         stderr_text = "\n".join(chunk for chunk in stderr_chunks if chunk)
         if _is_unsupported_output(stderr_text):
             return f"UNSUPPORTED,current,MULTI_{pattern},{transport}"
-        raise SystemExit(stderr_text)
     return "\n".join(chunk for chunk in stdout_chunks if chunk)
 
 
@@ -652,6 +652,8 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
 
 def main(argv=None):
     args = parse_args(argv or sys.argv[1:])
+    if args.pin_cpu and not pin_current_process_cpu0():
+        print("warning: cpu pinning requested but could not pin to cpu 0", file=sys.stderr)
     patterns = _parse_patterns(args.pattern)
     transports = _parse_transports(args.transports)
     requested_msg_sizes = _requested_msg_sizes(args)

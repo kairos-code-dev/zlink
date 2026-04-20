@@ -1,6 +1,7 @@
 import importlib
 import math
 import os
+import platform
 import struct
 import sys
 import tempfile
@@ -263,6 +264,18 @@ def safe_poll(poller, timeout_ms):
         if exc.internal_errno == 11:
             return []
         raise
+
+
+def pin_current_process_cpu0():
+    if platform.system().lower() != "linux":
+        return False
+    if not hasattr(os, "sched_setaffinity"):
+        return False
+    try:
+        os.sched_setaffinity(0, {0})
+    except OSError:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------

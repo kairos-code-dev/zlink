@@ -20,6 +20,7 @@ from perf_metrics import (
     is_active_message,
     payload_phase,
     parse_result_lines,
+    pin_current_process_cpu0,
     print_result_lines,
     resolve_multi_connect_ready_timeout_ms,
     render_effective_options,
@@ -155,6 +156,41 @@ def send_nonblocking(sock, payload, *, method="send", routing_id=None):
             send_method(payload, flags=zlink_mod.SendFlags.DONT_WAIT)
         else:
             send_method(routing_id, payload, flags=zlink_mod.SendFlags.DONT_WAIT)
+        return True
+    except zlink_mod.SubmitError as exc:
+        if exc.result in (
+            zlink_mod.SubmitResult.BACKPRESSURED,
+            zlink_mod.SubmitResult.NOT_CONNECTED,
+            zlink_mod.SubmitResult.NOT_ADMITTED,
+        ):
+            return False
+        raise
+
+
+def publish_nonblocking(sock, topic, payload):
+    zlink_mod = _require_zlink()
+    try:
+        sock.publish(topic, payload, flags=zlink_mod.SendFlags.DONT_WAIT)
+        return True
+    except zlink_mod.SubmitError as exc:
+        if exc.result in (
+            zlink_mod.SubmitResult.BACKPRESSURED,
+            zlink_mod.SubmitResult.NOT_CONNECTED,
+            zlink_mod.SubmitResult.NOT_ADMITTED,
+        ):
+            return False
+        raise
+
+
+def spot_publish_nonblocking(spot, service_name, topic, payload):
+    zlink_mod = _require_zlink()
+    try:
+        spot.publish(
+            service_name,
+            topic,
+            payload,
+            flags=zlink_mod.SendFlags.DONT_WAIT,
+        )
         return True
     except zlink_mod.SubmitError as exc:
         if exc.result in (

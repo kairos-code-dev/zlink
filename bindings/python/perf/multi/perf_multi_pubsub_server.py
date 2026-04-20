@@ -1,5 +1,7 @@
+import os
 import sys
 import threading
+import time
 
 import zlink
 
@@ -10,6 +12,8 @@ from perf_multi_common import (
     benchmark_run_id,
     new_payload,
     parse_server_args,
+    publish_nonblocking,
+    safe_poll,
     stamp_payload,
 )
 
@@ -28,6 +32,10 @@ def main(argv=None):
     start_event = threading.Event()
     endpoint = benchmark_endpoint(args.transport, "multi-pubsub")
     payload = new_payload(args.msg_size)
+    active_duration_s = max(
+        1.0,
+        float(os.environ.get("PERF_MULTI_DURATION_SECONDS", "5")),
+    )
 
     def read_commands():
         for line in sys.stdin:
@@ -45,13 +53,35 @@ def main(argv=None):
             apply_multi_socket_options(publisher)
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            while not start_event.is_set() and not stop_event.is_set():
-                stop_event.wait(0.01)
-            while not stop_event.is_set():
-                publisher.publish(
-                    TOPIC,
-                    stamp_payload(payload, phase=1, run_id=run_id),
-                )
+            active_deadline = None
+            with zlink.Poller() as poller:
+                poller.add_socket(publisher, zlink.PollEvent.POLLOUT)
+                while not stop_event.is_set():
+                    if not start_event.is_set():
+                        stop_event.wait(0.01)
+                        continue
+                    if active_deadline is None:
+                        active_deadline = time.perf_counter() + active_duration_s
+                    if time.perf_counter() >= active_deadline:
+                        stop_event.wait(0.01)
+                        continue
+                    events = safe_poll(poller, 100)
+                    if not events:
+                        continue
+                    for event in events:
+                        if not (event["events"] & int(zlink.PollEvent.POLLOUT)):
+                            continue
+                        while (
+                            time.perf_counter() < active_deadline
+                            and not stop_event.is_set()
+                        ):
+                            sent = publish_nonblocking(
+                                publisher,
+                                TOPIC,
+                                stamp_payload(payload, phase=1, run_id=run_id),
+                            )
+                            if not sent:
+                                break
 
 
 if __name__ == "__main__":

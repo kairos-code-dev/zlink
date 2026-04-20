@@ -8,6 +8,7 @@ from pathlib import Path
 from perf_common import (
     build_report_path,
     parse_result_lines,
+    pin_current_process_cpu0,
     render_effective_options,
     resolve_single_timeout_seconds,
     rows_by_case,
@@ -202,16 +203,13 @@ def _run_pattern(args, env, pattern, transport, msg_size):
         text=True,
         timeout=resolve_single_timeout_seconds(float(args.duration)),
     )
-    chunks = []
-    if result.stdout:
-        chunks.append(result.stdout.strip())
-    if result.stderr:
-        chunks.append(result.stderr.strip())
-    output = "\n".join(chunk for chunk in chunks if chunk)
+    stdout_text = result.stdout.strip() if result.stdout else ""
+    stderr_text = result.stderr.strip() if result.stderr else ""
     if result.returncode == 0:
-        return output
+        return stdout_text
+    failure_text = stderr_text or stdout_text
     raise SystemExit(
-        output or f"{pattern} {transport} failed with exit code {result.returncode}"
+        failure_text or f"{pattern} {transport} failed with exit code {result.returncode}"
     )
 
 
@@ -224,12 +222,13 @@ def _build_options(args, patterns, transports, msg_sizes):
         "transports": ",".join(transports),
         "msg_sizes": ",".join(msg_sizes),
         "pin_cpu": "on" if args.pin_cpu else "off",
-        "duration_seconds": args.duration,
     }
 
 
 def main(argv=None):
     args = parse_args(argv or sys.argv[1:])
+    if args.pin_cpu and not pin_current_process_cpu0():
+        print("warning: cpu pinning requested but could not pin to cpu 0", file=sys.stderr)
     patterns = _parse_patterns(args.pattern)
     transports = _parse_transports(args.transports)
     msg_sizes = _parse_msg_sizes(args)

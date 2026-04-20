@@ -8,11 +8,14 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
+    apply_multi_socket_options,
     attach_spot_service_pair,
     benchmark_endpoint,
     benchmark_run_id,
     new_payload,
     parse_server_args,
+    safe_poll,
+    spot_publish_nonblocking,
     stamp_payload,
 )
 
@@ -39,6 +42,10 @@ def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     run_id = benchmark_run_id()
     payload = new_payload(args.msg_size)
+    active_duration_s = max(
+        1.0,
+        float(os.environ.get("PERF_MULTI_DURATION_SECONDS", "5")),
+    )
     stop = threading.Event()
     start_runner = threading.Event()
     control_connected = threading.Event()
@@ -102,6 +109,7 @@ def main(argv=None):
     with zlink.Context() as ctx:
         data_node = zlink.SpotNode(ctx)
         service_pair = attach_spot_service_pair(ctx, data_node, SERVICE_NAME)
+        apply_multi_socket_options(service_pair[0])
         data_node.bind(benchmark_endpoint(args.transport, "multi-spot"))
         data_endpoint = data_node.last_endpoint()
         data_spot = data_node.create_spot()
@@ -124,13 +132,31 @@ def main(argv=None):
             raise RuntimeError("spot server handshake timeout")
 
         start_sender[0].sendall(f"START,{args.msg_size}\n".encode("utf-8"))
-        deadline = time.perf_counter() + float(os.environ.get("PERF_MULTI_DURATION_SECONDS", "5"))
-        while time.perf_counter() < deadline and not stop.is_set():
-            data_spot.publish(
-                SERVICE_NAME,
-                TOPIC,
-                [stamp_payload(payload, phase=1, run_id=run_id)],
-            )
+        active_deadline = time.perf_counter() + active_duration_s
+        with zlink.Poller() as poller:
+            poller.add_socket(service_pair[0], zlink.PollEvent.POLLOUT)
+            while not stop.is_set():
+                if time.perf_counter() >= active_deadline:
+                    stop.wait(0.01)
+                    continue
+                events = safe_poll(poller, 100)
+                if not events:
+                    continue
+                for event in events:
+                    if not (event["events"] & int(zlink.PollEvent.POLLOUT)):
+                        continue
+                    while (
+                        time.perf_counter() < active_deadline
+                        and not stop.is_set()
+                    ):
+                        sent = spot_publish_nonblocking(
+                            data_spot,
+                            SERVICE_NAME,
+                            TOPIC,
+                            [stamp_payload(payload, phase=1, run_id=run_id)],
+                        )
+                        if not sent:
+                            break
         sys.stdout.flush()
         try:
             data_spot.close()

@@ -22,6 +22,7 @@ from perf_metrics import (
     print_result_lines,
     is_active_message,
     payload_phase,
+    pin_current_process_cpu0,
     render_effective_options,
     render_markdown_summary,
     result_metrics,

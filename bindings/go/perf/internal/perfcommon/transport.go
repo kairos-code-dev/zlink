@@ -1,16 +1,5 @@
 package perfcommon
 
-/*
-#cgo CFLAGS: -I${SRCDIR}/../../../include
-#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/../../../native/linux-x86_64 -lzlink -Wl,-rpath,${SRCDIR}/../../../native/linux-x86_64
-#cgo linux,arm64 LDFLAGS: -L${SRCDIR}/../../../native/linux-aarch64 -lzlink -Wl,-rpath,${SRCDIR}/../../../native/linux-aarch64
-#cgo darwin,amd64 LDFLAGS: -L${SRCDIR}/../../../native/darwin-x86_64 -lzlink -Wl,-rpath,${SRCDIR}/../../../native/darwin-x86_64
-#cgo darwin,arm64 LDFLAGS: -L${SRCDIR}/../../../native/darwin-aarch64 -lzlink -Wl,-rpath,${SRCDIR}/../../../native/darwin-aarch64
-#include <stdlib.h>
-#include "zlink.h"
-*/
-import "C"
-
 import (
 	"crypto/rand"
 	"crypto/rsa"
@@ -19,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/binary"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -27,15 +15,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/gorilla/websocket"
-	"zlink"
 )
 
 type StreamConn interface {
@@ -78,28 +62,7 @@ func ConfigureTLSServer(socket interface {
 	if err != nil {
 		return err
 	}
-	if err := socket.SetTLSServer(assets.certPath, assets.keyPath, false); err == nil {
-		return nil
-	} else if !isNativeErrCode(err, int(C.EFAULT)) {
-		if os.Getenv("PERF_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "tls server direct failed: cert=%q key=%q err=%v\n", assets.certPath, assets.keyPath, err)
-		}
-		return err
-	}
-	handle, err := rawSocketHandle(socket)
-	if err != nil {
-		return err
-	}
-	if os.Getenv("PERF_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "tls server fallback handle=%p cert=%q key=%q\n", handle, assets.certPath, assets.keyPath)
-	}
-	if err := setRawStringOption(handle, C.ZLINK_OPT_TLS_CERT, assets.certPath); err != nil {
-		return err
-	}
-	if os.Getenv("PERF_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "tls server cert set ok\n")
-	}
-	return setRawStringOption(handle, C.ZLINK_OPT_TLS_KEY, assets.keyPath)
+	return socket.SetTLSServer(assets.certPath, assets.keyPath, false)
 }
 
 func ConfigureTLSClient(socket interface {
@@ -112,119 +75,7 @@ func ConfigureTLSClient(socket interface {
 	if err != nil {
 		return err
 	}
-	if err := socket.SetTLSClient(assets.caPath, "localhost", false); err == nil {
-		return nil
-	} else if !isNativeErrCode(err, int(C.EFAULT)) {
-		if os.Getenv("PERF_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "tls client direct failed: ca=%q hostname=%q err=%v\n", assets.caPath, "localhost", err)
-		}
-		return err
-	}
-	handle, err := rawSocketHandle(socket)
-	if err != nil {
-		return err
-	}
-	if os.Getenv("PERF_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "tls client fallback handle=%p ca=%q hostname=%q\n", handle, assets.caPath, "localhost")
-	}
-	if err := setRawStringOption(handle, C.ZLINK_OPT_TLS_CA, assets.caPath); err != nil {
-		return err
-	}
-	if os.Getenv("PERF_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "tls client ca set ok\n")
-	}
-	if err := setRawStringOption(handle, C.ZLINK_OPT_TLS_HOSTNAME, "localhost"); err != nil {
-		return err
-	}
-	if os.Getenv("PERF_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "tls client hostname set ok\n")
-	}
-	if err := setRawIntOption(handle, C.ZLINK_OPT_TLS_TRUST_SYSTEM, 0); err != nil {
-		return err
-	}
-	if os.Getenv("PERF_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "tls client trust system set ok\n")
-	}
-	return nil
-}
-
-func isNativeErrCode(err error, code int) bool {
-	return errors.Is(err, syscall.Errno(code))
-}
-
-func rawSocketHandle(value any) (unsafe.Pointer, error) {
-	if value == nil {
-		return nil, fmt.Errorf("socket handle is nil")
-	}
-	v := reflect.ValueOf(value)
-	for v.IsValid() {
-		switch v.Kind() {
-		case reflect.Interface, reflect.Ptr:
-			if v.IsNil() {
-				return nil, fmt.Errorf("socket handle is nil")
-			}
-			v = v.Elem()
-			continue
-		case reflect.Struct:
-			if handleField := v.FieldByName("handle"); handleField.IsValid() && handleField.Type() == reflect.TypeOf(unsafe.Pointer(nil)) {
-				if !handleField.CanAddr() {
-					return nil, fmt.Errorf("socket handle is not addressable")
-				}
-				handle := *(*unsafe.Pointer)(unsafe.Pointer(handleField.UnsafeAddr()))
-				if handle == nil {
-					return nil, fmt.Errorf("socket handle is nil")
-				}
-				return handle, nil
-			}
-			for i := 0; i < v.NumField(); i++ {
-				field := v.Field(i)
-				if !field.IsValid() {
-					continue
-				}
-				switch field.Kind() {
-				case reflect.Interface, reflect.Ptr, reflect.Struct:
-					if field.Kind() == reflect.Ptr && field.IsNil() {
-						continue
-					}
-					if field.Kind() == reflect.Interface && field.IsNil() {
-						continue
-					}
-					v = field
-					goto next
-				}
-			}
-			return nil, fmt.Errorf("unsupported socket type %T", value)
-		default:
-			return nil, fmt.Errorf("unsupported socket type %T", value)
-		}
-	next:
-	}
-	return nil, fmt.Errorf("unsupported socket type %T", value)
-}
-
-func setRawStringOption(handle unsafe.Pointer, option C.zlink_option_t, value string) error {
-	if strings.IndexByte(value, 0) >= 0 {
-		return fmt.Errorf("string contains null byte")
-	}
-	cstr := C.CString(value)
-	defer C.free(unsafe.Pointer(cstr))
-	if C.zlink_set_option(handle, option, unsafe.Pointer(cstr), C.size_t(len(value))) != 0 {
-		return nativeError()
-	}
-	return nil
-}
-
-func setRawIntOption(handle unsafe.Pointer, option C.zlink_option_t, value int) error {
-	raw := C.int(value)
-	if C.zlink_set_option(handle, option, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)) != 0 {
-		return nativeError()
-	}
-	return nil
-}
-
-func nativeError() error {
-	code := int(C.zlink_errno())
-	return fmt.Errorf("%s: %w", C.GoString(C.zlink_strerror(C.int(code))), syscall.Errno(code))
+	return socket.SetTLSClient(assets.caPath, "localhost", false)
 }
 
 func buildTLSAssets() (tlsAssetSet, error) {
@@ -375,7 +226,7 @@ func openTLSStream(addr string) (StreamConn, error) {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	config := &tls.Config{
 		RootCAs:            assets.rootCAs,
-		ServerName:         "127.0.0.1",
+		ServerName:         "localhost",
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: false,
 	}
@@ -395,12 +246,12 @@ func openWSStream(endpoint string, secure bool) (StreamConn, error) {
 		HandshakeTimeout: 5 * time.Second,
 	}
 	if secure {
-		dialer.TLSClientConfig = &tls.Config{
-			RootCAs:            assets.rootCAs,
-			ServerName:         "127.0.0.1",
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: false,
-		}
+			dialer.TLSClientConfig = &tls.Config{
+				RootCAs:            assets.rootCAs,
+				ServerName:         "localhost",
+				MinVersion:         tls.VersionTLS12,
+				InsecureSkipVerify: false,
+			}
 	}
 	conn, _, err := dialer.Dial(endpoint, nil)
 	if err != nil {
@@ -451,7 +302,7 @@ func openPacketTLSStream(addr string) (PacketConn, error) {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	config := &tls.Config{
 		RootCAs:            assets.rootCAs,
-		ServerName:         "127.0.0.1",
+		ServerName:         "localhost",
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: false,
 	}
@@ -471,12 +322,12 @@ func openPacketWSStream(endpoint string, secure bool) (PacketConn, error) {
 		HandshakeTimeout: 5 * time.Second,
 	}
 	if secure {
-		dialer.TLSClientConfig = &tls.Config{
-			RootCAs:            assets.rootCAs,
-			ServerName:         "127.0.0.1",
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: false,
-		}
+			dialer.TLSClientConfig = &tls.Config{
+				RootCAs:            assets.rootCAs,
+				ServerName:         "localhost",
+				MinVersion:         tls.VersionTLS12,
+				InsecureSkipVerify: false,
+			}
 	}
 	conn, _, err := dialer.Dial(endpoint, nil)
 	if err != nil {

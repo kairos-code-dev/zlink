@@ -23,7 +23,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(router)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	type dealerClient struct {
 		ctx     *zlink.Context
@@ -45,7 +45,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 		if err := dealer.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi dealer/router connect client[%d]: %w", i, err))
 		}
-		perfcommon.WaitMonitorEvent(dealerMon)
+			perfcommon.WaitConnected(dealerMon)
 		if err := dealer.SetRecvTimeout(500 * time.Millisecond); err != nil {
 			perfcommon.Must(fmt.Errorf("multi dealer/router set recv timeout client[%d]: %w", i, err))
 		}

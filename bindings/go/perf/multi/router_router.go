@@ -25,7 +25,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(server)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 
 	type routerClient struct {
 		ctx     *zlink.Context
@@ -47,7 +47,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		if err := client.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi router/router connect client[%d]: %w", i, err))
 		}
-		perfcommon.WaitMonitorEvent(clientMon)
+			perfcommon.WaitConnected(clientMon)
 		if err := client.SetRecvTimeout(500 * time.Millisecond); err != nil {
 			perfcommon.Must(fmt.Errorf("multi router/router set recv timeout client[%d]: %w", i, err))
 		}

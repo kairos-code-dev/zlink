@@ -13,9 +13,8 @@ func waitMonitorReady(
 	timeout time.Duration,
 	name string,
 ) error {
-	deadline := time.Now().Add(timeout)
 	readyEvents := 0
-	for time.Now().Before(deadline) && readyEvents < minEvents {
+	for readyEvents < minEvents {
 		type result struct {
 			event *zlink.MonitorEvent
 			err   error
@@ -28,20 +27,14 @@ func waitMonitorReady(
 		select {
 		case out := <-ch:
 			if out.err != nil {
-				if IsTransient(out.err) {
-					time.Sleep(50 * time.Millisecond)
-					continue
-				}
 				return out.err
 			}
 			if out.event != nil {
 				readyEvents++
 			}
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(timeout):
+			return fmt.Errorf("%s did not become ready", name)
 		}
 	}
-	if readyEvents >= minEvents {
-		return nil
-	}
-	return fmt.Errorf("%s did not become ready", name)
+	return nil
 }

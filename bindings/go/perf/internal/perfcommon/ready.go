@@ -38,7 +38,11 @@ func WaitReady(cfg ReadyConfig) error {
 
 func WaitConnected(monitors ...*zlink.SocketMonitor) {
 	for _, monitor := range monitors {
-		Must(WaitReady(ReadyConfig{Monitor: monitor, Timeout: DefaultReadyTimeout}))
+		Must(WaitReady(ReadyConfig{
+			Monitor:   monitor,
+			MinEvents: 1,
+			Timeout:   DefaultReadyTimeout,
+		}))
 	}
 }
 

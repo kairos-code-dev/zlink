@@ -21,7 +21,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	defer serverMon.Close()
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	recvStopAt := window.StopAt.Add(500 * time.Millisecond)
 
 	type dealerClient struct {
@@ -64,10 +64,9 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 				}
 				perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv: %w", err))
 			}
-			if received == nil {
-				time.Sleep(50 * time.Microsecond)
-				continue
-			}
+				if received == nil {
+					continue
+				}
 			part, err := received.SinglePartOrError()
 			if err == nil {
 				now := time.Now()

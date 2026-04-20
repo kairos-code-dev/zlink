@@ -41,7 +41,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.PostReadySettle(cfg.pattern)
 
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 
 	for time.Now().Before(window.StopAt) {

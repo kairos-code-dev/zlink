@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,7 @@ type Stats struct {
 	count uint64
 	mu    sync.Mutex
 	latNs []float64
+	sumNs float64
 }
 
 type Result struct {
@@ -37,10 +39,13 @@ func NewStats() *Stats {
 }
 
 func (s *Stats) Add(sentAt time.Time) {
-	atomic.AddUint64(&s.count, 1)
 	latencyNs := float64(time.Since(sentAt).Nanoseconds())
+	atomic.AddUint64(&s.count, 1)
 	s.mu.Lock()
-	s.latNs = append(s.latNs, latencyNs)
+	s.sumNs += latencyNs
+	if len(s.latNs) < latencySampleCap() {
+		s.latNs = append(s.latNs, latencyNs)
+	}
 	s.mu.Unlock()
 }
 
@@ -49,21 +54,40 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 	defer s.mu.Unlock()
 	sort.Float64s(s.latNs)
 	count := atomic.LoadUint64(&s.count)
+	latencyMean := 0.0
+	if count > 0 {
+		latencyMean = s.sumNs / float64(count)
+	}
 	return Result{
 		Throughput:   float64(count) / duration.Seconds(),
 		Bandwidth:    float64(count*uint64(msgSize)) / duration.Seconds() / 1_000_000.0,
-		LatencyNs:    percentile(s.latNs, 50),
+		LatencyNs:    latencyMean,
 		LatencyP95Ns: percentile(s.latNs, 95),
 		LatencyP99Ns: percentile(s.latNs, 99),
 	}
 }
 
 func PrintResult(pattern, transport string, msgSize int, result Result) {
-	fmt.Printf("RESULT,go,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
-	fmt.Printf("RESULT,go,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
-	fmt.Printf("RESULT,go,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
-	fmt.Printf("RESULT,go,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
-	fmt.Printf("RESULT,go,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
+	fmt.Printf("RESULT,current,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
+	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
+}
+
+func latencySampleCap() int {
+	raw := os.Getenv("PERF_SINGLE_LATENCY_SAMPLE_CAP")
+	if raw == "" {
+		raw = os.Getenv("PERF_MULTI_LATENCY_SAMPLE_CAP")
+	}
+	if raw == "" {
+		return 200000
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 200000
+	}
+	return value
 }
 
 func Must(err error) {
@@ -86,14 +110,34 @@ func DebugEnabled() bool {
 	return os.Getenv("PERF_DEBUG") != ""
 }
 
-const BenchmarkSocketTimeout = 10 * time.Second
+const BenchmarkSocketTimeout = 200 * time.Millisecond
 
 func resolveSingleSocketHWM(send bool) int {
-	base := 1000
+	return resolveSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", send)
+}
+
+func resolveMultiSocketHWM(send bool) int {
+	return resolveSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", send)
+}
+
+func resolveSocketHWM(baseEnv, sendEnv, recvEnv string, send bool) int {
+	base := resolveIntEnv(baseEnv, 1000)
 	if send {
-		return base
+		return resolveIntEnv(sendEnv, base)
 	}
-	return base
+	return resolveIntEnv(recvEnv, base)
+}
+
+func resolveIntEnv(name string, fallback int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 type hwmSocket interface {
@@ -113,6 +157,16 @@ func ApplySingleHWM(socket hwmSocket) {
 	}
 	sndhwm := resolveSingleSocketHWM(true)
 	rcvhwm := resolveSingleSocketHWM(false)
+	Must(socket.SetSendHWM(sndhwm))
+	Must(socket.SetRecvHWM(rcvhwm))
+}
+
+func ApplyMultiHWM(socket hwmSocket) {
+	if socket == nil {
+		return
+	}
+	sndhwm := resolveMultiSocketHWM(true)
+	rcvhwm := resolveMultiSocketHWM(false)
 	Must(socket.SetSendHWM(sndhwm))
 	Must(socket.SetRecvHWM(rcvhwm))
 }
@@ -229,37 +283,6 @@ func OpenMonitor(socket zlink.SocketTarget) *zlink.SocketMonitor {
 	mon, err := zlink.OpenSocketMonitor(socket, zlink.MonitorEventConnectionReady)
 	Must(err)
 	return mon
-}
-
-func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		type result struct {
-			event *zlink.MonitorEvent
-			err   error
-		}
-		ch := make(chan result, 1)
-		go func() {
-			event, err := mon.Recv()
-			ch <- result{event: event, err: err}
-		}()
-		select {
-		case out := <-ch:
-			if out.err != nil {
-				if IsTransient(out.err) {
-					time.Sleep(50 * time.Millisecond)
-					continue
-				}
-				Must(out.err)
-			}
-			if out.event != nil {
-				return out.event
-			}
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
-	Must(fmt.Errorf("timed out waiting for monitor event"))
-	return nil
 }
 
 func PreparePayload(size int) []byte {

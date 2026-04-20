@@ -18,7 +18,7 @@ func runSingleOneWay(
 	send func([]byte) error,
 ) perfcommon.Result {
 	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 
 	sendDone := make(chan struct{})
@@ -38,7 +38,7 @@ func runSingleOneWay(
 
 	for time.Now().Before(window.StopAt) {
 		if !drainSingleOneWay(receiver, stats, cfg.msgSize, window.ActiveAt, true) {
-			time.Sleep(50 * time.Microsecond)
+			continue
 		}
 	}
 
@@ -47,7 +47,7 @@ func runSingleOneWay(
 	idleDrainDeadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(idleDrainDeadline) {
 		if !drainSingleOneWay(receiver, nil, cfg.msgSize, window.ActiveAt, false) {
-			time.Sleep(50 * time.Microsecond)
+			continue
 		}
 	}
 
@@ -61,7 +61,7 @@ func drainSingleOneWay(
 	activeAt time.Time,
 	countActive bool,
 ) bool {
-	received, err := receiver.Recv(zlink.RecvFlagsDontWait)
+	received, err := receiver.Recv(zlink.RecvFlagsNone)
 	if err != nil {
 		if perfcommon.IsTransient(err) {
 			return false
@@ -94,7 +94,6 @@ func waitSingleRouteReady(
 		if drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
 			return
 		}
-		time.Sleep(50 * time.Microsecond)
 	}
 	perfcommon.Must(fmt.Errorf("%s did not become ready", name))
 }

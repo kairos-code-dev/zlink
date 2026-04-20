@@ -4,8 +4,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
-const { parseMultiArgs } = require('./perf_multi_common');
-const { applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
+const { applySocketPolicy, applyContextPolicy, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
@@ -26,6 +26,7 @@ function tryControlPublish(pub, payload) {
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'client', 'MULTI_SPOT');
     const controlPub = new zlink.PubSocket(ctx);
     const controlSub = new zlink.SubSocket(ctx);
     const slots = [];
@@ -67,14 +68,14 @@ async function main() {
                 }
             });
         }
-        const stabilizationDeadline = Date.now() + 1000;
+        const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
         while (Date.now() < stabilizationDeadline) {
             await sleepImmediate();
         }
         while (!tryControlPublish(controlPub, 'CONNECTED')) {
             await sleepImmediate();
         }
-        const controlSettleDeadline = Date.now() + 25;
+        const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
         while (Date.now() < controlSettleDeadline) {
             await sleepImmediate();
         }
@@ -111,13 +112,14 @@ async function main() {
             runId: createRunId(1),
             msgSize: options.msgSize,
             activeStartNs,
-            activeStopNs
+            activeStopNs,
+            sampleCap: resolveMultiLatencySampleCap()
         });
-        while (currentEpochNs() < activeStopNs + 250000000n) {
+        while (currentEpochNs() < activeStopNs) {
             await sleepImmediate();
         }
         const result = collector ? await collector.finish() : { latenciesNs: [] };
-        for (const metricLine of summarizeMetrics('MULTI_SPOT', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
+        for (const metricLine of summarizeMetrics('MULTI_SPOT', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(metricLine);
         }
     }

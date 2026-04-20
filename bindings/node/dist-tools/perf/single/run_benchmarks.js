@@ -1,23 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
+const { spawn } = require('node:child_process');
 const path = require('node:path');
-const { buildEffectiveOptions, completionLines, computeMetrics, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatTableHeader, formatTableRow, parseCommonArgs, patternDirection, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
-const { runPairBenchmark } = require('./perf_pair');
-const { runPubSubBenchmark } = require('./perf_pubsub');
-const { runDealerDealerBenchmark } = require('./perf_dealer_dealer');
-const { runDealerRouterBenchmark } = require('./perf_dealer_router');
-const { runRouterRouterBenchmark } = require('./perf_router_router');
-const { runSpotBenchmark } = require('./perf_spot');
-const { runSpotReqRepBenchmark } = require('./perf_spot_reqrep');
+const { buildEffectiveOptions, completionLines, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatTableHeader, formatTableRow, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
 const PATTERNS = {
-    PAIR: runPairBenchmark,
-    PUBSUB: runPubSubBenchmark,
-    DEALER_DEALER: runDealerDealerBenchmark,
-    DEALER_ROUTER: runDealerRouterBenchmark,
-    ROUTER_ROUTER: runRouterRouterBenchmark,
-    SPOT: runSpotBenchmark,
-    SPOT_REQREP: runSpotReqRepBenchmark
+    PAIR: { script: 'perf_pair.js' },
+    PUBSUB: { script: 'perf_pubsub.js' },
+    DEALER_DEALER: { script: 'perf_dealer_dealer.js' },
+    DEALER_ROUTER: { script: 'perf_dealer_router.js' },
+    ROUTER_ROUTER: { script: 'perf_router_router.js' },
+    SPOT: { script: 'perf_spot.js' },
+    SPOT_REQREP: { script: 'perf_spot_reqrep.js' }
 };
 function policyTransports(pattern) {
     const raw = pattern === 'SPOT' || pattern === 'SPOT_REQREP'
@@ -36,16 +30,40 @@ Measure current zlink Node single-pattern performance.
 Options:
   -h, --help            Show this help.
   --pattern NAME        Pattern list (comma-separated) or ALL.
+  --build-dir PATH      Accepted for policy compatibility.
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional tag in saved result filename.
+  --output PATH         Tee final rendered output to a file.
   --runs N              Iterations per configuration (default: 1).
   --duration N          Override single duration seconds (default: 5).
   --msg-sizes LIST      Comma-separated sizes (default: 64,256,1024,65536,131072,262144).
   --transports LIST     Comma-separated transports (default: policy transport set).
+  --pin-cpu             Pin child benchmark processes to CPU 0 on Linux.
+  --io-threads N        Override PERF_IO_THREADS for child cases.
+  --hwm N               Override PERF_SINGLE_HWM.
+  --send-hwm N          Override PERF_SINGLE_SNDHWM.
+  --recv-hwm N          Override PERF_SINGLE_RCVHWM.
+  --sndtimeo N          Override PERF_SINGLE_SNDTIMEO_MS.
+  --rcvtimeo N          Override PERF_SINGLE_RCVTIMEO_MS.
 
 Notes:
   - result is saved under perf/results/single/report/ as
     perf_node_single_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.`);
+}
+function pinCpuEnabled(options) {
+    return Boolean(options.pinCpu || process.env.PERF_TASKSET === '1');
+}
+function buildPinnedSpawn(command, args, options) {
+    if (!pinCpuEnabled(options)) {
+        return { command, args };
+    }
+    if (process.platform !== 'linux') {
+        throw new Error('--pin-cpu is only supported on Linux in this runner');
+    }
+    return {
+        command: 'taskset',
+        args: ['-c', '0', command, ...args]
+    };
 }
 function median(values) {
     const sorted = values.slice().sort((a, b) => a - b);
@@ -82,6 +100,110 @@ function isPlatformSkip(pattern, transport) {
 }
 function errorText(error) {
     return String(error && error.message ? error.message : error);
+}
+function buildBinaryEnv(options) {
+    const env = {
+        ...process.env,
+        PERF_SINGLE_DURATION_SECONDS: String(options.duration)
+    };
+    if (Number.isFinite(options.hwm)) {
+        env.PERF_SINGLE_HWM = String(options.hwm);
+    }
+    if (Number.isFinite(options.sendHwm)) {
+        env.PERF_SINGLE_SNDHWM = String(options.sendHwm);
+    }
+    if (Number.isFinite(options.recvHwm)) {
+        env.PERF_SINGLE_RCVHWM = String(options.recvHwm);
+    }
+    if (Number.isFinite(options.sendTimeoutMs)) {
+        env.PERF_SINGLE_SNDTIMEO_MS = String(options.sendTimeoutMs);
+    }
+    if (Number.isFinite(options.recvTimeoutMs)) {
+        env.PERF_SINGLE_RCVTIMEO_MS = String(options.recvTimeoutMs);
+    }
+    if (Number.isFinite(options.ioThreads)) {
+        env.PERF_IO_THREADS = String(options.ioThreads);
+    }
+    return env;
+}
+function resolveSingleTimeoutSeconds(durationSeconds) {
+    const override = Number(process.env.PERF_SINGLE_TIMEOUT_SECONDS || 0);
+    if (Number.isFinite(override) && override > 0) {
+        return Math.trunc(override);
+    }
+    return Math.max(30, Math.ceil(Number(durationSeconds) * 6) + 15);
+}
+async function runSingleCase(scriptName, transport, msgSize, options) {
+    const scriptPath = path.join(__dirname, scriptName);
+    const spawnSpec = buildPinnedSpawn(process.execPath, [scriptPath, 'current', transport, String(msgSize)], options);
+    const child = spawn(spawnSpec.command, spawnSpec.args, {
+        cwd: process.cwd(),
+        env: buildBinaryEnv(options),
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const stdoutLines = [];
+    const stderrLines = [];
+    let stdoutBuffer = '';
+    let stderrBuffer = '';
+    let timedOut = false;
+    const timeoutMs = resolveSingleTimeoutSeconds(options.duration) * 1000;
+    const timeout = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+        setTimeout(() => child.kill('SIGKILL'), 1000).unref();
+    }, timeoutMs);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+        stdoutBuffer += chunk;
+        while (true) {
+            const newline = stdoutBuffer.indexOf('\n');
+            if (newline === -1) {
+                break;
+            }
+            const line = stdoutBuffer.slice(0, newline).trim();
+            stdoutBuffer = stdoutBuffer.slice(newline + 1);
+            if (line) {
+                stdoutLines.push(line);
+            }
+        }
+    });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
+        stderrBuffer += chunk;
+        while (true) {
+            const newline = stderrBuffer.indexOf('\n');
+            if (newline === -1) {
+                break;
+            }
+            const line = stderrBuffer.slice(0, newline).trim();
+            stderrBuffer = stderrBuffer.slice(newline + 1);
+            if (line) {
+                stderrLines.push(line);
+            }
+        }
+    });
+    const exitCode = await new Promise((resolve, reject) => {
+        child.once('error', reject);
+        child.once('exit', (code) => resolve(code ?? 1));
+    });
+    clearTimeout(timeout);
+    if (stdoutBuffer.trim()) {
+        stdoutLines.push(stdoutBuffer.trim());
+    }
+    if (stderrBuffer.trim()) {
+        stderrLines.push(stderrBuffer.trim());
+    }
+    if (timedOut) {
+        const stderrText = stderrLines.join('\n');
+        throw new Error(stderrText
+            ? `single case timeout after ${timeoutMs}ms\n${stderrText}`
+            : `single case timeout after ${timeoutMs}ms`);
+    }
+    if (exitCode !== 0) {
+        const stderrText = stderrLines.join('\n');
+        throw new Error(stderrText ? `single case failed: ${stderrText}` : `single case failed: ${exitCode}`);
+    }
+    return stdoutLines;
 }
 async function main() {
     const options = parseCommonArgs(process.argv.slice(2), {
@@ -151,13 +273,8 @@ async function main() {
                 const perSizeMetrics = new Map();
                 for (const msgSize of options.msgSizes) {
                     try {
-                        const latenciesNs = await runner(msgSize, {
-                            ...options,
-                            transport,
-                            runId: caseOrdinal
-                        });
-                        caseOrdinal += 1;
-                        const metrics = computeMetrics(latenciesNs, options.duration, msgSize, name === 'SPOT_REQREP' ? 2 : 1);
+                        const lines = await runSingleCase(runner.script, transport, msgSize, options);
+                        const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
                         const row = { pattern: name, msgSize, metrics };
                         emit(`      ${formatTableRow(row)}`);
                         perSizeMetrics.set(msgSize, metrics);
@@ -185,13 +302,8 @@ async function main() {
                     emitIndented('        ', formatTableHeader());
                     for (const msgSize of options.msgSizes) {
                         try {
-                            const latenciesNs = await runner(msgSize, {
-                                ...options,
-                                transport,
-                                runId: caseOrdinal
-                            });
-                            caseOrdinal += 1;
-                            const metrics = computeMetrics(latenciesNs, options.duration, msgSize, name === 'SPOT_REQREP' ? 2 : 1);
+                            const lines = await runSingleCase(runner.script, transport, msgSize, options);
+                            const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
                             runResults.get(msgSize).push(metrics);
                             emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
                         }

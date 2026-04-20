@@ -57,17 +57,7 @@ inline bool is_stream_pattern (const char *pattern)
            || std::strcmp (pattern, "MULTI_STREAM") == 0;
 }
 
-inline std::string resolve_multi_perf_recv_mode ()
-{
-    return "recv";
-}
-
-inline bool multi_perf_callback_mode ()
-{
-    return false;
-}
-
-inline bool multi_perf_validate_recv_mode_for_pattern (const char *pattern)
+inline bool validate_multi_perf_pattern (const char *pattern)
 {
     return pattern && *pattern;
 }

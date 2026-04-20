@@ -7,6 +7,7 @@ const zlink = require('../../dist/canonical');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
+  applyContextPolicy,
   applySocketPolicy,
   subscribeNoWait,
   trySocketPublish,
@@ -30,6 +31,7 @@ function tryRecvRouted(spot) {
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx, 'server', 'MULTI_SPOT_REQREP');
   const node = new zlink.SpotNode(ctx);
   const dealer = new zlink.DealerSocket(ctx);
   const controlPub = new zlink.PubSocket(ctx);

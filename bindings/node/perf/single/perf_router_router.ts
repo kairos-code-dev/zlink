@@ -14,10 +14,12 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
   parseSingleBinaryArgs,
+  resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   waitForConnectionReady,
 } = require('./perf_single_common');
@@ -47,6 +49,7 @@ async function handshake(receiver, sender) {
 
 async function runRouterRouterBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx);
   const receiver = new zlink.RouterSocket(ctx);
   const sender = new zlink.RouterSocket(ctx);
   const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
@@ -68,7 +71,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
       runId,
       msgSize,
       activeStartNs,
-      activeStopNs
+      activeStopNs,
+      sampleCap: resolveSingleLatencySampleCap()
     });
     const payload = createPayload(msgSize);
     let seq = 1n;

@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applySocketPolicy, parseSingleBinaryArgs, resolveSingleIdleDrainMs, waitForPostReadySettle } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, waitForPostReadySettle } = require('./perf_single_common');
 const TOPIC = 'perf.topic';
 const SERVICE_TYPE_SPOT = 0x3002;
 const SERVICE_NAME = 'perf.spot';
@@ -37,7 +37,7 @@ async function waitForProbeReady(spot, payload, runId, msgSize, seqRef) {
             if (!header) {
                 return;
             }
-            if (header.runId === runId && header.msgSize === msgSize) {
+            if (header.phase === 0 && header.runId === runId && header.msgSize === msgSize) {
                 ready = true;
                 while (waiters.length > 0) {
                     waiters.shift()();
@@ -57,7 +57,7 @@ async function waitForProbeReady(spot, payload, runId, msgSize, seqRef) {
         if (!ready) {
             await Promise.race([
                 new Promise((resolve) => waiters.push(resolve)),
-                new Promise((resolve) => setTimeout(resolve, 25))
+                sleepImmediate()
             ]);
         }
         await sleepImmediate();
@@ -68,6 +68,7 @@ async function waitForProbeReady(spot, payload, runId, msgSize, seqRef) {
 }
 async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx);
     const node = new zlink.SpotNode(ctx);
     const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
     let spot = null;
@@ -88,7 +89,7 @@ async function runSpotBenchmark(msgSize, options) {
             msgSize,
             activeStartNs,
             activeStopNs,
-            sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
+            sampleCap: resolveSingleLatencySampleCap()
         });
         spot.onDispatchEvent(() => {
             drainSpot(spot, (received) => {
@@ -96,19 +97,14 @@ async function runSpotBenchmark(msgSize, options) {
             });
         });
         while (currentEpochNs() < activeStopNs) {
-            for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
-                stampPayload(payload, {
-                    phase: 1,
-                    runId,
-                    msgSize,
-                    seq: seqRef.current
-                });
-                spot.publish(SERVICE_NAME, TOPIC, payload);
-                seqRef.current += 1n;
-            }
-            if (currentEpochNs() < activeStopNs) {
-                await sleepImmediate();
-            }
+            stampPayload(payload, {
+                phase: 1,
+                runId,
+                msgSize,
+                seq: seqRef.current
+            });
+            spot.publish(SERVICE_NAME, TOPIC, payload);
+            seqRef.current += 1n;
         }
         stampPayload(payload, {
             phase: 2,
@@ -118,8 +114,7 @@ async function runSpotBenchmark(msgSize, options) {
         });
         spot.publish(SERVICE_NAME, TOPIC, payload);
         await waitForPostReadySettle(resolveSingleIdleDrainMs(options));
-        const result = await collector.finish();
-        return result.latenciesNs;
+        return collector.finish();
     }
     finally {
         if (spot) {
@@ -133,8 +128,8 @@ module.exports = { runSpotBenchmark };
 if (require.main === module) {
     (async () => {
         const options = parseSingleBinaryArgs(process.argv.slice(2));
-        const latenciesNs = await runSpotBenchmark(options.msgSize, options);
-        for (const line of summarizeMetrics('SPOT', options.transport, options.msgSize, latenciesNs, options.duration, options.libName)) {
+        const result = await runSpotBenchmark(options.msgSize, options);
+        for (const line of summarizeMetrics('SPOT', options.transport, options.msgSize, result.latenciesNs, options.duration, options.libName, result.accepted)) {
             console.log(line);
         }
     })().catch((error) => {

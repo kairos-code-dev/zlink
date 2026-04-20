@@ -14,9 +14,11 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
   parseSingleBinaryArgs,
+  resolveSingleLatencySampleCap,
   waitForPostReadySettle
 } = require('./perf_single_common');
 
@@ -41,6 +43,7 @@ function closeMessageParts(parts) {
 
 async function runSpotReqRepBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx);
   const requester = new zlink.RouterSocket(ctx);
   const replierNode = new zlink.SpotNode(ctx);
   const replier = replierNode.createSpot();
@@ -90,7 +93,8 @@ async function runSpotReqRepBenchmark(msgSize, options) {
       msgSize,
       activeStartNs,
       activeStopNs,
-      roundTrip: true
+      roundTrip: true,
+      sampleCap: resolveSingleLatencySampleCap()
     });
     const payload = createPayload(msgSize);
     let seq = 2n;

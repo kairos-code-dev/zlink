@@ -5,10 +5,11 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applySocketPolicy, recvNoWait, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, recvNoWait, resolveMultiLatencySampleCap, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'client', 'MULTI_DEALER_ROUTER');
     const dealers = [];
     const payloads = [];
     const waiting = [];
@@ -42,7 +43,8 @@ async function main() {
                 msgSize: options.msgSize,
                 activeStartNs,
                 activeStopNs,
-                roundTrip: true
+                roundTrip: true,
+                sampleCap: resolveMultiLatencySampleCap()
             });
             let seq = 1n;
             const drainReply = (index) => {
@@ -97,28 +99,8 @@ async function main() {
                     }
                 }
             }
-            const drainDeadline = Date.now() + 2000;
-            while (waiting.some(Boolean) && Date.now() < drainDeadline) {
-                let progressed = false;
-                const ready = poller.waitAll(poller.size, 25);
-                for (const event of ready) {
-                    const index = event.userData;
-                    if (!Number.isInteger(index)) {
-                        continue;
-                    }
-                    if ((event.events & POLLIN) !== 0) {
-                        progressed = drainReply(index) || progressed;
-                    }
-                    if ((event.events & POLLOUT) !== 0) {
-                        sendPending[index] = false;
-                    }
-                }
-                if (!progressed) {
-                    await sleepImmediate();
-                }
-            }
             const result = await collector.finish();
-            for (const metricLine of summarizeMetrics('MULTI_DEALER_ROUTER', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
+            for (const metricLine of summarizeMetrics('MULTI_DEALER_ROUTER', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
                 console.log(metricLine);
             }
             break;

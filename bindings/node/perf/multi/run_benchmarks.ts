@@ -101,7 +101,9 @@ Options:
                        Override connection-ready wait timeout.
   --monitor-hwm N       Override PERF_MULTI_MONITOR_HWM.
   --server-shutdown-timeout-ms N
-                       Override graceful server shutdown wait.`);
+                       Override graceful server shutdown wait.
+  --server-bind-port N Override benchmark bind port (default: 0 = auto).
+  --pin-cpu            Pin server/client benchmark processes to CPU 0 on Linux.`);
 }
 
 function median(values) {

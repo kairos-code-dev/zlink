@@ -41,18 +41,8 @@ internal static class PerfMultiPubSubServer
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        long activeSent = RunPublishPhase(pollManager, server, pollSockets,
-            payload, runId, size, PerfPhase.Active, ref seq, benchDeadlineTicks);
-
-        if (activeSent > 0)
-        {
-            double configuredSeconds = Math.Max(1.0, durationSeconds);
-            double throughput = activeSent / configuredSeconds;
-            double latencyNs = (configuredSeconds * 1_000_000_000.0)
-                / Math.Max(1.0, activeSent);
-            PrintResult(options.Pattern, options.Transport, size, throughput, latencyNs,
-                latencyNs, latencyNs);
-        }
+        _ = RunPublishPhase(pollManager, server, pollSockets, payload, runId,
+            size, PerfPhase.Active, ref seq, benchDeadlineTicks);
 
         return 0;
     }

@@ -54,7 +54,7 @@ Options:
   --duration N          Override single duration seconds (default: 5).
   --msg-sizes LIST      Comma-separated sizes (default: 64,256,1024,65536,131072,262144).
   --transports LIST     Comma-separated transports (default: policy transport set).
-  --pin-cpu             Record CPU pinning intent in Effective Options.
+  --pin-cpu             Pin child benchmark processes to CPU 0 on Linux.
   --io-threads N        Override PERF_IO_THREADS for child cases.
   --hwm N               Override PERF_SINGLE_HWM.
   --send-hwm N          Override PERF_SINGLE_SNDHWM.
@@ -65,6 +65,23 @@ Options:
 Notes:
   - result is saved under perf/results/single/report/ as
     perf_node_single_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.`);
+}
+
+function pinCpuEnabled(options) {
+  return Boolean(options.pinCpu || process.env.PERF_TASKSET === '1');
+}
+
+function buildPinnedSpawn(command, args, options) {
+  if (!pinCpuEnabled(options)) {
+    return { command, args };
+  }
+  if (process.platform !== 'linux') {
+    throw new Error('--pin-cpu is only supported on Linux in this runner');
+  }
+  return {
+    command: 'taskset',
+    args: ['-c', '0', command, ...args]
+  };
 }
 
 function median(values) {
@@ -145,9 +162,14 @@ function resolveSingleTimeoutSeconds(durationSeconds) {
 
 async function runSingleCase(scriptName, transport, msgSize, options) {
   const scriptPath = path.join(__dirname, scriptName);
-  const child = spawn(
+  const spawnSpec = buildPinnedSpawn(
     process.execPath,
     [scriptPath, 'current', transport, String(msgSize)],
+    options
+  );
+  const child = spawn(
+    spawnSpec.command,
+    spawnSpec.args,
     {
       cwd: process.cwd(),
       env: buildBinaryEnv(options),

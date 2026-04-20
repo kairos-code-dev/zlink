@@ -211,9 +211,9 @@ Options:
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
-                         (default: 4).
+                         (default: non-stream=2, stream=4).
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
-                         (default: 4).
+                         (default: non-stream=2, stream=4).
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
@@ -244,8 +244,8 @@ Options:
                          Override PERF_MULTI_SERVER_BIND_PORT (default: 0=auto).
 
 Environment:
-  PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
-  PERF_SKIP_MEMORY_CHECK=1   Disable preflight memory guard check
+  PERF_SKIP_NOFILE_CHECK=1   Disable nofile(limit) guard check
+  PERF_SKIP_MEMORY_CHECK=1   Disable memory guard check
   PERF_MULTI_MEMORY_BUDGET_PCT=70
                             Percent of MemAvailable reserved for multi benchmark sockets
   PERF_MULTI_MEMORY_BASE_MB=512
@@ -345,7 +345,6 @@ RCVBUF="${PERF_MULTI_RCVBUF:-${PERF_RCVBUF:-}}"
 SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${PERF_SNDTIMEO_MS:-200}}"
 RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
 CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${PERF_CONNECT_CONCURRENCY:-}}"
-ACTIVE_WARMUP="${PERF_MULTI_ACTIVE_WARMUP:-${PERF_ACTIVE_WARMUP:-}}"
 SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-${PERF_SERVICE_CLIENTS:-}}"
 LATENCY_SAMPLE_CAP="${PERF_MULTI_LATENCY_SAMPLE_CAP:-${PERF_LATENCY_SAMPLE_CAP:-}}"
 TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-}}"
@@ -787,7 +786,7 @@ if [[ -z "${RESULTS_DIR_OVERRIDE}" ]]; then
 fi
 
 RUN_ENV=()
-RUN_ENV+=(PERF_ALLOW_MULTI="1")
+RUN_ENV+=(PERF_INTERNAL_MULTI_ENTRY="1")
 RUN_ENV+=(PERF_POLICY="1")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
 RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${DURATION_SECONDS}")
@@ -803,9 +802,6 @@ RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${DISABLE_RESOURCE_METRICS}")
 RUN_ENV+=(PERF_MULTI_DEFAULT_IO_THREADS="${EFFECTIVE_DEFAULT_IO_THREADS}")
 if [[ -n "${CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${CLIENTS}")
-fi
-if [[ -n "${ACTIVE_WARMUP}" ]]; then
-  RUN_ENV+=(PERF_MULTI_ACTIVE_WARMUP="${ACTIVE_WARMUP}")
 fi
 if [[ -n "${SERVICE_CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_SERVICE_CLIENTS="${SERVICE_CLIENTS}")
@@ -902,12 +898,12 @@ for raw_pattern in "${PATTERNS[@]}"; do
   fi
 
   if ! ensure_nofile_limit "${pattern_clients}"; then
-    record_skip "${pattern}" "preflight_nofile_${NOFILE_SKIP_REASON}"
+    record_skip "${pattern}" "guard_nofile_${NOFILE_SKIP_REASON}"
     continue
   fi
 
   if ! ensure_memory_budget "${pattern_clients}"; then
-    record_skip "${pattern}" "preflight_memory_${MEMORY_SKIP_REASON}"
+    record_skip "${pattern}" "guard_memory_${MEMORY_SKIP_REASON}"
     continue
   fi
 
@@ -940,7 +936,7 @@ echo "=== Running multi benchmark: ${PATTERN_CSV_DISPLAY} ==="
 echo "    lang=cpp suite=multi"
 echo "    duration=${DURATION_SECONDS}s"
 RUN_EXIT_CODE=0
-if PERF_ALLOW_MULTI=1 \
+if PERF_INTERNAL_MULTI_ENTRY=1 \
   PERF_SUPPRESS_TOTAL_TIME=1 \
   env "${RUN_ENV[@]}" \
   "${SCRIPT_DIR}/run_binding_single.sh" \

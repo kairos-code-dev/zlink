@@ -18,8 +18,10 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applyContextPolicy,
   applySocketPolicy,
   recvNoWait,
+  resolveMultiLatencySampleCap,
   trySocketSend,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
@@ -30,6 +32,7 @@ const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx, 'client', 'MULTI_ROUTER_ROUTER');
   const routers = [];
   const payloads = [];
   const waiting = [];
@@ -68,7 +71,8 @@ async function main() {
         msgSize: options.msgSize,
         activeStartNs,
         activeStopNs,
-        roundTrip: true
+        roundTrip: true,
+        sampleCap: resolveMultiLatencySampleCap()
       });
       let seq = 1n;
 
@@ -136,7 +140,9 @@ async function main() {
         options.transport,
         options.msgSize,
         result.latenciesNs,
-        options.duration
+        options.duration,
+        'current',
+        result.accepted
       )) {
         console.log(metricLine);
       }

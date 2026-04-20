@@ -19,6 +19,7 @@ const {
   parseMultiArgs,
   resolveMultiConnectConcurrency
 } = require('./perf_multi_common');
+const { resolveMultiLatencySampleCap } = require('./perf_multi_runtime');
 
 function buildPacketFrame(body) {
   const frame = Buffer.allocUnsafe(6 + body.length);
@@ -319,7 +320,8 @@ async function main() {
         msgSize: options.msgSize,
         activeStartNs,
         activeStopNs,
-        roundTrip: true
+        roundTrip: true,
+        sampleCap: resolveMultiLatencySampleCap()
       });
       let seq = 1n;
 
@@ -342,7 +344,9 @@ async function main() {
         options.transport,
         options.msgSize,
         result.latenciesNs,
-        options.duration
+        options.duration,
+        'current',
+        result.accepted
       )) {
         console.log(metricLine);
       }

@@ -5,10 +5,11 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applySocketPolicy, recvNoWait, trySocketSend } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, recvNoWait, trySocketSend } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'server', 'MULTI_DEALER_ROUTER');
     const router = new zlink.RouterSocket(ctx);
     const poller = new zlink.Poller();
     const pending = [];

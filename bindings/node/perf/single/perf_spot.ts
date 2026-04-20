@@ -14,8 +14,10 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applyContextPolicy,
   applySocketPolicy,
   parseSingleBinaryArgs,
+  resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   waitForPostReadySettle
 } = require('./perf_single_common');
@@ -90,6 +92,7 @@ async function waitForProbeReady(spot, payload, runId, msgSize, seqRef) {
 
 async function runSpotBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx);
   const node = new zlink.SpotNode(ctx);
   const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
   let spot = null;
@@ -112,7 +115,8 @@ async function runSpotBenchmark(msgSize, options) {
       runId,
       msgSize,
       activeStartNs,
-      activeStopNs
+      activeStopNs,
+      sampleCap: resolveSingleLatencySampleCap()
     });
 
     spot.onDispatchEvent(() => {

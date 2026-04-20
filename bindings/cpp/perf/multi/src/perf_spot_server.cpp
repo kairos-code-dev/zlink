@@ -134,7 +134,6 @@ bool wait_for_control_connect (zlink::service::spot_node_t &control_node_,
           &g_control_connect_gate, control_node_, timeout_ms_, &endpoint)) {
         return false;
     }
-    std::cout << "CONTROL_CONNECTED," << endpoint << std::endl;
     return true;
 }
 
@@ -259,7 +258,7 @@ bool perf_spot_server (const std::string &lib_name,
     perf::multi::set_perf_pattern_env ("SPOT");
     ensure_multi_spot_mesh_pub_budget_default ();
 
-    if (!perf::multi::multi_perf_validate_recv_mode_for_pattern (k_pattern))
+    if (!perf::multi::validate_multi_perf_pattern (k_pattern))
         return false;
 
     if (!perf::multi::is_supported_transport (transport_)) {

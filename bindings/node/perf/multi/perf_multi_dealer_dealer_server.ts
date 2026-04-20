@@ -11,11 +11,17 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applySocketPolicy, trySocketSend } = require('./perf_multi_runtime');
+const {
+  POLLOUT,
+  applyContextPolicy,
+  applySocketPolicy,
+  trySocketSend
+} = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx, 'server', 'MULTI_DEALER_DEALER');
   const server = new zlink.DealerSocket(ctx);
   const poller = new zlink.Poller();
   const payload = createPayload(options.msgSize);
@@ -55,6 +61,13 @@ async function main() {
           continue;
         }
         pending = false;
+      }
+      stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
+      while (!trySocketSend(server, payload)) {
+        const ready = poller.wait(25);
+        if (!ready || (ready.events & POLLOUT) === 0) {
+          await sleepImmediate();
+        }
       }
       break;
     }

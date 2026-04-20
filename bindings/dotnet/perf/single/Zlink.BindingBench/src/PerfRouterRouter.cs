@@ -270,10 +270,7 @@ internal static class PerfRouterRouter
             {
                 sender.SendBorrowedSingle(ReceiverRoutingId, payload, 0);
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno)
-                                            || IsTransientNetworkError(
-                                                ex.InternalErrno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
                 continue;
             }

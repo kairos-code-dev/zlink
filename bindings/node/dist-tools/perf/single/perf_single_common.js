@@ -72,6 +72,17 @@ function applySocketPolicy(socket, options = {}) {
         socket.setNoDrop(Boolean(options.noDrop));
     }
 }
+function applyContextPolicy(ctx) {
+    ctx.options.ioThreads = integerEnv('PERF_IO_THREADS', 0);
+    const maxSockets = integerEnv('PERF_MAX_SOCKETS', NaN);
+    if (Number.isFinite(maxSockets) && maxSockets > 0) {
+        ctx.options.maxSockets = maxSockets;
+    }
+}
+function resolveSingleLatencySampleCap() {
+    const configured = integerEnv('PERF_SINGLE_LATENCY_SAMPLE_CAP', 200000);
+    return configured > 0 ? configured : 200000;
+}
 function recvNoWait(socket) {
     try {
         return socket.recv(RecvFlags.DontWait);
@@ -90,38 +101,6 @@ function subscribeNoWait(socket) {
     catch (error) {
         if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
             return null;
-        }
-        throw error;
-    }
-}
-function trySocketSend(socket, ...args) {
-    try {
-        socket.send(...args, zlink.SendFlags.DontWait);
-        return true;
-    }
-    catch (error) {
-        const text = String(error && error.message ? error.message : error);
-        if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
-            return false;
-        }
-        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-            return false;
-        }
-        throw error;
-    }
-}
-function trySocketPublish(socket, topic, payload) {
-    try {
-        socket.publish(topic, payload, zlink.SendFlags.DontWait);
-        return true;
-    }
-    catch (error) {
-        const text = String(error && error.message ? error.message : error);
-        if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
-            return false;
-        }
-        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-            return false;
         }
         throw error;
     }
@@ -166,7 +145,7 @@ function resolveSingleIdleDrainMs(overrides = {}) {
     if (Number.isFinite(overrides.recvTimeoutMs)) {
         return Math.max(0, overrides.recvTimeoutMs);
     }
-    return integerEnv('PERF_SINGLE_PUBSUB_RCVTIMEO_MS', integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200));
+    return integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200);
 }
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
     const poller = new zlink.Poller();
@@ -246,7 +225,7 @@ function parseSingleBinaryArgs(argv) {
         transport,
         msgSize,
         duration: integerEnv('PERF_SINGLE_DURATION_SECONDS', 5),
-        runId: integerEnv('PERF_RUN_ID', 1),
+        runId: 1,
         hwm: integerEnv('PERF_SINGLE_HWM', NaN),
         sendHwm: integerEnv('PERF_SINGLE_SNDHWM', NaN),
         recvHwm: integerEnv('PERF_SINGLE_RCVHWM', NaN),
@@ -255,14 +234,14 @@ function parseSingleBinaryArgs(argv) {
     };
 }
 module.exports = {
+    applyContextPolicy,
     applySocketPolicy,
     benchmarkEndpoint,
     drainRecvSocket,
     drainRecvNow,
     parseSingleBinaryArgs,
+    resolveSingleLatencySampleCap,
     resolveSingleIdleDrainMs,
     waitForPostReadySettle,
     waitForConnectionReady,
-    trySocketSend,
-    trySocketPublish
 };

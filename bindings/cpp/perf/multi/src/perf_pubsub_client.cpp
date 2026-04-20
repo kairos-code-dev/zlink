@@ -96,7 +96,6 @@ class pubsub_client_bench_t
         }
 
         print_result ();
-        std::cout << "CLIENT_DONE," << _msg_size << std::endl;
         return true;
     }
 

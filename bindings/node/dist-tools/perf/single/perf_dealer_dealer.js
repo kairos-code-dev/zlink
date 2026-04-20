@@ -3,9 +3,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applySocketPolicy, benchmarkEndpoint, drainRecvSocket, parseSingleBinaryArgs, resolveSingleIdleDrainMs, waitForConnectionReady, } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, waitForConnectionReady, } = require('./perf_single_common');
 async function runDealerDealerBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx);
     const server = new zlink.DealerSocket(ctx);
     const client = new zlink.DealerSocket(ctx);
     const endpoint = await benchmarkEndpoint(options.transport, `dealer-dealer-${msgSize}`);
@@ -23,7 +24,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
             msgSize,
             activeStartNs,
             activeStopNs,
-            sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
+            sampleCap: resolveSingleLatencySampleCap()
         });
         const payload = createPayload(msgSize);
         let seq = 1n;
@@ -33,19 +34,14 @@ async function runDealerDealerBenchmark(msgSize, options) {
             collector.record(header, currentEpochNs());
         }, () => stop);
         while (currentEpochNs() < activeStopNs) {
-            for (let i = 0; i < 256 && currentEpochNs() < activeStopNs; i += 1) {
-                stampPayload(payload, {
-                    phase: 1,
-                    runId,
-                    msgSize,
-                    seq
-                });
-                client.send(payload);
-                seq += 1n;
-            }
-            if (currentEpochNs() < activeStopNs) {
-                await sleepImmediate();
-            }
+            stampPayload(payload, {
+                phase: 1,
+                runId,
+                msgSize,
+                seq
+            });
+            client.send(payload);
+            seq += 1n;
         }
         stampPayload(payload, { phase: 2, runId, msgSize, seq });
         client.send(payload);
@@ -56,8 +52,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
         }
         stop = true;
         await recvTask;
-        const result = await collector.finish();
-        return result.latenciesNs;
+        return collector.finish();
     }
     finally {
         client.close();
@@ -69,8 +64,8 @@ module.exports = { runDealerDealerBenchmark };
 if (require.main === module) {
     (async () => {
         const options = parseSingleBinaryArgs(process.argv.slice(2));
-        const latenciesNs = await runDealerDealerBenchmark(options.msgSize, options);
-        for (const line of summarizeMetrics('DEALER_DEALER', options.transport, options.msgSize, latenciesNs, options.duration, options.libName)) {
+        const result = await runDealerDealerBenchmark(options.msgSize, options);
+        for (const line of summarizeMetrics('DEALER_DEALER', options.transport, options.msgSize, result.latenciesNs, options.duration, options.libName, result.accepted)) {
             console.log(line);
         }
     })().catch((error) => {

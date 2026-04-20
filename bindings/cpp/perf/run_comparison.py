@@ -63,7 +63,7 @@ SINGLE_ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
 }
-ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
+ALLOW_MULTI = os.environ.get("PERF_INTERNAL_MULTI_ENTRY", "0") == "1"
 SINGLE_COMPARISONS = [
     ("perf_pair", "PAIR"),
     ("perf_pubsub", "PUBSUB"),

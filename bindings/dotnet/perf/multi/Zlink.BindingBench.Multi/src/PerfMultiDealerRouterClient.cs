@@ -175,6 +175,19 @@ internal static class PerfMultiDealerRouterClient
     {
         DealerRouterClientSlot slot = slots[slotIndex];
 
+        if (allowSend
+            && IsSocketWriteReady(pollManager, slotIndex)
+            && slot.WaitingForWritable
+            && !slot.WaitingForReply)
+        {
+            if (TrySend(slot))
+            {
+                slot.WaitingForReply = true;
+                slot.WaitingForWritable = false;
+                UpdatePollMask(slot, eventMasks, slotIndex);
+            }
+        }
+
         bool readReady = IsSocketReadReady(pollManager, slotIndex);
         if (!readReady && !slot.WaitingForReply)
             return;
@@ -206,7 +219,8 @@ internal static class PerfMultiDealerRouterClient
                         ulong nowNs = EpochNs();
                         if (nowNs >= header.SentTsNs)
                         {
-                            double sampleLatencyNs = nowNs - header.SentTsNs;
+                            double sampleLatencyNs = (nowNs - header.SentTsNs)
+                                / 2.0;
                             long sampleSeen = metrics.SampleSeen;
                             uint rng = metrics.Rng;
                             ReservoirSample(metrics.LatencySamples, sampleLatencyNs,

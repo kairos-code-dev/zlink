@@ -171,8 +171,7 @@ internal static class PerfPubSub
             {
                 sender.PublishBorrowedSingle(Topic, payload, 0);
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
                 continue;
             }
@@ -198,11 +197,5 @@ internal static class PerfPubSub
     {
         ErrorCode code = ZlinkException.MapErrorCode(errno);
         return code == ErrorCode.EIntr || errno == 4;
-    }
-
-    private static bool IsWouldBlock(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EAgain || errno == 11;
     }
 }

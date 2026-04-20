@@ -69,12 +69,15 @@ async function reservePort() {
   return address.port;
 }
 
-async function benchmarkEndpoint(transport, token) {
+async function benchmarkEndpoint(transport, token, bindPort = 0) {
   if (transport === 'ipc') {
     return `ipc://${path.join(os.tmpdir(), `zlink-node-multi-perf-${process.pid}-${token}.sock`)}`;
   }
   if (transport === 'tcp' || transport === 'tls' || transport === 'ws' || transport === 'wss') {
-    return `${transport}://127.0.0.1:${await reservePort()}`;
+    const port = Number.isFinite(bindPort) && bindPort > 0
+      ? Math.trunc(bindPort)
+      : await reservePort();
+    return `${transport}://127.0.0.1:${port}`;
   }
   throw new Error(`unsupported multi transport: ${transport}`);
 }

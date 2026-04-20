@@ -4,8 +4,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { parseMultiArgs } = require('./perf_multi_common');
-const { applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
+const { applySocketPolicy, applyContextPolicy, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'perf.control';
 function closeMessageParts(parts) {
     for (const part of parts || []) {
@@ -17,6 +17,7 @@ function closeMessageParts(parts) {
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'client', 'MULTI_SPOT_REQREP');
     const controlPub = new zlink.PubSocket(ctx);
     const controlSub = new zlink.SubSocket(ctx);
     const routers = [];
@@ -45,14 +46,14 @@ async function main() {
         for (const router of routers) {
             await waitForConnectionReady(router, () => router.connect(options.peerEndpoint));
         }
-        const stabilizationDeadline = Date.now() + 1000;
+        const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
         while (Date.now() < stabilizationDeadline) {
             await sleepImmediate();
         }
         while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
             await sleepImmediate();
         }
-        const controlSettleDeadline = Date.now() + 25;
+        const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
         while (Date.now() < controlSettleDeadline) {
             await sleepImmediate();
         }
@@ -91,7 +92,8 @@ async function main() {
             msgSize: options.msgSize,
             activeStartNs,
             activeStopNs,
-            roundTrip: true
+            roundTrip: true,
+            sampleCap: resolveMultiLatencySampleCap()
         });
         let seq = 1n;
         const onReply = (index, result, replyParts) => {
@@ -124,12 +126,8 @@ async function main() {
                 await sleepImmediate();
             }
         }
-        const drainDeadline = Date.now() + 2000;
-        while (waiting.some(Boolean) && Date.now() < drainDeadline) {
-            await sleepImmediate();
-        }
         const result = await collector.finish();
-        for (const metricLine of summarizeMetrics('MULTI_SPOT_REQREP', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
+        for (const metricLine of summarizeMetrics('MULTI_SPOT_REQREP', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(metricLine);
         }
     }

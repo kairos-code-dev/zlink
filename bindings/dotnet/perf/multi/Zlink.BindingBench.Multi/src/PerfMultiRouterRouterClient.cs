@@ -218,7 +218,8 @@ internal static class PerfMultiRouterRouterClient
                         ulong nowNs = EpochNs();
                         if (nowNs >= header.SentTsNs)
                         {
-                            double sampleLatencyNs = nowNs - header.SentTsNs;
+                            double sampleLatencyNs = (nowNs - header.SentTsNs)
+                                / 2.0;
                             long sampleSeen = metrics.SampleSeen;
                             uint rng = metrics.Rng;
                             ReservoirSample(metrics.LatencySamples,

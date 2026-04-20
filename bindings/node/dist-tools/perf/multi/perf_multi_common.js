@@ -34,7 +34,7 @@ function parseArgs(argv, defaults = {}) {
             options.serverControlEndpoint = argv[++i];
         }
         else if (argv[i] === '--transport') {
-            options.transport = argv[++i];
+            options.transport = String(argv[++i] || '').trim().toLowerCase();
         }
         else if (argv[i] === '--server-node-rid') {
             options.serverNodeRid = argv[++i];
@@ -71,17 +71,38 @@ async function reservePort() {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     return address.port;
 }
-async function benchmarkEndpoint(transport, token) {
+async function benchmarkEndpoint(transport, token, bindPort = 0) {
     if (transport === 'ipc') {
         return `ipc://${path.join(os.tmpdir(), `zlink-node-multi-perf-${process.pid}-${token}.sock`)}`;
     }
     if (transport === 'tcp' || transport === 'tls' || transport === 'ws' || transport === 'wss') {
-        return `${transport}://127.0.0.1:${await reservePort()}`;
+        const port = Number.isFinite(bindPort) && bindPort > 0
+            ? Math.trunc(bindPort)
+            : await reservePort();
+        return `${transport}://127.0.0.1:${port}`;
     }
     throw new Error(`unsupported multi transport: ${transport}`);
+}
+function resolveMultiConnectConcurrency(clientCount) {
+    const configured = Number(process.env.PERF_MULTI_CONNECT_CONCURRENCY);
+    if (Number.isFinite(configured) && configured > 0) {
+        return Math.trunc(configured);
+    }
+    return clientCount >= 10000 ? 1024 : 128;
+}
+function resolveMultiSpotReadySettleMs() {
+    const configured = Number(process.env.PERF_MULTI_SPOT_READY_SETTLE_MS);
+    return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 1000;
+}
+function resolveMultiSpotControlSettleMs() {
+    const configured = Number(process.env.PERF_MULTI_SPOT_CONTROL_SETTLE_MS);
+    return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 25;
 }
 module.exports = {
     benchmarkEndpoint,
     parseMultiArgs: parseArgs,
-    reservePort
+    reservePort,
+    resolveMultiConnectConcurrency,
+    resolveMultiSpotControlSettleMs,
+    resolveMultiSpotReadySettleMs
 };

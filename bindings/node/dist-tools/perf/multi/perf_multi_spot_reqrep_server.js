@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { applyContextPolicy, applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
 function tryRecvRouted(spot) {
@@ -22,6 +22,7 @@ function tryRecvRouted(spot) {
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'server', 'MULTI_SPOT_REQREP');
     const node = new zlink.SpotNode(ctx);
     const dealer = new zlink.DealerSocket(ctx);
     const controlPub = new zlink.PubSocket(ctx);

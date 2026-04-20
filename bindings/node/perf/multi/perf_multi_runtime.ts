@@ -41,6 +41,47 @@ function applySocketPolicy(socket, options = {}) {
   }
 }
 
+function resolveMultiIoThreads(role, pattern) {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  const roleKey = normalizedRole === 'server' ? 'SERVER' : 'CLIENT';
+  const isStream = pattern === 'MULTI_STREAM';
+  const envNames = isStream
+    ? [`PERF_MULTI_STREAM_${roleKey}_IO_THREADS`, `PERF_MULTI_${roleKey}_IO_THREADS`]
+    : [`PERF_MULTI_${roleKey}_IO_THREADS`];
+
+  for (const name of envNames) {
+    const value = integerEnv(name, NaN);
+    if (Number.isFinite(value) && value >= 0) {
+      return value;
+    }
+  }
+
+  const shared = integerEnv('PERF_IO_THREADS', NaN);
+  if (Number.isFinite(shared) && shared >= 0) {
+    return shared;
+  }
+
+  const fallback = integerEnv('PERF_MULTI_DEFAULT_IO_THREADS', NaN);
+  if (Number.isFinite(fallback) && fallback >= 0) {
+    return fallback;
+  }
+
+  return isStream ? 4 : 2;
+}
+
+function applyContextPolicy(ctx, role, pattern) {
+  ctx.options.ioThreads = resolveMultiIoThreads(role, pattern);
+  const maxSockets = integerEnv('PERF_MAX_SOCKETS', NaN);
+  if (Number.isFinite(maxSockets) && maxSockets > 0) {
+    ctx.options.maxSockets = maxSockets;
+  }
+}
+
+function resolveMultiLatencySampleCap() {
+  const configured = integerEnv('PERF_MULTI_LATENCY_SAMPLE_CAP', 200000);
+  return configured > 0 ? configured : 200000;
+}
+
 function recvNoWait(socket) {
   try {
     return socket.recv(RecvFlags.DontWait);
@@ -172,9 +213,11 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
 module.exports = {
   POLLIN,
   POLLOUT,
+  applyContextPolicy,
   applySocketPolicy,
   drainRecvSocket,
   recvNoWait,
+  resolveMultiLatencySampleCap,
   subscribeNoWait,
   trySocketPublish,
   trySocketSend,

@@ -57,13 +57,35 @@ Measure current zlink Node multi-pattern performance.
 Options:
   -h, --help            Show this help.
   --pattern NAME        Pattern list (comma-separated) or ALL.
+  --build-dir PATH      Accepted for policy compatibility.
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional tag in saved result filename.
+  --output PATH         Tee final rendered output to a file.
   --runs N              Iterations per configuration (default: 1).
   --duration N          Override multi duration seconds (default: 5).
   --msg-sizes LIST      Comma-separated sizes.
   --transports LIST     Comma-separated transports (default: policy transport set).
-  --clients N           Override number of client sockets per pattern (default: 100, stream=10000).`);
+  --clients N           Override number of client sockets per pattern (default: 100, stream=10000).
+  --hwm N               Override PERF_MULTI_HWM (default baseline: 100, stream=10).
+  --send-hwm N          Override PERF_MULTI_SNDHWM.
+  --recv-hwm N          Override PERF_MULTI_RCVHWM.
+  --sndtimeo N          Override PERF_MULTI_SNDTIMEO_MS.
+  --rcvtimeo N          Override PERF_MULTI_RCVTIMEO_MS.
+  --connect-concurrency N
+                       Override PERF_MULTI_CONNECT_CONCURRENCY.
+  --transport-transition-ms N
+                       Override transport cooldown.
+  --pattern-transition-ms N
+                       Override pattern cooldown.
+  --server-ready-timeout-ms N
+                       Override READY wait timeout.
+  --connect-ready-timeout-ms N
+                       Override connection-ready wait timeout.
+  --monitor-hwm N       Override PERF_MULTI_MONITOR_HWM.
+  --server-shutdown-timeout-ms N
+                       Override graceful server shutdown wait.
+  --server-bind-port N Override benchmark bind port (default: 0 = auto).
+  --pin-cpu            Pin server/client benchmark processes to CPU 0 on Linux.`);
 }
 function median(values) {
     const sorted = values.slice().sort((a, b) => a - b);

@@ -188,8 +188,7 @@ internal static class PerfSpot
                         spotPub.PublishBorrowedSingle(ServiceName, Topic,
                             activePayload, 0);
                     }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                                    || IsWouldBlock(ex.InternalErrno))
+                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
                     {
                         continue;
                     }

@@ -89,9 +89,12 @@ function percentile(sortedValues, q) {
     const index = Math.min(sortedValues.length - 1, Math.max(0, Math.ceil(sortedValues.length * q) - 1));
     return sortedValues[index];
 }
-function computeMetrics(latenciesNs, durationSeconds, msgSize, bandwidthMultiplier = 1) {
+function computeMetrics(latenciesNs, durationSeconds, msgSize, bandwidthMultiplier = 1, throughputCount = latenciesNs.length) {
     const count = latenciesNs.length;
-    const throughput = durationSeconds > 0 ? count / durationSeconds : 0;
+    const effectiveCount = Number.isFinite(throughputCount) && throughputCount >= 0
+        ? throughputCount
+        : count;
+    const throughput = durationSeconds > 0 ? effectiveCount / durationSeconds : 0;
     const bandwidth = throughput * msgSize * bandwidthMultiplier / 1_000_000;
     const sorted = latenciesNs.slice().sort((a, b) => a - b);
     const latency = count > 0 ? sorted.reduce((sum, value) => sum + value, 0) / count : 0;
@@ -112,8 +115,8 @@ function isEchoPattern(pattern) {
         || pattern === 'MULTI_STREAM'
         || pattern === 'MULTI_SPOT_REQREP';
 }
-function summarizeMetrics(pattern, transport, msgSize, latenciesNs, durationSeconds, libName = 'current') {
-    const metrics = computeMetrics(latenciesNs, durationSeconds, msgSize, isEchoPattern(pattern) ? 2 : 1);
+function summarizeMetrics(pattern, transport, msgSize, latenciesNs, durationSeconds, libName = 'current', throughputCount = latenciesNs.length) {
+    const metrics = computeMetrics(latenciesNs, durationSeconds, msgSize, isEchoPattern(pattern) ? 2 : 1, throughputCount);
     return Object.entries(metrics).map(([metric, value]) => {
         const formatted = metric.startsWith('latency')
             ? value.toFixed(6)
@@ -161,8 +164,8 @@ function createMetricCollector(config) {
         : BigInt(config.activeStopNs);
     const rttDivisor = config.roundTrip ? 2n : 1n;
     const sampleCap = Number.isFinite(config.sampleCap) && config.sampleCap > 0
-        ? Math.floor(config.sampleCap)
-        : 0;
+        ? Math.trunc(config.sampleCap)
+        : Number.POSITIVE_INFINITY;
     let accepted = 0;
     let rejected = 0;
     let closed = false;
@@ -188,7 +191,7 @@ function createMetricCollector(config) {
                 return;
             }
             accepted += 1;
-            if (sampleCap === 0 || latenciesNs.length < sampleCap) {
+            if (latenciesNs.length < sampleCap) {
                 latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
             }
         },

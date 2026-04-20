@@ -300,7 +300,6 @@ class spot_client_bench_t
           },
           [&](size_t) {
               print_result();
-              std::cout << "CLIENT_DONE," << _msg_size << std::endl;
               return true;
           });
         if (!ok)
@@ -696,7 +695,7 @@ bool perf_spot_client (const std::string &lib_name,
 {
     perf::multi::set_perf_pattern_env ("SPOT");
 
-    if (!perf::multi::multi_perf_validate_recv_mode_for_pattern (k_pattern))
+    if (!perf::multi::validate_multi_perf_pattern (k_pattern))
         return false;
 
     if (!perf::multi::is_supported_transport (transport_)) {

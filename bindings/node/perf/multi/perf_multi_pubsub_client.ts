@@ -9,14 +9,21 @@ const {
   createRunId,
   decodeMetricHeader,
   currentEpochNs,
+  sleepImmediate,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applySocketPolicy, drainRecvSocket } = require('./perf_multi_runtime');
+const {
+  applyContextPolicy,
+  applySocketPolicy,
+  drainRecvSocket,
+  resolveMultiLatencySampleCap
+} = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
   const subs = [];
   let collector = null;
   let stop = false;
@@ -54,8 +61,12 @@ async function main() {
           runId: createRunId(1),
           msgSize: options.msgSize,
           activeStartNs,
-          activeStopNs
+          activeStopNs,
+          sampleCap: resolveMultiLatencySampleCap()
         });
+        while (currentEpochNs() < activeStopNs) {
+          await sleepImmediate();
+        }
         stop = true;
         break;
       }
@@ -68,7 +79,9 @@ async function main() {
       options.transport,
       options.msgSize,
       result.latenciesNs,
-      options.duration
+      options.duration,
+      'current',
+      result.accepted
     )) {
       console.log(line);
     }

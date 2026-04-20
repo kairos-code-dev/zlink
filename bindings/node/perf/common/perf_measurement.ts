@@ -205,6 +205,9 @@ function createMetricCollector(config) {
     ? BigInt('0xffffffffffffffff')
     : BigInt(config.activeStopNs);
   const rttDivisor = config.roundTrip ? 2n : 1n;
+  const sampleCap = Number.isFinite(config.sampleCap) && config.sampleCap > 0
+    ? Math.trunc(config.sampleCap)
+    : Number.POSITIVE_INFINITY;
   let accepted = 0;
   let rejected = 0;
   let closed = false;
@@ -231,7 +234,9 @@ function createMetricCollector(config) {
         return;
       }
       accepted += 1;
-      latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
+      if (latenciesNs.length < sampleCap) {
+        latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
+      }
     },
     async finish() {
       closed = true;

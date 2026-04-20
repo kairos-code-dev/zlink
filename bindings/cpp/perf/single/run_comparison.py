@@ -561,11 +561,9 @@ def is_unsupported_output(text: str) -> bool:
     lowered = (text or "").lower()
     if not lowered:
         return False
-    if "protocol not supported" in lowered:
-        return True
     if "unsupported,current," in lowered or "unsupported," in lowered:
         return True
-    return is_bind_blocked_output(lowered)
+    return False
 
 
 def is_sandbox_blocked_transport(transport: str) -> bool:
@@ -728,22 +726,6 @@ def run_single_test(
             warnings=warnings or None,
             stderr=stderr,
         )
-    if fail_token and not metrics and is_sandbox_blocked_transport(transport):
-        return RunOutcome(
-            status="unsupported",
-            reason="unsupported",
-            warnings=warnings or None,
-            stderr=stderr,
-        )
-
-    if is_unsupported_output(stdout + "\n" + stderr):
-        return RunOutcome(
-            status="unsupported",
-            reason="unsupported",
-            warnings=warnings or None,
-            stderr=stderr,
-        )
-
     return RunOutcome(
         status="fail",
         reason="no_data",

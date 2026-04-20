@@ -5,7 +5,7 @@
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applySocketPolicy } = require('./perf_multi_runtime');
+const { applyContextPolicy, applySocketPolicy } = require('./perf_multi_runtime');
 
 function buildPacketFrame(header, body) {
   const headerBytes = header.data();
@@ -21,6 +21,7 @@ function buildPacketFrame(header, body) {
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx, 'server', 'MULTI_STREAM');
   const stream = new zlink.StreamSocket(ctx);
 
   try {

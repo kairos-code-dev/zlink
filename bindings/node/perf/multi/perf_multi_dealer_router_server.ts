@@ -9,6 +9,7 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applyContextPolicy,
   applySocketPolicy,
   recvNoWait,
   trySocketSend
@@ -17,6 +18,7 @@ const {
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx, 'server', 'MULTI_DEALER_ROUTER');
   const router = new zlink.RouterSocket(ctx);
   const poller = new zlink.Poller();
   const pending = [];

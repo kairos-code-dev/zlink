@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { applyContextPolicy, applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
@@ -19,6 +19,7 @@ function trySpotPublish(spot, serviceName, topic, payload) {
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'server', 'MULTI_SPOT');
     const node = new zlink.SpotNode(ctx);
     const dealer = new zlink.DealerSocket(ctx);
     const controlPub = new zlink.PubSocket(ctx);
@@ -88,6 +89,10 @@ async function main() {
                 seq += 1n;
                 continue;
             }
+            await sleepImmediate();
+        }
+        stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
+        while (!trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
             await sleepImmediate();
         }
     }

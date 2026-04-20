@@ -19,6 +19,8 @@ const {
 } = require('./perf_multi_common');
 const {
   applySocketPolicy,
+  applyContextPolicy,
+  resolveMultiLatencySampleCap,
   subscribeNoWait,
   trySocketPublish,
   waitForConnectionReady
@@ -46,6 +48,7 @@ function tryControlPublish(pub, payload) {
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx, 'client', 'MULTI_SPOT');
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
   const slots = [];
@@ -140,15 +143,21 @@ async function main() {
       runId: createRunId(1),
       msgSize: options.msgSize,
       activeStartNs,
-      activeStopNs
+      activeStopNs,
+      sampleCap: resolveMultiLatencySampleCap()
     });
+    while (currentEpochNs() < activeStopNs) {
+      await sleepImmediate();
+    }
     const result = collector ? await collector.finish() : { latenciesNs: [] };
     for (const metricLine of summarizeMetrics(
       'MULTI_SPOT',
       options.transport,
       options.msgSize,
       result.latenciesNs,
-      options.duration
+      options.duration,
+      'current',
+      result.accepted
     )) {
       console.log(metricLine);
     }

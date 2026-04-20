@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applySocketPolicy, benchmarkEndpoint, parseSingleBinaryArgs, waitForPostReadySettle } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle } = require('./perf_single_common');
 function tryRecvRouted(spot) {
     try {
         return spot.recvRouted(zlink.RecvFlags.DontWait);
@@ -24,6 +24,7 @@ function closeMessageParts(parts) {
 }
 async function runSpotReqRepBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx);
     const requester = new zlink.RouterSocket(ctx);
     const replierNode = new zlink.SpotNode(ctx);
     const replier = replierNode.createSpot();
@@ -66,49 +67,29 @@ async function runSpotReqRepBenchmark(msgSize, options) {
             activeStartNs,
             activeStopNs,
             roundTrip: true,
-            sampleCap: Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000)
+            sampleCap: resolveSingleLatencySampleCap()
         });
         const payload = createPayload(msgSize);
         let seq = 2n;
-        let inflight = 0;
-        const onReply = (result, replyParts) => {
+        while (currentEpochNs() < activeStopNs) {
+            stampPayload(payload, {
+                phase: 1,
+                runId,
+                msgSize,
+                seq
+            });
+            const replyParts = await requester.requestToSpot(replierNode.routingId, replier.routingId, Buffer.from(payload), 2000);
             try {
-                if (result === zlink.RequestResult.Ok && replyParts.length > 0) {
+                if (replyParts.length > 0) {
                     collector.record(decodeMetricHeaderFromParts(replyParts), currentEpochNs());
                 }
             }
             finally {
                 closeMessageParts(replyParts);
-                inflight -= 1;
             }
-        };
-        while (currentEpochNs() < activeStopNs) {
-            let progressed = false;
-            while (inflight < 1 && currentEpochNs() < activeStopNs) {
-                stampPayload(payload, {
-                    phase: 1,
-                    runId,
-                    msgSize,
-                    seq
-                });
-                const issued = requester.tryRequestToSpot(replierNode.routingId, replier.routingId, Buffer.from(payload), onReply, 2000);
-                if (!issued) {
-                    break;
-                }
-                inflight += 1;
-                seq += 1n;
-                progressed = true;
-            }
-            if (!progressed) {
-                await sleepImmediate();
-            }
+            seq += 1n;
         }
-        const drainDeadline = Date.now() + 2000;
-        while (inflight > 0 && Date.now() < drainDeadline) {
-            await sleepImmediate();
-        }
-        const result = await collector.finish();
-        return result.latenciesNs;
+        return collector.finish();
     }
     finally {
         replier.close();
@@ -121,8 +102,8 @@ module.exports = { runSpotReqRepBenchmark };
 if (require.main === module) {
     (async () => {
         const options = parseSingleBinaryArgs(process.argv.slice(2));
-        const latenciesNs = await runSpotReqRepBenchmark(options.msgSize, options);
-        for (const line of summarizeMetrics('SPOT_REQREP', options.transport, options.msgSize, latenciesNs, options.duration, options.libName)) {
+        const result = await runSpotReqRepBenchmark(options.msgSize, options);
+        for (const line of summarizeMetrics('SPOT_REQREP', options.transport, options.msgSize, result.latenciesNs, options.duration, options.libName, result.accepted)) {
             console.log(line);
         }
     })().catch((error) => {

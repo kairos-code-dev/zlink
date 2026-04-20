@@ -14,16 +14,19 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
   parseSingleBinaryArgs,
+  resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   waitForConnectionReady,
 } = require('./perf_single_common');
 
 async function runDealerDealerBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx);
   const server = new zlink.DealerSocket(ctx);
   const client = new zlink.DealerSocket(ctx);
   const endpoint = await benchmarkEndpoint(options.transport, `dealer-dealer-${msgSize}`);
@@ -42,7 +45,8 @@ async function runDealerDealerBenchmark(msgSize, options) {
       runId,
       msgSize,
       activeStartNs,
-      activeStopNs
+      activeStopNs,
+      sampleCap: resolveSingleLatencySampleCap()
     });
     const payload = createPayload(msgSize);
     let seq = 1n;

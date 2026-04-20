@@ -3,12 +3,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
-const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applySocketPolicy, drainRecvSocket } = require('./perf_multi_runtime');
+const { applyContextPolicy, applySocketPolicy, drainRecvSocket, resolveMultiLatencySampleCap } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
     const subs = [];
     let collector = null;
     let stop = false;
@@ -36,10 +37,11 @@ async function main() {
                     runId: createRunId(1),
                     msgSize: options.msgSize,
                     activeStartNs,
-                    activeStopNs
+                    activeStopNs,
+                    sampleCap: resolveMultiLatencySampleCap()
                 });
-                while (currentEpochNs() < activeStopNs + 250000000n) {
-                    await new Promise((resolve) => setImmediate(resolve));
+                while (currentEpochNs() < activeStopNs) {
+                    await sleepImmediate();
                 }
                 stop = true;
                 break;
@@ -47,7 +49,7 @@ async function main() {
         }
         await Promise.all(recvTasks);
         const result = collector ? await collector.finish() : { latenciesNs: [] };
-        for (const line of summarizeMetrics('MULTI_PUBSUB', options.transport, options.msgSize, result.latenciesNs, options.duration)) {
+        for (const line of summarizeMetrics('MULTI_PUBSUB', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(line);
         }
     }

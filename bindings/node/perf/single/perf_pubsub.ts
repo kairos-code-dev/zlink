@@ -14,10 +14,12 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
   parseSingleBinaryArgs,
+  resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   waitForPostReadySettle,
   waitForConnectionReady,
@@ -25,6 +27,7 @@ const {
 
 async function runPubSubBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
+  applyContextPolicy(ctx);
   const pub = new zlink.PubSocket(ctx);
   const sub = new zlink.SubSocket(ctx);
   const endpoint = await benchmarkEndpoint(options.transport, `pubsub-${msgSize}`);
@@ -56,7 +59,8 @@ async function runPubSubBenchmark(msgSize, options) {
       runId,
       msgSize,
       activeStartNs,
-      activeStopNs
+      activeStopNs,
+      sampleCap: resolveSingleLatencySampleCap()
     });
     const payload = createPayload(msgSize);
     let seq = 1n;

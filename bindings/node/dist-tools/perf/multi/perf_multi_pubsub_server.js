@@ -5,10 +5,11 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applySocketPolicy, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyContextPolicy, applySocketPolicy, trySocketPublish } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
+    applyContextPolicy(ctx, 'server', 'MULTI_PUBSUB');
     const pub = new zlink.PubSocket(ctx);
     const poller = new zlink.Poller();
     const payload = createPayload(options.msgSize);
@@ -46,6 +47,13 @@ async function main() {
                     continue;
                 }
                 pending = false;
+            }
+            stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
+            while (!trySocketPublish(pub, 'perf.topic', payload)) {
+                const ready = poller.wait(25);
+                if (!ready || (ready.events & POLLOUT) === 0) {
+                    await sleepImmediate();
+                }
             }
             break;
         }

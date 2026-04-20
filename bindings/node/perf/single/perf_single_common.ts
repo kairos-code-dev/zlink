@@ -88,6 +88,19 @@ function applySocketPolicy(socket, options = {}) {
   }
 }
 
+function applyContextPolicy(ctx) {
+  ctx.options.ioThreads = integerEnv('PERF_IO_THREADS', 0);
+  const maxSockets = integerEnv('PERF_MAX_SOCKETS', NaN);
+  if (Number.isFinite(maxSockets) && maxSockets > 0) {
+    ctx.options.maxSockets = maxSockets;
+  }
+}
+
+function resolveSingleLatencySampleCap() {
+  const configured = integerEnv('PERF_SINGLE_LATENCY_SAMPLE_CAP', 200000);
+  return configured > 0 ? configured : 200000;
+}
+
 function recvNoWait(socket) {
   try {
     return socket.recv(RecvFlags.DontWait);
@@ -245,11 +258,13 @@ function parseSingleBinaryArgs(argv) {
 }
 
 module.exports = {
+  applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
   drainRecvNow,
   parseSingleBinaryArgs,
+  resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   waitForPostReadySettle,
   waitForConnectionReady,

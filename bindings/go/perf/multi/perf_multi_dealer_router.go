@@ -19,7 +19,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	defer router.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
-	perfcommon.ApplyMultiHWM(router)
+	perfcommon.ApplyMultiHWM(router, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(router, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-multi-dealer-router")
 	startMultiRouterEchoServer(router)
@@ -40,7 +40,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		dealerMon := perfcommon.OpenMonitor(dealer)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
-		perfcommon.ApplyMultiHWM(dealer)
+		perfcommon.ApplyMultiHWM(dealer, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(dealer, cfg.transport)
 
 		rid := zlink.NewRoutingID([]byte(fmt.Sprintf("dealer-%06d", i)))
@@ -50,7 +50,6 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 			perfcommon.Must(fmt.Errorf("multi dealer/router connect client[%d]: %w", i, err))
 		}
 		perfcommon.WaitConnected(dealerMon)
-		waitForDealerReady(dealer)
 
 		dealers = append(dealers, dealerClient{
 			ctx:     clientCtx,
@@ -103,32 +102,4 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 
 	wg.Wait()
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
-}
-
-func waitForDealerReady(dealer *zlink.DealerSocket) {
-	payload := perfcommon.PreparePayload(64)
-	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
-		Name: "multi dealer/router perf endpoint",
-		Probe: func() (bool, error) {
-			perfcommon.StampProbePayload(payload)
-			err := dealer.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					return false, nil
-				}
-				return false, fmt.Errorf("multi dealer/router ready send: %w", err)
-			}
-			reply, err := dealer.Recv(zlink.RecvFlagsDontWait)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					return false, nil
-				}
-				return false, fmt.Errorf("multi dealer/router ready recv: %w", err)
-			}
-			if reply == nil {
-				return false, nil
-			}
-			return true, reply.Close()
-		},
-	}))
 }

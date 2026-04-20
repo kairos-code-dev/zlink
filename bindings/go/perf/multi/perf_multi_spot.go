@@ -24,7 +24,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer publisher.Close()
 	perfcommon.Must(publisher.SetNoDrop(true))
-	perfcommon.ApplyMultiHWM(publisher)
+	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(publisher, cfg.transport)
 	serviceName := "bench"
 
@@ -45,7 +45,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(node, cfg.transport))
 		perfcommon.Must(node.ConnectPeer(endpoint))
-		perfcommon.ApplyMultiHWM(spot)
+		perfcommon.ApplyMultiHWM(spot, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(spot, cfg.transport)
 		perfcommon.Must(spot.SetSubscription("bench."))
 		subs = append(subs, multiSpotSubscriber{node: node, spot: spot})

@@ -17,7 +17,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer publisher.Close()
 	perfcommon.Must(publisher.SetNoDrop(true))
-	perfcommon.ApplyMultiHWM(publisher)
+	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
 	pubMon := perfcommon.OpenMonitor(publisher)
 	defer pubMon.Close()
 
@@ -36,7 +36,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 		}
 		subs = append(subs, sub)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(sub, cfg.transport))
-		perfcommon.ApplyMultiHWM(sub)
+		perfcommon.ApplyMultiHWM(sub, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(sub, cfg.transport)
 		subMon := perfcommon.OpenMonitor(sub)
 		if err := sub.Connect(endpoint); err != nil {

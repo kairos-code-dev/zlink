@@ -19,7 +19,7 @@ func runMultiStream(cfg multiConfig) perfcommon.Result {
 	defer server.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
-	perfcommon.ApplyMultiHWM(server)
+	perfcommon.ApplyMultiHWM(server, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-stream")
 	startMultiStreamEchoServer(server)

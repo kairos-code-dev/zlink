@@ -202,30 +202,44 @@ count_result_lines() {
 }
 
 render_tables() {
-  python3 - "$RESULTS_FILE" <<'PY'
+  python3 - "$TMP_DIR" <<'PY'
 from collections import defaultdict
+import os
+import re
+import statistics
 import sys
 
-result_file = sys.argv[1]
+tmp_dir = sys.argv[1]
 metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
 echo_patterns = {"SPOT_REQREP"}
-rows = defaultdict(dict)
-
-with open(result_file, "r", encoding="utf-8") as fh:
-    for raw in fh:
-        parts = raw.strip().split(",")
-        if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
-            continue
-        pattern, transport, size, metric, value = parts[2], parts[3], parts[4], parts[5], parts[6]
-        if metric not in metrics:
-            continue
-        try:
-            rows[(pattern, transport, int(size))][metric] = float(value)
-        except ValueError:
-            continue
+rows = defaultdict(lambda: defaultdict(list))
+for entry in os.listdir(tmp_dir):
+    if not entry.endswith(".log"):
+        continue
+    path = os.path.join(tmp_dir, entry)
+    with open(path, "r", encoding="utf-8") as fh:
+        for raw in fh:
+            parts = raw.strip().split(",")
+            if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
+                continue
+            pattern, transport, size, metric, value = parts[2], parts[3], parts[4], parts[5], parts[6]
+            if metric not in metrics:
+                continue
+            try:
+                rows[(pattern, transport, int(size))][metric].append(float(value))
+            except ValueError:
+                continue
 
 by_pattern = defaultdict(list)
-for key, values in rows.items():
+for key, metric_values in rows.items():
+    values = {}
+    for metric in metrics:
+        samples = metric_values.get(metric)
+        if not samples:
+            break
+        values[metric] = statistics.median(samples)
+    if len(values) != len(metrics):
+        continue
     pattern, transport, size = key
     by_pattern[pattern].append((transport, size, values))
 
@@ -279,6 +293,7 @@ unsupported_cases=0
 skip_cases=0
 fail=0
 expected_cases=0
+FAILURES=()
 
 for run in $(seq 1 "${RUNS}"); do
   for pattern in "${PATTERNS[@]}"; do
@@ -311,6 +326,7 @@ for run in $(seq 1 "${RUNS}"); do
           if [[ "${case_result_lines}" -eq 0 ]]; then
             echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RESULTS_FILE}"
             fail=$((fail + 1))
+            FAILURES+=("${pattern} current ${transport} ${size}B: no_result_lines")
           else
             result_lines=$((result_lines + case_result_lines))
           fi
@@ -323,6 +339,7 @@ for run in $(seq 1 "${RUNS}"); do
           fi
           echo "FAIL,current,${pattern},${transport},${size},exit_nonzero" >> "${RESULTS_FILE}"
           fail=$((fail + 1))
+          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero")
         fi
       done
     done
@@ -332,6 +349,16 @@ done
 table_output="$(render_tables)"
 if [[ -n "${table_output}" ]]; then
   printf '\n%s\n' "${table_output}" >> "${RESULTS_FILE}"
+fi
+
+if [[ "${#FAILURES[@]}" -gt 0 ]]; then
+  {
+    echo
+    echo "## Failures"
+    for failure in "${FAILURES[@]}"; do
+      echo "- ${failure}"
+    done
+  } >> "${RESULTS_FILE}"
 fi
 
 expected_result_lines=$((expected_cases * 5))

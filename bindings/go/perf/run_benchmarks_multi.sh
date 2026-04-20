@@ -11,7 +11,7 @@ mkdir -p "${GOCACHE}" "${GOTMPDIR}"
 
 PATTERN="ALL"
 DURATION="5"
-MSG_SIZES="64,256,1024,65536,131072,262144"
+MSG_SIZES=""
 TRANSPORTS=""
 RUNS="1"
 CLIENTS=""
@@ -164,11 +164,47 @@ cleanup() {
 }
 trap cleanup EXIT
 
-IFS=',' read -r -a SIZES <<< "${MSG_SIZES}"
+normalize_multi_pattern() {
+  local raw="$1"
+  raw="${raw^^}"
+  if [[ "${raw}" == MULTI_* ]]; then
+    echo "${raw}"
+  else
+    echo "MULTI_${raw}"
+  fi
+}
+
+pattern_msg_sizes() {
+  local pattern="$1"
+  if [[ -n "${MSG_SIZES}" ]]; then
+    echo "${MSG_SIZES}"
+    return
+  fi
+  if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+    if [[ -n "${PERF_MULTI_STREAM_MSG_SIZES:-}" ]]; then
+      echo "${PERF_MULTI_STREAM_MSG_SIZES}"
+    elif [[ -n "${PERF_MSG_SIZES:-}" ]]; then
+      echo "${PERF_MSG_SIZES}"
+    else
+      echo "64,256,1024,65536"
+    fi
+    return
+  fi
+  if [[ -n "${PERF_MSG_SIZES:-}" ]]; then
+    echo "${PERF_MSG_SIZES}"
+  else
+    echo "64,256,1024,65536,131072,262144"
+  fi
+}
+
 if [[ "${PATTERN}" == "ALL" ]]; then
   PATTERNS=("MULTI_PUBSUB" "MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_SPOT" "MULTI_SPOT_REQREP" "MULTI_STREAM")
 else
-  IFS=',' read -r -a PATTERNS <<< "${PATTERN}"
+  IFS=',' read -r -a RAW_PATTERNS <<< "${PATTERN}"
+  PATTERNS=()
+  for raw_pattern in "${RAW_PATTERNS[@]}"; do
+    PATTERNS+=("$(normalize_multi_pattern "${raw_pattern}")")
+  done
 fi
 
 if [[ -n "${TRANSPORTS}" ]]; then
@@ -221,36 +257,49 @@ count_result_lines() {
   local size="$3"
   local case_log="$4"
   awk -F',' -v pattern="${pattern}" -v transport="${transport}" -v size="${size}" '
-    $1 == "RESULT" && $3 == pattern && $4 == transport && $5 == size { count++ }
+    $1 == "RESULT" && $2 == "current" && $3 == pattern && $4 == transport && $5 == size { count++ }
     END { print count + 0 }
   ' "${case_log}"
 }
 
 render_tables() {
-  python3 - "$RESULTS_FILE" <<'PY'
+  python3 - "$TMP_DIR" <<'PY'
 from collections import defaultdict
+import os
+import statistics
 import sys
 
-result_file = sys.argv[1]
+tmp_dir = sys.argv[1]
 metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
 echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP"}
-rows = defaultdict(dict)
-
-with open(result_file, "r", encoding="utf-8") as fh:
-    for raw in fh:
-        parts = raw.strip().split(",")
-        if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
-            continue
-        pattern, transport, size, metric, value = parts[2], parts[3], parts[4], parts[5], parts[6]
-        if metric not in metrics:
-            continue
-        try:
-            rows[(pattern, transport, int(size))][metric] = float(value)
-        except ValueError:
-            continue
+rows = defaultdict(lambda: defaultdict(list))
+for entry in os.listdir(tmp_dir):
+    if not entry.endswith(".log"):
+        continue
+    path = os.path.join(tmp_dir, entry)
+    with open(path, "r", encoding="utf-8") as fh:
+        for raw in fh:
+            parts = raw.strip().split(",")
+            if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
+                continue
+            pattern, transport, size, metric, value = parts[2], parts[3], parts[4], parts[5], parts[6]
+            if metric not in metrics:
+                continue
+            try:
+                rows[(pattern, transport, int(size))][metric].append(float(value))
+            except ValueError:
+                continue
 
 by_pattern = defaultdict(list)
-for key, values in rows.items():
+for key, metric_values in rows.items():
+    values = {}
+    for metric in metrics:
+        samples = metric_values.get(metric)
+        if not samples:
+            break
+        values[metric] = statistics.median(samples)
+    if len(values) != len(metrics):
+        continue
     pattern, transport, size = key
     by_pattern[pattern].append((transport, size, values))
 
@@ -294,9 +343,11 @@ PY
   echo "- patterns: ${PATTERN}"
   echo "- runs: ${RUNS}"
   echo "- transports: ${TRANSPORTS:-auto}"
-  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- msg_sizes: ${MSG_SIZES:-policy-default}"
   if [[ -n "${CLIENTS}" ]]; then
     echo "- clients: ${CLIENTS}"
+  elif [[ -n "${PERF_MULTI_CLIENTS:-}" ]]; then
+    echo "- clients: ${PERF_MULTI_CLIENTS}"
   else
     echo "- clients: auto (default=100, stream=10000)"
   fi
@@ -309,11 +360,18 @@ result_lines=0
 unsupported=0
 fail=0
 expected_cases=0
+FAILURES=()
+SKIPS=()
 
 for run in $(seq 1 "${RUNS}"); do
   for pattern in "${PATTERNS[@]}"; do
     read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
+    size_list="$(pattern_msg_sizes "${pattern}")"
+    IFS=',' read -r -a SIZES <<< "${size_list}"
     resolved_clients="${CLIENTS}"
+    if [[ -z "${resolved_clients}" ]]; then
+      resolved_clients="${PERF_MULTI_CLIENTS:-}"
+    fi
     if [[ -z "${resolved_clients}" ]]; then
       if [[ "${pattern}" == "MULTI_STREAM" ]]; then
         resolved_clients="10000"
@@ -339,10 +397,22 @@ for run in $(seq 1 "${RUNS}"); do
           --clients "${resolved_clients}" \
           > "${case_log}" 2>&1; then
           append_case_output "${case_log}"
+          if grep -Eq '^UNSUPPORTED,' "${case_log}" || is_unsupported_output "${case_log}"; then
+            unsupported=$((unsupported + 1))
+            expected_cases=$((expected_cases - 1))
+            transport_unsupported=1
+            break
+          fi
+          if grep -Eq '^SKIP,' "${case_log}"; then
+            expected_cases=$((expected_cases - 1))
+            SKIPS+=("${pattern} current ${transport} ${size}B: skipped")
+            continue
+          fi
           case_result_lines="$(count_result_lines "${pattern}" "${transport}" "${size}" "${case_log}")"
           if [[ "${case_result_lines}" -eq 0 ]]; then
             echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RESULTS_FILE}"
             fail=$((fail + 1))
+            FAILURES+=("${pattern} current ${transport} ${size}B: no_result_lines")
           else
             result_lines=$((result_lines + case_result_lines))
           fi
@@ -357,6 +427,7 @@ for run in $(seq 1 "${RUNS}"); do
           append_case_output "${case_log}"
           echo "FAIL,current,${pattern},${transport},${size},exit_nonzero" >> "${RESULTS_FILE}"
           fail=$((fail + 1))
+          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero")
         fi
       done
 
@@ -370,6 +441,26 @@ done
 table_output="$(render_tables)"
 if [[ -n "${table_output}" ]]; then
   printf '\n%s\n' "${table_output}" >> "${RESULTS_FILE}"
+fi
+
+if [[ "${#SKIPS[@]}" -gt 0 ]]; then
+  {
+    echo
+    echo "## Skips"
+    for skip in "${SKIPS[@]}"; do
+      echo "- ${skip}"
+    done
+  } >> "${RESULTS_FILE}"
+fi
+
+if [[ "${#FAILURES[@]}" -gt 0 ]]; then
+  {
+    echo
+    echo "## Failures"
+    for failure in "${FAILURES[@]}"; do
+      echo "- ${failure}"
+    done
+  } >> "${RESULTS_FILE}"
 fi
 
 expected_result_lines=$((expected_cases * 5))
@@ -386,9 +477,11 @@ fi
   echo "- patterns: ${PATTERN}"
   echo "- runs: ${RUNS}"
   echo "- transports: ${TRANSPORTS:-auto}"
-  echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- msg_sizes: ${MSG_SIZES:-policy-default}"
   if [[ -n "${CLIENTS}" ]]; then
     echo "- clients: ${CLIENTS}"
+  elif [[ -n "${PERF_MULTI_CLIENTS:-}" ]]; then
+    echo "- clients: ${PERF_MULTI_CLIENTS}"
   else
     echo "- clients: auto (default=100, stream=10000)"
   fi

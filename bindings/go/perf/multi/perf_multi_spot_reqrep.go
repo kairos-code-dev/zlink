@@ -66,7 +66,7 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 		requester, requesterErr := clientCtx.RouterSocket()
 		perfcommon.Must(requesterErr)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(requester, cfg.transport))
-		perfcommon.ApplyMultiHWM(requester)
+		perfcommon.ApplyMultiHWM(requester, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(requester, cfg.transport)
 		perfcommon.Must(requester.Connect(endpoint))
 		waitMultiSpotReqRepReady(requester, replierNodeRID, replierSpotRID, cfg.msgSize)

@@ -128,12 +128,26 @@ func resolveSingleSocketHWM(send bool) int {
 	return resolveSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", send)
 }
 
-func resolveMultiSocketHWM(send bool) int {
-	return resolveSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", send)
+func resolveMultiSocketHWM(pattern string, send bool) int {
+	fallback := 100
+	if strings.EqualFold(pattern, "MULTI_STREAM") {
+		fallback = 10
+	}
+	return resolveSocketHWMWithFallback(
+		"PERF_MULTI_HWM",
+		"PERF_MULTI_SNDHWM",
+		"PERF_MULTI_RCVHWM",
+		send,
+		fallback,
+	)
 }
 
 func resolveSocketHWM(baseEnv, sendEnv, recvEnv string, send bool) int {
-	base := resolveIntEnv(baseEnv, 1000)
+	return resolveSocketHWMWithFallback(baseEnv, sendEnv, recvEnv, send, 1000)
+}
+
+func resolveSocketHWMWithFallback(baseEnv, sendEnv, recvEnv string, send bool, fallback int) int {
+	base := resolveIntEnv(baseEnv, fallback)
 	if send {
 		return resolveIntEnv(sendEnv, base)
 	}
@@ -173,12 +187,12 @@ func ApplySingleHWM(socket hwmSocket) {
 	Must(socket.SetRecvHWM(rcvhwm))
 }
 
-func ApplyMultiHWM(socket hwmSocket) {
+func ApplyMultiHWM(socket hwmSocket, pattern string) {
 	if socket == nil {
 		return
 	}
-	sndhwm := resolveMultiSocketHWM(true)
-	rcvhwm := resolveMultiSocketHWM(false)
+	sndhwm := resolveMultiSocketHWM(pattern, true)
+	rcvhwm := resolveMultiSocketHWM(pattern, false)
 	Must(socket.SetSendHWM(sndhwm))
 	Must(socket.SetRecvHWM(rcvhwm))
 }

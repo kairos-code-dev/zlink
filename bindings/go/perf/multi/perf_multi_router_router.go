@@ -20,7 +20,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 
 	serverID := zlink.NewRoutingID([]byte("SERVER"))
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
-	perfcommon.ApplyMultiHWM(server)
+	perfcommon.ApplyMultiHWM(server, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.Must(server.SetRoutingID(serverID))
 	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-router-router")
@@ -42,7 +42,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
-		perfcommon.ApplyMultiHWM(client)
+		perfcommon.ApplyMultiHWM(client, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 
 		clientID := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))
@@ -111,7 +111,7 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 
 func waitForRouterClientReady(client *zlink.RouterSocket, serverID zlink.RoutingID) {
 	payload := perfcommon.PreparePayload(64)
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
 	for time.Now().Before(deadline) {
 		perfcommon.StampProbePayload(payload)
 		err := client.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(payload))

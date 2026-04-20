@@ -32,6 +32,7 @@ final class PerfSpot {
         AtomicBoolean idleDrain = new AtomicBoolean(false);
         AtomicLong lastRecvNs = new AtomicLong(System.nanoTime());
         AtomicReference<Throwable> failure = new AtomicReference<>();
+        Object drainSignal = new Object();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         String registryPub = PerfUtil.endpoint(config.transport(),
             "single-spot-registry-pub");
@@ -86,11 +87,13 @@ final class PerfSpot {
                             if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
                                 idleDrain.set(true);
                                 lastRecvNs.set(System.nanoTime());
+                                signalDrainProgress(drainSignal);
                                 continue;
                             }
                             if (header.phase() == PerfUtil.PHASE_ACTIVE) {
                                 metrics.recordNanos(header.latencyNanos());
                                 lastRecvNs.set(System.nanoTime());
+                                signalDrainProgress(drainSignal);
                             }
                         }
                     }
@@ -141,7 +144,7 @@ final class PerfSpot {
             }, "single-spot-sender");
             traffic.start();
             PerfUtil.join(traffic, "spot sender", Duration.ofSeconds(10));
-            awaitIdleDrain(finished, idleDrain, lastRecvNs,
+            awaitIdleDrain(finished, idleDrain, lastRecvNs, drainSignal,
                 Duration.ofMillis(Math.max(1, config.recvTimeoutMs())),
                 Duration.ofSeconds(config.durationSeconds() + 10L));
             if (failure.get() != null) {
@@ -168,24 +171,39 @@ final class PerfSpot {
         sleepQuietly(Duration.ofMillis(settleMs), "spot settle interrupted");
     }
 
+    private static void signalDrainProgress(Object drainSignal) {
+        synchronized (drainSignal) {
+            drainSignal.notifyAll();
+        }
+    }
+
     private static void awaitIdleDrain(CountDownLatch finished,
                                        AtomicBoolean idleDrain,
                                        AtomicLong lastRecvNs,
+                                       Object drainSignal,
                                        Duration quietWindow,
                                        Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
         long quietNs = quietWindow.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (idleDrain.get()
-                && System.nanoTime() - lastRecvNs.get() >= quietNs) {
-                finished.countDown();
-                return;
-            }
-            try {
-                Thread.sleep(1L);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("spot idle drain interrupted", ex);
+        synchronized (drainSignal) {
+            while (System.nanoTime() < deadline) {
+                if (idleDrain.get()
+                    && System.nanoTime() - lastRecvNs.get() >= quietNs) {
+                    finished.countDown();
+                    return;
+                }
+                long remainingNs = Math.max(1L, deadline - System.nanoTime());
+                long quietRemainingNs = idleDrain.get()
+                    ? Math.max(1L, quietNs - (System.nanoTime() - lastRecvNs.get()))
+                    : remainingNs;
+                long waitNs = Math.min(remainingNs, quietRemainingNs);
+                long waitMs = Math.max(1L, waitNs / 1_000_000L);
+                try {
+                    drainSignal.wait(waitMs);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("spot idle drain interrupted", ex);
+                }
             }
         }
         throw new IllegalStateException("spot idle drain timed out");

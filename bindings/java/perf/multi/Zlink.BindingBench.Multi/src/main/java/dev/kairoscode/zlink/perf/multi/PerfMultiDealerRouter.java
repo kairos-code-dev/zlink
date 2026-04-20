@@ -8,11 +8,13 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
-import dev.kairoscode.zlink.SendFlags;
+import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.perf.PerfControl;
-import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.perf.PerfSocketPollSet;
+import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
@@ -35,10 +37,18 @@ final class PerfMultiDealerRouter {
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "dealer/router server ready");
             int stops = 0;
+            Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventType.POLLIN.getValue())) {
                 while (stops < config.clients()) {
+                    int events = pendingReplies.isEmpty()
+                        ? PollEventType.POLLIN.getValue()
+                        : PollEventType.POLLIN.getValue() | PollEventType.POLLOUT.getValue();
+                    pollSet.setEvents(0, events);
                     pollSet.poll(-1);
+                    if (pollSet.isReady(0, PollEventType.POLLOUT.getValue())) {
+                        flushPending(server, pendingReplies);
+                    }
                     while (true) {
                         dev.kairoscode.zlink.Received received =
                             PerfUtil.recvNoWait(server);
@@ -55,9 +65,18 @@ final class PerfMultiDealerRouter {
                                 stops++;
                                 continue;
                             }
-                            try (Message reply = received.firstPart().move()) {
-                                server.send(received.routingIdOrThrow(), reply);
+                            Message reply = received.firstPart().move();
+                            PendingReply pending = new PendingReply(
+                                received.routingIdOrThrow(), reply);
+                            if (!pendingReplies.isEmpty()) {
+                                pendingReplies.addLast(pending);
+                                continue;
                             }
+                            if (!server.trySend(pending.routingId(), pending.payload())) {
+                                pendingReplies.addLast(pending);
+                                continue;
+                            }
+                            pending.close();
                         }
                     }
                 }
@@ -150,5 +169,26 @@ final class PerfMultiDealerRouter {
             }
         }
         return false;
+    }
+
+    private static void flushPending(RouterSocket server,
+                                     Deque<PendingReply> pendingReplies) {
+        while (!pendingReplies.isEmpty()) {
+            PendingReply pending = pendingReplies.peekFirst();
+            if (pending == null) {
+                return;
+            }
+            if (!server.trySend(pending.routingId(), pending.payload())) {
+                return;
+            }
+            pendingReplies.removeFirst();
+            pending.close();
+        }
+    }
+
+    private record PendingReply(RoutingId routingId, Message payload) {
+        private void close() {
+            payload.close();
+        }
     }
 }

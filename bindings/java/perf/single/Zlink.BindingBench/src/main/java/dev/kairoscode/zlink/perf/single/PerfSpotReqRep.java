@@ -4,15 +4,17 @@ package dev.kairoscode.zlink.perf.single;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.SpotDispatchEvent;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpotReqRep {
@@ -21,7 +23,7 @@ final class PerfSpotReqRep {
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         CountDownLatch ready = new CountDownLatch(1);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         String endpoint = normalizeSpotEndpoint(
             PerfUtil.endpoint(config.transport(), "single-spot-reqrep"),
@@ -30,10 +32,13 @@ final class PerfSpotReqRep {
         try (Context ctx = PerfUtil.newContext(config);
              RouterSocket requester = new RouterSocket(ctx);
              SpotNode replierNode = new SpotNode(ctx);
-             Spot replier = replierNode.createSpot()) {
+             Spot replier = replierNode.createSpot();
+             PerfSocketPollSet requesterPollSet = PerfSocketPollSet.fromSockets(
+                 List.of(requester), PollEventType.POLLIN.getValue())) {
             PerfUtil.applySpotOptions(replierNode, config);
             PerfUtil.configureServerTls(replierNode, config.transport());
             PerfUtil.configureClientTls(requester, config.transport());
+            PerfUtil.applySocketOptions(requester, config);
             replierNode.bind(endpoint);
             requester.connect(endpoint);
 
@@ -45,7 +50,7 @@ final class PerfSpotReqRep {
                     while (true) {
                         dev.kairoscode.zlink.Received received;
                         try {
-                            received = replier.recvRouted(dev.kairoscode.zlink.RecvFlags.DONT_WAIT);
+                            received = replier.recvRouted(RecvFlags.DONT_WAIT);
                         } catch (dev.kairoscode.zlink.RecvException ex) {
                             if (ex.getResult() == dev.kairoscode.zlink.RecvResult.NO_DATA) {
                                 return;
@@ -58,17 +63,13 @@ final class PerfSpotReqRep {
                             if (header == null) {
                                 continue;
                             }
-                            if (header.phase() == PerfUtil.PHASE_WARMUP
-                                && ready.getCount() > 0L) {
-                                ready.countDown();
-                            }
                             try (Message reply = received.firstPart().move()) {
                                 received.reply(reply);
                             }
                         }
                     }
                 } catch (Throwable ex) {
-                    failure.compareAndSet(null, ex);
+                    callbackFailure.compareAndSet(null, ex);
                     ready.countDown();
                 }
             });
@@ -78,13 +79,12 @@ final class PerfSpotReqRep {
                 while (ready.getCount() > 0L && System.nanoTime() < deadline) {
                     PerfUtil.writePayload(probe, config.size(),
                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime());
-                    closeReply(requestToSpot(requester, replierNode, replier, probe,
-                        Duration.ofMillis(config.connectReadyTimeoutMs())));
-                    try {
-                        ready.await(Math.max(1L, config.recvTimeoutMs()), TimeUnit.MILLISECONDS);
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("spot reqrep probe interrupted", ex);
+                    requester.sendToSpot(replierNode.routingId(), replier.routingId(), probe);
+                    PerfUtil.Header reply = awaitReply(requester, requesterPollSet, config,
+                        System.nanoTime() + Duration.ofMillis(
+                            Math.max(1, config.connectReadyTimeoutMs())).toNanos());
+                    if (reply.phase() == PerfUtil.PHASE_WARMUP) {
+                        ready.countDown();
                     }
                 }
             }
@@ -98,58 +98,55 @@ final class PerfSpotReqRep {
                 while (System.nanoTime() < activeEnd) {
                     PerfUtil.writePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    List<Message> reply = requestToSpot(requester, replierNode, replier, active,
-                        Duration.ofSeconds(2));
-                    try {
-                        if (reply.isEmpty()) {
-                            continue;
-                        }
-                        PerfUtil.Header header = PerfUtil.decodeHeader(reply.get(0), config.size());
-                        if (header != null && header.phase() == PerfUtil.PHASE_ACTIVE) {
-                            metrics.recordNanos(header.latencyNanos() / 2L);
-                        }
-                    } finally {
-                        closeReply(reply);
+                    requester.sendToSpot(replierNode.routingId(), replier.routingId(), active);
+                    PerfUtil.Header reply = awaitReply(requester, requesterPollSet, config,
+                        activeEnd + Duration.ofSeconds(2).toNanos());
+                    if (reply.phase() == PerfUtil.PHASE_ACTIVE) {
+                        metrics.recordNanos(reply.latencyNanos() / 2L);
                     }
                 }
                 PerfUtil.writePayload(cooldown, config.size(),
                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                closeReply(requestToSpot(requester, replierNode, replier, cooldown,
-                    Duration.ofSeconds(2)));
+                requester.sendToSpot(replierNode.routingId(), replier.routingId(), cooldown);
+                awaitReply(requester, requesterPollSet, config,
+                    System.nanoTime() + Duration.ofSeconds(2).toNanos());
             }
 
-            if (failure.get() != null) {
-                throw new IllegalStateException("spot reqrep replier failed", failure.get());
+            if (callbackFailure.get() != null) {
+                throw new IllegalStateException("spot reqrep replier failed",
+                    callbackFailure.get());
             }
             return metrics.finishSingle(config);
         }
     }
 
-    private static List<Message> requestToSpot(RouterSocket requester,
-                                               SpotNode replierNode,
-                                               Spot replier,
-                                               Message request,
-                                               Duration timeout) {
-        try {
-            return requester.requestToSpot(replierNode.routingId(), replier.routingId(),
-                List.of(Message.copyOf(request)), timeout)
-                .get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (java.util.concurrent.ExecutionException ex) {
-            throw new IllegalStateException("spot reqrep request failed", ex.getCause());
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("spot reqrep request interrupted", ex);
-        } catch (java.util.concurrent.TimeoutException ex) {
-            throw new IllegalStateException("spot reqrep request timed out", ex);
-        }
-    }
-
-    private static void closeReply(List<Message> reply) {
-        for (Message part : reply) {
-            if (part != null) {
-                part.close();
+    private static PerfUtil.Header awaitReply(RouterSocket requester,
+                                              PerfSocketPollSet pollSet,
+                                              PerfUtil.Config config,
+                                              long deadlineNs) {
+        while (System.nanoTime() < deadlineNs) {
+            long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
+            int timeoutMs = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
+                Duration.ofNanos(remainingNs).toMillis()));
+            if (pollSet.poll(timeoutMs) <= 0
+                || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
+                continue;
+            }
+            while (true) {
+                dev.kairoscode.zlink.Received received = PerfUtil.recvNoWait(requester);
+                if (received == null) {
+                    break;
+                }
+                try (received) {
+                    PerfUtil.Header header = PerfUtil.decodeHeader(
+                        received.firstPart(), config.size());
+                    if (header != null) {
+                        return header;
+                    }
+                }
             }
         }
+        throw new IllegalStateException("spot reqrep reply timed out");
     }
 
     private static void settleAfterReady() {

@@ -39,6 +39,9 @@ public final class PerfMain {
                 case "SPOT" -> serverRole
                     ? PerfMultiSpot.runServer(config)
                     : PerfMultiSpot.runClient(config);
+                case "SPOT_REQREP" -> serverRole
+                    ? PerfMultiSpotReqRep.runServer(config)
+                    : PerfMultiSpotReqRep.runClient(config);
                 case "STREAM" -> serverRole
                     ? PerfMultiStream.runServer(config)
                     : PerfMultiStream.runClient(config);

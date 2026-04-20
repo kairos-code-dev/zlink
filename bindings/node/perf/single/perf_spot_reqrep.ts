@@ -7,14 +7,16 @@ const {
   createMetricCollector,
   createPayload,
   createRunId,
-  decodeMetricHeader,
+  decodeMetricHeaderFromParts,
   currentEpochNs,
   sleepImmediate,
+  summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
 const {
   applySocketPolicy,
   benchmarkEndpoint,
+  parseSingleBinaryArgs,
   waitForPostReadySettle
 } = require('./perf_single_common');
 
@@ -45,8 +47,8 @@ async function runSpotReqRepBenchmark(msgSize, options) {
   const endpoint = await benchmarkEndpoint(options.transport, `spot-reqrep-${msgSize}`);
 
   try {
-    applySocketPolicy(requester);
-    applySocketPolicy(replier);
+    applySocketPolicy(requester, options);
+    applySocketPolicy(replier, options);
     replierNode.bind(endpoint);
     requester.connect(endpoint);
 
@@ -99,7 +101,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
       try {
         if (result === zlink.RequestResult.Ok && replyParts.length > 0) {
           collector.record(
-            decodeMetricHeader(replyParts[0].data()),
+            decodeMetricHeaderFromParts(replyParts),
             currentEpochNs()
           );
         }
@@ -152,3 +154,23 @@ async function runSpotReqRepBenchmark(msgSize, options) {
 }
 
 module.exports = { runSpotReqRepBenchmark };
+
+if (require.main === module) {
+  (async () => {
+    const options = parseSingleBinaryArgs(process.argv.slice(2));
+    const latenciesNs = await runSpotReqRepBenchmark(options.msgSize, options);
+    for (const line of summarizeMetrics(
+      'SPOT_REQREP',
+      options.transport,
+      options.msgSize,
+      latenciesNs,
+      options.duration,
+      options.libName
+    )) {
+      console.log(line);
+    }
+  })().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

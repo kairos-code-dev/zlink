@@ -7,15 +7,18 @@ const {
   createMetricCollector,
   createPayload,
   createRunId,
-  decodeMetricHeader,
+  decodeMetricHeaderFromParts,
   currentEpochNs,
   sleepImmediate,
+  summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
 const {
   applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
+  parseSingleBinaryArgs,
+  resolveSingleIdleDrainMs,
   waitForPostReadySettle,
   waitForConnectionReady,
 } = require('./perf_single_common');
@@ -29,9 +32,11 @@ async function runPubSubBenchmark(msgSize, options) {
 
   try {
     applySocketPolicy(pub, {
+      ...options,
       noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 1) !== 0
     });
     applySocketPolicy(sub, {
+      ...options,
       recvTimeout: Number(
         process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
         ?? process.env.PERF_SINGLE_RCVTIMEO_MS
@@ -61,7 +66,7 @@ async function runPubSubBenchmark(msgSize, options) {
     const recvTask = drainRecvSocket(
       sub,
       (received) => {
-        const header = decodeMetricHeader(received.parts[0].data());
+        const header = decodeMetricHeaderFromParts(received.parts);
         collector.record(header, currentEpochNs());
       },
       () => stop
@@ -84,7 +89,15 @@ async function runPubSubBenchmark(msgSize, options) {
     }
     stampPayload(payload, { phase: 2, runId, msgSize, seq });
     pub.publish(topic, payload);
-    const drainDeadlineNs = activeStopNs + 250_000_000n;
+    const drainDeadlineNs = activeStopNs
+      + BigInt(resolveSingleIdleDrainMs({
+        ...options,
+        recvTimeoutMs: Number(
+          process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
+          ?? process.env.PERF_SINGLE_RCVTIMEO_MS
+          ?? 200
+        )
+      })) * 1_000_000n;
     while (currentEpochNs() < drainDeadlineNs) {
       await sleepImmediate();
     }
@@ -100,3 +113,23 @@ async function runPubSubBenchmark(msgSize, options) {
 }
 
 module.exports = { runPubSubBenchmark };
+
+if (require.main === module) {
+  (async () => {
+    const options = parseSingleBinaryArgs(process.argv.slice(2));
+    const latenciesNs = await runPubSubBenchmark(options.msgSize, options);
+    for (const line of summarizeMetrics(
+      'PUBSUB',
+      options.transport,
+      options.msgSize,
+      latenciesNs,
+      options.duration,
+      options.libName
+    )) {
+      console.log(line);
+    }
+  })().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

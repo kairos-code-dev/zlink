@@ -7,12 +7,16 @@ const {
   createMetricCollector,
   createPayload,
   createRunId,
-  decodeMetricHeader,
+  decodeMetricHeaderFromParts,
   currentEpochNs,
   sleepImmediate,
+  summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
 const {
+  applySocketPolicy,
+  parseSingleBinaryArgs,
+  resolveSingleIdleDrainMs,
   waitForPostReadySettle
 } = require('./perf_single_common');
 
@@ -43,16 +47,12 @@ function drainSpot(spot, onMessage) {
 
 async function waitForProbeReady(spot, payload, runId, msgSize, seqRef) {
   let ready = false;
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS ?? 5000);
   const waiters = [];
 
   spot.onDispatchEvent(() => {
     drainSpot(spot, (received) => {
-      const firstPart = received.parts[0];
-      if (!firstPart) {
-        return;
-      }
-      const header = decodeMetricHeader(firstPart.data());
+      const header = decodeMetricHeaderFromParts(received.parts);
       if (!header) {
         return;
       }
@@ -97,6 +97,7 @@ async function runSpotBenchmark(msgSize, options) {
   try {
     node.attachDiscovery(discovery);
     spot = node.createSpot();
+    applySocketPolicy(spot, options);
     spot.setSubscription(TOPIC);
 
     const runId = createRunId(options.runId ?? 1);
@@ -117,12 +118,8 @@ async function runSpotBenchmark(msgSize, options) {
 
     spot.onDispatchEvent(() => {
       drainSpot(spot, (received) => {
-        const firstPart = received.parts[0];
-        if (!firstPart) {
-          return;
-        }
         collector.record(
-          decodeMetricHeader(firstPart.data()),
+          decodeMetricHeaderFromParts(received.parts),
           currentEpochNs()
         );
       });
@@ -150,7 +147,7 @@ async function runSpotBenchmark(msgSize, options) {
       seq: seqRef.current
     });
     spot.publish(SERVICE_NAME, TOPIC, payload);
-    await waitForPostReadySettle(250);
+    await waitForPostReadySettle(resolveSingleIdleDrainMs(options));
     const result = await collector.finish();
     return result.latenciesNs;
   } finally {
@@ -163,3 +160,23 @@ async function runSpotBenchmark(msgSize, options) {
 }
 
 module.exports = { runSpotBenchmark };
+
+if (require.main === module) {
+  (async () => {
+    const options = parseSingleBinaryArgs(process.argv.slice(2));
+    const latenciesNs = await runSpotBenchmark(options.msgSize, options);
+    for (const line of summarizeMetrics(
+      'SPOT',
+      options.transport,
+      options.msgSize,
+      latenciesNs,
+      options.duration,
+      options.libName
+    )) {
+      console.log(line);
+    }
+  })().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

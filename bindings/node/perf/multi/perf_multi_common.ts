@@ -3,7 +3,10 @@
 'use strict';
 
 const net = require('node:net');
+const os = require('node:os');
+const path = require('node:path');
 const { once } = require('node:events');
+const { MIN_MSG_SIZE } = require('../common/perf_metrics');
 
 function parseArgs(argv, defaults = {}) {
   const options = {
@@ -41,6 +44,16 @@ function parseArgs(argv, defaults = {}) {
     }
   }
 
+  if (!Number.isFinite(options.msgSize) || options.msgSize < MIN_MSG_SIZE) {
+    throw new Error(`invalid multi msg size: ${options.msgSize}`);
+  }
+  if (!Number.isFinite(options.duration) || options.duration <= 0) {
+    throw new Error(`invalid multi duration: ${options.duration}`);
+  }
+  if (!Number.isFinite(options.clients) || options.clients <= 0) {
+    throw new Error(`invalid multi clients: ${options.clients}`);
+  }
+
   return options;
 }
 
@@ -53,7 +66,18 @@ async function reservePort() {
   return address.port;
 }
 
+async function benchmarkEndpoint(transport, token) {
+  if (transport === 'ipc') {
+    return `ipc://${path.join(os.tmpdir(), `zlink-node-multi-perf-${process.pid}-${token}.sock`)}`;
+  }
+  if (transport === 'tcp' || transport === 'tls' || transport === 'ws' || transport === 'wss') {
+    return `${transport}://127.0.0.1:${await reservePort()}`;
+  }
+  throw new Error(`unsupported multi transport: ${transport}`);
+}
+
 module.exports = {
+  benchmarkEndpoint,
   parseMultiArgs: parseArgs,
   reservePort
 };

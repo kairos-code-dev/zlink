@@ -7,15 +7,18 @@ const {
   createMetricCollector,
   createPayload,
   createRunId,
-  decodeMetricHeader,
+  decodeMetricHeaderFromParts,
   currentEpochNs,
   sleepImmediate,
+  summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
 const {
   applySocketPolicy,
   benchmarkEndpoint,
   drainRecvSocket,
+  parseSingleBinaryArgs,
+  resolveSingleIdleDrainMs,
   waitForConnectionReady,
 } = require('./perf_single_common');
 
@@ -49,8 +52,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
   const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
 
   try {
-    applySocketPolicy(receiver);
-    applySocketPolicy(sender);
+    applySocketPolicy(receiver, options);
+    applySocketPolicy(sender, options);
     receiver.setRoutingId(RECEIVER_ROUTING_ID);
     sender.setRoutingId(SENDER_ROUTING_ID);
     receiver.bind(endpoint);
@@ -75,7 +78,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const recvTask = drainRecvSocket(
       receiver,
       (received) => {
-        const header = decodeMetricHeader(received.parts[0].data());
+        const header = decodeMetricHeaderFromParts(received.parts);
         collector.record(header, currentEpochNs());
       },
       () => stop
@@ -98,7 +101,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
     }
     stampPayload(payload, { phase: 2, runId, msgSize, seq });
     sender.send(RECEIVER_ROUTING_ID, payload);
-    const drainDeadlineNs = activeStopNs + 250_000_000n;
+    const drainDeadlineNs = activeStopNs
+      + BigInt(resolveSingleIdleDrainMs(options)) * 1_000_000n;
     while (currentEpochNs() < drainDeadlineNs) {
       await sleepImmediate();
     }
@@ -114,3 +118,23 @@ async function runRouterRouterBenchmark(msgSize, options) {
 }
 
 module.exports = { runRouterRouterBenchmark };
+
+if (require.main === module) {
+  (async () => {
+    const options = parseSingleBinaryArgs(process.argv.slice(2));
+    const latenciesNs = await runRouterRouterBenchmark(options.msgSize, options);
+    for (const line of summarizeMetrics(
+      'ROUTER_ROUTER',
+      options.transport,
+      options.msgSize,
+      latenciesNs,
+      options.duration,
+      options.libName
+    )) {
+      console.log(line);
+    }
+  })().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

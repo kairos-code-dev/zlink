@@ -14,6 +14,7 @@ import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpot {
@@ -93,35 +94,43 @@ final class PerfSpot {
                 }
             });
 
-            long readyDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-            while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
-                try (Message probe = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, topic, List.of(probe));
+            Duration probeWait = Duration.ofMillis(Math.max(1, config.recvTimeoutMs()));
+            try (Message probe = PerfUtil.payloadTemplate(config.size())) {
+                long readyDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+                while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
+                    PerfUtil.writePayload(probe, config.size(),
+                        (byte) PerfUtil.PHASE_WARMUP, System.nanoTime());
+                    publisher.publish(SERVICE_NAME, topic, probe);
+                    try {
+                        ready.await(probeWait.toMillis(), TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("spot local probe interrupted", ex);
+                    }
                 }
-                Thread.onSpinWait();
             }
             PerfUtil.await(ready, "spot local probe ready", Duration.ofSeconds(10));
             settleAfterReady();
 
             Thread traffic = new Thread(() -> {
+                try (Message active = PerfUtil.payloadTemplate(config.size());
+                     Message cooldown = PerfUtil.payloadTemplate(config.size())) {
                 try {
                     metrics.startActiveWindow();
                     long activeEnd = System.nanoTime()
                         + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        try (Message m = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            publisher.publish(SERVICE_NAME, topic, List.of(m));
-                        }
+                        PerfUtil.writePayload(active, config.size(),
+                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                        publisher.publish(SERVICE_NAME, topic, active);
                     }
-                    try (Message m = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        publisher.publish(SERVICE_NAME, topic, List.of(m));
-                    }
+                    PerfUtil.writePayload(cooldown, config.size(),
+                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                    publisher.publish(SERVICE_NAME, topic, cooldown);
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     finished.countDown();
+                }
                 }
             }, "single-spot-sender");
             traffic.start();

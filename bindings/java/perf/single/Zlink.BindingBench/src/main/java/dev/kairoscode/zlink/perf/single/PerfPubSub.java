@@ -9,11 +9,13 @@ import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.SubSocket;
+import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfPubSub {
@@ -25,7 +27,7 @@ final class PerfPubSub {
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-pubsub");
-        AtomicBoolean senderDone = new AtomicBoolean(false);
+        AtomicBoolean idleDrain = new AtomicBoolean(false);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         boolean sharedContext = "inproc".equals(config.transport());
@@ -64,23 +66,26 @@ final class PerfPubSub {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventType.POLLIN.getValue())) {
                     while (true) {
-                        int timeoutMs = senderDone.get()
-                            ? Math.max(1, config.recvTimeoutMs())
-                            : -1;
-                        int rc = pollSet.poll(timeoutMs < 0 ? 50 : timeoutMs);
+                        int timeoutMs = idleDrain.get() ? Math.max(1, config.recvTimeoutMs()) : -1;
+                        int rc = pollSet.poll(timeoutMs);
                         if (rc > 0 && pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
                             while (true) {
                                 try {
-                                    try (var received = sub.subscribe(RecvFlags.DONT_WAIT)) {
+                                    try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
                                         PerfUtil.Header header = PerfUtil.decodeHeader(
                                             received.firstPart(), config.size());
                                         if (header == null) {
                                             continue;
                                         }
+                                        if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                                            idleDrain.set(true);
+                                            lastRecvNs = System.nanoTime();
+                                            continue;
+                                        }
                                         if (header.phase() == PerfUtil.PHASE_ACTIVE) {
                                             metrics.recordNanos(header.latencyNanos());
+                                            lastRecvNs = System.nanoTime();
                                         }
-                                        lastRecvNs = System.nanoTime();
                                     }
                                 } catch (dev.kairoscode.zlink.ZlinkException ex) {
                                     if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
@@ -91,7 +96,7 @@ final class PerfPubSub {
                             }
                             continue;
                         }
-                        if (senderDone.get() && System.nanoTime() - lastRecvNs >= flushNs) {
+                        if (idleDrain.get() && System.nanoTime() - lastRecvNs >= flushNs) {
                             return;
                         }
                     }
@@ -101,15 +106,22 @@ final class PerfPubSub {
             }, "single-pubsub-recv");
             recvThread.start();
 
-            metrics.startActiveWindow();
-            long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-            while (System.nanoTime() < activeEnd) {
-                try (Message m = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    pub.publish(TOPIC, List.of(m));
+            try (Message active = PerfUtil.payloadTemplate(config.size());
+                 Message cooldown = PerfUtil.payloadTemplate(config.size())) {
+                metrics.startActiveWindow();
+                long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
+                while (System.nanoTime() < activeEnd) {
+                    PerfUtil.writePayload(active, config.size(),
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                    pub.publish(TOPIC, active);
+                }
+                int cooldownBursts = Math.max(3, 3);
+                for (int i = 0; i < cooldownBursts; i++) {
+                    PerfUtil.writePayload(cooldown, config.size(),
+                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                    pub.publish(TOPIC, cooldown);
                 }
             }
-            senderDone.set(true);
             PerfUtil.join(recvThread, "pubsub receiver",
                 Duration.ofSeconds(config.durationSeconds() + 10L));
             if (failure.get() != null) {

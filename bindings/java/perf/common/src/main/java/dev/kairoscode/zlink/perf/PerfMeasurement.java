@@ -4,8 +4,6 @@ package dev.kairoscode.zlink.perf;
 
 import dev.kairoscode.zlink.Message;
 import java.net.ServerSocket;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -13,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class PerfMeasurement {
+    private static final int MAGIC = 0x5A4C4E4B;
     private static final long BASE_EPOCH_NS = System.currentTimeMillis() * 1_000_000L;
     private static final long BASE_NANO = System.nanoTime();
     private static final int RUN_ID = 1;
@@ -26,15 +25,36 @@ final class PerfMeasurement {
     }
 
     static Message payload(int size, byte phase, long sentNanoTime) {
+        Message payload = payloadTemplate(size);
+        writePayload(payload, size, phase, sentNanoTime);
+        return payload;
+    }
+
+    static Message payloadTemplate(int size) {
+        int capacity = Math.max(size, PerfUtil.HEADER_SIZE);
+        Message payload = new Message(capacity);
+        payload.fill((byte) 'a');
+        payload.writeIntLe(0, MAGIC);
+        payload.writeIntLe(4, RUN_ID);
+        payload.writeIntLe(9, size);
+        return payload;
+    }
+
+    static void writePayload(Message payload, int size, byte phase, long sentNanoTime) {
         long sentTsNs = BASE_EPOCH_NS + (sentNanoTime - BASE_NANO);
-        return payload(0x5A4C4E4B, size, phase, RUN_ID, SEQ.getAndIncrement(), sentTsNs);
+        payload.writeIntLe(0, MAGIC);
+        payload.writeIntLe(4, RUN_ID);
+        payload.writeByte(8, phase);
+        payload.writeIntLe(9, size);
+        payload.writeLongLe(13, SEQ.getAndIncrement());
+        payload.writeLongLe(21, sentTsNs);
     }
 
     static byte phase(Message message) {
         if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
             return (byte) PerfUtil.PHASE_UNKNOWN;
         }
-        return (byte) (message.readIntLe(8) & 0xFF);
+        return message.readByte(8);
     }
 
     static long latencyNanos(Message message) {
@@ -60,7 +80,9 @@ final class PerfMeasurement {
     static boolean isEchoPattern(String pattern) {
         return "DEALER_ROUTER".equals(pattern)
             || "ROUTER_ROUTER".equals(pattern)
-            || "STREAM".equals(pattern);
+            || "STREAM".equals(pattern)
+            || "SPOT_REQREP".equals(pattern)
+            || "MULTI_SPOT_REQREP".equals(pattern);
     }
 
     static long nowNs() {
@@ -71,22 +93,6 @@ final class PerfMeasurement {
         return bytes / 1_000_000.0d;
     }
 
-    private static Message payload(int magic, int size, int phase, int runId, long seq,
-                                   long sentTsNs) {
-        int capacity = Math.max(size, PerfUtil.HEADER_SIZE);
-        ByteBuffer buffer = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN);
-        buffer.putInt(magic);
-        buffer.putInt(runId);
-        buffer.put((byte) phase);
-        buffer.putInt(size);
-        buffer.putLong(seq);
-        buffer.putLong(sentTsNs);
-        while (buffer.hasRemaining()) {
-            buffer.put((byte) 'a');
-        }
-        buffer.flip();
-        return Message.copyOf(buffer);
-    }
     private static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();

@@ -17,8 +17,6 @@ import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.spot.Spot;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
@@ -138,6 +136,15 @@ public final class PerfUtil {
         return PerfMeasurement.payload(size, phase, sentNanoTime);
     }
 
+    public static Message payloadTemplate(int size) {
+        return PerfMeasurement.payloadTemplate(size);
+    }
+
+    public static void writePayload(Message payload, int size, byte phase,
+                                    long sentNanoTime) {
+        PerfMeasurement.writePayload(payload, size, phase, sentNanoTime);
+    }
+
     public static byte phase(Message message) {
         return PerfMeasurement.phase(message);
     }
@@ -211,10 +218,6 @@ public final class PerfUtil {
         PerfTransport.waitForMonitorEvent(monitor, expectedMask, expectedCount, timeout, label);
     }
 
-    public static Optional<dev.kairoscode.zlink.MonitorEvent> recvNoWait(MonitorSocket monitor) {
-        return invokeOptionalNoArg(monitor, "recvNoWait");
-    }
-
     public static dev.kairoscode.zlink.Received recvNoWait(PairSocket socket) {
         return socket.tryRecv();
     }
@@ -269,23 +272,6 @@ public final class PerfUtil {
                 return Optional.empty();
             }
             throw ex;
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> Optional<T> invokeOptionalNoArg(Object target, String methodName) {
-        try {
-            Method method = target.getClass().getDeclaredMethod(methodName);
-            method.setAccessible(true);
-            return (Optional<T>) method.invoke(target);
-        } catch (InvocationTargetException ex) {
-            Throwable cause = ex.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException("failed to invoke " + methodName, cause);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("failed to invoke " + methodName, ex);
         }
     }
 

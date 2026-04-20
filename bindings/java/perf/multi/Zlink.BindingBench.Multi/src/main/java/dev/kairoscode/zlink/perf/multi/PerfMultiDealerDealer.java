@@ -6,10 +6,13 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.perf.PerfControl;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -32,17 +35,23 @@ final class PerfMultiDealerDealer {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.bind(config.endpoint());
-            PerfUtil.waitForReadySignal(config.controlPort());
+            PerfControl.emitReady(config.endpoint());
+            PerfControl.awaitStart(config.size(), "dealer/dealer server");
+            PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, config.clients(),
+                Duration.ofMillis(config.connectReadyTimeoutMs()),
+                "dealer/dealer server ready");
             PerfUtil.Metrics metrics = new PerfUtil.Metrics();
             metrics.startActiveWindow();
-            long stopAt = System.nanoTime()
-                + Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds())
-                    .plusMillis(500L).toNanos();
-            while (System.nanoTime() < stopAt) {
+            int stops = 0;
+            while (stops < config.clients()) {
                 try (var received = server.recv()) {
                     PerfUtil.Header header = PerfUtil.decodeHeader(
                         received.firstPart(), config.size());
                     if (header == null) {
+                        continue;
+                    }
+                    if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                        stops++;
                         continue;
                     }
                     if (header.phase() == PerfUtil.PHASE_ACTIVE) {
@@ -68,57 +77,45 @@ final class PerfMultiDealerDealer {
         CountDownLatch go = new CountDownLatch(1);
         Context ctx = PerfUtil.newContext(config);
         MultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
-                DealerSocket client = new DealerSocket(ctx);
-                var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
-                PerfUtil.applyMonitorOptions(monitor, config);
-                PerfUtil.applySocketOptions(client, config);
-                client.options().linger(Duration.ZERO);
-                PerfUtil.configureClientTls(client, config.transport());
-                client.connect(config.endpoint());
-                PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, 1,
-                    Duration.ofMillis(config.connectReadyTimeoutMs()),
-                    "dealer/dealer client ready");
-                connected.countDown();
-                if (connected.getCount() == 0L) {
-                    PerfUtil.sendReadySignal(config.controlPort());
-                    go.countDown();
-                }
-                PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
-                long warmupEnd = System.nanoTime() + config.warmupSeconds() * 1_000_000_000L;
-                while (System.nanoTime() < warmupEnd) {
-                    try (Message m = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                        sendUntilDeadline(client, m, warmupEnd);
+                try (DealerSocket client = new DealerSocket(ctx);
+                     var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
+                     PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                         java.util.List.of(client), PollEventType.POLLOUT.getValue())) {
+                    PerfUtil.applyMonitorOptions(monitor, config);
+                    PerfUtil.applySocketOptions(client, config);
+                    client.options().linger(Duration.ZERO);
+                    PerfUtil.configureClientTls(client, config.transport());
+                    client.connect(config.endpoint());
+                    PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, 1,
+                        Duration.ofMillis(config.connectReadyTimeoutMs()),
+                        "dealer/dealer client ready");
+                    connected.countDown();
+                    if (connected.getCount() == 0L) {
+                        PerfControl.emitClientReady(config.size());
+                        PerfControl.awaitStart(config.size(), "dealer/dealer client");
+                        go.countDown();
                     }
-                }
-                long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
-                while (System.nanoTime() < activeEnd) {
-                    try (Message m = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                        sendUntilDeadline(client, m, activeEnd);
+                    PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
+                    long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
+                    while (System.nanoTime() < activeEnd) {
+                        try (Message m = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sendWhenWritable(client, pollSet, m, activeEnd);
+                        }
                     }
-                }
-                long cooldownDeadline =
-                    System.nanoTime() + Duration.ofMillis(50L).toNanos();
-                for (int i = 0; i < 4; i++) {
                     try (Message m = PerfUtil.payload(config.size(),
                              (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        sendUntilDeadline(client, m, cooldownDeadline);
+                        sendWhenWritable(client, pollSet, m,
+                            System.nanoTime() + Duration.ofSeconds(5).toNanos());
                     }
-                }
-                try {
-                    Thread.sleep(50L);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("dealer/dealer cooldown interrupted", ex);
                 }
             }, "multi-dd-client-" + index), config.durationSeconds());
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
             config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
     }
 
-    private static void sendUntilDeadline(DealerSocket client, Message part, long deadlineNs) {
-        int attempts = 0;
+    private static void sendWhenWritable(DealerSocket client, PerfSocketPollSet pollSet,
+                                         Message part, long deadlineNs) {
         while (true) {
             try {
                 client.send(part, SendFlags.DONT_WAIT);
@@ -134,19 +131,13 @@ final class PerfMultiDealerDealer {
             }
 
             if (System.nanoTime() >= deadlineNs) {
-                return;
+                throw new IllegalStateException("dealer/dealer send timed out");
             }
-            attempts++;
-            if (attempts < 32) {
-                Thread.onSpinWait();
-                continue;
-            }
-            try {
-                Thread.sleep(1L);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("dealer/dealer retry interrupted", ex);
-            }
+            long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
+            pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
+            pollSet.poll(Math.max(1,
+                (int) Math.min(Integer.MAX_VALUE,
+                    Duration.ofNanos(remainingNs).toMillis())));
         }
     }
 

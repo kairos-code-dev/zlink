@@ -34,7 +34,7 @@ final class PerfMeasurement {
         if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
             return (byte) PerfUtil.PHASE_UNKNOWN;
         }
-        return (byte) (message.data()[8] & 0xFF);
+        return (byte) (message.readIntLe(8) & 0xFF);
     }
 
     static long latencyNanos(Message message) {
@@ -60,9 +60,7 @@ final class PerfMeasurement {
     static boolean isEchoPattern(String pattern) {
         return "DEALER_ROUTER".equals(pattern)
             || "ROUTER_ROUTER".equals(pattern)
-            || "STREAM".equals(pattern)
-            || "SPOT_REQREP".equals(pattern)
-            || "MULTI_SPOT_REQREP".equals(pattern);
+            || "STREAM".equals(pattern);
     }
 
     static long nowNs() {
@@ -89,7 +87,6 @@ final class PerfMeasurement {
         buffer.flip();
         return Message.copyOf(buffer);
     }
-
     private static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();

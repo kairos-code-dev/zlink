@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -27,7 +28,8 @@ class PerfMultiDealerDealerRegressionTest {
             "--duration", "1",
             "--control-port", controlPort
         ));
-        Thread.sleep(300L);
+        ProcessOutput serverOutput = ProcessOutput.capture(server);
+        waitForOutput(server, serverOutput, "READY,", Duration.ofSeconds(10), "server ready");
 
         Process client = startPerfProcess(List.of(
             "--multi-client", "MULTI_DEALER_DEALER", "tcp", "64",
@@ -36,9 +38,14 @@ class PerfMultiDealerDealerRegressionTest {
             "--duration", "1",
             "--control-port", controlPort
         ));
+        ProcessOutput clientOutput = ProcessOutput.capture(client);
+        waitForOutput(client, clientOutput, "CLIENT_READY,64", Duration.ofSeconds(10),
+            "client ready");
+        writeLine(server.getOutputStream(), "START,64");
+        writeLine(client.getOutputStream(), "START,64");
 
-        String clientOut = waitAndRead(client, Duration.ofSeconds(10), "client");
-        String serverOut = waitAndRead(server, Duration.ofSeconds(10), "server");
+        String clientOut = waitAndRead(client, clientOutput, Duration.ofSeconds(10), "client");
+        String serverOut = waitAndRead(server, serverOutput, Duration.ofSeconds(10), "server");
 
         assertTrue(clientOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
             "unexpected client output:\n" + clientOut);
@@ -60,29 +67,76 @@ class PerfMultiDealerDealerRegressionTest {
         return pb.start();
     }
 
-    private static String waitAndRead(Process process, Duration timeout, String label)
+    private static void waitForOutput(Process process, ProcessOutput output, String token,
+                                      Duration timeout,
+                                      String label) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            String current = output.snapshot();
+            if (current.contains(token)) {
+                return;
+            }
+            if (!process.isAlive()) {
+                throw new AssertionError(label + " process exited early:\n" + current);
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError(label + " timed out");
+    }
+
+    private static String waitAndRead(Process process, ProcessOutput output, Duration timeout,
+                                      String label)
         throws Exception {
+        process.getOutputStream().close();
         boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
         if (!exited) {
             process.destroy();
             process.waitFor(1, TimeUnit.SECONDS);
         }
-        String output = readAll(process.getInputStream());
-        assertTrue(exited, label + " timed out:\n" + output);
-        assertEquals(0, process.exitValue(), label + " failed:\n" + output);
-        return output;
+        output.awaitClose(Duration.ofSeconds(1));
+        String text = output.snapshot();
+        assertTrue(exited, label + " timed out:\n" + text);
+        assertEquals(0, process.exitValue(), label + " failed:\n" + text);
+        return text;
     }
 
-    private static String readAll(InputStream input) throws Exception {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        input.transferTo(out);
-        return out.toString(StandardCharsets.UTF_8);
+    private static void writeLine(OutputStream output, String line) throws Exception {
+        output.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+        output.flush();
     }
 
     private static int freePort() throws Exception {
         try (ServerSocket socket = new ServerSocket(0)) {
             socket.setReuseAddress(true);
             return socket.getLocalPort();
+        }
+    }
+
+    private static final class ProcessOutput {
+        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        private final Thread reader;
+
+        private ProcessOutput(InputStream input) {
+            reader = new Thread(() -> {
+                try (input) {
+                    input.transferTo(buffer);
+                } catch (Exception ignored) {
+                }
+            }, "perf-output-reader");
+            reader.setDaemon(true);
+            reader.start();
+        }
+
+        static ProcessOutput capture(Process process) {
+            return new ProcessOutput(process.getInputStream());
+        }
+
+        String snapshot() {
+            return buffer.toString(StandardCharsets.UTF_8);
+        }
+
+        void awaitClose(Duration timeout) throws Exception {
+            reader.join(timeout.toMillis());
         }
     }
 }

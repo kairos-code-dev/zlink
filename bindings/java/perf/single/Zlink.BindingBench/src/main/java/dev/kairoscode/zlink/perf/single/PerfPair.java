@@ -5,9 +5,12 @@ package dev.kairoscode.zlink.perf.single;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PairSocket;
+import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -40,40 +43,38 @@ final class PerfPair {
                 readyTimeout, "pair sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENTS, 1,
                 readyTimeout, "pair receiver ready");
-            try {
-                Thread.sleep(100L);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("pair settle interrupted", ex);
-            }
 
             Thread receiverThread = new Thread(() -> {
-                try {
+                boolean idleDrain = false;
+                int idleDrainTimeoutMs = Math.max(1, config.recvTimeoutMs());
+                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                    List.of(receiver), PollEventType.POLLIN.getValue())) {
                     while (finished.getCount() > 0L) {
-                        try (var received = receiver.recv()) {
-                            PerfUtil.Header header = PerfUtil.decodeHeader(
-                                received.firstPart(), config.size());
-                            if (header == null) {
-                                continue;
+                        int rc = pollSet.poll(idleDrain ? idleDrainTimeoutMs : -1);
+                        if (idleDrain && rc == 0) {
+                            finished.countDown();
+                            return;
+                        }
+                        while (true) {
+                            dev.kairoscode.zlink.Received received =
+                                PerfUtil.recvNoWait(receiver);
+                            if (received == null) {
+                                break;
                             }
-                            if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                finished.countDown();
-                                return;
-                            }
-                            if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                metrics.recordNanos(header.latencyNanos());
-                            }
-                        } catch (dev.kairoscode.zlink.RecvException ex) {
-                            if (ex.getResult() == dev.kairoscode.zlink.RecvResult.NO_DATA
-                                || ex.getResult() == dev.kairoscode.zlink.RecvResult.BUSY) {
-                                if (failure.get() != null) {
-                                    finished.countDown();
-                                    return;
+                            try (received) {
+                                PerfUtil.Header header = PerfUtil.decodeHeader(
+                                    received.firstPart(), config.size());
+                                if (header == null) {
+                                    continue;
                                 }
-                                Thread.onSpinWait();
-                                continue;
+                                if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                                    idleDrain = true;
+                                    continue;
+                                }
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                    metrics.recordNanos(header.latencyNanos());
+                                }
                             }
-                            throw ex;
                         }
                     }
                 } catch (Throwable ex) {
@@ -85,14 +86,6 @@ final class PerfPair {
 
             Thread traffic = new Thread(() -> {
                 try {
-                    long warmupEnd = System.nanoTime()
-                        + config.warmupSeconds() * 1_000_000_000L;
-                    while (System.nanoTime() < warmupEnd) {
-                        try (Message warmup = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                            sender.send(warmup);
-                        }
-                    }
                     metrics.startActiveWindow();
                     long activeEnd = System.nanoTime()
                         + config.durationSeconds() * 1_000_000_000L;
@@ -102,14 +95,9 @@ final class PerfPair {
                             sender.send(active);
                         }
                     }
-                    int sentCooldown = 0;
-                    while (sentCooldown < 8) {
-                        try (Message cooldown = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                            sender.send(cooldown);
-                            sentCooldown++;
-                        }
-                        Thread.sleep(2L);
+                    try (Message cooldown = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        sender.send(cooldown);
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
@@ -118,7 +106,7 @@ final class PerfPair {
             }, "single-pair-sender");
             traffic.start();
             PerfUtil.await(finished, "pair receiver",
-                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 10L));
+                Duration.ofSeconds(config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "pair sender", Duration.ofSeconds(10));
             PerfUtil.join(receiverThread, "pair receiver thread",
                 Duration.ofSeconds(10));

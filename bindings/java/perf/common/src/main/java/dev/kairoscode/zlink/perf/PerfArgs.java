@@ -16,7 +16,6 @@ final class PerfArgs {
         String transport = args[1].toLowerCase(Locale.ROOT);
         int size = Integer.parseInt(args[2]);
         int duration = 5;
-        String recv = "recv";
         int ioThreads = intEnv("PERF_IO_THREADS", 0);
         int sendHwm = intEnv("PERF_SINGLE_SNDHWM",
             intEnv("PERF_SINGLE_HWM", 0));
@@ -24,7 +23,9 @@ final class PerfArgs {
             intEnv("PERF_SINGLE_HWM", 0));
         int sendTimeoutMs = intEnv("PERF_SINGLE_SNDTIMEO_MS", 200);
         int recvTimeoutMs = intEnv("PERF_SINGLE_RCVTIMEO_MS", 200);
-        int connectReadyTimeoutMs = intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 20_000);
+        int monitorHwm = intEnv("PERF_MULTI_MONITOR_HWM", 1000);
+        int connectReadyTimeoutMs = intEnv("PERF_SINGLE_CONNECT_READY_TIMEOUT_MS",
+            intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 20_000));
         for (int i = 3; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
@@ -35,15 +36,16 @@ final class PerfArgs {
                     sendTimeoutMs = Integer.parseInt(args[i + 1]);
                 case "--rcvtimeo", "--recv-timeout-ms" ->
                     recvTimeoutMs = Integer.parseInt(args[i + 1]);
+                case "--monitor-hwm" -> monitorHwm = Integer.parseInt(args[i + 1]);
                 case "--connect-ready-timeout-ms" ->
                     connectReadyTimeoutMs = Integer.parseInt(args[i + 1]);
                 default -> {
                 }
             }
         }
-        return new PerfUtil.Config(pattern, transport, size, duration,
-            recv, "", 1, 0, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
-            recvTimeoutMs, 1000, connectReadyTimeoutMs, 0);
+        return new PerfUtil.Config(pattern, transport, size, duration, "",
+            1, 0, ioThreads, sendHwm, recvHwm, sendTimeoutMs, recvTimeoutMs,
+            monitorHwm, connectReadyTimeoutMs, 0);
     }
 
     static PerfUtil.Config parseMultiArgs(String[] args) {
@@ -57,7 +59,6 @@ final class PerfArgs {
         String transport = args[2].toLowerCase(Locale.ROOT);
         int size = Integer.parseInt(args[3]);
         int duration = 5;
-        String recv = "recv";
         String endpoint = "";
         int clients = 32;
         int controlPort = 0;
@@ -98,9 +99,9 @@ final class PerfArgs {
                 }
             }
         }
-        return new PerfUtil.Config(pattern, transport, size, duration,
-            recv, endpoint, clients, controlPort, ioThreads, sendHwm, recvHwm,
-            sendTimeoutMs, recvTimeoutMs, monitorHwm, connectReadyTimeoutMs,
+        return new PerfUtil.Config(pattern, transport, size, duration, endpoint,
+            clients, controlPort, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
+            recvTimeoutMs, monitorHwm, connectReadyTimeoutMs,
             connectConcurrency);
     }
 

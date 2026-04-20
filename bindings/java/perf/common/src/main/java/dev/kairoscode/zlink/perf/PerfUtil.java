@@ -17,6 +17,8 @@ import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.spot.Spot;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
@@ -27,8 +29,6 @@ public final class PerfUtil {
     public static final int PHASE_WARMUP = 0;
     public static final int PHASE_ACTIVE = 1;
     public static final int PHASE_COOLDOWN = 2;
-    @Deprecated public static final int PHASE_STOP = PHASE_COOLDOWN;
-    @Deprecated public static final int PHASE_PROBE = PHASE_WARMUP;
     public static final int HEADER_SIZE = 29;
 
     private PerfUtil() {
@@ -39,7 +39,6 @@ public final class PerfUtil {
         String transport,
         int size,
         int durationSeconds,
-        String recvMode,
         String endpoint,
         int clients,
         int controlPort,
@@ -164,7 +163,6 @@ public final class PerfUtil {
     }
 
     public static void validateMultiRecvMode(Config config) {
-        PerfPolicy.validateMultiRecvMode(config);
     }
 
     public static Result classifyFailure(Config config, Throwable failure) {
@@ -213,6 +211,10 @@ public final class PerfUtil {
         PerfTransport.waitForMonitorEvent(monitor, expectedMask, expectedCount, timeout, label);
     }
 
+    public static Optional<dev.kairoscode.zlink.MonitorEvent> recvNoWait(MonitorSocket monitor) {
+        return invokeOptionalNoArg(monitor, "recvNoWait");
+    }
+
     public static dev.kairoscode.zlink.Received recvNoWait(PairSocket socket) {
         return socket.tryRecv();
     }
@@ -241,14 +243,6 @@ public final class PerfUtil {
         PerfTransport.applyMonitorOptions(monitor, config);
     }
 
-    public static void waitForReadySignal(int port) {
-        PerfTransport.waitForReadySignal(port);
-    }
-
-    public static void sendReadySignal(int port) {
-        PerfTransport.sendReadySignal(port);
-    }
-
     public static Path ensureResultsDir(Path root, String suite, String leaf) {
         return PerfReport.ensureResultsDir(root, suite, leaf);
     }
@@ -266,20 +260,45 @@ public final class PerfUtil {
         return PerfMeasurement.nowNs();
     }
 
-    private static <T> java.util.Optional<T> tryOptional(CheckedSupplier<T> supplier) {
+    private static <T> Optional<T> tryOptional(CheckedSupplier<T> supplier) {
         try {
-            return java.util.Optional.ofNullable(supplier.get());
+            return Optional.ofNullable(supplier.get());
         } catch (RecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
                 || ex.getResult() == RecvResult.BUSY) {
-                return java.util.Optional.empty();
+                return Optional.empty();
             }
             throw ex;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> Optional<T> invokeOptionalNoArg(Object target, String methodName) {
+        try {
+            Method method = target.getClass().getDeclaredMethod(methodName);
+            method.setAccessible(true);
+            return (Optional<T>) method.invoke(target);
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("failed to invoke " + methodName, cause);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("failed to invoke " + methodName, ex);
         }
     }
 
     @FunctionalInterface
     private interface CheckedSupplier<T> {
         T get();
+    }
+
+    public static int intEnv(String name, int fallback) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return Integer.parseInt(value);
     }
 }

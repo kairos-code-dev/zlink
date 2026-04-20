@@ -56,12 +56,7 @@ final class PerfPubSub {
                 pubMonitor.close();
                 subMonitor.close();
             }
-            try {
-                Thread.sleep(1_000L);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("pubsub settle interrupted", ex);
-            }
+            settleAfterReady();
 
             Thread recvThread = new Thread(() -> {
                 long lastRecvNs = System.nanoTime();
@@ -106,24 +101,17 @@ final class PerfPubSub {
             }, "single-pubsub-recv");
             recvThread.start();
 
-            long warmupEnd = System.nanoTime() + config.warmupSeconds() * 1_000_000_000L;
-            while (System.nanoTime() < warmupEnd) {
-                try (Message warmup = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                    SingleSendLoops.runWithRetry(() -> pub.publish(TOPIC, List.of(warmup)));
-                }
-            }
             metrics.startActiveWindow();
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
                 try (Message m = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    SingleSendLoops.runWithRetry(() -> pub.publish(TOPIC, List.of(m)));
+                    pub.publish(TOPIC, List.of(m));
                 }
             }
             senderDone.set(true);
             PerfUtil.join(recvThread, "pubsub receiver",
-                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 10L));
+                Duration.ofSeconds(config.durationSeconds() + 10L));
             if (failure.get() != null) {
                 throw new IllegalStateException("pubsub receiver failed", failure.get());
             }
@@ -133,6 +121,19 @@ final class PerfPubSub {
                 subCtx.close();
             }
             pubCtx.close();
+        }
+    }
+
+    private static void settleAfterReady() {
+        int settleMs = PerfUtil.intEnv("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000);
+        if (settleMs <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(settleMs);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("pubsub settle interrupted", ex);
         }
     }
 }

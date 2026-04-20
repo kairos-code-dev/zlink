@@ -10,7 +10,6 @@ TRANSPORTS=""
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 RUNS=1
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
-WARMUP="${PERF_SINGLE_WARMUP_SECONDS:-0}"
 RESULTS_TAG=""
 BUILD_DIR=""
 OUTPUT_PATH=""
@@ -35,7 +34,6 @@ Options:
   --msg-sizes LIST       Payload sizes.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
-  --warmup N             Warmup duration seconds.
   --build-dir PATH       Build directory override.
   --reuse-build          Reuse existing installDist output.
   --clean-build          Delete build dir before installDist.
@@ -59,7 +57,6 @@ while [[ $# -gt 0 ]]; do
     --msg-sizes) MSG_SIZES="${2:-}"; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
-    --warmup) WARMUP="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --clean-build) CLEAN_BUILD=1 ;;
@@ -81,11 +78,6 @@ done
 
 if ! [[ "${RUNS}" =~ ^[0-9]+$ ]] || [[ "${RUNS}" -lt 1 ]]; then
   echo "--runs must be >= 1" >&2
-  exit 1
-fi
-
-if ! [[ "${WARMUP}" =~ ^[0-9]+$ ]]; then
-  echo "--warmup must be >= 0" >&2
   exit 1
 fi
 
@@ -229,7 +221,7 @@ for pattern in "${patterns[@]}"; do
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
         cmd=("${runner_cmd[@]}" "${pattern}" "${transport}" "${size}" \
-          --duration "${DURATION}" --warmup "${WARMUP}")
+          --duration "${DURATION}")
         if [[ -n "${IO_THREADS}" ]]; then
           cmd+=(--io-threads "${IO_THREADS}")
         fi
@@ -265,7 +257,7 @@ for pattern in "${patterns[@]}"; do
 done
 
 python3 - "${tmp_metrics}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RUNS}" "${DURATION}" "${WARMUP}" "${RESULTS_TAG}" "${PIN_CPU}" \
+  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
   "${RCVTIMEO_MS}" "${OUTPUT_PATH}" <<'PY'
 import csv
@@ -273,7 +265,7 @@ import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, warmup, results_tag, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
+metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
@@ -350,7 +342,6 @@ def emit_effective_options(section):
     emit(f"- recv_hwm: {recv_hwm or 'default(binding)'}")
     emit(f"- send_timeout_ms: {sndtimeo_ms}")
     emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
-    emit(f"- warmup_seconds: {warmup}")
     emit(f"- duration_seconds: {duration}")
     if results_tag:
         emit(f"- results_tag: {results_tag}")

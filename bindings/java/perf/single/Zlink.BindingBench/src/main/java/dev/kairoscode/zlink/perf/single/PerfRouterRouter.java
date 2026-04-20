@@ -56,10 +56,16 @@ final class PerfRouterRouter {
                 readyTimeout, "router/router receiver ready");
 
             Thread receiverThread = new Thread(() -> {
+                boolean idleDrain = false;
+                int idleDrainTimeoutMs = Math.max(1, config.recvTimeoutMs());
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventType.POLLIN.getValue())) {
                     while (finished.getCount() > 0L) {
-                        pollSet.poll(-1);
+                        int rc = pollSet.poll(idleDrain ? idleDrainTimeoutMs : -1);
+                        if (idleDrain && rc == 0) {
+                            finished.countDown();
+                            return;
+                        }
                         while (true) {
                             dev.kairoscode.zlink.Received received =
                                 PerfUtil.recvNoWait(receiver);
@@ -78,8 +84,8 @@ final class PerfRouterRouter {
                                     continue;
                                 }
                                 if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                    finished.countDown();
-                                    return;
+                                    idleDrain = true;
+                                    continue;
                                 }
                                 if (header.phase() == PerfUtil.PHASE_ACTIVE) {
                                     metrics.recordNanos(header.latencyNanos());
@@ -100,21 +106,29 @@ final class PerfRouterRouter {
             }
             PerfUtil.await(routed, "router/router self-check", Duration.ofSeconds(10));
 
-            Thread traffic = SingleSendLoops.oneWaySend(
-                () -> sender.send(ROUTER1, List.of(PerfUtil.payload(
-                    config.size(), (byte) PerfUtil.PHASE_WARMUP, System.nanoTime()))),
-                () -> sender.send(ROUTER1, List.of(PerfUtil.payload(
-                    config.size(), (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime()))),
-                () -> sender.send(ROUTER1, List.of(PerfUtil.payload(
-                    config.size(), (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime()))),
-                config.warmupSeconds(),
-                config.durationSeconds(),
-                metrics::startActiveWindow,
-                failure,
-                finished);
+            Thread traffic = new Thread(() -> {
+                try {
+                    metrics.startActiveWindow();
+                    long activeEnd = System.nanoTime()
+                        + config.durationSeconds() * 1_000_000_000L;
+                    while (System.nanoTime() < activeEnd) {
+                        try (Message active = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sender.send(ROUTER1, List.of(active));
+                        }
+                    }
+                    try (Message cooldown = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        sender.send(ROUTER1, List.of(cooldown));
+                    }
+                } catch (Throwable ex) {
+                    failure.compareAndSet(null, ex);
+                    finished.countDown();
+                }
+            }, "single-router-router-sender");
             traffic.start();
             PerfUtil.await(finished, "router/router receiver",
-                Duration.ofSeconds(config.warmupSeconds() + config.durationSeconds() + 30L));
+                Duration.ofSeconds(config.durationSeconds() + 30L));
             PerfUtil.join(traffic, "router/router sender", Duration.ofSeconds(10));
             PerfUtil.join(receiverThread, "router/router receiver thread",
                 Duration.ofSeconds(10));

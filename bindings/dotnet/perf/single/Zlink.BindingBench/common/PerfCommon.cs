@@ -222,17 +222,7 @@ internal static partial class PerfRunner
     private static int ResolveSingleMaxSockets()
     {
         int explicitMaxSockets = PerfEnv.ReadPositive("PERF_MAX_SOCKETS", 0);
-        if (explicitMaxSockets > 0)
-            return explicitMaxSockets;
-
-        int clients = PerfEnv.ReadPositive("PERF_CLIENTS", 0);
-        if (clients <= 0)
-            return 0;
-
-        long required = clients + 4096L;
-        if (required > int.MaxValue)
-            return int.MaxValue;
-        return (int)required;
+        return explicitMaxSockets > 0 ? explicitMaxSockets : 0;
     }
 
     internal static void ApplySingleContextOptions(Context ctx)

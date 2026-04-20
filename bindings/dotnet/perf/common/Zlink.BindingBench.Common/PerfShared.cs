@@ -51,20 +51,6 @@ public static class PerfShared
         return deltaTicks / (double)Stopwatch.Frequency;
     }
 
-    public static bool WaitSpotPeerConnected(SpotNode node, int timeoutMs)
-    {
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        var spin = new SpinWait();
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            if (node.StatusSnapshot().ConnectedPeerCount > 0)
-                return true;
-            spin.SpinOnce();
-        }
-
-        return node.StatusSnapshot().ConnectedPeerCount > 0;
-    }
-
     public static void ReservoirSample(List<double> samples, double value,
         ref long seenCount, int cap, ref uint rngState)
     {
@@ -141,7 +127,7 @@ public static class PerfShared
             string formatted = fixedFormat
                 ? value.ToString("F3", CultureInfo.InvariantCulture)
                 : value.ToString(CultureInfo.InvariantCulture);
-            Console.WriteLine(
+            WriteStdoutLine(
                 $"RESULT,current,{pattern},{transport},{size},{metric},{formatted}");
         }
     }
@@ -151,8 +137,14 @@ public static class PerfShared
     {
         _ = size;
         _ = reason;
-        Console.WriteLine($"UNSUPPORTED,current,{pattern},{transport}");
+        WriteStdoutLine($"UNSUPPORTED,current,{pattern},{transport}");
         return 0;
+    }
+
+    public static void WriteStdoutLine(string line)
+    {
+        Console.WriteLine(line);
+        Console.Out.Flush();
     }
 
     public static bool TryPrintUnsupportedTransportFailure(string pattern,

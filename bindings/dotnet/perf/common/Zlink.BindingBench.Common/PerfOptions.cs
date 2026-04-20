@@ -15,12 +15,9 @@ public sealed record PerfOptions(
     string Endpoint,
     string RecvMode,
     int DurationSeconds,
-    int WarmupSeconds,
     int SndTimeoutMs,
     int RcvTimeoutMs,
     int ConnectReadyTimeoutMs,
-    int ClientPollTimeoutMs,
-    int StreamTimeoutMs,
     int Clients,
     int LatencySampleCap,
     int IoThreads,
@@ -31,12 +28,7 @@ public sealed record PerfOptions(
     int MultiHwm,
     int MultiSndHwm,
     int MultiRcvHwm,
-    int WarmupCount,
-    int LatencyCount,
-    int SpotDiscoveryTimeoutMs,
-    int SpotReadyTimeoutMs,
     int ServerBindPort,
-    bool ActiveWarmup,
     int PubSubXpubNoDrop,
     int SpotXpubNoDrop)
 {
@@ -51,7 +43,8 @@ public sealed record PerfOptions(
         if (!int.TryParse(args[2], out int size))
             return false;
 
-        options = CreateSingle(pattern, transport, Math.Max(1, size), "recv");
+        options = CreateSingle(pattern, transport, NormalizeMessageSize(size),
+            "recv");
         return true;
     }
 
@@ -67,7 +60,7 @@ public sealed record PerfOptions(
                 return false;
 
             options = CreateMulti(PerfExecutionKind.MultiServer, pattern,
-                transport, Math.Max(1, size), string.Empty, "recv");
+                transport, NormalizeMessageSize(size), string.Empty, "recv");
             return true;
         }
 
@@ -85,7 +78,7 @@ public sealed record PerfOptions(
                 return false;
 
             options = CreateMulti(PerfExecutionKind.MultiClient, pattern,
-                transport, Math.Max(1, size), endpoint, "recv");
+                transport, NormalizeMessageSize(size), endpoint, "recv");
             return true;
         }
 
@@ -103,13 +96,10 @@ public sealed record PerfOptions(
             string.Empty,
             recvMode,
             PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5),
-            0,
             PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200),
             PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200),
             PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000),
-            0,
-            0,
-            Math.Max(1, PerfEnv.ReadPositive("PERF_CLIENTS", 1)),
+            1,
             PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000),
             PerfEnv.ReadNonNegative("PERF_IO_THREADS", 0),
             ResolveSingleMaxSockets(),
@@ -120,11 +110,6 @@ public sealed record PerfOptions(
             0,
             0,
             0,
-            PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000),
-            0,
-            PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000),
-            0,
-            false,
             PerfEnv.ReadPositive("PERF_SINGLE_PUBSUB_XPUB_NODROP", 1),
             0);
     }
@@ -145,37 +130,21 @@ public sealed record PerfOptions(
             size,
             endpoint,
             recvMode,
-            PerfEnv.ReadPositive("PERF_MULTI_DURATION_SECONDS",
-                PerfEnv.ReadPositive("PERF_DURATION_SECONDS", 5)),
-            0,
-            PerfEnv.ReadPositive("PERF_MULTI_SNDTIMEO_MS",
-                PerfEnv.ReadPositive("PERF_SNDTIMEO_MS", 200)),
-            PerfEnv.ReadPositive("PERF_MULTI_RCVTIMEO_MS",
-                PerfEnv.ReadPositive("PERF_RCVTIMEO_MS", 200)),
-            PerfEnv.ReadPositive("PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
-                PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 5000)),
-            0,
-            PerfEnv.ReadNonNegative("PERF_STREAM_TIMEOUT_MS", 5000),
+            PerfEnv.ReadPositive("PERF_MULTI_DURATION_SECONDS", 5),
+            PerfEnv.ReadPositive("PERF_MULTI_SNDTIMEO_MS", 200),
+            PerfEnv.ReadPositive("PERF_MULTI_RCVTIMEO_MS", 200),
+            PerfEnv.ReadPositive("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000),
             clients,
-            PerfEnv.ReadPositive("PERF_MULTI_LATENCY_SAMPLE_CAP",
-                PerfEnv.ReadPositive("PERF_LATENCY_SAMPLE_CAP", 200000)),
-            PerfEnv.ReadPositive("PERF_IO_THREADS", 4),
+            PerfEnv.ReadPositive("PERF_MULTI_LATENCY_SAMPLE_CAP", 200000),
+            PerfEnv.ReadNonNegative("PERF_IO_THREADS", 0),
             ResolveMultiMaxSockets(clients),
             0,
             0,
             0,
             PerfEnv.ReadPositive("PERF_MULTI_HWM", ResolveMultiHwmDefault(pattern)),
-            PerfEnv.ReadNonNegative("PERF_MULTI_SNDHWM",
-                PerfEnv.ReadNonNegative("PERF_SNDHWM", 0)),
-            PerfEnv.ReadNonNegative("PERF_MULTI_RCVHWM",
-                PerfEnv.ReadNonNegative("PERF_RCVHWM", 0)),
-            0,
-            0,
-            0,
-            0,
-            PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT",
-                PerfEnv.ReadNonNegative("PERF_SERVER_BIND_PORT", 0)),
-            false,
+            PerfEnv.ReadNonNegative("PERF_MULTI_SNDHWM", 0),
+            PerfEnv.ReadNonNegative("PERF_MULTI_RCVHWM", 0),
+            PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT", 0),
             PerfEnv.ReadPositive("PERF_MULTI_PUBSUB_XPUB_NODROP", 1),
             PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1));
     }
@@ -196,10 +165,10 @@ public sealed record PerfOptions(
     {
         return specificName switch
         {
-            "PERF_MULTI_SNDHWM" or "PERF_SNDHWM" => MultiSndHwm > 0
+            "PERF_MULTI_SNDHWM" => MultiSndHwm > 0
                 ? MultiSndHwm
                 : MultiHwm,
-            "PERF_MULTI_RCVHWM" or "PERF_RCVHWM" => MultiRcvHwm > 0
+            "PERF_MULTI_RCVHWM" => MultiRcvHwm > 0
                 ? MultiRcvHwm
                 : MultiHwm,
             _ => MultiHwm,
@@ -212,14 +181,7 @@ public sealed record PerfOptions(
         if (explicitMaxSockets > 0)
             return explicitMaxSockets;
 
-        int clients = PerfEnv.ReadPositive("PERF_CLIENTS", 0);
-        if (clients <= 0)
-            return 0;
-
-        long required = clients + 4096L;
-        if (required > int.MaxValue)
-            return int.MaxValue;
-        return (int)required;
+        return 0;
     }
 
     private static int ResolveMultiClients(string pattern)
@@ -227,7 +189,7 @@ public sealed record PerfOptions(
         int fallback = pattern.Equals("STREAM", StringComparison.OrdinalIgnoreCase)
             ? 10000
             : 100;
-        return Math.Max(1, PerfEnv.ReadPositive("PERF_CLIENTS", fallback));
+        return Math.Max(1, PerfEnv.ReadPositive("PERF_MULTI_CLIENTS", fallback));
     }
 
     private static int ResolveMultiHwmDefault(string pattern)
@@ -261,5 +223,10 @@ public sealed record PerfOptions(
         }
 
         return fallback;
+    }
+
+    private static int NormalizeMessageSize(int size)
+    {
+        return Math.Max(PerfShared.PerfMetricHeaderSize, size);
     }
 }

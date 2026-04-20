@@ -61,7 +61,7 @@ bool record_subscribed_payload (
 
 } // namespace
 
-void run_pattern_pubsub (const std::string &transport,
+bool run_pattern_pubsub (const std::string &transport,
                          size_t msg_size,
                          const std::string &lib_name)
 {
@@ -70,15 +70,14 @@ void run_pattern_pubsub (const std::string &transport,
             std::cerr << "pubsub: transport unavailable" << std::endl;
         std::cout << "UNSUPPORTED," << lib_name << ",PUBSUB," << transport
                   << std::endl;
-        return;
+        return true;
     }
 
     perf::single::ctx_guard_t ctx;
     if (!ctx.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "pubsub: invalid context" << std::endl;
-        perf::single::print_fail_result (lib_name, "PUBSUB", transport, msg_size);
-        return;
+        return false;
     }
 
     zlink::xpub_socket_t publisher (ctx.ctx ());
@@ -86,8 +85,7 @@ void run_pattern_pubsub (const std::string &transport,
     if (!publisher.valid () || !subscriber.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "pubsub: invalid sockets" << std::endl;
-        perf::single::print_fail_result (lib_name, "PUBSUB", transport, msg_size);
-        return;
+        return false;
     }
 
     zlink::socket_t publisher_socket = zlink::socket_t::wrap (publisher.handle ());
@@ -101,8 +99,7 @@ void run_pattern_pubsub (const std::string &transport,
         if (perf_debug_enabled ())
             std::cerr << "pubsub: setup_connected_pair failed errno=" << errno
                       << std::endl;
-        perf::single::print_fail_result (lib_name, "PUBSUB", transport, msg_size);
-        return;
+        return false;
     }
 
     const int recv_timeout = perf::single::resolve_single_pubsub_recv_timeout_ms ();
@@ -227,9 +224,7 @@ void run_pattern_pubsub (const std::string &transport,
         if (perf_debug_enabled ())
             std::cerr << "pubsub: active phase failed received=" << received
                       << std::endl;
-        perf::single::print_fail_result (
-          lib_name, "PUBSUB", transport, msg_size);
-        return;
+        return false;
     }
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
 
@@ -243,6 +238,7 @@ void run_pattern_pubsub (const std::string &transport,
                                 latency.mean_ns,
                                 latency.p95_ns,
                                 latency.p99_ns);
+    return true;
 }
 
 int main (int argc, char **argv)

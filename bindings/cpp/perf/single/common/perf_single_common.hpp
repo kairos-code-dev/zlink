@@ -96,11 +96,6 @@ void print_result (const std::string &lib_type,
                    double latency_p95,
                    double latency_p99);
 
-void print_fail_result (const std::string &lib_type,
-                        const std::string &pattern,
-                        const std::string &transport,
-                        size_t size);
-
 typedef bool (*phase_send_fn_t) (void *userdata_,
                                  const void *data_,
                                  size_t size_);

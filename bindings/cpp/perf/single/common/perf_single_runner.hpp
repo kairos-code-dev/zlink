@@ -7,7 +7,7 @@
 namespace perf {
 namespace single {
 
-typedef void (*run_fn_t) (const std::string &transport,
+typedef bool (*run_fn_t) (const std::string &transport,
                           size_t size,
                           const std::string &lib_name);
 

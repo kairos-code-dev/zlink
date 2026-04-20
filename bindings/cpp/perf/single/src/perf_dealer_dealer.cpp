@@ -57,29 +57,25 @@ bool record_dealer_payload (const zlink::received_t &received,
 
 } // namespace
 
-void run_pattern_dealer_dealer (const std::string &transport,
+bool run_pattern_dealer_dealer (const std::string &transport,
                                 size_t msg_size,
                                 const std::string &lib_name)
 {
     if (!perf::single::transport_available (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << ",DEALER_DEALER,"
                   << transport << std::endl;
-        return;
+        return true;
     }
 
     perf::single::ctx_guard_t ctx;
     if (!ctx.valid ()) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_DEALER", transport, msg_size);
-        return;
+        return false;
     }
 
     perf::single::socket_guard_t bind_socket (ctx, zlink::socket_type::dealer);
     perf::single::socket_guard_t conn_socket (ctx, zlink::socket_type::dealer);
     if (!bind_socket.valid () || !conn_socket.valid ()) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_DEALER", transport, msg_size);
-        return;
+        return false;
     }
 
     (void) bind_socket.sock ().set_option (zlink::socket_options::tcp_nodelay, 1);
@@ -89,9 +85,7 @@ void run_pattern_dealer_dealer (const std::string &transport,
                                              conn_socket.sock (),
                                              transport,
                                              lib_name + "_dealer_dealer")) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_DEALER", transport, msg_size);
-        return;
+        return false;
     }
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
@@ -206,9 +200,7 @@ void run_pattern_dealer_dealer (const std::string &transport,
       received_count.load (std::memory_order_acquire);
     if (!sender_ok.load (std::memory_order_acquire) || received == 0
         || latency_builder.count () == 0) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_DEALER", transport, msg_size);
-        return;
+        return false;
     }
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
 
@@ -222,6 +214,7 @@ void run_pattern_dealer_dealer (const std::string &transport,
                                 latency.mean_ns,
                                 latency.p95_ns,
                                 latency.p99_ns);
+    return true;
 }
 
 int main (int argc, char **argv)

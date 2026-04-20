@@ -44,29 +44,25 @@ bool record_router_payload (const zlink::received_t &received,
 
 } // namespace
 
-void run_pattern_dealer_router (const std::string &transport,
+bool run_pattern_dealer_router (const std::string &transport,
                                 size_t msg_size,
                                 const std::string &lib_name)
 {
     if (!perf::single::transport_available (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << ",DEALER_ROUTER,"
                   << transport << std::endl;
-        return;
+        return true;
     }
 
     perf::single::ctx_guard_t ctx;
     if (!ctx.valid ()) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     perf::single::socket_guard_t router (ctx, zlink::socket_type::router);
     perf::single::socket_guard_t dealer (ctx, zlink::socket_type::dealer);
     if (!router.valid () || !dealer.valid ()) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     (void) dealer.sock ().set_routing_id (std::string ("CLIENT"));
@@ -74,9 +70,7 @@ void run_pattern_dealer_router (const std::string &transport,
                                              dealer.sock (),
                                              transport,
                                              lib_name + "_dealer_router")) {
-        perf::single::print_fail_result (
-          lib_name, "DEALER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     const size_t payload_size =
@@ -224,9 +218,7 @@ void run_pattern_dealer_router (const std::string &transport,
             std::cerr << "dealer_router: no active data sent="
                       << sent_count.load (std::memory_order_acquire)
                       << " received=" << received << std::endl;
-        perf::single::print_fail_result (
-          lib_name, "DEALER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
@@ -240,6 +232,7 @@ void run_pattern_dealer_router (const std::string &transport,
                                 latency.mean_ns,
                                 latency.p95_ns,
                                 latency.p99_ns);
+    return true;
 }
 
 int main (int argc, char **argv)

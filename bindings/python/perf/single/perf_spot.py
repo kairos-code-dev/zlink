@@ -1,17 +1,22 @@
 import sys
+import threading
 import time
 
 import zlink
 
 from perf_common import (
+    HEADER_MAGIC,
     benchmark_run_id,
+    decode_header,
     latency_ns_from_message,
     is_active_message,
     new_payload,
     parse_single_args,
     print_result_lines,
-    result_metrics,
     recv_nonblocking,
+    resolve_single_recv_timeout_ms,
+    resolve_single_spot_ready_settle_s,
+    result_metrics,
     stamp_payload,
 )
 
@@ -24,6 +29,11 @@ def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="spot")
     run_id = benchmark_run_id()
     latencies = []
+    probe_ready = threading.Event()
+    recv_lock = threading.Lock()
+    probe_payload = new_payload(args.msg_size)
+    active_payload = new_payload(args.msg_size)
+
     with zlink.Context() as ctx:
         node = zlink.SpotNode(ctx)
         try:
@@ -32,25 +42,56 @@ def main(argv=None):
                 with node.create_spot() as spot:
                     spot.set_subscription(TOPIC)
 
-                    warmup_end = time.monotonic() + args.warmup
-                    while time.monotonic() < warmup_end:
+                    def on_dispatch(current_spot, event):
+                        if event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
+                            return
+                        while True:
+                            received = recv_nonblocking(current_spot, method="subscribe")
+                            if received is None:
+                                return
+                            with received:
+                                parts = received.to_bytes_list()
+                            if not parts:
+                                continue
+                            data = parts[0]
+                            header = decode_header(data)
+                            if (
+                                not probe_ready.is_set()
+                                and header is not None
+                                and header["magic"] == HEADER_MAGIC
+                                and header["phase"] == 0
+                                and header["msg_size"] == args.msg_size
+                                and header["run_id"] == run_id
+                            ):
+                                probe_ready.set()
+                                continue
+                            if not is_active_message(
+                                data,
+                                expected_msg_size=args.msg_size,
+                                run_id=run_id,
+                            ):
+                                continue
+                            with recv_lock:
+                                latencies.append(latency_ns_from_message(data))
+
+                    spot.on_dispatch_event(on_dispatch)
+                    ready_deadline = time.monotonic() + 5.0
+                    while not probe_ready.is_set() and time.monotonic() < ready_deadline:
                         spot.publish(
                             SERVICE_NAME,
                             TOPIC,
                             [
                                 stamp_payload(
-                                    new_payload(args.msg_size),
+                                    probe_payload,
                                     phase=0,
                                     run_id=run_id,
                                 )
                             ],
                         )
-                        while True:
-                            received = recv_nonblocking(spot, method="subscribe")
-                            if received is None:
-                                break
-                            with received:
-                                pass
+                        probe_ready.wait(0.05)
+                    if not probe_ready.is_set():
+                        raise RuntimeError("spot benchmark probe-ready timeout")
+                    time.sleep(resolve_single_spot_ready_settle_s())
 
                     active_end = time.monotonic() + args.duration
                     while time.monotonic() < active_end:
@@ -59,35 +100,25 @@ def main(argv=None):
                             TOPIC,
                             [
                                 stamp_payload(
-                                    new_payload(args.msg_size),
+                                    active_payload,
                                     phase=1,
                                     run_id=run_id,
                                 )
                             ],
                         )
-                        while True:
-                            received = recv_nonblocking(spot, method="subscribe")
-                            if received is None:
-                                break
-                            with received:
-                                data = received.to_bytes_list()[0]
-                                if not is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=run_id,
-                                ):
-                                    continue
-                                latencies.append(latency_ns_from_message(data))
+                    time.sleep(resolve_single_recv_timeout_ms() / 1000.0)
 
-                    if not latencies:
+                    with recv_lock:
+                        collected = list(latencies)
+                    if not collected:
                         raise RuntimeError(
                             "spot benchmark did not receive any active message"
                         )
                     metrics = result_metrics(
-                        count=len(latencies),
+                        count=len(collected),
                         msg_size=args.msg_size,
                         elapsed_s=args.duration,
-                        latencies_ns=latencies,
+                        latencies_ns=collected,
                     )
                     print_result_lines("SPOT", args.transport, args.msg_size, metrics)
         finally:

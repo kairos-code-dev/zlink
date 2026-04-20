@@ -17,7 +17,9 @@ from perf_common import (
     resolve_single_pubsub_recv_timeout_ms,
     result_metrics,
     recv_nonblocking,
+    safe_poll,
     stamp_payload,
+    wait_monitor_event,
 )
 
 
@@ -43,9 +45,11 @@ def main(argv=None):
                     subscriber,
                     receive_timeout_ms=resolve_single_pubsub_recv_timeout_ms(),
                 )
-                publisher.bind(endpoint)
                 subscriber.set_subscription(TOPIC)
-                subscriber.connect(endpoint)
+                with subscriber.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
+                    publisher.bind(endpoint)
+                    subscriber.connect(endpoint)
+                    wait_monitor_event(monitor, zlink.MonitorEventMask.CONNECTION_READY)
                 wait_seconds = resolve_single_pubsub_ready_settle_s()
                 if wait_seconds > 0:
                     time.sleep(wait_seconds)
@@ -54,24 +58,37 @@ def main(argv=None):
                     target=send_loop, args=(publisher,), daemon=True
                 )
                 sender.start()
-                drain_deadline = time.perf_counter() + args.duration + 1.0
-
-                while True:
-                    received = recv_nonblocking(subscriber, method="subscribe")
-                    if received is None:
-                        if time.perf_counter() >= drain_deadline:
+                active_deadline = time.perf_counter() + args.duration
+                idle_drain_deadline = active_deadline + (
+                    resolve_single_pubsub_recv_timeout_ms() / 1000.0
+                )
+                with zlink.Poller() as poller:
+                    poller.add_socket(subscriber, zlink.PollEvent.POLLIN)
+                    while time.perf_counter() < idle_drain_deadline:
+                        timeout_ms = max(
+                            1,
+                            int((idle_drain_deadline - time.perf_counter()) * 1000),
+                        )
+                        events = safe_poll(poller, timeout_ms)
+                        if not events:
                             break
-                        time.sleep(0.001)
-                        continue
-                    with received:
-                        data = received.to_bytes_list()[0]
-                        if not is_active_message(
-                            data,
-                            expected_msg_size=args.msg_size,
-                            run_id=run_id,
-                        ):
-                            continue
-                        latencies.append(latency_ns_from_message(data))
+                        for event in events:
+                            current_sock = event["socket"]
+                            while True:
+                                received = recv_nonblocking(current_sock, method="subscribe")
+                                if received is None:
+                                    break
+                                with received:
+                                    data = received.to_bytes_list()[0]
+                                if time.perf_counter() > active_deadline:
+                                    continue
+                                if not is_active_message(
+                                    data,
+                                    expected_msg_size=args.msg_size,
+                                    run_id=run_id,
+                                ):
+                                    continue
+                                latencies.append(latency_ns_from_message(data))
 
                 sender.join()
                 if not latencies:

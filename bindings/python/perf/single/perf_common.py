@@ -10,9 +10,11 @@ if perf_dir_text not in sys.path:
     sys.path.insert(0, perf_dir_text)
 
 from perf_metrics import (
+    HEADER_MAGIC,
     HEADER_SIZE,
     benchmark_run_id,
     build_report_path,
+    extract_metric_payload,
     latency_ns_from_message,
     new_payload,
     parse_result_lines,
@@ -34,8 +36,7 @@ from perf_metrics import (
 def parse_single_args(argv, *, pattern):
     parser = argparse.ArgumentParser(prog=f"perf_{pattern.lower()}.py")
     parser.add_argument("--transport", default="tcp")
-    parser.add_argument("--duration", type=float, default=2.0)
-    parser.add_argument("--warmup", type=float, default=0.0, help=argparse.SUPPRESS)
+    parser.add_argument("--duration", type=float, default=5.0)
     parser.add_argument("--msg-size", type=int, default=256)
     args = parser.parse_args(argv)
     if args.duration <= 0:
@@ -94,12 +95,18 @@ def resolve_single_endpoint(transport, prefix):
 def apply_single_socket_options(*sockets, receive_timeout_ms=None):
     send_hwm = resolve_single_send_hwm()
     recv_hwm = resolve_single_recv_hwm()
+    send_timeout_ms = resolve_single_send_timeout_ms()
+    recv_timeout_ms = (
+        resolve_single_recv_timeout_ms()
+        if receive_timeout_ms is None
+        else receive_timeout_ms
+    )
     for sock in sockets:
         sock.options.linger_ms = 0
         sock.options.send_high_water_mark = send_hwm
         sock.options.receive_high_water_mark = recv_hwm
-        if receive_timeout_ms is not None:
-            sock.options.receive_timeout_ms = receive_timeout_ms
+        sock.options.send_timeout_ms = send_timeout_ms
+        sock.options.receive_timeout_ms = recv_timeout_ms
 
 
 def wait_post_ready_settle(seconds):

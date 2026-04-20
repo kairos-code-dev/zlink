@@ -165,6 +165,8 @@ int recv_spot_header_flags (void *subscriber_,
         zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), header_out_);
     if (header_ok_out_)
         *header_ok_out_ = header_ok;
+    zlink_multipart_close (parts, part_count);
+    std::free (parts);
     return 1;
 }
 
@@ -174,10 +176,14 @@ bool publish_metric_payload (void *publisher_,
                              uint32_t run_id_,
                              uint64_t seq_,
                              perf_single_metric::phase_t phase_,
-                             int flags_)
+                             int flags_,
+                             bool *sent_out_ = NULL)
 {
     if (!publisher_ || !payload_)
         return false;
+
+    if (sent_out_)
+        *sent_out_ = false;
 
     const size_t payload_size =
       std::max (msg_size_, perf_single_metric::header_size ());
@@ -207,7 +213,7 @@ bool publish_metric_payload (void *publisher_,
           (flags_ & ZLINK_DONTWAIT) != 0
           && (err == EAGAIN || err == ENOTCONN || err == EHOSTUNREACH
               || err == ENETUNREACH);
-        if (err == EINTR || retry_ready_probe)
+        if (err == EINTR || err == EAGAIN || retry_ready_probe)
             return true;
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-spot] publish failed err=" << err << std::endl;
@@ -215,6 +221,8 @@ bool publish_metric_payload (void *publisher_,
         return false;
     }
 
+    if (sent_out_)
+        *sent_out_ = true;
     return true;
 }
 
@@ -303,14 +311,20 @@ bool send_spot_samples (void *publisher_,
       + std::chrono::seconds (std::max (1, duration_s_));
     uint64_t seq = 1;
     while (std::chrono::steady_clock::now () < deadline) {
+        bool sent = false;
         if (!publish_metric_payload (publisher_,
                                      payload_,
                                      state_->msg_size,
                                      state_->run_id,
                                      seq,
                                      perf_single_metric::phase_active,
-                                     0)) {
+                                     ZLINK_DONTWAIT,
+                                     &sent)) {
             return false;
+        }
+        if (!sent) {
+            (void) perf_socket_poll (NULL, 0, 1);
+            continue;
         }
         sent_count_->fetch_add (1, std::memory_order_release);
         ++seq;
@@ -344,11 +358,18 @@ bool run_active_window (void *publisher_,
       + std::chrono::seconds (std::max (1, duration_s_));
     const auto drain_idle_limit =
       std::chrono::milliseconds (recv_timeout_ms_ > 0 ? recv_timeout_ms_ : 200);
+    const auto drain_deadline = deadline + drain_idle_limit;
 
     std::thread receiver_thread ([&]() {
         auto last_recv_at = std::chrono::steady_clock::now ();
         while (true) {
             const bool done = sender_done.load (std::memory_order_acquire);
+            if (done && std::chrono::steady_clock::now () >= drain_deadline) {
+                if (bench_debug_enabled ())
+                    std::cerr << "[perf-spot] receiver drain deadline reached"
+                              << std::endl;
+                break;
+            }
             perf_single_metric::header_t header;
             bool header_ok = false;
             const int recv_rc =
@@ -391,6 +412,9 @@ bool run_active_window (void *publisher_,
                 if (done
                     && std::chrono::steady_clock::now () - last_recv_at
                          >= drain_idle_limit) {
+                    if (bench_debug_enabled ())
+                        std::cerr << "[perf-spot] receiver idle drain complete"
+                                  << std::endl;
                     break;
                 }
                 (void) perf_socket_poll (NULL, 0, 1);
@@ -403,11 +427,20 @@ bool run_active_window (void *publisher_,
     });
 
     std::thread sender_thread ([&]() {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-spot] sender start" << std::endl;
         sender_ok.store (
           send_spot_samples (
             publisher_, &payload, state_, duration_s_, &sent_count),
           std::memory_order_release);
         sender_done.store (true, std::memory_order_release);
+        if (bench_debug_enabled ()) {
+            std::cerr << "[perf-spot] sender done ok="
+                      << (sender_ok.load (std::memory_order_acquire) ? 1 : 0)
+                      << " sent="
+                      << sent_count.load (std::memory_order_relaxed)
+                      << std::endl;
+        }
     });
 
     sender_thread.join ();
@@ -457,6 +490,13 @@ void cleanup_spot_case (void **subscriber_,
         (void) zlink_spot_node_destroy (subscriber_node_);
     if (publisher_node_ && *publisher_node_)
         (void) zlink_spot_node_destroy (publisher_node_);
+}
+
+void fast_exit_process (int exit_code_)
+{
+    std::cout.flush ();
+    std::cerr.flush ();
+    std::_Exit (exit_code_);
 }
 
 int run_case (const std::string &lib_name_,
@@ -649,9 +689,13 @@ int run_case (const std::string &lib_name_,
         print_fail ();
         return 1;
     }
+    if (bench_debug_enabled ())
+        std::cerr << "[perf-spot] post-ready settle complete" << std::endl;
 
     double throughput = 0.0;
     latency_stats_t latency;
+    if (bench_debug_enabled ())
+        std::cerr << "[perf-spot] active window start" << std::endl;
     const bool active_ok = run_active_window (publisher,
                                               subscriber,
                                               &state,
@@ -660,17 +704,15 @@ int run_case (const std::string &lib_name_,
                                               resolve_single_recv_timeout_ms (),
                                               &throughput,
                                               &latency);
+    if (bench_debug_enabled ()) {
+        std::cerr << "[perf-spot] active window complete ok="
+                  << (active_ok ? 1 : 0) << std::endl;
+    }
     if (bench_debug_enabled () && !active_ok)
         std::cerr << "[perf-spot] active window failed" << std::endl;
-    cleanup_spot_case (&subscriber,
-                       &publisher,
-                       &subscriber_discovery,
-                       &publisher_discovery,
-                       &registry,
-                       &subscriber_node,
-                       &publisher_node);
     if (!active_ok) {
         print_fail ();
+        fast_exit_process (1);
         return 1;
     }
 
@@ -682,6 +724,7 @@ int run_case (const std::string &lib_name_,
                   latency.mean_ns,
                   latency.p95_ns,
                   latency.p99_ns);
+    fast_exit_process (0);
     return 0;
 }
 

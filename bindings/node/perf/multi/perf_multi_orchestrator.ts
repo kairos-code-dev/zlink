@@ -114,6 +114,11 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
   });
 }
 
+function hasProtocolUnsupported(processRef) {
+  return Array.isArray(processRef.__stderrLines)
+    && processRef.__stderrLines.some((line) => line.toLowerCase().includes('protocol not supported'));
+}
+
 async function waitForExit(processRef) {
   if (processRef.exitCode !== null || processRef.signalCode !== null) {
     return processRef.exitCode;
@@ -217,6 +222,20 @@ function phaseActiveLine(msgSize) {
 
 function startLine(msgSize) {
   return `START,${msgSize}`;
+}
+
+function needsClientReady(pattern) {
+  return pattern === 'MULTI_DEALER_DEALER'
+    || pattern === 'MULTI_PUBSUB'
+    || pattern === 'MULTI_SPOT'
+    || pattern === 'MULTI_SPOT_REQREP';
+}
+
+function needsRunnerStart(pattern) {
+  return pattern === 'MULTI_DEALER_DEALER'
+    || pattern === 'MULTI_PUBSUB'
+    || pattern === 'MULTI_SPOT'
+    || pattern === 'MULTI_SPOT_REQREP';
 }
 
 function childEnv(args) {
@@ -385,20 +404,24 @@ async function spawnMultiPair(serverScript, clientScript, args) {
       server.stdin.write(`CONNECT_CONTROL,${clientControlLine.split(',')[1]}\n`);
     }
   }
-  await waitForLine(
-    client,
-    clientReadyLine(args.msgSize),
-    clientScript,
-    Number.isFinite(args.connectReadyTimeoutMs) ? args.connectReadyTimeoutMs : 20_000
-  );
-
-  if (server.stdin.writable) {
-    server.stdin.write(`${startLine(args.msgSize)}\n`);
+  if (needsClientReady(args.pattern)) {
+    await waitForLine(
+      client,
+      clientReadyLine(args.msgSize),
+      clientScript,
+      Number.isFinite(args.connectReadyTimeoutMs) ? args.connectReadyTimeoutMs : 20_000
+    );
   }
-  if (client.stdin.writable) {
-    client.stdin.write(`${startLine(args.msgSize)}\n`);
-    if (args.pattern === 'MULTI_PUBSUB') {
-      client.stdin.write(`${phaseActiveLine(args.msgSize)}\n`);
+
+  if (needsRunnerStart(args.pattern)) {
+    if (server.stdin.writable) {
+      server.stdin.write(`${startLine(args.msgSize)}\n`);
+    }
+    if (client.stdin.writable) {
+      client.stdin.write(`${startLine(args.msgSize)}\n`);
+      if (args.pattern === 'MULTI_PUBSUB') {
+        client.stdin.write(`${phaseActiveLine(args.msgSize)}\n`);
+      }
     }
   }
 
@@ -437,6 +460,10 @@ async function spawnMultiPair(serverScript, clientScript, args) {
       Number.isFinite(args.serverShutdownTimeoutMs) ? args.serverShutdownTimeoutMs : 5000
     );
     await flushProcessOutput();
+    const hasResultLines = resultLines.some((line) => line.startsWith('RESULT,'));
+    if (!hasResultLines && (hasProtocolUnsupported(client) || hasProtocolUnsupported(server))) {
+      resultLines.push(`UNSUPPORTED,current,${args.pattern},${args.transport}`);
+    }
     return resultLines;
   } finally {
     await Promise.allSettled([terminateProcessTree(server, 1000), terminateProcessTree(client, 1000)]);

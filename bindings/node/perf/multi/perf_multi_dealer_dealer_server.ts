@@ -15,7 +15,8 @@ const {
   POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
-  trySocketSend
+  trySocketSend,
+  waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
 
 async function main() {
@@ -30,6 +31,7 @@ async function main() {
     applySocketPolicy(server);
     server.bind(options.endpoint);
     poller.addSocket(server, POLLOUT);
+    const readyBarrier = waitForConnectionReadyCount(server, options.clients);
     console.log(`READY,${options.endpoint}`);
 
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -41,6 +43,7 @@ async function main() {
         continue;
       }
 
+      await readyBarrier;
       const runId = createRunId(1);
       const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
       let pending = false;

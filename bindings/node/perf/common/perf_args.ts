@@ -229,19 +229,6 @@ function defaultMultiMsgSizes(patternNames, explicitMsgSizes) {
   return onlyStream ? STREAM_MSG_SIZES.slice() : STANDARD_MSG_SIZES.slice();
 }
 
-function defaultMultiClients(patternNames, explicitClients) {
-  if (explicitClients) {
-    return null;
-  }
-  const envClients = integerEnv('PERF_MULTI_CLIENTS', NaN);
-  if (Number.isFinite(envClients) && envClients > 0) {
-    return envClients;
-  }
-  const onlyStream = patternNames.length > 0
-    && patternNames.every((name) => name === 'MULTI_STREAM');
-  return onlyStream ? 10000 : 100;
-}
-
 function defaultSingleTransports() {
   return parseStringList(process.env.PERF_TRANSPORTS, DEFAULT_SINGLE_TRANSPORTS.slice());
 }
@@ -256,7 +243,6 @@ module.exports = {
   MIN_MSG_SIZE,
   STANDARD_MSG_SIZES,
   STREAM_MSG_SIZES,
-  defaultMultiClients,
   defaultMultiMsgSizes,
   defaultSingleMsgSizes,
   defaultMultiTransports,

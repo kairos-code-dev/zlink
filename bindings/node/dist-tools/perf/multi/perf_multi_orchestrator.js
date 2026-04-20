@@ -108,6 +108,10 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
         console.error(line);
     });
 }
+function hasProtocolUnsupported(processRef) {
+    return Array.isArray(processRef.__stderrLines)
+        && processRef.__stderrLines.some((line) => line.toLowerCase().includes('protocol not supported'));
+}
 async function waitForExit(processRef) {
     if (processRef.exitCode !== null || processRef.signalCode !== null) {
         return processRef.exitCode;
@@ -396,6 +400,10 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     try {
         await stopServer(server, serverScript, Number.isFinite(args.serverShutdownTimeoutMs) ? args.serverShutdownTimeoutMs : 5000);
         await flushProcessOutput();
+        const hasResultLines = resultLines.some((line) => line.startsWith('RESULT,'));
+        if (!hasResultLines && (hasProtocolUnsupported(client) || hasProtocolUnsupported(server))) {
+            resultLines.push(`UNSUPPORTED,current,${args.pattern},${args.transport}`);
+        }
         return resultLines;
     }
     finally {

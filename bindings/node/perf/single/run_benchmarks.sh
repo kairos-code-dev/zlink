@@ -24,7 +24,7 @@ fi
 
 if [ "${REUSE_BUILD}" -eq 0 ]; then
   npm run build
-elif [ ! -f "$ROOT_DIR/dist-tools/perf/common/perf_metric_worker.js" ]; then
+elif [ ! -f "$ROOT_DIR/dist-tools/perf/single/run_benchmarks.js" ]; then
   echo "Error: --reuse-build requested but dist-tools output is missing." >&2
   exit 1
 fi

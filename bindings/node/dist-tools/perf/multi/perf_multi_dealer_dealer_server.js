@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyContextPolicy, applySocketPolicy, trySocketSend } = require('./perf_multi_runtime');
+const { POLLOUT, applyContextPolicy, applySocketPolicy, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -17,6 +17,7 @@ async function main() {
         applySocketPolicy(server);
         server.bind(options.endpoint);
         poller.addSocket(server, POLLOUT);
+        const readyBarrier = waitForConnectionReadyCount(server, options.clients);
         console.log(`READY,${options.endpoint}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
@@ -26,6 +27,7 @@ async function main() {
                 }
                 continue;
             }
+            await readyBarrier;
             const runId = createRunId(1);
             const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
             let pending = false;

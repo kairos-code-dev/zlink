@@ -56,7 +56,7 @@ async function main() {
           return;
         }
         try {
-          received.reply(received.parts.map((part) => part.data()));
+          received.reply(received.parts);
         } finally {
           received.close();
         }

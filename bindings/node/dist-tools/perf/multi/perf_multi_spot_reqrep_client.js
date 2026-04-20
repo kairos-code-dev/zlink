@@ -114,7 +114,7 @@ async function main() {
                     continue;
                 }
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                const issued = routers[i].tryRequestToSpot(serverNodeRid, serverSpotRid, Buffer.from(payloads[i]), (result, replyParts) => onReply(i, result, replyParts), 2000);
+                const issued = routers[i].tryRequestToSpot(serverNodeRid, serverSpotRid, payloads[i], (result, replyParts) => onReply(i, result, replyParts), 2000);
                 if (!issued) {
                     continue;
                 }

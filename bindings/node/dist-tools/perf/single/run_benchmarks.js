@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const { spawn } = require('node:child_process');
 const path = require('node:path');
-const { buildEffectiveOptions, completionLines, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatTableHeader, formatTableRow, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
+const { buildEffectiveOptions, completionLines, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatTableHeader, formatTableRow, hasPrimaryMetricsFromResultLines, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
 const PATTERNS = {
     PAIR: { script: 'perf_pair.js' },
     PUBSUB: { script: 'perf_pubsub.js' },
@@ -97,6 +97,9 @@ function formatFailureRow(msgSize, label = 'FAIL') {
 }
 function isPlatformSkip(pattern, transport) {
     return process.platform === 'win32' && transport === 'ipc' && pattern !== 'SPOT' && pattern !== 'SPOT_REQREP';
+}
+function isUnsupportedLines(lines) {
+    return lines.some((line) => line.startsWith('UNSUPPORTED,'));
 }
 function errorText(error) {
     return String(error && error.message ? error.message : error);
@@ -271,9 +274,15 @@ async function main() {
             if (options.runs === 1) {
                 emitIndented('      ', formatTableHeader());
                 const perSizeMetrics = new Map();
+                let transportUnsupported = false;
                 for (const msgSize of options.msgSizes) {
                     try {
                         const lines = await runSingleCase(runner.script, transport, msgSize, options);
+                        if (!hasPrimaryMetricsFromResultLines(name, msgSize, lines) && isUnsupportedLines(lines)) {
+                            unsupportedCombos += options.msgSizes.length;
+                            transportUnsupported = true;
+                            break;
+                        }
                         const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
                         const row = { pattern: name, msgSize, metrics };
                         emit(`      ${formatTableRow(row)}`);
@@ -287,6 +296,10 @@ async function main() {
                         }
                     }
                 }
+                if (transportUnsupported) {
+                    emit(`    Testing ${transport}: unsupported Done`);
+                    continue;
+                }
                 for (const msgSize of options.msgSizes) {
                     const metrics = perSizeMetrics.get(msgSize);
                     if (!metrics) {
@@ -297,12 +310,18 @@ async function main() {
             }
             else {
                 const runResults = new Map(options.msgSizes.map((msgSize) => [msgSize, []]));
+                let transportUnsupported = false;
                 for (let run = 1; run <= options.runs; run += 1) {
                     emit(`      run ${run}/${options.runs}:`);
                     emitIndented('        ', formatTableHeader());
                     for (const msgSize of options.msgSizes) {
                         try {
                             const lines = await runSingleCase(runner.script, transport, msgSize, options);
+                            if (!hasPrimaryMetricsFromResultLines(name, msgSize, lines) && isUnsupportedLines(lines)) {
+                                unsupportedCombos += options.msgSizes.length;
+                                transportUnsupported = true;
+                                break;
+                            }
                             const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
                             runResults.get(msgSize).push(metrics);
                             emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
@@ -315,6 +334,13 @@ async function main() {
                             }
                         }
                     }
+                    if (transportUnsupported) {
+                        emit(`    Testing ${transport}: unsupported Done`);
+                        break;
+                    }
+                }
+                if (transportUnsupported) {
+                    continue;
                 }
                 emit('      median:');
                 emitIndented('        ', formatTableHeader());

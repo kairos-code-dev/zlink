@@ -150,7 +150,7 @@ async function main() {
         const issued = routers[i].tryRequestToSpot(
           serverNodeRid,
           serverSpotRid,
-          Buffer.from(payloads[i]),
+          payloads[i],
           (result, replyParts) => onReply(i, result, replyParts),
           2000
         );

@@ -17,7 +17,10 @@ function buildEffectiveOptions(options, extraLines) {
     if (typeof options.duration !== 'undefined') {
         lines.push(`- duration_seconds: ${options.duration}`);
     }
-    if (typeof options.clients !== 'undefined') {
+    if (typeof options.clientsLabel !== 'undefined') {
+        lines.push(`- clients: ${options.clientsLabel}`);
+    }
+    else if (typeof options.clients !== 'undefined') {
         lines.push(`- clients: ${options.clients}`);
     }
     if (options.resultsTag) {

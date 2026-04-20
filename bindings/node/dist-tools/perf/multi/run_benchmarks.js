@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
+const fs = require('node:fs');
 const path = require('node:path');
-const { buildEffectiveOptions, completionLines, defaultMultiClients, defaultMultiMsgSizes, DEFAULT_MULTI_TRANSPORTS, formatTableHeader, formatTableRow, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveMultiPatternNames, writeReport } = require('../common/perf_metrics');
+const { buildEffectiveOptions, completionLines, defaultMultiMsgSizes, DEFAULT_MULTI_TRANSPORTS, formatTableHeader, formatTableRow, hasPrimaryMetricsFromResultLines, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveMultiPatternNames, writeReport } = require('../common/perf_metrics');
 const { spawnMultiPair } = require('./perf_multi_orchestrator');
 const MULTI_PATTERN_RUNNERS = {
     MULTI_DEALER_DEALER: {
@@ -123,6 +124,124 @@ function errorText(error) {
 function isUnsupported(error) {
     return errorText(error).toLowerCase().includes('protocol not supported');
 }
+function hasUnsupportedToken(lines) {
+    return lines.some((line) => line.startsWith('UNSUPPORTED,'));
+}
+function hasSkipToken(lines) {
+    return lines.some((line) => line.startsWith('SKIP,'));
+}
+function explicitClientCount() {
+    const configured = Number(process.env.PERF_MULTI_CLIENTS || NaN);
+    if (Number.isFinite(configured) && configured > 0) {
+        return Math.trunc(configured);
+    }
+    return null;
+}
+function defaultClientsForPattern(patternName) {
+    return patternName === 'MULTI_STREAM' ? 10000 : 100;
+}
+function currentSoftNofileLimit() {
+    if (process.platform !== 'linux') {
+        return null;
+    }
+    try {
+        const limits = fs.readFileSync('/proc/self/limits', 'utf8');
+        const line = limits.split('\n').find((entry) => entry.startsWith('Max open files'));
+        if (!line) {
+            return null;
+        }
+        const fields = line.trim().split(/\s+/);
+        if (fields.length < 5 || fields[3] === 'unlimited') {
+            return null;
+        }
+        const soft = Number(fields[3]);
+        return Number.isFinite(soft) && soft > 0 ? soft : null;
+    }
+    catch {
+        return null;
+    }
+}
+function memoryAvailableKb() {
+    if (process.platform !== 'linux') {
+        return null;
+    }
+    try {
+        const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+        const line = meminfo.split('\n').find((entry) => entry.startsWith('MemAvailable:'));
+        if (!line) {
+            return null;
+        }
+        const match = line.match(/^MemAvailable:\s+(\d+)\s+kB$/);
+        if (!match) {
+            return null;
+        }
+        return Number(match[1]);
+    }
+    catch {
+        return null;
+    }
+}
+function resolveMemoryMaxClients() {
+    const availableKb = memoryAvailableKb();
+    if (!Number.isFinite(availableKb) || availableKb <= 0) {
+        return null;
+    }
+    const budgetPct = Number(process.env.PERF_MULTI_MEMORY_BUDGET_PCT || 70);
+    const baseMb = Number(process.env.PERF_MULTI_MEMORY_BASE_MB || 512);
+    const perClientKb = Number(process.env.PERF_MULTI_MEMORY_PER_CLIENT_KB || 1024);
+    if (!Number.isFinite(budgetPct) || budgetPct < 1 || budgetPct > 95) {
+        return null;
+    }
+    if (!Number.isFinite(baseMb) || baseMb < 0) {
+        return null;
+    }
+    if (!Number.isFinite(perClientKb) || perClientKb < 1) {
+        return null;
+    }
+    const usableKb = Math.trunc(availableKb * budgetPct / 100);
+    const baseKb = Math.trunc(baseMb * 1024);
+    if (usableKb <= baseKb) {
+        return 1;
+    }
+    return Math.max(1, Math.trunc((usableKb - baseKb) / perClientKb));
+}
+function resolvePatternClients(patternName, options, clientSource) {
+    const requested = clientSource === 'policy'
+        ? defaultClientsForPattern(patternName)
+        : options.clients;
+    let effectiveClients = requested;
+    if (!Number.isFinite(requested) || requested <= 0) {
+        throw new Error(`invalid multi clients for ${patternName}: ${requested}`);
+    }
+    if (process.env.PERF_SKIP_MEMORY_CHECK !== '1') {
+        const maxClients = resolveMemoryMaxClients();
+        if (Number.isFinite(maxClients) && maxClients > 0) {
+            if (clientSource === 'policy') {
+                effectiveClients = Math.min(requested, maxClients);
+            }
+            else if (requested > maxClients) {
+                return {
+                    clients: requested,
+                    skipReason: `preflight_memory_clients=${requested},max_clients=${maxClients},mem_available_kb=${memoryAvailableKb()},budget_pct=${process.env.PERF_MULTI_MEMORY_BUDGET_PCT || 70},base_mb=${process.env.PERF_MULTI_MEMORY_BASE_MB || 512},per_client_kb=${process.env.PERF_MULTI_MEMORY_PER_CLIENT_KB || 1024}`
+                };
+            }
+        }
+    }
+    if (process.env.PERF_SKIP_NOFILE_CHECK !== '1') {
+        const required = effectiveClients * 3 + 4096;
+        const softLimit = currentSoftNofileLimit();
+        if (Number.isFinite(softLimit) && softLimit < required) {
+            return {
+                clients: effectiveClients,
+                skipReason: `preflight_nofile_clients=${effectiveClients},required=${required},soft=${softLimit}`
+            };
+        }
+    }
+    return {
+        clients: effectiveClients,
+        skipReason: ''
+    };
+}
 async function sleepMs(milliseconds) {
     await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -132,8 +251,7 @@ async function main() {
         duration: 5,
         msgSizes: defaultMultiMsgSizes(['MULTI_DEALER_DEALER'], false),
         resultsDir: path.join(process.cwd(), 'perf', 'results'),
-        transports: DEFAULT_MULTI_TRANSPORTS,
-        clients: 100
+        transports: DEFAULT_MULTI_TRANSPORTS
     });
     if (options.helpRequested) {
         usage();
@@ -144,9 +262,12 @@ async function main() {
     if (defaultMsgSizes !== null) {
         options.msgSizes = defaultMsgSizes;
     }
-    const defaultClients = defaultMultiClients(patternNames, options.clientsExplicit);
-    if (defaultClients !== null) {
-        options.clients = defaultClients;
+    const envClients = explicitClientCount();
+    const clientSource = options.clientsExplicit
+        ? 'cli'
+        : (envClients !== null ? 'env' : 'policy');
+    if (clientSource === 'env') {
+        options.clients = envClients;
     }
     const failFast = process.env.PERF_FAIL_FAST === '1';
     const runCooldownMs = Number(process.env.PERF_MULTI_RUN_COOLDOWN_MS ?? 3000);
@@ -163,6 +284,7 @@ async function main() {
     let requestedCombos = 0;
     let unsupportedCombos = 0;
     let skippedCombos = 0;
+    const runnablePatterns = [];
     const emit = (line = '') => {
         console.log(line);
         reportLines.push(line);
@@ -172,17 +294,51 @@ async function main() {
             emit(`${prefix}${line}`);
         }
     };
-    console.log('## Effective Options (start)');
-    for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'multi', patterns: patternNames.join(',') })) {
-        console.log(line);
-    }
-    console.log('');
-    for (let patternIndex = 0; patternIndex < patternNames.length; patternIndex += 1) {
-        const patternName = patternNames[patternIndex];
+    for (const patternName of patternNames) {
         const runner = MULTI_PATTERN_RUNNERS[patternName];
         if (!runner) {
             throw new Error(`unsupported multi pattern: ${patternName}`);
         }
+        const resolution = resolvePatternClients(patternName, options, clientSource);
+        if (resolution.skipReason) {
+            skips.push(`${patternName}: ${resolution.skipReason}`);
+            continue;
+        }
+        runnablePatterns.push({
+            patternName,
+            runner,
+            clients: resolution.clients
+        });
+    }
+    if (runnablePatterns.length === 0) {
+        if (skips.length > 0) {
+            console.log('## Skips');
+            for (const skip of skips) {
+                console.log(`- ${skip}`);
+            }
+            return;
+        }
+        throw new Error('no multi patterns selected to run');
+    }
+    const headerOptions = {
+        ...options,
+        clients: clientSource === 'policy' ? undefined : options.clients,
+        clientsLabel: clientSource === 'policy'
+            ? 'pattern default (non-stream=100, stream=10000)'
+            : String(options.clients)
+    };
+    console.log('## Effective Options (start)');
+    for (const line of buildEffectiveOptions({
+        ...headerOptions,
+        lang: 'node',
+        suite: 'multi',
+        patterns: patternNames.join(',')
+    })) {
+        console.log(line);
+    }
+    console.log('');
+    for (let patternIndex = 0; patternIndex < runnablePatterns.length; patternIndex += 1) {
+        const { patternName, runner, clients } = runnablePatterns[patternIndex];
         if (patternIndex > 0) {
             emit('===============================================================================');
             emit('');
@@ -190,6 +346,9 @@ async function main() {
         emit(`## PATTERN: ${patternName} (${patternDirection(patternName)})`);
         emit('');
         emit(`  > Benchmarking current for ${patternName}...`);
+        if (clientSource === 'policy' && clients !== defaultClientsForPattern(patternName)) {
+            emit(`  > Memory guard capped clients to ${clients}.`);
+        }
         const msgSizes = patternMsgSizes(patternName, options.msgSizes);
         for (let transportIndex = 0; transportIndex < options.transports.length; transportIndex += 1) {
             const transport = options.transports[transportIndex];
@@ -212,14 +371,16 @@ async function main() {
                             ...options,
                             pattern: patternName,
                             transport,
-                            msgSize
+                            msgSize,
+                            clients
                         });
-                        if (lines.some((line) => line.startsWith('UNSUPPORTED,'))) {
+                        const hasMetrics = hasPrimaryMetricsFromResultLines(patternName, msgSize, lines);
+                        if (!hasMetrics && hasUnsupportedToken(lines)) {
                             unsupportedCombos += msgSizes.length;
                             transportUnsupported = true;
                             break;
                         }
-                        if (lines.some((line) => line.startsWith('SKIP,'))) {
+                        if (!hasMetrics && hasSkipToken(lines)) {
                             skippedCombos += 1;
                             skips.push(`${patternName} current ${transport} ${msgSize}B: skipped`);
                             emit(`      ${formatFailureRow(msgSize, 'SKIP')}`);
@@ -259,14 +420,16 @@ async function main() {
                                 ...options,
                                 pattern: patternName,
                                 transport,
-                                msgSize
+                                msgSize,
+                                clients
                             });
-                            if (lines.some((line) => line.startsWith('UNSUPPORTED,'))) {
+                            const hasMetrics = hasPrimaryMetricsFromResultLines(patternName, msgSize, lines);
+                            if (!hasMetrics && hasUnsupportedToken(lines)) {
                                 unsupportedCombos += msgSizes.length;
                                 transportUnsupported = true;
                                 break;
                             }
-                            if (lines.some((line) => line.startsWith('SKIP,'))) {
+                            if (!hasMetrics && hasSkipToken(lines)) {
                                 skippedCombos += 1;
                                 skips.push(`${patternName} current ${transport} ${msgSize}B: skipped`);
                                 emit(`        ${formatFailureRow(msgSize, 'SKIP')}`);
@@ -325,7 +488,7 @@ async function main() {
                 }
             }
         }
-        if (patternIndex + 1 < patternNames.length && patternCooldownMs > 0) {
+        if (patternIndex + 1 < runnablePatterns.length && patternCooldownMs > 0) {
             await sleepMs(patternCooldownMs);
         }
     }
@@ -349,14 +512,19 @@ async function main() {
     const status = expectedResultLines === actualResultLines ? 'complete' : 'partial';
     console.log('');
     console.log('## Effective Options (result)');
-    for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'multi', patterns: patternNames.join(',') })) {
+    for (const line of buildEffectiveOptions({
+        ...headerOptions,
+        lang: 'node',
+        suite: 'multi',
+        patterns: patternNames.join(',')
+    })) {
         console.log(line);
     }
     console.log('');
     for (const line of completionLines(status, expectedResultLines, actualResultLines)) {
         console.log(line);
     }
-    writeReport(path.join(options.resultsDir, 'multi', 'report'), 'node', 'multi', { ...options, patterns: patternNames.join(',') }, reportLines, completionLines(status, expectedResultLines, actualResultLines));
+    writeReport(path.join(options.resultsDir, 'multi', 'report'), 'node', 'multi', { ...headerOptions, patterns: patternNames.join(',') }, reportLines, completionLines(status, expectedResultLines, actualResultLines));
     if (status !== 'complete') {
         process.exitCode = 1;
     }

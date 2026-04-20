@@ -62,7 +62,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
           return;
         }
         try {
-          received.reply(received.parts.map((part) => part.data()));
+          received.reply(received.parts);
         } finally {
           received.close();
         }
@@ -108,7 +108,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
       const replyParts = await requester.requestToSpot(
         replierNode.routingId,
         replier.routingId,
-        Buffer.from(payload),
+        payload,
         2000
       );
       try {

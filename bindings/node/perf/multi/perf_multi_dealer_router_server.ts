@@ -12,7 +12,8 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   recvNoWait,
-  trySocketSend
+  trySocketSend,
+  waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
 
 async function main() {
@@ -28,6 +29,7 @@ async function main() {
     applySocketPolicy(router);
     router.bind(options.endpoint);
     poller.addSocket(router, POLLIN);
+    const readyBarrier = waitForConnectionReadyCount(router, options.clients);
     console.log(`READY,${options.endpoint}`);
 
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -39,6 +41,8 @@ async function main() {
         }
       }
     })();
+
+    await readyBarrier;
 
     while (!stop) {
       poller.modifySocket(router, pending.length > 0 ? (POLLIN | POLLOUT) : POLLIN);
@@ -56,20 +60,17 @@ async function main() {
           }
           try {
             if (!received.routingId) {
-              continue;
-            }
-            const reply = {
-              routingId: received.routingId,
-              parts: received.parts.map((part) => part.data())
-            };
-            if (pending.length === 0 && trySocketSend(router, reply.routingId, reply.parts)) {
-              continue;
-            }
-            pending.push(reply);
-          } finally {
-            if (typeof received.close === 'function') {
               received.close();
+              continue;
             }
+            if (pending.length === 0 && trySocketSend(router, received.routingId, received.parts)) {
+              received.close();
+              continue;
+            }
+            pending.push(received);
+          } catch (error) {
+            received.close();
+            throw error;
           }
         }
       }
@@ -81,10 +82,14 @@ async function main() {
             break;
           }
           pending.shift();
+          current.close();
         }
       }
     }
   } finally {
+    while (pending.length > 0) {
+      pending.shift().close();
+    }
     poller.close();
     router.close();
     ctx.close();

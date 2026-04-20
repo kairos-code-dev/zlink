@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, recvNoWait, trySocketSend } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, recvNoWait, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -18,6 +18,7 @@ async function main() {
         applySocketPolicy(router);
         router.bind(options.endpoint);
         poller.addSocket(router, POLLIN);
+        const readyBarrier = waitForConnectionReadyCount(router, options.clients);
         console.log(`READY,${options.endpoint}`);
         const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         (async () => {
@@ -28,6 +29,7 @@ async function main() {
                 }
             }
         })();
+        await readyBarrier;
         while (!stop) {
             poller.modifySocket(router, pending.length > 0 ? (POLLIN | POLLOUT) : POLLIN);
             const ready = poller.wait(25);
@@ -43,21 +45,18 @@ async function main() {
                     }
                     try {
                         if (!received.routingId) {
-                            continue;
-                        }
-                        const reply = {
-                            routingId: received.routingId,
-                            parts: received.parts.map((part) => part.data())
-                        };
-                        if (pending.length === 0 && trySocketSend(router, reply.routingId, reply.parts)) {
-                            continue;
-                        }
-                        pending.push(reply);
-                    }
-                    finally {
-                        if (typeof received.close === 'function') {
                             received.close();
+                            continue;
                         }
+                        if (pending.length === 0 && trySocketSend(router, received.routingId, received.parts)) {
+                            received.close();
+                            continue;
+                        }
+                        pending.push(received);
+                    }
+                    catch (error) {
+                        received.close();
+                        throw error;
                     }
                 }
             }
@@ -68,11 +67,15 @@ async function main() {
                         break;
                     }
                     pending.shift();
+                    current.close();
                 }
             }
         }
     }
     finally {
+        while (pending.length > 0) {
+            pending.shift().close();
+        }
         poller.close();
         router.close();
         ctx.close();

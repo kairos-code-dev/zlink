@@ -109,26 +109,48 @@ async function waitForConnectionReady(
   connectFn = null,
   timeoutMs = integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)
 ) {
+  return waitForConnectionReadyCount(socket, 1, connectFn, timeoutMs);
+}
+
+async function waitForConnectionReadyCount(
+  socket,
+  expectedCount,
+  connectFn = null,
+  timeoutMs = integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)
+) {
   const monitor = socket.monitorOpen(MonitorEvent.CONNECTION_READY);
   try {
     if (typeof connectFn === 'function') {
       await connectFn();
     }
+    const targetCount = Math.max(1, Math.trunc(expectedCount || 1));
+    let readyCount = 0;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+      let drained = false;
       try {
-        const event = monitor.recv(RecvFlags.DontWait);
-        if (event.event === MonitorEvent.CONNECTION_READY) {
-          return;
+        while (true) {
+          const event = monitor.recv(RecvFlags.DontWait);
+          drained = true;
+          if (event.event === MonitorEvent.CONNECTION_READY) {
+            readyCount += 1;
+            if (readyCount >= targetCount) {
+              return;
+            }
+          }
         }
       } catch (error) {
         if (!(error instanceof zlink.RecvError && error.result === RecvResult.NoData)) {
           throw error;
         }
       }
-      await sleepImmediate();
+      if (!drained) {
+        await sleepImmediate();
+      }
     }
-    throw new Error(`connection ready timeout after ${timeoutMs}ms`);
+    throw new Error(
+      `connection ready timeout after ${timeoutMs}ms (${readyCount}/${targetCount})`
+    );
   } finally {
     monitor.close();
   }
@@ -221,5 +243,6 @@ module.exports = {
   subscribeNoWait,
   trySocketPublish,
   trySocketSend,
+  waitForConnectionReadyCount,
   waitForConnectionReady
 };

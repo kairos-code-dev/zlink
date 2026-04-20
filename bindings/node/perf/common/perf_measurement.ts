@@ -8,6 +8,10 @@ const BASE_EPOCH_NS = BigInt(Date.now()) * 1_000_000n;
 const BASE_HR_NS = process.hrtime.bigint();
 const PRIMARY_METRICS = ['throughput', 'bandwidth', 'latency', 'latency_p95', 'latency_p99'];
 
+function warnResultLine(message) {
+  console.error(`warning: ${message}`);
+}
+
 function currentEpochNs() {
   return BASE_EPOCH_NS + (process.hrtime.bigint() - BASE_HR_NS);
 }
@@ -161,20 +165,40 @@ function summarizeMetrics(
   });
 }
 
-function primaryMetricsFromResultLines(pattern, msgSize, lines) {
+function collectPrimaryMetrics(pattern, msgSize, lines) {
   const metrics = {};
   for (const line of lines) {
+    if (!line.startsWith('RESULT,')) {
+      continue;
+    }
     const parts = line.split(',');
     if (parts.length !== 7) {
+      warnResultLine(`ignoring malformed RESULT line: ${line}`);
       continue;
     }
     if (parts[2] !== pattern || Number(parts[4]) !== msgSize) {
       continue;
     }
     if (PRIMARY_METRICS.includes(parts[5])) {
+      if (Object.prototype.hasOwnProperty.call(metrics, parts[5])) {
+        warnResultLine(
+          `duplicate RESULT metric for ${pattern} ${msgSize}B ${parts[5]}; using last value`
+        );
+      }
       metrics[parts[5]] = Number(parts[6]);
     }
   }
+
+  return metrics;
+}
+
+function hasPrimaryMetricsFromResultLines(pattern, msgSize, lines) {
+  const metrics = collectPrimaryMetrics(pattern, msgSize, lines);
+  return PRIMARY_METRICS.every((metric) => typeof metrics[metric] === 'number');
+}
+
+function primaryMetricsFromResultLines(pattern, msgSize, lines) {
+  const metrics = collectPrimaryMetrics(pattern, msgSize, lines);
 
   if (PRIMARY_METRICS.some((metric) => typeof metrics[metric] !== 'number')) {
     throw new Error(`missing primary metrics for ${pattern} size ${msgSize}`);
@@ -265,6 +289,7 @@ module.exports = {
   decodeMetricHeaderFromParts,
   currentEpochNs,
   latencyNsFromPayload,
+  hasPrimaryMetricsFromResultLines,
   primaryMetricsFromResultLines,
   sleepImmediate,
   stampPayload,

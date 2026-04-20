@@ -1,4 +1,4 @@
-//! DEALER-DEALER multi server: one-way receive sink.
+//! DEALER-DEALER multi server: one-way active sender.
 
 #[path = "perf_common.rs"]
 mod common;
@@ -23,8 +23,8 @@ fn main() {
         .expect("rcvhwm");
     server
         .common_options()
-        .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
-        .expect("rcvtimeo");
+        .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
+        .expect("sndtimeo");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&server, &tls).expect("server tls");
@@ -62,43 +62,35 @@ fn main() {
     }
 
     let poller = Poller::new().expect("poller");
-    poller.add_socket(&server, POLLIN).expect("poller add");
+    poller.add_socket(&server, POLLOUT).expect("poller add");
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut latency = common::LatencyStats::new();
-    let mut active_count = 0u64;
+    let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
+    let mut seq: u64 = 1;
+    let mut pending = false;
+
     while Instant::now() < deadline {
-        match poller.wait(25) {
-            Ok(Some(event)) if event.is_readable() => loop {
-                match server.recv_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(received) => {
-                        let data = common::message_payload(received.parts());
-                        if common::is_valid_active_message(data, args.msg_size) {
-                            let sent_ts_ns = common::decode_sent_ts_ns(data);
-                            latency.record_ns(
-                                common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
-                            );
-                            active_count += 1;
-                        }
-                    }
-                    Err(err) if err.code == RecvResult::NoData => break,
-                    Err(err) => panic!("recv failed: {err}"),
+        if !pending {
+            common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
+            let msg = Message::copy_from(&buf).expect("msg");
+            match server.send_with_flags(msg, SendFlags::DONT_WAIT) {
+                Ok(()) => {
+                    seq += 1;
+                    continue;
                 }
-            },
+                Err(err) if err.code == SubmitResult::Backpressured => {
+                    pending = true;
+                }
+                Err(err) if err.code == SubmitResult::NotConnected => {}
+                Err(err) => panic!("send failed: {err}"),
+            }
+        }
+
+        match poller.wait(25) {
+            Ok(Some(event)) if event.is_writable() => {
+                pending = false;
+            }
             Ok(Some(_)) | Ok(None) => {}
             Err(err) => panic!("poller wait failed: {err}"),
         }
     }
-
-    let stats = latency.finish();
-    let final_stats = common::StatsResult {
-        count: active_count,
-        ..stats
-    };
-    common::print_result(
-        "MULTI_DEALER_DEALER",
-        &args.transport,
-        args.msg_size,
-        settings.duration_seconds,
-        &final_stats,
-    );
 }

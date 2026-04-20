@@ -12,7 +12,7 @@ DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 TRANSPORTS="${PERF_TRANSPORTS:-}"
 RUNS="${PERF_RUNS:-1}"
-RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/single/report}"
+RESULTS_ROOT="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 OUTPUT_FILE=""
 REUSE_BUILD=0
@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
         --hwm) HWM="$2"; shift 2 ;;
         --send-hwm) SEND_HWM="$2"; shift 2 ;;
         --recv-hwm) RECV_HWM="$2"; shift 2 ;;
-        --results-dir) RESULTS_DIR="$2"; shift 2 ;;
+        --results-dir) RESULTS_ROOT="$2"; shift 2 ;;
         --results-tag) RESULTS_TAG="$2"; shift 2 ;;
         --output)    OUTPUT_FILE="$2"; shift 2 ;;
         --reuse-build) REUSE_BUILD=1; shift ;;
@@ -115,8 +115,9 @@ TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
     TAG_SUFFIX="_${RESULTS_TAG}"
 fi
-RESULTS_FILE="${RESULTS_DIR}/perf_rust_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
-mkdir -p "${RESULTS_DIR}"
+REPORT_DIR="${RESULTS_ROOT}/single/report"
+RESULTS_FILE="${REPORT_DIR}/perf_rust_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
+mkdir -p "${REPORT_DIR}"
 
 prune_reports() {
     local report_dir="$1"
@@ -461,4 +462,4 @@ sys.stdout.write(text)
 sys.exit(0 if expected == actual else 1)
 PY
 
-prune_reports "${RESULTS_DIR}"
+prune_reports "${REPORT_DIR}"

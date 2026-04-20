@@ -18,7 +18,7 @@ TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 RUNS="1"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
-RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/multi/report}"
+RESULTS_ROOT="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 OUTPUT_FILE=""
 PIN_CPU=0
@@ -48,7 +48,14 @@ ENV_MULTI_STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-}"
 ENV_MULTI_HWM="${PERF_MULTI_HWM:-}"
 ENV_MULTI_SNDHWM="${PERF_MULTI_SNDHWM:-}"
 ENV_MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
+EXPLICIT_CLIENTS=0
 [[ -n "${PERF_MSG_SIZES+x}" ]] && EXPLICIT_MSG_SIZES=1
+[[ -n "${PERF_MULTI_CLIENTS+x}" ]] && EXPLICIT_CLIENTS=1
+
+is_uint() {
+    local value="${1:-}"
+    [[ "${value}" =~ ^[0-9]+$ ]]
+}
 
 print_help() {
     cat <<'EOF'
@@ -104,7 +111,7 @@ while [[ $# -gt 0 ]]; do
         --msg-sizes)   MSG_SIZES="$2"; EXPLICIT_MSG_SIZES=1; shift 2 ;;
         --transports)  TRANSPORTS="$2";  shift 2 ;;
         --runs)        RUNS="$2";        shift 2 ;;
-        --clients)     CLIENTS="$2";     shift 2 ;;
+        --clients)     CLIENTS="$2"; EXPLICIT_CLIENTS=1; shift 2 ;;
         --build-dir)   BUILD_DIR="$2";   shift 2 ;;
         --io-threads) COMMON_IO_THREADS="$2"; shift 2 ;;
         --server-io-threads) SERVER_IO_THREADS="$2"; shift 2 ;;
@@ -122,7 +129,7 @@ while [[ $# -gt 0 ]]; do
         --monitor-hwm) MONITOR_HWM="$2"; shift 2 ;;
         --server-shutdown-timeout-ms) SERVER_SHUTDOWN_TIMEOUT_MS="$2"; shift 2 ;;
         --server-bind-port) SERVER_BIND_PORT="$2"; shift 2 ;;
-        --results-dir) RESULTS_DIR="$2"; shift 2 ;;
+        --results-dir) RESULTS_ROOT="$2"; shift 2 ;;
         --results-tag) RESULTS_TAG="$2"; shift 2 ;;
         --output)      OUTPUT_FILE="$2"; shift 2 ;;
         --reuse-build) REUSE_BUILD=1; shift ;;
@@ -145,8 +152,9 @@ case "$(uname -s)" in
 esac
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""; [[ -n "${RESULTS_TAG}" ]] && TAG_SUFFIX="_${RESULTS_TAG}"
-RESULTS_FILE="${RESULTS_DIR}/perf_rust_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
-mkdir -p "${RESULTS_DIR}"
+REPORT_DIR="${RESULTS_ROOT}/multi/report"
+RESULTS_FILE="${REPORT_DIR}/perf_rust_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
+mkdir -p "${REPORT_DIR}"
 
 prune_reports() {
     local report_dir="$1"
@@ -167,6 +175,167 @@ prune_reports() {
         | while read -r old_file; do
             rm -f "${report_dir}/${old_file}"
         done
+}
+
+NOFILE_SKIP_REASON=""
+ensure_nofile_limit() {
+    local clients="${1:-}"
+    NOFILE_SKIP_REASON=""
+
+    if [[ "${PERF_SKIP_NOFILE_CHECK:-0}" == "1" ]]; then
+        return 0
+    fi
+    if ! is_uint "${clients}"; then
+        return 0
+    fi
+
+    local required=$(( clients * 3 + 4096 ))
+    local soft
+    local hard
+    soft="$(ulimit -Sn 2>/dev/null || true)"
+    hard="$(ulimit -Hn 2>/dev/null || true)"
+    if [[ -z "${soft}" || -z "${hard}" ]]; then
+        return 0
+    fi
+    if [[ "${soft}" == "unlimited" ]]; then
+        return 0
+    fi
+    if ! is_uint "${soft}"; then
+        return 0
+    fi
+
+    local soft_num="${soft}"
+    local hard_num=-1
+    if [[ "${hard}" == "unlimited" ]]; then
+        hard_num=-1
+    elif is_uint "${hard}"; then
+        hard_num="${hard}"
+    else
+        hard_num="${soft_num}"
+    fi
+
+    if (( soft_num < required )); then
+        local target="${required}"
+        if (( hard_num >= 0 && target > hard_num )); then
+            target="${hard_num}"
+        fi
+        if (( target > soft_num )); then
+            ulimit -Sn "${target}" 2>/dev/null || true
+            soft="$(ulimit -Sn 2>/dev/null || true)"
+            if is_uint "${soft}"; then
+                soft_num="${soft}"
+            fi
+        fi
+    fi
+
+    if (( soft_num >= required )); then
+        return 0
+    fi
+
+    NOFILE_SKIP_REASON="clients=${clients},required=${required},soft=${soft},hard=${hard}"
+    return 1
+}
+
+MEMORY_SKIP_REASON=""
+memory_available_kb() {
+    if [[ "${PERF_SKIP_MEMORY_CHECK:-0}" == "1" ]]; then
+        printf '\n'
+        return
+    fi
+    if [[ ! -r /proc/meminfo ]]; then
+        printf '\n'
+        return
+    fi
+    awk '/^MemAvailable:/ { print $2; found=1; exit } END { if (!found) print "" }' /proc/meminfo 2>/dev/null || true
+}
+
+resolve_memory_max_clients() {
+    local available_kb
+    available_kb="$(memory_available_kb)"
+    if ! is_uint "${available_kb}"; then
+        printf '\n'
+        return
+    fi
+
+    local budget_pct
+    local base_mb
+    local per_client_kb
+    budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+    base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+    per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+    if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
+        printf '\n'
+        return
+    fi
+    if ! is_uint "${base_mb}" || ! is_uint "${per_client_kb}" || (( per_client_kb < 1 )); then
+        printf '\n'
+        return
+    fi
+
+    local usable_kb=$(( available_kb * budget_pct / 100 ))
+    local base_kb=$(( base_mb * 1024 ))
+    if (( usable_kb <= base_kb )); then
+        printf '%s\n' "1"
+        return
+    fi
+
+    local max_clients=$(( (usable_kb - base_kb) / per_client_kb ))
+    if (( max_clients < 1 )); then
+        max_clients=1
+    fi
+    printf '%s\n' "${max_clients}"
+}
+
+cap_default_clients_for_memory() {
+    local clients="${1:-}"
+    if [[ "${EXPLICIT_CLIENTS}" -eq 1 ]]; then
+        printf '%s\n' "${clients}"
+        return
+    fi
+
+    local max_clients
+    max_clients="$(resolve_memory_max_clients)"
+    if ! is_uint "${clients}" || ! is_uint "${max_clients}"; then
+        printf '%s\n' "${clients}"
+        return
+    fi
+    if (( clients > max_clients )); then
+        printf '%s\n' "${max_clients}"
+        return
+    fi
+    printf '%s\n' "${clients}"
+}
+
+ensure_memory_budget() {
+    local clients="${1:-}"
+    MEMORY_SKIP_REASON=""
+
+    if [[ "${PERF_SKIP_MEMORY_CHECK:-0}" == "1" ]]; then
+        return 0
+    fi
+    if ! is_uint "${clients}"; then
+        return 0
+    fi
+
+    local max_clients
+    max_clients="$(resolve_memory_max_clients)"
+    if ! is_uint "${max_clients}"; then
+        return 0
+    fi
+    if (( clients <= max_clients )); then
+        return 0
+    fi
+
+    local available_kb
+    local budget_pct
+    local base_mb
+    local per_client_kb
+    available_kb="$(memory_available_kb)"
+    budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+    base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+    per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+    MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
+    return 1
 }
 
 normalize_patterns() {
@@ -462,6 +631,7 @@ for run in $(seq 1 "${RUNS}"); do
         if [[ "${pat}" == "MULTI_STREAM" && "${CLIENTS}" == "100" ]]; then
             PATTERN_CLIENTS="10000"
         fi
+        PATTERN_CLIENTS="$(cap_default_clients_for_memory "${PATTERN_CLIENTS}")"
         SERVER_BIN=""
         CLIENT_BIN=""
         case "${pat}" in
@@ -494,6 +664,14 @@ for run in $(seq 1 "${RUNS}"); do
         for transport_index in "${!TRANSPORT_LIST[@]}"; do
             transport="${TRANSPORT_LIST[transport_index]}"
             for size in "${SIZE_LIST[@]}"; do
+                if ! ensure_nofile_limit "${PATTERN_CLIENTS}"; then
+                    printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "skip" "nofile_guard:${NOFILE_SKIP_REASON}" >> "${TMP_CASES}"
+                    continue
+                fi
+                if ! ensure_memory_budget "${PATTERN_CLIENTS}"; then
+                    printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "skip" "memory_guard:${MEMORY_SKIP_REASON}" >> "${TMP_CASES}"
+                    continue
+                fi
                 CLIENT_TIMEOUT_SECONDS="$(resolve_client_timeout_seconds "${pat}" "${transport}" "${size}" "${DURATION}")"
                 export PERF_MULTI_CLIENTS="${PATTERN_CLIENTS}"
                 pattern_default_io_threads="$(default_io_threads_for_pattern "${pat}")"
@@ -775,6 +953,29 @@ done
         sleep "$(awk "BEGIN { printf \"%.3f\", ${RUN_COOLDOWN_MS} / 1000 }")"
     fi
 done
+TOTAL_CASES="$(wc -l < "${TMP_CASES}" | tr -d ' ')"
+NON_SKIP_CASES="$(awk -F',' '$4 != "skip" {count++} END {print count+0}' "${TMP_CASES}")"
+if [[ "${TOTAL_CASES}" -gt 0 && "${NON_SKIP_CASES}" -eq 0 ]]; then
+    python3 - "${TMP_CASES}" "${OUTPUT_FILE}" <<'PY'
+import csv
+import sys
+
+cases_path, output_path = sys.argv[1:]
+lines = ["## Skips"]
+with open(cases_path, newline="", encoding="utf-8") as f:
+    reader = csv.reader(f)
+    for pattern, transport, size, status, reason in reader:
+        if status != "skip":
+            continue
+        lines.append(f"- {pattern} {transport} {size}B: {reason}")
+text = "\n".join(lines) + "\n"
+if output_path:
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(text)
+sys.stdout.write(text)
+PY
+    exit 0
+fi
 python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
   "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" \
   "${COMMON_IO_THREADS}" "${SERVER_IO_THREADS}" "${CLIENT_IO_THREADS}" "${HWM}" "${SEND_HWM}" \
@@ -930,11 +1131,14 @@ for pattern_index, pattern in enumerate(patterns):
                 for size in pattern_sizes[pattern]:
                     key = (pattern, transport, size)
                     status, _reason = cases.get(key, ("fail", "missing_case_status"))
-                    if status in {"unsupported", "skip"}:
+                    if status == "unsupported":
                         emit(
-                            f"| {size}B | {status.upper()} | {status.upper()} | "
-                            f"{status.upper()} | {status.upper()} | {status.upper()} |"
+                            f"| {size}B | UNSUPPORTED | UNSUPPORTED | "
+                            f"UNSUPPORTED | UNSUPPORTED | UNSUPPORTED |"
                         )
+                        continue
+                    if status == "skip":
+                        emit(f"| {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
                         continue
                     metric_values = {
                         metric: metric_value_for_run(key, metric, run_index)
@@ -950,11 +1154,14 @@ for pattern_index, pattern in enumerate(patterns):
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             status, reason = cases.get(key, ("fail", "missing_case_status"))
-            if status in {"unsupported", "skip"}:
+            if status == "unsupported":
                 emit(
-                    f"| {size}B | {status.upper()} | {status.upper()} | "
-                    f"{status.upper()} | {status.upper()} | {status.upper()} |"
+                    f"| {size}B | UNSUPPORTED | UNSUPPORTED | "
+                    f"UNSUPPORTED | UNSUPPORTED | UNSUPPORTED |"
                 )
+                continue
+            if status == "skip":
+                emit("| {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
                 continue
 
             expected += 5
@@ -996,4 +1203,4 @@ sys.stdout.write(text)
 sys.exit(0 if expected == actual else 1)
 PY
 
-prune_reports "${RESULTS_DIR}"
+prune_reports "${REPORT_DIR}"

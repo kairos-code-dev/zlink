@@ -1,4 +1,4 @@
-//! DEALER-DEALER multi client: one-way send workload with N client sockets.
+//! DEALER-DEALER multi client: one-way active receiver with N dealer sockets.
 
 #[path = "perf_common.rs"]
 mod common;
@@ -7,14 +7,26 @@ use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 use zlink::*;
 
-fn wait_for_writable(pollers: &[Poller], send_pending: &mut [bool]) {
-    for (index, poller) in pollers.iter().enumerate() {
-        let Some(event) = poller.wait(1).expect("poller wait") else {
-            continue;
-        };
-        if event.is_writable() {
-            send_pending[index] = false;
-            return;
+fn drain_socket(
+    socket: &DealerSocket,
+    msg_size: usize,
+    latency_stats: &mut common::LatencyStats,
+    active_count: &mut u64,
+) {
+    loop {
+        match socket.recv_with_flags(RecvFlags::DONT_WAIT) {
+            Ok(received) => {
+                let data = common::message_payload(received.parts());
+                if !common::is_valid_active_message(data, msg_size) {
+                    continue;
+                }
+                let sent_ts_ns = common::decode_sent_ts_ns(data);
+                latency_stats
+                    .record_ns(common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64);
+                *active_count += 1;
+            }
+            Err(err) if err.code == RecvResult::NoData => break,
+            Err(err) => panic!("recv failed: {err}"),
         }
     }
 }
@@ -26,7 +38,7 @@ fn main() {
     let ctx = common::perf_client_context();
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
     let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
-    let mut send_pending = vec![false; settings.clients];
+    let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
@@ -37,20 +49,21 @@ fn main() {
         sock.common_options()
             .set_recv_hwm(settings.recv_hwm)
             .expect("rcvhwm");
+        sock.common_options()
+            .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
+            .expect("rcvtimeo");
         if matches!(args.transport.as_str(), "tls" | "wss") {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
             common::setup_raw_tls_client(&sock, &tls).expect("client tls");
         }
+        let mon = SocketMonitor::open(&sock).expect("monitor");
         sock.connect(&args.endpoint).expect("connect");
-        poller.add_socket(&sock, POLLOUT).expect("poller add");
+        poller.add_socket(&sock, POLLIN).expect("poller add");
         sockets.push(sock);
         pollers.push(poller);
+        monitors.push(mon);
     }
 
-    let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
-    for socket in &sockets {
-        monitors.push(SocketMonitor::open(socket).expect("monitor"));
-    }
     let ready_timeout = common::resolve_multi_connect_ready_timeout();
     for monitor in &mut monitors {
         common::wait_monitor_ready(monitor, ready_timeout, "multi dealer-dealer client");
@@ -67,52 +80,64 @@ fn main() {
             start_seen = true;
             break;
         }
+        if matches!(line.trim(), "STOP" | "QUIT") {
+            return;
+        }
     }
     if !start_seen {
         return;
     }
 
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let msg_size = args.msg_size;
-    let mut buf = vec![0u8; msg_size.max(common::HEADER_SIZE)];
-    let mut seq: u64 = 1;
+    let mut latency_stats = common::LatencyStats::new();
+    let mut active_count: u64 = 0;
 
     while Instant::now() < deadline {
-        let mut progressed = false;
-        for (index, socket) in sockets.iter().enumerate() {
-            if send_pending[index] {
-                continue;
-            }
-            common::encode_header(&mut buf, common::PHASE_ACTIVE, msg_size as u32, seq);
-            let msg = Message::copy_from(&buf).expect("msg");
-            match socket.send_with_flags(msg, SendFlags::DONT_WAIT) {
-                Ok(()) => {
-                    seq += 1;
-                    progressed = true;
-                }
-                Err(err) if err.code == SubmitResult::Backpressured => {
-                    send_pending[index] = true;
-                }
-                Err(err) if err.code == SubmitResult::NotConnected => {}
-                Err(err) => panic!("send failed: {err}"),
-            }
-        }
-        if progressed {
-            continue;
-        }
-
-        let mut saw_writable = false;
+        let mut saw_event = false;
         for (index, poller) in pollers.iter().enumerate() {
             let Some(event) = poller.wait(0).expect("poller wait") else {
                 continue;
             };
-            if event.is_writable() {
-                saw_writable = true;
-                send_pending[index] = false;
+            if !event.is_readable() {
+                continue;
+            }
+            saw_event = true;
+            drain_socket(
+                &sockets[index],
+                args.msg_size,
+                &mut latency_stats,
+                &mut active_count,
+            );
+        }
+        if !saw_event {
+            for (index, poller) in pollers.iter().enumerate() {
+                let Some(event) = poller.wait(1).expect("poller wait") else {
+                    continue;
+                };
+                if !event.is_readable() {
+                    continue;
+                }
+                drain_socket(
+                    &sockets[index],
+                    args.msg_size,
+                    &mut latency_stats,
+                    &mut active_count,
+                );
+                break;
             }
         }
-        if !saw_writable {
-            wait_for_writable(&pollers, &mut send_pending);
-        }
     }
+
+    let stats = latency_stats.finish();
+    let final_stats = common::StatsResult {
+        count: active_count,
+        ..stats
+    };
+    common::print_result(
+        "MULTI_DEALER_DEALER",
+        &args.transport,
+        args.msg_size,
+        settings.duration_seconds,
+        &final_stats,
+    );
 }

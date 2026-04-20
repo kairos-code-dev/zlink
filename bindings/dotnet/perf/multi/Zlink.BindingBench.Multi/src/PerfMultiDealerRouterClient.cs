@@ -4,7 +4,7 @@ using System.Diagnostics;
 using Zlink;
 using static PerfRunner;
 
-internal static class PerfDealerRouterClient
+internal static class PerfMultiDealerRouterClient
 {
     internal static int Run(PerfOptions options)
     {
@@ -15,7 +15,7 @@ internal static class PerfDealerRouterClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
-        int pollTimeoutMs = Math.Max(0, options.ClientPollTimeoutMs);
+        const int pollTimeoutMs = 50;
         string endpoint = options.Endpoint;
 
         using var ctx = new Context();

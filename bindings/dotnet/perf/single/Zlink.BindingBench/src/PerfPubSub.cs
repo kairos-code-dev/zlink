@@ -33,7 +33,9 @@ internal static class PerfPubSub
         try
         {
             string endpoint = EndpointFor(transport, "pubsub");
-            pub.SetOption(SocketOptions.XPubNoDrop, 1);
+            int xpubNoDrop = PerfEnv.ReadPositive(
+                "PERF_SINGLE_PUBSUB_XPUB_NODROP", 1) > 0 ? 1 : 0;
+            pub.SetOption(SocketOptions.XPubNoDrop, xpubNoDrop);
             pub.Bind(endpoint);
             sub.SetSubscription(Topic);
             sub.Connect(endpoint);
@@ -66,8 +68,6 @@ internal static class PerfPubSub
         }
         catch (Exception ex)
         {
-            if (TryPrintUnsupportedTransportFailure("PUBSUB", transport, size, ex))
-                return 0;
             Console.Error.WriteLine($"single_pubsub_error:{ex}");
             return 2;
         }

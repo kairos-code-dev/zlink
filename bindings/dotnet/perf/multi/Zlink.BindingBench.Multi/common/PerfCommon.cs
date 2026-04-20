@@ -31,7 +31,7 @@ internal static partial class PerfRunner
     }
 
     internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
-        ReceiveFlags flags = ReceiveFlags.None)
+        RecvFlags flags = RecvFlags.None)
     {
         while (true)
         {
@@ -39,7 +39,7 @@ internal static partial class PerfRunner
             {
                 if (socket is MessageSocketBase messageSocket)
                 {
-                    if ((flags & ReceiveFlags.DontWait) != 0)
+                    if ((flags & RecvFlags.DontWait) != 0)
                     {
                         if (!messageSocket.TryRecv(out Received? maybe)
                             || maybe == null)
@@ -57,7 +57,7 @@ internal static partial class PerfRunner
 
                 if (socket is RoutedMessageSocketBase routedSocket)
                 {
-                    if ((flags & ReceiveFlags.DontWait) != 0)
+                    if ((flags & RecvFlags.DontWait) != 0)
                     {
                         if (!routedSocket.TryRecv(out Received? maybe)
                             || maybe == null)
@@ -79,14 +79,14 @@ internal static partial class PerfRunner
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || ex.InternalErrno == 0)
             {
-                if ((flags & ReceiveFlags.DontWait) != 0)
+                if ((flags & RecvFlags.DontWait) != 0)
                     return 0;
                 continue;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || ex.InternalErrno == 0)
             {
-                if ((flags & ReceiveFlags.DontWait) != 0)
+                if ((flags & RecvFlags.DontWait) != 0)
                     return 0;
                 throw;
             }
@@ -96,11 +96,11 @@ internal static partial class PerfRunner
     internal static int TryReceiveNonBlocking(SocketBase socket,
         Span<byte> buffer)
     {
-        return ReceiveBlocking(socket, buffer, ReceiveFlags.DontWait);
+        return ReceiveBlocking(socket, buffer, RecvFlags.DontWait);
     }
 
     internal static int ReceiveRetry(SocketBase socket, Span<byte> buffer,
-        ReceiveFlags flags = ReceiveFlags.None)
+        RecvFlags flags = RecvFlags.None)
     {
         try
         {
@@ -189,31 +189,14 @@ internal static partial class PerfRunner
         double throughput, double latencyNs, double latencyP95Ns,
         double latencyP99Ns)
     {
-        double bandwidth = BandwidthMbps(pattern, throughput, size);
-        double latencyMs = latencyNs / 1_000_000.0;
-        double latencyP95Ms = latencyP95Ns / 1_000_000.0;
-        double latencyP99Ms = latencyP99Ns / 1_000_000.0;
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},throughput,{FormatMetric(throughput)}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},bandwidth,{FormatMetric(bandwidth)}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency,{FormatMetric(latencyMs)}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p95,{FormatMetric(latencyP95Ms)}");
-        Console.WriteLine(
-            $"RESULT,current,{pattern},{transport},{size},latency_p99,{FormatMetric(latencyP99Ms)}");
+        PerfShared.PrintResult(pattern, transport, size, throughput, latencyNs,
+            latencyP95Ns, latencyP99Ns, BandwidthMultiplier(pattern),
+            fixedFormat: true);
     }
 
-    private static double BandwidthMbps(string pattern, double throughput, int size)
+    private static double BandwidthMultiplier(string pattern)
     {
-        double multiplier = IsEchoPattern(pattern) ? 2.0 : 1.0;
-        return (throughput * size * multiplier) / 1_000_000.0;
-    }
-
-    private static string FormatMetric(double value)
-    {
-        return value.ToString("F3", CultureInfo.InvariantCulture);
+        return IsEchoPattern(pattern) ? 2.0 : 1.0;
     }
 
     internal static bool StampMetricHeader(Span<byte> payload, uint runId,

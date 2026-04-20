@@ -4,7 +4,7 @@ using System.Diagnostics;
 using Zlink;
 using static PerfRunner;
 
-internal static class PerfDealerDealerServer
+internal static class PerfMultiDealerDealerServer
 {
     internal static int Run(PerfOptions options)
     {
@@ -27,7 +27,7 @@ internal static class PerfDealerDealerServer
 
         server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
         server.Bind(endpoint);
-        Console.WriteLine($"READY,{endpoint}");
+        WriteStdoutLine($"READY,{endpoint}");
 
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
@@ -84,7 +84,7 @@ internal static class PerfDealerDealerServer
             + (long)(durationSeconds * Stopwatch.Frequency);
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            int n = ReceiveRetry(server, payload.AsSpan(), ReceiveFlags.None);
+            int n = ReceiveRetry(server, payload.AsSpan(), RecvFlags.None);
             if (n <= 0)
                 continue;
             if (!HandleReceived(payload.AsSpan(0, n), msgSize, expectedRunId,
@@ -107,7 +107,7 @@ internal static class PerfDealerDealerServer
     {
         while (true)
         {
-            int n = ReceiveRetry(server, payload.AsSpan(), ReceiveFlags.DontWait);
+            int n = ReceiveRetry(server, payload.AsSpan(), RecvFlags.DontWait);
             if (n < 0)
                 return false;
             if (n == 0)

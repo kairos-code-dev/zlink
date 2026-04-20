@@ -61,14 +61,12 @@ internal static class PerfPair
         }
         catch (Exception ex)
         {
-            if (TryPrintUnsupportedTransportFailure("PAIR", transport, size, ex))
-                return 0;
             Console.Error.WriteLine($"single_pair_error:{ex}");
             return 2;
         }
     }
 
-    private static bool RunActivePhase(SocketBase sender, SocketBase receiver,
+    private static bool RunActivePhase(PairSocket sender, PairSocket receiver,
         byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {

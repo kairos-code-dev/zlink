@@ -100,11 +100,7 @@ internal static class PerfDealerDealer
             {
             }
             TryCleanup(sender, receiver, endpoint);
-            if (TryPrintUnsupportedTransportFailure("DEALER_DEALER", transport,
-                    size, ex))
-            {
-                return 0;
-            }
+            Console.Error.WriteLine($"single_dealer_dealer_error:{ex}");
             return 2;
         }
         finally

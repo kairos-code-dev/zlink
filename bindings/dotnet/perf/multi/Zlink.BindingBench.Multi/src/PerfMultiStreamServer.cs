@@ -5,7 +5,7 @@ using System.Threading;
 using Zlink;
 using static PerfRunner;
 
-internal static class PerfStreamServer
+internal static class PerfMultiStreamServer
 {
     private const string Pattern = "STREAM";
     private const int StreamRoutingIdBytes = 255;
@@ -26,7 +26,8 @@ internal static class PerfStreamServer
                 "transport_not_supported");
         }
 
-        int ioTimeoutMs = options.StreamTimeoutMs;
+        int ioTimeoutMs = Math.Max(ResolveMultiSndTimeoutMs(options),
+            ResolveMultiRcvTimeoutMs(options));
         int pendingCapacity = ResolvePendingCapacity(options);
         string endpoint = MultiEndpointFor(options.Transport, "multi-stream",
             options);
@@ -40,7 +41,7 @@ internal static class PerfStreamServer
         server.SetOption(SocketOptions.RcvTimeo, ioTimeoutMs);
         server.SetOption(SocketOptions.TcpNoDelay, 1);
         server.Bind(endpoint);
-        Console.WriteLine($"READY,{endpoint}");
+        WriteStdoutLine($"READY,{endpoint}");
 
         var pending = new Queue<PendingStreamMessage>(pendingCapacity);
         object pendingLock = new();

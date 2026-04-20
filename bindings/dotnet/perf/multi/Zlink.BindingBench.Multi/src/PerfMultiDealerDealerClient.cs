@@ -4,7 +4,7 @@ using System.Diagnostics;
 using Zlink;
 using static PerfRunner;
 
-internal static class PerfDealerDealerClient
+internal static class PerfMultiDealerDealerClient
 {
     private const int SendBackoffPollTimeoutMs = 50;
 

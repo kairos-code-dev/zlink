@@ -3,7 +3,7 @@ using System.Diagnostics;
 using Zlink;
 using static PerfRunner;
 
-internal static class PerfPubSubServer
+internal static class PerfMultiPubSubServer
 {
     internal static int Run(PerfOptions options)
     {
@@ -28,7 +28,7 @@ internal static class PerfPubSubServer
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.Bind(endpoint);
-        Console.WriteLine($"READY,{endpoint}");
+        WriteStdoutLine($"READY,{endpoint}");
 
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
@@ -59,8 +59,17 @@ internal static class PerfPubSubServer
 
     private static bool PublishNoWait(PubSocket server, ReadOnlySpan<byte> payload)
     {
-        using var message = Message.FromBytes(payload);
-        return server.TrySend(message);
+        try
+        {
+            using var message = Message.FromBytes(payload);
+            server.Publish(string.Empty, message, SendFlags.DontWait);
+            return true;
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
+        {
+            return false;
+        }
     }
 
     private static long RunPublishPhase(PollManager pollManager, PubSocket server,

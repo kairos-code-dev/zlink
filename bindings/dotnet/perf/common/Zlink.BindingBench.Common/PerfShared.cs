@@ -5,15 +5,12 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Threading;
-using System.Net.Sockets;
 using Zlink;
 
 public static class PerfShared
 {
     public const int ErrnoEintr = 4;
     public const int ErrnoEagain = 11;
-    public const int ErrnoEperm = 1;
-    public const int ErrnoEaccess = 13;
     public const uint PerfMetricMagic = 0x5A4C_4E4Bu;
     public const int PerfMetricHeaderSize = 29;
     private static int _nextPort = InitializePortSeed();
@@ -147,30 +144,6 @@ public static class PerfShared
         Console.Out.Flush();
     }
 
-    public static bool TryPrintUnsupportedTransportFailure(string pattern,
-        string transport, int size, Exception ex)
-    {
-        if (!IsSandboxRestrictedTransport(transport))
-            return false;
-
-        if (IsSandboxRestrictedNetworkException(ex))
-        {
-            PrintUnsupported(pattern, transport, size,
-                "sandbox_network_restricted");
-            return true;
-        }
-
-        if (!TryResolvePermissionErrno(ex, out int errno)
-            || !IsPermissionRestrictedErrno(errno))
-        {
-            return false;
-        }
-
-        PrintUnsupported(pattern, transport, size,
-            $"sandbox_network_restricted_errno_{errno}");
-        return true;
-    }
-
     public static bool StampMetricHeader(Span<byte> payload, uint runId,
         uint phase, int msgSize, ulong seq, ulong sentTsNs)
     {
@@ -219,15 +192,6 @@ public static class PerfShared
     {
         ErrorCode code = ZlinkException.MapErrorCode(errno);
         return code == ErrorCode.EIntr || errno == ErrnoEintr;
-    }
-
-    public static bool IsSandboxRestrictedTransport(string transport)
-    {
-        return string.Equals(transport, "tcp", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(transport, "tls", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(transport, "ws", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(transport, "wss", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(transport, "ipc", StringComparison.OrdinalIgnoreCase);
     }
 
     public static void TryDisposeQuietly(IDisposable? disposable)
@@ -311,66 +275,6 @@ public static class PerfShared
         }
     }
 
-    private static bool IsPermissionRestrictedErrno(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return errno == ErrnoEperm
-               || errno == ErrnoEaccess
-               || code == ErrorCode.EAccess;
-    }
-
-    private static bool IsSandboxRestrictedNetworkException(Exception ex)
-    {
-        if (ex is SocketException
-            || ex is ZlinkBindException
-            || ex is ZlinkConnectException
-            || ex is ZlinkException)
-        {
-            return true;
-        }
-
-        return ex.InnerException != null
-               && IsSandboxRestrictedNetworkException(ex.InnerException);
-    }
-
-    private static bool TryResolvePermissionErrno(Exception ex, out int errno)
-    {
-        switch (ex)
-        {
-            case ZlinkException zlinkEx when zlinkEx.InternalErrno != 0:
-                errno = zlinkEx.InternalErrno;
-                return true;
-            case SocketException socketEx when socketEx.NativeErrorCode != 0:
-                errno = socketEx.NativeErrorCode;
-                return true;
-        }
-
-        if (ex.InnerException != null
-            && TryResolvePermissionErrno(ex.InnerException, out errno))
-        {
-            return true;
-        }
-
-        string text = ex.ToString();
-        if (text.IndexOf("errno 1", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("operation not permitted",
-                StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            errno = ErrnoEperm;
-            return true;
-        }
-
-        if (text.IndexOf("errno 13", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("permission denied",
-                StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            errno = ErrnoEaccess;
-            return true;
-        }
-
-        errno = 0;
-        return false;
-    }
 }
 
 public readonly struct PerfMetricHeader

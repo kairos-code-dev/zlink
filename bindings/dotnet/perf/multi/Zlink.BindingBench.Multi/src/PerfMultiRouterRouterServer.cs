@@ -4,7 +4,7 @@ using System.Diagnostics;
 using Zlink;
 using static PerfRunner;
 
-internal static class PerfDealerRouterServer
+internal static class PerfMultiRouterRouterServer
 {
     private const int PollTimeoutMs = 50;
 
@@ -16,18 +16,19 @@ internal static class PerfDealerRouterServer
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
         string endpoint = MultiEndpointFor(options.Transport,
-            "multi-dealer-router", options);
+            "multi-router-router", options);
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx, options);
         using var server = new RouterSocket(ctx);
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
+        server.RouterOptions.RoutingId = RoutingId.FromBytes("SERVER"u8);
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
         server.Bind(endpoint);
-        Console.WriteLine($"READY,{endpoint}");
+        WriteStdoutLine($"READY,{endpoint}");
 
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
@@ -44,51 +45,51 @@ internal static class PerfDealerRouterServer
         poller.Add(server, PollEvents.PollIn);
 
         bool stop = false;
-        while (!stop)
-        {
-            if (!WaitForEvents(poller, events, PollTimeoutMs))
-                continue;
-            if ((events[0].Revents & PollEvents.PollIn) == 0)
-                continue;
-
-            while (true)
+            while (!stop)
             {
-                using Received? received = TryRecvNoWait(server);
-                if (received == null || received.Count == 0)
-                    break;
+                if (!WaitForEvents(poller, events, PollTimeoutMs))
+                    continue;
+                if ((events[0].Revents & PollEvents.PollIn) == 0)
+                    continue;
 
-                Message bodyMessage = received.SinglePartOrThrow();
-                ReadOnlySpan<byte> body = bodyMessage.AsReadOnlySpan();
-                if (IsStopTokenPayload(body))
+                while (true)
                 {
-                    stop = true;
-                    break;
-                }
+                    using Received? received = TryRecvNoWait(server);
+                    if (received == null || received.Count == 0)
+                        break;
 
-                if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
-                    && header.RunId == expectedRunId
-                    && header.MsgSize == (uint)size
-                    && header.Phase == (uint)PerfPhase.Active)
-                {
-                    if (benchStartTicks == 0)
-                        benchStartTicks = Stopwatch.GetTimestamp();
-                    benchEndTicks = Stopwatch.GetTimestamp();
-                    echoCount++;
-                    ulong nowNs = EpochNs();
-                    if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
+                    Message bodyMessage = received.SinglePartOrThrow();
+                    ReadOnlySpan<byte> body = bodyMessage.AsReadOnlySpan();
+                    if (IsStopTokenPayload(body))
                     {
-                        double sampleNs = nowNs - header.SentTsNs;
-                        ReservoirSample(latSamples, sampleNs, ref sampleSeen,
-                            latencySampleCap, ref rng);
+                        stop = true;
+                        break;
                     }
-                }
 
-                if (received.RoutingId == null)
-                    return 2;
-                using Message reply = bodyMessage.Move();
-                server.Send(received.RoutingId.Value, reply);
+                    if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
+                        && header.RunId == expectedRunId
+                        && header.MsgSize == (uint)size
+                        && header.Phase == (uint)PerfPhase.Active)
+                    {
+                        if (benchStartTicks == 0)
+                            benchStartTicks = Stopwatch.GetTimestamp();
+                        benchEndTicks = Stopwatch.GetTimestamp();
+                        echoCount++;
+                        ulong nowNs = EpochNs();
+                        if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
+                        {
+                            double sampleNs = nowNs - header.SentTsNs;
+                            ReservoirSample(latSamples, sampleNs, ref sampleSeen,
+                                latencySampleCap, ref rng);
+                        }
+                    }
+
+                    if (received.RoutingId == null)
+                        return 2;
+                    using Message reply = bodyMessage.Move();
+                    server.Send(received.RoutingId.Value, reply);
+                }
             }
-        }
         if (benchStartTicks > 0 && echoCount > 0)
         {
             double configuredSeconds = Math.Max(1.0,

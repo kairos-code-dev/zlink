@@ -74,18 +74,10 @@ internal static class PerfDealerRouter
                 return 2;
             }
 
-            if (!VerifyRouteReady(sender, receiver, size, recvTimeoutMs,
-                    out bool unsupportedProtocol))
+            if (!VerifyRouteReady(sender, receiver, size, recvTimeoutMs))
             {
                 ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
-                if (unsupportedProtocol)
-                {
-                    PrintUnsupported("DEALER_ROUTER", transport, size,
-                        "dotnet_router_inproc_protocol_error");
-                    return 0;
-                }
-
                 DebugLog("single_dealer_router_error:route_probe_failed");
                 return 2;
             }
@@ -120,12 +112,6 @@ internal static class PerfDealerRouter
         catch (Exception ex)
         {
             TryCleanup(sender, receiver, endpoint);
-            if (TryPrintUnsupportedTransportFailure("DEALER_ROUTER", transport,
-                    size, ex))
-            {
-                return 0;
-            }
-
             DebugLog($"single_dealer_router_error:exception:{ex}");
             return 2;
         }
@@ -137,10 +123,8 @@ internal static class PerfDealerRouter
     }
 
     private static bool VerifyRouteReady(DealerSocket sender,
-        RouterSocket receiver, int msgSize, int recvTimeoutMs,
-        out bool unsupportedProtocol)
+        RouterSocket receiver, int msgSize, int recvTimeoutMs)
     {
-        unsupportedProtocol = false;
         int payloadSize = Math.Max(msgSize, PerfMetricHeaderSize);
         var probe = new byte[payloadSize];
         Array.Fill(probe, (byte)'p');
@@ -153,7 +137,6 @@ internal static class PerfDealerRouter
         }
         catch (ZlinkRecvException ex)
         {
-            unsupportedProtocol = IsInprocProtocolUnsupported(ex.InternalErrno);
             return false;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
@@ -176,7 +159,7 @@ internal static class PerfDealerRouter
             if (!WaitForInput(poller, events, timeoutMs))
                 continue;
 
-            while (TryReceive(receiver, out Received? received, out unsupportedProtocol))
+            while (TryReceive(receiver, out Received? received))
             {
                 using (received)
                 {
@@ -189,8 +172,6 @@ internal static class PerfDealerRouter
                 }
             }
 
-            if (unsupportedProtocol)
-                return false;
         }
 
         return false;
@@ -235,8 +216,7 @@ internal static class PerfDealerRouter
                         continue;
                     }
 
-                    while (TryReceive(receiver, out Received? receivedMessage,
-                               out _))
+                    while (TryReceive(receiver, out Received? receivedMessage))
                     {
                         using (receivedMessage)
                         {
@@ -321,9 +301,8 @@ internal static class PerfDealerRouter
     }
 
     private static bool TryReceive(RouterSocket receiver,
-        out Received? receivedMessage, out bool unsupportedProtocol)
+        out Received? receivedMessage)
     {
-        unsupportedProtocol = false;
         try
         {
             receivedMessage = receiver.Recv(RecvFlags.DontWait);
@@ -331,7 +310,6 @@ internal static class PerfDealerRouter
         }
         catch (ZlinkRecvException ex)
         {
-            unsupportedProtocol = IsInprocProtocolUnsupported(ex.InternalErrno);
             receivedMessage = null;
             return false;
         }
@@ -341,11 +319,6 @@ internal static class PerfDealerRouter
             receivedMessage = null;
             return false;
         }
-    }
-
-    private static bool IsInprocProtocolUnsupported(int errno)
-    {
-        return errno == 71;
     }
 
     private static bool TryGetPayloadPart(Received received,

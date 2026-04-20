@@ -179,22 +179,6 @@ public static class PerfShared
         return true;
     }
 
-    public static void StampHeader(Span<byte> header, long tsNs)
-    {
-        if (header.Length < 8)
-            throw new ArgumentException("header length must be >= 8", nameof(header));
-
-        BinaryPrimitives.WriteInt64LittleEndian(header, tsNs);
-    }
-
-    public static long DecodeHeader(ReadOnlySpan<byte> header)
-    {
-        if (header.Length < 8)
-            throw new ArgumentException("header length must be >= 8", nameof(header));
-
-        return BinaryPrimitives.ReadInt64LittleEndian(header);
-    }
-
     public static bool StampMetricHeader(Span<byte> payload, uint runId,
         uint phase, int msgSize, ulong seq, ulong sentTsNs)
     {

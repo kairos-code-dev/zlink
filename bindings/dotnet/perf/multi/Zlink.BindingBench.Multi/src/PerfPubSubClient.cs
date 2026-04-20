@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Zlink;
 using static PerfRunner;
 
@@ -10,9 +9,7 @@ internal static class PerfPubSubClient
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
-        int warmupSeconds = ResolveMultiWarmupSeconds(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
-        bool activeWarmup = ResolveMultiActiveWarmup(options);
         int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
@@ -54,8 +51,7 @@ internal static class PerfPubSubClient
 
             var recv = new byte[Math.Max(256, Math.Max(size, MultiStopToken.Length))];
             var result = RunMultiPubSubClientLoop(pollManager, activeClients,
-                recv, size, latencySampleCap, pollTimeoutMs,
-                warmupSeconds, durationSeconds, activeWarmup);
+                recv, size, latencySampleCap, pollTimeoutMs, durationSeconds);
 
             PrintResult(options.Pattern, options.Transport, size, result.throughput,
                 result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
@@ -73,35 +69,13 @@ internal static class PerfPubSubClient
         RunMultiPubSubClientLoop(PollManager pollManager,
             List<SocketBase> activeClients,
             byte[] recv, int msgSize, int latencySampleCap, int pollTimeoutMs,
-            int warmupSeconds, int durationSeconds, bool activeWarmup)
+            int durationSeconds)
     {
         const uint expectedRunId = 1;
         var latSamples = new List<double>(latencySampleCap);
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
         long measureCount = 0;
-
-        _ = activeWarmup;
-        if (warmupSeconds > 0)
-        {
-            long warmupDeadlineTicks = Stopwatch.GetTimestamp()
-                + (long)Math.Max(0, warmupSeconds) * Stopwatch.Frequency;
-            while (Stopwatch.GetTimestamp() < warmupDeadlineTicks)
-            {
-                if (PollSocketReadReady(pollManager, activeClients,
-                        pollTimeoutMs) <= 0)
-                    continue;
-
-                for (int i = 0; i < activeClients.Count; i++)
-                {
-                    if (!IsSocketReadReady(pollManager, i))
-                        continue;
-                    DrainReadableSocket(activeClients[i], recv.AsSpan(),
-                        static _ => true);
-                }
-            }
-
-        }
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;

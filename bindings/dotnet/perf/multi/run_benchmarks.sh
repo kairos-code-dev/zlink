@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROJECT="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj"
 PROJECT_DIR="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi"
-STREAM_CLIENT="${DOTNET_DIR}/../../core/build/bin/perf_stream_client"
 REPO_DIR="$(cd "${DOTNET_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
@@ -13,7 +12,6 @@ PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 MSG_SIZES="${PERF_MSG_SIZES:-}"
 CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-}}"
-WARMUP="${PERF_MULTI_WARMUP_SECONDS:-${PERF_WARMUP_SECONDS:-2}}"
 DURATION="${PERF_MULTI_DURATION_SECONDS:-${PERF_DURATION_SECONDS:-5}}"
 RUNS="${PERF_RUNS:-1}"
 READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-5000}}"
@@ -72,7 +70,6 @@ Options:
   -h, --help            Show this help.
   --pattern NAME        Pattern list (comma-separated) or ALL.
   --duration N          Active duration seconds (default: 5).
-  --warmup N            Warmup duration seconds (default: 2).
   --msg-sizes LIST      Message size list.
   --transports LIST     Transport list override (default: tcp,tls,ws,wss).
   --clients N           Client socket count (default: 100, stream=10000).
@@ -335,25 +332,6 @@ for metric in required:
 PY
 }
 
-ensure_core_stream_client() {
-  cmake -S "${REPO_DIR}" -B "${CORE_BUILD_DIR}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DENABLE_LTO=OFF \
-    -DBUILD_BENCHMARKS=ON \
-    -DZLINK_BUILD_TESTS=OFF \
-    -DZLINK_BUILD_BENCH_ZMQ=OFF \
-    -DZLINK_BUILD_BENCH_ZLINK=ON \
-    -DZLINK_BUILD_BENCH_BEAST=OFF \
-    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-    -DZLINK_CXX_STANDARD=17 >/dev/null
-  cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
-  if [[ ! -x "${STREAM_CLIENT}" ]]; then
-    echo "STREAM client binary not found: ${STREAM_CLIENT}" >&2
-    exit 1
-  fi
-}
-
 emit_markdown_table() {
   local metrics_file="${1:-}"
   local pattern="${2:-}"
@@ -473,10 +451,6 @@ while [[ $# -gt 0 ]]; do
       CLIENTS="${2:-}"
       shift
       ;;
-    --warmup)
-      WARMUP="${2:-}"
-      shift
-      ;;
     --duration)
       DURATION="${2:-}"
       shift
@@ -506,7 +480,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-validate_uint "--warmup" "${WARMUP}"
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
 validate_uint "PERF_MULTI_CONNECT_READY_TIMEOUT_MS" "${READY_TIMEOUT_MS}"
@@ -526,10 +499,6 @@ if [[ ! "${TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
 fi
 
 PATTERN="$(normalize_multi_pattern_csv "${PATTERN}")"
-if printf '%s' "${PATTERN}" | grep -q 'MULTI_STREAM'; then
-  ensure_core_stream_client
-fi
-
 mkdir -p "${RESULTS_ROOT}/multi/tmp" "${RESULTS_ROOT}/multi/report"
 
 platform="$(normalize_platform)"
@@ -554,7 +523,6 @@ print_line "- lang: dotnet"
 print_line "- suite: multi"
 print_line "- runs: ${RUNS}"
 print_line "- duration_seconds: ${DURATION}"
-print_line "- warmup_seconds: ${WARMUP}"
 print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS}"
 print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
@@ -611,7 +579,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           exec {control_fd}<>"${control_fifo}"
           rm -f "${control_fifo}"
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
           DOTNET_TieredCompilation=0 \
           PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
@@ -619,7 +586,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           <&${control_fd} > "${server_log}" 2>&1 &
         else
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
             DOTNET_TieredCompilation=0 \
             PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
@@ -651,21 +617,12 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         fi
 
         if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-          if [[ ! -x "${STREAM_CLIENT}" ]]; then
-            echo "STREAM client binary not found: ${STREAM_CLIENT}" >&2
-            terminate_pid "${server_pid}"
-            status=1
-            continue
-          fi
-
           if PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
+            DOTNET_TieredCompilation=0 \
             PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-            "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
-            --sizes "${size}" --runs 1 --warmup "${WARMUP}" --duration "${DURATION}" \
-            --ccu "${pattern_clients}" --print-perf-result 2 --send-stop-token 0 \
-            --endpoint "${server_endpoint}" > "${client_log}" 2>&1; then
+            bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
+            > "${client_log}" 2>&1; then
             printf 'STOP\n' >&${control_fd} || true
             if ! wait_for_pid "${server_pid}" 5; then
               terminate_pid "${server_pid}"
@@ -699,7 +656,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           exec {control_fd}>&-
         elif [[ "${pattern}" == "MULTI_SPOT" ]]; then
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
           DOTNET_TieredCompilation=0 \
           PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
@@ -771,7 +727,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           exec {control_fd}>&-
         else
           if PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_WARMUP_SECONDS="${WARMUP}" PERF_MULTI_WARMUP_SECONDS="${WARMUP}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
             DOTNET_TieredCompilation=0 \
             PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
@@ -829,7 +784,6 @@ print_line "- transports: ${TRANSPORTS}"
 print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
 print_line "- clients: ${CLIENTS:-default(pattern)}"
 print_line "- duration_seconds: ${DURATION}"
-print_line "- warmup_seconds: ${WARMUP}"
 print_line "- expected_result_lines: ${expected_result_lines}"
 print_line "- actual_result_lines: ${result_lines}"
 print_line "- pin_cpu: off"

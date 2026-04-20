@@ -36,8 +36,6 @@ internal static class PerfSpotServer
         }
 
         var phaseState = new SpotServerPhaseState(config.Size);
-        RunPhase(spotPub, control, config, PerfPhase.Warmup,
-            config.WarmupSeconds, ref phaseState);
         SpotServerActiveStats activeStats = RunActivePhase(spotPub, control,
             config, ref phaseState);
         SpotServerResult result = ComputeResult(activeStats,
@@ -50,44 +48,15 @@ internal static class PerfSpotServer
 
     private static SpotServerConfig BuildConfig(PerfOptions options)
     {
-        int resolvedSize = Math.Max(1, options.Size);
-        int warmupSeconds = ResolveMultiWarmupSeconds(options);
-        if (resolvedSize >= 65536 && warmupSeconds > 0)
-            warmupSeconds = 0;
-
         return new SpotServerConfig(
             options.Transport,
-            resolvedSize,
-            warmupSeconds,
+            Math.Max(1, options.Size),
             ResolveMultiDurationSeconds(options),
             Math.Min(ResolveMultiSndTimeoutMs(options), 200),
             ResolveMultiRcvTimeoutMs(options),
             ResolveMultiConnectReadyTimeoutMs(options),
             ResolveMultiClients(options),
             MultiEndpointFor(options.Transport, "multi-spot", options));
-    }
-
-    private static void RunPhase(Spot spotPub, ControlState control,
-        SpotServerConfig config, PerfPhase phase, int durationValue,
-        ref SpotServerPhaseState state)
-    {
-        if (durationValue <= 0)
-            return;
-
-        long durationTicks = (long)Math.Max(0, durationValue)
-            * Stopwatch.Frequency;
-        long deadlineTicks = Stopwatch.GetTimestamp() + durationTicks;
-        while (!control.StopRequested
-               && Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            StampMetricHeader(state.Payload.AsSpan(), RunId, phase,
-                config.Size, state.Seq++, EpochNs());
-            if (!PublishUntilReady(spotPub, state.Payload.AsSpan(),
-                    deadlineTicks, control))
-            {
-                break;
-            }
-        }
     }
 
     private static SpotServerActiveStats RunActivePhase(Spot spotPub,
@@ -136,11 +105,16 @@ internal static class PerfSpotServer
             if (Stopwatch.GetTimestamp() >= deadlineTicks)
                 return false;
 
-            using Message message = Message.FromBytes(payload);
-            SendResult result = spotPub.PublishNoWaitResult(ServiceName, Topic,
-                message);
-            if (result == SendResult.Sent)
+            try
+            {
+                using Message message = Message.FromBytes(payload);
+                spotPub.Publish(ServiceName, Topic, message);
                 return true;
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+            }
 
             spin.SpinOnce();
         }
@@ -246,13 +220,12 @@ internal static class PerfSpotServer
 
     private readonly struct SpotServerConfig
     {
-        internal SpotServerConfig(string transport, int size, int warmupSeconds,
+        internal SpotServerConfig(string transport, int size,
             int durationSeconds, int sndTimeoutMs, int rcvTimeoutMs,
             int readyTimeoutMs, int clientCount, string endpoint)
         {
             Transport = transport;
             Size = size;
-            WarmupSeconds = warmupSeconds;
             DurationSeconds = durationSeconds;
             SndTimeoutMs = sndTimeoutMs;
             RcvTimeoutMs = rcvTimeoutMs;
@@ -263,7 +236,6 @@ internal static class PerfSpotServer
 
         internal string Transport { get; }
         internal int Size { get; }
-        internal int WarmupSeconds { get; }
         internal int DurationSeconds { get; }
         internal int SndTimeoutMs { get; }
         internal int RcvTimeoutMs { get; }

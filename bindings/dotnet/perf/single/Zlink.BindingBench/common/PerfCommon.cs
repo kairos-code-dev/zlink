@@ -51,6 +51,75 @@ internal static partial class PerfRunner
         }
     }
 
+    internal static bool IsExpectedSingleHeader(PerfMetricHeader header,
+        int msgSize, uint phase, uint runId = 1)
+    {
+        return header.RunId == runId
+            && header.Phase == phase
+            && header.MsgSize == (uint)msgSize;
+    }
+
+    internal static bool TryDecodeExpectedSingleHeader(ReadOnlySpan<byte> payload,
+        int msgSize, uint phase, out PerfMetricHeader header, uint runId = 1)
+    {
+        header = default;
+        if (!TryDecodeMetricHeader(payload, out header))
+            return false;
+        return IsExpectedSingleHeader(header, msgSize, phase, runId);
+    }
+
+    internal static void PrintResult(string pattern, string transport, int size,
+        double thr, double latNs)
+    {
+        PrintResult(pattern, transport, size, thr, latNs, latNs, latNs);
+    }
+
+    internal static void PrintResult(string pattern, string transport, int size,
+        double thr, double latNs, double latP95Ns, double latP99Ns,
+        double bandwidthMultiplier = 1.0)
+    {
+        PerfShared.PrintResult(pattern, transport, size, thr, latNs, latP95Ns,
+            latP99Ns, bandwidthMultiplier, fixedFormat: false);
+    }
+
+    internal static int ResolveSingleConnectReadyTimeoutMs()
+    {
+        return PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
+    }
+
+    internal static int ResolveSingleDurationSeconds()
+    {
+        return PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5);
+    }
+
+    internal static int ResolveSingleRcvTimeoutMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+    }
+
+    internal static int ResolveSingleLatencyCount(string pattern)
+    {
+        _ = pattern;
+        return PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
+    }
+
+    internal static int ResolveSinglePubSubReadySettleMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_SINGLE_PUBSUB_READY_SETTLE_MS",
+            1000);
+    }
+
+    internal static int ResolveSingleSpotReadySettleMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_SINGLE_SPOT_READY_SETTLE_MS",
+            1000);
+    }
+
+    internal static int ResolveSpotReadyTimeoutMs()
+    {
+        return ResolveSingleConnectReadyTimeoutMs();
+    }
+
     internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
@@ -143,19 +212,6 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void PrintResult(string pattern, string transport, int size,
-        double thr, double latNs)
-    {
-        PrintResult(pattern, transport, size, thr, latNs, latNs, latNs);
-    }
-
-    internal static void PrintResult(string pattern, string transport, int size,
-        double thr, double latNs, double latP95Ns, double latP99Ns)
-    {
-        PerfShared.PrintResult(pattern, transport, size, thr, latNs, latP95Ns,
-            latP99Ns, 1.0, fixedFormat: false);
-    }
-
     private static int ResolveSingleHwmValue(string specificName)
     {
         int hwm = PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000);
@@ -205,35 +261,4 @@ internal static partial class PerfRunner
         socket.SetOption(SocketOptions.RcvTimeo, rcvTimeo);
     }
 
-    internal static int ResolveSingleConnectReadyTimeoutMs()
-    {
-        return PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
-    }
-
-    internal static int ResolveSingleDurationSeconds()
-    {
-        return PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5);
-    }
-
-    internal static int ResolveSingleRcvTimeoutMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
-    }
-
-    internal static int ResolveSingleLatencySampleCap()
-    {
-        return PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
-    }
-
-    internal static int ResolveSinglePubSubReadySettleMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_SINGLE_PUBSUB_READY_SETTLE_MS",
-            1000);
-    }
-
-    internal static int ResolveSingleSpotReadySettleMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_SINGLE_SPOT_READY_SETTLE_MS",
-            1000);
-    }
 }

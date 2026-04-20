@@ -31,19 +31,9 @@ internal static partial class PerfRunner
         return options.Clients;
     }
 
-    internal static int ResolveMultiWarmupSeconds(PerfOptions options)
-    {
-        return options.WarmupSeconds;
-    }
-
     internal static int ResolveMultiDurationSeconds(PerfOptions options)
     {
         return options.DurationSeconds;
-    }
-
-    internal static bool ResolveMultiActiveWarmup(PerfOptions options)
-    {
-        return options.ActiveWarmup;
     }
 
     internal static int ResolveMultiSndTimeoutMs(PerfOptions options)
@@ -70,53 +60,9 @@ internal static partial class PerfRunner
         return EndpointFor(transport, name);
     }
 
-    internal static bool IsMonitorReady(MonitorEventType eventValue,
-        bool acceptFallback)
+    internal static bool IsMonitorReady(MonitorEventType eventValue)
     {
-        if (eventValue == (MonitorEventType)SocketEvent.ConnectionReady)
-            return true;
-        if (!acceptFallback)
-            return false;
-        return eventValue == (MonitorEventType)SocketEvent.Accepted
-            || eventValue == (MonitorEventType)SocketEvent.Connected;
-    }
-
-    internal static bool WaitMonitorReady(MonitorSocket monitor, int timeoutMs,
-        bool acceptFallback)
-    {
-        if (DrainReadyEvents(monitor, acceptFallback) > 0)
-            return true;
-
-        using var pollManager = new PollManager();
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (true)
-        {
-            long nowTicks = Stopwatch.GetTimestamp();
-            if (nowTicks >= deadlineTicks)
-                return false;
-
-            int rc = PollMonitorHandles(pollManager,
-                new System.Collections.Generic.List<MonitorSocket> { monitor },
-                new[] { 0 }, 1, deadlineTicks, nowTicks);
-            if (rc < 0)
-                return false;
-            if (rc == 0)
-                continue;
-
-            try
-            {
-                if (DrainReadyEvents(monitor, acceptFallback) > 0)
-                    return true;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
-            {
-            }
-            catch
-            {
-                return false;
-            }
-        }
+        return eventValue == (MonitorEventType)SocketEvent.ConnectionReady;
     }
 
     internal static bool WaitConnectReadyCount(MonitorSocket monitor,
@@ -125,7 +71,7 @@ internal static partial class PerfRunner
         if (expectedReady <= 0)
             return true;
 
-        int readyCount = DrainReadyEvents(monitor, false);
+        int readyCount = DrainReadyEvents(monitor);
         if (readyCount >= expectedReady)
             return true;
 
@@ -147,7 +93,7 @@ internal static partial class PerfRunner
 
             try
             {
-                readyCount += DrainReadyEvents(monitor, false);
+                readyCount += DrainReadyEvents(monitor);
                 if (readyCount >= expectedReady)
                     return true;
             }

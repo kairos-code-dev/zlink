@@ -222,9 +222,7 @@ internal static class PerfSpotClient
     {
         try
         {
-            if (!subscriber.SubscribeNoWait(out TopicMessage? subscribed)
-                || subscribed == null)
-                return 0;
+            using TopicMessage subscribed = subscriber.Subscribe(RecvFlags.DontWait);
             return CopySubscribedPayload(subscribed, payloadBuffer);
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))

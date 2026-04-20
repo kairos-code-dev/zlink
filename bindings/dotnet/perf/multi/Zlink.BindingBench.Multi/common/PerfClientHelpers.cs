@@ -135,11 +135,10 @@ internal static partial class PerfRunner
 
     private static bool TryConsumeReadyEvent(MonitorSocket monitor)
     {
-        return DrainReadyEvents(monitor, false) > 0;
+        return DrainReadyEvents(monitor) > 0;
     }
 
-    internal static int DrainReadyEvents(MonitorSocket monitor,
-        bool acceptFallback)
+    internal static int DrainReadyEvents(MonitorSocket monitor)
     {
         int readyCount = 0;
         while (true)
@@ -147,7 +146,7 @@ internal static partial class PerfRunner
             try
             {
                 MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
-                if (IsMonitorReady(evt.Event, acceptFallback))
+                if (IsMonitorReady(evt.Event))
                     readyCount++;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)

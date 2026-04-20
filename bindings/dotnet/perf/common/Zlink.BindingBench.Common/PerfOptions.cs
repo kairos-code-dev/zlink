@@ -120,9 +120,9 @@ public sealed record PerfOptions(
             0,
             0,
             0,
+            PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000),
             0,
-            0,
-            PerfEnv.ReadNonNegative("PERF_CONNECT_READY_TIMEOUT_MS", 1000),
+            PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000),
             0,
             false,
             PerfEnv.ReadPositive("PERF_SINGLE_PUBSUB_XPUB_NODROP", 1),
@@ -154,8 +154,8 @@ public sealed record PerfOptions(
                 PerfEnv.ReadPositive("PERF_RCVTIMEO_MS", 200)),
             PerfEnv.ReadPositive("PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
                 PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 5000)),
-            50,
-            5000,
+            0,
+            PerfEnv.ReadNonNegative("PERF_STREAM_TIMEOUT_MS", 5000),
             clients,
             PerfEnv.ReadPositive("PERF_MULTI_LATENCY_SAMPLE_CAP",
                 PerfEnv.ReadPositive("PERF_LATENCY_SAMPLE_CAP", 200000)),
@@ -227,8 +227,7 @@ public sealed record PerfOptions(
         int fallback = pattern.Equals("STREAM", StringComparison.OrdinalIgnoreCase)
             ? 10000
             : 100;
-        return Math.Max(1, PerfEnv.ReadPositive("PERF_MULTI_CLIENTS",
-            PerfEnv.ReadPositive("PERF_CLIENTS", fallback)));
+        return Math.Max(1, PerfEnv.ReadPositive("PERF_CLIENTS", fallback));
     }
 
     private static int ResolveMultiHwmDefault(string pattern)

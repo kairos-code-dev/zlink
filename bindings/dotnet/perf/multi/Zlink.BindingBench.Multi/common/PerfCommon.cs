@@ -37,13 +37,44 @@ internal static partial class PerfRunner
         {
             try
             {
-                if (socket.TryReceive(buffer, flags, out int read))
-                    return read;
+                if (socket is MessageSocketBase messageSocket)
+                {
+                    if ((flags & ReceiveFlags.DontWait) != 0)
+                    {
+                        if (!messageSocket.TryRecv(out Received? maybe)
+                            || maybe == null)
+                        {
+                            return 0;
+                        }
 
-                if ((flags & ReceiveFlags.DontWait) != 0)
-                    return 0;
+                        using (maybe)
+                            return CopyReceivedToBuffer(maybe, buffer);
+                    }
 
-                return socket.Receive(buffer, flags);
+                    using Received received = messageSocket.Recv(flags);
+                    return CopyReceivedToBuffer(received, buffer);
+                }
+
+                if (socket is RoutedMessageSocketBase routedSocket)
+                {
+                    if ((flags & ReceiveFlags.DontWait) != 0)
+                    {
+                        if (!routedSocket.TryRecv(out Received? maybe)
+                            || maybe == null)
+                        {
+                            return 0;
+                        }
+
+                        using (maybe)
+                            return CopyReceivedToBuffer(maybe, buffer);
+                    }
+
+                    using Received received = routedSocket.Recv(flags);
+                    return CopyReceivedToBuffer(received, buffer);
+                }
+
+                throw new NotSupportedException(
+                    $"Unsupported socket type for perf receive: {socket.GetType().Name}");
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || ex.InternalErrno == 0)
@@ -73,7 +104,7 @@ internal static partial class PerfRunner
     {
         try
         {
-            return socket.TryReceive(buffer, flags, out int read) ? read : 0;
+            return ReceiveBlocking(socket, buffer, flags);
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                         || IsWouldBlock(ex.InternalErrno)
@@ -99,6 +130,22 @@ internal static partial class PerfRunner
         }
 
         return count;
+    }
+
+    private static int CopyReceivedToBuffer(Received received, Span<byte> buffer)
+    {
+        Message payload = received.IsSinglePart
+            ? received.FirstPart()
+            : received.Parts[received.Parts.Count - 1];
+        ReadOnlySpan<byte> body = payload.AsReadOnlySpan();
+        if (body.Length > buffer.Length)
+        {
+            throw new ArgumentException("Destination buffer is too small.",
+                nameof(buffer));
+        }
+
+        body.CopyTo(buffer);
+        return body.Length;
     }
 
     internal static bool WaitForEvents(Poller poller, List<PollEvent> events,

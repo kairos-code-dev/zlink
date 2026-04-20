@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpot {
@@ -27,6 +29,8 @@ final class PerfSpot {
         String topic = "perf.topic." + System.nanoTime();
         CountDownLatch finished = new CountDownLatch(1);
         CountDownLatch ready = new CountDownLatch(1);
+        AtomicBoolean idleDrain = new AtomicBoolean(false);
+        AtomicLong lastRecvNs = new AtomicLong(System.nanoTime());
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         String registryPub = PerfUtil.endpoint(config.transport(),
@@ -80,11 +84,13 @@ final class PerfSpot {
                                 continue;
                             }
                             if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                finished.countDown();
+                                idleDrain.set(true);
+                                lastRecvNs.set(System.nanoTime());
                                 continue;
                             }
                             if (header.phase() == PerfUtil.PHASE_ACTIVE) {
                                 metrics.recordNanos(header.latencyNanos());
+                                lastRecvNs.set(System.nanoTime());
                             }
                         }
                     }
@@ -134,9 +140,10 @@ final class PerfSpot {
                 }
             }, "single-spot-sender");
             traffic.start();
-            PerfUtil.await(finished, "spot receiver",
-                Duration.ofSeconds(config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "spot sender", Duration.ofSeconds(10));
+            awaitIdleDrain(finished, idleDrain, lastRecvNs,
+                Duration.ofMillis(Math.max(1, config.recvTimeoutMs())),
+                Duration.ofSeconds(config.durationSeconds() + 10L));
             if (failure.get() != null) {
                 throw new IllegalStateException("spot receiver failed", failure.get());
             }
@@ -159,6 +166,29 @@ final class PerfSpot {
             return;
         }
         sleepQuietly(Duration.ofMillis(settleMs), "spot settle interrupted");
+    }
+
+    private static void awaitIdleDrain(CountDownLatch finished,
+                                       AtomicBoolean idleDrain,
+                                       AtomicLong lastRecvNs,
+                                       Duration quietWindow,
+                                       Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        long quietNs = quietWindow.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (idleDrain.get()
+                && System.nanoTime() - lastRecvNs.get() >= quietNs) {
+                finished.countDown();
+                return;
+            }
+            try {
+                Thread.sleep(1L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("spot idle drain interrupted", ex);
+            }
+        }
+        throw new IllegalStateException("spot idle drain timed out");
     }
 
     private static String normalizeSpotEndpoint(String endpoint, String transport) {

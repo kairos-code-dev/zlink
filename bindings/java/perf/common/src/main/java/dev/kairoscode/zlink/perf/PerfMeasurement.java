@@ -77,6 +77,16 @@ final class PerfMeasurement {
         };
     }
 
+    static String derivedControlEndpoint(String endpoint) {
+        int schemeSep = endpoint.indexOf("://");
+        int colon = endpoint.lastIndexOf(':');
+        if (schemeSep <= 0 || colon <= schemeSep + 2 || colon == endpoint.length() - 1) {
+            throw new IllegalArgumentException("cannot derive control endpoint from: " + endpoint);
+        }
+        int port = Integer.parseInt(endpoint.substring(colon + 1));
+        return endpoint.substring(0, colon + 1) + (port + 1);
+    }
+
     static boolean isEchoPattern(String pattern) {
         return "DEALER_ROUTER".equals(pattern)
             || "ROUTER_ROUTER".equals(pattern)

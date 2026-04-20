@@ -19,6 +19,7 @@ public final class PerfMain {
                 case "DEALER_ROUTER" -> PerfDealerRouter.run(config);
                 case "ROUTER_ROUTER" -> PerfRouterRouter.run(config);
                 case "SPOT" -> PerfSpot.run(config);
+                case "SPOT_REQREP" -> PerfSpotReqRep.run(config);
                 default -> throw new IllegalArgumentException(
                     "unsupported pattern: " + config.pattern());
             };

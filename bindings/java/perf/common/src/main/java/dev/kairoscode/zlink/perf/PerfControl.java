@@ -3,8 +3,12 @@
 package dev.kairoscode.zlink.perf;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class PerfControl {
@@ -17,6 +21,18 @@ public final class PerfControl {
 
     public static void emitClientReady(int size) {
         emitLine("CLIENT_READY," + size);
+    }
+
+    public static void emitControlReady(String endpoint) {
+        emitLine("CONTROL_READY," + endpoint);
+    }
+
+    public static void emitClientControlEndpoint(String endpoint) {
+        emitLine("CLIENT_CONTROL_ENDPOINT," + endpoint);
+    }
+
+    public static void emitControlConnected(String endpoint) {
+        emitLine("CONTROL_CONNECTED," + endpoint);
     }
 
     public static void awaitStart(int size, String label) {
@@ -56,6 +72,25 @@ public final class PerfControl {
         watcher.setDaemon(true);
         watcher.start();
         return stopRequested;
+    }
+
+    public static void sendControlLine(BufferedWriter writer, String line) {
+        try {
+            writer.write(line);
+            writer.newLine();
+            writer.flush();
+        } catch (IOException ex) {
+            throw new IllegalStateException("control write failed: "
+                + line.toLowerCase(Locale.ROOT), ex);
+        }
+    }
+
+    public static BufferedReader utf8Reader(java.io.InputStream input) {
+        return new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+    }
+
+    public static BufferedWriter utf8Writer(java.io.OutputStream output) {
+        return new BufferedWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8));
     }
 
     private static void emitLine(String line) {

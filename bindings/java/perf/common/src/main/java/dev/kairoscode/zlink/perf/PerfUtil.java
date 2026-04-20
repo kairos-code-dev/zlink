@@ -169,6 +169,10 @@ public final class PerfUtil {
         return PerfMeasurement.endpoint(transport, token);
     }
 
+    public static String derivedControlEndpoint(String endpoint) {
+        return PerfMeasurement.derivedControlEndpoint(endpoint);
+    }
+
     public static boolean isEchoPattern(String pattern) {
         return PerfMeasurement.isEchoPattern(pattern);
     }

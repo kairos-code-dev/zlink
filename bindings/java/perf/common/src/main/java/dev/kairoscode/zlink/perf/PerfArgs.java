@@ -32,6 +32,11 @@ final class PerfArgs {
             switch (args[i]) {
                 case "--duration" -> duration = Integer.parseInt(args[i + 1]);
                 case "--io-threads" -> ioThreads = Integer.parseInt(args[i + 1]);
+                case "--hwm" -> {
+                    int hwm = Integer.parseInt(args[i + 1]);
+                    sendHwm = hwm;
+                    recvHwm = hwm;
+                }
                 case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
                 case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->
@@ -88,6 +93,11 @@ final class PerfArgs {
                 case "--endpoint" -> endpoint = args[i + 1];
                 case "--clients" -> clients = Integer.parseInt(args[i + 1]);
                 case "--io-threads" -> ioThreads = Integer.parseInt(args[i + 1]);
+                case "--hwm" -> {
+                    int hwm = Integer.parseInt(args[i + 1]);
+                    sendHwm = hwm;
+                    recvHwm = hwm;
+                }
                 case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
                 case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->

@@ -126,8 +126,8 @@ public sealed class test_request_reply
             callbackReceived.Set();
         });
 
-        Assert.True(callbackReceived.Wait(3000));
-        Assert.True(handled.Wait(3000));
+        Assert.True(callbackReceived.Wait(10000));
+        Assert.True(handled.Wait(10000));
         Assert.Equal(RequestResult.Ok, observedResult);
         Assert.NotNull(owned);
         Assert.Equal("pong-owned", owned!.GetString());

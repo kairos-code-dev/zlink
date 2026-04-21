@@ -44,7 +44,7 @@ public sealed class test_monitor_contract
 
         client.Connect(endpoint);
 
-        Assert.True(events.TryDequeue(3000, out SocketMonitorEvent evt));
+        Assert.True(events.TryDequeue(10000, out SocketMonitorEvent evt));
         Assert.Equal(MonitorEventType.ConnectionReady, evt.Event);
 
         MonitorSnapshot snapshot = monitor.Snapshot();

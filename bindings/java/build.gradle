@@ -57,6 +57,7 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     inputs.file(source)
     inputs.dir(new File(repoRoot, 'core/include'))
     inputs.dir(new File(repoRoot, 'core/src'))
+    inputs.dir(new File(repoRoot, 'core/external/boost'))
     inputs.dir(coreBuildDir)
     inputs.dir(linkDir)
     inputs.dir(jniIncludeDir)
@@ -73,6 +74,7 @@ tasks.register('buildZlinkJavaBridge', Exec) {
         '-pthread',
         '-I', new File(repoRoot, 'core/include').absolutePath,
         '-I', new File(repoRoot, 'core/src').absolutePath,
+        '-I', new File(repoRoot, 'core/external/boost').absolutePath,
         '-I', coreBuildDir.absolutePath,
         '-I', jniIncludeDir.absolutePath,
         '-I', jniOsIncludeDir.absolutePath,

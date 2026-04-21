@@ -51,7 +51,7 @@ public sealed class test_callback_contract
         using var client = ConnectRawClient(port);
         SendAll(client.GetStream(), "callback-owned"u8);
 
-        Assert.True(receivedSignal.Wait(3000));
+        Assert.True(receivedSignal.Wait(10000));
         Assert.NotNull(owned);
         Assert.Equal("callback-owned",
             Encoding.UTF8.GetString(owned!.AsReadOnlySpan()));

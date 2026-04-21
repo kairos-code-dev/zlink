@@ -547,6 +547,20 @@ zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
   void *dealer);
 ```
 
+수동 연결관리 편의를 위해 socket-level channel metadata API도 함께 둘 수 있다.
+
+```c
+zlink_config_result_t zlink_socket_set_channel_name (
+  void *socket,
+  const char *channel_name);
+
+zlink_config_result_t zlink_socket_get_channel_name (
+  void *socket,
+  char *channel_name_buf,
+  size_t channel_name_capacity,
+  size_t *channel_name_len_out);
+```
+
 의미는 아래와 같다.
 
 - `zlink_spot_node_attach_channel_dealer()`는 자동 연결용 표면이다.
@@ -570,6 +584,27 @@ zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
   실패한다.
 - 수동 연결 표면에서 `channel_name`이 비어 있거나 잘못되면 `EINVAL`로 실패한다.
 - 두 표면 모두 `dealer`가 `DEALER`가 아니면 `EINVAL`로 실패한다.
+
+socket-level channel metadata는 아래처럼 해석한다.
+
+- setter는 socket에 fixed logical channel name을 기록하는 편의 기능이다.
+- setter는 connect, bind, discovery attach를 자동으로 수행하지 않는다.
+- getter는 현재 socket에 기록된 logical channel name을 돌려준다.
+- socket metadata가 비어 있으면 getter는 `ENOENT`다.
+- attach는 여전히 최종 검증 지점이다.
+
+attach와 metadata가 함께 있을 때 규칙은 아래처럼 둔다.
+
+- discovery attach에서 socket metadata가 비어 있으면 discovery channel로 귀속된다.
+- discovery attach에서 socket metadata가 discovery channel과 같으면 허용한다.
+- discovery attach에서 socket metadata가 discovery channel과 다르면 `EINVAL`이다.
+- manual attach에서 socket metadata가 비어 있으면 attach 인자의 `channel_name`으로
+  귀속된다.
+- manual attach에서 socket metadata가 attach 인자와 같으면 허용한다.
+- manual attach에서 socket metadata가 attach 인자와 다르면 `EINVAL`이다.
+
+즉 socket metadata는 attach를 대신하는 값이 아니라, 수동 연결관리에서 channel
+귀속을 미리 고정하고 이후 attach 검증과 dispatch source 식별에 재사용하는 값이다.
 
 attach 의미를 더 분명히 하기 위해 아래 규칙도 고정한다.
 

@@ -334,8 +334,9 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
   붙어 있는 편이 더 자연스럽다.
 - event payload를 작게 유지할 수 있다.
 
-따라서 attached channel dealer에는 read-only channel metadata를 둘 수 있다.
-다만 이 metadata는 app이 임의로 setter로 바꾸는 값이 아니다.
+따라서 channel-bound socket에는 fixed channel metadata를 둘 수 있다.
+이 metadata는 connect나 routing을 바꾸는 제어값이 아니라, channel 귀속을 나타내는
+고정 태그다.
 
 - discovery attach인 경우:
   attach된 `Discovery.service_name` 또는 `channel_name`에서 유도한다.
@@ -343,27 +344,51 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
   `zlink_spot_node_attach_channel_dealer_manual(node, channel_name, dealer)`의
   `channel_name`이 고정 metadata가 된다.
 
-즉 channel name의 source of truth는 socket 자체가 아니라 attach 관계다.
-socket은 그 결과를 read-only metadata로 보유한다.
-
-공개 조회 API는 generic socket getter보다 더 좁은 형태를 기본안으로 둔다.
+수동 연결관리 편의를 위해 socket metadata setter/getter를 여는 것도 허용할 수 있다.
+이번 초안은 이 방향을 기본안으로 둔다.
 
 ```c
-ZLINK_EXPORT int zlink_spot_channel_dealer_get_channel_name (
-  void *dealer_,
+ZLINK_EXPORT zlink_config_result_t zlink_socket_set_channel_name (
+  void *socket_,
+  const char *channel_name_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (
+  void *socket_,
   char *channel_name_buf_,
   size_t channel_name_capacity_,
   size_t *channel_name_len_out_);
 ```
 
-이 함수의 의미는 아래처럼 둔다.
+이 setter/getter의 의미는 아래처럼 둔다.
 
-- attached channel dealer면 그 socket에 귀속된 channel name을 돌려준다.
-- channel name이 없는 ordinary socket이면 `ENOENT`로 실패한다.
-- setter API는 제공하지 않는다.
+- setter는 socket에 fixed logical channel name metadata를 기록한다.
+- 이 metadata는 transport connect, bind, routing, discovery를 자동으로 바꾸지 않는다.
+- getter는 현재 기록된 channel name을 돌려준다.
+- channel name이 설정되지 않은 socket이면 `ENOENT`로 실패한다.
+- 비어 있거나 잘못된 `channel_name`은 `EINVAL`이다.
+- attach나 discovery가 이미 귀속을 확정한 뒤에는 setter 변경을 허용하지 않고
+  `EBUSY` 또는 `EINVAL`로 실패시키는 쪽을 기본안으로 둔다.
 
-framework는 `subject_kind == ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER`일 때만
-필요하면 이 getter를 호출하면 된다.
+attach와의 관계는 아래처럼 고정한다.
+
+- discovery attach:
+  socket metadata가 비어 있으면 discovery channel 이름을 채워 넣을 수 있다.
+- discovery attach:
+  socket metadata가 이미 있고 discovery channel과 같으면 허용한다.
+- discovery attach:
+  socket metadata가 이미 있는데 discovery channel과 다르면 `EINVAL`로 실패한다.
+- manual attach:
+  socket metadata가 비어 있으면 attach 인자의 `channel_name`을 채워 넣을 수 있다.
+- manual attach:
+  socket metadata가 이미 있고 attach 인자와 같으면 허용한다.
+- manual attach:
+  socket metadata가 이미 있는데 attach 인자와 다르면 `EINVAL`로 실패한다.
+
+즉 최종 source of truth는 attach 검증 결과다. socket metadata setter는 수동 연결
+모델에서 그 값을 미리 고정하는 편의 API로 본다.
+
+framework는 `subject_kind == ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER`일 때
+`zlink_socket_get_channel_name(subject, ...)`를 호출하면 된다.
 
 ### 7.5 spot state는 channel reply를 source-aware queue로 들고 있어야 한다
 
@@ -706,6 +731,10 @@ framework 내부에서는 low-level dispatch event를 받으면 아래를 수행
 - attach된 dealer를 외부 recv path와 섞어 쓰면 어떻게 실패하는지
 - `Spot` progress만으로 channel reply completion이 전진하는지
 - attached dealer별 별도 progress pump 없이도 completion이 delivery되는지
+- `zlink_socket_set_channel_name()`으로 미리 설정한 값과 attach 인자가 같을 때만
+  attach가 성공하는지
+- `zlink_socket_set_channel_name()` 값과 discovery channel 또는 manual attach
+  `channel_name`이 다르면 `EINVAL`로 실패하는지
 
 ### 13.3 binding 테스트
 
@@ -745,6 +774,10 @@ request/reply, timer 동작이 그대로 유지되는지도 함께 봐야 한다
   않는지
 - attached dealer monitor, discovery attach, service attachment cache 갱신이 기존
   topology 관리 동작을 깨지 않는지
+- socket channel metadata setter/getter를 추가해도 기존 attach API 의미가 바뀌지
+  않는지
+- attach 완료 뒤 socket channel metadata를 다시 바꾸려 할 때 `EBUSY` 또는
+  `EINVAL`로 막히는지
 - poller 또는 progress loop가 없는 경우 completion이 정체되는 기존 progress-owned
   completion 의미가 유지되는지
 - `.NET` binding에서 channel reply 기능을 켜도 기존 `OnDispatchEvent`,

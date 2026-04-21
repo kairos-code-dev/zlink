@@ -144,7 +144,7 @@ try {
         $OpenSSLArgs += "-DOPENSSL_ROOT_DIR=$env:OPENSSL_ROOT_DIR"
     }
 
-    cmake "$ROOT_DIR_ABS" `
+    cmake (Join-Path $ROOT_DIR_ABS "core") `
         -G "Visual Studio 17 2022" `
         -A "$CMAKE_ARCH" `
         -DCMAKE_BUILD_TYPE="$BuildType" `

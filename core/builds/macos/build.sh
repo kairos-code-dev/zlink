@@ -61,7 +61,7 @@ echo ""
 echo "Step 2: Configuring libzlink with CMake for ${ARCH}..."
 cd "$BUILD_DIR"
 
-LIBZLINK_SRC_ABS="$REPO_ROOT"
+LIBZLINK_SRC_ABS="$REPO_ROOT/core"
 
 # Set architecture-specific CMake flags
 CMAKE_ARCH_FLAGS="-DCMAKE_OSX_ARCHITECTURES=$ARCH"

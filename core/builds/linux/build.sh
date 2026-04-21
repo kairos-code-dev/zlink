@@ -68,7 +68,7 @@ echo ""
 echo "Step 2: Configuring libzlink with CMake for ${ARCH}..."
 cd "$BUILD_DIR"
 
-LIBZLINK_SRC_ABS="$REPO_ROOT"
+LIBZLINK_SRC_ABS="$REPO_ROOT/core"
 
 # Set architecture-specific CMake flags for cross-compilation if needed
 CMAKE_ARCH_FLAGS=""
@@ -154,7 +154,7 @@ cd "$REPO_ROOT"
 if [ "$RUN_TESTS" = "ON" ]; then
     echo ""
     echo "Step 5: Running tests..."
-    TEST_DIR="$BUILD_DIR/core"
+    TEST_DIR="$BUILD_DIR"
     bash "$REPO_ROOT/core/tests/run_test_lanes.sh" \
         --build-dir "$TEST_DIR" \
         --include-e2e

@@ -29,8 +29,8 @@ void test_request_dealer_router_roundtrip ()
 
     const std::string endpoint = zlink_cpp_contract::unique_inproc ("rr-cpp");
     dealer_socket.set_routing_id (routing_id);
-    assert (router_socket.bind (endpoint) == 0);
-    assert (dealer_socket.connect (endpoint) == 0);
+    router_socket.bind (endpoint);
+    dealer_socket.connect (endpoint);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       router_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
@@ -78,8 +78,8 @@ void test_request_router_preserves_data_recv_surface ()
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("rr-cpp-data");
-    assert (router_socket.bind (endpoint) == 0);
-    assert (dealer_socket.connect (endpoint) == 0);
+    router_socket.bind (endpoint);
+    dealer_socket.connect (endpoint);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       router_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
@@ -113,8 +113,8 @@ void test_received_reply_rejects_non_none_flags ()
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("rr-cpp-reply-flags");
     dealer_socket.set_routing_id (routing_id);
-    assert (router_socket.bind (endpoint) == 0);
-    assert (dealer_socket.connect (endpoint) == 0);
+    router_socket.bind (endpoint);
+    dealer_socket.connect (endpoint);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       router_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));

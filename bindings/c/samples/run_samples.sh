@@ -31,6 +31,7 @@ sample_tests=(
   sample_smoke_sample_c_stream_recv_sample
   sample_smoke_sample_c_stream_packet_callback_sample
   sample_smoke_sample_c_spot_recv_sample
+  sample_smoke_sample_c_spot_routed_request_sample
   sample_smoke_sample_c_monitor_recv_sample
   sample_smoke_sample_c_discovery_registry_sample
   sample_smoke_sample_c_registry_query_sample

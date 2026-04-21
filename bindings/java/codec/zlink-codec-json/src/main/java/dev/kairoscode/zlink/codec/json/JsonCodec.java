@@ -5,21 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-public final class JsonCodec<T> {
-    private final ObjectMapper objectMapper;
+public final class JsonCodec {
+    private static final ObjectMapper DEFAULT_OBJECT_MAPPER = new ObjectMapper();
 
-    public JsonCodec() {
-        this(new ObjectMapper());
-    }
+    private JsonCodec() {}
 
-    public JsonCodec(ObjectMapper objectMapper) {
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
-    }
-
-    public dev.kairoscode.zlink.Message toMessage(T value) {
+    public static dev.kairoscode.zlink.Message toMessage(Object value) {
         Objects.requireNonNull(value, "value");
         try {
-            byte[] payload = objectMapper.writeValueAsBytes(value);
+            byte[] payload = DEFAULT_OBJECT_MAPPER.writeValueAsBytes(value);
             return dev.kairoscode.zlink.Message.copyOf(payload);
         } catch (JsonProcessingException ex) {
             throw new IllegalArgumentException(
@@ -27,11 +21,12 @@ public final class JsonCodec<T> {
         }
     }
 
-    public T fromMessage(dev.kairoscode.zlink.Message message, Class<T> type) {
+    public static <T> T parseJson(dev.kairoscode.zlink.Message message,
+                                  Class<T> type) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(type, "type");
         try {
-            return objectMapper.readValue(message.toByteArray(), type);
+            return DEFAULT_OBJECT_MAPPER.readValue(message.toByteArray(), type);
         } catch (java.io.IOException ex) {
             String preview = new String(message.toByteArray(), StandardCharsets.UTF_8);
             throw new IllegalArgumentException(

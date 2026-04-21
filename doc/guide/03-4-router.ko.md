@@ -25,7 +25,7 @@ flowchart LR
 > A->RC, B->RA, C->RB ... routing_id로 대상 지정
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 
 /* TCP */
 zlink_bind(router, "tcp://127.0.0.1:5558");
@@ -49,7 +49,7 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 ### 생성 및 바인드
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 ```
 
@@ -192,7 +192,7 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 > 들어오면 새 연결이 기존 pipe 를 인수하고 거부되지 않는다. peer 가
 > 들고 날 때 `send_rid` 가 `NOT_CONNECTED` 를 반환하는 일이 흔하다.
 
-> 참고: `core/tests/test_router_mandatory.cpp` — `test_basic()`
+> 참고: `core/tests/integration/test_router_mandatory.cpp` — `test_basic()`
 
 ### 4.1 request-reply 서버와 클라이언트 역할
 
@@ -276,7 +276,7 @@ ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하
 
 ```c
 /* DEALER connects and sends initial message */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
@@ -290,7 +290,7 @@ zlink_send(dealer, &hello, 1, 0);
 
 ```c
 /* Server: ROUTER recv loop */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 /* poller 등록 후 루프에서:
@@ -311,13 +311,13 @@ size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client 1 */
-void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+void *d1 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive replies with zlink_recv() */
 zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
-void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+void *d2 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive replies with zlink_recv() */
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
@@ -372,7 +372,7 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
 ```
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
 /* 기본 동작(MANDATORY=1): 도달 불가 peer 전송이 실패로 surface 된다 */
@@ -422,18 +422,18 @@ DEALER → ROUTER는 라운드 로빈이 고정되어 분배 비율을 제어할
 
 ```c
 /* 서버 3대 */
-void *sa = zlink_socket(ctx, ZLINK_ROUTER);
+void *sa = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_set_routing_id(sa, "SA", 2);
 zlink_bind(sa, "tcp://127.0.0.1:5560");
-void *sb = zlink_socket(ctx, ZLINK_ROUTER);
+void *sb = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_set_routing_id(sb, "SB", 2);
 zlink_bind(sb, "tcp://127.0.0.1:5561");
-void *sc = zlink_socket(ctx, ZLINK_ROUTER);
+void *sc = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_set_routing_id(sc, "SC", 2);
 zlink_bind(sc, "tcp://127.0.0.1:5562");
 
 /* 클라이언트 ROUTER: 3개 서버에 connect */
-void *client = zlink_socket(ctx, ZLINK_ROUTER);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_set_routing_id(client, "C1", 2);
 zlink_connect(client, "tcp://127.0.0.1:5560");
 zlink_connect(client, "tcp://127.0.0.1:5561");
@@ -480,7 +480,7 @@ zlink_send_rid(client, &rid, &msg, 1, 0);
 ```
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -488,12 +488,12 @@ size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트 1 */
-void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+void *d1 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
-void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+void *d2 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
@@ -509,7 +509,7 @@ memcpy(zlink_msg_data(&m2), "from_d2", 7);
 zlink_send(d2, &m2, 1, 0);
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 3가지 transport
+> 참고: `core/tests/integration/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 3가지 transport
 
 ### 패턴 5: 프록시 패턴 (ROUTER-DEALER)
 
@@ -527,7 +527,7 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
 ```
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 ```
 
@@ -542,7 +542,7 @@ void worker_thread(void *arg) {
         zlink_send_rid(worker, source_rid, parts, part_count, 0);
     }
 
-    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    void *worker = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     /* zlink_recv()로 작업 수신 */
     zlink_connect(worker, "inproc://backend");
 
@@ -550,7 +550,7 @@ void worker_thread(void *arg) {
 }
 ```
 
-> 참고: `core/tests/test_proxy.cpp` — ROUTER(frontend) + DEALER(backend) + 워커 풀
+> 참고: `core/tests/integration/test_proxy.cpp` — ROUTER(frontend) + DEALER(backend) + 워커 풀
 
 ### 패턴 6: ROUTER_MANDATORY로 전송 실패 감지
 
@@ -571,7 +571,7 @@ void worker_thread(void *arg) {
 ```
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
 /* 기본 동작: 미도달 메시지 조용히 드롭 */
@@ -596,7 +596,7 @@ if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
 }
 ```
 
-> 참고: `core/tests/test_router_mandatory.cpp` — 기본 드롭 vs MANDATORY 에러
+> 참고: `core/tests/integration/test_router_mandatory.cpp` — 기본 드롭 vs MANDATORY 에러
 
 ### 패턴 7: 연결 확인 후 전송
 
@@ -627,7 +627,7 @@ void on_connect(const zlink_routing_id_t *source_node_rid,
 }
 
 /* DEALER 연결 및 초기 메시지 전송 */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
@@ -639,7 +639,7 @@ zlink_send(dealer, &hello, 1, 0);
    "Welcome" 으로 응답 */
 ```
 
-> 참고: `core/tests/test_router_mandatory.cpp` — DEALER 연결 → 메시지 → ROUTER 응답
+> 참고: `core/tests/integration/test_router_mandatory.cpp` — DEALER 연결 → 메시지 → ROUTER 응답
 
 ### 패턴 8: 다중 Transport
 
@@ -660,7 +660,7 @@ zlink_send(dealer, &hello, 1, 0);
 ```
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 
 /* TCP */
 zlink_bind(router, "tcp://127.0.0.1:5558");
@@ -674,7 +674,7 @@ zlink_bind(router, "inproc://router");
 /* 각 transport의 DEALER가 연결 — ROUTER는 routing_id로 통합 관리 */
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 테스트
+> 참고: `core/tests/integration/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 테스트
 
 ## 6. 주의사항
 

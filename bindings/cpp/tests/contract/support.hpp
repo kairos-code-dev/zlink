@@ -132,7 +132,7 @@ wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
           monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
-        if (event->event_type != event_type_)
+        if (static_cast<uint32_t> (event->event_type) != event_type_)
             continue;
         if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
             continue;
@@ -165,7 +165,7 @@ wait_for_service_monitor_event_endpoint (
           monitor_.recv (zlink::non_blocking_t {});
         if (!event)
             continue;
-        if (event->event_type != event_type_)
+        if (static_cast<uint32_t> (event->event_type) != event_type_)
             continue;
         if ((event->detail_flags & ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT) == 0)
             continue;

@@ -8,8 +8,6 @@ import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
-import dev.kairoscode.zlink.service.spot.SpotServiceAttachmentRole;
-import dev.kairoscode.zlink.service.spot.SpotServiceMonitorEvent;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -227,6 +225,14 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_GET_ROUTING_ID = downcall("zlink_get_routing_id",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SET_ADMISSION_STATE = downcall(
+            "zlink_set_admission_state",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_GET_ADMISSION_STATE = downcall(
+            "zlink_get_admission_state",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SET_SUBSCRIPTION = downcall("zlink_set_subscription",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_UNSET_SUBSCRIPTION = downcall("zlink_unset_subscription",
@@ -1375,6 +1381,23 @@ public final class Native {
             return (int) MH_GET_ROUTING_ID.invokeExact(handle, outRid);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_get_routing_id failed", t);
+        }
+    }
+
+    public static int setAdmissionState(MemorySegment handle, int state) {
+        try {
+            return (int) MH_SET_ADMISSION_STATE.invokeExact(handle, state);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_set_admission_state failed", t);
+        }
+    }
+
+    public static int getAdmissionState(MemorySegment handle,
+                                        MemorySegment stateOut) {
+        try {
+            return (int) MH_GET_ADMISSION_STATE.invokeExact(handle, stateOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_get_admission_state failed", t);
         }
     }
 

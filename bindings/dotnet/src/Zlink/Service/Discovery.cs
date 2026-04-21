@@ -20,7 +20,8 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         _handle = NativeMethods.zlink_discovery_new(context.Handle,
             (int)serviceType, serviceName);
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
     }
 
     internal IntPtr Handle => _handle;
@@ -32,21 +33,21 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_connect_registry(_handle,
             registryPubEndpoint);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConnectIfError(rc);
     }
 
     public void SetValue(long value)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_set_value(_handle, value);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public long GetValue()
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_get_value(_handle, out long value);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
 
@@ -58,7 +59,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         int rc = NativeMethods.zlink_discovery_set_metadata(_handle,
             NativeMethods.zlink_msg_data(ref metadata.Handle),
             (nuint)metadata.Size);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public Message GetMetadata()
@@ -67,7 +68,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         using var metadata = new Message();
         int rc = NativeMethods.zlink_discovery_get_metadata(_handle,
             ref metadata.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return metadata.Move();
     }
 
@@ -77,7 +78,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         nuint count = 0;
         int rc = NativeMethods.zlink_discovery_member_peers(_handle,
             IntPtr.Zero, ref count);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<MemberPeerEntry>();
 
@@ -88,7 +89,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
             nuint actual = count;
             rc = NativeMethods.zlink_discovery_member_peers(_handle, entries,
                 ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
 
             MemberPeerEntry[] result = new MemberPeerEntry[(int)actual];
             for (int i = 0; i < result.Length; i++)
@@ -113,7 +114,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         using var metadata = new Message();
         int rc = NativeMethods.zlink_discovery_member_peer_metadata(_handle,
             (ushort)serviceRole, endpoint, ref metadata.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return metadata.Move();
     }
 
@@ -134,7 +135,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
 
                 int rc = NativeMethods.zlink_discovery_resolve_spot(_handle,
                     ref nativeSpotRid, out ZlinkRoutingId ownerNodeRoutingId);
-                ZlinkException.ThrowIfError(rc);
+                ZlinkException.ThrowConfigIfError(rc);
                 return RoutingId.FromBytes(
                     NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
             }
@@ -146,7 +147,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_set_dealer_peer_mode(_handle,
             (int)mode);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public ServiceMonitor MonitorOpen(params ServiceMonitorEventMask[] events)
@@ -173,7 +174,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         IntPtr monitor = NativeMethods.zlink_service_monitor_open(_handle,
             in options);
         if (monitor == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         return new ServiceMonitor(monitor);
     }
 
@@ -189,10 +190,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
-            return;
-        NativeMethods.zlink_discovery_destroy(ref _handle);
-        _handle = IntPtr.Zero;
+        Destroy(throwOnError: true);
         GC.SuppressFinalize(this);
     }
 
@@ -204,7 +202,26 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
 
     ~Discovery()
     {
-        Dispose();
+        Destroy(throwOnError: false);
+    }
+
+    private void Destroy(bool throwOnError)
+    {
+        if (_handle == IntPtr.Zero)
+            return;
+
+        IntPtr originalHandle = _handle;
+        IntPtr handle = _handle;
+        int rc = NativeMethods.zlink_discovery_destroy(ref handle);
+        if (rc == 0)
+        {
+            _handle = IntPtr.Zero;
+            return;
+        }
+
+        _handle = originalHandle;
+        if (throwOnError)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
     private void EnsureNotDisposed()

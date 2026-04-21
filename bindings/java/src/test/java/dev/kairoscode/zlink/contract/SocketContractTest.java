@@ -1,6 +1,7 @@
 package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorSocket;
@@ -13,13 +14,13 @@ import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ServiceMonitorEventMask;
 import dev.kairoscode.zlink.service.discovery.DiscoveryDealerPeerMode;
+import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
 import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
@@ -285,6 +286,16 @@ public class SocketContractTest {
     }
 
     @Test
+    public void admissionSurfaceMatchesJavaSpec() {
+        assertTrue(hasPublicMethod(PairSocket.class, "getAdmissionState"));
+        assertTrue(hasPublicMethod(PairSocket.class, "setAdmissionState",
+            AdmissionState.class));
+        assertTrue(hasPublicMethod(Spot.class, "getAdmissionState"));
+        assertTrue(hasPublicMethod(Spot.class, "setAdmissionState",
+            AdmissionState.class));
+    }
+
+    @Test
     public void routedAndLegacySurfaceMatchesJavaSpec() {
         assertTrue(hasPublicMethod(RouterSocket.class, "sendToSpot",
             RoutingId.class, RoutingId.class, Message.class));
@@ -317,15 +328,14 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(Discovery.class, "setDealerPeerMode",
             DiscoveryDealerPeerMode.class));
 
-        assertFalse(hasPublicMethod(XPubSocket.class, "onSubscribe",
-            dev.kairoscode.zlink.SubscribeHandler.class));
-        assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe",
-            dev.kairoscode.zlink.SubscribeHandler.class));
-        assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe",
-            dev.kairoscode.zlink.SubscribeHandler.class));
+        assertFalse(hasPublicMethod(XPubSocket.class, "onSubscribe"));
+        assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe"));
+        assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe"));
         assertFalse(hasPublicMethod(Zlink.class, "errno"));
         assertFalse(hasPublicMethod(ZlinkException.class, "errno"));
         assertFalse(hasPublicMethod(ZlinkException.class, "errorCode"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.SubscribeHandler"));
+        assertFalse(isPublicClass("dev.kairoscode.zlink.SocketOption"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.ErrorCode"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.RequestReplyCallback"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.SocketPollSet"));
@@ -403,6 +413,15 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(StreamSocket.class, "onReceive"));
         assertTrue(hasPublicMethod(StreamSocket.class, "onPacket",
             dev.kairoscode.zlink.StreamPacketHandler.class));
+        assertFalse(hasPublicMethod(StreamSocket.class, "onPacketNative"));
+        assertFalse(hasPublicMethod(StreamSocket.class, "onFramedPacket"));
+        assertFalse(hasPublicMethod(StreamSocket.class, "onFramedPacketNative"));
+        assertFalse(hasPublicMethod(StreamSocket.class, "sendCopied",
+            int.class, java.lang.foreign.MemorySegment.class, int.class,
+            SendFlags.class));
+        assertFalse(hasPublicMethod(StreamSocket.class, "send",
+            int.class, java.lang.foreign.MemorySegment.class, int.class,
+            SendFlags.class));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachStreamRaw"));
         assertFalse(hasPublicMethod(StreamSocket.class, "connect"));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
@@ -522,10 +541,8 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(PubSocket.class, "publishNoWaitResult",
                 String.class, Message.class));
             assertFalse(hasPublicMethod(SubSocket.class, "subscribeNoWait"));
-            assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe",
-                dev.kairoscode.zlink.SubscribeHandler.class));
-            assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe",
-                dev.kairoscode.zlink.SubscribeHandler.class));
+            assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe"));
+            assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe"));
             assertFalse(hasPublicMethod(XPubSocket.class,
                 "tryReceiveSubscriptionEvent"));
             assertEquals(PubSocketOptions.class, pub.options().getClass());
@@ -555,11 +572,28 @@ public class SocketContractTest {
             assertEquals(0, xsub.options().topicsCount());
             assertDoesNotThrow(() -> stream.options().notify(true));
             assertTrue(stream.options().notifyEnabled());
-            assertDoesNotThrow(() -> pair.options().recvTimeout(Duration.ofMillis(10)));
-            assertEquals(Duration.ofMillis(10), pair.options().recvTimeout());
-            assertDoesNotThrow(() -> pair.options().sendTimeout(Duration.ofMillis(20)));
-            assertEquals(Duration.ofMillis(20), pair.options().sendTimeout());
+            assertFalse(hasPublicMethod(PairSocket.class, "options"));
         }
+    }
+
+    @Test
+    public void receivedAndMemberPeerSurfaceMatchesJavaSpec() {
+        assertFalse(Iterable.class.isAssignableFrom(Received.class));
+        assertFalse(hasPublicMethod(Received.class, "iterator"));
+        assertFalse(hasPublicMethod(Received.class, "routingIdOrNull"));
+        assertFalse(hasPublicMethod(Received.class, "routingIdOrThrow"));
+        assertFalse(hasPublicMethod(Received.class, "spotRidOrNull"));
+        assertFalse(hasPublicMethod(dev.kairoscode.zlink.MonitorSnapshot.class,
+            "fromNative", java.lang.foreign.MemorySegment.class));
+        assertFalse(hasPublicMethod(
+            dev.kairoscode.zlink.service.registry.MemberPeerEntry.class,
+            "fromNative", java.lang.foreign.MemorySegment.class));
+        assertFalse(hasPublicMethod(
+            dev.kairoscode.zlink.service.registry.ServiceEvent.class,
+            "fromNative", java.lang.foreign.MemorySegment.class));
+        assertEquals(7, MemberPeerEntry.class.getRecordComponents().length);
+        assertEquals("admissionState",
+            MemberPeerEntry.class.getRecordComponents()[6].getName());
     }
 
     @Test

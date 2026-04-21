@@ -6,7 +6,7 @@ import dev.kairoscode.zlink.SocketOptions;
 import java.time.Duration;
 import java.util.Objects;
 
-public class CommonSocketOptions {
+class CommonSocketOptions {
     final Socket socket;
 
     CommonSocketOptions(Socket socket) {

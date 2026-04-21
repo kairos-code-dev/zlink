@@ -174,7 +174,7 @@ For example, a DEALER client receiving replies uses the following shape:
 void *ctx = zlink_ctx_new();
 
 /* 2. Create Socket */
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 
 /* 3. Set options (before bind/connect) */
 zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));

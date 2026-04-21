@@ -82,7 +82,7 @@ class service_monitor_handle_t
             _monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT));
         if (result == recv_result_t::ok)
             return maybe_t<service_event_t> (service_event_t (event));
-        if (result == recv_result_t::no_data || result == recv_result_t::busy)
+        if (result == recv_result_t::no_data)
             return maybe_t<service_event_t> ();
         throw recv_error_t (result, zlink_errno ());
     }

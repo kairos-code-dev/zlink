@@ -69,7 +69,7 @@ public final class RoutingId {
     }
 
     /** Creates a 4-byte big-endian routing id from an unsigned 32-bit value. */
-    public static RoutingId fromU32(int value) {
+    static RoutingId fromU32(int value) {
         return new RoutingId(new byte[] {
             (byte) (value >>> 24),
             (byte) (value >>> 16),

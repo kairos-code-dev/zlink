@@ -41,7 +41,7 @@ its messages cycle across them (msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 ### Creation and Connection
 
 ```c
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
 zlink_set_routing_id(dealer, "client-1", 8);
@@ -142,7 +142,7 @@ zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_set_routing_id(dealer1, "D1", 2)`
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` -- `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### 4.1 Request-Reply
 
@@ -221,12 +221,12 @@ void on_request(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 /* Receive with zlink_recv() */
 zlink_bind(router, "tcp://*:5558");
 
 /* Client: DEALER */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive replies with zlink_recv() */
 zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
@@ -241,14 +241,14 @@ zlink_send(dealer, &req, 1, 0);
    on_reply receives the reply */
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc examples
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc examples
 
 ### Pattern 2: Multiple DEALER Load Balancing
 
 Multiple DEALERs connect to a single ROUTER. ROUTER distinguishes each DEALER by routing_id.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 /* ROUTER receives with zlink_recv() and distinguishes each DEALER by source_rid */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
@@ -256,11 +256,11 @@ char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer1 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer2 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
@@ -278,7 +278,7 @@ zlink_send(dealer2, &m2, 1, 0);
 /* on_message receives each DEALER's message with its routing_id */
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` -- `test_router_multiple_dealers_tcp()`
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` -- `test_router_multiple_dealers_tcp()`
 
 ### Pattern 3: Proxy Pattern (ROUTER-DEALER)
 
@@ -286,11 +286,11 @@ Build a multi-threaded server using ROUTER (frontend) + DEALER (backend).
 
 ```c
 /* Frontend: clients connect here */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+void *frontend = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(frontend, "tcp://*:5558");
 
 /* Backend: worker threads connect here */
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
+void *backend = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_bind(backend, "inproc://backend");
 
 /* Start worker threads then run proxy */
@@ -308,7 +308,7 @@ void worker_thread(void *arg) {
         zlink_send_rid(worker, source_rid, parts, part_count, 0);
     }
 
-    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    void *worker = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     /* Receive work with zlink_recv() */
     zlink_connect(worker, "inproc://backend");
 
@@ -316,18 +316,18 @@ void worker_thread(void *arg) {
 }
 ```
 
-> Reference: `core/tests/test_proxy.cpp` -- ROUTER(frontend) + DEALER(backend) + worker pool
+> Reference: `core/tests/integration/test_proxy.cpp` -- ROUTER(frontend) + DEALER(backend) + worker pool
 
 ### Pattern 4: DEALER ↔ DEALER Asynchronous Communication
 
 Both sides use DEALER for fully asynchronous P2P communication.
 
 ```c
-void *a = zlink_socket(ctx, ZLINK_DEALER);
+void *a = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive with zlink_recv() */
 zlink_bind(a, "tcp://*:5558");
 
-void *b = zlink_socket(ctx, ZLINK_DEALER);
+void *b = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive with zlink_recv() */
 zlink_connect(b, "tcp://127.0.0.1:5558");
 

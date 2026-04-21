@@ -66,6 +66,12 @@ public sealed class test_socket_surface
 
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
             nameof(StreamSocket.OnPacket)));
+        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket),
+            "OnFramedPacket"));
+        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Send",
+            typeof(uint), typeof(Message), typeof(SendFlags)));
+        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Send",
+            typeof(uint), typeof(byte[]), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Connect"));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Disconnect"));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
@@ -311,6 +317,15 @@ public sealed class test_socket_surface
             nameof(Spot.RequestChannelAsync), typeof(string), typeof(Message),
             typeof(TimeSpan), typeof(System.Threading.CancellationToken)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.RequestChannel), typeof(string), typeof(Message),
+            typeof(Action<RequestResult, IReadOnlyList<Message>>),
+            typeof(SendFlags), typeof(TimeSpan?)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.RequestChannel), typeof(string),
+            typeof(IReadOnlyList<Message>),
+            typeof(Action<RequestResult, IReadOnlyList<Message>>),
+            typeof(SendFlags), typeof(TimeSpan?)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.ReceiveSubscriptionEvent), typeof(RecvFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "TryPublish",
             typeof(string), typeof(Message)));
@@ -340,6 +355,11 @@ public sealed class test_socket_surface
 
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             "MemberPeerMetadata", typeof(ServiceRole), typeof(string)));
+        ParameterInfo registryTopologyQueryFilter =
+            typeof(Registry).GetMethod(nameof(Registry.TopologyQuery))!
+                .GetParameters().Single();
+        Assert.True(registryTopologyQueryFilter.HasDefaultValue);
+        Assert.Null(registryTopologyQueryFilter.DefaultValue);
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.ResolveSpot), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
@@ -432,5 +452,25 @@ public sealed class test_socket_surface
             Assert.NotNull(attribute);
             Assert.Equal(EditorBrowsableState.Never, attribute!.State);
         }
+    }
+
+    [Fact]
+    public void monitor_and_submit_enums_include_admission_contract_values()
+    {
+        Assert.True(Enum.IsDefined(typeof(SubmitResult),
+            nameof(SubmitResult.NotAdmitted)));
+        Assert.Equal(13, (int)SubmitResult.NotAdmitted);
+        Assert.True(Enum.IsDefined(typeof(SocketEvent),
+            nameof(SocketEvent.PeerAdmissionChanged)));
+        Assert.Equal(0x8000, (int)SocketEvent.PeerAdmissionChanged);
+        Assert.True(Enum.IsDefined(typeof(MonitorEventType),
+            nameof(MonitorEventType.PeerAdmissionChanged)));
+        Assert.Equal(0x8000, (int)MonitorEventType.PeerAdmissionChanged);
+        Assert.True(Enum.IsDefined(typeof(ServiceMonitorEventMask),
+            nameof(ServiceMonitorEventMask.PeerAdmissionChanged)));
+        Assert.Equal(1u << 8, (uint)ServiceMonitorEventMask.PeerAdmissionChanged);
+        Assert.True(Enum.IsDefined(typeof(ServiceEventType),
+            nameof(ServiceEventType.PeerAdmissionChanged)));
+        Assert.Equal(1u << 8, (uint)ServiceEventType.PeerAdmissionChanged);
     }
 }

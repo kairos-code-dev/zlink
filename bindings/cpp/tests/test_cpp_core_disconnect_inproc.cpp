@@ -15,7 +15,7 @@ void test_disconnect_inproc ()
     int more = 0;
 
     assert (sub_socket.set_option (zlink::socket_option::subscribe, "foo", 3) == 0);
-    assert (pub_socket.bind ("inproc://someInProcDescriptor") == 0);
+    pub_socket.bind ("inproc://someInProcDescriptor");
 
     for (int iteration = 0;; ++iteration) {
         zlink_pollitem_t items[] = {
@@ -53,11 +53,11 @@ void test_disconnect_inproc ()
         }
 
         if (iteration == 1) {
-            assert (sub_socket.connect ("inproc://someInProcDescriptor") == 0);
+            sub_socket.connect ("inproc://someInProcDescriptor");
             sleep_ms (300);
         }
         if (iteration == 4)
-            assert (sub_socket.disconnect ("inproc://someInProcDescriptor") == 0);
+            sub_socket.disconnect ("inproc://someInProcDescriptor");
         if (iteration > 4 && rc == 0)
             break;
 

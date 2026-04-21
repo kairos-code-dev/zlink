@@ -3,6 +3,6 @@
 package dev.kairoscode.zlink;
 
 @FunctionalInterface
-public interface SocketMessageHandler {
+interface SocketMessageHandler {
     void onMessage(Received received);
 }

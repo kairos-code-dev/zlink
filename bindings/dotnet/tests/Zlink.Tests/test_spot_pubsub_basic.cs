@@ -81,4 +81,21 @@ public sealed class test_spot_pubsub_basic
         Assert.Equal(0u, status.ConnectedPeerCount);
         Assert.Contains(subjects, entry => entry.Subject == topic);
     }
+
+    [Fact]
+    public void disposing_node_disposes_created_spots()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        var node = new SpotNode(ctx);
+        Spot spot = node.CreateSpot();
+
+        node.Dispose();
+
+        using Message message = Message.FromString("payload");
+        Assert.Throws<ObjectDisposedException>(() =>
+            spot.Publish("svc", "topic", message));
+    }
 }

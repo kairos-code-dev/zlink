@@ -43,7 +43,7 @@ can share the same socket handle to call send/recv/bind/connect, etc.
 ### 2.1 Socket Creation and Closing
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* ... use ... */
 zlink_close(socket);
 ```
@@ -52,14 +52,14 @@ zlink_close(socket);
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_PAIR` | 0x1001 | 1:1 Bidirectional |
-| `ZLINK_PUB` | 0x1002 | Publisher |
-| `ZLINK_SUB` | 0x1003 | Subscriber |
-| `ZLINK_DEALER` | 0x1004 | Asynchronous request |
-| `ZLINK_ROUTER` | 0x1005 | Routing |
-| `ZLINK_XPUB` | 0x1006 | Advanced publisher |
-| `ZLINK_XSUB` | 0x1007 | Advanced subscriber |
-| `ZLINK_STREAM` | 0x1008 | RAW communication |
+| `ZLINK_SOCKET_PAIR` | 0x1001 | 1:1 Bidirectional |
+| `ZLINK_SOCKET_PUB` | 0x1002 | Publisher |
+| `ZLINK_SOCKET_SUB` | 0x1003 | Subscriber |
+| `ZLINK_SOCKET_DEALER` | 0x1004 | Asynchronous request |
+| `ZLINK_SOCKET_ROUTER` | 0x1005 | Routing |
+| `ZLINK_SOCKET_XPUB` | 0x1006 | Advanced publisher |
+| `ZLINK_SOCKET_XSUB` | 0x1007 | Advanced subscriber |
+| `ZLINK_SOCKET_STREAM` | 0x1008 | RAW communication |
 
 ### 2.3 Connection Management
 
@@ -164,7 +164,7 @@ Without attaching a handler, call `zlink_recv()` to receive messages
 directly. Sockets start in pull mode by default.
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_PAIR);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(socket, "tcp://*:5556");
 
 /* Blocking recv */
@@ -210,7 +210,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 ```
 
@@ -233,7 +233,7 @@ Each socket type uses a dedicated registration function:
 | STREAM (packet) | `zlink_stream_packet_handler(socket, fn, userdata)` | `void fn(void *stream, const zlink_routing_id_t *source_rid, zlink_msg_t *header, zlink_msg_t *body, void *userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` reply is delivered through a separate completion callback |
 | SPOT (routed direct callback) | `zlink_spot_handler(spot, fn, userdata)` — optional; still supported | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
-| SPOT (dispatch readable events) | `zlink_spot_dispatch_event_handler(spot, fn, userdata)` — unified readable-event callback for topic/routed/timer | `void fn(void *spot, zlink_spot_dispatch_event_kind_t kind, void *userdata)` |
+| SPOT (dispatch readable events) | `zlink_spot_dispatch_event_handler(spot, fn, userdata)` — unified readable-event callback for topic/routed/timer | `void fn(void *spot, zlink_spot_dispatch_event_t event, void *userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv-driven; drained after a `SUBSCRIBE_READABLE` dispatch event |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv-driven; drained after a `ROUTED_READABLE` dispatch event |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` or `zlink_subscribe()` | N/A |
@@ -366,11 +366,11 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
+    void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+    void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

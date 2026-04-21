@@ -14,7 +14,8 @@ public sealed class ZlinkStopwatch : IDisposable, IAsyncDisposable
     {
         _handle = NativeMethods.zlink_stopwatch_start();
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
     }
 
     public ulong Intermediate()

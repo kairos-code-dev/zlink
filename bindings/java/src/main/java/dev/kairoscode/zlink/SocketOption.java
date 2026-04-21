@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-public enum SocketOption {
+enum SocketOption {
     AFFINITY(4), ROUTING_ID(5), SUBSCRIBE(6), UNSUBSCRIBE(7),
     RATE(8), RECOVERY_IVL(9), SNDBUF(11), RCVBUF(12),
     RCVMORE(13), FD(14), EVENTS(15), TYPE(16), LINGER(17),

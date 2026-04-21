@@ -141,7 +141,8 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 
 `SPOT`도 같은 원칙으로 capability별 manual 연결을 나눠서 봐야 한다.
 
-- `router` manual 연결은 `RoutingId + endpoint`를 함께 안다.
+- `router` manual 연결도 endpoint 집합만 관리한다. 이 초안에서는 `connect()`
+  호출 시 remote router id를 별도 파라미터로 받지 않는다.
 - attach된 channel client manual 연결은 endpoint 집합만 관리한다.
 - `pub/sub` manual 연결에서 등록하는 주소는 peer `SpotNode`의 mesh publish bind
   주소다. local `SUB/XSUB` 쪽이 그 주소로 붙는다.

@@ -46,24 +46,24 @@ public final class RouterSocket extends Socket {
     public CompletableFuture<List<Message>> request(RoutingId rid, Message part) {
         return request(rid, List.of(part));
     }
-    public CompletableFuture<List<Message>> request(RoutingId rid, Message part,
-                                                    SendFlags flags) {
+    private CompletableFuture<List<Message>> request(RoutingId rid, Message part,
+                                                     SendFlags flags) {
         return request(rid, List.of(part), flags);
     }
     public CompletableFuture<List<Message>> request(RoutingId rid, Message part,
                                                     Duration timeout) {
         return request(rid, List.of(part), timeout);
     }
-    public CompletableFuture<List<Message>> request(RoutingId rid, Message part,
-                                                    SendFlags flags,
-                                                    Duration timeout) {
+    private CompletableFuture<List<Message>> request(RoutingId rid, Message part,
+                                                     SendFlags flags,
+                                                     Duration timeout) {
         return request(rid, List.of(part), flags, timeout);
     }
     public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts) {
         return request(rid, parts, SendFlags.NONE);
     }
-    public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
-                                                    SendFlags flags) {
+    private CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
+                                                     SendFlags flags) {
         return request(rid, parts, flags,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
@@ -71,9 +71,9 @@ public final class RouterSocket extends Socket {
                                                     Duration timeout) {
         return request(rid, parts, SendFlags.NONE, timeout);
     }
-    public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
-                                                    SendFlags flags,
-                                                    Duration timeout) {
+    private CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
+                                                     SendFlags flags,
+                                                     Duration timeout) {
         return routedRequests.request(rid, parts, flags, timeout).thenApply(reply -> {
             try (reply) {
                 return RequestReplySupport.cloneReceived(reply).parts();
@@ -83,6 +83,16 @@ public final class RouterSocket extends Socket {
     public boolean request(RoutingId rid, Message part,
                         BiConsumer<RequestResult, List<Message>> callback) {
         return request(rid, List.of(part), callback);
+    }
+    public boolean request(RoutingId rid, Message part,
+                        BiConsumer<RequestResult, List<Message>> callback,
+                        Duration timeout) {
+        return request(rid, List.of(part), callback, SendFlags.NONE, timeout);
+    }
+    public boolean request(RoutingId rid, List<Message> parts,
+                        BiConsumer<RequestResult, List<Message>> callback,
+                        Duration timeout) {
+        return request(rid, parts, callback, SendFlags.NONE, timeout);
     }
     public boolean request(RoutingId rid, Message part,
                         BiConsumer<RequestResult, List<Message>> callback,
@@ -162,10 +172,10 @@ public final class RouterSocket extends Socket {
                                                           Message part) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part));
     }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          Message part,
-                                                          SendFlags flags) {
+    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                           RoutingId destSpotRid,
+                                                           Message part,
+                                                           SendFlags flags) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), flags);
     }
     public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
@@ -174,11 +184,11 @@ public final class RouterSocket extends Socket {
                                                           Duration timeout) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), timeout);
     }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          Message part,
-                                                          SendFlags flags,
-                                                          Duration timeout) {
+    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                           RoutingId destSpotRid,
+                                                           Message part,
+                                                           SendFlags flags,
+                                                           Duration timeout) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), flags,
           timeout);
     }
@@ -187,10 +197,10 @@ public final class RouterSocket extends Socket {
                                                           List<Message> parts) {
         return requestToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE);
     }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          List<Message> parts,
-                                                          SendFlags flags) {
+    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                           RoutingId destSpotRid,
+                                                           List<Message> parts,
+                                                           SendFlags flags) {
         return requestToSpot(destNodeRid, destSpotRid, parts, flags,
           Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
@@ -201,11 +211,11 @@ public final class RouterSocket extends Socket {
         return requestToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE,
           timeout);
     }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          List<Message> parts,
-                                                          SendFlags flags,
-                                                          Duration timeout) {
+    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                           RoutingId destSpotRid,
+                                                           List<Message> parts,
+                                                           SendFlags flags,
+                                                           Duration timeout) {
         return spotSupport.requestToSpot(destNodeRid, destSpotRid, parts,
           timeout, flags);
     }
@@ -213,6 +223,20 @@ public final class RouterSocket extends Socket {
                               Message part,
                               BiConsumer<RequestResult, List<Message>> callback) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback);
+    }
+    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              Message part,
+                              BiConsumer<RequestResult, List<Message>> callback,
+                              Duration timeout) {
+        return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback,
+          SendFlags.NONE, timeout);
+    }
+    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              List<Message> parts,
+                              BiConsumer<RequestResult, List<Message>> callback,
+                              Duration timeout) {
+        return requestToSpot(destNodeRid, destSpotRid, parts, callback,
+          SendFlags.NONE, timeout);
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part,

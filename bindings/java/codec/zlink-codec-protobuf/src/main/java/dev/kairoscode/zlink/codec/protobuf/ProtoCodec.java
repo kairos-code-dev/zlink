@@ -4,7 +4,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Parser;
 import java.util.Objects;
 
-public final class ProtoCodec<T extends com.google.protobuf.Message>
+final class ProtoCodec<T extends com.google.protobuf.Message>
     implements MessageCodec<T> {
     private final Parser<T> parser;
 

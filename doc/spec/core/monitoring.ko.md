@@ -429,9 +429,9 @@ handle에 대해서만 정의된다. 모니터 대상 식별자는
 
 **서비스 공통:**
 - `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`) --
-  서비스 계층 peer admission 변경을 위한 예약 unified mask bit 입니다.
-  현재 `Spot` / `SpotNode` generic service monitor는 이 이벤트를 방출하지
-  않습니다.
+  Discovery service monitor가 추적 중인 peer의 admission 상태가 바뀌면
+  이 비트를 사용합니다. 현재 `Spot` / `SpotNode` generic service monitor는
+  이 이벤트를 방출하지 않습니다.
 
 - `ZLINK_SERVICE_MONITOR_EVENT_ALL` -> 모든 서비스 이벤트
 

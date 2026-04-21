@@ -19,7 +19,7 @@ import java.util.function.BiConsumer;
  * <p>The returned {@link #parts()} view is immutable and does not copy the
  * underlying part array. Closing the aggregate closes every owned part.
  */
-public final class Received implements AutoCloseable, Iterable<Message> {
+public final class Received implements AutoCloseable {
     public interface PartCursor extends AutoCloseable {
         Message nextPartOrNull();
 
@@ -185,14 +185,14 @@ public final class Received implements AutoCloseable, Iterable<Message> {
         return Optional.ofNullable(routingIdOrNull());
     }
 
-    public RoutingId routingIdOrNull() {
+    RoutingId routingIdOrNull() {
         if (routingId == null && routingIdBytes != null) {
             routingId = RoutingId.fromTrusted(routingIdBytes);
         }
         return routingId;
     }
 
-    public RoutingId routingIdOrThrow() {
+    RoutingId routingIdOrThrow() {
         RoutingId resolved = routingIdOrNull();
         if (resolved == null)
             throw new RecvException(RecvResult.NO_DATA);
@@ -203,7 +203,7 @@ public final class Received implements AutoCloseable, Iterable<Message> {
         return Optional.ofNullable(spotRidOrNull());
     }
 
-    public RoutingId spotRidOrNull() {
+    RoutingId spotRidOrNull() {
         if (spotRid == null && spotRidBytes != null) {
             spotRid = RoutingId.fromTrusted(spotRidBytes);
         }
@@ -301,8 +301,7 @@ public final class Received implements AutoCloseable, Iterable<Message> {
         markTerminal();
     }
 
-    @Override
-    public Iterator<Message> iterator() {
+    Iterator<Message> iterator() {
         return new Iterator<>() {
             private int index;
 

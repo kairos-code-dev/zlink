@@ -14,7 +14,7 @@ class monitor_handle_t
 {
   public:
     monitor_handle_t () : _monitor (NULL) {}
-    inline static zlink_socket_monitor_handler_fn ignore_handler =
+    inline static zlink_monitor_handler_fn ignore_handler =
       &zlink_monitor_ignore_handler;
 
     template<typename SocketLike>
@@ -101,7 +101,7 @@ class monitor_handle_t
             _monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT));
         if (result == recv_result_t::ok)
             return maybe_t<monitor_event_t> (monitor_event_t (event));
-        if (result == recv_result_t::no_data || result == recv_result_t::busy)
+        if (result == recv_result_t::no_data)
             return maybe_t<monitor_event_t> ();
         throw recv_error_t (result, zlink_errno ());
     }

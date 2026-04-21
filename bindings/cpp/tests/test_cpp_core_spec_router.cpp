@@ -8,7 +8,7 @@ void test_fair_queue_in (const std::string &endpoint_)
 {
     zlink::context_t ctx;
     zlink::router_socket_t receiver (ctx);
-    assert (receiver.bind (endpoint_) == 0);
+    receiver.bind (endpoint_);
 
     std::string connect_endpoint = endpoint_;
     if (endpoint_.find ("*") != std::string::npos)
@@ -22,7 +22,7 @@ void test_fair_queue_in (const std::string &endpoint_)
         senders.push_back (zlink::dealer_socket_t (ctx));
         char rid[2] = {static_cast<char> ('A' + peer), '\0'};
         assert (senders.back ().set_option (zlink::socket_option::routing_id, rid, 2) == 0);
-        assert (senders.back ().connect (connect_endpoint) == 0);
+        senders.back ().connect (connect_endpoint);
     }
 
     sleep_ms (300);

@@ -11,10 +11,10 @@ int main ()
         zlink::pair_socket_t server (ctx);
         zlink::pair_socket_t client (ctx);
 
-        assert (server.bind ("ipc://*") == 0);
+        server.bind ("ipc://*");
         const std::string endpoint = bound_endpoint (server);
         assert (!endpoint.empty ());
-        assert (client.connect (endpoint) == 0);
+        client.connect (endpoint);
         bounce (server, client);
     }
 
@@ -23,7 +23,11 @@ int main ()
         zlink::pair_socket_t server (ctx);
         std::string endpoint_too_long = "ipc://";
         endpoint_too_long.append (108, 'a');
-        assert (server.bind (endpoint_too_long) == -1);
+        try {
+            server.bind (endpoint_too_long);
+            assert (false);
+        } catch (const zlink::bind_error_t &) {
+        }
         assert (zlink_errno () == ENAMETOOLONG);
     }
 #endif

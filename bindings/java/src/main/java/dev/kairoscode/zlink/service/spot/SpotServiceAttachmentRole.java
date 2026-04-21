@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-public enum SpotServiceAttachmentRole {
+enum SpotServiceAttachmentRole {
     ROUTER(1),
     PUB(2),
     SUB(3);

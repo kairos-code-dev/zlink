@@ -162,9 +162,10 @@ service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
 
 1. `zlink_set_admission_state(handle, ZLINK_ADMISSION_DRAINING)` 호출.
 2. 연결된 peer가 자신의 admission cache를 갱신할 시간을 둔다. 이 갱신은
-   socket monitor의 `ZLINK_EVENT_PEER_ADMISSION_CHANGED` 또는 service
-   monitor의 `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로
-   관찰할 수 있다.
+   socket monitor의 `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로 볼 수 있다.
+   서비스 계층 관점이 필요하면 같은 peer를 관리하는 `Discovery`
+   handle에서 `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`를
+   관찰한다.
 3. 진행 중인 reply가 빠질 때까지 기다린다. 운영 시 이 시간은 보통 SLA
    기반으로 설정한다.
 4. 노드를 재시작/교체한 뒤,

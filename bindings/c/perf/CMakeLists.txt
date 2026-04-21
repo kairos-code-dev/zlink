@@ -125,6 +125,8 @@ if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
                            multi/src/perf_multi_pubsub_server.cpp)
     add_current_bench_multi(comp_src_spot_server
                            multi/src/perf_multi_spot_server.cpp)
+    add_current_bench_multi(comp_src_spot_reqrep_server
+                           multi/src/perf_multi_spot_reqrep_server.cpp)
     add_current_bench_multi(comp_src_dealer_dealer_client
                            multi/src/perf_multi_dealer_dealer_client.cpp)
     add_current_bench_multi(comp_src_dealer_router_client
@@ -135,6 +137,8 @@ if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
                            multi/src/perf_multi_pubsub_client.cpp)
     add_current_bench_multi(comp_src_spot_client
                            multi/src/perf_multi_spot_client.cpp)
+    add_current_bench_multi(comp_src_spot_reqrep_client
+                           multi/src/perf_multi_spot_reqrep_client.cpp)
     add_current_bench_multi(comp_src_stream_server
                            multi/src/perf_multi_stream_server.cpp)
     target_compile_definitions(comp_src_stream_server PRIVATE

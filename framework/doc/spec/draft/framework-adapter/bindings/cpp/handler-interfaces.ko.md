@@ -385,7 +385,7 @@ public:
 class manual_router_peer_list_builder_t {
 public:
     virtual ~manual_router_peer_list_builder_t() = default;
-    virtual void connect(routing_id_t target_rid, std::string endpoint) = 0;
+    virtual void connect(std::string endpoint) = 0;
 };
 
 class client_capability_builder_t {
@@ -517,7 +517,7 @@ public:
 class spot_router_connections_t {
 public:
     virtual ~spot_router_connections_t() = default;
-    virtual void connect(routing_id_t target_rid, std::string endpoint) = 0;
+    virtual void connect(std::string endpoint) = 0;
     virtual void disconnect(std::string_view endpoint) = 0;
     virtual std::vector<std::string> list_connections() const = 0;
 };
@@ -568,7 +568,8 @@ public:
 `client.use_manual_connections(...)`, `add_spot_node(...)`의 기준 표면이다.
 
 일반 channel client manual 연결은 endpoint 집합만 다루고, `SPOT` router manual
-연결만 `routing_id_t + endpoint`를 같이 둔다. `spot_manager_t`는 등록된
+연결도 같은 방식으로 endpoint 집합만 등록한다. 이 초안에서는 `connect(...)`
+호출 시 remote router id를 따로 받지 않는다. `spot_manager_t`는 등록된
 `spot_name`으로 factory를 고르고, `get(...)`와 `list()`는 runtime이 들고 있는
 `spot_rid -> spot_name` 매핑을 다시 보는 용도다.
 

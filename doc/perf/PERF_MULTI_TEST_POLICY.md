@@ -52,6 +52,15 @@
 - 단, `MULTI_SPOT` / `MULTI_SPOT_REQREP` 은 direct message callback을 쓰지
   않고 `dispatch_event` callback 안에서 recv drain 하는 방식으로 수신을
   활성화한다.
+- `MULTI_SPOT_REQREP` 의 data plane 은 아래처럼 고정한다.
+  - server(replier): `dispatch_event` callback 을 수신 활성화 신호로 사용하고,
+    callback 안에서 `recv(..., DONTWAIT)` 또는 이에 대응하는 nonblocking recv
+    drain 으로 request 를 모두 읽은 뒤, 수신한 request 에 대응하는 reply 를
+    즉시 반환한다.
+  - client(requester): `send(..., DONTWAIT)` nonblocking request send 와 poller
+    기반 reply recv 로 왕복을 측정한다.
+  - 즉 `MULTI_SPOT_REQREP` 에서 callback 은 data-plane direct callback surface
+    자체가 아니라 recv drain 을 시작하는 activation signal 이다.
 - `MULTI_STREAM`은 raw callback을 테스트하지 않고
   `zlink_stream_packet_handler()`를 기준으로 packet receive surface를 테스트한다.
 - `while (send 실패)` 식의 즉시 재시도는 금지한다.
@@ -267,6 +276,31 @@ channel도 사용한다.
 | Client → Server | `READY_COUNT` | `READY_COUNT,<msg_size>,<count>` | client가 보유한 ready slot 수 전달 |
 | Server → Client | `START` | `START,<msg_size>` | active phase broadcast |
 
+SPOT / SPOT_REQREP 의 시작 전 handshake 는 아래 순서로 진행한다.
+
+1. server 는 benchmark endpoint bind 뒤 `READY,<endpoint>` 를 출력하고,
+   control endpoint bind 뒤 `CONTROL_READY,<endpoint>` 를 출력한다.
+2. client 는 runner 가 넘긴 server control endpoint 에 연결하고, 자기 쪽
+   control listener endpoint 를 runner 에 `CLIENT_CONTROL_ENDPOINT,<endpoint>`
+   로 알린다. control link 가 실제로 연결되면 `CONTROL_CONNECTED,<endpoint>` 를
+   출력한다.
+3. runner 는 client 가 알린 endpoint 를 server 에
+   `CONNECT_CONTROL,<client_endpoint>` 로 전달해서 direct control channel 을
+   완성한다.
+4. client 는 control link ready 와 local connect setup 이 모두 끝난 뒤
+   stabilization window 와 짧은 control settle 을 거쳐 direct control channel 로
+   `CONNECTED` 를 보내고, 이어서 `READY_COUNT,<msg_size>,<count>` 를 보낸다.
+5. server 는 runner `START,<msg_size>` 를 이미 받았고 expected client 수만큼
+   `READY_COUNT` 를 모두 모은 뒤에만 direct control channel 로
+   `START,<msg_size>` 를 broadcast 한다.
+6. client 는 runner 의 `START,<msg_size>` 와 server 의 direct
+   `START,<msg_size>` 를 둘 다 확인한 뒤에만 active phase 로 들어간다.
+
+- `CONNECTED` 는 control link progress 를 확인하는 중간 신호다.
+  perf 시작은 `READY_COUNT` 누적과 `START` 교환까지 끝나야 성립한다.
+- 이 handshake 가 끝나기 전에는 `MULTI_SPOT` / `MULTI_SPOT_REQREP` data plane
+  publish/request/reply 를 시작하면 안 된다.
+
 #### 패턴별 Orchestration 시퀀스
 
 **Echo 패턴 (DEALER_ROUTER, ROUTER_ROUTER):**
@@ -290,6 +324,11 @@ Runner                    Server                      Client
 - server: `READY,<endpoint>` 출력 후 relay/echo 대기. stdin `STOP`/`QUIT`으로 종료.
 - client: endpoint로 connect, 내부 `CONNECTION_READY` gate 통과 후 active 측정.
   runner와 추가 stdin 교환 없이 자율 실행.
+- `MULTI_DEALER_ROUTER` 는 echo(request/reply) 패턴이다.
+  client(dealer requester) 가 request 를 보내고, server(router replier) 는
+  source routing id 로 reply 를 되돌려 보낸다.
+- `MULTI_ROUTER_ROUTER` 도 echo 계열이지만, 양쪽 모두 route-aware socket 위에서
+  같은 request/reply 의미를 유지한다.
 
 **One-way 패턴 (DEALER_DEALER, PUBSUB):**
 
@@ -356,12 +395,17 @@ Runner                    Server                      Client
 **SPOT_REQREP 패턴:** 위 SPOT 다이어그램과 동일한 orchestration/handshake 를
 그대로 사용한다. 차이는 데이터 플레인뿐이다.
 
-- server(replier) 는 publish loop 대신 recv request → send reply loop 를
-  돌린다.
-- client(requester) 는 subscribe 측정 대신 send request → recv reply 왕복을
-  측정한다.
+- server(replier) 는 publish loop 대신 `dispatch_event` callback 안에서
+  nonblocking recv drain 으로 request 를 읽고, 수신한 request 에 대응하는
+  reply 를 즉시 반환한다.
+- client(requester) 는 subscribe 측정 대신 `send(..., DONTWAIT)` request send 와
+  poller 기반 recv drain 으로 reply 왕복을 측정한다.
 - routed 경로는 `spot(requester) -> spot_node -> spot_node -> spot(replier)`
   이며, reply 는 역방향으로 돌아온다.
+- active 진입 전 handshake 는 SPOT 과 동일하다.
+  즉 `READY` / `CONTROL_READY` → `CLIENT_CONTROL_ENDPOINT` /
+  `CONTROL_CONNECTED` → `CONNECT_CONTROL` → `CONNECTED` →
+  `READY_COUNT` → runner `START` + direct `START` 순서로 진행한다.
 
 **STREAM 패턴:**
 
@@ -522,6 +566,9 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 | one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
+- `MULTI_DEALER_ROUTER` 와 `MULTI_ROUTER_ROUTER` 의 echo 는 둘 다
+  request/reply 의미를 유지한다. 즉 client request 1회와 그에 대응하는 reply
+  1회가 완료되어야 1 op 로 집계한다.
 - one-way 패턴: sender가 송신한 메시지를 receiver가 수신한다(서버 relay 또는 server push 포함). 1 msg = 1 message hop으로 보고, receiver 수신 수를 카운트한다.
 - 동일 단위의 패턴 간에만 throughput을 직접 비교할 수 있다.
 
@@ -832,6 +879,8 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 
 - 기본 모드는 항상 해당 suite의 최신 benchmark binary/script를 사용해야 한다. 즉 multi official runner는 기본 실행에서 현재 소스 기준 configure/build를 수행해야 하며, `--reuse-build`를 주지 않았는데 stale 산출물을 실행하면 정책 위반이다.
 - `clients`, `stream clients`, `server/client io_threads`, `hwm` 기본값은 multi baseline 의미의 일부다. 기본값을 바꾸면 runner 구현, help 출력, Effective Options, 문서 예시를 같은 변경에서 함께 갱신해야 한다.
+- 수정 후 검증은 multi smoke를 포함해야 하며, smoke 정의와 실행 규칙은
+  [PERF_POLICY.md § 3.2](PERF_POLICY.md)를 따른다.
 
 ### 9.3 실행 예시
 

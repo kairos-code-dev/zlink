@@ -29,7 +29,7 @@ context but threads are not spawned until the first socket is created.
 void *ctx = zlink_ctx_new();
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* must be set before first socket */
 
-void *socket = zlink_socket(ctx, ZLINK_DEALER);  /* triggers thread launch */
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* triggers thread launch */
 ```
 
 Internally, `ctx_runtime_resources.cpp:start_io_threads_locked()` creates

@@ -72,7 +72,7 @@ flowchart LR
 ### Publisher (PUB)
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* Publish message -- dropped if there are no subscribers */
@@ -98,7 +98,7 @@ void on_topic(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
@@ -107,7 +107,7 @@ zlink_set_subscription(sub, "weather");
 /* Use zlink_subscribe() (typically inside a poller loop) to receive */
 ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
+> Reference: `core/tests/integration/test_pubsub.cpp` -- empty subscription ("") → receives all messages
 
 ### Sending and Receiving Summary
 
@@ -180,7 +180,7 @@ zlink_unset_subscription(sub, "sports");
 zlink_set_subscription(sub, "");
 ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- `zlink_set_subscription(subscriber, "")`
+> Reference: `core/tests/integration/test_pubsub.cpp` -- `zlink_set_subscription(subscriber, "")`
 
 ## 4. Message Format
 
@@ -243,11 +243,11 @@ assemble topic frames manually.
 
 ```c
 /* PUB */
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB -- receive all messages */
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub, "");
 
@@ -261,21 +261,21 @@ zlink_publish(pub, NULL, &msg, 1, 0);
 /* on_topic callback receives "test" asynchronously */
 ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- `test_tcp()`
+> Reference: `core/tests/integration/test_pubsub.cpp` -- `test_tcp()`
 
 ### Pattern 2: Multiple SUBs
 
 Multiple SUBs connect to a single PUB. Each SUB receives only its own topics.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
-void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
+void *sub_weather = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_weather, "weather");
 
-void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
+void *sub_sports = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_sports, "sports");
 
@@ -287,7 +287,7 @@ zlink_set_subscription(sub_sports, "sports");
 A SUB can connect to multiple PUBs. It receives messages from all PUBs via fair-queue.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_set_subscription(sub, "");
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -315,7 +315,7 @@ caller can handle backpressure directly.
 
 ```c
 /* Enable NODROP on XPUB */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 int nodrop = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 
@@ -490,7 +490,7 @@ zlink_unset_subscription(xsub, "A");
 XPUB receives subscription frames with `zlink_xpub_recv_part()`:
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 const zlink_routing_id_t *source_rid = NULL;
@@ -502,7 +502,7 @@ zlink_recv_result_t rc = zlink_xpub_recv_part(
   xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
 
 ## 10. XPUB Socket Options
 
@@ -538,7 +538,7 @@ memcpy(zlink_msg_data(&msg_xa), "XA", 2);
 zlink_publish(xpub, NULL, &msg_xa, 1, 0);  /* subscriber receives this */
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_basic()`: subscription request for A → transformed to B
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_basic()`: subscription request for A → transformed to B
 
 ## 11. XPUB/XSUB Usage Patterns
 
@@ -548,11 +548,11 @@ Build a PUB/SUB proxy using XSUB (frontend) + XPUB (backend).
 
 ```c
 /* Proxy frontend: PUBs connect here */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
 zlink_bind(xsub, "tcp://*:5556");
 
 /* Proxy backend: SUBs connect here */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* Run proxy (forwards messages and subscriptions bidirectionally) */
@@ -593,14 +593,14 @@ for (;;) {
 }
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ### Pattern 3: Subscription Monitoring
 
 Use XPUB to observe which clients subscribe to which topics.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 for (;;) {
@@ -630,7 +630,7 @@ zlink_close(sub);
    subscribed=0 and the previously subscribed topic */
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ## 12. Caveats
 
@@ -654,7 +654,7 @@ In MANUAL mode, if `zlink_set_subscription()` is not called after receiving a su
 
 When multiple SUBs subscribe to the same topic, the XPUB subscription is maintained until all SUBs have unsubscribed.
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_missing_subscriptions()`: processing two subscribers sequentially to prevent omissions
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_missing_subscriptions()`: processing two subscribers sequentially to prevent omissions
 
 ---
 [← PAIR](03-1-pair.md) | [DEALER →](03-3-dealer.md)

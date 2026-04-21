@@ -58,9 +58,9 @@ int main ()
     assert (frontend.set_option (zlink::socket_option::immediate, on) == 0);
 
     std::string endpoint = endpoint_for (transport_case_t{"tcp", ""}, "immediate");
-    assert (backend.bind (endpoint) == 0);
+    backend.bind (endpoint);
 
-    assert (frontend.connect (endpoint) == 0);
+    frontend.connect (endpoint);
 
     assert (raw_send (backend, "Hello", 5) == 5);
     char recv_buf[16];
@@ -77,7 +77,7 @@ int main ()
 
     zlink::dealer_socket_t rebound_backend (ctx);
     assert (rebound_backend.set_option (zlink::socket_option::linger, zero) == 0);
-    assert (rebound_backend.bind (endpoint) == 0);
+    rebound_backend.bind (endpoint);
 
     assert (raw_send (rebound_backend, "Hello", 5) == 5);
     std::memset (recv_buf, 0, sizeof (recv_buf));

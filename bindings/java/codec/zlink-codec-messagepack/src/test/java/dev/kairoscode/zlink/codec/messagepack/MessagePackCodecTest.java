@@ -8,13 +8,11 @@ import dev.kairoscode.zlink.Message;
 import org.junit.jupiter.api.Test;
 
 class MessagePackCodecTest {
-    private final MessagePackCodec<SampleValue> sampleCodec = new MessagePackCodec<>();
-
     @Test
     void roundtrip() {
         SampleValue value = new SampleValue("alpha", 7, true);
 
-        try (Message message = sampleCodec.toMessage(value)) {
+        try (Message message = MessagePackCodec.toMessage(value)) {
             assertArrayEquals(new byte[] {
                 (byte) 0x83,
                 (byte) 0xa4, 0x6e, 0x61, 0x6d, 0x65,
@@ -24,13 +22,15 @@ class MessagePackCodecTest {
                 (byte) 0xa6, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65,
                 (byte) 0xc3
             }, message.toByteArray());
-            assertEquals(value, sampleCodec.fromMessage(message, SampleValue.class));
+            assertEquals(value,
+                MessagePackCodec.parseMessagePack(message, SampleValue.class));
         }
     }
 
     @Test
     void nullValue() {
-        assertThrows(NullPointerException.class, () -> sampleCodec.toMessage(null));
+        assertThrows(NullPointerException.class,
+            () -> MessagePackCodec.toMessage(null));
     }
 
     record SampleValue(String name, int count, boolean active) {

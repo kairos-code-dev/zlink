@@ -7,10 +7,10 @@ int main ()
     zlink::pair_socket_t server (ctx);
     zlink::pair_socket_t client (ctx);
 
-    assert (server.bind ("ipc://*") == 0);
+    server.bind ("ipc://*");
     std::string endpoint = bound_endpoint (server);
     assert (!endpoint.empty ());
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     bounce (server, client);
 #endif

@@ -486,24 +486,36 @@ class base_socket_t : public socket_handle_t
   public:
     bool valid () const noexcept { return socket_handle_t::valid (); }
 
-    ZLINK_CPP_NODISCARD int bind (const std::string &endpoint_)
+    void bind (const std::string &endpoint_)
     {
-        return zlink_bind (handle (), endpoint_.c_str ());
+        const int rc = zlink_bind (handle (), endpoint_.c_str ());
+        if (rc != 0)
+            throw bind_error_t (
+              detail::bind_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
-    ZLINK_CPP_NODISCARD int connect (const std::string &endpoint_)
+    void connect (const std::string &endpoint_)
     {
-        return zlink_connect (handle (), endpoint_.c_str ());
+        const int rc = zlink_connect (handle (), endpoint_.c_str ());
+        if (rc != 0)
+            throw connect_error_t (
+              detail::connect_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
-    ZLINK_CPP_NODISCARD int unbind (const std::string &endpoint_)
+    void unbind (const std::string &endpoint_)
     {
-        return zlink_unbind (handle (), endpoint_.c_str ());
+        const int rc = zlink_unbind (handle (), endpoint_.c_str ());
+        if (rc != 0)
+            throw connect_error_t (
+              detail::connect_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
-    ZLINK_CPP_NODISCARD int disconnect (const std::string &endpoint_)
+    void disconnect (const std::string &endpoint_)
     {
-        return zlink_disconnect (handle (), endpoint_.c_str ());
+        const int rc = zlink_disconnect (handle (), endpoint_.c_str ());
+        if (rc != 0)
+            throw connect_error_t (
+              detail::connect_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
     monitor_handle_t
@@ -515,24 +527,30 @@ class base_socket_t : public socket_handle_t
 
     common_socket_options_t options () { return common_socket_options_t (handle ()); }
 
-    ZLINK_CPP_NODISCARD int set_tls_server (const std::string &cert_,
-                                            const std::string &key_,
-                                            bool require_client_cert_ = false)
+    void set_tls_server (const std::string &cert_,
+                         const std::string &key_,
+                         bool require_client_cert_ = false)
     {
-        return zlink_set_tls_server (
+        const int rc = zlink_set_tls_server (
           handle (), cert_.c_str (), key_.c_str (),
           require_client_cert_ ? 1 : 0);
+        if (rc != 0)
+            throw config_error_t (
+              detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
-    ZLINK_CPP_NODISCARD int set_tls_client (const std::string &ca_cert_,
-                                            const std::string &hostname_,
-                                            bool trust_system_ = false)
+    void set_tls_client (const std::string &ca_cert_,
+                         const std::string &hostname_,
+                         bool trust_system_ = false)
     {
         const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
         const char *hostname =
           hostname_.empty () ? NULL : hostname_.c_str ();
-        return zlink_set_tls_client (
+        const int rc = zlink_set_tls_client (
           handle (), ca, hostname, trust_system_ ? 1 : 0);
+        if (rc != 0)
+            throw config_error_t (
+              detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
     void set_admission_state (admission_state_t state)

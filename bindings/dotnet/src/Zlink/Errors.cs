@@ -39,7 +39,49 @@ public abstract class ZlinkException : Exception
             throw FromLastError();
     }
 
-    public static ErrorCode MapErrorCode(int errno)
+    internal static void ThrowConfigIfError(int rc)
+    {
+        if (rc != 0)
+            throw CreateConfigException(NativeMethods.zlink_errno());
+    }
+
+    internal static void ThrowBindIfError(int rc)
+    {
+        if (rc != 0)
+            throw CreateBindException(NativeMethods.zlink_errno());
+    }
+
+    internal static void ThrowConnectIfError(int rc)
+    {
+        if (rc != 0)
+            throw CreateConnectException(NativeMethods.zlink_errno());
+    }
+
+    internal static void ThrowRecvIfError(int rc)
+    {
+        if (rc != 0)
+            throw CreateRecvException(NativeMethods.zlink_errno());
+    }
+
+    internal static void ThrowSubmitIfError(int rc)
+    {
+        if (rc != 0)
+            throw CreateSubmitException(NativeMethods.zlink_errno());
+    }
+
+    internal static void ThrowHandlerIfError(int rc)
+    {
+        if (rc != 0)
+            throw CreateHandlerException(NativeMethods.zlink_errno());
+    }
+
+    internal static void ThrowCloseIfError(int rc)
+    {
+        if (rc != 0)
+            throw CreateCloseException(NativeMethods.zlink_errno());
+    }
+
+    internal static ErrorCode MapErrorCode(int errno)
     {
         return errno switch
         {
@@ -97,7 +139,7 @@ public abstract class ZlinkException : Exception
         };
     }
 
-    public static bool TryMapErrorCode(int errno, out ErrorCode code)
+    internal static bool TryMapErrorCode(int errno, out ErrorCode code)
     {
         code = MapErrorCode(errno);
         return code != ErrorCode.Unknown;
@@ -140,6 +182,7 @@ public abstract class ZlinkException : Exception
         {
             0 => SubmitResult.Ok,
             11 or 35 or 10035 => SubmitResult.Backpressured,
+            13 => SubmitResult.NotAdmitted,
             107 or 113 or 111 or 110 or 10057 or 10060 or 10065 =>
                 SubmitResult.NotConnected,
             2 or 3 => SubmitResult.NotFound,

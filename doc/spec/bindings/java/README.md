@@ -50,7 +50,8 @@ with the rules here, this section wins.
   `TopicMessage` therefore needs `serviceName()` populated for SPOT subscribe
   results and empty for raw `SUB` / `XSUB`.
 - `Spot` must not expose `onSubscribe(...)`.
-- `Spot` direct RID send/request APIs are removed from the public contract.
+- `Spot` direct RID one-way send APIs are not part of the public contract.
+  Routed request initiation (`requestToSpot` / `requestToRouter`) is supported.
 - Every socket and `Spot` exposes `setAdmissionState(state)` /
   `getAdmissionState()` using the typed enum
   `AdmissionState { SERVING, DRAINING }`. Submit attempts to a drained peer
@@ -1328,6 +1329,94 @@ public final class Spot implements AutoCloseable {
     @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
+
+    // --- routed request (spot -> spot, async, no flags) ---
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                              RoutingId destSpotRid,
+                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
+
+    // --- routed request (spot -> spot, callback submit) ---
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags, Duration timeout);                            // @throws SubmitException; false only on temporary backpressure
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags, Duration timeout);                            // @throws SubmitException; false only on temporary backpressure
+
+    // --- routed request (spot -> router, async, no flags) ---
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
+
+    // --- routed request (spot -> router, callback submit) ---
+    boolean requestToRouter(RoutingId peerRid,
+                            Message part,
+                            BiConsumer<RequestResult, List<Message>> callback);          // @throws SubmitException; callback receives RequestResult
+    boolean requestToRouter(RoutingId peerRid,
+                            Message part,
+                            BiConsumer<RequestResult, List<Message>> callback,
+                            Duration timeout);                                           // @throws SubmitException; callback receives RequestResult
+    boolean requestToRouter(RoutingId peerRid,
+                            Message part,
+                            BiConsumer<RequestResult, List<Message>> callback,
+                            SendFlags flags);                                            // @throws SubmitException; false only on temporary backpressure
+    boolean requestToRouter(RoutingId peerRid,
+                            Message part,
+                            BiConsumer<RequestResult, List<Message>> callback,
+                            SendFlags flags, Duration timeout);                          // @throws SubmitException; false only on temporary backpressure
+    boolean requestToRouter(RoutingId peerRid,
+                            List<Message> parts,
+                            BiConsumer<RequestResult, List<Message>> callback);          // @throws SubmitException; callback receives RequestResult
+    boolean requestToRouter(RoutingId peerRid,
+                            List<Message> parts,
+                            BiConsumer<RequestResult, List<Message>> callback,
+                            Duration timeout);                                           // @throws SubmitException; callback receives RequestResult
+    boolean requestToRouter(RoutingId peerRid,
+                            List<Message> parts,
+                            BiConsumer<RequestResult, List<Message>> callback,
+                            SendFlags flags);                                            // @throws SubmitException; false only on temporary backpressure
+    boolean requestToRouter(RoutingId peerRid,
+                            List<Message> parts,
+                            BiConsumer<RequestResult, List<Message>> callback,
+                            SendFlags flags, Duration timeout);                          // @throws SubmitException; false only on temporary backpressure
 
     // --- routed reply (spot -> spot) ---
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,

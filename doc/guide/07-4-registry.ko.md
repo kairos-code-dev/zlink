@@ -159,14 +159,13 @@ memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_send(client, &part, 1, 0);
 
 /* Receive reply */
+zlink_routing_id_t source_rid;
 zlink_msg_t *reply_parts = NULL;
 size_t reply_count = 0;
-zlink_recv(client, &reply_parts, &reply_count, 0);
+zlink_recv(client, &source_rid, &reply_parts, &reply_count, 0);
 
 /* Cleanup (reverse order) */
-zlink_close(client);
 zlink_discovery_destroy(&client_disc);
-zlink_close(server);
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);

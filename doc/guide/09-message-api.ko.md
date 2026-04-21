@@ -208,7 +208,7 @@ int zlink_send(void *s_, zlink_msg_t *parts_, size_t part_count_, zlink_send_fla
 
 **사용 시점:** 대용량 data의 copy를 피하고 싶을 때. Buffer 해제 시점을 library에 위임.
 
-> 참고: `core/tests/test_msg_ffn.cpp` — free function callback 동작 검증
+> 참고: `core/tests/integration/test_msg_ffn.cpp` — free function callback 동작 검증
 
 ### 4.2 Data Access
 
@@ -266,7 +266,7 @@ zlink_msg_close(&original);
 zlink_msg_close(&copy);  /* Actual memory freed when last reference is released */
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_refcounted()`
 
 ### 4.4 Metadata Property — zlink_msg_gets
 
@@ -386,7 +386,7 @@ void notify_free(void *data, void *hint) {
 }
 ```
 
-> 참고: `core/tests/test_msg_ffn.cpp` — `ffn()` callback이 hint에 "freed" 기록
+> 참고: `core/tests/integration/test_msg_ffn.cpp` — `ffn()` callback이 hint에 "freed" 기록
 
 ### Free Function 호출 시점
 
@@ -409,7 +409,7 @@ zlink_msg_close(&msg);
 zlink_msg_close(&copy);  /* my_free called when last reference is released */
 ```
 
-> 참고: `core/tests/test_msg_ffn.cpp` — close/send/copy 각 시나리오
+> 참고: `core/tests/integration/test_msg_ffn.cpp` — close/send/copy 각 시나리오
 
 ### Constant Data 전송 (CMSG)
 
@@ -437,7 +437,7 @@ memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(socket, parts, 2, 0);
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 7. Multipart Message 실전 Pattern
 
@@ -470,7 +470,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
 
 ### Pattern 2: Topic + Data (PUB/SUB)
 
@@ -548,7 +548,7 @@ zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
 refcnt = zlink_msg_refcnt(&const_msg);  /* 1: internal refcount 대상 아님 */
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: constant message의 shared property
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`: constant message의 shared property
 
 ## 9. Error 처리
 

@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-public enum SendResult {
+enum SendResult {
     SENT(0),
     BACKPRESSURED(1),
     NOT_READY(2);

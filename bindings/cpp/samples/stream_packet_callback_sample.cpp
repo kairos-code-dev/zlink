@@ -41,7 +41,7 @@ int main ()
     zlink::monitor_handle_t server_monitor = server.monitor_handle ();
     server.stream_options ().notify (false);
 
-    assert (server.bind ("tcp://127.0.0.1:0") == 0);
+    server.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
 

@@ -26,11 +26,11 @@ flowchart LR
 void *ctx = zlink_ctx_new();
 
 /* Server side */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://*:5555");
 
 /* Client side */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
 
@@ -81,7 +81,7 @@ zlink_send(server, parts, 2, 0);
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
-> Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
+> Reference: `core/tests/integration/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
 
 ### Receive Modes
 
@@ -89,7 +89,7 @@ PAIR is recv/poller-only in the public API.
 Use `zlink_recv()` to receive synchronously.
 
 ```c
-void *pair = zlink_socket(ctx, ZLINK_PAIR);
+void *pair = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(pair, "tcp://*:5556");
 
 zlink_routing_id_t source_rid;
@@ -170,11 +170,11 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 
 ```c
 /* Main thread */
-void *signal = zlink_socket(ctx, ZLINK_PAIR);
+void *signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */
-void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
+void *worker_signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* Worker → Main: task completion signal */
@@ -186,7 +186,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 /* Main: on_signal callback receives "DONE" asynchronously */
 ```
 
-> Reference: `core/tests/test_pair_inproc.cpp` -- bind → connect → bounce pattern
+> Reference: `core/tests/integration/test_pair_inproc.cpp` -- bind → connect → bounce pattern
 
 ### Pattern 2: TCP Communication
 
@@ -194,7 +194,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 
 ```c
 /* Server: wildcard port */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
 /* Query the assigned endpoint */
@@ -203,36 +203,36 @@ size_t len = sizeof(endpoint);
 zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client: connect using the queried endpoint */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, endpoint);
 ```
 
-> Reference: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` + wildcard bind
+> Reference: `core/tests/integration/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` + wildcard bind
 
 ### Pattern 3: Connection by DNS Name
 
 You can also connect using a hostname.
 
 ```c
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://localhost:5555");
 ```
 
-> Reference: `core/tests/test_pair_tcp.cpp` -- `test_pair_tcp_connect_by_name()`
+> Reference: `core/tests/integration/test_pair_tcp.cpp` -- `test_pair_tcp_connect_by_name()`
 
 ### Pattern 4: IPC Communication
 
 Inter-process communication on the same machine (Linux/macOS).
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "ipc:///tmp/myapp.ipc");
 
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "ipc:///tmp/myapp.ipc");
 ```
 
-> Reference: `core/tests/test_pair_ipc.cpp` -- includes IPC path length validation
+> Reference: `core/tests/integration/test_pair_ipc.cpp` -- includes IPC path length validation
 
 ## 6. Caveats
 
@@ -271,7 +271,7 @@ The file path of an IPC endpoint cannot exceed the system limit (typically 108 c
 zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 ```
 
-> Reference: `core/tests/test_pair_ipc.cpp` -- `test_endpoint_too_long()`
+> Reference: `core/tests/integration/test_pair_ipc.cpp` -- `test_endpoint_too_long()`
 
 ### HWM Behavior
 

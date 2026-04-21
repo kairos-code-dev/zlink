@@ -175,7 +175,7 @@ public interface ManualEndpointListBuilder {
 }
 
 public interface ManualRouterPeerListBuilder {
-    void connect(RoutingId targetRid, String endpoint);
+    void connect(String endpoint);
 }
 
 public interface ClientCapabilityBuilder {
@@ -359,7 +359,7 @@ public interface ChannelSubscriberConnections {
 }
 
 public interface SpotRouterConnections {
-    void connect(RoutingId targetRid, String endpoint);
+    void connect(String endpoint);
     void disconnect(String endpoint);
     List<String> listConnections();
 }
@@ -515,8 +515,9 @@ public record ZLinkSpotEvent(
 
 일반 channel client manual 연결은 endpoint만 받는 편이 맞다. 하부 `DEALER(client)`
 가 connect된 peer 집합으로 요청을 보내므로, startup과 런타임 제어 모두 endpoint
-집합만 다루면 된다. 반대로 `SPOT` router manual 연결은 routed peer를 직접
-가리켜야 하므로 `RoutingId + endpoint`를 함께 둔다.
+집합만 다루면 된다. `SPOT` router manual 연결도 같은 방식으로 endpoint 집합만
+등록하고, 이 초안에서는 `connect(...)` 호출 시 remote router id를 따로 받지
+않는다.
 
 `ZLinkSpotManager`는 등록된 `spotName`으로 factory를 고르고, 생성 결과와 조회
 표면에서 `spotRid -> spotName` 매핑을 다시 볼 수 있게 한다. 같은 `SpotNode`

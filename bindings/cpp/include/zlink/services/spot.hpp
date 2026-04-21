@@ -60,6 +60,10 @@ class spot_t;
 namespace detail
 {
 
+extern "C" int zlink_spot_request_progress_internal (void *spot_);
+extern "C" int zlink_spot_request_channel_progress_internal (
+  void *spot_, const char *channel_name_);
+
 using zlink::detail::last_error;
 using zlink::detail::throw_if_failed;
 
@@ -287,6 +291,20 @@ struct request_state_t
     std::function<void(request_result_t, std::vector<message_t>)> on_complete;
 };
 
+inline std::function<void()> make_spot_request_progress (void *spot_)
+{
+    return [spot_]() { (void) zlink_spot_request_progress_internal (spot_); };
+}
+
+inline std::function<void()> make_spot_request_progress (void *spot_,
+                                                         const std::string &channel_name_)
+{
+    return [spot_, channel_name_]() {
+        (void) zlink_spot_request_channel_progress_internal (
+          spot_, channel_name_.c_str ());
+    };
+}
+
 inline std::vector<message_t> take_parts (zlink_msg_t *parts_, size_t part_count_)
 {
     std::vector<message_t> parts;
@@ -390,10 +408,10 @@ class spot_node_t
     std::string last_endpoint () const
     {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (_node, &status) == 0
-            && status.local_endpoint[0] != '\0')
-            return std::string (status.local_endpoint);
-        return std::string ();
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_status_snapshot (_node, &status)));
+        return fixed_string_to_string (status.local_endpoint);
     }
 
     void connect_peer (const std::string &endpoint_)
@@ -706,6 +724,34 @@ class spot_t
     }
 
     bool send_channel (const std::string &channel_name_,
+                       message_t &part_,
+                       send_flags_t flags_ = send_flags_t::none)
+    {
+        validate_channel_name (channel_name_);
+        if (flags_ == send_flags_t::dontwait) {
+            send_result_t result = send_result_t::sent;
+            if (send_channel_no_wait_result_impl (
+                  result, channel_name_.c_str (), part_)
+                != 0) {
+                const int err = zlink_errno ();
+                throw submit_error_t (
+                  zlink::detail::submit_result_from_errno (err), err);
+            }
+            if (result == send_result_t::not_ready)
+                throw submit_error_t (
+                  submit_result_t::not_connected, zlink_errno ());
+            return result == send_result_t::sent;
+        }
+
+        std::vector<message_t> parts;
+        parts.push_back (std::move (part_));
+        const bool submitted = send_channel (channel_name_, parts, flags_);
+        if (!submitted && !parts.empty ())
+            part_ = std::move (parts.front ());
+        return submitted;
+    }
+
+    bool send_channel (const std::string &channel_name_,
                        std::vector<message_t> &parts_,
                        send_flags_t flags_ = send_flags_t::none)
     {
@@ -722,6 +768,66 @@ class spot_t
               static_cast<submit_result_t> (rc), zlink_errno ());
         }
         return true;
+    }
+
+    async_result_t<std::vector<message_t>>
+    request_channel (const std::string &channel_name_,
+                     message_t &part_,
+                     std::chrono::milliseconds timeout_ = {})
+    {
+        std::vector<message_t> parts;
+        parts.push_back (std::move (part_));
+        return request_channel (channel_name_, parts, timeout_);
+    }
+
+    async_result_t<std::vector<message_t>>
+    request_channel (const std::string &channel_name_,
+                     std::vector<message_t> &parts_,
+                     std::chrono::milliseconds timeout_ = {})
+    {
+        validate_channel_name (channel_name_);
+        detail::request_state_t *state = new detail::request_state_t ();
+        std::future<std::vector<message_t>> future = state->promise.get_future ();
+        std::vector<zlink_msg_t> native;
+        if (detail::move_parts_to_native (parts_, native) != 0) {
+            delete state;
+            throw last_error ();
+        }
+        size_t failed_index = 0;
+        const submit_result_t rc = static_cast<submit_result_t> (
+          detail::submit_native_parts (
+            native, failed_index,
+            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
+                return zlink_spot_request_channel_part (
+                  _spot, channel_name_.c_str (), part_out_,
+                  is_final_ ? &detail::request_callback_trampoline : NULL,
+                  is_final_ ? state : NULL, ZLINK_SEND_FLAGS_NONE, part_flag_,
+                  is_final_ ? static_cast<uint32_t> (timeout_.count ()) : 0u);
+            }));
+        if (rc != submit_result_t::ok) {
+            detail::close_native_parts (native, failed_index);
+            delete state;
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return async_result_t<std::vector<message_t>> (
+          std::move (future),
+          detail::make_spot_request_progress (_spot, channel_name_));
+    }
+
+    bool request_channel (
+      const std::string &channel_name_,
+      message_t &part_,
+      std::function<void(request_result_t, std::vector<message_t>)> callback_,
+      send_flags_t flags_ = send_flags_t::none,
+      std::chrono::milliseconds timeout_ = {})
+    {
+        std::vector<message_t> parts;
+        parts.push_back (std::move (part_));
+        const bool submitted = request_channel (
+          channel_name_, parts, std::move (callback_), flags_, timeout_);
+        if (!submitted && !parts.empty ())
+            part_ = std::move (parts.front ());
+        return submitted;
     }
 
     bool request_channel (
@@ -1001,6 +1107,53 @@ class spot_t
             detail::restore_parts_from_native (parts_, native, failed_index);
         }
         return rc;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    send_channel_no_wait_result_impl (send_result_t &result_out_,
+                                      const char *channel_name_,
+                                      message_t &part_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        if (!part_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t native;
+        part_.move_to (&native);
+        if (part_.valid ())
+            return -1;
+
+        const int rc = zlink_spot_send_channel_part (
+          _spot, channel_name_, &native, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+        if (rc == 0) {
+            result_out_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_out_)) {
+            if (result_out_ != send_result_t::sent) {
+                part_.init ();
+                if (part_.valid ())
+                    (void) zlink_msg_move (part_.handle (), &native);
+                (void) zlink_msg_close (&native);
+            }
+            errno = err;
+            return 0;
+        }
+
+        part_.init ();
+        if (part_.valid ())
+            (void) zlink_msg_move (part_.handle (), &native);
+        (void) zlink_msg_close (&native);
+        errno = err;
+        return -1;
     }
 
     ZLINK_CPP_NODISCARD int

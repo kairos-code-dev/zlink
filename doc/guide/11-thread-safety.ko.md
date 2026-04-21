@@ -75,7 +75,7 @@ void *worker(void *arg)
 int main(void)
 {
     void *ctx = zlink_ctx_new();
-    void *socket = zlink_socket(ctx, ZLINK_DEALER);
+    void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
     pthread_t threads[4];

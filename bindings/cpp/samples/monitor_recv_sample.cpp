@@ -15,10 +15,10 @@ int main ()
     assert (!server_monitor.recv (zlink::non_blocking_t {}));
     assert (!client_monitor.recv (zlink::non_blocking_t {}));
 
-    assert (server.bind ("tcp://127.0.0.1:0") == 0);
+    server.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     const zlink::monitor_event_t server_event = server_monitor.recv ();
     const zlink::monitor_event_t client_event = client_monitor.recv ();

@@ -8,8 +8,8 @@ int main ()
     zlink::pub_socket_t pub (ctx);
     zlink::sub_socket_t sub (ctx);
 
-    assert (pub.bind ("inproc://cpp-getsockopt-memset") == 0);
-    assert (sub.connect ("inproc://cpp-getsockopt-memset") == 0);
+    pub.bind ("inproc://cpp-getsockopt-memset");
+    sub.connect ("inproc://cpp-getsockopt-memset");
 
     int64_t more = -1;
     size_t more_size = sizeof (more);

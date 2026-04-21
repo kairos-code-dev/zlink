@@ -152,8 +152,8 @@ builder.Services.AddZLinkFramework(options =>
 ### 4.1 capability별 수동 연결
 
 SPOT도 일반 channel과 마찬가지로 수동 연결은 capability별로 나눠서 다뤄야 한다.
-`router`는 `RoutingId + endpoint`를 함께 알아야 하고, channel client,
-`pub/sub`, spot publish client는 endpoint 집합만 알면 된다.
+`router`, channel client, `pub/sub`, spot publish client는 모두 각 capability가
+사용할 endpoint 집합을 따로 관리한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -171,9 +171,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             router.UseManualConnections(peers =>
             {
-                peers.Connect(
-                    RoutingId.Parse("01-00-00-00-00-00-00-10"),
-                    "tcp://10.0.0.10:9000");
+                peers.Connect("tcp://10.0.0.10:9000");
             });
         });
 
@@ -216,7 +214,8 @@ builder.Services.AddZLinkFramework(options =>
 - 같은 capability에서는 `Discovery`와 `Manual`을 섞지 않는다.
 - 같은 `SpotNode`에서 `spotName`은 비어 있으면 안 된다.
 - 이미 등록된 `spotName`을 다시 등록하면 기존 값을 덮어쓰지 않고 예외를 던진다.
-- `router` manual 연결은 `RoutingId + endpoint`를 함께 등록한다.
+- `router` manual 연결도 endpoint 집합만 등록한다. 이 초안에서는 `Connect(...)`
+  호출 시 remote router id를 별도 파라미터로 받지 않는다.
 - channel client manual 연결은 endpoint 집합만 등록한다. 하부 `DEALER`가 이미
   connect된 peer 집합을 대상으로 요청을 보내므로 remote `RoutingId`를 별도
   파라미터로 받지 않는다.

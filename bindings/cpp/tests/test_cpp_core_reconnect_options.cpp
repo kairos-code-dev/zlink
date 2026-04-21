@@ -40,12 +40,12 @@ void reconnect_default ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "reconnect-default");
-    assert (pub.bind (endpoint) == 0);
+    pub.bind (endpoint);
 
     zlink::monitor_handle_t sub_mon = sub.monitor_handle (zlink::monitor_event::all);
     const int interval = 60 * 1000;
     assert (sub.set_option (zlink::socket_option::reconnect_ivl, interval) == 0);
-    assert (sub.connect (endpoint) == 0);
+    sub.connect (endpoint);
 
     assert (expect_monitor_event (
       sub_mon, static_cast<uint64_t> (ZLINK_EVENT_CONNECT_DELAYED), 3000));
@@ -66,7 +66,7 @@ void reconnect_default ()
 
     assert (sub.set_option (zlink::socket_option::linger, zero) == 0);
     assert (sub.close () == 0);
-    assert (sub_mon.close () == 0);
+    sub_mon.close ();
 }
 
 void reconnect_success ()
@@ -77,12 +77,12 @@ void reconnect_success ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "reconnect-success");
-    assert (pub.bind (endpoint) == 0);
+    pub.bind (endpoint);
 
     zlink::monitor_handle_t sub_mon = sub.monitor_handle (zlink::monitor_event::all);
     const int interval = 1000;
     assert (sub.set_option (zlink::socket_option::reconnect_ivl, interval) == 0);
-    assert (sub.connect (endpoint) == 0);
+    sub.connect (endpoint);
 
     assert (expect_monitor_event (
       sub_mon, static_cast<uint64_t> (ZLINK_EVENT_CONNECT_DELAYED), 3000));
@@ -102,7 +102,7 @@ void reconnect_success ()
     assert (has_no_monitor_event (sub_mon, 300));
 
     zlink::pub_socket_t pub2 (ctx);
-    assert (pub2.bind (endpoint) == 0);
+    pub2.bind (endpoint);
     sleep_ms (300);
 
     assert (expect_monitor_event (
@@ -117,7 +117,7 @@ void reconnect_success ()
     assert (pub2.set_option (zlink::socket_option::linger, zero) == 0);
     assert (sub.close () == 0);
     assert (pub2.close () == 0);
-    assert (sub_mon.close () == 0);
+    sub_mon.close ();
 }
 
 } // namespace

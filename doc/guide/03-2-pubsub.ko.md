@@ -73,7 +73,7 @@ flowchart LR
 ### 발행자 (PUB)
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* Publish message -- dropped if there are no subscribers */
@@ -99,7 +99,7 @@ void on_topic(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
@@ -108,7 +108,7 @@ zlink_set_subscription(sub, "weather");
 /* Use zlink_subscribe() (typically inside a poller loop) to receive */
 ```
 
-> 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
+> 참고: `core/tests/integration/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
 
 ### 송수신 요약
 
@@ -178,7 +178,7 @@ zlink_unset_subscription(sub, "sports");
 zlink_set_subscription(sub, "");
 ```
 
-> 참고: `core/tests/test_pubsub.cpp` — `zlink_set_subscription(subscriber, "")`
+> 참고: `core/tests/integration/test_pubsub.cpp` — `zlink_set_subscription(subscriber, "")`
 
 ## 4. 메시지 형식
 
@@ -239,11 +239,11 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 
 ```c
 /* PUB */
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB -- receive all messages */
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub, "");
 
@@ -257,21 +257,21 @@ zlink_publish(pub, NULL, &msg, 1, 0);
 /* on_topic callback receives "test" asynchronously */
 ```
 
-> 참고: `core/tests/test_pubsub.cpp` — `test_tcp()`
+> 참고: `core/tests/integration/test_pubsub.cpp` — `test_tcp()`
 
 ### 패턴 2: 다중 SUB
 
 하나의 PUB에 여러 SUB가 연결. 각 SUB는 자신의 토픽만 수신.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
-void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
+void *sub_weather = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_weather, "weather");
 
-void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
+void *sub_sports = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_sports, "sports");
 
@@ -283,7 +283,7 @@ zlink_set_subscription(sub_sports, "sports");
 SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 수신.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_set_subscription(sub, "");
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -311,7 +311,7 @@ backpressure를 제어할 수 있다.
 
 ```c
 /* Enable NODROP on XPUB */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 int nodrop = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 
@@ -435,7 +435,7 @@ zlink_unset_subscription(xsub, "A");
 XPUB는 `zlink_xpub_recv_part()`로 구독 프레임을 수신한다:
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 const zlink_routing_id_t *source_rid = NULL;
@@ -447,7 +447,7 @@ zlink_recv_result_t rc = zlink_xpub_recv_part(
   xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
 
 ## 10. XPUB 소켓 옵션
 
@@ -485,7 +485,7 @@ memcpy(zlink_msg_data(&msg_xa), "XA", 2);
 zlink_publish(xpub, NULL, &msg_xa, 1, 0);  /* subscriber receives this */
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
 
 ## 11. XPUB/XSUB 사용 패턴
 
@@ -495,11 +495,11 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
 
 ```c
 /* Proxy frontend: PUBs connect here */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
 zlink_bind(xsub, "tcp://*:5556");
 
 /* Proxy backend: SUBs connect here */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* Run proxy (forwards messages and subscriptions bidirectionally) */
@@ -540,14 +540,14 @@ for (;;) {
 }
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ### 패턴 3: 구독 모니터링
 
 XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 for (;;) {
@@ -577,7 +577,7 @@ zlink_close(sub);
    subscribed=0 and the previously subscribed topic */
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ## 12. 주의사항
 
@@ -586,7 +586,7 @@ zlink_close(sub);
 구독 메시지는 비동기로 전파된다. 구독 직후 발행된 메시지는 수신하지 못할 수 있다.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_set_subscription(sub, "");
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -600,7 +600,7 @@ MANUAL 모드에서 구독 프레임을 수신한 후 `zlink_set_subscription()`
 
 여러 SUB가 같은 토픽을 구독하면, 모든 SUB가 해제될 때까지 XPUB의 구독이 유지된다.
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_missing_subscriptions()`: 두 구독자를 순차 처리하여 누락 방지
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_missing_subscriptions()`: 두 구독자를 순차 처리하여 누락 방지
 
 ---
 [← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)

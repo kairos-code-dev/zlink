@@ -199,7 +199,7 @@ final class PerfMultiSpot {
                         break;
                     }
                     try (received) {
-                        RoutingId peer = received.routingIdOrThrow();
+                        RoutingId peer = received.routingId().orElseThrow();
                         String line = new String(received.firstPart().data(),
                             StandardCharsets.UTF_8);
                         if ("CONNECTED".equals(line)) {

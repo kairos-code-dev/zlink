@@ -68,7 +68,7 @@ final class PerfMultiDealerRouter {
                             }
                             Message reply = received.firstPart().move();
                             PendingReply pending = new PendingReply(
-                                received.routingIdOrThrow(), reply);
+                                received.routingId().orElseThrow(), reply);
                             if (!pendingReplies.isEmpty()) {
                                 pendingReplies.addLast(pending);
                                 continue;

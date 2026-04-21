@@ -96,7 +96,7 @@ public static class ZlinkPoll
             rc = NativeMethods.zlink_poll(items, count, boundedTimeoutMs,
                 out _);
             if (rc < 0)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
             for (int i = 0; i < count; i++)
                 revents[i] = (PollEvents)items[i].Revents;
             return rc;
@@ -114,7 +114,7 @@ public static class ZlinkPoll
         rc = NativeMethods.zlink_poll(unixItems, count, boundedTimeoutMs,
             out _);
         if (rc < 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         for (int i = 0; i < count; i++)
             revents[i] = (PollEvents)unixItems[i].Revents;
         return rc;

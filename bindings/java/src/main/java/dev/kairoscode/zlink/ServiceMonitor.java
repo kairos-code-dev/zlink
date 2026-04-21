@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.internal.ServiceDecoders;
 import dev.kairoscode.zlink.service.registry.ServiceEvent;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -89,7 +90,7 @@ public final class ServiceMonitor implements AutoCloseable {
                     throw ZlinkException.fromLastError("zlink_service_monitor_recv");
                 }
             }
-            return ServiceEvent.fromNative(event);
+            return ServiceDecoders.serviceEvent(event);
         }
     }
 
@@ -100,7 +101,7 @@ public final class ServiceMonitor implements AutoCloseable {
             int rc = Native.serviceMonitorRecv(handle, event,
               RecvFlags.DONT_WAIT.value());
             if (rc == 0)
-                return Optional.of(ServiceEvent.fromNative(event));
+                return Optional.of(ServiceDecoders.serviceEvent(event));
             try {
                 RecvResult result = RecvResult.fromValue(rc);
                 if (result == RecvResult.NO_DATA || result == RecvResult.BUSY)
@@ -173,7 +174,7 @@ public final class ServiceMonitor implements AutoCloseable {
         if (handler == null || executor == null)
             return;
         try {
-            ServiceEvent serviceEvent = ServiceEvent.fromNative(event.reinterpret(
+            ServiceEvent serviceEvent = ServiceDecoders.serviceEvent(event.reinterpret(
               NativeLayouts.SERVICE_EVENT_LAYOUT.byteSize()));
             executor.execute(() -> dispatchEvent(handler, serviceEvent));
         } catch (RejectedExecutionException ex) {

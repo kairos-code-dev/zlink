@@ -23,9 +23,9 @@ void test_pub_invert_matching ()
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-pub-invert-", "matching");
-    assert (pub.bind (endpoint) == 0);
-    assert (sub1.connect (endpoint) == 0);
-    assert (sub2.connect (endpoint) == 0);
+    pub.bind (endpoint);
+    sub1.connect (endpoint);
+    sub2.connect (endpoint);
 
     const char prefix1[] = "prefix1";
     const char prefix2[] = "p2";

@@ -11,7 +11,7 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind, int stateFlags,
                               long sndPendingMsgs, long rcvPendingMsgs) {
     private static final int MONITOR_STATE_READY = 1 << 0;
 
-    public static MonitorSnapshot fromNative(MemorySegment segment) {
+    static MonitorSnapshot fromNative(MemorySegment segment) {
         return new MonitorSnapshot(
           MonitorSourceKind.fromValue(segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_SOURCE_KIND_OFFSET)),

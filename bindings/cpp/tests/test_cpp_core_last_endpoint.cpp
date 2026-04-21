@@ -5,7 +5,7 @@
 template<typename SocketLike>
 static void bind_and_verify (SocketLike &sock_, const std::string &endpoint_)
 {
-    assert (sock_.bind (endpoint_) == 0);
+    sock_.bind (endpoint_);
 
     char reported[255];
     std::memset (reported, 0, sizeof (reported));

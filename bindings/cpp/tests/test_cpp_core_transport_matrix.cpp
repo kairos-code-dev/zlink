@@ -25,26 +25,26 @@ std::string bind_endpoint (SocketLike &socket_,
 {
     if (transport_ == "inproc") {
         const std::string endpoint = unique_inproc ("inproc://cpp-matrix-", tag_);
-        assert (socket_.bind (endpoint) == 0);
+        socket_.bind (endpoint);
         return endpoint;
     }
 
 #if defined(ZLINK_HAVE_IPC)
     if (transport_ == "ipc") {
-        assert (socket_.bind ("ipc://*") == 0);
+        socket_.bind ("ipc://*");
         return bound_endpoint (socket_);
     }
 #endif
 
     if (transport_ == "tcp") {
         (void) tag_;
-        assert (socket_.bind ("tcp://127.0.0.1:*") == 0);
+        socket_.bind ("tcp://127.0.0.1:*");
         return bound_endpoint (socket_);
     }
 
     if (transport_ == "ws") {
         (void) tag_;
-        assert (socket_.bind ("ws://127.0.0.1:*") == 0);
+        socket_.bind ("ws://127.0.0.1:*");
         return bound_endpoint (socket_);
     }
 
@@ -59,7 +59,7 @@ void run_pair (const std::string &transport_)
     zlink::pair_socket_t client (ctx);
 
     const std::string endpoint = bind_endpoint (server, transport_, "pair");
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
     sleep_ms (300);
 
     send_string_expect_success (client, "pair-hello");
@@ -75,7 +75,7 @@ void run_pubsub (const std::string &transport_)
     zlink::sub_socket_t sub (ctx);
 
     const std::string endpoint = bind_endpoint (pub, transport_, "pubsub");
-    assert (sub.connect (endpoint) == 0);
+    sub.connect (endpoint);
     assert (sub.set_option (zlink::socket_option::subscribe, "", 0) == 0);
     sleep_ms (300);
 
@@ -92,7 +92,7 @@ void run_router_dealer (const std::string &transport_)
     assert (dealer.set_option (zlink::socket_option::routing_id, "DEALER1", 7) == 0);
 
     const std::string endpoint = bind_endpoint (router, transport_, "rd");
-    assert (dealer.connect (endpoint) == 0);
+    dealer.connect (endpoint);
     sleep_ms (300);
 
     send_string_expect_success (dealer, "dealer-msg");
@@ -118,7 +118,7 @@ void run_router_router (const std::string &transport_)
     assert (client.set_option (zlink::socket_option::routing_id, "CLIENT", 6) == 0);
 
     const std::string endpoint = bind_endpoint (server, transport_, "rr");
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
     sleep_ms (300);
 
     assert (raw_send (client, "SERVER", 6, zlink::send_flag::sndmore) == 6);

@@ -14,6 +14,7 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
+import dev.kairoscode.zlink.internal.ServiceDecoders;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -194,7 +195,7 @@ public final class Discovery implements AutoCloseable {
             long stride = NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT.byteSize();
             ArrayList<MemberPeerEntry> out = new ArrayList<>(actual);
             for (int i = 0; i < actual; i++) {
-                out.add(MemberPeerEntry.fromNative(entries.asSlice(
+                out.add(ServiceDecoders.memberPeerEntry(entries.asSlice(
                   (long) i * stride, stride)));
             }
             return List.copyOf(out);

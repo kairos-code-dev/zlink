@@ -18,11 +18,11 @@ void test_sub_forward ()
     const std::string endpoint_downstream =
       endpoint_for (transport_case_t{"tcp", ""}, "sub-forward-down");
 
-    assert (xpub.bind (endpoint_upstream) == 0);
-    assert (xsub.bind (endpoint_downstream) == 0);
+    xpub.bind (endpoint_upstream);
+    xsub.bind (endpoint_downstream);
 
-    assert (pub.connect (endpoint_downstream) == 0);
-    assert (sub.connect (endpoint_upstream) == 0);
+    pub.connect (endpoint_downstream);
+    sub.connect (endpoint_upstream);
     assert (sub.set_option (zlink::socket_option::subscribe, "", 0) == 0);
 
     char buff[32];

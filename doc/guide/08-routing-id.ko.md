@@ -65,7 +65,7 @@ zlink_set_routing_id(dealer, "D1", 2);
 /* Avoid UUID format (16B binary) */
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+> 참고: `core/tests/integration/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### 조회
 
@@ -102,7 +102,7 @@ zlink_connect(socket, "tcp://server2:5556");
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()`으로 설정)는 개별 연결에 적용
 - 하나의 소켓에서 여러 연결에 각각 다른 alias 가능
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 ROUTER 연결 경로용이다.
-- `ZLINK_STREAM`에 설정하면 `EOPNOTSUPP`를 반환한다.
+- `ZLINK_SOCKET_STREAM`에 설정하면 `EOPNOTSUPP`를 반환한다.
 
 ## 6. ROUTER 소켓에서 routing_id 사용법
 
@@ -118,7 +118,7 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
 
 ```c
 /* ROUTER server (recv 루프 사용) */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -126,7 +126,7 @@ size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);
 
@@ -168,7 +168,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — 다중 DEALER 예제
+> 참고: `core/tests/integration/test_router_multiple_dealers.cpp` — 다중 DEALER 예제
 
 ### zlink_msg_t를 사용한 routing_id 처리
 
@@ -246,7 +246,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> 참고: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
+> 참고: `core/tests/integration/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
 
 ### ROUTER vs STREAM routing_id 비교
 

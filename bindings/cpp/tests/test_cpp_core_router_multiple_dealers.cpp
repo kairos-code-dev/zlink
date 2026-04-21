@@ -14,13 +14,13 @@ void run_router_multiple_dealers (const std::string &endpoint_)
     assert (dealer1.set_option (zlink::socket_option::routing_id, "D1", 2) == 0);
     assert (dealer2.set_option (zlink::socket_option::routing_id, "D2", 2) == 0);
 
-    assert (router.bind (endpoint_) == 0);
+    router.bind (endpoint_);
     std::string bound = endpoint_;
     if (endpoint_.find ("*") != std::string::npos)
         bound = bound_endpoint (router);
 
-    assert (dealer1.connect (bound) == 0);
-    assert (dealer2.connect (bound) == 0);
+    dealer1.connect (bound);
+    dealer2.connect (bound);
 
     sleep_ms (300);
 

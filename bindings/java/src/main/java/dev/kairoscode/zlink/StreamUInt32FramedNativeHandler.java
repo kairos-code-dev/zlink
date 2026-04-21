@@ -5,7 +5,7 @@ package dev.kairoscode.zlink;
 import java.lang.foreign.MemorySegment;
 
 @FunctionalInterface
-public interface StreamUInt32FramedNativeHandler {
+interface StreamUInt32FramedNativeHandler {
     /**
      * Handles one framed STREAM packet using callback-local borrowed native
      * message handles.

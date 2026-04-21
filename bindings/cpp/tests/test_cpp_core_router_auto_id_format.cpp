@@ -14,8 +14,8 @@ int main ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "router-auto-id-format");
-    assert (server.bind (endpoint) == 0);
-    assert (client.connect (endpoint) == 0);
+    server.bind (endpoint);
+    client.connect (endpoint);
 
     const char payload[] = "hello";
     assert (client.send (payload, sizeof (payload) - 1) == 5);

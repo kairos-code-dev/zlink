@@ -17,8 +17,8 @@ void test_ws_pair_message ()
 
     const std::string endpoint = endpoint_for (transport_case_t{"ws", ""},
                                                "zmp-ws");
-    assert (server.bind (endpoint) == 0);
-    assert (client.connect (endpoint) == 0);
+    server.bind (endpoint);
+    client.connect (endpoint);
 
     send_string_expect_success (client, "ws-zmp");
     recv_string_expect_success (server, "ws-zmp");

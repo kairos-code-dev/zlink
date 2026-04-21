@@ -418,8 +418,11 @@ inline std::string bind_and_resolve_endpoint (perf_socket_t &socket,
 {
     // For wildcard binds, normalize to loopback so clients always connect to 127.0.0.1.
     const std::string endpoint = make_endpoint (transport, id, fixed_port);
-    if (socket.bind (endpoint) != 0)
+    try {
+        socket.bind (endpoint);
+    } catch (const zlink::zlink_error_t &) {
         return std::string ();
+    }
 
     if (transport == "inproc")
         return endpoint;

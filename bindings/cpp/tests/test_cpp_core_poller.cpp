@@ -12,8 +12,8 @@ void test_poller_modify_switches_event_mask ()
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-poller-", "modify");
-    assert (receiver.bind (endpoint) == 0);
-    assert (sender.connect (endpoint) == 0);
+    receiver.bind (endpoint);
+    sender.connect (endpoint);
     sleep_ms (50);
 
     zlink::poller_t poller;

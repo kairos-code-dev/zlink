@@ -3,6 +3,6 @@
 package dev.kairoscode.zlink;
 
 @FunctionalInterface
-public interface StreamPacketBatchHandler {
+interface StreamPacketBatchHandler {
     int onPackets(long routingId, Message[] packets);
 }

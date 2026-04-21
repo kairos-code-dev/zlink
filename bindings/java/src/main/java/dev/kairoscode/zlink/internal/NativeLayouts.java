@@ -243,6 +243,9 @@ public final class NativeLayouts {
     public static final long MEMBER_PEER_ROUTING_ID_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("routing_id"));
+    public static final long MEMBER_PEER_ADMISSION_STATE_OFFSET =
+            MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("admission_state"));
     public static final long MEMBER_PEER_VALUE_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("value"));

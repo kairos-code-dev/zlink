@@ -4,6 +4,7 @@
 
 #include "types.hpp"
 
+#include <cerrno>
 #include <sstream>
 
 namespace zlink
@@ -220,6 +221,99 @@ class config_error_t : public zlink_error_t
 
 namespace detail
 {
+
+inline bool is_invalid_handle_errno (int err_)
+{
+    return err_ == EFAULT || err_ == ENOTSOCK || err_ == EBADF
+           || err_ == ESHUTDOWN;
+}
+
+inline bind_result_t bind_result_from_errno (int err_)
+{
+    if (err_ == EADDRINUSE)
+        return bind_result_t::addr_in_use;
+    if (err_ == ENOTSUP)
+        return bind_result_t::not_supported;
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+    if (err_ == EOPNOTSUPP)
+        return bind_result_t::not_supported;
+#endif
+    if (is_invalid_handle_errno (err_))
+        return bind_result_t::invalid_handle;
+    return bind_result_t::invalid_argument;
+}
+
+inline connect_result_t connect_result_from_errno (int err_)
+{
+    if (err_ == ENOTSUP)
+        return connect_result_t::not_supported;
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+    if (err_ == EOPNOTSUPP)
+        return connect_result_t::not_supported;
+#endif
+    if (is_invalid_handle_errno (err_))
+        return connect_result_t::invalid_handle;
+    return connect_result_t::invalid_argument;
+}
+
+inline config_result_t config_result_from_errno (int err_)
+{
+    if (err_ == ENOTSUP)
+        return config_result_t::not_supported;
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+    if (err_ == EOPNOTSUPP)
+        return config_result_t::not_supported;
+#endif
+    if (is_invalid_handle_errno (err_))
+        return config_result_t::invalid_handle;
+    return config_result_t::invalid_argument;
+}
+
+inline handler_result_t handler_result_from_errno (int err_)
+{
+    if (err_ == EBUSY)
+        return handler_result_t::busy;
+    if (err_ == EDEADLK)
+        return handler_result_t::deadlock;
+    if (err_ == ENOTSUP)
+        return handler_result_t::not_supported;
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+    if (err_ == EOPNOTSUPP)
+        return handler_result_t::not_supported;
+#endif
+    if (is_invalid_handle_errno (err_))
+        return handler_result_t::invalid_handle;
+    return handler_result_t::invalid_argument;
+}
+
+inline submit_result_t submit_result_from_errno (int err_)
+{
+    switch (err_) {
+    case EAGAIN:
+        return submit_result_t::backpressured;
+    case ENOTCONN:
+        return submit_result_t::not_connected;
+    case ENOENT:
+        return submit_result_t::not_found;
+    case ENOTSUP:
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+    case EOPNOTSUPP:
+#endif
+        return submit_result_t::not_supported;
+    case EBUSY:
+        return submit_result_t::invalid_state;
+    case EPERM:
+        return submit_result_t::thread_violation;
+    case ENOMEM:
+        return submit_result_t::out_of_memory;
+    default:
+        break;
+    }
+
+    if (is_invalid_handle_errno (err_))
+        return submit_result_t::invalid_handle;
+    return submit_result_t::invalid_argument;
+}
 
 template<typename ErrorT, typename ResultT>
 inline void throw_if_failed (ResultT result_)

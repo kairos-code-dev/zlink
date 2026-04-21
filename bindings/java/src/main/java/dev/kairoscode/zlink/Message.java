@@ -264,7 +264,7 @@ public final class Message implements AutoCloseable {
     }
 
     /** Borrows the remaining bytes from a direct {@link ByteBuffer}. */
-    public static Message wrapDirect(ByteBuffer data) {
+    static Message wrapDirect(ByteBuffer data) {
         Objects.requireNonNull(data, "data");
         if (!data.isDirect())
             throw new IllegalArgumentException("wrapDirect requires a direct ByteBuffer");

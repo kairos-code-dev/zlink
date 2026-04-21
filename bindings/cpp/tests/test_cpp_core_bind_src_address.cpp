@@ -5,9 +5,9 @@ int main ()
     zlink::context_t ctx;
     zlink::pub_socket_t socket (ctx);
 
-    assert (socket.connect ("tcp://127.0.0.1:0;localhost:1234") == 0);
-    assert (socket.connect ("tcp://localhost:5555;localhost:1235") == 0);
-    assert (socket.connect ("tcp://lo:5555;localhost:1235") == 0);
+    socket.connect ("tcp://127.0.0.1:0;localhost:1234");
+    socket.connect ("tcp://localhost:5555;localhost:1235");
+    socket.connect ("tcp://lo:5555;localhost:1235");
 
     return 0;
 }

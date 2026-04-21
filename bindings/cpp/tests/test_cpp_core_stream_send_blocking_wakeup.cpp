@@ -238,7 +238,7 @@ void test_stream_queue_reopens_after_peer_reads ()
     configure_stream_socket (server);
     assert (server.set_option (zlink::socket_option::sndtimeo, kWakeupSendTimeoutMs) == 0);
 
-    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    server.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = bound_endpoint (server);
 
     const int raw_fd = connect_raw_tcp (endpoint.c_str ());
@@ -298,7 +298,7 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
     zlink::stream_socket_t server (ctx);
     configure_stream_socket (server);
 
-    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    server.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = bound_endpoint (server);
 
     const int raw_fd = connect_raw_tcp (endpoint.c_str ());

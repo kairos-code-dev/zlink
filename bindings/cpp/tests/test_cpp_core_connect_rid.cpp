@@ -28,7 +28,7 @@ void test_router_to_router (bool named)
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-connect-rid-", named ? "named" : "unnamed");
-    assert (bind_router.bind (endpoint) == 0);
+    bind_router.bind (endpoint);
 
     if (named) {
         assert (bind_router.set_option (zlink::socket_option::routing_id, kRoutingIdX, 1)
@@ -41,7 +41,7 @@ void test_router_to_router (bool named)
                              kConnRoutingId,
                              std::strlen (kConnRoutingId))
             == 0);
-    assert (conn_router.connect (endpoint) == 0);
+    conn_router.connect (endpoint);
 
     assert (raw_send (conn_router, kConnRoutingId, std::strlen (kConnRoutingId),
                       zlink::send_flag::sndmore)
@@ -89,8 +89,8 @@ void test_router_to_router_while_receiving ()
 
     const std::string x_endpoint = unique_inproc ("inproc://cpp-rid-x-", "bind");
     const std::string z_endpoint = unique_inproc ("inproc://cpp-rid-z-", "bind");
-    assert (xbind.bind (x_endpoint) == 0);
-    assert (zbind.bind (z_endpoint) == 0);
+    xbind.bind (x_endpoint);
+    zbind.bind (z_endpoint);
 
     assert (xbind.set_option (zlink::socket_option::routing_id, kRoutingIdX, 1) == 0);
     assert (yconn.set_option (zlink::socket_option::routing_id, kRoutingIdY, 1) == 0);
@@ -98,7 +98,7 @@ void test_router_to_router_while_receiving ()
 
     assert (yconn.set_option (zlink::socket_option::connect_routing_id, kRoutingIdX, 1)
             == 0);
-    assert (yconn.connect (x_endpoint) == 0);
+    yconn.connect (x_endpoint);
 
     assert (raw_send (yconn, kRoutingIdX, 1, zlink::send_flag::sndmore) == 1);
     assert (raw_send (yconn, "hi 1", 4) == 4);
@@ -107,7 +107,7 @@ void test_router_to_router_while_receiving ()
 
     assert (xbind.set_option (zlink::socket_option::connect_routing_id, kRoutingIdZ, 1)
             == 0);
-    assert (xbind.connect (z_endpoint) == 0);
+    xbind.connect (z_endpoint);
 
     assert (raw_send (xbind, kRoutingIdZ, 1, zlink::send_flag::sndmore) == 1);
     assert (raw_send (xbind, "hi 1", 4) == 4);

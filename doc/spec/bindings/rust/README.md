@@ -1274,7 +1274,7 @@ Required by all bindings.
 
 ```rust
 pub struct ServiceEvent {
-    pub service_kind: ServiceKind,       // ZLINK_SERVICE_TYPE_SPOT, SOCKET, ...
+    pub service_kind: ServiceKind,       // ZLINK_SERVICE_KIND_DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET
     pub event_type: ServiceEventType,    // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
     pub status: u32,                     // status code
     pub error_code: u32,                 // errno on error events
@@ -1487,6 +1487,36 @@ impl Spot {
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
+
+    // --- routed request (spot → spot, async) — no flags ---
+    // Duration::ZERO uses the socket default timeout.
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
+    pub async fn request_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+        parts: impl IntoMultipart,
+        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
+
+    // --- routed request (spot → spot, callback) ---
+    // Duration::ZERO uses the socket default timeout.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
+    pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+        parts: impl IntoMultipart, callback: F, flags: SendFlags, timeout: Duration)
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+
+    // --- routed request (spot → router, async) — no flags ---
+    // Duration::ZERO uses the socket default timeout.
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
+    pub async fn request_to_router(&self, peer_rid: RoutingId,
+        parts: impl IntoMultipart,
+        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
+
+    // --- routed request (spot → router, callback) ---
+    // Duration::ZERO uses the socket default timeout.
+    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
+    pub fn request_to_router_callback<F>(&self, peer_rid: RoutingId,
+        parts: impl IntoMultipart, callback: F, flags: SendFlags, timeout: Duration)
+        -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 
     // --- routed reply (spot → spot) ---
     /// # Errors: SubmitError

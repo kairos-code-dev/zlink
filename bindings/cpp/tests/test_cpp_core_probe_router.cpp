@@ -12,12 +12,12 @@ void test_probe_router_router ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "probe-router-router");
-    assert (server.bind (endpoint) == 0);
+    server.bind (endpoint);
 
     assert (client.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
     const int probe = 1;
     assert (client.set_option (zlink::socket_option::probe_router, probe) == 0);
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     recv_string_expect_success (server, "X");
     unsigned char buffer[255];
@@ -41,12 +41,12 @@ void test_probe_router_dealer ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "probe-router-dealer");
-    assert (server.bind (endpoint) == 0);
+    server.bind (endpoint);
 
     assert (client.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
     const int probe = 1;
     assert (client.set_option (zlink::socket_option::probe_router, probe) == 0);
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     recv_string_expect_success (server, "X");
     unsigned char buffer[255];

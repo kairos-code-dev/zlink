@@ -22,9 +22,9 @@ int main ()
     assert (pub.set_option (zlink::socket_option::xpub_nodrop, nodrop) == 0);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-xpub-nodrop-", "ep");
-    assert (pub.bind (endpoint) == 0);
+    pub.bind (endpoint);
 
-    assert (sub.connect (endpoint) == 0);
+    sub.connect (endpoint);
     assert (sub.set_option (zlink::socket_option::subscribe, "", 0) == 0);
     assert (sub.set_option (zlink::socket_option::rcvtimeo, rcvtimeo) == 0);
 

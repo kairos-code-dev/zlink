@@ -19,7 +19,8 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_registry_new(context.Handle);
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
     }
 
     internal IntPtr Handle => _handle;
@@ -32,14 +33,14 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_bind(_handle, pubEndpoint,
             routerEndpoint);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowBindIfError(rc);
     }
 
     public void SetId(uint registryId)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_set_id(_handle, registryId);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void AddPeer(string peerPubEndpoint)
@@ -49,7 +50,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_add_peer(_handle,
             peerPubEndpoint);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void SetHeartbeat(uint intervalMs, uint timeoutMs)
@@ -57,7 +58,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_set_heartbeat(_handle,
             intervalMs, timeoutMs);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void SetBroadcastInterval(uint intervalMs)
@@ -65,7 +66,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_set_broadcast_interval(_handle,
             intervalMs);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public RegistryStatus StatusSnapshot()
@@ -73,7 +74,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_status_snapshot(_handle,
             out var native);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return RegistryStatus.FromNative(ref native);
     }
 
@@ -172,7 +173,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         nuint count = 0;
         int rc = NativeMethods.zlink_registry_member_peers(_handle,
             (int)serviceType, serviceName, IntPtr.Zero, ref count);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<MemberPeerEntry>();
 
@@ -183,7 +184,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             nuint actual = count;
             rc = NativeMethods.zlink_registry_member_peers(_handle,
                 (int)serviceType, serviceName, entries, ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
 
             MemberPeerEntry[] result = new MemberPeerEntry[(int)actual];
             for (int i = 0; i < result.Length; i++)
@@ -212,7 +213,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         int rc = NativeMethods.zlink_registry_member_peer_metadata(_handle,
             (int)serviceType, serviceName, (ushort)serviceRole, endpoint,
             ref metadata.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return metadata.Move();
     }
 
@@ -223,10 +224,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
-            return;
-        NativeMethods.zlink_registry_destroy(ref _handle);
-        _handle = IntPtr.Zero;
+        Destroy(throwOnError: true);
         GC.SuppressFinalize(this);
     }
 
@@ -238,7 +236,26 @@ public sealed class Registry : IDisposable, IAsyncDisposable
 
     ~Registry()
     {
-        Dispose();
+        Destroy(throwOnError: false);
+    }
+
+    private void Destroy(bool throwOnError)
+    {
+        if (_handle == IntPtr.Zero)
+            return;
+
+        IntPtr originalHandle = _handle;
+        IntPtr handle = _handle;
+        int rc = NativeMethods.zlink_registry_destroy(ref handle);
+        if (rc == 0)
+        {
+            _handle = IntPtr.Zero;
+            return;
+        }
+
+        _handle = originalHandle;
+        if (throwOnError)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
     private void EnsureNotDisposed()
@@ -252,7 +269,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         nuint count = 0;
         int rc = NativeMethods.zlink_registry_service_summary_snapshot(_handle,
             filterPtr, IntPtr.Zero, ref count);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<RegistryServiceSummaryEntry>();
 
@@ -263,7 +280,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             nuint actual = count;
             rc = NativeMethods.zlink_registry_service_summary_snapshot(_handle,
                 filterPtr, entries, ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
 
             RegistryServiceSummaryEntry[] result =
                 new RegistryServiceSummaryEntry[(int)actual];
@@ -291,7 +308,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
                 IntPtr.Zero, ref count)
             : NativeMethods.zlink_registry_topology_query(_handle, filterPtr,
                 IntPtr.Zero, ref count);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<RegistryTopologyEntry>();
 
@@ -305,7 +322,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
                     entries, ref actual)
                 : NativeMethods.zlink_registry_topology_query(_handle, filterPtr,
                     entries, ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
 
             RegistryTopologyEntry[] result = new RegistryTopologyEntry[(int)actual];
             for (int i = 0; i < result.Length; i++)

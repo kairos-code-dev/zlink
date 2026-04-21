@@ -26,11 +26,11 @@ flowchart LR
 void *ctx = zlink_ctx_new();
 
 /* Server side */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://*:5555");
 
 /* Client side */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
 
@@ -81,7 +81,7 @@ zlink_send(server, parts, 2, 0);
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
-> 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
+> 참고: `core/tests/integration/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
 
 ### 수신 모드
 
@@ -89,7 +89,7 @@ PAIR의 public API는 recv/poller-only다.
 `zlink_recv()`로 동기 수신한다.
 
 ```c
-void *pair = zlink_socket(ctx, ZLINK_PAIR);
+void *pair = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(pair, "tcp://*:5556");
 
 zlink_routing_id_t source_rid;
@@ -169,11 +169,11 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ```c
 /* Main thread */
-void *signal = zlink_socket(ctx, ZLINK_PAIR);
+void *signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */
-void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
+void *worker_signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* Worker → Main: task completion signal */
@@ -185,7 +185,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 /* Main: on_signal callback receives "DONE" asynchronously */
 ```
 
-> 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴
+> 참고: `core/tests/integration/test_pair_inproc.cpp` — bind → connect → bounce 패턴
 
 ### 패턴 2: TCP 통신
 
@@ -193,7 +193,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 
 ```c
 /* Server: wildcard port */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
 /* Query the assigned endpoint */
@@ -202,36 +202,36 @@ size_t len = sizeof(endpoint);
 zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client: connect using the queried endpoint */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, endpoint);
 ```
 
-> 참고: `core/tests/test_pair_tcp.cpp` — `bind_loopback_ipv4()` + 와일드카드 바인드
+> 참고: `core/tests/integration/test_pair_tcp.cpp` — `bind_loopback_ipv4()` + 와일드카드 바인드
 
 ### 패턴 3: DNS 이름 연결
 
 호스트명으로도 연결 가능하다.
 
 ```c
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://localhost:5555");
 ```
 
-> 참고: `core/tests/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
+> 참고: `core/tests/integration/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
 
 ### 패턴 4: IPC 통신
 
 같은 머신의 프로세스 간 통신 (Linux/macOS).
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "ipc:///tmp/myapp.ipc");
 
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "ipc:///tmp/myapp.ipc");
 ```
 
-> 참고: `core/tests/test_pair_ipc.cpp` — IPC 경로 길이 검증 포함
+> 참고: `core/tests/integration/test_pair_ipc.cpp` — IPC 경로 길이 검증 포함
 
 ## 6. 주의사항
 
@@ -270,7 +270,7 @@ IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 초�
 zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 ```
 
-> 참고: `core/tests/test_pair_ipc.cpp` — `test_endpoint_too_long()`
+> 참고: `core/tests/integration/test_pair_ipc.cpp` — `test_endpoint_too_long()`
 
 ### HWM 동작
 

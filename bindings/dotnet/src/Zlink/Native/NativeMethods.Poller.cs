@@ -24,6 +24,10 @@ internal static partial class NativeMethods
         IntPtr userData, short events);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_add_timer(IntPtr poller,
+        IntPtr timer, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_modify(IntPtr poller, IntPtr socket,
         short events);
 
@@ -36,6 +40,10 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_remove_fd(IntPtr poller, int fd);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_poller_remove_timer(IntPtr poller,
+        IntPtr timer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_wait_all(IntPtr poller,

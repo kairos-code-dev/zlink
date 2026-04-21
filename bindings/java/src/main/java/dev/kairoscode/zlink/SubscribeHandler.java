@@ -3,6 +3,6 @@
 package dev.kairoscode.zlink;
 
 @FunctionalInterface
-public interface SubscribeHandler {
+interface SubscribeHandler {
     void onMessage(RoutingId routingId, String topicId, Received received);
 }

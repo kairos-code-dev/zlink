@@ -63,7 +63,7 @@ void test_typed_string_get ()
     zlink::context_t ctx;
     zlink::pair_socket_t pair (ctx);
 
-    assert (pair.bind ("inproc://typed-socket-options") == 0);
+    pair.bind ("inproc://typed-socket-options");
 
     std::string endpoint;
     assert (pair.get (zlink::socket_options::last_endpoint, endpoint) == 0);

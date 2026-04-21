@@ -264,7 +264,7 @@ sequenceDiagram
     NodeRouter2->>Receiver: 대상 spot에 전달
 ```
 
-### 5.3 spot → router / router → spot
+### 5.3 spot → router / router → spot (one-way send)
 
 ```mermaid
 sequenceDiagram
@@ -277,6 +277,36 @@ sequenceDiagram
     DP->>DP: 파싱 → destination이 ROUTER peer
     DP->>Peer: transport routing_id로 포워딩
 ```
+
+### 5.4 Spot routed request-reply
+
+`zlink_spot_request_spot()` / `zlink_spot_request_router()`는 5.1–5.3의
+transport 경로를 그대로 사용하되, request-reply 프로토콜을 추가로 얹는다.
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Spot as zlink_spot_request_spot()
+    participant RR as spot_request_reply_state_t
+    participant RouteIn as route_ingress (ROUTER)
+    participant DP as Data Plane
+    participant Target as 대상 Spot (replier)
+
+    App->>Spot: request_spot(dest_node_rid, dest_spot_rid, parts, handler, timeout)
+    Spot->>RR: request_seq 할당 + handler 등록 + timeout 시작
+    Spot->>RouteIn: [SPOT envelope + request-reply envelope] + [payload]
+    Note over DP: 5.1 / 5.2 경로로 대상에 전달
+    Target->>Target: zlink_spot_recv() → request_seq 확인
+    Target->>DP: zlink_spot_reply_spot(dest_node_rid, dest_spot_rid, request_seq, reply)
+    DP->>RR: request_seq로 pending entry 매칭
+    RR->>App: handler(ZLINK_REQUEST_OK, reply_parts, userdata)
+```
+
+- request-reply envelope은 SPOT routed envelope 안에 중첩된다.
+- request_seq는 per-handle `spot_request_reply_state_t`가 관리한다.
+- timeout 만료 또는 node 종료 시에도 handler가 정확히 한 번 호출된다.
+- `spot → router` 경로도 같은 구조를 따른다 (대상이 `ROUTER` peer, reply는
+  `zlink_router_reply_spot()`).
 
 ## 6. Control Plane
 

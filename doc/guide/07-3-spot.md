@@ -215,11 +215,53 @@ Reply with:
 - `zlink_spot_reply_spot()` when the origin is another SPOT
 - `zlink_spot_reply_router()` when the origin is a ROUTER
 
-## 7. Direct addressing from ROUTER
+## 7. Initiating routed requests from Spot
 
-The public `Spot` facade no longer exposes `send_to_spot` or `request_to_spot`.
-If you must address a concrete destination node RID and spot RID, use ROUTER
-APIs instead.
+`Spot` can initiate routed requests directly. The default path remains
+`send_channel()` / `request_channel()`, but when you need to target a specific
+peer directly use the two APIs below.
+
+### 7.1 Request to another Spot
+
+```c
+zlink_spot_request_spot(
+  spot,
+  &dest_node_rid,    /* routing id of the target SpotNode */
+  &dest_spot_rid,    /* routing id of the target Spot */
+  &part,
+  1,
+  my_reply_handler,
+  my_userdata,
+  0,
+  2000);
+```
+
+The replier sends back via `zlink_spot_reply_spot()`.
+
+### 7.2 Request to a Router peer
+
+```c
+zlink_spot_request_router(
+  spot,
+  &peer_rid,         /* routing id of the target ROUTER peer */
+  &part,
+  1,
+  my_reply_handler,
+  my_userdata,
+  0,
+  2000);
+```
+
+The replier sends back via `zlink_router_reply_spot()`.
+
+### 7.3 One-way direct send is not on the public surface
+
+`Spot` does not expose one-way direct send by RID. If you need that, use
+`RouterSocket` or raw ROUTER APIs.
+
+## 8. Direct addressing from ROUTER
+
+Use ROUTER APIs to send or request from a ROUTER to a specific SPOT destination.
 
 ```c
 zlink_router_request_spot(
@@ -234,10 +276,7 @@ zlink_router_request_spot(
   2000);
 ```
 
-Use `send_channel()` / `request_channel()` for ordinary service-style calls.
-Use ROUTER direct addressing only when you truly need a concrete destination.
-
-## 8. Feeding SPOT from a generic PUB
+## 9. Feeding SPOT from a generic PUB
 
 If a generic external `PUB` should feed the SPOT topic plane, attach it as
 publish ingress.
@@ -249,7 +288,7 @@ zlink_spot_node_attach_pub_ingress(node, pub);
 
 Treat that `PUB` as a dedicated ingress source for the node.
 
-## 9. Observability
+## 10. Observability
 
 Use node snapshots and the generic service monitor for status and debugging.
 

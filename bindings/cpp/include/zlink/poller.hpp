@@ -56,7 +56,9 @@ class poller_t
 
     int size () const
     {
-        return _poller ? zlink_poller_size (_poller, nullptr) : -1;
+        if (!_poller)
+            throw config_error_t (config_result_t::invalid_handle, EINVAL);
+        return zlink_poller_size (_poller, nullptr);
     }
 
     template<typename SocketLike>

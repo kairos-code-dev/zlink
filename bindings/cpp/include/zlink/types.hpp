@@ -862,6 +862,8 @@ enum class monitor_event : uint32_t
     connection_ready = ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
     connection_ready_changed =
       ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
+    peer_admission_changed =
+      ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED,
     handshake_failed_protocol =
       ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL,
     handshake_failed_auth = ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH,
@@ -989,6 +991,8 @@ enum class service_monitor_event : uint32_t
       ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN,
     discovery_providers_changed =
       ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
+    peer_admission_changed =
+      ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED,
     all = ZLINK_SERVICE_MONITOR_EVENT_ALL
 };
 
@@ -1059,7 +1063,8 @@ struct monitor_snapshot_t
 struct service_event_t
 {
     service_event_t ()
-        : service_kind (service_kind::socket), event_type (0), status (0),
+        : service_kind (service_kind::socket),
+          event_type (service_monitor_event::error), status (0),
           error_code (0), value (0), detail_flags (0), service_name (),
           endpoint (), routing_id (std::nullopt), subject (),
           subject_kind (service_event_subject_kind::none)
@@ -1069,7 +1074,7 @@ struct service_event_t
     explicit service_event_t (const zlink_service_event_t &native_)
         : service_kind (
             static_cast<zlink::service_kind> (native_.service_kind)),
-          event_type (native_.event_type),
+          event_type (static_cast<service_monitor_event> (native_.event_type)),
           status (native_.status),
           error_code (native_.error_code),
           value (native_.value),
@@ -1087,7 +1092,7 @@ struct service_event_t
     }
 
     zlink::service_kind service_kind;
-    uint32_t event_type;
+    service_monitor_event event_type;
     uint32_t status;
     uint32_t error_code;
     uint64_t value;
@@ -1192,6 +1197,22 @@ enum class admission_state_t : int
     serving = ZLINK_ADMISSION_SERVING,
     draining = ZLINK_ADMISSION_DRAINING
 };
+
+using monitor_event_type_t = monitor_event;
+using monitor_source_kind_t = monitor_source_kind;
+using service_type_t = service_type;
+using service_role_t = service_role;
+using service_kind_t = service_kind;
+using service_event_type_t = service_monitor_event;
+using service_event_subject_kind_t = service_event_subject_kind;
+using monitor_target_kind_t = monitor_target_kind;
+using spot_role_t = spot_socket_role;
+using spot_node_state_t = spot_node_state;
+using spot_peer_source_t = spot_peer_source;
+using spot_peer_state_t = spot_peer_state;
+using topology_source_t = topology_source;
+using topology_state_t = topology_state;
+using subject_kind_t = subject_kind;
 
 struct member_peer_entry_t
 {
@@ -1460,6 +1481,31 @@ struct spot_node_subject_filter_t
     spot_socket_role role = spot_socket_role::pub;
     std::string subject;
     zlink::subject_kind subject_kind = zlink::subject_kind::none;
+};
+
+enum class spot_service_attachment_role_t
+{
+    router = 1,
+    pub = 2,
+    sub = 3
+};
+
+struct spot_service_attachment_stats_t
+{
+    std::string service_name;
+    uint32_t router_count = 0;
+    uint32_t pub_count = 0;
+    uint32_t sub_count = 0;
+    uint32_t auto_router_count = 0;
+    uint32_t auto_pub_count = 0;
+    uint32_t auto_sub_count = 0;
+};
+
+struct spot_service_monitor_event_t
+{
+    std::string service_name;
+    spot_service_attachment_role_t role = spot_service_attachment_role_t::router;
+    monitor_event_t event;
 };
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);

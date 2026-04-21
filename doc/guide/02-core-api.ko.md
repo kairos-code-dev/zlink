@@ -44,7 +44,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 ### 2.1 Socket 생성 및 닫기
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* ... use ... */
 zlink_close(socket);
 ```
@@ -53,14 +53,14 @@ zlink_close(socket);
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_PAIR` | 0x1001 | 1:1 bidirectional pair 소켓 |
-| `ZLINK_PUB` | 0x1002 | Publisher 소켓 |
-| `ZLINK_SUB` | 0x1003 | Subscriber 소켓 |
-| `ZLINK_DEALER` | 0x1004 | Async dealer 소켓 |
-| `ZLINK_ROUTER` | 0x1005 | Router 소켓 |
-| `ZLINK_XPUB` | 0x1006 | Extended publisher 소켓 |
-| `ZLINK_XSUB` | 0x1007 | Extended subscriber 소켓 |
-| `ZLINK_STREAM` | 0x1008 | Raw 소켓 |
+| `ZLINK_SOCKET_PAIR` | 0x1001 | 1:1 bidirectional pair 소켓 |
+| `ZLINK_SOCKET_PUB` | 0x1002 | Publisher 소켓 |
+| `ZLINK_SOCKET_SUB` | 0x1003 | Subscriber 소켓 |
+| `ZLINK_SOCKET_DEALER` | 0x1004 | Async dealer 소켓 |
+| `ZLINK_SOCKET_ROUTER` | 0x1005 | Router 소켓 |
+| `ZLINK_SOCKET_XPUB` | 0x1006 | Extended publisher 소켓 |
+| `ZLINK_SOCKET_XSUB` | 0x1007 | Extended subscriber 소켓 |
+| `ZLINK_SOCKET_STREAM` | 0x1008 | Raw 소켓 |
 
 ### 2.3 연결 관리
 
@@ -163,7 +163,7 @@ Handler를 부착하지 않으면 `zlink_recv()`로 직접 message를 받을 수
 Socket은 기본적으로 pull mode로 시작한다.
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_PAIR);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(socket, "tcp://*:5556");
 
 /* Blocking recv */
@@ -209,7 +209,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 ```
 
@@ -232,7 +232,7 @@ zlink_recv_handler(socket, on_message, NULL);
 | STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 completion callback 으로 전달 |
 | SPOT (routed direct callback) | `zlink_spot_handler()` — 선택적, 여전히 지원 | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
-| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/timer를 모두 한 콜백으로 통합 | `fn(spot, zlink_spot_dispatch_event_kind_t kind, userdata)` |
+| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/timer를 모두 한 콜백으로 통합 | `fn(spot, zlink_spot_dispatch_event_t event, userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv 기반; `SUBSCRIBE_READABLE` 이벤트 후 drain |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv 기반; `ROUTED_READABLE` 이벤트 후 drain |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |
@@ -362,11 +362,11 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
+    void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+    void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */

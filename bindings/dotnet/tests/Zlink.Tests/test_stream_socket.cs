@@ -275,10 +275,12 @@ public sealed class test_stream_socket
         using var stream = new StreamSocket(ctx);
 
         stream.OnPacket((StreamPacketHandler)((_, _) => 0));
-        Assert.Throws<InvalidOperationException>(() =>
+        ZlinkHandlerException ex1 = Assert.Throws<ZlinkHandlerException>(() =>
             stream.OnPacket((StreamPacketHandler)((_, _) => 0)));
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Equal(HandlerResult.Busy, ex1.Result);
+        ZlinkHandlerException ex2 = Assert.Throws<ZlinkHandlerException>(() =>
             AttachLen32Be(stream, (_, _) => 0));
+        Assert.Equal(HandlerResult.Busy, ex2.Result);
         stream.DetachStream();
 
         AttachLen32Be(stream, (_, _) => 0);

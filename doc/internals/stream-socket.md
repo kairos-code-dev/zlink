@@ -82,7 +82,7 @@ socket fails with `EBUSY`.
 | Mode | Activation | Delivery |
 |------|------------|----------|
 | Raw recv | default | `zlink_recv()` returns raw bytes per read |
-| Raw callback | `zlink_recv_handler()` | `zlink_recv_handler_fn` with raw bytes |
+| Raw callback | `zlink_recv_handler()` | `zlink_socket_msg_handler_fn` with raw bytes |
 | Packet callback | `zlink_stream_packet_handler()` | `zlink_stream_packet_handler_fn` with decoded header/body messages |
 
 The packet handler mode is tailored to application protocols that carry
@@ -195,7 +195,7 @@ reasons worth calling out:
   by the decoder, so callers do not have to build their own reordering
   logic on top of raw byte delivery.
 
-## 7. Current STREAM Runtime Defaults (2026-02)
+## 7. Current STREAM Runtime Defaults
 
 STREAM uses a consolidated default performance profile across transports.
 For non-STREAM-wide socket defaults, see
@@ -208,10 +208,8 @@ These values are fixed as internal constants and not controlled by STREAM env kn
 - read drain: enabled
 - speculative write: fixed on for STREAM/TCP path
 - RX slab buffering: enabled
-- minimum in/out batch size: `12288`
-- gather threshold: `8192`
 - speculative write byte budget: `2097152`
-- read drain max loops: `16`
+- read drain max loops: `64`
 - read drain max bytes: `1048576`
 
 ### 7.2 Effective socket/listener defaults
@@ -224,8 +222,12 @@ These values are fixed as internal constants and not controlled by STREAM env kn
 
 ### 7.3 Remaining STREAM runtime env controls
 
-- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY`
-- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`)
-- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ`
-- `ZLINK_ASIO_STREAM_DISABLE_GATHER`
-- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE`
+- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY`: default `4`, clamped to `128`
+- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`): default `rr`
+- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ`: disabled by default
+- `ZLINK_ASIO_STREAM_DISABLE_GATHER`: disabled by default, so STREAM gather-write stays enabled
+- `ZLINK_ASIO_STREAM_GATHER_THRESHOLD`: default `1024`
+- `ZLINK_ASIO_STREAM_TINY_GATHER_THRESHOLD`: default `0`
+- `ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP`: default `4096`
+- `ZLINK_ASIO_STREAM_BATCH_SIZE`: default `4096`
+- `ZLINK_ASIO_STREAM_BATCH_HEADROOM`: default `64`

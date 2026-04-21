@@ -25,7 +25,7 @@ flowchart LR
 ### Creation and Bind
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 ```
 
@@ -173,7 +173,7 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 > from `send_rid` is therefore a common return path when peers come and
 > go.
 
-> Reference: `core/tests/test_router_mandatory.cpp` -- `test_basic()`
+> Reference: `core/tests/integration/test_router_mandatory.cpp` -- `test_basic()`
 
 ### 4.1 Request-Reply Server and Client Roles
 
@@ -262,7 +262,7 @@ The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_
 
 ```c
 /* Server: ROUTER uses a recv loop */
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -283,13 +283,13 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
    } */
 
 /* Client 1 */
-void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+void *d1 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* DEALER receives replies via zlink_recv() */
 zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* Client 2 */
-void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+void *d2 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
@@ -307,12 +307,12 @@ zlink_send(d2, &m2, 1, 0);
 /* Each DEALER drains replies with zlink_recv() in its own poller loop */
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc across 3 transports
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc across 3 transports
 
 ### Pattern 2: Detecting Send Failures with ROUTER_MANDATORY
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
 /* Default behavior (MANDATORY=1): undeliverable sends surface as failures */
@@ -331,7 +331,7 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
                         &disable_mandatory, sizeof(disable_mandatory));
 ```
 
-> Reference: `core/tests/test_router_mandatory.cpp` -- default drop vs MANDATORY error
+> Reference: `core/tests/integration/test_router_mandatory.cpp` -- default drop vs MANDATORY error
 
 ### Pattern 3: Send After Confirming Connection
 
@@ -339,7 +339,7 @@ DEALER sends a message first to notify ROUTER of its connection, then ROUTER rep
 
 ```c
 /* DEALER connects and sends initial message */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer, "X", 1);
 zlink_connect(dealer, endpoint);
 zlink_msg_t hello;
@@ -352,14 +352,14 @@ zlink_send(dealer, &hello, 1, 0);
    the server then replies with "Welcome" via zlink_send_rid. */
 ```
 
-> Reference: `core/tests/test_router_mandatory.cpp` -- DEALER connect → message → ROUTER reply
+> Reference: `core/tests/integration/test_router_mandatory.cpp` -- DEALER connect → message → ROUTER reply
 
 ### Pattern 4: Multiple Transports
 
 Multiple transports can be used to connect DEALERs to the same ROUTER.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 
 /* TCP */
 zlink_bind(router, "tcp://127.0.0.1:5558");
@@ -373,7 +373,7 @@ zlink_bind(router, "inproc://router");
 /* DEALERs connect via each transport -- ROUTER manages them uniformly by routing_id */
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc tests
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc tests
 
 ## 6. Caveats
 

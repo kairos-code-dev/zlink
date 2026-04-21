@@ -2,7 +2,6 @@
 
 #include "sample_common.hpp"
 
-#include <future>
 #include <thread>
 
 int main ()
@@ -21,15 +20,10 @@ int main ()
 
     const std::string channel_name = "orders";
     const std::string endpoint = detail::unique_tcp ("spot-channel-request");
-    assert (responder_router.bind (endpoint) == 0);
-    assert (requester_dealer.connect (endpoint) == 0);
+    responder_router.bind (endpoint);
+    requester_dealer.connect (endpoint);
     assert (detail::wait_connected (responder_monitor, requester_monitor));
     requester_node.attach_channel_dealer_manual (channel_name, requester_dealer);
-
-    std::promise<std::pair<zlink::request_result_t, std::vector<zlink::message_t>>>
-      reply_promise;
-    std::future<std::pair<zlink::request_result_t, std::vector<zlink::message_t>>>
-      reply_future = reply_promise.get_future ();
 
     std::thread responder ([&responder_router] {
         std::optional<zlink::received_t> received = responder_router.recv ();
@@ -44,25 +38,10 @@ int main ()
 
     std::vector<zlink::message_t> request_parts;
     request_parts.push_back (detail::make_message ("spot-ping"));
-    requester.request_channel (
-      channel_name, request_parts,
-      [&reply_promise] (
-        zlink::request_result_t request_result_,
-        std::vector<zlink::message_t> reply_parts_) {
-          reply_promise.set_value (
-            std::make_pair (request_result_, std::move (reply_parts_)));
-      },
-      zlink::send_flags_t::none, std::chrono::milliseconds (5000));
-
-    auto reply_result = detail::wait_future_with_progress (
-      reply_future, 5000,
-      [&requester_dealer] () {
-          (void) zlink_socket_request_progress_internal (
-            requester_dealer.handle ());
-      });
-    const zlink::request_result_t result = reply_result.first;
-    std::vector<zlink::message_t> reply_parts = std::move (reply_result.second);
-    assert (result == zlink::request_result_t::ok);
+    zlink::async_result_t<std::vector<zlink::message_t>> reply_future =
+      requester.request_channel (
+        channel_name, request_parts, std::chrono::milliseconds (5000));
+    std::vector<zlink::message_t> reply_parts = reply_future.get ();
     assert (reply_parts.size () == 1);
     const std::string reply = reply_parts[0].to_string ();
     assert (reply == "spot-pong");

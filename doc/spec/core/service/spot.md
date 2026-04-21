@@ -114,7 +114,8 @@ zlink_submit_result_t zlink_spot_request_channel(
 - Channel calls always use an attached `DEALER`.
 - Lookup is keyed by `channel_name`.
 - The request reply is bound to the specific dealer selected for that request.
-- `Spot` does not expose ordinary send/request that targets a `ROUTER` by direct `rid`.
+- `Spot` does not expose ordinary one-way send targeting a `ROUTER` by direct `rid`.
+  For direct routed request initiation see the dedicated section below.
 
 ### Topic publish/subscribe
 
@@ -198,10 +199,71 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
   void *userdata);
 ```
 
+## Spot routed request initiation
+
+`Spot` can initiate routed requests directly. One-way direct send is not on
+the public surface, but the following two paths are exposed to keep the
+request/reply surface symmetric.
+
+### Core helper substrate
+
+```c
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+```
+
+### C API wrapper
+
+```c
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+```
+
+- `zlink_spot_request_spot()` pairs with `zlink_spot_reply_spot(_part)` on the replier side.
+- `zlink_spot_request_router()` pairs with `zlink_router_reply_spot(_part)`.
+- On `ZLINK_SUBMIT_OK` the handler is registered and called exactly once.
+- On any other return value the handler is not registered.
+- For the full result-code mapping see `doc/draft/spot-routed-request-api.ko.md` §8.
+
 ## Router-side direct SPOT addressing
 
-The public `Spot` facade no longer exposes direct SPOT send/request, but
-ROUTER still supports explicit destination addressing.
+ROUTER supports explicit destination addressing for one-way send and request.
 
 ```c
 zlink_submit_result_t zlink_router_send_spot(

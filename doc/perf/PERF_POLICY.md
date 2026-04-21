@@ -353,6 +353,13 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   - client(requester) 와 server(replier) 는 echo 패턴과 동일하게
     request/reply 의미를 유지하며, send 역할과 recv 역할 정책을 둘 다
     적용한다.
+- `MULTI_DEALER_ROUTER`
+  - echo(request/reply) 패턴이다. client(dealer requester) 가 request 를 보내고,
+    server(router replier) 는 request 를 읽은 뒤 source routing id 로 reply 를
+    되돌려 보낸다.
+  - client(requester) 와 server(replier) 는 echo 패턴과 동일하게
+    request/reply 의미를 유지하며, send 역할과 recv 역할 정책을 둘 다
+    적용한다.
 
 ---
 
@@ -587,6 +594,14 @@ perf smoke 테스트는 전체 패턴과 전체 transport를 대상으로 하되
 메시지 크기를 64B 하나로 고정하여 빠르게 전 경로의 정상 동작을 검증하는
 실행이다. 성능 수치 자체보다 **모든 패턴/transport 조합이 fail 없이
 통과하는지**를 확인하는 것이 목적이다.
+
+- perf 코드나 실행 스크립트, 정책 문서를 수정한 뒤에는 **single + multi
+  smoke 테스트를 모두 실행해야 한다**.
+- smoke 실행은 반드시 각 suite의 공식 entrypoint를 사용한다.
+  - single: `run_benchmarks.sh` / `.ps1`
+  - multi: `run_benchmarks_multi.sh` / `.ps1`
+- perf 문맥에서 smoke 테스트는 "`--pattern ALL` + `--msg-sizes 64`로 해당
+  suite의 전체 패턴을 64B 크기 하나로 실행하는 검증"을 뜻한다.
 
 ```bash
 # core smoke (single)

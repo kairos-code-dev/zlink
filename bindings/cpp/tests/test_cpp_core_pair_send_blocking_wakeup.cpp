@@ -44,8 +44,8 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
 
     assert (sender.set_option (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
 
-    assert (receiver.bind (kEndpoint) == 0);
-    assert (sender.connect (kEndpoint) == 0);
+    receiver.bind (kEndpoint);
+    sender.connect (kEndpoint);
 
     char send_buf[kMsgSize];
     char recv_buf[kMsgSize];
@@ -92,8 +92,8 @@ void test_pair_blocking_send_times_out_without_recv ()
 
     assert (sender.set_option (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
 
-    assert (receiver.bind (kTimeoutEndpoint) == 0);
-    assert (sender.connect (kTimeoutEndpoint) == 0);
+    receiver.bind (kTimeoutEndpoint);
+    sender.connect (kTimeoutEndpoint);
 
     char send_buf[kMsgSize];
     std::memset (send_buf, 'b', sizeof (send_buf));

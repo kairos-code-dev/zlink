@@ -5,6 +5,7 @@ package dev.kairoscode.zlink.perf;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorSocket;
+import dev.kairoscode.zlink.PerfSocketOptions;
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.nio.file.Files;
@@ -55,16 +56,18 @@ final class PerfTransport {
 
     static void applySocketOptions(Socket socket, PerfUtil.Config config) {
         if (config.sendHwm() > 0) {
-            socket.options().sendHwm(config.sendHwm());
+            PerfSocketOptions.sendHwm(socket, config.sendHwm());
         }
         if (config.recvHwm() > 0) {
-            socket.options().recvHwm(config.recvHwm());
+            PerfSocketOptions.recvHwm(socket, config.recvHwm());
         }
         if (config.sendTimeoutMs() >= 0) {
-            socket.options().sendTimeout(Duration.ofMillis(config.sendTimeoutMs()));
+            PerfSocketOptions.sendTimeout(socket,
+                Duration.ofMillis(config.sendTimeoutMs()));
         }
         if (config.recvTimeoutMs() >= 0) {
-            socket.options().recvTimeout(Duration.ofMillis(config.recvTimeoutMs()));
+            PerfSocketOptions.recvTimeout(socket,
+                Duration.ofMillis(config.recvTimeoutMs()));
         }
     }
 

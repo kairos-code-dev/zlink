@@ -557,3 +557,74 @@ zlink_recv_result_t zlink_spot_subscribe_part (
     }
     return ZLINK_RECV_OK;
 }
+
+zlink_recv_result_t zlink_spot_subscription_event_recv (
+  void *spot_,
+  const zlink_routing_id_t **source_rid_out_,
+  int *subscribed_out_,
+  char *service_name_buf_,
+  size_t service_name_capacity_,
+  size_t *service_name_len_out_,
+  char *topic_id_buf_,
+  size_t topic_id_capacity_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_)
+{
+    if (!spot_ || !subscribed_out_ || !service_name_len_out_
+        || !topic_id_len_out_) {
+        errno = EFAULT;
+        return zlink::recv_result_internal::from_errno (errno);
+    }
+    if (validate_recv_flags (flags_) != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return ZLINK_RECV_INVALID_HANDLE;
+
+    *service_name_len_out_ = service_name_capacity_;
+    *topic_id_len_out_ = topic_id_capacity_;
+
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+
+    const zlink_recv_result_t service_rc =
+      zlink::recv_result_internal::from_rc (
+        zlink::spot_node_access_t::service_subscription_event_recv (
+          spot->node, &source_rid, subscribed_out_, service_name_buf_,
+          service_name_len_out_, topic_id_buf_, topic_id_len_out_, flags_));
+    if (service_rc == ZLINK_RECV_OK) {
+        if (source_rid_out_) {
+            static thread_local zlink_routing_id_t tl_rid;
+            tl_rid = source_rid;
+            *source_rid_out_ = &tl_rid;
+        }
+        return ZLINK_RECV_OK;
+    }
+    if (service_rc != ZLINK_RECV_NO_DATA)
+        return service_rc;
+
+    std::string bound_service_name;
+    if (resolve_spot_bound_service_name (spot, &bound_service_name) != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+
+    source_rid.size = 0;
+    const int rc = zlink_socket_xpub_recv_internal (
+      spot_, &source_rid, subscribed_out_, topic_id_buf_, topic_id_len_out_,
+      static_cast<zlink_send_flags_t> (flags_));
+    if (rc != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+
+    if (copy_service_name_to_output (
+          bound_service_name, service_name_buf_, service_name_len_out_)
+        != 0) {
+        return zlink::recv_result_internal::from_errno (errno);
+    }
+
+    if (source_rid_out_) {
+        static thread_local zlink_routing_id_t tl_rid;
+        tl_rid = source_rid;
+        *source_rid_out_ = &tl_rid;
+    }
+    return ZLINK_RECV_OK;
+}

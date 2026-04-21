@@ -339,7 +339,7 @@ export interface ZLinkSpot {
 }
 
 export interface SpotRouterConnections {
-  connect(targetRid: string, endpoint: string): void;
+  connect(endpoint: string): void;
   disconnect(endpoint: string): void;
   listConnections(): readonly string[];
 }
@@ -382,7 +382,8 @@ export interface ZLinkTimer {
 ```
 
 일반 channel client manual 연결은 endpoint 집합만 다루고, `SPOT` router manual
-연결만 `targetRid + endpoint`를 같이 둔다. `ZLinkSpotManager`는 등록된
+연결도 같은 방식으로 endpoint 집합만 등록한다. 이 초안에서는 `connect(...)`
+호출 시 remote router id를 따로 받지 않는다. `ZLinkSpotManager`는 등록된
 `spotName`으로 factory를 고르고, `get(...)`와 `list(...)`는 runtime이 들고 있는
 `spotRid -> spotName` 매핑을 다시 보는 용도다.
 

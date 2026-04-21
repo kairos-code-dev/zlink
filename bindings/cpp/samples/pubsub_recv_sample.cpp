@@ -10,10 +10,10 @@ int main ()
     zlink::monitor_handle_t pub_monitor = publisher.monitor_handle ();
     zlink::monitor_handle_t sub_monitor = subscriber.monitor_handle ();
 
-    assert (publisher.bind ("tcp://127.0.0.1:0") == 0);
+    publisher.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = publisher.options ().last_endpoint ();
     assert (!endpoint.empty ());
-    assert (subscriber.connect (endpoint) == 0);
+    subscriber.connect (endpoint);
     assert (detail::wait_connected (pub_monitor, sub_monitor));
 
     const std::string topic = detail::k_pubsub_topic;

@@ -166,7 +166,9 @@ class router_router_client_bench_t
             _monitors.push_back (perf::multi::connect_monitor_t ());
             if (!perf::multi::open_connect_monitor (sock, _monitors.back ()))
                 return false;
-            if (sock.connect (_endpoint) != 0) {
+            try {
+                sock.connect (_endpoint);
+            } catch (const zlink::zlink_error_t &) {
                 debug_log ("connect failed endpoint=" + _endpoint
                            + " errno=" + std::to_string (errno));
                 return false;

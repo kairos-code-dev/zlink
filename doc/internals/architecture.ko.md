@@ -960,7 +960,7 @@ Application Thread              I/O Thread
 |                    APPLICATION THREAD                             |
 +-------------------------------------------------------------------+
 |                                                                   |
-|  (1) zlink_send(socket, data, size, flags)                        |
+|  (1) zlink_send(socket, parts, part_count, flags)                 |
 |       |                                                           |
 |       v                                                           |
 |  (2) socket_base_t::send()                                        |
@@ -1042,7 +1042,7 @@ Application Thread              I/O Thread
 |                    APPLICATION THREAD                             |
 +-------------------------------------------------------------------+
 |                                                                   |
-|  (8) zlink_recv(socket, buffer, size, flags)                      |
+|  (8) zlink_recv(socket, &source_rid, &parts, &part_count, flags)  |
 |       |                                                           |
 |       v                                                           |
 |  (9) socket_base_t::recv()                                        |

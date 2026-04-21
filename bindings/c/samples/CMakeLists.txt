@@ -77,6 +77,10 @@ add_c_sample(
   spot_recv_sample.c
 )
 add_c_sample(
+  sample_c_spot_routed_request_sample
+  spot_routed_request_sample.c
+)
+add_c_sample(
   sample_c_monitor_recv_sample
   monitor_recv_sample.c
 )

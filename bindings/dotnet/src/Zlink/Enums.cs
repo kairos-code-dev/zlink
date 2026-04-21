@@ -4,7 +4,7 @@ using System;
 
 namespace Zlink;
 
-public enum SocketType
+internal enum SocketType
 {
     Pair = 0x1001,
     Pub = 0x1002,
@@ -101,7 +101,7 @@ internal enum SocketOption
     OnlyFirstSubscribe = 0x7F000006
 }
 
-public enum SendResult
+internal enum SendResult
 {
     Sent = 0,
     Backpressured = 1,
@@ -128,6 +128,7 @@ public enum SubmitResult
     Backpressured = 1,
     NotConnected = 2,
     NotFound = 3,
+    NotAdmitted = 13,
     Terminated = 4,
     InvalidHandle = 5,
     InvalidArgument = 6,
@@ -201,7 +202,7 @@ public enum ConfigResult
     NotSupported = 703
 }
 
-public enum ErrorCode
+internal enum ErrorCode
 {
     None = 0,
     Unknown = -1,
@@ -240,7 +241,7 @@ public enum ErrorCode
     EmThread = 156384766
 }
 
-public enum ProtocolError
+internal enum ProtocolError
 {
     ZmpMalformedCommandHello = 0x10000013
 }
@@ -263,6 +264,7 @@ public enum SocketEvent
     ConnectionReady = 0x1000,
     HandshakeFailedProtocol = 0x2000,
     HandshakeFailedAuth = 0x4000,
+    PeerAdmissionChanged = 0x8000,
     All = 0xFFFF
 }
 
@@ -282,10 +284,11 @@ public enum MonitorEventType
     HandshakeFailedNoDetail = 0x0800,
     ConnectionReady = 0x1000,
     HandshakeFailedProtocol = 0x2000,
-    HandshakeFailedAuth = 0x4000
+    HandshakeFailedAuth = 0x4000,
+    PeerAdmissionChanged = 0x8000
 }
 
-public enum DisconnectReason
+internal enum DisconnectReason
 {
     Unknown = 0,
     HandshakeFailed = 3,
@@ -293,7 +296,7 @@ public enum DisconnectReason
     CtxTerm = 5
 }
 
-public enum MonitorSourceKind
+internal enum MonitorSourceKind
 {
     Socket = 1,
     SpotPub = 3,
@@ -308,7 +311,7 @@ public enum SourceKind
 }
 
 [Flags]
-public enum MonitorState
+internal enum MonitorState
 {
     None = 0,
     Ready = 1 << 0,
@@ -317,7 +320,7 @@ public enum MonitorState
 }
 
 [Flags]
-public enum MonitorSnapshotDetail
+internal enum MonitorSnapshotDetail
 {
     None = 0,
     SendPendingMessages = 1 << 1,
@@ -332,32 +335,36 @@ public enum ServiceMonitorEventMask : uint
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
+    PeerAdmissionChanged = 1u << 8,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
+        | PeerAdmissionChanged
 }
 
 [Flags]
-public enum ServiceMonitorEvents : uint
+internal enum ServiceMonitorEvents : uint
 {
     None = 0,
     Error = 1u << 4,
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
+    PeerAdmissionChanged = 1u << 8,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
+        | PeerAdmissionChanged
 }
 
 [Flags]
-public enum ServiceMonitorDetailFlags : uint
+internal enum ServiceMonitorDetailFlags : uint
 {
     None = 0,
     ServiceName = 0x0001,
@@ -377,7 +384,7 @@ public enum PollEvents
     PollPri = 8
 }
 
-public enum RegistrySocketRole
+internal enum RegistrySocketRole
 {
     Pub = 1,
     Router = 2,
@@ -392,7 +399,7 @@ internal enum SpotNodeSocketRole
     Dealer = 3
 }
 
-public enum SpotNodeOption
+internal enum SpotNodeOption
 {
     PubMode = 1,
     PubQueueHwm = 2,
@@ -403,26 +410,26 @@ public enum SpotNodeOption
     RoutedRecvHwm = 0x360B
 }
 
-public enum MessageType : byte
+internal enum MessageType : byte
 {
     Data = 0,
     Request = 1,
     Reply = 2
 }
 
-public enum SpotNodePubMode
+internal enum SpotNodePubMode
 {
     Sync = 0,
     Async = 1
 }
 
-public enum SpotNodePubQueueFullPolicy
+internal enum SpotNodePubQueueFullPolicy
 {
     Eagain = 0,
     Drop = 1
 }
 
-public enum SpotSocketRole
+internal enum SpotSocketRole
 {
     Pub = 1,
     Sub = 2

@@ -230,4 +230,39 @@ internal static partial class NativeMethods
         nuint serviceNameCapacity, out nuint serviceNameLenOut,
         byte[] topicIdBuffer, nuint topicIdCapacity, out nuint topicIdLenOut,
         ref ZlinkMsg part, out int hasMore, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_subscription_event_recv(IntPtr spot,
+        out IntPtr sourceRoutingId, out int subscribed,
+        byte[] serviceNameBuffer, nuint serviceNameCapacity,
+        out nuint serviceNameLenOut, byte[] topicIdBuffer,
+        nuint topicIdCapacity, out nuint topicIdLenOut, int flags);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkTimerHandlerDelegate(IntPtr timer,
+        ulong fireCount, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_timer_new();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_spot_timer_new(IntPtr spot);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timer_destroy(ref IntPtr timer);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timer_start(IntPtr timer,
+        ulong intervalNs, ulong repeatCount);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timer_stop(IntPtr timer);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timer_recv(IntPtr timer,
+        out ulong fireCount);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timer_handler(IntPtr timer,
+        ZlinkTimerHandlerDelegate handler, IntPtr userData);
 }

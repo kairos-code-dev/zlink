@@ -111,7 +111,7 @@ internal sealed class SocketKernel : IDisposable
 
         int rc = NativeMethods.zlink_socket_attach_discovery(Handle,
             discovery.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void AttachStreamRaw(StreamPacketHandler handler)
@@ -121,8 +121,8 @@ internal sealed class SocketKernel : IDisposable
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
         if (_streamAttached)
-            throw new InvalidOperationException(
-                "STREAM callback is already attached.");
+            throw new ZlinkHandlerException(HandlerResult.Busy,
+                (int)ErrorCode.EBusy);
 
         SynchronizationContext? context = SynchronizationContext.Current;
         _streamPacketHandler = handler;
@@ -135,7 +135,8 @@ internal sealed class SocketKernel : IDisposable
             _streamPacketHandler = null;
             _streamRawContext = null;
             _streamRawCallback = null;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateHandlerException(
+                NativeMethods.zlink_errno());
         }
         _streamAttached = true;
     }
@@ -147,8 +148,8 @@ internal sealed class SocketKernel : IDisposable
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
         if (_streamAttached)
-            throw new InvalidOperationException(
-                "STREAM callback is already attached.");
+            throw new ZlinkHandlerException(HandlerResult.Busy,
+                (int)ErrorCode.EBusy);
 
         SynchronizationContext? context = SynchronizationContext.Current;
         _streamUInt32PacketHandler = handler;
@@ -161,7 +162,8 @@ internal sealed class SocketKernel : IDisposable
             _streamUInt32PacketHandler = null;
             _streamRawContext = null;
             _streamRawCallback = null;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateHandlerException(
+                NativeMethods.zlink_errno());
         }
         _streamAttached = true;
     }
@@ -173,8 +175,8 @@ internal sealed class SocketKernel : IDisposable
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
         if (_streamAttached)
-            throw new InvalidOperationException(
-                "STREAM callback is already attached.");
+            throw new ZlinkHandlerException(HandlerResult.Busy,
+                (int)ErrorCode.EBusy);
 
         SynchronizationContext? context = SynchronizationContext.Current;
         _streamFramedPacketHandler = handler;
@@ -187,7 +189,8 @@ internal sealed class SocketKernel : IDisposable
             _streamFramedPacketHandler = null;
             _streamPacketContext = null;
             _streamPacketCallback = null;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateHandlerException(
+                NativeMethods.zlink_errno());
         }
         _streamAttached = true;
     }
@@ -199,8 +202,8 @@ internal sealed class SocketKernel : IDisposable
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
         if (_streamAttached)
-            throw new InvalidOperationException(
-                "STREAM callback is already attached.");
+            throw new ZlinkHandlerException(HandlerResult.Busy,
+                (int)ErrorCode.EBusy);
 
         SynchronizationContext? context = SynchronizationContext.Current;
         _streamUInt32FramedPacketHandler = handler;
@@ -213,7 +216,8 @@ internal sealed class SocketKernel : IDisposable
             _streamUInt32FramedPacketHandler = null;
             _streamPacketContext = null;
             _streamPacketCallback = null;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateHandlerException(
+                NativeMethods.zlink_errno());
         }
         _streamAttached = true;
     }
@@ -235,7 +239,7 @@ internal sealed class SocketKernel : IDisposable
         _streamPacketCallback = null;
         _streamRawContext = null;
         _streamPacketContext = null;
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowCloseIfError(rc);
     }
 
     public void Send(Message message, SendFlags flags = SendFlags.None)
@@ -718,7 +722,7 @@ internal sealed class SocketKernel : IDisposable
             throw new ArgumentNullException(nameof(topicOrPattern));
 
         int rc = NativeMethods.zlink_set_subscription(Handle, topicOrPattern);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void UnsetSubscription(string topicOrPattern)
@@ -729,7 +733,7 @@ internal sealed class SocketKernel : IDisposable
             throw new ArgumentNullException(nameof(topicOrPattern));
 
         int rc = NativeMethods.zlink_unset_subscription(Handle, topicOrPattern);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public unsafe void RecvHandler(SocketRecvHandler handler)
@@ -748,7 +752,7 @@ internal sealed class SocketKernel : IDisposable
             _recvHandler = null;
             _recvHandlerContext = null;
             _recvHandlerNative = null;
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowHandlerIfError(rc);
         }
         _recvHandler = handler;
         _recvHandlerContext = context;
@@ -770,7 +774,7 @@ internal sealed class SocketKernel : IDisposable
             _sendReadyHandler = null;
             _sendReadyHandlerContext = null;
             _sendReadyHandlerNative = null;
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowHandlerIfError(rc);
         }
         _sendReadyHandler = handler;
         _sendReadyHandlerContext = context;
@@ -1059,7 +1063,8 @@ internal sealed class SocketKernel : IDisposable
         };
         IntPtr handle = NativeMethods.zlink_socket_monitor_open(Handle, in options);
         if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
         return new SocketMonitor(handle);
     }
 
@@ -2386,7 +2391,8 @@ internal sealed class SocketKernel : IDisposable
                 SendResult? sendResult = TryMapSendResultFromErrno();
                 if (sendResult != null)
                     return sendResult.Value;
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             }
             return SendResult.Sent;
         }
@@ -2471,7 +2477,8 @@ internal sealed class SocketKernel : IDisposable
 
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult == null)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             return sendResult.Value;
         }
         catch
@@ -2490,7 +2497,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
                 (nuint)payload.Length);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             if (payload.Length != 0)
@@ -2524,7 +2531,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
                 (nuint)payload.Length);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             if (payload.Length != 0)
@@ -2544,7 +2551,8 @@ internal sealed class SocketKernel : IDisposable
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult != null)
                 return sendResult.Value;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
         }
         catch
         {
@@ -2581,7 +2589,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             int rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
@@ -2632,7 +2640,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             int rc = NativeMethods.zlink_send_part(Handle, ref nativePart,
@@ -2644,7 +2652,8 @@ internal sealed class SocketKernel : IDisposable
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult != null)
                 return sendResult.Value;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
         }
         catch
         {
@@ -2723,7 +2732,8 @@ internal sealed class SocketKernel : IDisposable
                 SendResult? sendResult = TryMapSendResultFromErrno();
                 if (sendResult != null)
                     return sendResult.Value;
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             }
             return SendResult.Sent;
         }
@@ -2777,7 +2787,8 @@ internal sealed class SocketKernel : IDisposable
 
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult == null)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             return sendResult.Value;
         }
         catch
@@ -2797,7 +2808,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
                 (nuint)payload.Length);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             if (payload.Length != 0)
@@ -2832,7 +2843,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
                 (nuint)payload.Length);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             if (payload.Length != 0)
@@ -2852,7 +2863,8 @@ internal sealed class SocketKernel : IDisposable
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult != null)
                 return sendResult.Value;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
         }
         catch
         {
@@ -2874,7 +2886,7 @@ internal sealed class SocketKernel : IDisposable
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 handle.AddrOfPinnedObject(), (nuint)payload.Length,
                 BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
             handle = default;
 
@@ -2907,7 +2919,7 @@ internal sealed class SocketKernel : IDisposable
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 handle.AddrOfPinnedObject(), (nuint)payload.Length,
                 BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
             handle = default;
 
@@ -2920,7 +2932,8 @@ internal sealed class SocketKernel : IDisposable
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult != null)
                 return sendResult.Value;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
         }
         catch
         {
@@ -3001,7 +3014,8 @@ internal sealed class SocketKernel : IDisposable
                 SendResult? sendResult = TryMapSendResultFromErrno();
                 if (sendResult != null)
                     return sendResult.Value;
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             }
             return SendResult.Sent;
         }
@@ -3089,7 +3103,8 @@ internal sealed class SocketKernel : IDisposable
 
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult == null)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             return sendResult.Value;
         }
         catch
@@ -3128,7 +3143,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
@@ -3180,7 +3195,7 @@ internal sealed class SocketKernel : IDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
@@ -3192,7 +3207,8 @@ internal sealed class SocketKernel : IDisposable
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult != null)
                 return sendResult.Value;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
         }
         catch
         {

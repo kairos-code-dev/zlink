@@ -16,8 +16,11 @@ void connect_with_retry (SocketLike &socket_, const std::string &endpoint_)
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < deadline) {
-        if (socket_.connect (endpoint_) == 0)
+        try {
+            socket_.connect (endpoint_);
             return;
+        } catch (const zlink::zlink_error_t &) {
+        }
         sleep_ms (10);
     }
     assert (false && "connect timeout");
@@ -39,10 +42,16 @@ void connect_with_retry (SocketLike &socket_, const std::string &endpoint_)
     (void) frontend.set_option (zlink::socket_option::linger, linger);
     (void) backend.set_option (zlink::socket_option::linger, linger);
 
-    if (frontend.bind (frontend_ep_) != 0)
+    try {
+        frontend.bind (frontend_ep_);
+    } catch (const zlink::zlink_error_t &) {
         _exit (4);
-    if (backend.bind (backend_ep_) != 0)
+    }
+    try {
+        backend.bind (backend_ep_);
+    } catch (const zlink::zlink_error_t &) {
         _exit (5);
+    }
 
     (void) zlink::proxy (frontend, backend);
     _exit (0);

@@ -46,10 +46,16 @@ static void test_spot_peer_pubsub ()
 
         std::string endpoint_a = endpoint_for (tc, "spot-peer-a");
         std::string endpoint_b = endpoint_for (tc, "spot-peer-b");
-        if (node_a.bind (endpoint_a.c_str ()) != 0)
+        try {
+            node_a.bind (endpoint_a.c_str ());
+        } catch (const zlink::zlink_error_t &) {
             continue;
-        if (node_b.bind (endpoint_b.c_str ()) != 0)
+        }
+        try {
+            node_b.bind (endpoint_b.c_str ());
+        } catch (const zlink::zlink_error_t &) {
             continue;
+        }
 
         const std::string service_name_a = "spot-peer";
         zlink::service::discovery_t discovery_a (
@@ -57,14 +63,14 @@ static void test_spot_peer_pubsub ()
         assert (discovery_a.valid ());
         node_a.attach_discovery (discovery_a);
 
-        assert (node_b.connect_peer (endpoint_a.c_str ()) == 0);
+        node_b.connect_peer (endpoint_a.c_str ());
 
         zlink::service::spot_t spot_a (node_a);
         zlink::service::spot_t spot_b (node_b);
         assert (spot_a.valid ());
         assert (spot_b.valid ());
 
-        assert (spot_b.set_subscription ("peer:topic") == 0);
+        spot_b.set_subscription ("peer:topic");
         sleep_ms (150);
 
         std::vector<zlink::message_t> parts;
@@ -89,8 +95,8 @@ static void test_spot_multipart_peer_pubsub ()
    zlink::service::spot_node_t node_b (ctx);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-", "spot-multipart");
-    assert (node_a.bind (endpoint.c_str ()) == 0);
-    assert (node_b.connect_peer (endpoint.c_str ()) == 0);
+    node_a.bind (endpoint.c_str ());
+    node_b.connect_peer (endpoint.c_str ());
 
     const std::string service_name_a = "spot-multipart";
     zlink::service::discovery_t discovery_a (
@@ -103,7 +109,7 @@ static void test_spot_multipart_peer_pubsub ()
     assert (spot_a.valid ());
     assert (spot_b.valid ());
 
-    assert (spot_b.set_subscription ("mp:topic") == 0);
+    spot_b.set_subscription ("mp:topic");
     sleep_ms (100);
 
     std::vector<zlink::message_t> parts;

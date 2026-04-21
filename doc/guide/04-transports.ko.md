@@ -65,7 +65,7 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 zlink_connect(other_socket, endpoint);
 ```
 
-> 참고: `core/tests/test_pair_tcp.cpp` — `bind_loopback_ipv4()` 와일드카드 바인드 패턴
+> 참고: `core/tests/integration/test_pair_tcp.cpp` — `bind_loopback_ipv4()` 와일드카드 바인드 패턴
 
 ### DNS 이름 사용
 
@@ -77,7 +77,7 @@ zlink_connect(socket, "tcp://localhost:5555");
 ```
 
 > 주의: DNS 리졸빙은 블로킹으로 수행된다. 프로덕션에서는 IP 주소 사용을 권장한다.
-> 참고: `core/tests/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
+> 참고: `core/tests/integration/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
 
 ### 에러 처리
 
@@ -129,7 +129,7 @@ size_t len = sizeof(endpoint);
 zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_bind(router, "ipc://*")`
+> 참고: `core/tests/integration/test_router_multiple_dealers.cpp` — `zlink_bind(router, "ipc://*")`
 
 ### 에러 처리
 
@@ -143,7 +143,7 @@ if (rc == ZLINK_BIND_INVALID_ARGUMENT) {
 }
 ```
 
-> 참고: `core/tests/test_pair_ipc.cpp` — `test_endpoint_too_long()`
+> 참고: `core/tests/integration/test_pair_ipc.cpp` — `test_endpoint_too_long()`
 
 ### 특성
 
@@ -180,7 +180,7 @@ if (rc != ZLINK_CONNECT_OK) {
 - Lock-free pipe 직접 연결 (네트워크 없음)
 - 가장 낮은 지연시간, 가장 높은 처리량
 
-> 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴
+> 참고: `core/tests/integration/test_pair_inproc.cpp` — bind → connect → bounce 패턴
 
 ## 5. WebSocket (ws)
 
@@ -202,7 +202,7 @@ size_t len = sizeof(endpoint);
 zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
-> 참고: `core/tests/test_stream_socket.cpp` — `test_stream_ws_basic()`
+> 참고: `core/tests/integration/test_stream_socket.cpp` — `test_stream_ws_basic()`
 
 ### 특성
 
@@ -227,7 +227,7 @@ zlink_set_tls_client(socket, ca_path, "localhost", 0);
 zlink_connect(socket, "wss://server:8443");
 ```
 
-> 참고: `core/tests/test_stream_socket.cpp` — `test_stream_wss_basic()`
+> 참고: `core/tests/integration/test_stream_socket.cpp` — `test_stream_wss_basic()`
 
 ### ws 대비 추가 설정
 

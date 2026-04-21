@@ -144,8 +144,8 @@ void test_pair_send_recv_single_part ()
     zlink::monitor_handle_t right_monitor = right.monitor_handle ();
 
     const std::string endpoint = zlink_cpp_contract::unique_inproc ("pair");
-    assert (left.bind (endpoint) == 0);
-    assert (right.connect (endpoint) == 0);
+    left.bind (endpoint);
+    right.connect (endpoint);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       left_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
@@ -172,8 +172,8 @@ void test_pair_send_recv_multipart ()
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("pair-multipart");
-    assert (left.bind (endpoint) == 0);
-    assert (right.connect (endpoint) == 0);
+    left.bind (endpoint);
+    right.connect (endpoint);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       left_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));

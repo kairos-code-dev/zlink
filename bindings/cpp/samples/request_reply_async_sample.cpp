@@ -36,10 +36,10 @@ int main ()
       routing_id_text.size ());
     dealer_socket.set_routing_id (routing_id);
     const std::string endpoint = "tcp://127.0.0.1:0";
-    assert (router_socket.bind (endpoint) == 0);
+    router_socket.bind (endpoint);
     const std::string bound_endpoint = router_socket.options ().last_endpoint ();
     assert (!bound_endpoint.empty ());
-    assert (dealer_socket.connect (bound_endpoint) == 0);
+    dealer_socket.connect (bound_endpoint);
     assert (detail::wait_connected (router_monitor, dealer_monitor));
 
     zlink::message_t warmup = detail::make_message ("warmup");

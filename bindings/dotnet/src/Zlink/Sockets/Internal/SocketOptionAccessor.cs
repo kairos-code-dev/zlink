@@ -22,7 +22,7 @@ internal sealed class SocketOptionAccessor
         int tmp = value;
         IntPtr ptr = new IntPtr(&tmp);
         int rc = SetCore(option, ptr, (nuint)sizeof(int));
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public unsafe void SetInt64(SocketOption option, long value)
@@ -30,7 +30,7 @@ internal sealed class SocketOptionAccessor
         long tmp = value;
         IntPtr ptr = new IntPtr(&tmp);
         int rc = SetCore(option, ptr, (nuint)sizeof(long));
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public unsafe void SetUInt64(SocketOption option, ulong value)
@@ -38,7 +38,7 @@ internal sealed class SocketOptionAccessor
         ulong tmp = value;
         IntPtr ptr = new IntPtr(&tmp);
         int rc = SetCore(option, ptr, (nuint)sizeof(ulong));
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public unsafe void SetBytes(SocketOption option, ReadOnlySpan<byte> value)
@@ -52,14 +52,14 @@ internal sealed class SocketOptionAccessor
                 rc = NativeMethods.zlink_set_routing_id(handle, (IntPtr)ptr,
                     (nuint)value.Length);
             }
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return;
         }
 
         fixed (byte* ptr = value)
         {
             int rc = SetCore(option, (IntPtr)ptr, (nuint)value.Length);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
         }
     }
 
@@ -72,14 +72,14 @@ internal sealed class SocketOptionAccessor
         if (option == SocketOption.Subscribe)
         {
             int rc = NativeMethods.zlink_set_subscription(handle, value);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return;
         }
 
         if (option == SocketOption.Unsubscribe)
         {
             int rc = NativeMethods.zlink_unset_subscription(handle, value);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return;
         }
 
@@ -110,7 +110,7 @@ internal sealed class SocketOptionAccessor
         nuint size = (nuint)sizeof(int);
         IntPtr ptr = new IntPtr(&value);
         int rc = GetCore(option, ptr, ref size);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
 
@@ -120,7 +120,7 @@ internal sealed class SocketOptionAccessor
         nuint size = (nuint)sizeof(long);
         IntPtr ptr = new IntPtr(&value);
         int rc = GetCore(option, ptr, ref size);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
 
@@ -130,7 +130,7 @@ internal sealed class SocketOptionAccessor
         nuint size = (nuint)sizeof(ulong);
         IntPtr ptr = new IntPtr(&value);
         int rc = GetCore(option, ptr, ref size);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
 
@@ -140,7 +140,7 @@ internal sealed class SocketOptionAccessor
         if (option == SocketOption.RoutingId)
         {
             int rc = NativeMethods.zlink_get_routing_id(handle, out var routingId);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return NativeHelpers.ReadRoutingId(ref routingId);
         }
 
@@ -168,7 +168,7 @@ internal sealed class SocketOptionAccessor
                             continue;
                         }
 
-                        ZlinkException.ThrowIfError(rc);
+                        ZlinkException.ThrowConfigIfError(rc);
                     }
                 }
             }
@@ -185,7 +185,7 @@ internal sealed class SocketOptionAccessor
         {
             nuint size = (nuint)destination.Length;
             int rc = GetCore(option, (IntPtr)ptr, ref size);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return checked((int)size);
         }
     }
@@ -207,7 +207,7 @@ internal sealed class SocketOptionAccessor
             nuint size = (nuint)sizeof(int);
             int rc = NativeMethods.zlink_get_option(handle, (int)SocketOption.Type,
                 new IntPtr(&value), ref size);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return (SocketType)value;
         }
     }

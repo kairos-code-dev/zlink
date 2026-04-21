@@ -32,7 +32,7 @@ void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
     }
 }
 
-void *server = zlink_socket(ctx, ZLINK_ROUTER);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 
 /* Create monitor with options */
@@ -173,10 +173,11 @@ DEALER는 `DRAINING` ROUTER를 round-robin 후보에서 자동으로 제외하�
 ROUTER가 모두 `DRAINING`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
 실패하기 시작한다.
 
-`SpotNode`에서는 같은 변화를 service monitor의
-`ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로 받는다.
-`SpotNode`를 대상으로 `zlink_service_monitor_open()`을 열고
-`zlink_service_monitor_recv()`로 이벤트를 꺼낸다.
+서비스 계층에서 같은 변화를 보고 싶다면 그 peer를 관리하는
+`Discovery` handle에 service monitor를 연다. 그 monitor는
+`ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`를 내보낼 수 있고,
+`zlink_service_monitor_recv()`로 바뀐 peer의 endpoint, routing id,
+새 admission 상태를 읽을 수 있다.
 
 ## 5. 이벤트 흐름 다이어그램
 
@@ -471,7 +472,7 @@ zlink_monitor_close(&mon_b);
 
 ```c
 /* Open a monitor from an application thread */
-void *socket = zlink_socket(ctx, ZLINK_ROUTER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);

@@ -11,8 +11,8 @@ void test_roundtrip ()
     zlink::pair_socket_t client (ctx);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-pair-", "inproc");
-    assert (server.bind (endpoint) == 0);
-    assert (client.connect (endpoint) == 0);
+    server.bind (endpoint);
+    client.connect (endpoint);
 
     bounce (server, client);
 }
@@ -25,8 +25,8 @@ void test_send_multipart ()
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-pair-mp-", "multipart");
-    assert (server.bind (endpoint) == 0);
-    assert (client.connect (endpoint) == 0);
+    server.bind (endpoint);
+    client.connect (endpoint);
 
     send_string_expect_success (server, "foo", zlink::send_flag::sndmore);
     send_string_expect_success (server, "foobar");

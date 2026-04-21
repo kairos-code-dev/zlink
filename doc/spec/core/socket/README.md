@@ -185,7 +185,7 @@ Used by `zlink_recv`, `zlink_subscribe`, the socket-specific
 | Constant | Description |
 |---|---|
 | `ZLINK_RECV_FLAGS_NONE` | No flags; blocking recv semantics. |
-| `ZLINK_RECV_FLAGS_DONTWAIT` | Non-blocking recv; return immediately with `ZLINK_RECV_AGAIN` if no message is available. |
+| `ZLINK_RECV_FLAGS_DONTWAIT` | Non-blocking recv; return immediately with `ZLINK_RECV_NO_DATA` if no message is available. |
 
 ### Send Result
 

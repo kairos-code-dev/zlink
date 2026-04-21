@@ -7,24 +7,21 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProtoCodecTest {
-    private final ProtoCodec<StringValue> stringCodec =
-        new ProtoCodec<>(StringValue.parser());
-    private final ProtoCodec<Int32Value> intCodec =
-        new ProtoCodec<>(Int32Value.parser());
-
     @Test
     void stringRoundtrip() {
         StringValue original = StringValue.of("hello-zlink");
-        Message msg = stringCodec.toMessage(original);
-        StringValue result = stringCodec.fromMessage(msg);
-        assertEquals(original, result);
+        try (Message msg = ProtobufCodec.toMessage(original)) {
+            StringValue result = ProtobufCodec.parseProto(msg, StringValue.parser());
+            assertEquals(original, result);
+        }
     }
 
     @Test
     void intRoundtrip() {
         Int32Value original = Int32Value.of(42);
-        Message msg = intCodec.toMessage(original);
-        Int32Value result = intCodec.fromMessage(msg);
-        assertEquals(original, result);
+        try (Message msg = ProtobufCodec.toMessage(original)) {
+            Int32Value result = ProtobufCodec.parseProto(msg, Int32Value.parser());
+            assertEquals(original, result);
+        }
     }
 }

@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.Received;
@@ -10,10 +11,8 @@ import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.RequestException;
-import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SendReadyHandler;
-import dev.kairoscode.zlink.SubscribeHandler;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.SubscriptionEvent;
 import dev.kairoscode.zlink.ZlinkException;
@@ -117,8 +116,13 @@ public final class Spot implements AutoCloseable {
     private final ThreadLocal<Integer> topicScratchCapacity =
       ThreadLocal.withInitial(() -> TOPIC_SCRATCH_INITIAL_CAPACITY);
 
+    @FunctionalInterface
+    private interface SubscribeCallback {
+        void onMessage(RoutingId routingId, String topicId, Received received);
+    }
+
     private MemorySegment handle;
-    private SubscribeHandler subscribeHandler;
+    private SubscribeCallback subscribeHandler;
     private SendReadyHandler sendReadyHandler;
     private Arena subscribeCallbackArena;
     private Arena sendReadyCallbackArena;
@@ -182,6 +186,25 @@ public final class Spot implements AutoCloseable {
             }
             return readRoutingId(outRid);
         }
+    }
+
+    public AdmissionState getAdmissionState() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment stateOut = arena.allocate(ValueLayout.JAVA_INT);
+            int rc = Native.getAdmissionState(handle, stateOut);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_get_admission_state");
+            return AdmissionState.fromValue(stateOut.get(ValueLayout.JAVA_INT, 0));
+        }
+    }
+
+    public void setAdmissionState(AdmissionState state) {
+        Objects.requireNonNull(state, "state");
+        ensureOpen();
+        int rc = Native.setAdmissionState(handle, state.value());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_set_admission_state");
     }
 
     /** Publishes one payload part through a service-aware Spot attachment. */
@@ -259,9 +282,9 @@ public final class Spot implements AutoCloseable {
         return requestChannel(channelName, List.of(part));
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
-                                                           Message part,
-                                                           SendFlags flags) {
+    private CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                            Message part,
+                                                            SendFlags flags) {
         return requestChannel(channelName, List.of(part), flags);
     }
 
@@ -271,10 +294,10 @@ public final class Spot implements AutoCloseable {
         return requestChannel(channelName, List.of(part), timeout);
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
-                                                           Message part,
-                                                           SendFlags flags,
-                                                           Duration timeout) {
+    private CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                            Message part,
+                                                            SendFlags flags,
+                                                            Duration timeout) {
         return requestChannel(channelName, List.of(part), flags, timeout);
     }
 
@@ -283,9 +306,9 @@ public final class Spot implements AutoCloseable {
         return requestChannel(channelName, parts, SendFlags.NONE);
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
-                                                           List<Message> parts,
-                                                           SendFlags flags) {
+    private CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                            List<Message> parts,
+                                                            SendFlags flags) {
         return requestChannel(channelName, parts, flags,
           Duration.ofMillis(5_000L));
     }
@@ -296,10 +319,10 @@ public final class Spot implements AutoCloseable {
         return requestChannel(channelName, parts, SendFlags.NONE, timeout);
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
-                                                           List<Message> parts,
-                                                           SendFlags flags,
-                                                           Duration timeout) {
+    private CompletableFuture<List<Message>> requestChannel(String channelName,
+                                                            List<Message> parts,
+                                                            SendFlags flags,
+                                                            Duration timeout) {
         Objects.requireNonNull(flags, "flags");
         return requestChannelInternal(channelName, parts, timeout, flags);
     }
@@ -748,7 +771,7 @@ public final class Spot implements AutoCloseable {
                                          MemorySegment parts,
                                          long partCount,
                                          MemorySegment userdata) {
-        SubscribeHandler handler = subscribeHandler;
+        SubscribeCallback handler = subscribeHandler;
         ExecutorService executor = callbackExecutor;
         if (handler == null || executor == null)
             return;
@@ -768,7 +791,7 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    private void dispatchSubscribe(SubscribeHandler handler,
+    private void dispatchSubscribe(SubscribeCallback handler,
                                    CallbackSubscribeData snapshot) {
         try {
             Received received = materializeReceived(snapshot);
@@ -961,8 +984,8 @@ public final class Spot implements AutoCloseable {
                       topicOut.asSlice(0, topicLength).toArray(
                         ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
                     return Optional.of(new SubscriptionEvent(
-                      Optional.ofNullable(readRoutingId(rid)), topicId,
-                      Optional.empty(),
+                      Optional.ofNullable(readRoutingId(rid)),
+                      Optional.empty(), topicId,
                       subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
                 RecvResult result;

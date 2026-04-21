@@ -11,8 +11,8 @@ void test_pubsub_tcp ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "pubsub");
-    assert (publisher.bind (endpoint) == 0);
-    assert (subscriber.connect (endpoint) == 0);
+    publisher.bind (endpoint);
+    subscriber.connect (endpoint);
 
     assert (subscriber.set_option (zlink::socket_option::subscribe, "", 0) == 0);
     sleep_ms (300);

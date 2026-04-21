@@ -10,10 +10,10 @@ int main ()
     zlink::monitor_handle_t router_monitor = router.monitor_handle ();
     zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
 
-    assert (router.bind ("tcp://127.0.0.1:0") == 0);
+    router.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = router.options ().last_endpoint ();
     assert (!endpoint.empty ());
-    assert (dealer.connect (endpoint) == 0);
+    dealer.connect (endpoint);
     assert (detail::wait_connected (router_monitor, dealer_monitor));
 
     const std::string sent = detail::k_dealer_router_request;

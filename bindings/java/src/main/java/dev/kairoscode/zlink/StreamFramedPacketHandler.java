@@ -3,6 +3,6 @@
 package dev.kairoscode.zlink;
 
 @FunctionalInterface
-public interface StreamFramedPacketHandler {
+interface StreamFramedPacketHandler {
     void onPacket(RoutingId routingId, Message header, Message body);
 }

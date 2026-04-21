@@ -451,7 +451,8 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                         i + 1 < cloned.Length ? IntPtr.Zero : userData);
                     submitted = true;
                     if (rc != 0)
-                        throw ZlinkException.FromLastError();
+                        throw ZlinkException.CreateSubmitException(
+                            NativeMethods.zlink_errno());
                 }
                 finally
                 {

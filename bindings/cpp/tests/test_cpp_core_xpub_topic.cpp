@@ -48,8 +48,8 @@ int main ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "xpub-topic");
-    assert (xpub.bind (endpoint) == 0);
-    assert (sub.connect (endpoint) == 0);
+    xpub.bind (endpoint);
+    sub.connect (endpoint);
 
     test_subscribe_cancel (xpub, sub, short_topic);
     test_subscribe_cancel (xpub, sub, long_topic);

@@ -7,8 +7,8 @@
 STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 전용** 소켓이다.
 
 핵심 규칙:
-- `ZLINK_STREAM`은 `zlink_bind()`만 지원한다.
-- `ZLINK_STREAM`에 `zlink_connect()`를 호출하면 `EOPNOTSUPP`를 반환한다.
+- `ZLINK_SOCKET_STREAM`은 `zlink_bind()`만 지원한다.
+- `ZLINK_SOCKET_STREAM`에 `zlink_connect()`를 호출하면 `EOPNOTSUPP`를 반환한다.
 - 클라이언트는 zlink STREAM 소켓이 아니라 OS/Asio/WebSocket 등의 **raw client**를 사용해야 한다.
 - STREAM은 raw 바이트 스트림을 그대로 전달한다. **프레이밍(패킷 경계)은 사용자가 정의**해야 한다.
 - zlink API에서 수신/송신 시 `source_rid`(서버가 자동 할당한 4B 연결 식별자)로 클라이언트를 구분한다.
@@ -26,7 +26,7 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 ## 2. 서버 생성/바인드
 
 ```c
-void *stream = zlink_socket(ctx, ZLINK_STREAM);
+void *stream = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 int linger = 0;
 zlink_set_option(stream, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 zlink_bind(stream, "tcp://0.0.0.0:8080");
@@ -242,8 +242,9 @@ recv(fd, body, body_len, MSG_WAITALL);
 - `ZLINK_OPT_BACKLOG`: `65536`
 - `ZLINK_OPT_SNDBUF`: 미지정(`-1`)이면 `262144`
 - `ZLINK_OPT_RCVBUF`: 미지정(`-1`)이면 `262144`
-- in/out batch 최소 크기: `12288`
-- STREAM accept 동시성 기본값: `4` (최대 `128`로 clamp)
+- STREAM 배치 크기 기본값: `4096`
+- STREAM 읽기 여유 공간 기본값: `64`
+- STREAM accept 동시성 기본값: `4` (최대 `128`로 제한)
 - STREAM 세션 스케줄링 기본값: `rr`
 
 > STREAM 런타임 환경변수 및 내부 튜닝 상수는
@@ -262,8 +263,8 @@ recv(fd, body, body_len, MSG_WAITALL);
 ## 8. 테스트 기준 구현
 
 참고 파일:
-- `core/tests/test_stream_socket.cpp`
-- `core/tests/test_stream_fastpath.cpp`
+- `core/tests/integration/test_stream_socket.cpp`
+- `core/tests/integration/test_stream_fastpath.cpp`
 - `core/tests/routing-id/test_connect_rid_string_alias.cpp`
 - `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
 

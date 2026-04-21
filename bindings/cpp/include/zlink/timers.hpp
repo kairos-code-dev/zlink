@@ -71,10 +71,10 @@ class timer_t
 
     void recv (uint64_t *fire_count_out_, int flags = 0)
     {
+        if (flags != 0)
+            throw recv_error_t (recv_result_t::not_supported, ENOTSUP);
         detail::throw_if_failed<recv_error_t> (
           static_cast<recv_result_t> (zlink_timer_recv (_timer, fire_count_out_)));
-        if (flags != 0)
-            (void) flags;
     }
 
     void set_handler (zlink_timer_handler_fn handler_, void *userdata_ = NULL)

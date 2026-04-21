@@ -261,6 +261,9 @@ status   = (expected == actual) ? "complete" : "partial"
 
 > 정책 준수 실행기 목록과 통합 실행 옵션은
 > [PERF_POLICY.md § 3](PERF_POLICY.md) 참조.
+>
+> 수정 후 검증은 single smoke를 포함해야 하며, smoke 정의와 실행 규칙은
+> [PERF_POLICY.md § 3.2](PERF_POLICY.md)를 따른다.
 
 ### 5.1 CLI 옵션
 

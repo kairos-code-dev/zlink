@@ -214,8 +214,11 @@ std::string bind_and_resolve_endpoint (perf_socket_t &socket_,
     std::string endpoint = make_endpoint (transport, id);
     if (endpoint.empty ())
         return std::string ();
-    if (socket_.bind (endpoint) != 0)
+    try {
+        socket_.bind (endpoint);
+    } catch (const zlink::zlink_error_t &) {
         return std::string ();
+    }
 
     if (transport != "inproc") {
         std::string last_endpoint;
@@ -277,8 +280,11 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
       bind_and_resolve_endpoint (bind_socket_, transport_, id_);
     if (endpoint.empty ())
         return false;
-    if (connect_socket_.connect (endpoint) != 0)
+    try {
+        connect_socket_.connect (endpoint);
+    } catch (const zlink::zlink_error_t &) {
         return false;
+    }
 
     apply_single_benchmark_socket_options (bind_socket_, transport_);
     apply_single_benchmark_socket_options (connect_socket_, transport_);

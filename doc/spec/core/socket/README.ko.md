@@ -182,7 +182,7 @@ monitor `zlink_*_monitor_recv` 함수들이 이 플래그를 사용합니다.
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_RECV_FLAGS_NONE` | 플래그 없음; 블로킹 수신 동작. |
-| `ZLINK_RECV_FLAGS_DONTWAIT` | 논블로킹 수신; 수신할 메시지가 없으면 `ZLINK_RECV_AGAIN` 을 즉시 반환. |
+| `ZLINK_RECV_FLAGS_DONTWAIT` | 논블로킹 수신; 수신할 메시지가 없으면 `ZLINK_RECV_NO_DATA` 를 즉시 반환. |
 
 ### 송신 결과
 

@@ -7,8 +7,8 @@
 STREAM is a **server-only** socket for communicating with **external raw clients**.
 
 Core rules:
-- `ZLINK_STREAM` supports `zlink_bind()` only.
-- Calling `zlink_connect()` on `ZLINK_STREAM` returns `EOPNOTSUPP`.
+- `ZLINK_SOCKET_STREAM` supports `zlink_bind()` only.
+- Calling `zlink_connect()` on `ZLINK_SOCKET_STREAM` returns `EOPNOTSUPP`.
 - Clients must use OS/Asio/WebSocket raw client stacks, not zlink STREAM sockets.
 - Wire format is `4-byte length (big-endian) + body`.
 - At the zlink API level, messages are exposed as 2 frames: `[routing_id(4B)][payload]`.
@@ -26,7 +26,7 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 ## 2. Server Create/Bind
 
 ```c
-void *stream = zlink_socket(ctx, ZLINK_STREAM);
+void *stream = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 int linger = 0;
 zlink_set_option(stream, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 zlink_bind(stream, "tcp://0.0.0.0:8080");
@@ -236,7 +236,8 @@ Defaults currently used by STREAM internals:
 - `ZLINK_OPT_BACKLOG`: `65536`
 - `ZLINK_OPT_SNDBUF`: `262144` when unset (`-1`)
 - `ZLINK_OPT_RCVBUF`: `262144` when unset (`-1`)
-- minimum in/out batch size: `12288`
+- STREAM batch size default: `4096`
+- STREAM read headroom default: `64`
 - STREAM accept concurrency default: `4` (clamped to max `128`)
 - STREAM session scheduling default: `rr`
 
@@ -255,8 +256,8 @@ Defaults currently used by STREAM internals:
 
 ## 8. Reference Tests
 
-- `core/tests/test_stream_socket.cpp`
-- `core/tests/test_stream_fastpath.cpp`
+- `core/tests/integration/test_stream_socket.cpp`
+- `core/tests/integration/test_stream_fastpath.cpp`
 - `core/tests/routing-id/test_connect_rid_string_alias.cpp`
 - `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
 

@@ -18,8 +18,8 @@ void test_msg_init_ffn ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "msg-ffn");
-    assert (router.bind (endpoint) == 0);
-    assert (dealer.connect (endpoint) == 0);
+    router.bind (endpoint);
+    dealer.connect (endpoint);
 
     zlink_msg_t msg;
     zlink_msg_t msg2;

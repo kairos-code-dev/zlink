@@ -5,21 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 
-public final class MessagePackCodec<T> {
-    private final ObjectMapper objectMapper;
+public final class MessagePackCodec {
+    private static final ObjectMapper DEFAULT_OBJECT_MAPPER =
+        new ObjectMapper(new MessagePackFactory());
 
-    public MessagePackCodec() {
-        this(new ObjectMapper(new MessagePackFactory()));
-    }
+    private MessagePackCodec() {}
 
-    public MessagePackCodec(ObjectMapper objectMapper) {
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
-    }
-
-    public dev.kairoscode.zlink.Message toMessage(T value) {
+    public static dev.kairoscode.zlink.Message toMessage(Object value) {
         Objects.requireNonNull(value, "value");
         try {
-            byte[] payload = objectMapper.writeValueAsBytes(value);
+            byte[] payload = DEFAULT_OBJECT_MAPPER.writeValueAsBytes(value);
             return dev.kairoscode.zlink.Message.copyOf(payload);
         } catch (JsonProcessingException ex) {
             throw new IllegalArgumentException(
@@ -27,11 +22,12 @@ public final class MessagePackCodec<T> {
         }
     }
 
-    public T fromMessage(dev.kairoscode.zlink.Message message, Class<T> type) {
+    public static <T> T parseMessagePack(dev.kairoscode.zlink.Message message,
+                                         Class<T> type) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(type, "type");
         try {
-            return objectMapper.readValue(message.toByteArray(), type);
+            return DEFAULT_OBJECT_MAPPER.readValue(message.toByteArray(), type);
         } catch (java.io.IOException ex) {
             throw new IllegalArgumentException(
                 "failed to decode MessagePack payload", ex);

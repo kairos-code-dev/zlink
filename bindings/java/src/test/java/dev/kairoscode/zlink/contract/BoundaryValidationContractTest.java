@@ -1,18 +1,20 @@
 package dev.kairoscode.zlink.contract;
 
-import dev.kairoscode.zlink.CommonSocketOptions;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.RouterSocket;
+import dev.kairoscode.zlink.RouterSocketOptions;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class BoundaryValidationContractTest {
@@ -28,12 +30,17 @@ public class BoundaryValidationContractTest {
     }
 
     @Test
+    public void routingIdDoesNotExposeUint32Factory() {
+        assertFalse(hasPublicMethod(RoutingId.class, "fromU32", int.class));
+    }
+
+    @Test
     public void durationTimeoutRejectsIntOverflow() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx)) {
-            CommonSocketOptions options = router.options();
+            RouterSocketOptions options = router.options();
             assertThrows(IllegalArgumentException.class,
                 () -> options.recvTimeout(Duration.ofMillis((long) Integer.MAX_VALUE + 1)));
             assertThrows(IllegalArgumentException.class,
@@ -66,6 +73,16 @@ public class BoundaryValidationContractTest {
             assertDoesNotThrow(() -> pub.publish(max, payload));
             assertThrows(IllegalArgumentException.class,
                 () -> pub.publish(overflow, payload));
+        }
+    }
+
+    private static boolean hasPublicMethod(Class<?> type, String name,
+                                           Class<?>... parameterTypes) {
+        try {
+            Method method = type.getMethod(name, parameterTypes);
+            return method != null;
+        } catch (NoSuchMethodException ex) {
+            return false;
         }
     }
 }

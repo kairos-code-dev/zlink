@@ -644,10 +644,45 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe_part (
   zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
 
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscription_event_recv (
+  void *spot_,
+  const zlink_routing_id_t **source_rid_out_,
+  int *subscribed_out_,
+  char *service_name_buf_,
+  size_t service_name_capacity_,
+  size_t *service_name_len_out_,
+  char *topic_id_buf_,
+  size_t topic_id_capacity_,
+  size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
+
 /* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_channel_part (
   void *spot_,
   const char *channel_name_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+/* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
   zlink_msg_t *part_,
   zlink_reply_handler_fn handler_,
   void *userdata_,

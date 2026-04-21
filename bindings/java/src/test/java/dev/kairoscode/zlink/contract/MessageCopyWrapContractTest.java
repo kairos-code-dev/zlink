@@ -28,8 +28,8 @@ public class MessageCopyWrapContractTest {
     }
 
     @Test
-    public void wrapDirectByteBufferIsPublic() {
-        assertTrue(hasPublicMethod(Message.class, "wrapDirect", ByteBuffer.class));
+    public void wrapDirectByteBufferIsNotPublic() {
+        assertFalse(hasPublicMethod(Message.class, "wrapDirect", ByteBuffer.class));
     }
 
     @Test

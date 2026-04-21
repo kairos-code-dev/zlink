@@ -133,7 +133,9 @@ class dealer_dealer_client_bench_t
                 debug_log ("open connect monitor failed");
                 return false;
             }
-            if (sock.connect (_endpoint) != 0) {
+            try {
+                sock.connect (_endpoint);
+            } catch (const zlink::zlink_error_t &) {
                 debug_log ("connect failed errno=" + std::to_string (errno));
                 return false;
             }

@@ -14,7 +14,8 @@ public sealed class AtomicCounter : IDisposable, IAsyncDisposable
     {
         _handle = NativeMethods.zlink_atomic_counter_new();
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
     }
 
     public int Value

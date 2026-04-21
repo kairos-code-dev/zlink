@@ -10,7 +10,6 @@ import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.TestSupport;

@@ -36,6 +36,8 @@ bool send_family_requires_routed_scope (
            || family_ == send_family_router_reply
            || family_ == send_family_spot_send_channel
            || family_ == send_family_spot_request_channel
+           || family_ == send_family_spot_request_spot
+           || family_ == send_family_spot_request_router
            || family_ == send_family_spot_reply_spot
            || family_ == send_family_spot_reply_router
            || family_ == send_family_router_request_spot

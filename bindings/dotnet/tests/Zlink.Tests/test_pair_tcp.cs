@@ -122,8 +122,8 @@ public sealed class test_pair_tcp
         Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
     }
 
-    [Fact(Skip = "Known core bug: zlink_poller_modify fails to surface POLLOUT after PAIR/inproc readiness change. Repro: zlink_poller_add(receiver, ZLINK_POLLIN) -> send ping -> recv ping -> zlink_poller_modify(receiver, ZLINK_POLLOUT) -> zlink_poller_wait_all times out with errno 11.")]
-    public void poller_modify_switches_event_mask()
+    [Fact]
+    public void poller_modify_switches_socket_event_mask()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -153,10 +153,23 @@ public sealed class test_pair_tcp
 
         events.Clear();
         poller.Modify(receiver, PollEvents.PollOut);
+
+        CoreTestSupport.SendWithRetry(sender, "pong"u8, 2000);
+
+        // POLLOUT is send-recovery readiness, not generic transport writability.
+        // After switching the registration away from POLLIN, the queued receive
+        // message must no longer surface as a poll-ready event until POLLIN is
+        // registered again.
+        Assert.Equal(0, poller.Wait(events, 100));
+        Assert.Empty(events);
+
+        poller.Modify(receiver, PollEvents.PollIn);
         Assert.Equal(1, poller.Wait(events, 2000));
         Assert.NotEmpty(events);
-        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollOut);
-        Assert.Equal(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+        Assert.Equal(PollEvents.None, events[0].Revents & PollEvents.PollOut);
+        Assert.Equal("pong", CoreTestSupport.ReceiveUtf8WithTimeout(receiver,
+            2000));
     }
 
     [Fact]

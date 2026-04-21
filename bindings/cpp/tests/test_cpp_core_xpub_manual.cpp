@@ -14,8 +14,8 @@ void test_basic_manual ()
     assert (xpub.set_option (zlink::socket_option::xpub_manual, manual) == 0);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-xpub-manual-", "basic");
-    assert (xpub.bind (endpoint) == 0);
-    assert (xsub.connect (endpoint) == 0);
+    xpub.bind (endpoint);
+    xsub.connect (endpoint);
 
     const unsigned char subscription[] = {1, 'A'};
     assert (xsub.send (subscription, sizeof (subscription))
@@ -44,8 +44,8 @@ void test_unsubscribe_manual ()
     assert (xpub.set_option (zlink::socket_option::xpub_manual, manual) == 0);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-xpub-manual-", "unsub");
-    assert (xpub.bind (endpoint) == 0);
-    assert (xsub.connect (endpoint) == 0);
+    xpub.bind (endpoint);
+    xsub.connect (endpoint);
 
     const unsigned char sub_a[] = {1, 'A'};
     const unsigned char sub_b[] = {1, 'B'};

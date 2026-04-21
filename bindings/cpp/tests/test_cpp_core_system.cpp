@@ -17,7 +17,7 @@ void test_localhost ()
 {
     zlink::context_t ctx;
     zlink::dealer_socket_t dealer (ctx);
-    assert (dealer.bind ("tcp://127.0.0.1:*") == 0);
+    dealer.bind ("tcp://127.0.0.1:*");
 }
 
 void test_max_native_sockets ()

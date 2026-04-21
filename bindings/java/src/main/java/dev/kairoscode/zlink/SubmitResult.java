@@ -15,7 +15,8 @@ public enum SubmitResult {
     THREAD_VIOLATION(9),
     OUT_OF_MEMORY(10),
     SEQ_EXHAUSTED(11),
-    INTERNAL_ERROR(12);
+    INTERNAL_ERROR(12),
+    NOT_ADMITTED(13);
 
     private final int value;
 

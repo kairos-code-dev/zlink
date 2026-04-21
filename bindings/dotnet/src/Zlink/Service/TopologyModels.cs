@@ -101,7 +101,7 @@ public enum SpotRole
     Sub = 2
 }
 
-public enum SpotServiceAttachmentRole
+internal enum SpotServiceAttachmentRole
 {
     Router = 1,
     Pub = 2,
@@ -115,12 +115,14 @@ public enum ServiceEventType : uint
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
+    PeerAdmissionChanged = 1u << 8,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
+        | PeerAdmissionChanged
 }
 
 public sealed record SpotNodePeerFilter(
@@ -313,7 +315,7 @@ public sealed record SpotNodePeerEntry(
     }
 }
 
-public sealed record SpotServiceAttachmentStats(
+internal sealed record SpotServiceAttachmentStats(
     string ServiceName,
     uint RouterCount,
     uint PubCount,
@@ -336,7 +338,7 @@ public sealed record SpotServiceAttachmentStats(
     }
 }
 
-public sealed record SpotServiceMonitorEvent(
+internal sealed record SpotServiceMonitorEvent(
     string ServiceName,
     SpotServiceAttachmentRole Role,
     MonitorEventType Event)

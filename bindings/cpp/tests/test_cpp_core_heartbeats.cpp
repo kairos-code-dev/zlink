@@ -70,7 +70,7 @@ void test_handshake_timeout ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "heartbeats");
-    assert (server.bind (endpoint) == 0);
+    server.bind (endpoint);
 
     zlink::monitor_handle_t monitor = server.monitor_handle (
       zlink::monitor_event::accepted | zlink::monitor_event::disconnected);

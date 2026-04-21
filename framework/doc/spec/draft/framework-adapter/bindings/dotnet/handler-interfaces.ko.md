@@ -731,7 +731,7 @@ targetRid` 주소 해석을 framework 기본 기능으로 두지 않는다. 직�
 ```csharp
 public interface ISpotRouterConnections
 {
-    void Connect(RoutingId targetRid, string endpoint);
+    void Connect(string endpoint);
 
     void Disconnect(string endpoint);
 
@@ -837,10 +837,9 @@ public interface IZLinkFrameworkOptions
   - `CreateAsync(spotName, ...)`는 이 이름과 정확히 일치하는 factory를 고른다.
 
 여기서 수동 연결은 channel 쪽과 마찬가지로 capability별로 다뤄야 한다.
-예를 들어 `router`는 `RoutingId + endpoint`를 함께 알아야 하지만, channel
-client와 publish 쪽은 endpoint 집합만 알면 된다. channel client는 하부
-`DEALER`가 connect된 peer 집합에 요청을 보내는 모델이므로 manual connect
-시점에 remote `RoutingId`를 따로 받지 않는 편이 자연스럽다. 따라서
+예를 들어 `router`, channel client, publish 쪽은 모두 각 capability가 쓸
+endpoint 집합을 따로 관리하면 된다. 이 초안에서는 manual `Connect(...)`
+시점에 remote router id를 별도 파라미터로 받지 않는다. 따라서
 `UseManualConnections(...)`도 한 군데에 모아 두지 않고 capability builder별로
 따로 두는 편이 맞다.
 

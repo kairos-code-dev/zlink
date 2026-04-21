@@ -27,11 +27,11 @@ public final class StreamSocket extends Socket {
     SendResult sendNoWaitResult(RoutingId rid, Message part) {
         return super.sendNoWaitResult(rid, part);
     }
-    public int send(int rid, MemorySegment payload, int length, SendFlags flags) {
+    int send(int rid, MemorySegment payload, int length, SendFlags flags) {
         return super.send(rid, payload, length, flags.value());
     }
-    public int sendCopied(int rid, MemorySegment payload, int length,
-                          SendFlags flags) {
+    int sendCopied(int rid, MemorySegment payload, int length,
+                   SendFlags flags) {
         return super.sendCopied(rid, payload, length, flags.value());
     }
     public boolean send(RoutingId rid, List<Message> parts) { return super.send(rid, parts); }
@@ -43,16 +43,16 @@ public final class StreamSocket extends Socket {
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public void onPacket(StreamPacketHandler handler) { super.attachStreamRaw(handler); }
-    public void onPacketNative(StreamUInt32RawNativeHandler handler) {
+    void onPacketNative(StreamUInt32RawNativeHandler handler) {
         super.attachStreamRaw(handler);
     }
-    public void onFramedPacket(StreamFramedPacketHandler handler) {
+    void onFramedPacket(StreamFramedPacketHandler handler) {
         super.attachStreamPacket(handler);
     }
-    public void onFramedPacket(StreamUInt32FramedPacketHandler handler) {
+    void onFramedPacket(StreamUInt32FramedPacketHandler handler) {
         super.attachStreamPacket(handler);
     }
-    public void onFramedPacketNative(StreamUInt32FramedNativeHandler handler) {
+    void onFramedPacketNative(StreamUInt32FramedNativeHandler handler) {
         super.attachStreamPacket(handler);
     }
     public void detachStream() { super.detachStream(); }

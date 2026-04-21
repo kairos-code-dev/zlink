@@ -156,7 +156,8 @@ Recommended sequence:
 1. Call `zlink_set_admission_state(handle, ZLINK_ADMISSION_DRAINING)`.
 2. Allow connected peers a moment to update their admission caches. You
    can observe this via the socket monitor event
-   `ZLINK_EVENT_PEER_ADMISSION_CHANGED` or the service monitor event
+   `ZLINK_EVENT_PEER_ADMISSION_CHANGED`. If you need the service-layer
+   view, observe the `Discovery` handle for the same peers through
    `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`.
 3. Wait long enough for in-flight replies to drain. In production this
    wait is typically driven by your request SLA.

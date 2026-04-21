@@ -39,30 +39,30 @@ public final class DealerSocket extends Socket {
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(Message part) { return request(List.of(part)); }
-    public CompletableFuture<List<Message>> request(Message part, SendFlags flags) {
+    private CompletableFuture<List<Message>> request(Message part, SendFlags flags) {
         return request(List.of(part), flags);
     }
     public CompletableFuture<List<Message>> request(Message part, Duration timeout) {
         return request(List.of(part), timeout);
     }
-    public CompletableFuture<List<Message>> request(Message part, SendFlags flags,
-                                                    Duration timeout) {
+    private CompletableFuture<List<Message>> request(Message part, SendFlags flags,
+                                                     Duration timeout) {
         return request(List.of(part), flags, timeout);
     }
     public CompletableFuture<List<Message>> request(List<Message> parts) {
         return request(parts, SendFlags.NONE);
     }
-    public CompletableFuture<List<Message>> request(List<Message> parts,
-                                                    SendFlags flags) {
+    private CompletableFuture<List<Message>> request(List<Message> parts,
+                                                     SendFlags flags) {
         return request(parts, flags,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public CompletableFuture<List<Message>> request(List<Message> parts, Duration timeout) {
         return request(parts, SendFlags.NONE, timeout);
     }
-    public CompletableFuture<List<Message>> request(List<Message> parts,
-                                                    SendFlags flags,
-                                                    Duration timeout) {
+    private CompletableFuture<List<Message>> request(List<Message> parts,
+                                                     SendFlags flags,
+                                                     Duration timeout) {
         return dealerRequests.request(parts, timeout, flags).thenApply(reply -> {
             try (reply) {
                 debug("dealer request thenApply parts=" + reply.parts().size());
@@ -76,6 +76,14 @@ public final class DealerSocket extends Socket {
     public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback) {
         return request(parts, callback, SendFlags.NONE,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
+    }
+    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback,
+                        Duration timeout) {
+        return request(List.of(part), callback, SendFlags.NONE, timeout);
+    }
+    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
+                        Duration timeout) {
+        return request(parts, callback, SendFlags.NONE, timeout);
     }
     public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback,
                         SendFlags flags) {

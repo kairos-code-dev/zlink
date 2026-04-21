@@ -25,13 +25,13 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
 
     zlink::xpub_socket_t pub_socket (ctx);
     assert (pub_socket.set_option (zlink::socket_option::sndhwm, send_hwm_) == 0);
-    assert (pub_socket.bind (bind_endpoint_) == 0);
+    pub_socket.bind (bind_endpoint_);
     const std::string pub_endpoint = bound_endpoint (pub_socket);
 
     zlink::sub_socket_t sub_socket (ctx);
     assert (sub_socket.set_option (zlink::socket_option::rcvhwm, send_hwm_) == 0);
     assert (sub_socket.set_option (zlink::socket_option::subscribe, "", 0) == 0);
-    assert (sub_socket.connect (pub_endpoint) == 0);
+    sub_socket.connect (pub_endpoint);
 
     const unsigned char subscription_to_all_topics[] = {1};
     zlink::message_t subscription;
@@ -85,7 +85,7 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
 
     zlink::xpub_socket_t pub_socket (ctx);
     assert (pub_socket.set_option (zlink::socket_option::sndhwm, send_hwm_) == 0);
-    assert (pub_socket.bind (bind_endpoint_) == 0);
+    pub_socket.bind (bind_endpoint_);
     const std::string pub_endpoint = bound_endpoint (pub_socket);
 
     zlink::sub_socket_t sub_socket (ctx);
@@ -96,7 +96,7 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
     const int timeout_ms = 10;
     assert (sub_socket.set_option (zlink::socket_option::rcvtimeo, timeout_ms) == 0);
     assert (sub_socket.set_option (zlink::socket_option::subscribe, "", 0) == 0);
-    assert (sub_socket.connect (pub_endpoint) == 0);
+    sub_socket.connect (pub_endpoint);
 
     const unsigned char subscription_to_all_topics[] = {1};
     zlink::message_t subscription;
@@ -142,12 +142,12 @@ void test_reset_hwm ()
 
     zlink::pub_socket_t pub_socket (ctx);
     assert (pub_socket.set_option (zlink::socket_option::sndhwm, hwm) == 0);
-    assert (pub_socket.bind ("tcp://127.0.0.1:*") == 0);
+    pub_socket.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = bound_endpoint (pub_socket);
 
     zlink::sub_socket_t sub_socket (ctx);
     assert (sub_socket.set_option (zlink::socket_option::rcvhwm, hwm) == 0);
-    assert (sub_socket.connect (endpoint) == 0);
+    sub_socket.connect (endpoint);
     assert (sub_socket.set_option (zlink::socket_option::subscribe, "", 0) == 0);
 
     sleep_ms (kSettleTimeMs);

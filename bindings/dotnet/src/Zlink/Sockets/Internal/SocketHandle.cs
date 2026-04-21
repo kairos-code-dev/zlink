@@ -17,7 +17,8 @@ internal sealed class SocketHandle : IDisposable
 
         _handle = NativeMethods.zlink_socket(context.Handle, (int)type);
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
         _own = true;
     }
 

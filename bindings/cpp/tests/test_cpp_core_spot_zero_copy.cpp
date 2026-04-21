@@ -76,8 +76,8 @@ void test_spot_publish_external_buffer_delivery ()
     const std::string endpoint =
       unique_inproc ("inproc://cpp-", "spot-zero-copy");
 
-    assert (pub_node.bind (endpoint.c_str ()) == 0);
-    assert (sub_node.connect_peer (endpoint.c_str ()) == 0);
+    pub_node.bind (endpoint.c_str ());
+    sub_node.connect_peer (endpoint.c_str ());
 
     const std::string service_name = "zero-copy";
     zlink::service::discovery_t pub_discovery (
@@ -89,7 +89,7 @@ void test_spot_publish_external_buffer_delivery ()
     zlink::service::spot_t sub_spot = sub_node.create_spot ();
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
-    assert (sub_spot.set_subscription ("zero:topic") == 0);
+    sub_spot.set_subscription ("zero:topic");
     sleep_ms (100);
 
     char *payload = alloc_payload ("pong", 4);

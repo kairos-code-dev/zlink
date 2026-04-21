@@ -40,8 +40,8 @@ void test_xpub_verbose_one_sub ()
     zlink::context_t ctx;
     zlink::xpub_socket_t pub (ctx);
     zlink::sub_socket_t sub (ctx);
-    assert (pub.bind (test_endpoint) == 0);
-    assert (sub.connect (test_endpoint) == 0);
+    pub.bind (test_endpoint);
+    sub.connect (test_endpoint);
 
     assert (sub.set_option (zlink::socket_option::subscribe, topic_a, 1) == 0);
     recv_array_expect_success (pub, subscribe_a_msg, 2);
@@ -68,9 +68,9 @@ void create_xpub_with_2_subs (zlink::context_t &ctx_,
                               zlink::sub_socket_t &sub0_,
                               zlink::sub_socket_t &sub1_)
 {
-    assert (pub_.bind (test_endpoint) == 0);
-    assert (sub0_.connect (test_endpoint) == 0);
-    assert (sub1_.connect (test_endpoint) == 0);
+    pub_.bind (test_endpoint);
+    sub0_.connect (test_endpoint);
+    sub1_.connect (test_endpoint);
     (void) ctx_;
 }
 
@@ -115,8 +115,8 @@ void test_xpub_verboser_one_sub ()
     zlink::context_t ctx;
     zlink::xpub_socket_t pub (ctx);
     zlink::sub_socket_t sub (ctx);
-    assert (pub.bind (test_endpoint) == 0);
-    assert (sub.connect (test_endpoint) == 0);
+    pub.bind (test_endpoint);
+    sub.connect (test_endpoint);
 
     assert (sub.set_option (zlink::socket_option::unsubscribe, topic_a, 1) == 0);
     expect_no_msg (pub);

@@ -10,6 +10,7 @@ import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XSubSocket;
 import dev.kairoscode.zlink.XPubSocket;
+import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketSubscriptionContractTest {
@@ -114,5 +116,16 @@ public class SocketSubscriptionContractTest {
             assertTrue(event.subscribed());
             assertEquals("manual-topic", event.topic());
         }
+    }
+
+    @Test
+    public void subscriptionEventRecordShapeMatchesSpec() {
+        RecordComponent[] components = SubscriptionEvent.class.getRecordComponents();
+        assertNotNull(components);
+        assertEquals(4, components.length);
+        assertEquals("routingId", components[0].getName());
+        assertEquals("serviceName", components[1].getName());
+        assertEquals("topic", components[2].getName());
+        assertEquals("subscribed", components[3].getName());
     }
 }

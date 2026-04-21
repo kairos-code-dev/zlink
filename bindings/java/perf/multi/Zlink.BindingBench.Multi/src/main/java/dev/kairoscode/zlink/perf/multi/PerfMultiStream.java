@@ -5,6 +5,7 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.PerfStreamHooks;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubmitException;
@@ -41,9 +42,10 @@ final class PerfMultiStream {
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
-            server.onFramedPacket((dev.kairoscode.zlink.StreamFramedPacketHandler) (routingId, header, body) ->
-                onPacket(server, routingId, header, body, pending, pendingCount,
-                    pendingSignal));
+            PerfStreamHooks.attachFramedPacketHandler(server,
+                (routingId, header, body) ->
+                    onPacket(server, routingId, header, body, pending,
+                        pendingCount, pendingSignal));
 
             while (!stopRequested.get()) {
                 if (pendingCount.get() == 0) {

@@ -142,11 +142,11 @@ void test_socket_monitor_open_recv_snapshot ()
     zlink::monitor_handle_t monitor = server.monitor_handle ();
     assert (monitor.valid ());
 
-    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    server.bind ("tcp://127.0.0.1:*");
     std::string endpoint;
     endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     (void) monitor.recv (zlink::non_blocking_t {});
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
@@ -166,10 +166,10 @@ void test_socket_monitor_ignore_handler_and_poller_size ()
 
     monitor.on_event (zlink::monitor_handle_t::ignore_handler, NULL);
 
-    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    server.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
     bool ready = false;
@@ -201,11 +201,11 @@ void test_socket_monitor_on_event_callback ()
     monitor_callback_state_t callback_state;
     monitor.on_event (&socket_monitor_callback, &callback_state);
 
-    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    server.bind ("tcp://127.0.0.1:*");
     std::string endpoint;
     endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     {
         std::unique_lock<std::mutex> lock (callback_state.mutex);
@@ -234,7 +234,12 @@ void test_discovery_service_monitor_open_recv ()
       zlink::service_monitor_event::discovery_service_up);
     assert (monitor.valid ());
     monitor.on_event (static_cast<zlink::service_event_handler_fn> (NULL), NULL);
-    (void) monitor.recv (zlink::non_blocking_t {});
+    try {
+        (void) monitor.recv (zlink::non_blocking_t {});
+        assert (false);
+    } catch (const zlink::recv_error_t &err) {
+        assert (err.result () == zlink::recv_result_t::busy);
+    }
 }
 
 } // namespace

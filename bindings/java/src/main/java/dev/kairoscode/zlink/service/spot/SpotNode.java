@@ -7,7 +7,6 @@ import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.PubSocket;
-import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
@@ -27,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Lifecycle and topology facade for the current unified spot node model. */
 public final class SpotNode implements AutoCloseable {
+    private static final int OPT_SNDHWM = 23;
+    private static final int OPT_RCVHWM = 24;
     private final Object lifecycleLock = new Object();
     private final Set<Spot> liveSpots =
       Collections.newSetFromMap(new IdentityHashMap<>());
@@ -219,11 +220,11 @@ public final class SpotNode implements AutoCloseable {
     }
 
     void sendHwm(int value) {
-        socketOptions.setPubIntOption(SocketOption.SNDHWM, value);
+        socketOptions.setPubIntOption(OPT_SNDHWM, value);
     }
 
     void recvHwm(int value) {
-        socketOptions.setSubIntOption(SocketOption.RCVHWM, value);
+        socketOptions.setSubIntOption(OPT_RCVHWM, value);
     }
 
     /** Returns the current node status snapshot. */
@@ -395,21 +396,21 @@ public final class SpotNode implements AutoCloseable {
     }
 
     private final class SpotNodeSocketOptions {
-        void setPubIntOption(SocketOption option, int value) {
-            setIntOption(Native.spotNodeDefaultPub(handle), option, value);
+        void setPubIntOption(int optionId, int value) {
+            setIntOption(Native.spotNodeDefaultPub(handle), optionId, value);
         }
 
-        void setSubIntOption(SocketOption option, int value) {
-            setIntOption(Native.spotNodeDefaultSub(handle), option, value);
+        void setSubIntOption(int optionId, int value) {
+            setIntOption(Native.spotNodeDefaultSub(handle), optionId, value);
         }
 
         private void setIntOption(MemorySegment socketHandle,
-                                  SocketOption option,
+                                  int optionId,
                                   int value) {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
                 nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-                int rc = Native.setSockOpt(socketHandle, option.getValue(),
+                int rc = Native.setSockOpt(socketHandle, optionId,
                     nativeValue,
                     Integer.BYTES);
                 if (rc != 0) {

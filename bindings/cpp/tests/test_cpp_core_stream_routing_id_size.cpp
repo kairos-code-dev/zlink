@@ -149,7 +149,7 @@ int main ()
 
     assert (server.stream_attach (&on_stream_packet) == 0);
 
-    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    server.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = bound_endpoint (server);
 
     zlink::monitor_handle_t monitor =
@@ -173,7 +173,7 @@ int main ()
 
     close_raw_fd (client_fd);
     assert (server.stream_detach () == 0);
-    assert (monitor.close () == 0);
+    monitor.close ();
 
     return 0;
 #endif

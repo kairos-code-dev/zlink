@@ -17,7 +17,8 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_registry_query_client_new(context.Handle);
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
     }
 
     public void Connect(string endpoint)
@@ -26,7 +27,7 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_query_client_connect(_handle,
             endpoint);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConnectIfError(rc);
     }
 
     public RegistryTopologyEntry[] Snapshot(RegistryTopologyFilter? filter = null)
@@ -80,10 +81,7 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
-            return;
-        NativeMethods.zlink_registry_query_destroy(ref _handle);
-        _handle = IntPtr.Zero;
+        Destroy(throwOnError: true);
         GC.SuppressFinalize(this);
     }
 
@@ -95,7 +93,26 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
 
     ~RegistryQueryClient()
     {
-        Dispose();
+        Destroy(throwOnError: false);
+    }
+
+    private void Destroy(bool throwOnError)
+    {
+        if (_handle == IntPtr.Zero)
+            return;
+
+        IntPtr originalHandle = _handle;
+        IntPtr handle = _handle;
+        int rc = NativeMethods.zlink_registry_query_destroy(ref handle);
+        if (rc == 0)
+        {
+            _handle = IntPtr.Zero;
+            return;
+        }
+
+        _handle = originalHandle;
+        if (throwOnError)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
     private void EnsureNotDisposed()
@@ -109,7 +126,7 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
     {
         nuint count = 0;
         int rc = nativeCall(handle, filterPtr, IntPtr.Zero, ref count);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<RegistryTopologyEntry>();
 
@@ -119,7 +136,7 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
         {
             nuint actual = count;
             rc = nativeCall(handle, filterPtr, entries, ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
 
             RegistryTopologyEntry[] result = new RegistryTopologyEntry[(int)actual];
             for (int i = 0; i < result.Length; i++)

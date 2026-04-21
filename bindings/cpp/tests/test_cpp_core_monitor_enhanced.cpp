@@ -46,12 +46,12 @@ static void test_monitor_open_and_connection_ready ()
     zlink::dealer_socket_t client (ctx);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""}, "monitor");
-    assert (server.bind (endpoint) == 0);
+    server.bind (endpoint);
 
     zlink::monitor_handle_t monitor = server.monitor_handle (
       zlink::monitor_event::connection_ready | zlink::monitor_event::disconnected);
 
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     zlink::monitor_event_t ready;
     assert (wait_for_event (
@@ -67,7 +67,7 @@ static void test_monitor_open_and_connection_ready ()
     assert (!disconnected.remote_address.empty ()
             || !disconnected.local_address.empty ());
 
-    assert (monitor.close () == 0);
+    monitor.close ();
 }
 
 int main ()

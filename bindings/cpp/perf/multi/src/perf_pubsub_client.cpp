@@ -132,8 +132,11 @@ class pubsub_client_bench_t
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
-            if (sock.connect (_endpoint) != 0)
+            try {
+                sock.connect (_endpoint);
+            } catch (const zlink::zlink_error_t &) {
                 return false;
+            }
 
             _sockets.push_back (&sock);
             (void) _poller.add (sock, zlink::poll_event::pollin, &sock);

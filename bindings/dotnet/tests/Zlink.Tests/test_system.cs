@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using Xunit;
 
 namespace Zlink.Tests;
@@ -86,5 +87,58 @@ public sealed class test_system
         Assert.Equal(ErrorCode.Eterm,
             ZlinkException.MapErrorCode(zlinkHausnumero + 53));
         Assert.Equal(ErrorCode.Unknown, ZlinkException.MapErrorCode(123456789));
+    }
+
+    [Fact]
+    public void timer_basic_contract_uses_native_backend()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var timer = new Timer();
+        timer.Start(5_000_000, 1);
+
+        ulong fireCount = timer.Recv();
+
+        Assert.Equal(1UL, fireCount);
+    }
+
+    [Fact]
+    public void timer_from_spot_uses_spot_scheduler_backend()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = node.CreateSpot();
+        using var timer = Timer.FromSpot(spot);
+
+        timer.Start(5_000_000, 1);
+
+        ulong fireCount = timer.Recv();
+
+        Assert.Equal(1UL, fireCount);
+    }
+
+    [Fact]
+    public void timer_on_fire_invokes_callback()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var timer = new Timer();
+        using var fired = new ManualResetEventSlim(false);
+        ulong observed = 0;
+
+        timer.OnFire((_, fireCount) =>
+        {
+            observed = fireCount;
+            fired.Set();
+        });
+        timer.Start(5_000_000, 1);
+
+        Assert.True(fired.Wait(1000));
+        Assert.Equal(1UL, observed);
     }
 }

@@ -30,7 +30,7 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_OPT_SNDBUF` | `-1` | Do not force `SO_SNDBUF` |
 | `ZLINK_OPT_RCVBUF` | `-1` | Do not force `SO_RCVBUF` |
 | `ZLINK_OPT_TOS` | `0` | No ToS/DSCP override |
-| `ZLINK_OPT_LINGER` | context-derived | `-1` if `ZLINK_OPT_BLOCKY=1` (default), else `0` |
+| `ZLINK_OPT_LINGER` | context-derived | `-1` if the context blocky mode is enabled by default, else `0` |
 | `ZLINK_OPT_CONNECT_TIMEOUT` | `0` | Disabled |
 | `ZLINK_OPT_TCP_MAXRT` | `0` | Disabled |
 | `ZLINK_OPT_RECONNECT_IVL` | `100` | Initial reconnect interval (ms) |
@@ -41,7 +41,7 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_OPT_MULTICAST_MAXTPDU` | `1500` | Multicast max TPDU |
 | `ZLINK_OPT_RCVTIMEO` | `-1` | Infinite receive timeout |
 | `ZLINK_OPT_SNDTIMEO` | `-1` | Infinite send timeout |
-| `ZLINK_OPT_IPV6` | context-derived | Inherits `zlink_ctx_get(ctx, ZLINK_OPT_IPV6)` (default `0`) |
+| `ZLINK_OPT_IPV6` | context-derived | Inherits the context IPv6 default (default `0`) |
 | `ZLINK_OPT_IMMEDIATE` | `0` | Attach connecting pipes immediately |
 | `ZLINK_OPT_CONFLATE` | `0` | Disabled |
 | `ZLINK_OPT_INVERT_MATCHING` | `0` | Disabled |
@@ -56,35 +56,29 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_OPT_TCP_NODELAY` | `1` | Enabled by default |
 | `ZLINK_OPT_BINDTODEVICE` | empty string | No device binding |
 | `ZLINK_OPT_HANDSHAKE_IVL` | `30000` | ZMP handshake timeout (ms, 0 = disabled) |
-| `ZLINK_OPT_PRIORITY` | `0` | Socket priority |
-| `ZLINK_OPT_BUSY_POLL` | `0` | Busy-poll disabled |
-| `ZLINK_OPT_MONITOR_EVENT_VERSION` | `1` | Monitor event version |
-| `ZLINK_OPT_IN_BATCH_SIZE` | `8192` | Inbound batch size (bytes) |
-| `ZLINK_OPT_OUT_BATCH_SIZE` | `8192` | Outbound batch size (bytes) |
-| `ZLINK_OPT_ZERO_COPY` | `1` | Zero-copy enabled |
 | `ZLINK_OPT_ZMP_METADATA` | `0` | Disabled |
 
 ## 2. Socket-Type Specific Defaults and Overrides
 
 | Socket Type | Option/Behavior | Default |
 |---|---|---|
-| `ZLINK_DEALER` | `ZLINK_DEALER_OPT_PROBE` | `0` |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `1` (set via `zlink_set_router_option()`) |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_PROBE` | `0` |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_HANDOVER` | `1` |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSE` | `0` (set via `zlink_set_pub_option()`) |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSER` | `0` |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_NODROP` | `1` (`_lossy=false`) |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_MANUAL` | `0` |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | `0` |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_WELCOME_MSG` | empty |
-| `ZLINK_XSUB` | `ZLINK_OPT_LINGER` override | forced to `0` |
-| `ZLINK_SUB` | `ZLINK_OPT_LINGER` override | forced to `0` (inherits XSUB constructor) |
-| `ZLINK_SUB` | Subscription set | empty at creation |
-| `ZLINK_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
-| `ZLINK_STREAM` | `ZLINK_OPT_SNDBUF` override | `262144` if unset (`<0`) |
-| `ZLINK_STREAM` | `ZLINK_OPT_RCVBUF` override | `262144` if unset (`<0`) |
-| `ZLINK_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | not supported (`EOPNOTSUPP`) |
+| `ZLINK_SOCKET_DEALER` | `ZLINK_DEALER_OPT_PROBE` | `0` |
+| `ZLINK_SOCKET_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `1` |
+| `ZLINK_SOCKET_ROUTER` | `ZLINK_ROUTER_OPT_PROBE` | `0` |
+| `ZLINK_SOCKET_ROUTER` | `ZLINK_ROUTER_OPT_HANDOVER` | `1` |
+| `ZLINK_SOCKET_XPUB` | `ZLINK_PUB_OPT_VERBOSE` | `0` |
+| `ZLINK_SOCKET_XPUB` | `ZLINK_PUB_OPT_VERBOSER` | `0` |
+| `ZLINK_SOCKET_XPUB` | `ZLINK_PUB_OPT_NODROP` | `1` (`_lossy=false`) |
+| `ZLINK_SOCKET_XPUB` | `ZLINK_PUB_OPT_MANUAL` | `0` |
+| `ZLINK_SOCKET_XPUB` | `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | `0` |
+| `ZLINK_SOCKET_XPUB` | `ZLINK_PUB_OPT_WELCOME_MSG` | empty |
+| `ZLINK_SOCKET_XSUB` | `ZLINK_OPT_LINGER` override | forced to `0` |
+| `ZLINK_SOCKET_SUB` | `ZLINK_OPT_LINGER` override | forced to `0` (inherits the XSUB constructor path) |
+| `ZLINK_SOCKET_SUB` | Subscription set | empty at creation |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | `262144` if unset (`<0`) |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | `262144` if unset (`<0`) |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | not supported (`EOPNOTSUPP`) |
 
 ## 3. Read-Only Initial State Values
 
@@ -94,26 +88,21 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_PUB_OPT_TOPICS_COUNT` (XPUB) | `0` |
 | `ZLINK_SUB_OPT_TOPICS_COUNT` (XSUB/SUB) | `0` |
 
-## 4. TLS Option Defaults (When Built with TLS)
+## 4. TLS Helper Notes
 
-> **Note:** TLS is configured via `zlink_set_tls_server()` / `zlink_set_tls_client()`
-> in the public API. The constants below are the underlying internal default values.
+TLS is configured through the public helper APIs
+`zlink_set_tls_server()` and `zlink_set_tls_client()`.
+This document does not list a separate TLS constant table because the
+public headers do not expose `ZLINK_TLS_*` option names.
 
-| Option (internal) | Default |
-|---|---:|
-| `ZLINK_TLS_VERIFY` | `1` |
-| `ZLINK_TLS_REQUIRE_CLIENT_CERT` | `0` |
-| `ZLINK_TLS_TRUST_SYSTEM` | `1` |
-| `ZLINK_TLS_CERT` | empty string |
-| `ZLINK_TLS_KEY` | empty string |
-| `ZLINK_TLS_CA` | empty string |
-| `ZLINK_TLS_HOSTNAME` | empty string |
-| `ZLINK_TLS_PASSWORD` | empty string |
+Until those helper APIs are called, certificate and CA paths remain unset.
+The helper call itself supplies policy values such as
+`require_client_cert` and `trust_system`.
 
 ## 5. Important Notes
 
-- `ZLINK_OPT_BLOCKY` is a context option (`zlink_ctx_set/get`), not a per-socket
-  `zlink_set_option` option.
-- `ZLINK_OPT_CONFLATE` is only effective for `DEALER`, `PUB`, and `SUB`.
+- The default `ZLINK_OPT_LINGER` value comes from the context's blocky mode.
+- `ZLINK_OPT_CONFLATE` is only effective for `ZLINK_SOCKET_DEALER`,
+  `ZLINK_SOCKET_PUB`, and `ZLINK_SOCKET_SUB`.
 - STREAM has additional runtime tuning knobs documented in
   `stream-socket.md`, but those are not generic socket options.

@@ -21,7 +21,7 @@ int main ()
     registry.bind (registry_pub, registry_router);
     discovery.connect_registry (registry_router);
     provider.attach_discovery (discovery);
-    assert (provider.bind (service_endpoint) == 0);
+    provider.bind (service_endpoint);
     query.connect (registry_router);
 
     const auto deadline =

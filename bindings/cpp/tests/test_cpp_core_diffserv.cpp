@@ -12,7 +12,7 @@ int main ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "diffserv");
-    assert (server.bind (endpoint) == 0);
+    server.bind (endpoint);
 
     int out_tos = 0;
     assert (zlink_getsockopt (server.handle (), ZLINK_TOS, &out_tos, &tos_size) == 0);
@@ -21,7 +21,7 @@ int main ()
     tos = 0x58;
     tos_size = sizeof (tos);
     assert (client.set_option (zlink::socket_option::tos, &tos, tos_size) == 0);
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     out_tos = 0;
     assert (zlink_getsockopt (client.handle (), ZLINK_TOS, &out_tos, &tos_size) == 0);

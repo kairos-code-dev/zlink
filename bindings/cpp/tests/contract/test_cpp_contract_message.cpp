@@ -47,7 +47,8 @@ void test_diagnostic_surface_uses_canonical_names ()
     assert (msg.get_property ("missing") == NULL);
 
     std::string value;
-    assert (msg.get_property ("missing", value) == -1);
+    msg.get_property ("missing", value);
+    assert (value.empty ());
 }
 
 } // namespace

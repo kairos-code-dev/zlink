@@ -114,6 +114,7 @@ public abstract class ZlinkException extends RuntimeException {
             case 11, 10035 -> SubmitResult.BACKPRESSURED;
             case 107, 10057 -> SubmitResult.NOT_CONNECTED;
             case 113, 10065 -> SubmitResult.NOT_FOUND;
+            case 111, 10061 -> SubmitResult.NOT_ADMITTED;
             case 22 -> SubmitResult.INVALID_ARGUMENT;
             case 9 -> SubmitResult.INVALID_HANDLE;
             case 95 -> SubmitResult.NOT_SUPPORTED;

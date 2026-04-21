@@ -1,7 +1,5 @@
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.internal.NativeLayouts;
-import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.Locale;
@@ -26,48 +24,48 @@ public final class MsgOperationMicrobench {
     private static void runSize(int size) {
         byte[] payload = makePattern(size, 29);
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment slotA = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            MemorySegment slotB = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            MemorySegment slotA = arena.allocate(MsgFfmBenchSupport.MSG_LAYOUT);
+            MemorySegment slotB = arena.allocate(MsgFfmBenchSupport.MSG_LAYOUT);
             bench("msg_init_close", size, () -> {
-                int rc = NativeMsg.msgInit(slotA);
+                int rc = MsgFfmBenchSupport.msgInit(slotA);
                 if (rc != 0)
                     throw new IllegalStateException("zlink_msg_init rc=" + rc);
-                blackhole ^= NativeMsg.msgSize(slotA);
-                NativeMsg.msgClose(slotA);
+                blackhole ^= MsgFfmBenchSupport.msgSize(slotA);
+                MsgFfmBenchSupport.msgClose(slotA);
                 return 1;
             });
 
             bench("msg_init_size_close", size, () -> {
-                int rc = NativeMsg.msgInitSize(slotA, size);
+                int rc = MsgFfmBenchSupport.msgInitSize(slotA, size);
                 if (rc != 0)
                     throw new IllegalStateException("zlink_msg_init_size rc=" + rc);
-                blackhole ^= NativeMsg.msgSize(slotA);
-                NativeMsg.msgClose(slotA);
+                blackhole ^= MsgFfmBenchSupport.msgSize(slotA);
+                MsgFfmBenchSupport.msgClose(slotA);
                 return size;
             });
 
             bench("msg_move_path", size, () -> {
                 initSized(slotA, size);
                 initEmpty(slotB);
-                blackhole ^= NativeMsg.msgDataAddr(slotA);
-                int rc = NativeMsg.msgMove(slotB, slotA);
+                blackhole ^= MsgFfmBenchSupport.msgDataAddr(slotA);
+                int rc = MsgFfmBenchSupport.msgMove(slotB, slotA);
                 if (rc != 0)
                     throw new IllegalStateException("zlink_msg_move rc=" + rc);
-                blackhole ^= NativeMsg.msgSize(slotB);
-                NativeMsg.msgClose(slotB);
+                blackhole ^= MsgFfmBenchSupport.msgSize(slotB);
+                MsgFfmBenchSupport.msgClose(slotB);
                 return size;
             });
 
             bench("msg_copy_path", size, () -> {
                 initSized(slotA, size);
                 initEmpty(slotB);
-                blackhole ^= NativeMsg.msgDataAddr(slotA);
-                int rc = NativeMsg.msgCopy(slotB, slotA);
+                blackhole ^= MsgFfmBenchSupport.msgDataAddr(slotA);
+                int rc = MsgFfmBenchSupport.msgCopy(slotB, slotA);
                 if (rc != 0)
                     throw new IllegalStateException("zlink_msg_copy rc=" + rc);
-                blackhole ^= NativeMsg.msgSize(slotB);
-                NativeMsg.msgClose(slotA);
-                NativeMsg.msgClose(slotB);
+                blackhole ^= MsgFfmBenchSupport.msgSize(slotB);
+                MsgFfmBenchSupport.msgClose(slotA);
+                MsgFfmBenchSupport.msgClose(slotB);
                 return size;
             });
 
@@ -91,9 +89,9 @@ public final class MsgOperationMicrobench {
             bench("message_transfer_to_native", size, () -> {
                 try (Message msg = Message.copyOf(payload)) {
                     Object anchor = msg.transferTo(slotA);
-                    blackhole ^= NativeMsg.msgSize(slotA);
+                    blackhole ^= MsgFfmBenchSupport.msgSize(slotA);
                     blackhole ^= anchor == null ? 0 : 1;
-                    NativeMsg.msgClose(slotA);
+                    MsgFfmBenchSupport.msgClose(slotA);
                 }
                 return size;
             });
@@ -101,13 +99,13 @@ public final class MsgOperationMicrobench {
     }
 
     private static void initEmpty(MemorySegment slot) {
-        int rc = NativeMsg.msgInit(slot);
+        int rc = MsgFfmBenchSupport.msgInit(slot);
         if (rc != 0)
             throw new IllegalStateException("zlink_msg_init rc=" + rc);
     }
 
     private static void initSized(MemorySegment slot, int size) {
-        int rc = NativeMsg.msgInitSize(slot, size);
+        int rc = MsgFfmBenchSupport.msgInitSize(slot, size);
         if (rc != 0)
             throw new IllegalStateException("zlink_msg_init_size rc=" + rc);
     }

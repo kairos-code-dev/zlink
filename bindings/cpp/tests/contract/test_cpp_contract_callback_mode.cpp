@@ -77,14 +77,13 @@ int main ()
     assert (wait_for_spot_ready (pub_node, false, 1u, 10000));
     assert (wait_for_spot_ready (sub_node, true, 1u, 10000));
 
-    zlink::message_t outbound =
-      detail::make_message ("spot-callback");
-    pub_spot.publish (service_name, "topic:alpha", outbound);
-
     std::optional<zlink::topic_message_t> inbound;
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
+        zlink::message_t outbound =
+          detail::make_message ("spot-callback");
+        pub_spot.publish (service_name, "topic:alpha", outbound);
         inbound = sub_spot.subscribe (zlink::recv_flags_t::dontwait);
         if (inbound.has_value ())
             break;

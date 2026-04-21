@@ -426,7 +426,7 @@ They map to the same underlying bits as the per-service constants above.
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Bit `1u << 8`. Reserved unified mask bit for service-level peer admission change surfaces. The current `Spot` / `SpotNode` generic service monitor does not emit this event. |
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Bit `1u << 8`. Discovery service monitors use this bit when a tracked peer's admission state changes. `Spot` / `SpotNode` generic service monitors do not currently emit it. |
 | `ZLINK_SERVICE_MONITOR_EVENT_ALL` | All service events |
 
 ### Spot / SpotNode Generic Events

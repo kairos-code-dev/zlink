@@ -12,19 +12,23 @@ int main ()
         zlink::dealer_socket_t client (ctx);
 
         const char *endpoint = "ipc://@tmp-tester";
-        assert (server.bind (endpoint) == 0);
+        server.bind (endpoint);
 
         std::string last = bound_endpoint (server);
         assert (last.compare (0, std::strlen (endpoint), endpoint) == 0);
 
-        assert (client.connect (endpoint) == 0);
+        client.connect (endpoint);
         bounce (server, client);
     }
 
     {
         zlink::context_t ctx;
         zlink::dealer_socket_t server (ctx);
-        assert (server.bind ("ipc://@") == -1);
+        try {
+            server.bind ("ipc://@");
+            assert (false);
+        } catch (const zlink::bind_error_t &) {
+        }
         assert (zlink_errno () == EINVAL);
     }
 #endif

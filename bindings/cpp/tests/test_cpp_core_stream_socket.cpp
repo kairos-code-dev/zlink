@@ -56,7 +56,7 @@ void test_stream_accept_and_reply ()
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "stream-socket");
-    assert (stream.bind (endpoint) == 0);
+    stream.bind (endpoint);
 
     const int raw_fd = connect_raw_tcp (endpoint.c_str ());
     assert (raw_fd >= 0);

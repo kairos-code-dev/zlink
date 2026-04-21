@@ -18,6 +18,8 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     private IntPtr _handle;
     private readonly Dictionary<string, DealerSocket> _channelDealers =
         new(StringComparer.Ordinal);
+    private readonly HashSet<Spot> _spots = new();
+    private readonly object _spotsGate = new();
     public SpotNodePublisherOptions PublisherOptions { get; }
     public SpotNodeSubscriberOptions SubscriberOptions { get; }
 
@@ -27,7 +29,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(context));
         _handle = NativeMethods.zlink_spot_node_new(context.Handle);
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         PublisherOptions = new SpotNodePublisherOptions(this);
         SubscriberOptions = new SpotNodeSubscriberOptions(this);
     }
@@ -44,7 +46,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             {
                 int rc = NativeMethods.zlink_set_routing_id(_handle,
                     (IntPtr)routingIdPtr, (nuint)routingIdBytes.Length);
-                ZlinkException.ThrowIfError(rc);
+                ZlinkException.ThrowConfigIfError(rc);
             }
         }
     }
@@ -56,7 +58,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             EnsureNotDisposed();
             int rc = NativeMethods.zlink_get_routing_id(_handle,
                 out ZlinkRoutingId routingId);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return RoutingId.FromBytes(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
@@ -67,7 +69,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_bind(_handle, endpoint);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowBindIfError(rc);
     }
 
     /// <summary>
@@ -87,7 +89,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_connect_peer(_handle,
             peerEndpoint);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConnectIfError(rc);
     }
 
     public void DisconnectPeer(string peerEndpoint)
@@ -96,14 +98,14 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_disconnect_peer(_handle,
             peerEndpoint);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConnectIfError(rc);
     }
 
     public void SetAdmissionState(AdmissionState state)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_set_admission_state(_handle, (int)state);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public AdmissionState GetAdmissionState()
@@ -111,7 +113,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_get_admission_state(_handle,
             out int state);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return (AdmissionState)state;
     }
 
@@ -129,7 +131,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(discovery));
         int rc = NativeMethods.zlink_spot_node_attach_discovery(_handle,
             discovery.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void AttachChannelDealer(Discovery discovery, DealerSocket dealer)
@@ -141,7 +143,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(dealer));
         int rc = NativeMethods.zlink_spot_node_attach_channel_dealer(_handle,
             discovery.Handle, dealer.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void AttachChannelDealerManual(string channelName,
@@ -153,7 +155,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         int rc = NativeMethods.zlink_spot_node_attach_channel_dealer_manual(
             _handle, channelName, dealer.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         lock (_channelDealers)
             _channelDealers[channelName] = dealer;
     }
@@ -165,13 +167,15 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(pub));
         int rc = NativeMethods.zlink_spot_node_attach_pub_ingress(_handle,
             pub.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public Spot CreateSpot()
     {
         EnsureNotDisposed();
-        return new Spot(this);
+        Spot spot = new(this);
+        RegisterSpot(spot);
+        return spot;
     }
 
     internal void SetOption(SpotNodeSocketRole role, SocketOptionKey<int> option,
@@ -199,7 +203,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
                         new IntPtr(&local), (nuint)sizeof(int)),
                 _ => throw new ArgumentOutOfRangeException(nameof(role))
             };
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
         }
     }
 
@@ -211,7 +215,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_set_tls_server(_handle, certPath, keyPath,
             requireClientCert ? 1 : 0);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void SetTlsClient(string caCertPath, string hostname,
@@ -222,7 +226,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_set_tls_client(_handle, caCertPath,
             hostname, trustSystem ? 1 : 0);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public SpotNodeStatus StatusSnapshot()
@@ -230,7 +234,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_status_snapshot(_handle,
             out var native);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return SpotNodeStatus.FromNative(ref native);
     }
 
@@ -301,10 +305,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     {
         if (_handle == IntPtr.Zero)
             return;
-        lock (_channelDealers)
-            _channelDealers.Clear();
-        NativeMethods.zlink_spot_node_destroy(ref _handle);
-        _handle = IntPtr.Zero;
+        Destroy(throwOnError: true);
         GC.SuppressFinalize(this);
     }
 
@@ -316,7 +317,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
     ~SpotNode()
     {
-        Dispose();
+        Destroy(throwOnError: false);
     }
 
     private void EnsureNotDisposed()
@@ -340,6 +341,65 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         return false;
     }
 
+    internal void RegisterSpot(Spot spot)
+    {
+        lock (_spotsGate)
+            _spots.Add(spot);
+    }
+
+    internal void UnregisterSpot(Spot spot)
+    {
+        lock (_spotsGate)
+            _spots.Remove(spot);
+    }
+
+    private void Destroy(bool throwOnError)
+    {
+        if (_handle == IntPtr.Zero)
+            return;
+
+        Spot[] spots;
+        lock (_spotsGate)
+            spots = new List<Spot>(_spots).ToArray();
+
+        Exception? firstError = null;
+        foreach (Spot spot in spots)
+        {
+            try
+            {
+                spot.Dispose();
+            }
+            catch (Exception ex) when (firstError == null)
+            {
+                firstError = ex;
+            }
+            catch
+            {
+            }
+        }
+
+        lock (_channelDealers)
+            _channelDealers.Clear();
+
+        IntPtr originalHandle = _handle;
+        IntPtr handle = _handle;
+        int rc = NativeMethods.zlink_spot_node_destroy(ref handle);
+        if (rc == 0)
+        {
+            _handle = IntPtr.Zero;
+        }
+        else
+        {
+            _handle = originalHandle;
+            if (throwOnError && firstError == null)
+                firstError = ZlinkException.CreateCloseException(
+                    NativeMethods.zlink_errno());
+        }
+
+        if (throwOnError && firstError != null)
+            throw firstError;
+    }
+
     private SpotNodePeerEntry[] ReadPeerEntries(IntPtr filterPtr)
     {
         nuint count = 0;
@@ -348,7 +408,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
                 ref count)
             : NativeMethods.zlink_spot_node_peers_query(_handle, filterPtr,
                 IntPtr.Zero, ref count);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<SpotNodePeerEntry>();
 
@@ -362,7 +422,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
                     ref actual)
                 : NativeMethods.zlink_spot_node_peers_query(_handle, filterPtr,
                     entries, ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
 
             SpotNodePeerEntry[] result = new SpotNodePeerEntry[(int)actual];
             for (int i = 0; i < result.Length; i++)
@@ -385,7 +445,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         nuint count = 0;
         int rc = NativeMethods.zlink_spot_node_subjects_snapshot(_handle,
             filterPtr, IntPtr.Zero, ref count);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<SpotNodeSubjectEntry>();
 
@@ -396,7 +456,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             nuint actual = count;
             rc = NativeMethods.zlink_spot_node_subjects_snapshot(_handle,
                 filterPtr, entries, ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
 
             SpotNodeSubjectEntry[] result = new SpotNodeSubjectEntry[(int)actual];
             for (int i = 0; i < result.Length; i++)
@@ -476,7 +536,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         _node = node;
         _handle = NativeMethods.zlink_spot_new(node.Handle);
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _ownsHandle = true;
     }
 
@@ -490,7 +550,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             {
                 int rc = NativeMethods.zlink_set_routing_id(_handle,
                     (IntPtr)routingIdPtr, (nuint)routingIdBytes.Length);
-                ZlinkException.ThrowIfError(rc);
+                ZlinkException.ThrowConfigIfError(rc);
             }
         }
     }
@@ -502,7 +562,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             EnsureNotDisposed();
             int rc = NativeMethods.zlink_get_routing_id(_handle,
                 out ZlinkRoutingId routingId);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
             return RoutingId.FromBytes(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
@@ -512,7 +572,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_set_admission_state(_handle, (int)state);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public AdmissionState GetAdmissionState()
@@ -520,7 +580,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_get_admission_state(_handle,
             out int state);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         return (AdmissionState)state;
     }
 
@@ -699,29 +759,30 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     public bool RequestChannel(string channelName, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan timeout = default)
+        TimeSpan? timeout = null)
         => RequestChannel(channelName, message, callback, SendFlags.None, timeout);
 
     public bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan timeout = default)
+        TimeSpan? timeout = null)
         => RequestChannel(channelName, parts, callback, SendFlags.None, timeout);
 
     public bool RequestChannel(string channelName, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan timeout = default)
+        SendFlags flags, TimeSpan? timeout = null)
         => RequestChannel(channelName, new[] { message }, callback, flags,
             timeout);
 
     public bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan timeout = default)
+        SendFlags flags, TimeSpan? timeout = null)
     {
         ValidateServiceName(channelName, nameof(channelName));
         try
         {
             RequestReplySupport.AttachResultCallback(
-                () => RequestChannelAsyncInternal(channelName, parts, timeout,
+                () => RequestChannelAsyncInternal(channelName, parts,
+                    timeout ?? TimeSpan.Zero,
                     CancellationToken.None, (int)flags),
                 (result, reply) =>
                 {
@@ -793,7 +854,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ValidateTopicId(topicOrPattern, nameof(topicOrPattern));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_set_subscription(_handle, topicOrPattern);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void UnsetSubscription(string topicOrPattern)
@@ -802,7 +863,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_unset_subscription(_handle,
             topicOrPattern);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
@@ -855,7 +916,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             OnNativeSendReady);
         int rc = NativeMethods.zlink_send_ready_handler(_handle, native,
             IntPtr.Zero);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowHandlerIfError(rc);
         _sendReadyHandler = handler;
         _sendReadyHandlerContext = context;
         _sendReadyHandlerNative = native;
@@ -1011,22 +1072,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
-        if (_handle != IntPtr.Zero && _ownsHandle)
-        {
-            NativeMethods.zlink_spot_destroy(ref _handle);
-        }
-
-        _handle = IntPtr.Zero;
-
-        _sendReadyHandler = null;
-        _routedReceiveHandler = null;
-        _dispatchEventHandler = null;
-        _sendReadyHandlerContext = null;
-        _routedReceiveHandlerContext = null;
-        _dispatchEventHandlerContext = null;
-        _sendReadyHandlerNative = null;
-        _routedReceiveHandlerNative = null;
-        _dispatchEventHandlerNative = null;
+        Destroy(throwOnError: true);
         GC.SuppressFinalize(this);
     }
 
@@ -1038,7 +1084,41 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     ~Spot()
     {
-        Dispose();
+        Destroy(throwOnError: false);
+    }
+
+    private void Destroy(bool throwOnError)
+    {
+        if (_handle == IntPtr.Zero)
+            return;
+
+        IntPtr originalHandle = _handle;
+        IntPtr handle = _handle;
+        int rc = _ownsHandle
+            ? NativeMethods.zlink_spot_destroy(ref handle)
+            : 0;
+        if (rc != 0)
+        {
+            _handle = originalHandle;
+            if (throwOnError)
+            {
+                throw ZlinkException.CreateCloseException(
+                    NativeMethods.zlink_errno());
+            }
+            return;
+        }
+
+        _handle = IntPtr.Zero;
+        _sendReadyHandler = null;
+        _routedReceiveHandler = null;
+        _dispatchEventHandler = null;
+        _sendReadyHandlerContext = null;
+        _routedReceiveHandlerContext = null;
+        _dispatchEventHandlerContext = null;
+        _sendReadyHandlerNative = null;
+        _routedReceiveHandlerNative = null;
+        _dispatchEventHandlerNative = null;
+        _node.UnregisterSpot(this);
     }
 
     private unsafe void PublishCore(string serviceName, string topic,
@@ -1447,11 +1527,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     private unsafe SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
     {
+        byte[] serviceBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            int rc = NativeMethods.zlink_xpub_recv_part(_handle,
-                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
+            int rc = NativeMethods.zlink_spot_subscription_event_recv(_handle,
+                out IntPtr sourceRoutingId, out int subscribedInt, serviceBuffer,
+                (nuint)serviceBuffer.Length, out nuint serviceLength, topicBuffer,
                 (nuint)topicBuffer.Length, out nuint topicLength, flags);
             if (rc != 0)
             {
@@ -1463,12 +1545,14 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             RoutingId? routingId = routingIdBytes == null
                 ? null
                 : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
+            string serviceName = DecodeBuffer(serviceBuffer, serviceLength);
             string topic = DecodeBuffer(topicBuffer, topicLength);
-            return new SubscriptionEvent(routingId, null, topic,
+            return new SubscriptionEvent(routingId, serviceName, topic,
                 subscribedInt != 0);
         }
         finally
         {
+            ArrayPool<byte>.Shared.Return(serviceBuffer);
             ArrayPool<byte>.Shared.Return(topicBuffer);
         }
     }
@@ -1517,7 +1601,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 SendResult? sendResult = TryMapSendResultFromErrno();
                 if (sendResult != null)
                     return sendResult.Value;
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             }
             return SendResult.Sent;
         }
@@ -1551,7 +1636,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult == null)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
             return sendResult.Value;
         }
         catch
@@ -1571,7 +1657,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
                 (nuint)payload.Length);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             if (payload.Length != 0)
@@ -1607,7 +1693,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         {
             int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
                 (nuint)payload.Length);
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
             if (payload.Length != 0)
@@ -1628,7 +1714,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult != null)
                 return sendResult.Value;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
         }
         catch
         {
@@ -1650,7 +1737,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 handle.AddrOfPinnedObject(), (nuint)payload.Length,
                 BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
             handle = default;
 
@@ -1683,7 +1770,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
                 handle.AddrOfPinnedObject(), (nuint)payload.Length,
                 BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
-            ZlinkException.ThrowIfError(initRc);
+            ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
             handle = default;
 
@@ -1697,7 +1784,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult != null)
                 return sendResult.Value;
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
         }
         catch
         {

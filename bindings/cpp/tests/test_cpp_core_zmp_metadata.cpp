@@ -15,8 +15,8 @@ void test_zmp_metadata_enabled ()
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "zmp-metadata-on");
-    assert (server.bind (endpoint) == 0);
-    assert (client.connect (endpoint) == 0);
+    server.bind (endpoint);
+    client.connect (endpoint);
 
     send_string_expect_success (client, "A");
 
@@ -39,8 +39,8 @@ void test_zmp_metadata_disabled ()
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "zmp-metadata-off");
-    assert (server.bind (endpoint) == 0);
-    assert (client.connect (endpoint) == 0);
+    server.bind (endpoint);
+    client.connect (endpoint);
 
     send_string_expect_success (client, "B");
 

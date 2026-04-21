@@ -28,7 +28,7 @@ I/O 스레드는 지연(lazy) 생성된다 — `zlink_ctx_new()`는 context를 �
 void *ctx = zlink_ctx_new();
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* must be set before first socket */
 
-void *socket = zlink_socket(ctx, ZLINK_DEALER);  /* triggers thread launch */
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* triggers thread launch */
 ```
 
 내부적으로 `ctx_runtime_resources.cpp:start_io_threads_locked()`가

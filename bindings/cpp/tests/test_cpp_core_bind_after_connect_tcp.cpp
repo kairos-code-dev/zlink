@@ -11,13 +11,13 @@ void test_bind_after_connect_tcp ()
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "bind-after-connect");
 
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
 
     send_string_expect_success (client, "foobar");
     send_string_expect_success (client, "baz");
     send_string_expect_success (client, "buzz");
 
-    assert (server.bind (endpoint) == 0);
+    server.bind (endpoint);
 
     recv_string_expect_success (server, "foobar");
     recv_string_expect_success (server, "baz");

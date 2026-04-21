@@ -46,13 +46,13 @@ flowchart LR
 ### 3.1 내장 proxy 사용
 
 ```c
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
 zlink_bind(xsub, "tcp://*:5556");      /* PUBs connect here */
 
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");      /* SUBs connect here */
 
-void *capture = zlink_socket(ctx, ZLINK_PUB);
+void *capture = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(capture, "tcp://*:5558");   /* optional: message recording */
 
 zlink_proxy(xsub, xpub, capture);      /* blocking */
@@ -86,8 +86,8 @@ zlink_proxy(xsub, xpub, capture);      /* blocking */
 #### 전체 코드
 
 ```c
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xsub, "tcp://*:5556");
 zlink_bind(xpub, "tcp://*:5557");
 
@@ -144,10 +144,10 @@ Client (DEALER) --> ROUTER == proxy ==> DEALER --> Server (ROUTER)
 ```
 
 ```c
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+void *frontend = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(frontend, "tcp://*:5559");
 
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
+void *backend = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_bind(backend, "tcp://*:5560");
 
 zlink_proxy(frontend, backend, NULL);  /* blocking */

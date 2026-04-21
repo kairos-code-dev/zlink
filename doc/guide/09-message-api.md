@@ -69,7 +69,7 @@ zlink_send(socket, &msg, 1, 0);
 
 **When to use:** When you want to avoid copying large data. Delegates buffer deallocation timing to the library.
 
-> Reference: `core/tests/test_msg_ffn.cpp` — Verifies free function callback behavior
+> Reference: `core/tests/integration/test_msg_ffn.cpp` — Verifies free function callback behavior
 
 #### zlink_msg_adopt — Adopt Without Init+Move
 
@@ -208,7 +208,7 @@ void notify_free(void *data, void *hint) {
 }
 ```
 
-> Reference: `core/tests/test_msg_ffn.cpp` — `ffn()` callback writes "freed" to hint
+> Reference: `core/tests/integration/test_msg_ffn.cpp` — `ffn()` callback writes "freed" to hint
 
 ### When Free Functions Are Called
 
@@ -231,7 +231,7 @@ zlink_msg_close(&msg);
 zlink_msg_close(&copy);  /* my_free called when last reference is released */
 ```
 
-> Reference: `core/tests/test_msg_ffn.cpp` — close/send/copy scenarios
+> Reference: `core/tests/integration/test_msg_ffn.cpp` — close/send/copy scenarios
 
 ### Constant Data with zlink_msg_init_data
 
@@ -251,7 +251,7 @@ zlink_msg_init_data(&parts[1], (void *)"foobar", 6, NULL, NULL);
 zlink_send(socket, parts, 2, 0);
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 6. Multipart Message Patterns in Practice
 
@@ -284,7 +284,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
 
 ### Pattern 2: Topic + Data (PUB/SUB)
 
@@ -350,7 +350,7 @@ zlink_msg_close(&original);
 zlink_msg_close(&copy);  /* Actual memory freed when last reference is released */
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
 
 ### Storage Refcount — zlink_msg_refcnt
 
@@ -378,7 +378,7 @@ zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
 refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages
 
 ## 8. Error Handling
 

@@ -272,9 +272,7 @@ builder.Services.AddZLinkFramework(options =>
             router.UseManualConnections(peers =>
             {
                 // Remote SpotNode router endpoint
-                peers.Connect(
-                    RoutingId.Parse("01-00-00-00-00-00-00-10"),
-                    "tcp://10.0.0.10:9000");
+                peers.Connect("tcp://10.0.0.10:9000");
             });
         });
 
@@ -318,7 +316,8 @@ builder.Services.AddZLinkFramework(options =>
 - 같은 capability에서는 `Discovery`와 `Manual`을 섞지 않는다.
 - 같은 `SpotNode`에서 `spotName`은 비어 있으면 안 된다.
 - 이미 등록된 `spotName`을 다시 등록하면 기존 값을 덮어쓰지 않고 예외를 던진다.
-- `router` manual 연결은 `RoutingId + endpoint`를 함께 등록한다.
+- `router` manual 연결도 endpoint 집합만 등록한다. 이 초안에서는 `Connect(...)`
+  호출 시 remote router id를 별도 파라미터로 받지 않는다.
 - channel client manual 연결은 endpoint 집합만 등록한다. 하부 `DEALER`가 이미
   connect된 peer 집합을 대상으로 요청을 보내므로 remote `RoutingId`를 별도
   파라미터로 받지 않는다.

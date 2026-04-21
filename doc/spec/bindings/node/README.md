@@ -38,7 +38,8 @@ with the rules here, this section wins.
   `TopicMessage` therefore needs `serviceName: string | null`, populated for
   SPOT subscribe results and `null` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `onSubscribe(...)`.
-- `Spot` direct RID send/request APIs are removed from the public contract.
+- `Spot` direct RID one-way send APIs are not part of the public contract.
+  Routed request initiation (`requestToSpot` / `requestToRouter`) is supported.
 - Every socket and `Spot` exposes `setAdmissionState(state)` /
   `getAdmissionState()` using the typed enum-like object
   `AdmissionState.Serving` (1) and `AdmissionState.Draining` (2). Submit
@@ -1135,7 +1136,7 @@ interface MonitorSnapshot {
 
 ```typescript
 class ServiceEvent {
-    readonly serviceKind: number;            // zlink_service_type_t (SPOT, SOCKET, ...)
+    readonly serviceKind: number;            // zlink_service_kind_t (DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET)
     readonly eventType: number;              // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
     readonly status: number;                 // uint32 status code
     readonly errorCode: number;              // uint32 errno (0 when not an error)
@@ -1342,6 +1343,70 @@ class Spot {
     setReceiveTimeout(milliseconds: number): void;
     /** @throws {ConfigError} */
     setNoDrop(enabled: boolean): void;
+
+    // --- routed request (spot → spot, async) — no flags ---
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                  message: MessageLike, timeout?: number): Promise<Message[]>;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                  parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+
+    // --- routed request (spot → spot, callback submit) ---
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
+     */
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                  message: MessageLike,
+                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
+     */
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                  parts: readonly MessageLike[],
+                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+
+    // --- routed request (spot → router, async) — no flags ---
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    requestToRouter(peerRid: RoutingId,
+                    message: MessageLike, timeout?: number): Promise<Message[]>;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    requestToRouter(peerRid: RoutingId,
+                    parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
+
+    // --- routed request (spot → router, callback submit) ---
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
+     */
+    requestToRouter(peerRid: RoutingId,
+                    message: MessageLike,
+                    callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+    /**
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
+     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
+     */
+    requestToRouter(peerRid: RoutingId,
+                    parts: readonly MessageLike[],
+                    callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+
+    // --- routed reply (spot → spot) ---
+    /** @throws {SubmitError} */
+    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+                requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
+
+    // --- routed reply (spot → router) ---
+    /** @throws {SubmitError} */
+    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
+                  message: MessageLike, flags?: SendFlags): void;
+    /** @throws {SubmitError} */
+    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
+                  parts: readonly MessageLike[], flags?: SendFlags): void;
 
     // --- routed receive ---
     /** @throws {RecvError} */

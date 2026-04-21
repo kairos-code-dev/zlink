@@ -11,11 +11,11 @@ int main ()
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-xpub-welcome-", "msg");
-    assert (pub.bind (endpoint) == 0);
+    pub.bind (endpoint);
     assert (pub.set_option (zlink::socket_option::xpub_welcome_msg, "W", 1) == 0);
 
     assert (sub.set_option (zlink::socket_option::subscribe, "W", 1) == 0);
-    assert (sub.connect (endpoint) == 0);
+    sub.connect (endpoint);
 
     char sub_cmd[8];
     std::memset (sub_cmd, 0, sizeof (sub_cmd));

@@ -248,13 +248,10 @@ class message_t
      * @param out_ Output string.
      * @return 0 on success, -1 on failure.
      */
-    int get_property (const std::string &property_, std::string &out_) const
+    void get_property (const std::string &property_, std::string &out_) const
     {
         const char *value = get_property (property_);
-        if (!value)
-            return -1;
-        out_.assign (value);
-        return 0;
+        out_.assign (value ? value : "");
     }
 
     // -- Conversions ----------------------------------------------------------

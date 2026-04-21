@@ -584,6 +584,9 @@ SPOT routed 네이밍은 두 축을 함께 가져간다.
   - `publish(service_name, topic, parts, flags)`
   - `reply_to_spot(dest_node_rid, dest_spot_rid, request_seq, parts, flags)`
   - `reply_to_router(peer_rid, request_seq, parts, flags)`
+- **direct routed request 경로**
+  - `request_to_spot(dest_node_rid, dest_spot_rid, parts, callback, flags, timeout)`
+  - `request_to_router(peer_rid, parts, callback, flags, timeout)`
 
 새 SPOT 바인딩 표면에서는 예전 `send_service` / `request_service` 대신
 `send_channel` / `request_channel` / `publish(service_name, ...)` 를 기본 경로로
@@ -798,7 +801,7 @@ Discovery `ServiceMonitor` 가 방출하는 이벤트.
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
-| `service_kind` | enum | `ZLINK_SERVICE_TYPE_SPOT`, `SOCKET` 등 |
+| `service_kind` | enum | `ZLINK_SERVICE_KIND_DISCOVERY`, `ZLINK_SERVICE_KIND_SPOT_SUB`, `ZLINK_SERVICE_KIND_SPOT_PUB`, `ZLINK_SERVICE_KIND_SOCKET` |
 | `event_type` | enum | `UP`, `DOWN`, `PROVIDERS_CHANGED`, `ERROR` 등 |
 | `status` | `uint32` | status code |
 | `error_code` | `uint32` | 에러 시 errno |
@@ -1114,8 +1117,10 @@ RegistryQueryClient (원격 토폴로지 조회)
 | `receiveSubscriptionEvent` | Y |
 | `setSubscription` / `unsetSubscription` | Y |
 | `sendChannel` / `requestChannel` | Y |
-| `replyToSpot` | Optional typed routed reply surface |
-| `replyToRouter` | Optional typed routed reply surface |
+| `requestToSpot` | Routed request initiation (spot → spot) |
+| `requestToRouter` | Routed request initiation (spot → router) |
+| `replyToSpot` | Routed reply surface (spot → spot) |
+| `replyToRouter` | Routed reply surface (spot → router) |
 | `onDispatchEvent` | Y |
 | `onRoutedReceive` | Y |
 | `onSendReady` | Y |
@@ -1514,6 +1519,8 @@ int zlink_router_recv(void *router, const zlink_routing_id_t **peer_rid_out,
 **SPOT API:**
 
 ```c
+int zlink_spot_request_spot(void *spot, ...);
+int zlink_spot_request_router(void *spot, ...);
 int zlink_spot_reply_spot(void *spot, ...);
 int zlink_spot_reply_router(void *spot, ...);
 int zlink_router_request_spot(void *router, ...);
@@ -1690,7 +1697,7 @@ int zlink_unset_subscription(void *handle, const char *filter);
 바인딩 규칙:
 - C API 는 publish 를 위한 별도 no-wait 함수 이름을 따로 두지 않는다.
 - non-blocking publish 는 `zlink_spot_publish(..., ZLINK_DONTWAIT)` 를 호출하고
-  errno 를 `zlink_send_result_t` 로 분류한다. 바인딩은 별도 `tryPublish` 나
+  errno 를 `zlink_submit_result_t` 로 분류한다. 바인딩은 별도 `tryPublish` 나
   `publishNoWait` 를 두지 않는다.
 - `subscribe` 수신은 `service_name + topic + parts` 를 돌려주는 typed receive
   surface 로 노출한다.
@@ -1962,18 +1969,18 @@ int zlink_service_monitor_recv(void *monitor,
 ```
 
 이벤트 종류:
-- `ZLINK_SERVICE_EVENT_PEER_ADDED` — peer 추가
-- `ZLINK_SERVICE_EVENT_PEER_REMOVED` — peer 제거
-- `ZLINK_SERVICE_EVENT_PEER_READY` — peer 연결 완료
-- `ZLINK_SERVICE_EVENT_SUBJECT_ADDED` — 주제 추가
-- `ZLINK_SERVICE_EVENT_SUBJECT_REMOVED` — 주제 제거
-- `ZLINK_SERVICE_EVENT_SUBJECT_READY` — 주제 준비 완료
+- `ZLINK_SERVICE_MONITOR_EVENT_ERROR` — 서비스 계층 에러
+- `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` — monitor 종료
+- `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` — Discovery가 본 서비스 활성화
+- `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` — Discovery가 본 서비스 비활성화
+- `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` — provider 집합 변경
+- `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` — Discovery가 추적하는 peer admission 상태 변경
 
 바인딩 규칙:
 - monitor 는 typed handle 로 노출한다.
 - Discovery 지원 바인딩에서는 `ServiceMonitor` 를 노출해야 한다.
-- SpotNode/Spot public API 는 `ServiceMonitor` 를 열지 않는다.
-  SpotNode 는 별도 typed monitor recv surface를 공개 계약으로 두지 않는다.
+- Spot/SpotNode 지원 바인딩에서는 public `ServiceMonitor` surface를
+  함께 노출해야 한다.
 - event 수신은 handler callback 또는 direct recv 로 제공한다.
 - event mask 필터링은 open 옵션으로 설정한다.
 - `zlink_service_event_t` 는 바인딩이 언어별 typed event object 로 변환한다.

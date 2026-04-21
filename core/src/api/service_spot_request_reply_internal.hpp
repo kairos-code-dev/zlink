@@ -230,6 +230,13 @@ int build_spot_routed_message (uint8_t source_class_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
                                std::vector<zlink_msg_t> *out_);
+bool parse_spot_routed_envelope (zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 parsed_spot_envelope_t *out_);
+inline const char *spot_routed_mesh_topic ()
+{
+    return "__zlink.spot.routed";
+}
 int dispatch_local_reply (std::vector<zlink_msg_t> *combined_);
 int dispatch_local_request (const std::string &router_rid_,
                             std::vector<zlink_msg_t> *combined_);

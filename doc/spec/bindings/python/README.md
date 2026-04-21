@@ -1000,7 +1000,7 @@ Value object emitted by `ServiceMonitor.recv()` / `on_event(...)`.
 
 ```python
 class ServiceEvent:
-    service_kind: int                # zlink_service_kind_t (SPOT, SOCKET, ...)
+    service_kind: int                # zlink_service_kind_t (DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET)
     event_type: int                  # UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
     status: int                      # status code
     error_code: int                  # errno captured on ERROR events
@@ -1141,6 +1141,42 @@ class Spot:
     def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
+
+    # --- routed request (spot → spot, async) — no flags ---
+    # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
+    async def request_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+                              payload: Message | bytes | list,
+                              *, timeout: int = 0) -> list[Message]: ...
+
+    # --- routed request (spot → spot, callback submit) ---
+    # timeout = 0 uses the socket default timeout.
+    # Returns False only for temporary backpressure when flags includes DONTWAIT.
+    # Raises: SubmitError on submit failure other than temporary backpressure.
+    # Callback receives RequestResult; non-OK indicates request-completion failure.
+    # Callback receives an empty list on failure.
+    def request_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+                        payload: Message | bytes | list,
+                        callback: Callable[[RequestResult, list[Message]], None],
+                        *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
+
+    # --- routed request (spot → router, async) — no flags ---
+    # timeout = 0 uses the socket default timeout.
+    # Raises: SubmitError on submit failure; RequestError on request completion failure.
+    async def request_to_router(self, peer_rid: RoutingId,
+                                payload: Message | bytes | list,
+                                *, timeout: int = 0) -> list[Message]: ...
+
+    # --- routed request (spot → router, callback submit) ---
+    # timeout = 0 uses the socket default timeout.
+    # Returns False only for temporary backpressure when flags includes DONTWAIT.
+    # Raises: SubmitError on submit failure other than temporary backpressure.
+    # Callback receives RequestResult; non-OK indicates request-completion failure.
+    # Callback receives an empty list on failure.
+    def request_to_router(self, peer_rid: RoutingId,
+                          payload: Message | bytes | list,
+                          callback: Callable[[RequestResult, list[Message]], None],
+                          *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
 
     # --- routed reply (spot → spot) ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,

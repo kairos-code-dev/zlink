@@ -81,8 +81,8 @@ void test_ctx_zero_copy ()
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "ctx-zero-copy");
-    assert (pull.bind (endpoint) == 0);
-    assert (push.connect (endpoint) == 0);
+    pull.bind (endpoint);
+    push.connect (endpoint);
 
     send_string_expect_success (push, "abcd");
     send_string_expect_success (push,

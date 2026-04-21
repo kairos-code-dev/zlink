@@ -111,8 +111,7 @@ void test_pair_send_without_peer_preserves_submit_surface ()
     zlink::context_t ctx;
     zlink::pair_socket_t sender (ctx);
 
-    assert (sender.bind (zlink_cpp_contract::unique_inproc ("pair-send"))
-            == 0);
+    sender.bind (zlink_cpp_contract::unique_inproc ("pair-send"));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("payload");
     (void) sender.send (outbound, zlink::send_flags_t::dontwait);

@@ -1,87 +1,93 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using Zlink.Native;
 
 namespace Zlink;
 
 public sealed class Timer : IDisposable, IAsyncDisposable
 {
-    private readonly ConcurrentQueue<ulong> _pending = new();
-    private readonly AutoResetEvent _signal = new(false);
-    private readonly object _gate = new();
-    private System.Threading.Timer? _timer;
+    private const int DontWaitFlag = 1;
+    private IntPtr _handle;
     private Action<Timer, ulong>? _handler;
-    private ulong _fired;
-    private ulong _remaining;
-    private bool _stopped = true;
-    private bool _disposed;
-    private Spot? _spot;
+    private SynchronizationContext? _handlerContext;
+    private NativeMethods.ZlinkTimerHandlerDelegate? _handlerNative;
 
     public Timer()
     {
+        _handle = NativeMethods.zlink_timer_new();
+        if (_handle == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
-    private Timer(Spot spot)
+    private Timer(IntPtr handle)
     {
-        _spot = spot ?? throw new ArgumentNullException(nameof(spot));
+        _handle = handle;
     }
 
     public static Timer FromSpot(Spot spot)
     {
-        return new Timer(spot);
+        if (spot == null)
+            throw new ArgumentNullException(nameof(spot));
+
+        IntPtr handle = NativeMethods.zlink_spot_timer_new(spot.Handle);
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        return new Timer(handle);
     }
 
     public void Start(ulong intervalNs, ulong repeatCount)
     {
-        if (intervalNs == 0)
-            throw new ArgumentOutOfRangeException(nameof(intervalNs));
         EnsureNotDisposed();
-
-        lock (_gate)
-        {
-            StopCore();
-            _remaining = repeatCount;
-            _stopped = false;
-            TimeSpan dueTime = TimeSpan.FromMilliseconds(Math.Max(1.0,
-                Math.Ceiling(intervalNs / 1_000_000.0)));
-            _timer = new System.Threading.Timer(OnTick, null, dueTime, dueTime);
-        }
+        int rc = NativeMethods.zlink_timer_start(_handle, intervalNs,
+            repeatCount);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Stop()
     {
         EnsureNotDisposed();
-        lock (_gate)
-        {
-            StopCore();
-        }
+        int rc = NativeMethods.zlink_timer_stop(_handle);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public ulong Recv(int flags = 0)
     {
         EnsureNotDisposed();
-        if ((flags & 1) != 0)
-        {
-            if (_pending.TryDequeue(out ulong value))
-                return value;
+        if ((flags & DontWaitFlag) != 0 && !PollReadyNoWait())
             throw new ZlinkRecvException(RecvResult.NoData);
-        }
 
-        while (true)
-        {
-            if (_pending.TryDequeue(out ulong value))
-                return value;
-            _signal.WaitOne();
-        }
+        int rc = NativeMethods.zlink_timer_recv(_handle, out ulong fireCount);
+        if (rc != 0)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+        return fireCount;
     }
 
     public void OnFire(Action<Timer, ulong> handler)
     {
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
         EnsureNotDisposed();
-        _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+
+        _handler = handler;
+        _handlerContext = SynchronizationContext.Current;
+        if (_handlerNative != null)
+            return;
+
+        _handlerNative = OnNativeFire;
+        int rc = NativeMethods.zlink_timer_handler(_handle, _handlerNative,
+            IntPtr.Zero);
+        if (rc != 0)
+        {
+            _handler = null;
+            _handlerContext = null;
+            _handlerNative = null;
+            throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
+        }
     }
 
     public void Close()
@@ -91,17 +97,7 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
-        if (_disposed)
-            return;
-
-        lock (_gate)
-        {
-            StopCore();
-            _disposed = true;
-            _spot = null;
-        }
-
-        _signal.Dispose();
+        Destroy(throwOnError: true);
         GC.SuppressFinalize(this);
     }
 
@@ -113,51 +109,82 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 
     ~Timer()
     {
-        Dispose();
+        Destroy(throwOnError: false);
     }
 
-    private void OnTick(object? state)
+    private void Destroy(bool throwOnError)
     {
-        if (_disposed)
+        if (_handle == IntPtr.Zero)
             return;
 
-        ulong fired = unchecked(++_fired);
-        _pending.Enqueue(fired);
-        _signal.Set();
-
-        Action<Timer, ulong>? handler = _handler;
-        if (handler != null)
+        IntPtr originalHandle = _handle;
+        IntPtr handle = _handle;
+        int rc = NativeMethods.zlink_timer_destroy(ref handle);
+        if (rc == 0)
         {
-            try
-            {
-                handler(this, fired);
-            }
-            catch (Exception ex)
-            {
-                Runtime.ReportUnhandledCallbackException(ex);
-            }
+            _handle = IntPtr.Zero;
+            _handler = null;
+            _handlerContext = null;
+            _handlerNative = null;
+            return;
         }
 
-        lock (_gate)
-        {
-            if (_remaining == 0)
-                return;
-            _remaining--;
-            if (_remaining == 0)
-                StopCore();
-        }
+        _handle = originalHandle;
+        if (throwOnError)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
-    private void StopCore()
+    private bool PollReadyNoWait()
     {
-        _stopped = true;
-        _timer?.Dispose();
-        _timer = null;
+        IntPtr poller = NativeMethods.zlink_poller_new();
+        if (poller == IntPtr.Zero)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+
+        try
+        {
+            int rc = NativeMethods.zlink_poller_add_timer(poller, _handle,
+                IntPtr.Zero);
+            if (rc != 0)
+                throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+
+            int ready = NativeMethods.zlink_poller_wait_all(poller,
+                new ZlinkPollerEvent[1], 1, 0, out _);
+            if (ready < 0)
+                throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+            return ready > 0;
+        }
+        finally
+        {
+            if (poller != IntPtr.Zero)
+            {
+                _ = NativeMethods.zlink_poller_remove_timer(poller, _handle);
+                _ = NativeMethods.zlink_poller_destroy(ref poller);
+            }
+        }
     }
 
     private void EnsureNotDisposed()
     {
-        if (_disposed)
+        if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Timer));
+    }
+
+    private void OnNativeFire(IntPtr timer, ulong fireCount, IntPtr userData)
+    {
+        _ = timer;
+        _ = userData;
+
+        Action<Timer, ulong>? handler = _handler;
+        if (handler == null)
+            return;
+
+        try
+        {
+            CallbackDelivery.Post(_handlerContext, () => handler(this, fireCount));
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+        }
     }
 }

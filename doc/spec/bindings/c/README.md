@@ -87,6 +87,44 @@ The same aggregate model extends to:
 - publish / subscribe-related payload send
 - SPOT send / request / reply families
 
+## SPOT Routed Request Surface
+
+The C binding adds a routed request initiation surface for `Spot` handles.
+These wrappers accept `parts_` / `part_count_` arrays and delegate internally
+to the `*_part` substrate.
+
+```c
+zlink_submit_result_t zlink_spot_request_spot(
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+zlink_submit_result_t zlink_spot_request_router(
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+```
+
+`zlink_spot_request_spot` pairs with `zlink_spot_reply_spot(_part)` on the
+replier side. `zlink_spot_request_router` pairs with
+`zlink_router_reply_spot(_part)`.
+
+The return type is `zlink_submit_result_t`. On `ZLINK_SUBMIT_OK` the caller
+must wait for exactly one `handler_` invocation. On any other return value the
+handler is not registered. See Section 8 of
+`doc/draft/spot-routed-request-api.ko.md` for the full result-code mapping.
+
 ## Recv Surface
 
 The canonical public recv surface keeps aggregate receive results.

@@ -265,7 +265,7 @@ sequenceDiagram
     NodeRouter2->>Receiver: deliver to target spot
 ```
 
-### 5.3 spot → router / router → spot
+### 5.3 spot → router / router → spot (one-way send)
 
 ```mermaid
 sequenceDiagram
@@ -278,6 +278,44 @@ sequenceDiagram
     DP->>DP: parse → destination is ROUTER peer
     DP->>Peer: forward via transport routing_id
 ```
+
+### 5.4 Spot routed request-reply
+
+`zlink_spot_request_spot()` and `zlink_spot_request_router()` layer a
+request-reply protocol on top of the existing routed send paths (§5.1/5.2
+for Spot targets, §5.3 for Router targets). The request-reply envelope is
+nested inside the SPOT routed envelope; no new transport socket is added.
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Spot as Spot handle
+    participant RR as spot_request_reply_state_t
+    participant RouteIn as route_ingress (ROUTER)
+    participant Target as Target Spot
+
+    App->>Spot: request_to_spot(dest_node_rid, dest_spot_rid, parts, handler, timeout)
+    Spot->>RR: allocate request_seq + register handler + start timeout
+    Spot->>RouteIn: [SPOT envelope + request-reply envelope] + [payload]
+    Note over RouteIn: delivered via §5.1 / §5.2 routing paths
+    Target->>Target: zlink_spot_recv() → reads request_seq
+    Target->>Target: zlink_spot_reply_spot(dest_node_rid, dest_spot_rid, request_seq, reply)
+    Target->>RouteIn: reply routed back to originating Spot
+    RouteIn->>RR: match request_seq → locate pending entry
+    RR->>App: handler(ZLINK_REQUEST_OK, reply_parts, userdata)
+```
+
+Key invariants:
+- The request-reply envelope is nested inside the SPOT routed envelope.
+  No additional socket or inproc path is created for request-reply.
+- `request_seq` is per-handle and monotonically increasing. Each
+  `spot_request_reply_state_t` owns its own sequence counter.
+- On `ZLINK_SUBMIT_OK` the handler is registered and called exactly once
+  — either on a matching reply or on timeout expiry.
+- On any non-OK submit result, the handler is not registered.
+- `zlink_spot_request_router()` uses the same mechanism; the reply returns
+  via `zlink_router_reply_spot(_part)` on the Router side, which wraps the
+  reply in the same SPOT routed envelope.
 
 ## 6. Control Plane
 

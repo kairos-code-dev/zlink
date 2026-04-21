@@ -53,7 +53,7 @@ DEALER가 여러 ROUTER에 연결하면 메시지가 라운드 로빈으로 순�
 ### 생성 및 연결
 
 ```c
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
 zlink_set_routing_id(dealer, "client-1", 8);
@@ -155,7 +155,7 @@ zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+> 참고: `core/tests/integration/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### 4.1 request-reply 시작
 
@@ -211,11 +211,11 @@ PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필�
 (routing_id가 없으므로 1:N에서는 어떤 피어가 응답했는지 구분할 수 없다.)
 
 ```c
-void *a = zlink_socket(ctx, ZLINK_DEALER);
+void *a = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive with zlink_recv() */
 zlink_bind(a, "tcp://*:5558");
 
-void *b = zlink_socket(ctx, ZLINK_DEALER);
+void *b = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive with zlink_recv() */
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
@@ -239,7 +239,7 @@ PUSH/PULL 없이 작업을 N개 워커에 라운드 로빈으로 순환 분배�
 응답이 필요 없는 작업 분배 또는 파이프라인 단계 간 전달에 사용한다.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 /* ROUTER receives with zlink_recv() and distinguishes each DEALER by source_rid */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
@@ -247,11 +247,11 @@ char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer1 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer2 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
@@ -312,11 +312,11 @@ ROUTER를 round-robin 후보에서 자동으로 제외하며, `SERVING` ROUTER�
 
 ```c
 /* Frontend: clients connect here */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+void *frontend = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(frontend, "tcp://*:5558");
 
 /* Backend: worker threads connect here */
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
+void *backend = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_bind(backend, "inproc://backend");
 
 /* Start worker threads then run proxy */

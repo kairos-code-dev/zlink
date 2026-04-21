@@ -30,6 +30,8 @@ enum send_family_t
     send_family_spot_send_channel,
     send_family_spot_publish,
     send_family_spot_request_channel,
+    send_family_spot_request_spot,
+    send_family_spot_request_router,
     send_family_spot_reply_spot,
     send_family_spot_reply_router,
     send_family_router_reply,

@@ -17,12 +17,12 @@ int main ()
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "router-mandatory-hwm");
-    assert (router.bind (endpoint) == 0);
+    router.bind (endpoint);
 
     const int rcvhwm = 1;
     assert (dealer.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
     assert (dealer.set_option (zlink::socket_option::rcvhwm, rcvhwm) == 0);
-    assert (dealer.connect (endpoint) == 0);
+    dealer.connect (endpoint);
 
     send_string_expect_success (dealer, "Hello");
     recv_string_expect_success (router, "X");

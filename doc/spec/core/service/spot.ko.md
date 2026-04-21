@@ -119,7 +119,8 @@ zlink_submit_result_t zlink_spot_request_channel(
 - lookup 키는 `channel_name`이다.
 - 같은 `channel_name`에 attach된 `DEALER`가 없으면 send/request는 실패한다.
 - channel request의 reply 귀속은 요청을 보낸 `DEALER`에 고정된다.
-- `Spot`에서는 direct `rid`로 `ROUTER`를 지정해 ordinary send/request를 하지 않는다.
+- `Spot`에서는 direct `rid`로 `ROUTER`를 지정해 ordinary one-way send를 하지 않는다.
+  direct routed request 시작은 아래 별도 섹션을 참조한다.
 
 ### Topic publish/subscribe
 
@@ -210,10 +211,70 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
 - `zlink_spot_dispatch_event_handler()`는 readable/send-ready plane을 알리는
   dispatch callback이다.
 
+## Spot routed request 시작
+
+`Spot`은 routed request를 직접 시작할 수 있다. one-way direct send는 공개
+표면에 없지만, request/reply 짝을 맞추기 위해 아래 두 경로를 공개한다.
+
+### core helper substrate
+
+```c
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+```
+
+### C API wrapper
+
+```c
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+```
+
+- `zlink_spot_request_spot()`은 `zlink_spot_reply_spot(_part)`와 reply 짝을 이룬다.
+- `zlink_spot_request_router()`는 `zlink_router_reply_spot(_part)`와 reply 짝을 이룬다.
+- submit이 `ZLINK_SUBMIT_OK`이면 `handler_`가 정확히 한 번 호출된다.
+- 그 외 반환값이면 handler는 등록되지 않는다.
+- 반환 코드 의미는 `doc/draft/spot-routed-request-api.ko.md` 8절을 참조한다.
+
 ## Router와 SPOT 직접 주소 지정
 
-`Spot` public surface에서는 direct SPOT send/request가 제거되었지만, ROUTER는
-여전히 concrete destination을 지정해 SPOT으로 보낼 수 있다.
+ROUTER는 concrete destination을 지정해 SPOT으로 one-way send 및 request를 보낼 수 있다.
 
 ```c
 zlink_submit_result_t zlink_router_send_spot(

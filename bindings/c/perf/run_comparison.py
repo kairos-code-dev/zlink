@@ -36,6 +36,7 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = ("STREAM",)
+SPOT_CONTROL_PATTERNS = ("SPOT", "SPOT_REQREP")
 PATTERN_ALIASES = {
     "STREAM": ("STREAM",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
@@ -50,11 +51,13 @@ PATTERN_SUFFIX = {
     "ROUTER_ROUTER": "router_router",
     "PUBSUB": "pubsub",
     "SPOT": "spot",
+    "SPOT_REQREP": "spot_reqrep",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
+    "SPOT_REQREP",
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = {
@@ -78,6 +81,7 @@ MULTI_COMPARISONS = [
     ("comp_src_router_router_client", "ROUTER_ROUTER"),
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_spot_client", "SPOT"),
+    ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
@@ -87,6 +91,7 @@ SUPPORTED_MULTI_RECV_MODES = {
     "ROUTER_ROUTER": ("recv",),
     "PUBSUB": ("recv",),
     "SPOT": ("recv",),
+    "SPOT_REQREP": ("recv",),
     "STREAM": ("recv",),
 }
 
@@ -613,8 +618,11 @@ def is_pattern(pattern_name):
 
 
 def select_transports(pattern_name):
-    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name == "SPOT"
-    if pattern_name == "SPOT":
+    service_or_stream = (
+        pattern_name in STREAM_VARIANT_PATTERNS
+        or pattern_name in SPOT_CONTROL_PATTERNS
+    )
+    if pattern_name in SPOT_CONTROL_PATTERNS:
         base = STREAM_TRANSPORTS
     elif service_or_stream:
         base = STREAM_TRANSPORTS
@@ -1041,7 +1049,7 @@ def build_bench_cmd(binary_path, args):
 
 
 def _resolve_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms):
-    if pattern_name == "SPOT" and transport in ("tls", "wss"):
+    if pattern_name in SPOT_CONTROL_PATTERNS and transport in ("tls", "wss"):
         ready_timeout_ms = max(ready_timeout_ms, 20000)
         shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
     return ready_timeout_ms, shutdown_timeout_ms
@@ -1092,7 +1100,7 @@ def _prepare_case_env(
         connect_value = str(resolve_pattern_connect_concurrency(clients_int))
     set_env_pair(env, "PERF_CONNECT_CONCURRENCY", connect_value)
 
-    if pattern_name == "SPOT":
+    if pattern_name in SPOT_CONTROL_PATTERNS:
         spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
         set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
@@ -1244,7 +1252,7 @@ def run_sizes_test_stream_shared(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) == "SPOT"
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()
@@ -1710,7 +1718,7 @@ def run_sizes_test_split(
         size_count = max(1, len(sizes))
         has_large_payload = any(sz >= 131072 for sz in sizes)
         is_secure_transport = transport in ("tls", "wss")
-        if pattern_name == "SPOT":
+        if pattern_name in SPOT_CONTROL_PATTERNS:
             timeout_sec = max(180, duration_seconds * size_count * 8 + 80)
         elif pattern_name == "DEALER_DEALER":
             # DEALER_DEALER recv sweeps can spend a long time draining and
@@ -1764,7 +1772,7 @@ def run_sizes_test_split(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) == "SPOT"
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()

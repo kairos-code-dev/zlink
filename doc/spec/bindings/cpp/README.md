@@ -945,7 +945,7 @@ Returned by `service_monitor_handle_t::recv()`.
 
 ```cpp
 struct service_event_t {
-    service_kind_t service_kind;              // ZLINK_SERVICE_TYPE_SPOT, SOCKET, ...
+    service_kind_t service_kind;              // ZLINK_SERVICE_KIND_DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET
     service_event_type_t event_type;          // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
     uint32_t status;                          // status code
     uint32_t error_code;                      // errno on error; 0 otherwise
@@ -1868,6 +1868,36 @@ class spot_t {
     void set_routing_id(const routing_id_t& routing_id);
     /// @throws config_error_t
     void get_routing_id(routing_id_t& routing_id) const;
+
+    // --- routed request (spot → spot, coroutine, blocking submit — no flags) ---
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<std::vector<message_t>> request_to_spot(
+        const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+        message_t message,
+        std::chrono::milliseconds timeout = {});
+
+    // --- routed request (spot → spot, callback) ---
+    /// @throws submit_error_t
+    bool request_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+                         message_t message,
+                         std::function<void(request_result_t, std::vector<message_t>)> callback,
+                         send_flags_t flags = send_flags_t::none,
+                         std::chrono::milliseconds timeout = {});
+
+    // --- routed request (spot → router, coroutine, blocking submit — no flags) ---
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<std::vector<message_t>> request_to_router(
+        const routing_id_t& peer_rid,
+        message_t message,
+        std::chrono::milliseconds timeout = {});
+
+    // --- routed request (spot → router, callback) ---
+    /// @throws submit_error_t
+    bool request_to_router(const routing_id_t& peer_rid,
+                           message_t message,
+                           std::function<void(request_result_t, std::vector<message_t>)> callback,
+                           send_flags_t flags = send_flags_t::none,
+                           std::chrono::milliseconds timeout = {});
 
     // --- routed reply (spot → spot) ---
     /// @throws submit_error_t

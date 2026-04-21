@@ -80,7 +80,7 @@ STREAM 소켓은 상호 배타적인 세 가지 수신 모드를 가진다. 소�
 | 모드 | 활성화 방식 | 전달 형태 |
 |------|-------------|-----------|
 | Raw recv | 기본 | `zlink_recv()`가 read 단위로 raw bytes 반환 |
-| Raw callback | `zlink_recv_handler()` | `zlink_recv_handler_fn` 이 raw bytes 를 받는다 |
+| Raw callback | `zlink_recv_handler()` | `zlink_socket_msg_handler_fn` 이 raw bytes 를 받는다 |
 | Packet callback | `zlink_stream_packet_handler()` | `zlink_stream_packet_handler_fn` 이 header / body 로 이미 분리된 `zlink_msg_t` 를 받는다 |
 
 Packet handler 모드는 raw STREAM byte pipe 위에 `header + body` framing 을
@@ -185,7 +185,7 @@ connection 과 함께 decoder state 도 폐기된다.
 - **순서 보장.** Per-`source_rid` 직렬화가 decoder 쪽에서 강제되므로,
   호출자가 raw byte delivery 위에 별도 reorder 로직을 올릴 필요가 없다.
 
-## 7. 현재 STREAM 런타임 기본값 (2026-02)
+## 7. 현재 STREAM 런타임 기본값
 
 STREAM 은 transport 전반에 공통된 기본 성능 프로파일을 사용한다.
 STREAM 외 공통 소켓 기본값은
@@ -198,9 +198,8 @@ STREAM 외 공통 소켓 기본값은
 - read drain: 활성
 - speculative write: STREAM/TCP 경로에서 상시 on 고정
 - RX slab buffering: 활성
-- gather threshold: `8192`
 - speculative write byte budget: `2097152`
-- read drain max loops: `16`
+- read drain max loops: `64`
 - read drain max bytes: `1048576`
 
 ### 7.2 소켓/리스너 기본값
@@ -213,9 +212,12 @@ STREAM 외 공통 소켓 기본값은
 
 ### 7.3 현재 유지되는 STREAM 런타임 환경변수
 
-- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY`
-- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`)
-- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ`
-- `ZLINK_ASIO_STREAM_DISABLE_GATHER`
-- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE`
-- `ZLINK_ASIO_STREAM_BATCH_SIZE`
+- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY`: 기본 `4`, 최대 `128`로 제한
+- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`): 기본 `rr`
+- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ`: 기본 비활성
+- `ZLINK_ASIO_STREAM_DISABLE_GATHER`: 기본 비활성이라 STREAM gather-write 는 유지됨
+- `ZLINK_ASIO_STREAM_GATHER_THRESHOLD`: 기본 `1024`
+- `ZLINK_ASIO_STREAM_TINY_GATHER_THRESHOLD`: 기본 `0`
+- `ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP`: 기본 `4096`
+- `ZLINK_ASIO_STREAM_BATCH_SIZE`: 기본 `4096`
+- `ZLINK_ASIO_STREAM_BATCH_HEADROOM`: 기본 `64`

@@ -51,7 +51,7 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 zlink_connect(other_socket, endpoint);
 ```
 
-> Reference: `core/tests/test_pair_tcp.cpp` — `bind_loopback_ipv4()` wildcard bind pattern
+> Reference: `core/tests/integration/test_pair_tcp.cpp` — `bind_loopback_ipv4()` wildcard bind pattern
 
 ### Using DNS Names
 
@@ -63,7 +63,7 @@ zlink_connect(socket, "tcp://localhost:5555");
 ```
 
 > Note: DNS resolution is blocking. Using IP addresses is recommended in production.
-> Reference: `core/tests/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
+> Reference: `core/tests/integration/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
 
 ### Error Handling
 
@@ -115,7 +115,7 @@ size_t len = sizeof(endpoint);
 zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` — `zlink_bind(router, "ipc://*")`
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` — `zlink_bind(router, "ipc://*")`
 
 ### Error Handling
 
@@ -129,7 +129,7 @@ if (rc == ZLINK_BIND_INVALID_ARGUMENT) {
 }
 ```
 
-> Reference: `core/tests/test_pair_ipc.cpp` — `test_endpoint_too_long()`
+> Reference: `core/tests/integration/test_pair_ipc.cpp` — `test_endpoint_too_long()`
 
 ### Characteristics
 
@@ -166,7 +166,7 @@ if (rc != ZLINK_CONNECT_OK) {
 - Direct lock-free pipe connection (no network)
 - Lowest latency, highest throughput
 
-> Reference: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce pattern
+> Reference: `core/tests/integration/test_pair_inproc.cpp` — bind → connect → bounce pattern
 
 ## 5. WebSocket (ws)
 
@@ -188,7 +188,7 @@ size_t len = sizeof(endpoint);
 zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ```
 
-> Reference: `core/tests/test_stream_socket.cpp` — `test_stream_ws_basic()`
+> Reference: `core/tests/integration/test_stream_socket.cpp` — `test_stream_ws_basic()`
 
 ### Characteristics
 
@@ -214,7 +214,7 @@ zlink_set_tls_client(socket, ca_path, "localhost", 0);
 zlink_connect(socket, "wss://server:8443");
 ```
 
-> Reference: `core/tests/test_stream_socket.cpp` — `test_stream_wss_basic()`
+> Reference: `core/tests/integration/test_stream_socket.cpp` — `test_stream_wss_basic()`
 
 ### Additional Configuration Compared to ws
 

@@ -417,7 +417,7 @@ class ZLinkSpot(Protocol):
 
 
 class SpotRouterConnections(Protocol):
-    def connect(self, target_rid: str, endpoint: str) -> None: ...
+    def connect(self, endpoint: str) -> None: ...
     def disconnect(self, endpoint: str) -> None: ...
     def list_connections(self) -> Sequence[str]: ...
 
@@ -463,7 +463,8 @@ class ZLinkTimer(Protocol):
 ```
 
 일반 channel client manual 연결은 endpoint 집합만 다루고, `SPOT` router manual
-연결만 `target_rid + endpoint`를 같이 둔다. `ZLinkSpotManager`는 등록된
+연결도 같은 방식으로 endpoint 집합만 등록한다. 이 초안에서는 `connect(...)`
+호출 시 remote router id를 따로 받지 않는다. `ZLinkSpotManager`는 등록된
 `spot_name`으로 factory를 고르고, `get(...)`와 `list(...)`는 runtime이 들고 있는
 `spot_rid -> spot_name` 매핑을 다시 보는 용도다.
 

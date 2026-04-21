@@ -8,31 +8,28 @@ import dev.kairoscode.zlink.Message;
 import org.junit.jupiter.api.Test;
 
 class JsonCodecTest {
-    private final JsonCodec<SampleValue> sampleCodec = new JsonCodec<>();
-    private final JsonCodec<EmptyValue> emptyCodec = new JsonCodec<>();
-
     @Test
     void roundtrip() {
         SampleValue value = new SampleValue("alpha", 7, true);
 
-        try (Message message = sampleCodec.toMessage(value)) {
+        try (Message message = JsonCodec.toMessage(value)) {
             assertArrayEquals(
                 "{\"name\":\"alpha\",\"count\":7,\"active\":true}".getBytes(),
                 message.toByteArray());
-            assertEquals(value, sampleCodec.fromMessage(message, SampleValue.class));
+            assertEquals(value, JsonCodec.parseJson(message, SampleValue.class));
         }
     }
 
     @Test
     void nullValue() {
-        assertThrows(NullPointerException.class, () -> sampleCodec.toMessage(null));
+        assertThrows(NullPointerException.class, () -> JsonCodec.toMessage(null));
     }
 
     @Test
     void emptyObject() {
         EmptyValue value = new EmptyValue();
 
-        try (Message message = emptyCodec.toMessage(value)) {
+        try (Message message = JsonCodec.toMessage(value)) {
             assertEquals("{}", message.toUtf8String());
         }
     }

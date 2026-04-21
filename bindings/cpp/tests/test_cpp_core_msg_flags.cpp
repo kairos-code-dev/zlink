@@ -9,8 +9,8 @@ void test_more ()
     zlink::dealer_socket_t client (ctx);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-msg-flags-", "more");
-    assert (server.bind (endpoint) == 0);
-    assert (client.connect (endpoint) == 0);
+    server.bind (endpoint);
+    client.connect (endpoint);
 
     send_string_expect_success (client, "A", zlink::send_flag::sndmore);
     send_string_expect_success (client, "B");

@@ -2,7 +2,6 @@
 
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.internal.Native;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -18,7 +17,7 @@ public final class FfmVsJniMicrobench {
     private static final MethodHandle MH_NOOP;
 
     static {
-        Native.version();
+        Zlink.version();
         LOOKUP = SymbolLookup.loaderLookup();
         MH_NOOP = downcall("zlink_java_bench_noop_u64",
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));

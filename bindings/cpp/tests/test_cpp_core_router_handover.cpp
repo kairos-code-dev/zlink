@@ -21,21 +21,21 @@ void test_with_handover ()
     zlink::router_socket_t router (ctx);
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "router-handover-on");
-    assert (router.bind (endpoint) == 0);
+    router.bind (endpoint);
 
     const int handover = 1;
     assert (router.set_option (zlink::socket_option::router_handover, handover) == 0);
 
     zlink::dealer_socket_t dealer_one (ctx);
     assert (dealer_one.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
-    assert (dealer_one.connect (endpoint) == 0);
+    dealer_one.connect (endpoint);
     send_string_expect_success (dealer_one, "Hello");
     recv_string_expect_success (router, "X");
     recv_string_expect_success (router, "Hello");
 
     zlink::dealer_socket_t dealer_two (ctx);
     assert (dealer_two.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
-    assert (dealer_two.connect (endpoint) == 0);
+    dealer_two.connect (endpoint);
     send_string_expect_success (dealer_two, "Hello");
     recv_string_expect_success (router, "X");
     recv_string_expect_success (router, "Hello");
@@ -53,18 +53,18 @@ void test_without_handover ()
     zlink::router_socket_t router (ctx);
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "router-handover-off");
-    assert (router.bind (endpoint) == 0);
+    router.bind (endpoint);
 
     zlink::dealer_socket_t dealer_one (ctx);
     assert (dealer_one.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
-    assert (dealer_one.connect (endpoint) == 0);
+    dealer_one.connect (endpoint);
     send_string_expect_success (dealer_one, "Hello");
     recv_string_expect_success (router, "X");
     recv_string_expect_success (router, "Hello");
 
     zlink::dealer_socket_t dealer_two (ctx);
     assert (dealer_two.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
-    assert (dealer_two.connect (endpoint) == 0);
+    dealer_two.connect (endpoint);
     send_string_expect_success (dealer_two, "Hello");
 
     expect_recv_eagain (router, 300);

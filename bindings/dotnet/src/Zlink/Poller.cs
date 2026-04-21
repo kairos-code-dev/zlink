@@ -34,14 +34,16 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         List<string> missing = GetMissingExports();
         if (missing.Count > 0)
         {
-            throw new NotSupportedException(
-                "Poller API is not available in the loaded native zlink library. "
-                + "Missing exports: " + string.Join(", ", missing));
+            throw new ZlinkConfigException(ConfigResult.NotSupported,
+                (int)ErrorCode.ENotSup);
         }
 
         _handle = NativeMethods.zlink_poller_new();
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        _items.Clear();
+        _itemsByUserData.Clear();
+        _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     }
 
     public int Count
@@ -51,7 +53,8 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             EnsureNotDisposed();
             int rc = NativeMethods.zlink_poller_size(_handle, out _);
             if (rc < 0)
-                throw ZlinkException.FromLastError();
+                throw ZlinkException.CreateConfigException(
+                    NativeMethods.zlink_errno());
             return rc;
         }
     }
@@ -71,7 +74,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         if (rc != 0)
         {
             ReleaseUserData(userData);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
         }
         RegisterItem(new PollItem(PollItemKind.Socket, concreteSocket, userData,
             concreteSocket.Handle, 0, events, tag));
@@ -88,7 +91,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         if (rc != 0)
         {
             ReleaseUserData(userData);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkException.ThrowConfigIfError(rc);
         }
         RegisterItem(new PollItem(PollItemKind.Fd, null, userData, IntPtr.Zero,
             fd, events, tag));
@@ -108,7 +111,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
         int rc = NativeMethods.zlink_poller_modify(_handle, concreteSocket.Handle,
             (short)events);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         _items[index].Events = events;
     }
 
@@ -123,7 +126,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
         int rc = NativeMethods.zlink_poller_modify_fd(_handle, fd,
             (short)events);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         _items[index].Events = events;
     }
 
@@ -138,7 +141,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             return false;
 
         int rc = NativeMethods.zlink_poller_remove(_handle, concreteSocket.Handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         UnregisterItem(index);
         return true;
     }
@@ -152,7 +155,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             return false;
 
         int rc = NativeMethods.zlink_poller_remove_fd(_handle, fd);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
         UnregisterItem(index);
         return true;
     }
@@ -163,15 +166,11 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
         IntPtr handle = _handle;
         int rc = NativeMethods.zlink_poller_destroy(ref handle);
-        ZlinkException.ThrowIfError(rc);
+        ZlinkException.ThrowConfigIfError(rc);
 
         _handle = NativeMethods.zlink_poller_new();
         if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-
-        _items.Clear();
-        _itemsByUserData.Clear();
-        _nativeEvents = Array.Empty<ZlinkPollerEvent>();
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Close()
@@ -193,7 +192,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         int ready = NativeMethods.zlink_poller_wait_all(_handle, _nativeEvents,
             _items.Count, timeoutMs, out _);
         if (ready < 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         if (ready == 0)
             return 0;
 
@@ -216,7 +215,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         int ready = NativeMethods.zlink_poller_wait_all(_handle, _nativeEvents,
             _items.Count, timeoutMs, out _);
         if (ready < 0)
-            throw ZlinkException.FromLastError();
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         totalReady = ready;
         if (ready == 0)
             return 0;
@@ -233,9 +232,10 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             return;
 
         IntPtr handle = _handle;
+        int rc;
         while (true)
         {
-            int rc = NativeMethods.zlink_poller_destroy(ref handle);
+            rc = NativeMethods.zlink_poller_destroy(ref handle);
             if (rc == 0)
                 break;
 
@@ -249,6 +249,8 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         _items.Clear();
         _itemsByUserData.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
+        if (rc != 0)
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
         GC.SuppressFinalize(this);
     }
 

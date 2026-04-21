@@ -1017,7 +1017,7 @@ Canonical discovery service monitor event. Commonly aliased as
 
 ```go
 type ServiceMonitorEvent struct {
-    ServiceKind ServiceKind           // ZLINK_SERVICE_TYPE_SPOT, SOCKET, ...
+    ServiceKind ServiceKind           // ZLINK_SERVICE_KIND_DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET
     EventType   ServiceMonitorEventType // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
     Status      uint32                // status code
     ErrorCode   uint32                // errno on error events
@@ -1169,6 +1169,30 @@ func (s *Spot) SetRoutingID(rid RoutingID) error
 // RoutingID returns the spot's current logical address. Maps to
 // zlink_get_routing_id(spot, ...).
 func (s *Spot) RoutingID() (RoutingID, error)
+
+// --- routed request (spot → spot) ---
+// RequestToSpot submits a routed request to a remote Spot. Returns *SubmitError on submit failure;
+// callback receives RequestResult (maps to *RequestError on completion failure).
+func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID,
+    callback RequestReplyCallback,
+    timeout time.Duration, parts ...*Message) error
+// TryRequestToSpot submits a routed request with nonblocking submit.
+// Returns (false, nil) only for temporary backpressure.
+func (s *Spot) TryRequestToSpot(destNodeRid, destSpotRid RoutingID,
+    callback RequestReplyCallback,
+    timeout time.Duration, parts ...*Message) (bool, error)
+
+// --- routed request (spot → router) ---
+// RequestToRouter submits a routed request to a remote Router peer. Returns *SubmitError on submit failure;
+// callback receives RequestResult (maps to *RequestError on completion failure).
+func (s *Spot) RequestToRouter(peerRid RoutingID,
+    callback RequestReplyCallback,
+    timeout time.Duration, parts ...*Message) error
+// TryRequestToRouter submits a routed request with nonblocking submit.
+// Returns (false, nil) only for temporary backpressure.
+func (s *Spot) TryRequestToRouter(peerRid RoutingID,
+    callback RequestReplyCallback,
+    timeout time.Duration, parts ...*Message) (bool, error)
 
 // --- routed reply (spot → spot) ---
 // ReplyToSpot submits a routed reply. Returns *SubmitError on failure.

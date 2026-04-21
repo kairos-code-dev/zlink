@@ -10,10 +10,10 @@ int main ()
     zlink::monitor_handle_t server_monitor = server.monitor_handle ();
     zlink::monitor_handle_t client_monitor = client.monitor_handle ();
 
-    assert (server.bind ("tcp://127.0.0.1:0") == 0);
+    server.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = server.options ().last_endpoint ();
     assert (!endpoint.empty ());
-    assert (client.connect (endpoint) == 0);
+    client.connect (endpoint);
     assert (detail::wait_connected (server_monitor, client_monitor));
 
     const std::string sent = detail::k_pair_payload;

@@ -227,7 +227,7 @@ public abstract class Socket implements AutoCloseable {
         return socketCore.getOption(option);
     }
 
-    public CommonSocketOptions options() {
+    CommonSocketOptions options() {
         return options;
     }
 
@@ -239,6 +239,25 @@ public abstract class Socket implements AutoCloseable {
     /** Opens a socket monitor for the requested event types. */
     public MonitorSocket monitorOpen(MonitorEventType... events) {
         return socketCore.monitorOpen(resolveMonitorEvents(events));
+    }
+
+    public final AdmissionState getAdmissionState() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment stateOut = arena.allocate(ValueLayout.JAVA_INT);
+            int rc = Native.getAdmissionState(handle, stateOut);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_get_admission_state");
+            return AdmissionState.fromValue(stateOut.get(ValueLayout.JAVA_INT, 0));
+        }
+    }
+
+    public final void setAdmissionState(AdmissionState state) {
+        Objects.requireNonNull(state, "state");
+        ensureOpen();
+        int rc = Native.setAdmissionState(handle, state.value());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_set_admission_state");
     }
 
     public final void setTlsServer(String certPem, String keyPem,
@@ -1478,6 +1497,9 @@ public abstract class Socket implements AutoCloseable {
         if (errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
             return SendResult.NOT_READY;
         }
+        if (errno == 111 || errno == 10061) {
+            throw new SubmitException(SubmitResult.NOT_ADMITTED, errno);
+        }
         throw ZlinkException.fromLastError(apiName);
     }
 
@@ -1505,6 +1527,9 @@ public abstract class Socket implements AutoCloseable {
         if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN
             || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
             throw new SubmitException(SubmitResult.NOT_CONNECTED, errno);
+        }
+        if (errno == 111 || errno == 10061) {
+            throw new SubmitException(SubmitResult.NOT_ADMITTED, errno);
         }
         throw ZlinkException.fromLastError(apiName);
     }

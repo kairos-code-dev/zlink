@@ -41,6 +41,21 @@ inline std::function<void()> make_socket_request_progress (void *socket_)
     return [socket_]() { (void) zlink_socket_request_progress_internal (socket_); };
 }
 
+[[noreturn]] inline void throw_submit_error_from_errno (int err_)
+{
+    throw submit_error_t (zlink::detail::submit_result_from_errno (err_), err_);
+}
+
+[[noreturn]] inline void throw_config_error_from_errno (int err_)
+{
+    throw config_error_t (zlink::detail::config_result_from_errno (err_), err_);
+}
+
+[[noreturn]] inline void throw_handler_error_from_errno (int err_)
+{
+    throw handler_error_t (zlink::detail::handler_result_from_errno (err_), err_);
+}
+
 inline void complete_request_state (request_state_t *state_,
                                     zlink_request_result_t result_,
                                     zlink_msg_t *parts_,
@@ -205,7 +220,7 @@ class pair_socket_t : public message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, part_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -223,7 +238,7 @@ class pair_socket_t : public message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, parts_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -251,7 +266,7 @@ class pair_socket_t : public message_socket_t
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
   private:
@@ -273,7 +288,7 @@ class dealer_socket_t : public message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, part_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -291,7 +306,7 @@ class dealer_socket_t : public message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, parts_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -319,7 +334,7 @@ class dealer_socket_t : public message_socket_t
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     async_result_t<std::vector<message_t>> request (message_t &part_,
@@ -433,20 +448,20 @@ class dealer_socket_t : public message_socket_t
         if (base_socket_t::set_routing_id_raw (
               routing_id_.data (), routing_id_.size ())
             != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     void get_routing_id (routing_id_t &routing_id_) const
     {
         if (base_socket_t::get_routing_id_raw (routing_id_) != 0)
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     template<typename DiscoveryT>
     void attach_discovery (DiscoveryT &discovery_)
     {
         if (base_socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     dealer_socket_options_t dealer_options ()
@@ -475,7 +490,7 @@ class router_socket_t : public routed_message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, target_rid_, part_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -494,7 +509,7 @@ class router_socket_t : public routed_message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, target_rid_, parts_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -524,7 +539,7 @@ class router_socket_t : public routed_message_socket_t
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     async_result_t<std::vector<message_t>> request (const routing_id_t &routing_id_,
@@ -676,13 +691,13 @@ class router_socket_t : public routed_message_socket_t
         if (base_socket_t::set_routing_id_raw (
               routing_id_.data (), routing_id_.size ())
             != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     void get_routing_id (routing_id_t &routing_id_) const
     {
         if (base_socket_t::get_routing_id_raw (routing_id_) != 0)
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     bool send_to_spot (const routing_id_t &dest_node_rid_,
@@ -844,7 +859,7 @@ class router_socket_t : public routed_message_socket_t
     void attach_discovery (DiscoveryT &discovery_)
     {
         if (base_socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     router_socket_options_t router_options ()
@@ -874,7 +889,7 @@ class stream_socket_t : public routed_message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, target_rid_, part_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -893,7 +908,7 @@ class stream_socket_t : public routed_message_socket_t
         if (flags_ == send_flags_t::dontwait) {
             send_result_t result = send_result_t::sent;
             if (base_socket_t::send_no_wait_result (result, target_rid_, parts_) != 0)
-                throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
+                detail::throw_submit_error_from_errno (zlink_errno ());
             if (result == send_result_t::not_ready)
                 throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
             return result == send_result_t::sent;
@@ -921,19 +936,19 @@ class stream_socket_t : public routed_message_socket_t
     void on_receive (zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_receive (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     void on_packet (zlink_stream_packet_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_packet (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     void set_routing_id (const routing_id_t &routing_id_)
@@ -941,13 +956,13 @@ class stream_socket_t : public routed_message_socket_t
         if (base_socket_t::set_routing_id_raw (
               routing_id_.data (), routing_id_.size ())
             != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     void get_routing_id (routing_id_t &routing_id_) const
     {
         if (base_socket_t::get_routing_id_raw (routing_id_) != 0)
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     stream_socket_options_t stream_options ()
@@ -1005,14 +1020,14 @@ class pub_socket_t : public publisher_socket_t
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     template<typename DiscoveryT>
     void attach_discovery (DiscoveryT &discovery_)
     {
         if (base_socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     pub_socket_options_t pub_options ()
@@ -1068,7 +1083,7 @@ class xpub_socket_t : public publisher_socket_t
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            throw handler_error_t (handler_result_t::invalid_handle, zlink_errno ());
+            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     subscription_event_t receive_subscription_event (
@@ -1126,20 +1141,20 @@ class sub_socket_t : public subscriber_socket_t
     void set_subscription (const std::string &filter_)
     {
         if (base_socket_t::set_subscription (filter_) != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     void unset_subscription (const std::string &filter_)
     {
         if (base_socket_t::unset_subscription (filter_) != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     void subscription_at (size_t index_, std::string &filter_out_,
                           bool *is_pattern_out_ = NULL)
     {
         if (base_socket_t::subscription_at (index_, filter_out_, is_pattern_out_) != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)
@@ -1158,7 +1173,7 @@ class sub_socket_t : public subscriber_socket_t
     void attach_discovery (DiscoveryT &discovery_)
     {
         if (base_socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     sub_socket_options_t sub_options ()
@@ -1184,20 +1199,20 @@ class xsub_socket_t : public subscriber_socket_t
     void set_subscription (const std::string &filter_)
     {
         if (base_socket_t::set_subscription (filter_) != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     void unset_subscription (const std::string &filter_)
     {
         if (base_socket_t::unset_subscription (filter_) != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     void subscription_at (size_t index_, std::string &filter_out_,
                           bool *is_pattern_out_ = NULL)
     {
         if (base_socket_t::subscription_at (index_, filter_out_, is_pattern_out_) != 0)
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+            detail::throw_config_error_from_errno (zlink_errno ());
     }
 
     std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)

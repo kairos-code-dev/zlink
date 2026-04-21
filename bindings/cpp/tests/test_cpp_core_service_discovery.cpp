@@ -98,7 +98,7 @@ static void test_discovery_provider_registration ()
 
     zlink::service::receiver_t provider (ctx);
     assert (provider.handle () != NULL);
-    assert (provider.bind ("tcp://127.0.0.1:*") == 0);
+    provider.bind ("tcp://127.0.0.1:*");
 
     const std::string advertise_ep =
       last_endpoint_from_receiver (provider.handle ());
@@ -143,7 +143,7 @@ static void test_discovery_service_filtering ()
 
     zlink::service::receiver_t provider_a (ctx);
     assert (provider_a.handle () != NULL);
-    assert (provider_a.bind ("tcp://127.0.0.1:*") == 0);
+    provider_a.bind ("tcp://127.0.0.1:*");
     const std::string advertise_a =
       last_endpoint_from_receiver (provider_a.handle ());
     assert (provider_a.connect_registry (eps.router.c_str ()) == 0);
@@ -151,7 +151,7 @@ static void test_discovery_service_filtering ()
 
     zlink::service::receiver_t provider_b (ctx);
     assert (provider_b.handle () != NULL);
-    assert (provider_b.bind ("tcp://127.0.0.1:*") == 0);
+    provider_b.bind ("tcp://127.0.0.1:*");
     const std::string advertise_b =
       last_endpoint_from_receiver (provider_b.handle ());
     assert (provider_b.connect_registry (eps.router.c_str ()) == 0);
@@ -206,7 +206,7 @@ static void test_discovery_heartbeat_timeout ()
 
     zlink::service::receiver_t provider (ctx);
     assert (provider.handle () != NULL);
-    assert (provider.bind ("tcp://127.0.0.1:*") == 0);
+    provider.bind ("tcp://127.0.0.1:*");
     const std::string advertise_ep =
       last_endpoint_from_receiver (provider.handle ());
     assert (provider.connect_registry (eps.router.c_str ()) == 0);
@@ -247,7 +247,7 @@ static void test_discovery_weight_update ()
 
     zlink::service::receiver_t provider (ctx);
     assert (provider.handle () != NULL);
-    assert (provider.bind ("tcp://127.0.0.1:*") == 0);
+    provider.bind ("tcp://127.0.0.1:*");
     const std::string advertise_ep =
       last_endpoint_from_receiver (provider.handle ());
     assert (provider.connect_registry (eps.router.c_str ()) == 0);

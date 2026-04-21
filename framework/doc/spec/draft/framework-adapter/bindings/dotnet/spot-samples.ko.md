@@ -330,6 +330,116 @@ builder.Services.AddZLinkFramework(options =>
   endpoint 집합이 아니다. 전자는 peer `SpotNode` mesh 주소이고, 후자는 외부
   publish ingress 주소다.
 
+#### 소켓 옵션 설정 샘플
+
+`SPOT`에서는 옵션 소유자를 두 단계로 나눠서 보는 편이 읽기 쉽다.
+
+- `SpotNode` 자체 기본값
+  - topic routed data plane 전체에 공통으로 적용되는 기본값
+- capability별 socket 기본값
+  - `router`, `pub/sub`, attach된 channel client, attach된 spot publisher client가
+    각각 들고 있는 socket 기본값
+
+아래 코드는 아직 확정 계약이 아니라, `.NET` 표면에서 이런 식으로 보이는 편이
+자연스럽다는 방향 예시다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.Codecs.AddProtobuf();
+
+    options.UseSpotDiscovery("game.stage", registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+    });
+
+    options.AddSpotNode("stage-node", spot =>
+    {
+        spot.Bind("tcp://0.0.0.0:9000");
+
+        spot.ConfigureNode(node =>
+        {
+            node.TopicSendHighWaterMark = 20_000;
+            node.TopicReceiveHighWaterMark = 20_000;
+            node.RoutedSendHighWaterMark = 10_000;
+            node.RoutedReceiveHighWaterMark = 10_000;
+        });
+
+        spot.EnableRouter(router =>
+        {
+            router.ConfigureSocket(socket =>
+            {
+                socket.SendHighWaterMark = 10_000;
+                socket.ReceiveHighWaterMark = 10_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(200);
+                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+            });
+
+            router.ConfigureRouter(options =>
+            {
+                options.RequestTimeout = TimeSpan.FromMilliseconds(700);
+                options.Mandatory = true;
+            });
+        });
+
+        spot.EnablePubSub(pubsub =>
+        {
+            pubsub.ConfigurePublisherSocket(socket =>
+            {
+                socket.SendHighWaterMark = 50_000;
+                socket.TcpNoDelay = true;
+            });
+
+            pubsub.ConfigureSubscriberSocket(socket =>
+            {
+                socket.ReceiveHighWaterMark = 50_000;
+                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+            });
+        });
+
+        spot.AttachChannelClient("orders", client =>
+        {
+            client.ConfigureSocket(socket =>
+            {
+                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
+                socket.ReconnectInterval = TimeSpan.FromMilliseconds(200);
+                socket.ReconnectIntervalMax = TimeSpan.FromSeconds(5);
+            });
+
+            client.ConfigureDealer(dealer =>
+            {
+                dealer.RequestTimeout = TimeSpan.FromMilliseconds(500);
+            });
+        });
+
+        spot.AttachSpotPublisherClient("game.stage", publisher =>
+        {
+            publisher.ConfigureSocket(socket =>
+            {
+                socket.SendHighWaterMark = 20_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
+            });
+        });
+
+        spot.AddSpotFactory<StageSpot>("stage");
+    });
+});
+```
+
+이 예시에서 의도하는 구분은 아래와 같다.
+
+- `spot.ConfigureNode(...)`는 `SpotNode` data plane 전체 기본값을 정한다.
+- `router.ConfigureSocket(...)`, `pubsub.ConfigurePublisherSocket(...)` 같은 표면은
+  각 capability가 소유한 socket 기본 동작을 정한다.
+- `client.ConfigureDealer(...)`처럼 socket type 전용 옵션은 capability 전용
+  builder에 따로 두는 편이 읽기 쉽다.
+- `RequestTo(...).WithTimeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
+  적용되고, 위 설정은 runtime 기본값이다.
+
+이렇게 두면 framework 사용자는 low-level `spot_node_option`이나 `setsockopt`
+이름을 직접 앞면에서 보지 않아도 되고, 어떤 옵션이 node 전체에 적용되는지,
+어떤 옵션이 개별 capability에만 적용되는지도 바로 구분할 수 있다.
+
 ### 3.1.2 spot 생성과 조회
 
 spot 인스턴스를 만들 때는 factory 타입이 아니라 등록 이름을 넘긴다. 이렇게 해야

@@ -537,13 +537,13 @@ zlink_config_result_t zlink_proxy_steerable (void *frontend_,
 라이브러리가 지정된 기능을 지원하는지 확인합니다.
 
 ```c
-int zlink_has (const char *capability_);
+bool zlink_has (const char *capability_);
 ```
 
 라이브러리에 명명된 기능에 대한 컴파일 타임 또는 런타임 지원을 쿼리합니다.
 일반적인 기능 문자열에는 `"ipc"`, `"tls"`, `"ws"`, `"wss"`가 포함됩니다.
 
-**반환값:** 기능이 지원되면 `1`, 그렇지 않으면 `0`.
+**반환값:** 기능이 지원되면 `true`, 그렇지 않으면 `false`.
 
 **스레드 안전성:** 언제든지 모든 스레드에서 호출할 수 있습니다.
 

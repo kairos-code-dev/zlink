@@ -224,16 +224,16 @@ Prohibited directions:
 
 ```
 core/src/
-  api/           37 files — C API facade (split by concern)
-  core/          61 files — runtime core, options dispatch, multipart send
+  api/           76 files — C API facade (split by concern)
+  core/          76 files — runtime core, options dispatch, multipart send
   engine/asio/   — Boost.Asio execution backbone
-  sockets/       37 files — socket families + base runtime components
+  sockets/       47 files — socket families + base runtime components
   protocol/      — raw/zmp/metadata
   services/
-    common/       9 files — service_runtime_base, service_public_api_guard
+    common/      10 files — service_runtime_base, service_public_api_guard
     control/      2 files — service control runtime
-    discovery/   23 files — discovery + registry access + socket attachment
-    spot/        29 files — node/pub/sub/data_plane/handle/subject_access
+    discovery/   31 files — discovery + registry access + socket attachment
+    spot/        52 files — node/pub/sub/data_plane/handle/subject_access
   transports/    — tcp/ipc/tls/ws/pgm
   utils/         — domain-agnostic utilities
 ```

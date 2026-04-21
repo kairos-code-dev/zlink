@@ -79,7 +79,7 @@ zlink_proxy(xsub, xpub, capture);      /* blocking */
 
 | 단계 | 소켓 | API | 설명 |
 |------|------|-----|------|
-| 1 | XPUB | `zlink_subscription_event(xpub, ...)` | SUB의 구독/해제 이벤트 수신 |
+| 1 | XPUB | `zlink_xpub_recv_part(xpub, ...)` | SUB의 구독/해제 이벤트 수신 |
 | 2 | 앱 | 커스텀 로직 | 구독 인가, 토픽 리맵핑 등 |
 | 3 | XSUB | `zlink_set_subscription(xsub, topic)` | upstream PUB에 구독 전파 |
 
@@ -106,11 +106,13 @@ while (running) {
     }
 
     /* Subscription propagation: XPUB → app → XSUB */
+    const zlink_routing_id_t *sub_rid = NULL;
     int subscribed;
     char sub_topic[256];
-    size_t sub_len = sizeof(sub_topic);
-    rc = zlink_subscription_event(xpub, &rid, &subscribed,
-                                  sub_topic, &sub_len, ZLINK_DONTWAIT);
+    size_t sub_len = 0;
+    rc = zlink_xpub_recv_part(xpub, &sub_rid, &subscribed,
+                              sub_topic, sizeof(sub_topic), &sub_len,
+                              ZLINK_DONTWAIT);
     if (rc == ZLINK_RECV_OK) {
         /* Insert custom logic here (authorization, remapping, etc.) */
         if (subscribed)

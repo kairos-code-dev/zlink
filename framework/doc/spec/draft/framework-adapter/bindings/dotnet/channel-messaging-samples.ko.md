@@ -176,6 +176,91 @@ public sealed class WarmupService : BackgroundService
 예시로 읽어야 한다. subscriber capability를 수동으로 운영한다면 그것도 별도
 manager를 통해 제어해야 한다.
 
+### 2.3.2 소켓 옵션 설정 샘플
+
+소켓 옵션도 결국 capability가 소유한 runtime 기본값으로 보는 편이 자연스럽다.
+즉 요청 하나마다 주는 `WithTimeout(...)`과 같은 호출 단위 옵션과, channel
+등록 시점에 넣는 socket 기본 옵션은 구분해서 설명해야 한다.
+
+아래 코드는 아직 확정 계약이 아니라, `.NET` 표면에서 이런 모양으로 보이는 편이
+읽기 쉽다는 방향 예시다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
+    options.Codecs.AddProtobuf();
+
+    options.AddChannel("api", channel =>
+    {
+        channel.EnableServer(server =>
+        {
+            server.ConfigureSocket(socket =>
+            {
+                socket.SendHighWaterMark = 20_000;
+                socket.ReceiveHighWaterMark = 20_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(200);
+                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+            });
+
+            server.ConfigureRouter(router =>
+            {
+                router.Mandatory = true;
+                router.RequestTimeout = TimeSpan.FromSeconds(2);
+            });
+        });
+
+        channel.EnableSubscriber(subscriber =>
+        {
+            subscriber.ConfigureSocket(socket =>
+            {
+                socket.ReceiveHighWaterMark = 50_000;
+                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+                socket.TcpNoDelay = true;
+            });
+        });
+    });
+
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableClient(client =>
+        {
+            client.ConfigureSocket(socket =>
+            {
+                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
+                socket.ReconnectInterval = TimeSpan.FromMilliseconds(200);
+                socket.ReconnectIntervalMax = TimeSpan.FromSeconds(5);
+                socket.SendHighWaterMark = 5_000;
+                socket.ReceiveHighWaterMark = 5_000;
+            });
+
+            client.ConfigureDealer(dealer =>
+            {
+                dealer.RequestTimeout = TimeSpan.FromMilliseconds(700);
+            });
+        });
+    });
+
+    options.UseDiscovery(registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+    });
+});
+```
+
+이 예시에서 의도하는 구분은 아래와 같다.
+
+- `server.ConfigureSocket(...)`, `client.ConfigureSocket(...)`는 capability가 들고
+  있는 socket 기본 동작을 정한다.
+- `server.ConfigureRouter(...)`, `client.ConfigureDealer(...)`는 socket type 전용
+  옵션을 따로 둔다는 뜻이다.
+- `client.Request(...).WithTimeout(...)`은 특정 호출 하나에만 적용되는 값이고,
+  위 설정은 capability 전체의 기본값이다.
+
+이렇게 두면 framework 사용자는 low-level `setsockopt` 이름을 직접 외우지 않아도
+되고, 어떤 옵션이 어느 runtime에 적용되는지도 `channel + capability` 기준으로
+바로 읽을 수 있다.
+
 ### 2.4 outbound-only client 앱도 가능해야 한다
 
 아래처럼 local handler를 전혀 붙이지 않고, 내부 서비스 호출만 하는 앱도 가능해야

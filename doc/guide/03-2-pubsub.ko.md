@@ -54,7 +54,7 @@ flowchart LR
 ```
 
 - XSUB은 구독 상태 없이 PUB의 모든 메시지를 통과시킨다.
-- XPUB은 SUB의 구독 이벤트를 `zlink_subscription_event()`로 노출하여
+- XPUB은 SUB의 구독 이벤트를 `zlink_xpub_recv_part()`로 노출하여
   프록시가 구독 관리 로직(필터링, 로깅, 인가 등)을 삽입할 수 있다.
 - 일반 SUB/PUB으로는 이 중계 구조를 만들 수 없다.
 
@@ -116,7 +116,7 @@ zlink_set_subscription(sub, "weather");
 |------|------|----------|------|
 | PUB | 송신 전용 | N/A | 수신 불가 (`ZLINK_RECV_NOT_SUPPORTED`) |
 | SUB | 수신 전용 | `zlink_subscribe()` | 토픽 + 데이터 분리 반환 |
-| XPUB | 양방향 | `zlink_subscription_event()` | 구독 이벤트 수신 |
+| XPUB | 양방향 | `zlink_xpub_recv_part()` | 구독 이벤트 수신 |
 | XSUB | 수신 전용 | `zlink_subscribe()` | 필터 없이 전체 수신 |
 
 > **참고:** PUB/SUB 계열 4소켓에서 `zlink_send()`/`zlink_recv()`는
@@ -395,7 +395,7 @@ XSUB이 프록시에서 필요한 이유는 구독 상태 없이도 모든 메�
 | 항목 | PUB | XPUB |
 |------|-----|------|
 | **메시지 발행** | `zlink_publish()` | `zlink_publish()` (동일) |
-| **구독 이벤트** | 노출 안 함 | `zlink_subscription_event()`로 수신 |
+| **구독 이벤트** | 노출 안 함 | `zlink_xpub_recv_part()`로 수신 |
 
 XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 
@@ -406,7 +406,7 @@ XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 | `zlink_publish()` | 가능 | — | 가능 | — |
 | `zlink_subscribe()` | — | 가능 | — | 가능 |
 | `zlink_set_subscription()` | — | 가능 | — | 가능 |
-| `zlink_subscription_event()` | — | — | 가능 | — |
+| `zlink_xpub_recv_part()` | — | — | 가능 | — |
 | 로컬 필터 | N/A | **켜짐** | N/A | **꺼짐** |
 
 > `zlink_send()` / `zlink_recv()`는 PUB/SUB 계열 4소켓 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다.
@@ -432,19 +432,19 @@ zlink_set_subscription(xsub, "A");
 zlink_unset_subscription(xsub, "A");
 ```
 
-XPUB는 `zlink_subscription_event()`로 구독 프레임을 수신한다:
+XPUB는 `zlink_xpub_recv_part()`로 구독 프레임을 수신한다:
 
 ```c
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
-zlink_routing_id_t source_rid;
+const zlink_routing_id_t *source_rid = NULL;
 int subscribed = 0;
 char topic[256];
-size_t topic_len = sizeof(topic);
+size_t topic_len = 0;
 
-zlink_subscription_event(
-  xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+zlink_recv_result_t rc = zlink_xpub_recv_part(
+  xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
 ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -469,7 +469,7 @@ MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 
 int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
-/* zlink_subscription_event() returns subscribed=1, topic="A"
+/* zlink_xpub_recv_part() returns subscribed=1, topic="A"
    Then apply transformed subscription: */
 zlink_set_subscription(xpub, "XA");
 
@@ -515,13 +515,15 @@ int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
 for (;;) {
-    zlink_routing_id_t source_rid;
+    const zlink_routing_id_t *source_rid = NULL;
     int subscribed = 0;
     char topic[256];
-    size_t topic_len = sizeof(topic);
+    size_t topic_len = 0;
 
-    zlink_subscription_event(
-      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+    zlink_recv_result_t rc = zlink_xpub_recv_part(
+      xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
+    if (rc != ZLINK_RECV_OK)
+        break;
 
     if (subscribed) {
         /* Register subscription */
@@ -549,13 +551,15 @@ void *xpub = zlink_socket(ctx, ZLINK_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 for (;;) {
-    zlink_routing_id_t source_rid;
+    const zlink_routing_id_t *source_rid = NULL;
     int subscribed = 0;
     char topic[256];
-    size_t topic_len = sizeof(topic);
+    size_t topic_len = 0;
 
-    zlink_subscription_event(
-      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+    zlink_recv_result_t rc = zlink_xpub_recv_part(
+      xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
+    if (rc != ZLINK_RECV_OK)
+        break;
     printf("%s: %.*s\n", subscribed ? "New subscription" : "Unsubscription",
            (int) topic_len, topic);
 }
@@ -569,7 +573,7 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
 /* After SUB disconnects */
 zlink_close(sub);
 
-/* The next zlink_subscription_event() returns
+/* The next zlink_xpub_recv_part() returns
    subscribed=0 and the previously subscribed topic */
 ```
 

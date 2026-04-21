@@ -555,13 +555,13 @@ thread.
 Check whether the library supports a given capability.
 
 ```c
-int zlink_has (const char *capability_);
+bool zlink_has (const char *capability_);
 ```
 
 Queries the library for compile-time or run-time support of a named feature.
 Common capability strings include `"ipc"`, `"tls"`, `"ws"`, and `"wss"`.
 
-**Returns:** `1` if the capability is supported, `0` otherwise.
+**Returns:** `true` if the capability is supported, `false` otherwise.
 
 **Thread safety:** Safe to call from any thread at any time.
 

@@ -49,7 +49,7 @@
 | ROUTER | `zlink_router_recv()` (+ `zlink_router_request()` completion callback) | recv-only data plane |
 | STREAM | `zlink_recv()` / `zlink_recv_handler()` / `zlink_stream_packet_handler()` | 세 모드 중 하나 선택 (예외) |
 | PUB | 해당 없음 | 송신 전용 |
-| XPUB | `zlink_subscription_event()` (구독 이벤트 recv-only) | 데이터 plane은 송신 |
+| XPUB | `zlink_xpub_recv_part()` (구독 이벤트 recv-only) | 데이터 plane은 송신 |
 | monitor / timer | recv / callback 모두 지원 | 관찰/유틸 계층 |
 
 핵심 원칙:

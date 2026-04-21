@@ -65,8 +65,8 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 
 ```c
 #define ZLINK_VERSION_MAJOR 5
-#define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 29
+#define ZLINK_VERSION_MINOR 3
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))

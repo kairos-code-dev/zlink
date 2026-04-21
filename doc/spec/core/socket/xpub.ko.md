@@ -126,32 +126,35 @@ zlink_submit_result_t zlink_publish (void *subject_,
 
 ---
 
-### zlink_subscription_event
+### zlink_xpub_recv_part
 
 XPUB 소켓에서 구독 이벤트를 수신합니다.
 
 ```c
-zlink_recv_result_t zlink_subscription_event (void *subject_,
-                               zlink_routing_id_t *source_rid_out_,
+zlink_recv_result_t zlink_xpub_recv_part (void *xpub_,
+                               const zlink_routing_id_t **source_rid_out_,
                                int *subscribed_out_,
-                               char *topic_id_out_,
+                               char *topic_id_buf_,
+                               size_t topic_id_capacity_,
                                size_t *topic_id_len_out_,
                                zlink_recv_flags_t flags_);
 ```
 
 recv 모드에서 다음 구독 이벤트를 수신합니다. 성공 시
-`*source_rid_out_`는 구독하는 피어를 식별하고, `*subscribed_out_`는
-subscribe이면 1, unsubscribe이면 0이며, `*topic_id_out_` /
-`*topic_id_len_out_`는 토픽 바이트를 받습니다 (`zlink_subscribe()`와
-동일한 binary-safe buffer 계약).
+`*source_rid_out_`는 구독 피어의 라이브러리 소유 routing ID 포인터로
+설정되고(이 소켓에 대한 다음 호출 전까지 유효), `*subscribed_out_`는
+subscribe이면 1, unsubscribe이면 0입니다. `topic_id_buf_` /
+`*topic_id_len_out_`에 토픽 바이트가 기록됩니다(binary-safe).
+호출자는 `topic_id_capacity_`로 버퍼 크기를 전달하며,
+토픽이 용량을 초과하면 `EMSGSIZE`를 반환합니다.
 
 적용 대상: raw XPUB만.
 
 **반환값:** 성공 시 `ZLINK_RECV_OK`, 실패 시 `zlink_recv_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**에러:** `subject_`가 NULL이면 `EFAULT`. `ZLINK_DONTWAIT`가 설정되고
-이벤트가 없으면 `EAGAIN`. 토픽 버퍼가 작으면 `EMSGSIZE`. subject가 XPUB가
-아니면 `ENOTSUP`.
+**에러:** `xpub_`가 NULL이면 `EFAULT`. `ZLINK_DONTWAIT`가 설정되고
+이벤트가 없으면 `EAGAIN`. 토픽이 `topic_id_capacity_`를 초과하면
+`EMSGSIZE`. subject가 XPUB가 아니면 `ENOTSUP`.
 
 **참고:** `zlink_publish`
 

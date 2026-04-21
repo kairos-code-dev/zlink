@@ -200,7 +200,7 @@ typedef enum zlink_recv_result_t
 | SPOT recv | `zlink_spot_recv` |
 | Recv | `zlink_recv` |
 | Subscribe | `zlink_subscribe` |
-| Subscription event | `zlink_subscription_event` |
+| Subscription event | `zlink_xpub_recv_part` |
 | Socket monitor recv | `zlink_socket_monitor_recv` |
 | Service monitor recv | `zlink_service_monitor_recv` |
 | Timer recv | `zlink_timer_recv` |
@@ -559,7 +559,7 @@ for them. None of the SPOT reply functions return `NOT_ADMITTED`.
 |---|---|
 | `zlink_submit_result_t` | `zlink_send`, `zlink_send_rid`, `zlink_publish`, `zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`, `zlink_spot_request_channel`, `zlink_router_request_spot`, `zlink_spot_send_channel`, `zlink_spot_publish`, `zlink_router_send_spot`, `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback) |
-| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_subscription_event`, `zlink_spot_subscribe`, `zlink_spot_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
+| `zlink_recv_result_t` | `zlink_router_recv`, `zlink_spot_recv`, `zlink_recv`, `zlink_subscribe`, `zlink_xpub_recv_part`, `zlink_spot_subscribe`, `zlink_spot_subscription_event`, `zlink_socket_monitor_recv`, `zlink_service_monitor_recv`, `zlink_timer_recv` |
 | `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |

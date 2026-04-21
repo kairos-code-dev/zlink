@@ -47,7 +47,7 @@ Receive surfaces are fixed per socket type. The default model is
 | ROUTER | `zlink_router_recv()` (+ `zlink_router_request()` completion callback) | recv-only data plane |
 | STREAM | `zlink_recv()` / `zlink_recv_handler()` / `zlink_stream_packet_handler()` | Exception: choose exactly one mode |
 | PUB | N/A | Send-only |
-| XPUB | `zlink_subscription_event()` (subscription events, recv-only) | Data plane is send |
+| XPUB | `zlink_xpub_recv_part()` (subscription events, recv-only) | Data plane is send |
 | monitor / timer | recv and callback both supported | Observation / utility layer |
 
 Key principles:

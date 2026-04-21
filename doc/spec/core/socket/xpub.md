@@ -125,32 +125,36 @@ failure, ownership remains with the caller.
 
 ---
 
-### zlink_subscription_event
+### zlink_xpub_recv_part
 
 Receive a subscription event from an XPUB socket.
 
 ```c
-zlink_recv_result_t zlink_subscription_event (void *subject_,
-                               zlink_routing_id_t *source_rid_out_,
+zlink_recv_result_t zlink_xpub_recv_part (void *xpub_,
+                               const zlink_routing_id_t **source_rid_out_,
                                int *subscribed_out_,
-                               char *topic_id_out_,
+                               char *topic_id_buf_,
+                               size_t topic_id_capacity_,
                                size_t *topic_id_len_out_,
                                zlink_recv_flags_t flags_);
 ```
 
 Receives the next subscription event in recv mode. On success,
-`*source_rid_out_` identifies the subscribing peer, `*subscribed_out_` is
-1 for subscribe or 0 for unsubscribe, and `*topic_id_out_` /
-`*topic_id_len_out_` receive the topic bytes (binary-safe, same buffer
-contract as `zlink_subscribe()`).
+`*source_rid_out_` is set to the library-owned routing ID of the
+subscribing peer (valid until the next call on this socket),
+`*subscribed_out_` is 1 for subscribe or 0 for unsubscribe, and
+`topic_id_buf_` / `*topic_id_len_out_` receive the topic bytes
+(binary-safe). The caller supplies the buffer capacity via
+`topic_id_capacity_`; if the topic is longer than the capacity the call
+returns `EMSGSIZE`.
 
 Applicable types: raw XPUB only.
 
 **Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
-**Errors:** `EFAULT` if `subject_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
-was set and no event is available. `EMSGSIZE` if the topic buffer is too
-small. `ENOTSUP` if the subject is not XPUB.
+**Errors:** `EFAULT` if `xpub_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
+was set and no event is available. `EMSGSIZE` if the topic is longer than
+`topic_id_capacity_`. `ENOTSUP` if the subject is not XPUB.
 
 **See also:** `zlink_publish`
 

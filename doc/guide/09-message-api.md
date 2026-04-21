@@ -71,6 +71,26 @@ zlink_send(socket, &msg, 1, 0);
 
 > Reference: `core/tests/test_msg_ffn.cpp` — Verifies free function callback behavior
 
+#### zlink_msg_adopt — Adopt Without Init+Move
+
+Transfers ownership from `src_` to an already-initialized `dest_` in a single
+call, equivalent to `zlink_msg_move` but without requiring a prior `zlink_msg_init`.
+After the call `src_` is an empty message and `dest_` holds the content.
+
+```c
+zlink_msg_t src, dest;
+zlink_msg_init_size(&src, 32);
+memcpy(zlink_msg_data(&src), "data", 4);
+
+/* dest need not be initialized first */
+zlink_msg_adopt(&dest, &src);
+/* src is now empty; dest holds the 32-byte buffer */
+zlink_msg_close(&dest);
+```
+
+**When to use:** Binding implementations that construct messages in a temporary
+and then hand them to a caller-owned slot without an extra `zlink_msg_init` step.
+
 ### 3.2 Data Access
 
 ```c

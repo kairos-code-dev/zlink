@@ -95,6 +95,7 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 | `zlink_msg_init_data` | 외부 buffer 연결 (zero-copy) | ownership이 message로 이전 |
 | `zlink_msg_close` | message 해제 (refcount=0이면 free) | 소유 포기 |
 | `zlink_msg_move` | src -> dest 이동, src는 빈 상태 | dest로 이전 |
+| `zlink_msg_adopt` | src -> dest 이동 (dest 사전 초기화 불필요) | dest로 이전 |
 | `zlink_msg_copy` | src -> dest 복사, LMSG는 refcount 증가 | dest도 공동 소유 |
 | `zlink_msg_data` | data buffer pointer 반환 | 변화 없음 (읽기 전용) |
 | `zlink_msg_size` | data size(byte) 반환 | 변화 없음 |

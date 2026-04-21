@@ -1,3 +1,0 @@
-READY,tcp://127.0.0.1:15557
-RESULT,current,MULTI_STREAM_LEN32BE,tcp,64,server_cpu_pct,8.45
-RESULT,current,MULTI_STREAM_LEN32BE,tcp,64,server_mem_mb,108.12

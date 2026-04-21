@@ -41,15 +41,15 @@ x64:
 ## 3. CMake 직접 빌드
 
 ```bash
-cmake -B build -DWITH_TLS=ON -DBUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake -S core -B core/build -DWITH_TLS=ON -DBUILD_TESTS=ON
+cmake --build core/build
+ctest --test-dir core/build --output-on-failure
 ```
 
 ## 4. 빠른 빌드 (테스트 없이)
 
 ```bash
-cmake -B build -DBUILD_TESTS=OFF && cmake --build build
+cmake -S core -B core/build -DBUILD_TESTS=OFF && cmake --build core/build
 ```
 
 ## 5. 코어 빌드 스크립트

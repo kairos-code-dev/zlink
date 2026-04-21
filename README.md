@@ -162,7 +162,7 @@ Built on top of the core socket layer, zlink provides a **high-level service lay
 ### Direct CMake Build
 
 ```bash
-cmake -S . -B core/build/local -DWITH_TLS=ON -DBUILD_TESTS=ON
+cmake -S core -B core/build/local -DWITH_TLS=ON -DBUILD_TESTS=ON
 cmake --build core/build/local
 ctest --test-dir core/build/local --output-on-failure
 ```

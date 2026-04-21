@@ -162,7 +162,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 ### CMake 직접 빌드
 
 ```bash
-cmake -S . -B core/build/local -DWITH_TLS=ON -DBUILD_TESTS=ON
+cmake -S core -B core/build/local -DWITH_TLS=ON -DBUILD_TESTS=ON
 cmake --build core/build/local
 ctest --test-dir core/build/local --output-on-failure
 ```

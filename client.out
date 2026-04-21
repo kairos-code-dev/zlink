@@ -1,7 +1,0 @@
-RESULT size=64 run=1 throughput_bps=27096256.00 throughput_mib_s=25.84 mean_us=2350.14 p50_us=2323.83 p95_us=2712.73 p99_us=3360.50 connect_ok=1000 connect_fail=0 send_err=0 recv_err=0 timeout=0 size_mismatch=0 pass_fail=PASS
-RESULT_CONNECT,current,MULTI_STREAM_LEN32BE,tcp,64,connect_ok,1000,connect_fail,0,connect_target,1000
-RESULT,current,MULTI_STREAM_LEN32BE,tcp,64,throughput,423379.000000
-RESULT,current,MULTI_STREAM_LEN32BE,tcp,64,bandwidth,27.096256
-RESULT,current,MULTI_STREAM_LEN32BE,tcp,64,latency,1175.068933
-RESULT,current,MULTI_STREAM_LEN32BE,tcp,64,latency_p95,1356.367300
-RESULT,current,MULTI_STREAM_LEN32BE,tcp,64,latency_p99,1680.250380

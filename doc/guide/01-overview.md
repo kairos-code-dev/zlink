@@ -108,8 +108,8 @@ Key roles per layer:
 ### Build
 
 ```bash
-cmake -B build -DWITH_TLS=ON -DBUILD_TESTS=ON
-cmake --build build
+cmake -S core -B core/build -DWITH_TLS=ON -DBUILD_TESTS=ON
+cmake --build core/build
 ```
 
 ### First Program

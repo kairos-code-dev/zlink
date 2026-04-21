@@ -41,15 +41,15 @@ x64:
 ## 3. Direct CMake Build
 
 ```bash
-cmake -B build -DWITH_TLS=ON -DBUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake -S core -B core/build -DWITH_TLS=ON -DBUILD_TESTS=ON
+cmake --build core/build
+ctest --test-dir core/build --output-on-failure
 ```
 
 ## 4. Quick Build (without tests)
 
 ```bash
-cmake -B build -DBUILD_TESTS=OFF && cmake --build build
+cmake -S core -B core/build -DBUILD_TESTS=OFF && cmake --build core/build
 ```
 
 ## 5. Core Build Script

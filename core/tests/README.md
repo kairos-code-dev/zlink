@@ -48,7 +48,7 @@ Quick start:
 Manual configure/build:
 
 ```bash
-cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON
+cmake -S core -B core/build -DZLINK_BUILD_TESTS=ON
 cmake --build core/build -j"$(nproc)"
 ```
 

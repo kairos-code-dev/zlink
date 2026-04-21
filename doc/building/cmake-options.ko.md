@@ -16,22 +16,22 @@
 
 ### TLS 없이 빌드
 ```bash
-cmake -B build -DWITH_TLS=OFF
+cmake -S core -B core/build -DWITH_TLS=OFF
 ```
 
 ### C++20 표준 사용
 ```bash
-cmake -B build -DZLINK_CXX_STANDARD=20
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=20
 ```
 
 ### 벤치마크 포함
 ```bash
-cmake -B build -DBUILD_BENCHMARKS=ON
+cmake -S core -B core/build -DBUILD_BENCHMARKS=ON
 ```
 
 ### Static Library 빌드
 ```bash
-cmake -B build -DBUILD_SHARED=OFF
+cmake -S core -B core/build -DBUILD_SHARED=OFF
 ```
 
 ## 3. 어드밴스드 옵션
@@ -46,7 +46,7 @@ cmake -B build -DBUILD_SHARED=OFF
 | `ENABLE_LTO` | Link-Time Optimization 활성화 |
 
 ```bash
-cmake -B build -DENABLE_ASAN=ON -DBUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build
+cmake -S core -B core/build -DENABLE_ASAN=ON -DBUILD_TESTS=ON
+cmake --build core/build
+ctest --test-dir core/build
 ```

@@ -13,7 +13,7 @@ echo "=== Clean Build ==="
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 echo "=== CMake Configure ==="
-cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release \
+cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTS=ON -DWITH_DOCS=OFF -DWITH_TLS=ON -DBUILD_BENCHMARKS=ON \
   -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

@@ -10,20 +10,20 @@ zlink supports building with multiple C++ standards via the `ZLINK_CXX_STANDARD`
 
 ```bash
 # Configure with C++17
-cmake -B build -DZLINK_CXX_STANDARD=17
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17
 
 # Build
-cmake --build build
+cmake --build core/build
 ```
 
 ### Windows with C++17 (Visual Studio)
 
 ```powershell
 # Configure with C++17
-cmake -B build -DZLINK_CXX_STANDARD=17
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17
 
 # Build
-cmake --build build --config Release
+cmake --build core/build --config Release
 ```
 
 ### Supported C++ Standards
@@ -39,29 +39,29 @@ cmake --build build --config Release
 
 ```bash
 # C++14
-cmake -B build -DZLINK_CXX_STANDARD=14
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=14
 
 # C++17
-cmake -B build -DZLINK_CXX_STANDARD=17
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17
 
 # C++20
-cmake -B build -DZLINK_CXX_STANDARD=17
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17
 
 # C++23 (if compiler supports)
-cmake -B build -DZLINK_CXX_STANDARD=23
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=23
 ```
 
 ### Combined with Other Options
 
 ```bash
 # C++17 with tests enabled
-cmake -B build -DZLINK_CXX_STANDARD=17 -DBUILD_TESTS=ON
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17 -DBUILD_TESTS=ON
 
 # C++17 with benchmarks enabled
-cmake -B build -DZLINK_CXX_STANDARD=17 -DBUILD_BENCHMARKS=ON
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17 -DBUILD_BENCHMARKS=ON
 
 # C++17 with Release build type
-cmake -B build -DZLINK_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
 ```
 
 ### Using Build Scripts
@@ -70,7 +70,7 @@ cmake -B build -DZLINK_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
 
 ```bash
 # Modify core/builds/linux/build.sh to add:
-# cmake -B "$BUILD_DIR" \
+# cmake -S "$REPO_ROOT/core" -B "$BUILD_DIR" \
 #   -DZLINK_CXX_STANDARD=17 \
 #   -DCMAKE_BUILD_TYPE=Release \
 #   ...
@@ -143,7 +143,7 @@ cl.exe /?
 
 3. **CMake Cache**: If changing standards, clean the build directory or use `-U ZLINK_CXX_STANDARD` to force reconfiguration:
    ```bash
-   cmake -B build -U ZLINK_CXX_STANDARD -DZLINK_CXX_STANDARD=17
+   cmake -S core -B core/build -U ZLINK_CXX_STANDARD -DZLINK_CXX_STANDARD=17
    ```
 
 4. **Per-Platform Differences**:
@@ -167,7 +167,7 @@ CMake Warning:
 **Solution**: Your compiler is too old. Update to a newer version or use a lower C++ standard:
 
 ```bash
-cmake -B build -DZLINK_CXX_STANDARD=14
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=14
 ```
 
 ### Cache issues when switching standards
@@ -176,5 +176,5 @@ cmake -B build -DZLINK_CXX_STANDARD=14
 
 ```bash
 rm -rf build
-cmake -B build -DZLINK_CXX_STANDARD=17
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=17
 ```

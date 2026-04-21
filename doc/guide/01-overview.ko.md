@@ -109,8 +109,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 ### 빌드
 
 ```bash
-cmake -B build -DWITH_TLS=ON -DBUILD_TESTS=ON
-cmake --build build
+cmake -S core -B core/build -DWITH_TLS=ON -DBUILD_TESTS=ON
+cmake --build core/build
 ```
 
 ### 첫 번째 프로그램

@@ -16,22 +16,22 @@
 
 ### Build without TLS
 ```bash
-cmake -B build -DWITH_TLS=OFF
+cmake -S core -B core/build -DWITH_TLS=OFF
 ```
 
 ### Use C++20 standard
 ```bash
-cmake -B build -DZLINK_CXX_STANDARD=20
+cmake -S core -B core/build -DZLINK_CXX_STANDARD=20
 ```
 
 ### Include benchmarks
 ```bash
-cmake -B build -DBUILD_BENCHMARKS=ON
+cmake -S core -B core/build -DBUILD_BENCHMARKS=ON
 ```
 
 ### Static library build
 ```bash
-cmake -B build -DBUILD_SHARED=OFF
+cmake -S core -B core/build -DBUILD_SHARED=OFF
 ```
 
 ## 3. Advanced Options
@@ -46,7 +46,7 @@ Options for debugging and static analysis:
 | `ENABLE_LTO` | Enable Link-Time Optimization |
 
 ```bash
-cmake -B build -DENABLE_ASAN=ON -DBUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build
+cmake -S core -B core/build -DENABLE_ASAN=ON -DBUILD_TESTS=ON
+cmake --build core/build
+ctest --test-dir core/build
 ```

@@ -31,6 +31,18 @@ build/
 build_*/
 /compile_commands.json
 /.cache/
+/.pytest_cache/
+/Testing/
+/.pid
+/1
+/*.nettrace
+/*.etlx
+/client.err
+/client.out
+/server.err
+/server.out
+/gdb_server.err
+/gdb_server.out
 ## Android
 core/builds/android/prefix
 ## IntelliJ

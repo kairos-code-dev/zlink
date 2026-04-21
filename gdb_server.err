@@ -1,3 +1,0 @@
-double free or corruption (out)
-corrupted size vs. prev_size while consolidating
-warning: 44	./nptl/pthread_kill.c: No such file or directory

@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, waitForPostReadySettle, waitForConnectionReady, } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForPostReadySettle, waitForConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runPubSubBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
@@ -11,21 +11,35 @@ async function runPubSubBenchmark(msgSize, options) {
     const sub = new zlink.SubSocket(ctx);
     const endpoint = await benchmarkEndpoint(options.transport, `pubsub-${msgSize}`);
     const topic = 'perf:pubsub';
+    let worker = null;
     try {
-        applySocketPolicy(pub, {
-            ...options,
-            noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 1) !== 0
-        });
         applySocketPolicy(sub, {
             ...options,
             recvTimeout: Number(process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
                 ?? process.env.PERF_SINGLE_RCVTIMEO_MS
                 ?? 200)
         });
-        pub.bind(endpoint);
+        worker = spawnSenderWorker({
+            kind: 'pubsub',
+            transport: options.transport,
+            endpoint,
+            duration: options.duration,
+            msgSize,
+            runId: options.runId ?? 1,
+            options: {
+                ...options,
+                noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 1) !== 0
+            },
+        });
+        const workerError = waitForWorkerMessage(worker, 'error');
+        await Promise.race([
+            waitForWorkerMessage(worker, 'bound'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
         sub.setSubscription(topic);
         await waitForConnectionReady(sub, () => sub.connect(endpoint));
         await waitForPostReadySettle(Number(process.env.PERF_SINGLE_PUBSUB_READY_SETTLE_MS ?? 1000));
+        worker.postMessage({ type: 'ready' });
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -44,18 +58,11 @@ async function runPubSubBenchmark(msgSize, options) {
             const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
         }, () => stop);
-        while (currentEpochNs() < activeStopNs) {
-            stampPayload(payload, {
-                phase: 1,
-                runId,
-                msgSize,
-                seq
-            });
-            pub.publish(topic, payload);
-            seq += 1n;
-        }
-        stampPayload(payload, { phase: 2, runId, msgSize, seq });
-        pub.publish(topic, payload);
+        worker.postMessage({ type: 'start' });
+        await Promise.race([
+            waitForWorkerMessage(worker, 'done'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
         const drainDeadlineNs = activeStopNs
             + BigInt(resolveSingleIdleDrainMs({
                 ...options,
@@ -71,8 +78,8 @@ async function runPubSubBenchmark(msgSize, options) {
         return collector.finish();
     }
     finally {
+        await closeSenderWorker(worker);
         sub.close();
-        pub.close();
         ctx.close();
     }
 }

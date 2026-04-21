@@ -212,8 +212,11 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_request_channel_part(IntPtr spot,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        ref ZlinkMsg part, ZlinkReplyHandlerDelegate? handler, IntPtr userData,
+        ref ZlinkMsg part, IntPtr handler, IntPtr userData,
         int flags, ZlinkPartFlag partFlag, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_request_progress_internal(IntPtr spot);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_publish_part(IntPtr spot,

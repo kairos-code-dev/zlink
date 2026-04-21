@@ -575,10 +575,10 @@ int send_socket_part_publish_impl (
 
 }
 
-int zlink_socket_send_internal (void *socket_,
-                                zlink_msg_t *parts_,
-                                size_t part_count_,
-                                zlink_send_flags_t flags_)
+extern "C" int zlink_socket_send_internal (void *socket_,
+                                           zlink_msg_t *parts_,
+                                           size_t part_count_,
+                                           zlink_send_flags_t flags_)
 {
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
@@ -587,11 +587,12 @@ int zlink_socket_send_internal (void *socket_,
     return send_socket_parts (handle, NULL, parts_, part_count_, flags_);
 }
 
-int zlink_socket_send_rid_internal (void *socket_,
-                                    const zlink_routing_id_t *target_rid_,
-                                    zlink_msg_t *parts_,
-                                    size_t part_count_,
-                                    zlink_send_flags_t flags_)
+extern "C" int zlink_socket_send_rid_internal (
+  void *socket_,
+  const zlink_routing_id_t *target_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_)
 {
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
@@ -600,11 +601,11 @@ int zlink_socket_send_rid_internal (void *socket_,
     return send_socket_parts (handle, target_rid_, parts_, part_count_, flags_);
 }
 
-int zlink_socket_publish_internal (void *socket_,
-                                   const char *topic_id_,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   zlink_send_flags_t flags_)
+extern "C" int zlink_socket_publish_internal (void *socket_,
+                                              const char *topic_id_,
+                                              zlink_msg_t *parts_,
+                                              size_t part_count_,
+                                              zlink_send_flags_t flags_)
 {
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)

@@ -29,7 +29,10 @@ public final class StreamPacketCallbackSample {
                     }
                     try (Message reply = Message.copyOfUtf8(
                              SampleSupport.STREAM_PAYLOAD)) {
-                        server.send(routingId, reply, SendFlags.DONT_WAIT);
+                        if (!server.send(routingId, reply, SendFlags.DONT_WAIT)) {
+                            throw new IllegalStateException(
+                                "stream reply backpressured");
+                        }
                     }
                     delivered.countDown();
                     return 0;

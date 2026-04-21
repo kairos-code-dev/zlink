@@ -15,6 +15,9 @@ RESULTS_TAG=""
 CONFIGURATION="${PERF_CONFIGURATION:-Release}"
 REPORT=""
 TMP_DIR=""
+REUSE_BUILD=0
+CLEAN_BUILD=0
+BUILD_DIR=""
 
 prune_report_dir() {
   local report_dir="$1"
@@ -68,6 +71,9 @@ Options:
   --msg-sizes LIST      Message size list (default: 64,256,1024,65536,131072,262144).
   --transports LIST     Transport list override.
   --runs N              Iterations per configuration (default: 1).
+  --build-dir PATH      Accepted for policy compatibility.
+  --reuse-build         Reuse existing build output.
+  --clean-build         Remove project bin/obj before build.
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional report suffix tag.
 
@@ -75,6 +81,17 @@ Notes:
   - result is saved under results/single/report/ as
     perf_dotnet_single_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.
 USAGE
+}
+
+ensure_build_output() {
+  if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
+    rm -rf "${PROJECT_DIR}/bin" "${PROJECT_DIR}/obj"
+  fi
+  if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+    return
+  fi
+
+  dotnet build "${PROJECT}" -c "${CONFIGURATION}" >/dev/null
 }
 
 normalize_platform() {
@@ -103,7 +120,7 @@ validate_uint() {
 normalize_pattern_csv() {
   local raw="${1:-}"
   if [[ "${raw}" == "ALL" ]]; then
-    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
+    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,SPOT_REQREP"
     return
   fi
 
@@ -117,6 +134,7 @@ allowed = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "SPOT",
+    "SPOT_REQREP",
 }
 
 items = []
@@ -139,7 +157,7 @@ pattern_supports_transport() {
   local pattern="${1:-}"
   local transport="${2:-}"
   case "${pattern}" in
-    SPOT)
+    SPOT|SPOT_REQREP)
       [[ "${transport}" =~ ^(tcp|tls|ws|wss)$ ]]
       ;;
     *)
@@ -154,7 +172,7 @@ pattern_supports_transport() {
 
 default_transports_for_pattern() {
   local pattern="${1:-}"
-  if [[ "${pattern}" == "SPOT" ]]; then
+  if [[ "${pattern}" == "SPOT" || "${pattern}" == "SPOT_REQREP" ]]; then
     printf '%s' "tcp,tls,ws,wss"
     return
   fi
@@ -216,14 +234,20 @@ emit_markdown_table() {
     return
   fi
 
-  print_line "## PATTERN: ${pattern} (one-way)"
+  local pattern_kind="one-way"
+  if [[ "${pattern}" == "SPOT_REQREP" ]]; then
+    pattern_kind="echo"
+  fi
+
+  print_line "## PATTERN: ${pattern} (${pattern_kind})"
   print_line "  > Benchmarking current for ${pattern}..."
   print_line "    Testing ${transport}:"
-  python3 - "${metrics_file}" <<'PY' | while IFS= read -r table_line; do
+  python3 - "${metrics_file}" "${pattern}" <<'PY' | while IFS= read -r table_line; do
 import csv
 import sys
 from collections import OrderedDict
 
+pattern = sys.argv[2].upper()
 required = [
     "throughput",
     "bandwidth",
@@ -231,6 +255,7 @@ required = [
     "latency_p95",
     "latency_p99",
 ]
+throughput_unit = "Kops/s" if pattern == "SPOT_REQREP" else "Kmsg/s"
 rows = OrderedDict()
 with open(sys.argv[1], encoding="utf-8") as handle:
     reader = csv.reader(handle)
@@ -252,7 +277,7 @@ for size, metrics in rows.items():
     latency_p95 = float(values[3])
     latency_p99 = float(values[4])
     print(
-        f"      | {size}B | {throughput:>16.2f} Kmsg/s | {bandwidth:>10.2f} MB/s |"
+        f"      | {size}B | {throughput:>16.2f} {throughput_unit} | {bandwidth:>10.2f} MB/s |"
         f" {latency:>11.3f} ms | {latency_p95:>11.3f} ms | {latency_p99:>11.3f} ms |"
     )
 PY
@@ -316,6 +341,16 @@ while [[ $# -gt 0 ]]; do
       RUNS="${2:-}"
       shift
       ;;
+    --build-dir)
+      BUILD_DIR="${2:-}"
+      shift
+      ;;
+    --reuse-build)
+      REUSE_BUILD=1
+      ;;
+    --clean-build)
+      CLEAN_BUILD=1
+      ;;
     --results-dir)
       RESULTS_ROOT="${2:-}"
       shift
@@ -336,6 +371,11 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ "${REUSE_BUILD}" -eq 1 && "${CLEAN_BUILD}" -eq 1 ]]; then
+  echo "--reuse-build and --clean-build are mutually exclusive." >&2
+  exit 1
+fi
 
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
@@ -370,6 +410,8 @@ fi
 REPORT="${RESULTS_ROOT}/single/report/${report_base}.txt"
 : > "${REPORT}"
 prune_report_dir "${RESULTS_ROOT}/single/report"
+
+ensure_build_output
 
 if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench")"; then
   echo "single benchmark binary not found under ${PROJECT_DIR}/bin/${CONFIGURATION}/net8.0." >&2

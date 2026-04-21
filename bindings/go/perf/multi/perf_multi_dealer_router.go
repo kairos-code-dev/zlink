@@ -22,7 +22,11 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	perfcommon.ApplyMultiHWM(router, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(router, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-multi-dealer-router")
-	startMultiRouterEchoServer(router)
+	serverStop, serverDone := startMultiRouterEchoServer(router)
+	defer func() {
+		close(serverStop)
+		<-serverDone
+	}()
 
 	stats := perfcommon.NewStats()
 	var window perfcommon.BenchmarkWindow

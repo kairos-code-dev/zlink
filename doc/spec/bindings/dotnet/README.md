@@ -151,20 +151,31 @@ void Connect(string address);
 void Disconnect(string address);
 
 // Available on MessageSocketBase
-bool TrySend(Message message);
-bool TrySend(IReadOnlyList<Message> parts);
-bool TryRecv(out Received? received);
+/// <exception cref="ZlinkSubmitException"/>
+bool Send(Message message, SendFlags flags = SendFlags.None);
+/// <exception cref="ZlinkSubmitException"/>
+bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+/// <exception cref="ZlinkRecvException"/>
+Received? Recv(RecvFlags flags = RecvFlags.None);
 
 // Available on RoutedMessageSocketBase
-bool TrySend(string routingId, Message message);
-bool TrySend(RoutingId routingId, Message message);
-bool TrySend(string routingId, IReadOnlyList<Message> parts);
-bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
-bool TryRecv(out Received? received);
+/// <exception cref="ZlinkSubmitException"/>
+bool Send(string routingId, Message message, SendFlags flags = SendFlags.None);
+/// <exception cref="ZlinkSubmitException"/>
+bool Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
+/// <exception cref="ZlinkSubmitException"/>
+bool Send(string routingId, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+/// <exception cref="ZlinkSubmitException"/>
+bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+/// <exception cref="ZlinkRecvException"/>
+Received? Recv(RecvFlags flags = RecvFlags.None);
 ```
 
-`TrySend(...)` returns `false` only for temporary backpressure. Route-not-ready
-and other submit failures still raise `ZlinkSubmitException`.
+`Send(...)` and `Publish(...)` return `false` only for temporary backpressure
+when `SendFlags.DontWait` is used. Blocking submit returns `true` on success.
+Route-not-ready and other submit failures still raise `ZlinkSubmitException`.
+`Recv(...)` and `Subscribe(...)` return `null` when `RecvFlags.DontWait` finds
+no message and still raise `ZlinkRecvException` for real recv failures.
 
 ### PairSocket
 
@@ -177,14 +188,11 @@ public sealed class PairSocket : MessageSocketBase
 
     // inherited from MessageSocketBase
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(Message message, SendFlags flags = SendFlags.None);
+    bool Send(Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
-    Received Recv(RecvFlags flags = RecvFlags.None);
-    bool TrySend(Message message);
-    bool TrySend(IReadOnlyList<Message> parts);
-    bool TryRecv(out Received? received);
+    Received? Recv(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 }
@@ -207,9 +215,9 @@ public sealed class PubSocket : PublisherSocketBase
 
     // inherited from PublisherSocketBase
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string topic, Message message, SendFlags flags = SendFlags.None);
+    bool Publish(string topic, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 }
@@ -236,7 +244,7 @@ public sealed class SubSocket : SubscriberSocketBase
     /// <exception cref="ZlinkConfigException"/>
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
-    TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
+    TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
 }
 ```
 
@@ -262,14 +270,11 @@ public sealed class DealerSocket : MessageSocketBase
 
     // inherited from MessageSocketBase
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(Message message, SendFlags flags = SendFlags.None);
+    bool Send(Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
-    Received Recv(RecvFlags flags = RecvFlags.None);
-    bool TrySend(Message message);
-    bool TrySend(IReadOnlyList<Message> parts);
-    bool TryRecv(out Received? received);
+    Received? Recv(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -290,25 +295,19 @@ public sealed class DealerSocket : MessageSocketBase
     Task<IReadOnlyList<Message>> RequestAsync(IReadOnlyList<Message> parts, TimeSpan timeout,
                                               CancellationToken ct = default);
 
-    // --- request (callback, blocking submit) ---
+    // --- request (callback submit) ---
     // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(Message part,
+    bool Request(Message part,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
+                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(IReadOnlyList<Message> parts,
+    bool Request(IReadOnlyList<Message> parts,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
+                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequest(Message part,
-                    Action<RequestResult, IReadOnlyList<Message>> callback,
-                    TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequest(IReadOnlyList<Message> parts,
-                    Action<RequestResult, IReadOnlyList<Message>> callback,
-                    TimeSpan? timeout = null);
 }
 ```
 
@@ -329,22 +328,17 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
 
     // inherited from RoutedMessageSocketBase
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(string routingId, Message message, SendFlags flags = SendFlags.None);
+    bool Send(string routingId, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
+    bool Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(string routingId, IReadOnlyList<Message> parts,
+    bool Send(string routingId, IReadOnlyList<Message> parts,
               SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(RoutingId routingId, IReadOnlyList<Message> parts,
+    bool Send(RoutingId routingId, IReadOnlyList<Message> parts,
               SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkRecvException"/>
-    Received Recv(RecvFlags flags = RecvFlags.None);
-    bool TrySend(string routingId, Message message);
-    bool TrySend(RoutingId routingId, Message message);
-    bool TrySend(string routingId, IReadOnlyList<Message> parts);
-    bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
-    bool TryRecv(out Received? received);
+    Received? Recv(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -366,25 +360,19 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     Task<IReadOnlyList<Message>> RequestAsync(RoutingId peerRid, IReadOnlyList<Message> parts,
                                               TimeSpan timeout, CancellationToken ct = default);
 
-    // --- request (callback, blocking submit) ---
+    // --- request (callback submit) ---
     // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(RoutingId peerRid, Message part,
+    bool Request(RoutingId peerRid, Message part,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
+                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void Request(RoutingId peerRid, IReadOnlyList<Message> parts,
+    bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
                  Action<RequestResult, IReadOnlyList<Message>> callback,
+                 SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequest(RoutingId peerRid, Message part,
-                    Action<RequestResult, IReadOnlyList<Message>> callback,
-                    TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequest(RoutingId peerRid, IReadOnlyList<Message> parts,
-                    Action<RequestResult, IReadOnlyList<Message>> callback,
-                    TimeSpan? timeout = null);
 
     // --- reply ---
     /// <exception cref="ZlinkSubmitException"/>
@@ -396,10 +384,10 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
 
     // --- router -> spot routed send ---
     /// <exception cref="ZlinkSubmitException"/>
-    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
+    bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
                     SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                     IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
 
     // --- router -> spot routed request (async, blocking submit, no flags) ---
@@ -415,29 +403,21 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                                                     TimeSpan timeout = default,
                                                     CancellationToken ct = default);
 
-    // --- router -> spot routed request (callback, blocking submit) ---
+    // --- router -> spot routed request (callback submit) ---
     // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message message,
                        Action<RequestResult, IReadOnlyList<Message>> callback,
+                       SendFlags flags = SendFlags.None,
                        TimeSpan timeout = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        IReadOnlyList<Message> parts,
                        Action<RequestResult, IReadOnlyList<Message>> callback,
+                       SendFlags flags = SendFlags.None,
                        TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message message,
-                          Action<RequestResult, IReadOnlyList<Message>> callback,
-                          TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool TryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          IReadOnlyList<Message> parts,
-                          Action<RequestResult, IReadOnlyList<Message>> callback,
-                          TimeSpan timeout = default);
 
     // --- router -> spot routed reply ---
     /// <exception cref="ZlinkSubmitException"/>
@@ -474,9 +454,9 @@ public sealed class XPubSocket : PublisherSocketBase
 
     // inherited from PublisherSocketBase
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string topic, Message message, SendFlags flags = SendFlags.None);
+    bool Publish(string topic, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 }
@@ -500,7 +480,7 @@ public sealed class XSubSocket : SubscriberSocketBase
     /// <exception cref="ZlinkConfigException"/>
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
-    TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
+    TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
 }
 ```
 
@@ -521,25 +501,20 @@ public sealed class StreamSocket : RoutedMessageSocketBase
 
     // inherited from RoutedMessageSocketBase
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(string routingId, Message message, SendFlags flags = SendFlags.None);
+    bool Send(string routingId, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
+    bool Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(string routingId, IReadOnlyList<Message> parts,
+    bool Send(string routingId, IReadOnlyList<Message> parts,
               SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Send(RoutingId routingId, IReadOnlyList<Message> parts,
+    bool Send(RoutingId routingId, IReadOnlyList<Message> parts,
               SendFlags flags = SendFlags.None);
     /// Two mutually-exclusive receive modes on the same StreamSocket:
     ///   (1) Recv(), (2) OnPacket(handler). Second attach throws
     ///   ZlinkHandlerException(HandlerResult.Busy).
     /// <exception cref="ZlinkRecvException"/>
-    Received Recv(RecvFlags flags = RecvFlags.None);
-    bool TrySend(string routingId, Message message);
-    bool TrySend(RoutingId routingId, Message message);
-    bool TrySend(string routingId, IReadOnlyList<Message> parts);
-    bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts);
-    bool TryRecv(out Received? received);
+    Received? Recv(RecvFlags flags = RecvFlags.None);
     /// Mode (3): framed packet callback. Wire frame is
     ///   big-endian ushort header_size + uint body_size + header + body.
     ///   The handler receives the source routing id, a header Message,
@@ -1434,14 +1409,14 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     // --- channel-aware publish / request ---
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string serviceName, string topic, Message message, SendFlags flags = SendFlags.None);
+    bool Publish(string serviceName, string topic, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void Publish(string serviceName, string topic, IReadOnlyList<Message> parts,
+    bool Publish(string serviceName, string topic, IReadOnlyList<Message> parts,
                  SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void SendChannel(string channelName, Message message, SendFlags flags = SendFlags.None);
+    bool SendChannel(string channelName, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void SendChannel(string channelName, IReadOnlyList<Message> parts,
+    bool SendChannel(string channelName, IReadOnlyList<Message> parts,
                      SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
@@ -1454,6 +1429,16 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                                                      IReadOnlyList<Message> parts,
                                                      TimeSpan timeout = default,
                                                      CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool RequestChannel(string channelName, Message message,
+                        Action<RequestResult, IReadOnlyList<Message>> callback,
+                        SendFlags flags = SendFlags.None,
+                        TimeSpan? timeout = null);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
+                        Action<RequestResult, IReadOnlyList<Message>> callback,
+                        SendFlags flags = SendFlags.None,
+                        TimeSpan? timeout = null);
 
     // --- subscribe ---
     /// <exception cref="ZlinkConfigException"/>
@@ -1461,7 +1446,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     void UnsetSubscription(string topicOrPattern);
     /// <exception cref="ZlinkRecvException"/>
-    TopicMessage Subscribe(RecvFlags flags = RecvFlags.None);
+    TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkRecvException"/>
     SubscriptionEvent ReceiveSubscriptionEvent(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
@@ -1476,7 +1461,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                      ulong requestSequence, IReadOnlyList<Message> parts,
                      SendFlags flags = SendFlags.None);
 
-    void SendToRouter(RoutingId peerRid, Message message,
     // --- routed reply (spot -> router) ---
     /// <exception cref="ZlinkSubmitException"/>
     void ReplyToRouter(RoutingId peerRid, ulong requestSequence, Message message,

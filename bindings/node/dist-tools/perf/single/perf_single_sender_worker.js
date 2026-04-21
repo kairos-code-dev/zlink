@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: MPL-2.0
+'use strict';
+Object.defineProperty(exports, "__esModule", { value: true });
+const { parentPort, workerData } = require('node:worker_threads');
+const zlink = require('../../dist/canonical');
+const { createPayload, stampPayload } = require('../common/perf_metrics');
+const { applyContextPolicy, applySocketPolicy, configureTlsClient, configureTlsServer, waitForConnectionReady, } = require('./perf_single_common');
+const TOPIC = 'perf.topic';
+function ensureParentPort() {
+    if (!parentPort) {
+        throw new Error('sender worker requires parentPort');
+    }
+    return parentPort;
+}
+function waitForCommand(port, type) {
+    return new Promise((resolve) => {
+        const handler = (message) => {
+            if (!message || message.type !== type) {
+                return;
+            }
+            port.off('message', handler);
+            resolve(message);
+        };
+        port.on('message', handler);
+    });
+}
+async function connectSender(kind, socket, endpoint, transport) {
+    configureTlsClient(socket, transport);
+    await waitForConnectionReady(socket, () => socket.connect(endpoint));
+}
+async function handshakeRouterSender(port, sender, receiverRoutingId) {
+    port.postMessage({ type: 'connected' });
+    await waitForCommand(port, 'handshake');
+    sender.send(receiverRoutingId, Buffer.from('PING'));
+    const reply = sender.recv();
+    try {
+        const text = reply.parts.map((part) => part.data().toString()).join(',');
+        if (text !== 'PONG') {
+            throw new Error('router-router handshake reply failed');
+        }
+    }
+    finally {
+        reply.close();
+    }
+}
+function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, receiverRoutingId) {
+    const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(duration * 1_000_000_000));
+    let seq = seqStart;
+    while (process.hrtime.bigint() < activeStopNs) {
+        stampPayload(payload, { phase: 1, runId, msgSize, seq });
+        if (kind === 'pubsub') {
+            socket.publish(TOPIC, payload);
+        }
+        else if (kind === 'router_router') {
+            socket.send(receiverRoutingId, payload);
+        }
+        else {
+            socket.send(payload);
+        }
+        seq += 1n;
+    }
+    stampPayload(payload, { phase: 2, runId, msgSize, seq });
+    if (kind === 'pubsub') {
+        socket.publish(TOPIC, payload);
+    }
+    else if (kind === 'router_router') {
+        socket.send(receiverRoutingId, payload);
+    }
+    else {
+        socket.send(payload);
+    }
+}
+async function main() {
+    const port = ensureParentPort();
+    const { kind, transport, endpoint, duration, msgSize, runId, receiverRoutingIdBytes, senderRoutingIdBytes, options } = workerData;
+    const ctx = new zlink.Context();
+    applyContextPolicy(ctx);
+    const payload = createPayload(msgSize);
+    let socket = null;
+    try {
+        switch (kind) {
+            case 'pair':
+                socket = new zlink.PairSocket(ctx);
+                applySocketPolicy(socket, options);
+                await connectSender(kind, socket, endpoint, transport);
+                break;
+            case 'dealer_dealer':
+                socket = new zlink.DealerSocket(ctx);
+                applySocketPolicy(socket, options);
+                await connectSender(kind, socket, endpoint, transport);
+                break;
+            case 'dealer_router':
+                socket = new zlink.DealerSocket(ctx);
+                applySocketPolicy(socket, options);
+                await connectSender(kind, socket, endpoint, transport);
+                break;
+            case 'pubsub':
+                socket = new zlink.PubSocket(ctx);
+                applySocketPolicy(socket, options);
+                configureTlsServer(socket, transport);
+                socket.bind(endpoint);
+                port.postMessage({ type: 'bound' });
+                break;
+            case 'router_router': {
+                socket = new zlink.RouterSocket(ctx);
+                applySocketPolicy(socket, options);
+                socket.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(senderRoutingIdBytes)));
+                await connectSender(kind, socket, endpoint, transport);
+                await handshakeRouterSender(port, socket, zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes)));
+                break;
+            }
+            default:
+                throw new Error(`unsupported sender worker kind: ${kind}`);
+        }
+        if (kind !== 'pubsub' && kind !== 'router_router') {
+            port.postMessage({ type: 'ready' });
+        }
+        else if (kind === 'pubsub') {
+            await waitForCommand(port, 'ready');
+        }
+        else {
+            port.postMessage({ type: 'ready' });
+        }
+        await waitForCommand(port, 'start');
+        sendLoop(kind, socket, payload, duration, runId, msgSize, 1n, receiverRoutingIdBytes
+            ? zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes))
+            : null);
+        port.postMessage({ type: 'done' });
+        await waitForCommand(port, 'stop');
+    }
+    catch (error) {
+        port.postMessage({
+            type: 'error',
+            message: String(error && error.stack ? error.stack : error)
+        });
+        process.exitCode = 1;
+    }
+    finally {
+        try {
+            socket?.close();
+        }
+        catch {
+        }
+        try {
+            ctx.close();
+        }
+        catch {
+        }
+    }
+}
+main();

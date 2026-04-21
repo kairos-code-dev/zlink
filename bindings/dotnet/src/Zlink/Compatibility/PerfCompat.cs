@@ -433,6 +433,12 @@ internal static class PerfCompatExtensions
     }
 
     internal static void SendBorrowedSingle(this SocketBase socket,
+        byte[] payload, int flags)
+    {
+        socket.Kernel.SendBorrowedSingle(payload, flags);
+    }
+
+    internal static void SendBorrowedSingle(this SocketBase socket,
         string routingId, byte[] payload, int flags)
     {
         socket.Kernel.SendBorrowedSingle(routingId, payload, flags);
@@ -461,9 +467,33 @@ internal static class PerfCompatExtensions
     }
 
     internal static SendResult SendBorrowedSingleNoWaitResult(this SocketBase socket,
+        byte[] payload)
+    {
+        return socket.Kernel.SendBorrowedSingleNoWaitResult(payload);
+    }
+
+    internal static SendResult SendBorrowedSingleNoWaitResult(this SocketBase socket,
+        RoutingId routingId, byte[] payload)
+    {
+        return socket.Kernel.SendBorrowedSingleNoWaitResult(routingId, payload);
+    }
+
+    internal static SendResult SendBorrowedSingleNoWaitResult(this SocketBase socket,
         ReadOnlySpan<byte> routingId, byte[] payload)
     {
         return socket.Kernel.SendBorrowedSingleNoWaitResult(routingId, payload);
+    }
+
+    internal static void PublishBorrowedSingle(this PublisherSocketBase socket,
+        string topic, byte[] payload, int flags)
+    {
+        socket.Kernel.PublishBorrowedSingle(topic, payload, flags);
+    }
+
+    internal static SendResult PublishRawSingleNoWait(this PublisherSocketBase socket,
+        string topic, ReadOnlySpan<byte> payload)
+    {
+        return socket.Kernel.PublishRawSingleNoWait(topic, payload);
     }
 
     internal static int? TryReceiveRawRoutedFrame(this SocketBase socket,

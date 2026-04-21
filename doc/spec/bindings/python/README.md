@@ -115,10 +115,13 @@ All sockets support `with` / `async with` context managers.
 
 Python nonblocking data-plane helpers follow this rule:
 
-- `try_send(...)` returns `False` only for temporary backpressure.
-- Route-not-ready and other submit failures still raise `SubmitError`.
-- `try_recv()` returns `None` when no message is currently available and still
-  raises `RecvError` for real recv failures.
+- `send(...)` and `publish(...)` return `False` only for temporary
+  backpressure when `flags` includes `DONTWAIT`.
+- Blocking submit returns `True` on success. Route-not-ready and other submit
+  failures still raise `SubmitError`.
+- `recv(...)` and `subscribe(...)` return `None` when `flags` includes
+  `DONTWAIT` and no message is currently available, and still raise
+  `RecvError` for real recv failures.
 
 All sockets (and `Spot`) expose the admission-state accessor pair:
 
@@ -139,10 +142,8 @@ class PairSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
-    def try_send(self, payload: Message | bytes | list) -> bool: ...                   # Raises: SubmitError
-    def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
-    def try_recv(self) -> Received | None: ...                                    # Raises: RecvError
+    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...  # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -161,7 +162,7 @@ class PubSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def on_send_ready(self, handler: Callable[[PubSocket], None]) -> None: ...   # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
@@ -183,7 +184,7 @@ class SubSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
+    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -204,10 +205,8 @@ class DealerSocket:
     def disconnect(self, endpoint: str) -> None: ...                               # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...           # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                              # Raises: ConfigError
-    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
-    def try_send(self, payload: Message | bytes | list) -> bool: ...                 # Raises: SubmitError
-    def recv(self, *, flags: int = 0) -> Received: ...                             # Raises: RecvError
-    def try_recv(self) -> Received | None: ...                                      # Raises: RecvError
+    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
@@ -218,21 +217,16 @@ class DealerSocket:
     async def request(self, payload: Message | bytes | list,
                       *, timeout: int = 0) -> list[Message]: ...
 
-    # --- request (callback, blocking submit) — raises on submit failure ---
+    # --- request (callback submit) ---
     # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    # Returns False only for temporary backpressure when flags includes DONTWAIT.
+    # Raises: SubmitError on submit failure other than temporary backpressure.
+    # Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
     # Callback receives an empty list on failure.
     def request(self, payload: Message | bytes | list,
                 callback: Callable[[RequestResult, list[Message]], None],
-                *, timeout: int = 0) -> None: ...
-    # --- request (callback, nonblocking submit) ---
-    # timeout = 0 uses the socket default timeout.
-    # Returns False only for temporary backpressure.
-    # Raises: SubmitError on submit failure other than temporary backpressure.
-    def try_request(self, payload: Message | bytes | list,
-                    callback: Callable[[RequestResult, list[Message]], None],
-                    *, timeout: int = 0) -> bool: ...
+                *, flags: int = 0, timeout: int = 0) -> bool: ...
 
     def close(self) -> None: ...                                                   # Raises: CloseError
 ```
@@ -252,10 +246,8 @@ class RouterSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
-    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...  # Raises: SubmitError
-    def try_send(self, routing_id: RoutingId, payload: Message | bytes | list[Message]) -> bool: ...                  # Raises: SubmitError
-    def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
-    def try_recv(self) -> Received | None: ...                                    # Raises: RecvError
+    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
@@ -267,23 +259,17 @@ class RouterSocket:
                       payload: Message | bytes | list,
                       *, timeout: int = 0) -> list[Message]: ...
 
-    # --- request (callback, blocking submit) — raises on submit failure ---
+    # --- request (callback submit) ---
     # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    # Returns False only for temporary backpressure when flags includes DONTWAIT.
+    # Raises: SubmitError on submit failure other than temporary backpressure.
+    # Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
     # Callback receives an empty list on failure.
     def request(self, peer_rid: RoutingId,
                 payload: Message | bytes | list,
                 callback: Callable[[RequestResult, list[Message]], None],
-                *, timeout: int = 0) -> None: ...
-    # --- request (callback, nonblocking submit) ---
-    # timeout = 0 uses the socket default timeout.
-    # Returns False only for temporary backpressure.
-    # Raises: SubmitError on submit failure other than temporary backpressure.
-    def try_request(self, peer_rid: RoutingId,
-                    payload: Message | bytes | list,
-                    callback: Callable[[RequestResult, list[Message]], None],
-                    *, timeout: int = 0) -> bool: ...
+                *, flags: int = 0, timeout: int = 0) -> bool: ...
 
     # --- reply ---
     def reply(self, routing_id: RoutingId, request_seq: int,
@@ -291,7 +277,7 @@ class RouterSocket:
 
     # --- router → spot routed send ---
     def send_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                     payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+                     payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
 
     # --- router → spot routed request (async) — no flags ---
     # timeout = 0 uses the socket default timeout.
@@ -301,23 +287,18 @@ class RouterSocket:
                               payload: Message | bytes | list,
                               *, timeout: int = 0) -> list[Message]: ...
 
-    # --- router → spot routed request (callback, blocking submit) — raises on submit failure ---
+    # --- router → spot routed request (callback submit) ---
     # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure. Callback receives RequestResult;
+    # Returns False only for temporary backpressure when flags includes DONTWAIT.
+    # Raises: SubmitError on submit failure other than temporary backpressure.
+    # Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
     # Callback receives an empty list on failure.
     def request_to_spot(self, dest_node_rid: RoutingId,
                         dest_spot_rid: RoutingId,
                         payload: Message | bytes | list,
                         callback: Callable[[RequestResult, list[Message]], None],
-                        *, timeout: int = 0) -> None: ...
-    # --- router → spot routed request (callback, nonblocking submit) ---
-    # Returns False only for temporary backpressure.
-    def try_request_to_spot(self, dest_node_rid: RoutingId,
-                            dest_spot_rid: RoutingId,
-                            payload: Message | bytes | list,
-                            callback: Callable[[RequestResult, list[Message]], None],
-                            *, timeout: int = 0) -> bool: ...
+                        *, flags: int = 0, timeout: int = 0) -> bool: ...
 
     # --- router → spot routed reply ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
@@ -347,7 +328,7 @@ class XPubSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
@@ -369,7 +350,7 @@ class XSubSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
     def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                    # Raises: RecvError
+    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -387,13 +368,11 @@ class StreamSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
-    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> None: ...  # Raises: SubmitError
-    def try_send(self, routing_id: RoutingId, payload: Message | bytes | list[Message]) -> bool: ...                  # Raises: SubmitError
+    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     # Two mutually-exclusive receive modes on the same StreamSocket:
     #   (1) recv(), (2) on_packet(handler). Second attach raises
     #   HandlerError(code=HandlerResult.BUSY).
-    def recv(self, *, flags: int = 0) -> Received: ...                           # Raises: RecvError
-    def try_recv(self) -> Received | None: ...                                    # Raises: RecvError
+    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     # Mode (3): framed packet callback mapped to
     # zlink_stream_packet_handler(). Wire frame is big-endian u16
     # header_size + u32 body_size + header + body. The handler receives
@@ -1149,17 +1128,17 @@ class Spot:
     @property
     def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
 
-    def publish(self, service_name: str, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
-    def send_channel(self, channel_name: str, payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+    def publish(self, service_name: str, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def send_channel(self, channel_name: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     async def request_channel(self, channel_name: str, payload: Message | bytes | list,
                               *, timeout: int = 0) -> list[Message]: ...
     def request_channel(self, channel_name: str,
                         payload: Message | bytes | list,
                         callback: Callable[[RequestResult, list[Message]], None],
-                        *, flags: int = 0, timeout: int = 0) -> None: ...
+                        *, flags: int = 0, timeout: int = 0) -> bool: ...
     def set_subscription(self, topic_or_pattern: bytes | str) -> None: ...       # Raises: ConfigError
     def unset_subscription(self, topic_or_pattern: bytes | str) -> None: ...     # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> TopicMessage: ...                  # Raises: RecvError
+    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 

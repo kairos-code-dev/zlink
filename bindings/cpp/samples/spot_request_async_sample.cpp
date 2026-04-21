@@ -32,13 +32,14 @@ int main ()
       reply_future = reply_promise.get_future ();
 
     std::thread responder ([&responder_router] {
-        zlink::received_t received = responder_router.recv ();
-        assert (received.parts ().size () == 1);
-        assert (received.request_seq ().has_value ());
-        assert (received.parts ()[0].to_string () == "spot-ping");
+        std::optional<zlink::received_t> received = responder_router.recv ();
+        assert (received.has_value ());
+        assert (received->parts ().size () == 1);
+        assert (received->request_seq ().has_value ());
+        assert (received->parts ()[0].to_string () == "spot-ping");
         zlink::message_t reply = detail::make_message ("spot-pong");
-        received.reply (reply);
-        received.close ();
+        received->reply (reply);
+        received->close ();
     });
 
     std::vector<zlink::message_t> request_parts;
@@ -53,7 +54,12 @@ int main ()
       },
       zlink::send_flags_t::none, std::chrono::milliseconds (5000));
 
-    auto reply_result = detail::wait_future (reply_future, 5000);
+    auto reply_result = detail::wait_future_with_progress (
+      reply_future, 5000,
+      [&requester_dealer] () {
+          (void) zlink_socket_request_progress_internal (
+            requester_dealer.handle ());
+      });
     const zlink::request_result_t result = reply_result.first;
     std::vector<zlink::message_t> reply_parts = std::move (reply_result.second);
     assert (result == zlink::request_result_t::ok);

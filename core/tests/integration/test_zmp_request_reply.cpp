@@ -20,6 +20,7 @@
 #endif
 
 extern "C" int zlink_router_enable_spot_receive (void *router_);
+extern "C" int zlink_socket_request_progress_internal (void *socket_);
 
 SETUP_TEARDOWN_TESTCONTEXT
 
@@ -34,11 +35,13 @@ struct reply_probe_t
     size_t part_count;
     std::string payload;
     size_t callback_count;
+    void *progress_handle;
 
     reply_probe_t () : done (false),
                        result (ZLINK_REQUEST_PROTOCOL_ERROR),
                        part_count (0),
-                       callback_count (0)
+                       callback_count (0),
+                       progress_handle (NULL)
     {
     }
 };
@@ -160,20 +163,46 @@ std::string msg_to_string (const zlink_msg_t *part_)
 
 bool wait_for_reply (reply_probe_t *probe_)
 {
-    std::unique_lock<std::mutex> lock (probe_->mutex);
-    return probe_->cv.wait_for (
-      lock, std::chrono::milliseconds (SETTLE_TIME * 20),
-      [probe_]() { return probe_->done; });
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (SETTLE_TIME * 20);
+    while (std::chrono::steady_clock::now () < deadline) {
+        {
+            std::unique_lock<std::mutex> lock (probe_->mutex);
+            if (probe_->cv.wait_for (
+                  lock, std::chrono::milliseconds (10),
+                  [probe_]() { return probe_->done; }))
+                return true;
+        }
+        if (probe_->progress_handle)
+            (void) zlink_socket_request_progress_internal (
+              probe_->progress_handle);
+    }
+
+    return false;
 }
 
 bool wait_for_reply_count (reply_probe_t *probe_, size_t expected_count_)
 {
-    std::unique_lock<std::mutex> lock (probe_->mutex);
-    return probe_->cv.wait_for (
-      lock, std::chrono::milliseconds (SETTLE_TIME * 20), [probe_,
-                                                           expected_count_]() {
-          return probe_->callback_count >= expected_count_;
-      });
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (SETTLE_TIME * 20);
+    while (std::chrono::steady_clock::now () < deadline) {
+        {
+            std::unique_lock<std::mutex> lock (probe_->mutex);
+            if (probe_->cv.wait_for (
+                  lock, std::chrono::milliseconds (10), [probe_,
+                                                         expected_count_]() {
+                      return probe_->callback_count >= expected_count_;
+                  }))
+                return true;
+        }
+        if (probe_->progress_handle)
+            (void) zlink_socket_request_progress_internal (
+              probe_->progress_handle);
+    }
+
+    return false;
 }
 
 bool wait_for_request_handler (request_handler_probe_t *probe_)
@@ -329,6 +358,7 @@ int run_request_reply_exit_child ()
     init_string_part (&request_part, "ping");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
     if (zlink_dealer_request (dealer, &request_part, 1, &capture_reply,
                               &reply_probe, 0, 3000)
         != ZLINK_SUBMIT_OK)
@@ -683,6 +713,7 @@ void test_dealer_to_router_request_reply_basic ()
     init_string_part (&request_part, "dealer-request");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
 
@@ -739,6 +770,7 @@ void test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id ()
     init_string_part (&request_part, "dealer-request-tcp");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe,
       ZLINK_SEND_FLAGS_NONE, 5000));
@@ -810,6 +842,7 @@ void test_router_to_router_request_reply_basic ()
     peer_rid.size = strlen (server_rid);
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = client_router;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request (
       client_router, &peer_rid, &request_part, 1, &capture_reply,
       &reply_probe, 0, 5000));
@@ -884,6 +917,8 @@ void test_multiple_in_flight_requests_complete_independently ()
 
     reply_probe_t reply_a;
     reply_probe_t reply_b;
+    reply_a.progress_handle = client_router;
+    reply_b.progress_handle = client_router;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request (
       client_router, &peer_rid, &request_a, 1, &capture_reply, &reply_a, 0,
       3000));
@@ -965,6 +1000,8 @@ void test_out_of_order_replies_match_original_request ()
 
     reply_probe_t reply_a;
     reply_probe_t reply_b;
+    reply_a.progress_handle = client_router;
+    reply_b.progress_handle = client_router;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request (
       client_router, &peer_rid, &request_a, 1, &capture_reply, &reply_a, 0,
       3000));
@@ -1039,6 +1076,7 @@ void test_extra_reply_is_dropped_after_first_completion ()
     init_string_part (&request_part, "request-extra");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = client_router;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request (
       client_router, &peer_rid, &request_part, 1, &capture_reply,
       &reply_probe, 0, 3000));
@@ -1080,6 +1118,7 @@ void test_dealer_to_dealer_request_is_not_supported ()
     init_string_part (&request_part, "dealer-request");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = client_dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       client_dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 50));
     TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
@@ -1120,6 +1159,7 @@ void test_router_request_rejects_non_router_target ()
     init_string_part (&request_part, "router-request");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = router;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request (
       router, &peer_rid, &request_part, 1, &capture_reply, &reply_probe, 0,
       50));
@@ -1169,6 +1209,7 @@ void test_dealer_request_uses_socket_default_timeout_when_reply_is_missing ()
     init_string_part (&request_part, "dealer-timeout-request");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 0));
 
@@ -1206,6 +1247,7 @@ void test_router_to_spot_request_reply_basic ()
     init_string_part (&request_part, "router-to-spot");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = router;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request_spot (
       router, &spot_case.node_b_rid, &spot_case.spot_b_rid, &request_part, 1,
       &capture_reply, &reply_probe, 0, 3000));
@@ -1267,6 +1309,7 @@ void test_router_to_missing_spot_completes_with_enoent ()
     init_string_part (&request_part, "router-spot-request");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = router;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request_spot (
       router, &node_rid, &missing_spot_rid, &request_part, 1, &capture_reply,
       &reply_probe, 0, 3000));

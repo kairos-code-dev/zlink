@@ -23,12 +23,15 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Lifecycle and topology facade for the current unified spot node model. */
 public final class SpotNode implements AutoCloseable {
     private final Object lifecycleLock = new Object();
     private final Set<Spot> liveSpots =
       Collections.newSetFromMap(new IdentityHashMap<>());
+    private final ConcurrentHashMap<String, MemorySegment> manualChannelDealers =
+      new ConcurrentHashMap<>();
     private MemorySegment handle;
     private final SpotNodeSocketOptions socketOptions = new SpotNodeSocketOptions();
 
@@ -114,7 +117,13 @@ public final class SpotNode implements AutoCloseable {
                 throw ZlinkException.fromLastError(
                   "zlink_spot_node_attach_channel_dealer_manual");
             }
+            manualChannelDealers.put(requireServiceName(channelName),
+              InternalAccess.socketHandle(dealer));
         }
+    }
+
+    MemorySegment manualChannelDealerHandle(String channelName) {
+        return manualChannelDealers.get(requireServiceName(channelName));
     }
 
     /** Attaches one dedicated publish ingress PUB socket to the node. */
@@ -307,6 +316,7 @@ public final class SpotNode implements AutoCloseable {
             }
         }
         Native.spotNodeDestroy(nodeHandle);
+        manualChannelDealers.clear();
         if (closeFailure != null) {
             throw closeFailure;
         }

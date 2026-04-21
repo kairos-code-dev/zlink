@@ -5,6 +5,10 @@
 
 #include "zlink.h"
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 int zlink_socket_xpub_recv_internal (void *socket_,
                                      zlink_routing_id_t *source_rid_out_,
                                      int *subscribed_out_,
@@ -42,5 +46,9 @@ int zlink_socket_subscribe_recv_internal (void *socket_,
                                           char *topic_id_out_,
                                           size_t *topic_id_len_out_,
                                           zlink_send_flags_t flags_);
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif

@@ -9,6 +9,8 @@
 #include "../src/core/send_internal.hpp"
 #include "../src/sockets/stream.hpp"
 #include "../src/api/recv_result_internal.hpp"
+#include "../src/api/service_api_c_internal.h"
+#include "../src/api/submit_result_internal.hpp"
 #include "../src/api/socket_message_api_internal.hpp"
 
 #include "testutil.hpp"
@@ -19,6 +21,16 @@
 #include <cstring>
 #include <thread>
 #include <unity.h>
+
+int zlink_service_send_internal (void *handle_,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 zlink_send_flags_t flags_);
+int zlink_service_send_rid_internal (void *handle_,
+                                     const zlink_routing_id_t *target_rid_,
+                                     zlink_msg_t *parts_,
+                                     size_t part_count_,
+                                     zlink_send_flags_t flags_);
 
 #ifndef ZLINK_SNDMORE
 #define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
@@ -131,7 +143,32 @@ inline int zlink_send (void *s_,
 
 namespace testutil_agg
 {
-/* Aggregate send helpers using *_part substrate. */
+inline void consume_part (zlink_msg_t *part_)
+{
+    if (!part_)
+        return;
+
+    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (part_);
+    if (!msg->check ())
+        return;
+
+    const int close_rc = zlink_msg_close (part_);
+    zlink_assert (close_rc == 0);
+    const int init_rc = zlink_msg_init (part_);
+    zlink_assert (init_rc == 0);
+}
+
+inline void consume_parts (zlink_msg_t *parts_, size_t count_)
+{
+    if (!parts_)
+        return;
+
+    for (size_t i = 0; i < count_; ++i)
+        consume_part (&parts_[i]);
+}
+
+/* Aggregate send helpers prefer the direct bulk path so tests observe the
+ * same public send contract as bindings/c. */
 inline zlink_submit_result_t send_parts (void *s_,
                                          zlink_msg_t *parts_,
                                          size_t count_,
@@ -141,18 +178,24 @@ inline zlink_submit_result_t send_parts (void *s_,
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
     }
-    for (size_t i = 0; i < count_; ++i) {
-        const zlink_part_flag_t f =
-          i + 1 < count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        const zlink_submit_result_t rc = zlink_send_part (s_, &parts_[i], flags_, f);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1; j < count_; ++j)
-                zlink_msg_close (&parts_[j]);
-            return rc;
-        }
+
+    const int socket_rc = zlink_socket_send_internal (s_, parts_, count_, flags_);
+    const int socket_errno = errno;
+    if (socket_rc == 0 || socket_errno != EFAULT) {
+        if (socket_rc == 0 || socket_errno != EAGAIN)
+            consume_parts (parts_, count_);
+        errno = socket_errno;
+        return zlink::submit_result_internal::from_rc (socket_rc);
     }
-    return ZLINK_SUBMIT_OK;
+
+    const int service_rc = zlink_service_send_internal (s_, parts_, count_, flags_);
+    const int service_errno = errno;
+    if (service_rc == 0 || service_errno != EAGAIN)
+        consume_parts (parts_, count_);
+    errno = service_errno;
+    return zlink::submit_result_internal::from_rc (service_rc);
 }
+
 inline zlink_submit_result_t send_parts_rid (void *s_,
                                              const zlink_routing_id_t *rid_,
                                              zlink_msg_t *parts_,
@@ -163,19 +206,24 @@ inline zlink_submit_result_t send_parts_rid (void *s_,
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
     }
-    for (size_t i = 0; i < count_; ++i) {
-        const zlink_part_flag_t f =
-          i + 1 < count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        const zlink_routing_id_t *r = i == 0 ? rid_ : NULL;
-        const zlink_submit_result_t rc =
-          zlink_send_part_rid (s_, r, &parts_[i], flags_, f);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1; j < count_; ++j)
-                zlink_msg_close (&parts_[j]);
-            return rc;
-        }
+
+    const int socket_rc =
+      zlink_socket_send_rid_internal (s_, rid_, parts_, count_, flags_);
+    const int socket_errno = errno;
+    if (socket_rc == 0 || socket_errno != EFAULT) {
+        if (socket_rc == 0 || socket_errno != EAGAIN)
+            consume_parts (parts_, count_);
+        errno = socket_errno;
+        return zlink::submit_result_internal::from_rc (socket_rc);
     }
-    return ZLINK_SUBMIT_OK;
+
+    const int service_rc =
+      zlink_service_send_rid_internal (s_, rid_, parts_, count_, flags_);
+    const int service_errno = errno;
+    if (service_rc == 0 || service_errno != EAGAIN)
+        consume_parts (parts_, count_);
+    errno = service_errno;
+    return zlink::submit_result_internal::from_rc (service_rc);
 }
 }
 
@@ -206,10 +254,40 @@ inline zlink_submit_result_t zlink_publish (void *subject_,
                                             size_t part_count_,
                                             zlink_send_flags_t flags_)
 {
-    if (!parts_ || part_count_ == 0) {
+    if (!parts_ && part_count_ != 0) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
     }
+
+    const int socket_rc =
+      zlink_socket_publish_internal (subject_, topic_id_, parts_, part_count_,
+                                     flags_);
+    const int socket_errno = errno;
+    if (socket_rc == 0 || socket_errno != EFAULT) {
+        if ((socket_rc == 0 || socket_errno != EAGAIN) && parts_
+            && part_count_ != 0)
+            testutil_agg::consume_parts (parts_, part_count_);
+        errno = socket_errno;
+        return zlink::submit_result_internal::from_rc (socket_rc);
+    }
+
+    const int service_rc =
+      zlink_service_publish_internal (subject_, topic_id_, parts_, part_count_,
+                                      flags_);
+    const int service_errno = errno;
+    if (service_rc == 0 || service_errno != EFAULT) {
+        if ((service_rc == 0 || service_errno != EAGAIN) && parts_
+            && part_count_ != 0)
+            testutil_agg::consume_parts (parts_, part_count_);
+        errno = service_errno;
+        return zlink::submit_result_internal::from_rc (service_rc);
+    }
+
+    if (part_count_ == 0) {
+        errno = service_errno;
+        return zlink::submit_result_internal::from_rc (-1);
+    }
+
     for (size_t i = 0; i < part_count_; ++i) {
         const zlink_part_flag_t f =
           i + 1 < part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
@@ -371,17 +449,16 @@ inline void copy_routing_id_view (const zlink_routing_id_t *src_,
     memcpy (dest_, src_, sizeof (*dest_));
 }
 
-/* Collect remaining parts after first has been received. */
-inline zlink_recv_result_t collect_more_recv_part (void *s_,
-                                                   zlink_recv_flags_t flags_)
+template <typename NextPartFn>
+inline zlink_recv_result_t collect_more_recv_part_impl (NextPartFn next_part_fn_)
 {
     while (true) {
         zlink_part_flag_t more = ZLINK_PART_FINAL;
-        const zlink_routing_id_t *dummy = NULL;
         zlink_msg_t part;
-        const zlink_recv_result_t rc =
-          zlink_recv_part (s_, &dummy, &part, &more, flags_);
+        zlink_msg_init (&part);
+        const zlink_recv_result_t rc = next_part_fn_ (&part, &more);
         if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close (&part);
             for (auto &p : tl_recv_buf)
                 zlink_msg_close (&p);
             tl_recv_buf.clear ();
@@ -392,6 +469,60 @@ inline zlink_recv_result_t collect_more_recv_part (void *s_,
             break;
     }
     return ZLINK_RECV_OK;
+}
+
+/* Collect remaining parts after first has been received. */
+inline zlink_recv_result_t collect_more_recv_part (void *s_,
+                                                   zlink_recv_flags_t flags_)
+{
+    return collect_more_recv_part_impl (
+      [s_, flags_] (zlink_msg_t *part_, zlink_part_flag_t *more_) {
+          const zlink_routing_id_t *dummy = NULL;
+          return zlink_recv_part (s_, &dummy, part_, more_, flags_);
+      });
+}
+
+inline zlink_recv_result_t collect_more_router_recv_part (
+  void *router_,
+  zlink_recv_flags_t flags_)
+{
+    return collect_more_recv_part_impl (
+      [router_, flags_] (zlink_msg_t *part_, zlink_part_flag_t *more_) {
+          const zlink_routing_id_t *source_node_rid = NULL;
+          const zlink_routing_id_t *source_spot_rid = NULL;
+          uint64_t request_seq = 0;
+          return zlink_router_recv_part (
+            router_, &source_node_rid, &source_spot_rid, &request_seq, part_,
+            more_, flags_);
+      });
+}
+
+inline zlink_recv_result_t collect_more_spot_recv_part (void *spot_,
+                                                        zlink_recv_flags_t flags_)
+{
+    return collect_more_recv_part_impl (
+      [spot_, flags_] (zlink_msg_t *part_, zlink_part_flag_t *more_) {
+          const zlink_routing_id_t *source_rid = NULL;
+          const zlink_routing_id_t *spot_rid = NULL;
+          uint64_t request_seq = 0;
+          return zlink_spot_recv_part (
+            spot_, &source_rid, &spot_rid, &request_seq, part_, more_, flags_);
+      });
+}
+
+inline zlink_recv_result_t collect_more_spot_subscribe_part (
+  void *spot_,
+  zlink_recv_flags_t flags_)
+{
+    return collect_more_recv_part_impl (
+      [spot_, flags_] (zlink_msg_t *part_, zlink_part_flag_t *more_) {
+          const zlink_routing_id_t *source_rid = NULL;
+          size_t service_name_len = 0;
+          size_t topic_id_len = 0;
+          return zlink_spot_subscribe_part (
+            spot_, &source_rid, NULL, 0, &service_name_len, NULL, 0,
+            &topic_id_len, part_, more_, flags_);
+      });
 }
 
 inline zlink_recv_result_t finalize_recv (zlink_msg_t **parts_out_,
@@ -429,12 +560,15 @@ inline zlink_recv_result_t zlink_router_recv (
 {
     testutil_agg::tl_recv_buf.clear ();
     zlink_msg_t first;
+    zlink_msg_init (&first);
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const zlink_recv_result_t rc = zlink_router_recv_part (
       router_, source_node_rid_out_, source_spot_rid_out_, request_seq_out_,
       &first, &has_more, static_cast<zlink_recv_flags_t> (flags_));
-    if (rc != ZLINK_RECV_OK)
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close (&first);
         return rc;
+    }
     testutil_agg::copy_routing_id_view (
       source_node_rid_out_ ? *source_node_rid_out_ : NULL,
       &testutil_agg::tl_source_node_rid);
@@ -443,7 +577,8 @@ inline zlink_recv_result_t zlink_router_recv (
       &testutil_agg::tl_source_spot_rid);
     testutil_agg::tl_recv_buf.push_back (first);
     if (has_more) {
-        const zlink_recv_result_t rc2 = testutil_agg::collect_more_recv_part (
+        const zlink_recv_result_t rc2 =
+          testutil_agg::collect_more_router_recv_part (
           router_, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
         if (rc2 != ZLINK_RECV_OK)
             return rc2;
@@ -471,15 +606,19 @@ inline zlink_recv_result_t zlink_spot_recv (
 {
     testutil_agg::tl_recv_buf.clear ();
     zlink_msg_t first;
+    zlink_msg_init (&first);
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const zlink_recv_result_t rc = zlink_spot_recv_part (
       spot_, source_rid_out_, spot_rid_out_, request_seq_out_, &first,
       &has_more, static_cast<zlink_recv_flags_t> (flags_));
-    if (rc != ZLINK_RECV_OK)
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close (&first);
         return rc;
+    }
     testutil_agg::tl_recv_buf.push_back (first);
     if (has_more) {
-        const zlink_recv_result_t rc2 = testutil_agg::collect_more_recv_part (
+        const zlink_recv_result_t rc2 =
+          testutil_agg::collect_more_spot_recv_part (
           spot_, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
         if (rc2 != ZLINK_RECV_OK)
             return rc2;
@@ -523,6 +662,12 @@ inline int zlink_subscribe (void *subject_,
                             char *topic_id_out_,
                             size_t *topic_id_len_)
 {
+    const int service_rc = zlink_service_subscribe_recv_internal (
+      subject_, NULL, parts_, part_count_, topic_id_out_, topic_id_len_,
+      static_cast<zlink_recv_flags_t> (flags_));
+    if (service_rc == 0 || errno != EFAULT)
+        return service_rc;
+
     return zlink::recv_result_internal::from_rc (
       zlink_socket_subscribe_recv_internal (
         subject_, NULL, parts_, part_count_, topic_id_out_, topic_id_len_,
@@ -537,6 +682,12 @@ inline zlink_recv_result_t zlink_subscribe (void *subject_,
                                             size_t *topic_id_len_out_,
                                             int flags_)
 {
+    const int service_rc = zlink_service_subscribe_recv_internal (
+      subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
+      topic_id_len_out_, static_cast<zlink_recv_flags_t> (flags_));
+    if (service_rc == 0 || errno != EFAULT)
+        return zlink::recv_result_internal::from_rc (service_rc);
+
     return zlink::recv_result_internal::from_rc (
       zlink_socket_subscribe_recv_internal (
         subject_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
@@ -728,17 +879,21 @@ inline zlink_recv_result_t zlink_spot_subscribe (
     const size_t svc_cap = service_name_len_out_ ? *service_name_len_out_ : 0;
     const size_t topic_cap = topic_id_len_out_ ? *topic_id_len_out_ : 0;
     zlink_msg_t first;
+    zlink_msg_init (&first);
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const zlink_recv_result_t rc = zlink_spot_subscribe_part (
       spot_, &rid_ptr, service_name_out_, svc_cap, service_name_len_out_,
       topic_id_out_, topic_cap, topic_id_len_out_, &first, &has_more, flags_);
-    if (rc != ZLINK_RECV_OK)
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close (&first);
         return rc;
+    }
     if (source_rid_out_ && rid_ptr)
         *source_rid_out_ = *rid_ptr;
     testutil_agg::tl_recv_buf.push_back (first);
     if (has_more) {
-        const zlink_recv_result_t rc2 = testutil_agg::collect_more_recv_part (
+        const zlink_recv_result_t rc2 =
+          testutil_agg::collect_more_spot_subscribe_part (
           spot_, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
         if (rc2 != ZLINK_RECV_OK)
             return rc2;

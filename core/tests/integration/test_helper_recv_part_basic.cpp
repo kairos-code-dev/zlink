@@ -2,6 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "../src/api/socket_request_reply_internal.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -53,6 +54,26 @@ bool wait_for_reply (reply_probe_t *probe_)
     return probe_->cv.wait_for (
       lock, std::chrono::milliseconds (1000),
       [probe_] () { return probe_->done; });
+}
+
+bool wait_for_reply_with_socket_progress (void *socket_,
+                                          reply_probe_t *probe_,
+                                          int timeout_ms_)
+{
+    const socket_handle_t handle = as_socket_handle (socket_);
+    const std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+      state = zlink::socket_reqrep_internal::find_request_reply_state (handle);
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (wait_for_reply (probe_))
+            return true;
+        if (state)
+            (void) zlink::socket_reqrep_internal::drain_reply_completions (
+              state, socket_);
+    }
+
+    return false;
 }
 
 void set_recv_timeout_ms (void *socket_, int timeout_ms_)
@@ -312,7 +333,8 @@ void test_router_recv_part_metadata_view_invalidates_on_next_recv_like_call ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&part));
 
     reply_from_router (router, first_source_rid, first_request_seq, "reply-1");
-    TEST_ASSERT_TRUE (wait_for_reply (&probe1));
+    TEST_ASSERT_TRUE (
+      wait_for_reply_with_socket_progress (dealer1, &probe1, 3000));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, probe1.result);
 
     reply_probe_t probe2;
@@ -340,7 +362,8 @@ void test_router_recv_part_metadata_view_invalidates_on_next_recv_like_call ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&part));
     reply_from_router (router, second_source_rid, second_request_seq, "reply-2");
-    TEST_ASSERT_TRUE (wait_for_reply (&probe2));
+    TEST_ASSERT_TRUE (
+      wait_for_reply_with_socket_progress (dealer2, &probe2, 3000));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, probe2.result);
 
     test_context_socket_close_zero_linger (dealer2);

@@ -3,6 +3,7 @@
 #include "../../samples/sample_common.hpp"
 
 #include <chrono>
+#include <optional>
 #include <thread>
 
 namespace {
@@ -46,17 +47,26 @@ int main ()
     assert (sub_node.valid ());
 
     const std::string service_name = detail::k_spot_service;
+    zlink::service::registry_t registry (ctx);
+    const std::string registry_pub = detail::unique_tcp ("spot-callback-reg-pub");
+    const std::string registry_router =
+      detail::unique_tcp ("spot-callback-reg-router");
+    registry.bind (registry_pub, registry_router);
     zlink::service::discovery_t pub_discovery (
       ctx, zlink::service_type::spot, service_name);
+    zlink::service::discovery_t sub_discovery (
+      ctx, zlink::service_type::spot, service_name);
     assert (pub_discovery.valid ());
+    assert (sub_discovery.valid ());
+    pub_discovery.connect_registry (registry_router);
+    sub_discovery.connect_registry (registry_router);
     pub_node.attach_discovery (pub_discovery);
+    sub_node.attach_discovery (sub_discovery);
 
-    pub_node.bind ("tcp://127.0.0.1:0");
-    const std::string endpoint = pub_node.last_endpoint ();
-    assert (!endpoint.empty ());
-    sub_node.connect_peer (endpoint);
-    assert (wait_for_spot_ready (pub_node, false, 1u, 10000));
-    assert (wait_for_spot_ready (sub_node, true, 1u, 10000));
+    const std::string pub_endpoint = detail::unique_tcp ("spot-callback-pub");
+    const std::string sub_endpoint = detail::unique_tcp ("spot-callback-sub");
+    pub_node.bind (pub_endpoint);
+    sub_node.bind (sub_endpoint);
 
     zlink::service::spot_t pub_spot = pub_node.create_spot ();
     zlink::service::spot_t sub_spot = sub_node.create_spot ();
@@ -64,17 +74,28 @@ int main ()
     assert (sub_spot.valid ());
 
     sub_spot.set_subscription ("topic:alpha");
+    assert (wait_for_spot_ready (pub_node, false, 1u, 10000));
+    assert (wait_for_spot_ready (sub_node, true, 1u, 10000));
 
     zlink::message_t outbound =
       detail::make_message ("spot-callback");
     pub_spot.publish (service_name, "topic:alpha", outbound);
 
-    const zlink::topic_message_t inbound = sub_spot.subscribe ();
-    assert (inbound.service_name ());
-    assert (*inbound.service_name () == service_name);
-    assert (inbound.topic () == "topic:alpha");
-    assert (inbound.parts ().size () == 1);
-    const std::string received = inbound.parts ()[0].to_string ();
+    std::optional<zlink::topic_message_t> inbound;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    while (std::chrono::steady_clock::now () < deadline) {
+        inbound = sub_spot.subscribe (zlink::recv_flags_t::dontwait);
+        if (inbound.has_value ())
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    assert (inbound.has_value ());
+    assert (inbound->service_name ());
+    assert (*inbound->service_name () == service_name);
+    assert (inbound->topic () == "topic:alpha");
+    assert (inbound->parts ().size () == 1);
+    const std::string received = inbound->parts ()[0].to_string ();
     assert (received == "spot-callback");
     sub_spot.close ();
     pub_spot.close ();

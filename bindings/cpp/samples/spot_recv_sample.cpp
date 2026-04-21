@@ -45,17 +45,10 @@ int main ()
         std::vector<zlink::message_t> outbound;
         outbound.push_back (detail::make_message (sent));
         publisher.publish (service_name, topic, outbound);
-        try {
-            inbound = subscriber.subscribe (zlink::recv_flags_t::dontwait);
+        inbound = subscriber.subscribe (zlink::recv_flags_t::dontwait);
+        if (inbound.has_value ())
             break;
-        } catch (const zlink::recv_error_t &e) {
-            const int errnum = zlink_errno ();
-            if (e.result () != zlink::recv_result_t::no_data
-                && errnum != ENOENT) {
-                throw;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
-        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
     assert (inbound.has_value ());
     assert (inbound->topic () == topic);

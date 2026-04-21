@@ -263,12 +263,18 @@ public abstract class Socket implements AutoCloseable {
         return mask;
     }
 
-    void send(Message part) {
+    boolean send(Message part) {
         messagePlane.send(part);
+        return true;
     }
 
-    void send(Message part, SendFlag flags) {
+    boolean send(Message part, SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
+            return trySendResult(sendNoWaitResult(part));
+        }
         messagePlane.send(part, flags);
+        return true;
     }
 
     void sendMessageFrame(RoutingId routingId, Message message, SendFlag flag) {
@@ -288,20 +294,22 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    void send(List<Message> parts) {
+    boolean send(List<Message> parts) {
         messagePlane.send(parts);
+        return true;
     }
 
-    void send(List<Message> parts, SendFlag flags) {
+    boolean send(List<Message> parts, SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
+            return trySendResult(sendNoWaitResult(parts));
+        }
         messagePlane.send(parts, flags);
+        return true;
     }
 
     SendResult sendNoWaitResult(Message part) {
         return messagePlane.sendNoWaitResult(part);
-    }
-
-    boolean trySend(Message part) {
-        return trySendResult(sendNoWaitResult(part));
     }
 
     SendResult sendMessageFrameNoWaitResult(RoutingId routingId, Message message) {
@@ -323,16 +331,18 @@ public abstract class Socket implements AutoCloseable {
         return messagePlane.sendNoWaitResult(parts);
     }
 
-    boolean trySend(List<Message> parts) {
-        return trySendResult(sendNoWaitResult(parts));
-    }
-
-    void send(RoutingId rid, Message part) {
+    boolean send(RoutingId rid, Message part) {
         messagePlane.send(rid, part);
+        return true;
     }
 
-    void send(RoutingId rid, Message part, SendFlag flags) {
+    boolean send(RoutingId rid, Message part, SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
+            return trySendResult(sendNoWaitResult(rid, part));
+        }
         messagePlane.send(rid, part, flags);
+        return true;
     }
 
     void send(int rid, Message part, SendFlag flags) {
@@ -411,38 +421,42 @@ public abstract class Socket implements AutoCloseable {
         return length;
     }
 
-    void send(RoutingId rid, List<Message> parts) {
+    boolean send(RoutingId rid, List<Message> parts) {
         messagePlane.send(rid, parts);
+        return true;
     }
 
-    void send(RoutingId rid, List<Message> parts, SendFlag flags) {
+    boolean send(RoutingId rid, List<Message> parts, SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
+            return trySendResult(sendNoWaitResult(rid, parts));
+        }
         messagePlane.send(rid, parts, flags);
+        return true;
     }
 
     SendResult sendNoWaitResult(RoutingId rid, Message part) {
         return messagePlane.sendNoWaitResult(rid, part);
     }
 
-    boolean trySend(RoutingId rid, Message part) {
-        return trySendResult(sendNoWaitResult(rid, part));
-    }
-
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
         return messagePlane.sendNoWaitResult(rid, parts);
     }
 
-    boolean trySend(RoutingId rid, List<Message> parts) {
-        return trySendResult(sendNoWaitResult(rid, parts));
-    }
-
     /** Publishes a single payload part to a topic-aware socket. */
-    void publish(String topicId, Message part) {
+    boolean publish(String topicId, Message part) {
         topicPlane.publish(topicId, part);
+        return true;
     }
 
     /** Publishes a single payload part with explicit send flags. */
-    void publish(String topicId, Message part, SendFlag flags) {
+    boolean publish(String topicId, Message part, SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
+            return trySendResult(publishNoWaitResult(topicId, part));
+        }
         topicPlane.publish(topicId, part, flags);
+        return true;
     }
 
     void publishMessageFrame(String topicId, Message message, SendFlag flags) {
@@ -463,13 +477,19 @@ public abstract class Socket implements AutoCloseable {
     }
 
     /** Publishes a multipart payload to a topic-aware socket. */
-    void publish(String topicId, List<Message> parts) {
+    boolean publish(String topicId, List<Message> parts) {
         topicPlane.publish(topicId, parts);
+        return true;
     }
 
     /** Publishes a multipart payload with explicit send flags. */
-    void publish(String topicId, List<Message> parts, SendFlag flags) {
+    boolean publish(String topicId, List<Message> parts, SendFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
+            return trySendResult(publishNoWaitResult(topicId, parts));
+        }
         topicPlane.publish(topicId, parts, flags);
+        return true;
     }
 
     SendResult publishNoWaitResult(String topicId, Message part) {
@@ -502,11 +522,7 @@ public abstract class Socket implements AutoCloseable {
     Received recv(ReceiveFlag flags) {
         Objects.requireNonNull(flags, "flags");
         if (flags == ReceiveFlag.DONTWAIT) {
-            Received received = messagePlane.recvNoWaitOrNull();
-            if (received == null) {
-                throw new RecvException(RecvResult.NO_DATA, ERRNO_EAGAIN);
-            }
-            return received;
+            return messagePlane.recvNoWaitOrNull();
         }
         return messagePlane.recv(flags);
     }
@@ -517,10 +533,6 @@ public abstract class Socket implements AutoCloseable {
 
     Optional<Received> recvNoWait() {
         return Optional.ofNullable(recvNoWaitOrNull());
-    }
-
-    Received tryRecv() {
-        return recvNoWaitOrNull();
     }
 
     Received recvLazy(ReceiveFlag flags) {
@@ -597,6 +609,10 @@ public abstract class Socket implements AutoCloseable {
 
     /** Receives a topic-aware delivery with explicit receive flags. */
     TopicMessage subscribe(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        if (flags == ReceiveFlag.DONTWAIT) {
+            return topicPlane.subscribeNoWait().orElse(null);
+        }
         return topicPlane.subscribe(flags);
     }
 

@@ -11,6 +11,7 @@ import java.nio.file.StandardOpenOption;
 public final class Context implements AutoCloseable {
     private static final boolean DEBUG_REQREP =
       Boolean.getBoolean("zlink.reqrep.debug");
+    private static final int ERRNO_EINTR = 4;
     private final ContextOptions options;
     private MemorySegment handle;
 
@@ -41,7 +42,18 @@ public final class Context implements AutoCloseable {
         if (handle == null || handle.address() == 0)
             return;
         debug("ctxTerm begin");
-        Native.ctxTerm(handle);
+        while (true) {
+            int shutdownRc = Native.ctxShutdown(handle);
+            if (shutdownRc == 0 || Native.errno() != ERRNO_EINTR) {
+                break;
+            }
+        }
+        while (true) {
+            int termRc = Native.ctxTerm(handle);
+            if (termRc == 0 || Native.errno() != ERRNO_EINTR) {
+                break;
+            }
+        }
         debug("ctxTerm end");
         handle = MemorySegment.NULL;
     }

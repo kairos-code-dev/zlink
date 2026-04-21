@@ -11,6 +11,7 @@ async function main() {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx, 'client', 'MULTI_DEALER_DEALER');
     const dealers = [];
+    let rl = null;
     let collector = null;
     let stop = false;
     try {
@@ -29,7 +30,7 @@ async function main() {
             collector.record(decodeMetricHeader(received.parts[0].data()), currentEpochNs());
         }, () => stop));
         console.log(`CLIENT_READY,${options.msgSize}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+        rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
             if (line === `START,${options.msgSize}`) {
                 break;
@@ -48,6 +49,13 @@ async function main() {
             await sleepImmediate();
         }
         stop = true;
+        for (const dealer of dealers) {
+            try {
+                dealer.close();
+            }
+            catch {
+            }
+        }
         await Promise.all(recvTasks);
         const result = collector ? await collector.finish() : { latenciesNs: [] };
         for (const line of summarizeMetrics('MULTI_DEALER_DEALER', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
@@ -55,6 +63,7 @@ async function main() {
         }
     }
     finally {
+        rl?.close();
         for (const dealer of dealers) {
             dealer.close();
         }

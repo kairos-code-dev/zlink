@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, configureTlsClient, configureTlsServer, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle } = require('./perf_single_common');
 const POLLIN = 1;
 function tryRecvRouted(spot) {
     try {
@@ -113,6 +113,8 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     try {
         applySocketPolicy(requester, options);
         applySocketPolicy(replier, options);
+        configureTlsServer(replierNode, options.transport);
+        configureTlsClient(requester, options.transport);
         replierNode.bind(endpoint);
         requester.connect(endpoint);
         requesterPoller.addSocket(requester, POLLIN);

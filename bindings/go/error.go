@@ -256,28 +256,93 @@ func errnoOrIO() int {
 	return int(C.EIO)
 }
 
+func fallbackSubmitErrno(result SubmitResult) int {
+	switch result {
+	case SubmitBackpressured, SubmitNotAdmitted:
+		return int(C.EAGAIN)
+	case SubmitNotConnected, SubmitNotFound:
+		return int(C.ENOTCONN)
+	case SubmitTerminated:
+		return int(C.ETERM)
+	case SubmitInvalidHandle:
+		return int(C.EFAULT)
+	case SubmitInvalidArgument:
+		return int(C.EINVAL)
+	case SubmitNotSupported:
+		return int(C.ENOTSUP)
+	case SubmitInvalidState, SubmitThreadViolation:
+		return int(C.EBUSY)
+	case SubmitOutOfMemory:
+		return int(C.ENOMEM)
+	default:
+		return int(C.EIO)
+	}
+}
+
+func fallbackRequestErrno(result RequestResult) int {
+	switch result {
+	case RequestTimedOut:
+		return int(C.ETIMEDOUT)
+	case RequestNotFound:
+		return int(C.ENOTCONN)
+	case RequestTerminated:
+		return int(C.ETERM)
+	default:
+		return int(C.EPROTO)
+	}
+}
+
+func fallbackRecvErrno(result RecvResult) int {
+	switch result {
+	case RecvNoData:
+		return int(C.EAGAIN)
+	case RecvBusy:
+		return int(C.EBUSY)
+	case RecvTerminated:
+		return int(C.ETERM)
+	case RecvInvalidHandle:
+		return int(C.EFAULT)
+	case RecvNotSupported:
+		return int(C.ENOTSUP)
+	default:
+		return int(C.EIO)
+	}
+}
+
 func submitErrorFromResult(result any) error {
-	if resultCodeInt(result) == int(SubmitOK) {
+	resultCode := SubmitResult(resultCodeInt(result))
+	if resultCode == SubmitOK {
 		return nil
 	}
-	errno := errnoOrIO()
-	return &SubmitError{Result: SubmitResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
+	errno := currentErrno()
+	if errno == 0 {
+		errno = fallbackSubmitErrno(resultCode)
+	}
+	return &SubmitError{Result: resultCode, errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func requestErrorFromResult(result any) error {
-	if resultCodeInt(result) == int(RequestOK) {
+	resultCode := RequestResult(resultCodeInt(result))
+	if resultCode == RequestOK {
 		return nil
 	}
-	errno := errnoOrIO()
-	return &RequestError{Result: RequestResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
+	errno := currentErrno()
+	if errno == 0 {
+		errno = fallbackRequestErrno(resultCode)
+	}
+	return &RequestError{Result: resultCode, errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func recvErrorFromResult(result any) error {
-	if resultCodeInt(result) == int(RecvOK) {
+	resultCode := RecvResult(resultCodeInt(result))
+	if resultCode == RecvOK {
 		return nil
 	}
-	errno := errnoOrIO()
-	return &RecvError{Result: RecvResult(resultCodeInt(result)), errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
+	errno := currentErrno()
+	if errno == 0 {
+		errno = fallbackRecvErrno(resultCode)
+	}
+	return &RecvError{Result: resultCode, errorDetails: errorDetails{InternalErrno: errno}, internalErrno: errno}
 }
 
 func handlerErrorFromResult(result any) error {

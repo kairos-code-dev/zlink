@@ -82,9 +82,7 @@ final class PerfMultiDealerDealer {
                 try (DealerSocket client = new DealerSocket(ctx);
                      var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
                      PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                         java.util.List.of(client), PollEventType.POLLOUT.getValue());
-                     Message active = PerfUtil.payloadTemplate(config.size());
-                     Message cooldown = PerfUtil.payloadTemplate(config.size())) {
+                         java.util.List.of(client), PollEventType.POLLOUT.getValue())) {
                     PerfUtil.applyMonitorOptions(monitor, config);
                     PerfUtil.applySocketOptions(client, config);
                     client.options().linger(Duration.ZERO);
@@ -102,14 +100,16 @@ final class PerfMultiDealerDealer {
                     PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        PerfUtil.writePayload(active, config.size(),
-                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                        sendWhenWritable(client, pollSet, active, activeEnd);
+                        try (Message active = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sendWhenWritable(client, pollSet, active, activeEnd);
+                        }
                     }
-                    PerfUtil.writePayload(cooldown, config.size(),
-                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                    sendWhenWritable(client, pollSet, cooldown,
-                        System.nanoTime() + Duration.ofSeconds(5).toNanos());
+                    try (Message cooldown = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        sendWhenWritable(client, pollSet, cooldown,
+                            System.nanoTime() + Duration.ofSeconds(5).toNanos());
+                    }
                 }
             }, "multi-dd-client-" + index), config.durationSeconds());
         return PerfUtil.Result.silent(config);
@@ -119,8 +119,9 @@ final class PerfMultiDealerDealer {
                                          Message part, long deadlineNs) {
         while (true) {
             try {
-                client.send(part, SendFlags.DONT_WAIT);
-                return;
+                if (client.send(part, SendFlags.DONT_WAIT)) {
+                    return;
+                }
             } catch (SubmitException ex) {
                 if (!isTransient(ex)) {
                     throw ex;

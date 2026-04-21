@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applyContextPolicy, applySocketPolicy, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, createSocketEventWaiter, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
@@ -24,12 +24,17 @@ async function main() {
     const dealer = new zlink.DealerSocket(ctx);
     const controlPub = new zlink.PubSocket(ctx);
     const controlSub = new zlink.SubSocket(ctx);
+    const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+    const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
     let spot = null;
+    let spotWaiter = null;
     const payload = createPayload(options.msgSize);
     let readyCount = 0;
     let connected = false;
     let startRequested = false;
+    let stopRequested = false;
     let connectedControlEndpoint = '';
+    let rl = null;
     try {
         node.attachChannelDealerManual(SERVICE_NAME, dealer);
         applySocketPolicy(dealer);
@@ -38,13 +43,14 @@ async function main() {
         applySocketPolicy(spot, {
             noDrop: Number(process.env.PERF_MULTI_SPOT_XPUB_NODROP ?? 1) !== 0
         });
+        spotWaiter = createSocketEventWaiter(spot, POLLOUT);
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
         controlPub.bind(options.controlEndpoint);
         controlSub.setSubscription(CONTROL_TOPIC);
         console.log(`READY,${options.endpoint}`);
         console.log(`CONTROL_READY,${options.controlEndpoint}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+        rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         (async () => {
             for await (const line of rl) {
                 if (line === `START,${options.msgSize}`) {
@@ -58,14 +64,20 @@ async function main() {
                     await waitForConnectionReady(controlSub, () => controlSub.connect(clientEndpoint));
                     connectedControlEndpoint = clientEndpoint;
                 }
+                else if (line === 'STOP' || line === 'QUIT') {
+                    stopRequested = true;
+                    break;
+                }
             }
         })();
-        while (!(connected && readyCount >= options.clients && startRequested)) {
+        while (!stopRequested && !(connected && readyCount >= options.clients && startRequested)) {
+            let drained = false;
             while (true) {
                 const received = subscribeNoWait(controlSub);
                 if (!received) {
                     break;
                 }
+                drained = true;
                 const payloadText = received.parts[0].data().toString('utf8');
                 if (payloadText === 'CONNECTED') {
                     connected = true;
@@ -75,10 +87,18 @@ async function main() {
                     readyCount = Number(payloadText.split(',')[2]);
                 }
             }
-            await sleepImmediate();
+            if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
+                await controlSubWaiter.wait(POLLIN);
+            }
         }
-        while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`START,${options.msgSize}`))) {
-            await sleepImmediate();
+        if (stopRequested) {
+            return;
+        }
+        for (;;) {
+            if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`START,${options.msgSize}`))) {
+                break;
+            }
+            await controlPubWaiter.wait(POLLOUT);
         }
         const runId = createRunId(1);
         const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -89,14 +109,23 @@ async function main() {
                 seq += 1n;
                 continue;
             }
-            await sleepImmediate();
+            await spotWaiter.wait(POLLOUT);
         }
         stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
-        while (!trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
-            await sleepImmediate();
+        for (;;) {
+            if (trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
+                break;
+            }
+            await spotWaiter.wait(POLLOUT);
         }
     }
     finally {
+        rl?.close();
+        if (spotWaiter) {
+            spotWaiter.close();
+        }
+        controlSubWaiter.close();
+        controlPubWaiter.close();
         if (spot) {
             spot.close();
         }

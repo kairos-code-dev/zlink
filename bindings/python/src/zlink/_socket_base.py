@@ -740,6 +740,35 @@ class _Socket(_BaseSocket):
     def _register_socket_type(cls, sock_type, socket_cls):
         cls._dispatch[_native_socket_type(sock_type)] = socket_cls
 
+    def set_tls_server(self, cert: str, key: str, require_client_cert: bool = False):
+        rc = lib().zlink_set_tls_server(
+            self._handle,
+            _validated_c_string_text(cert, field="cert"),
+            _validated_c_string_text(key, field="key"),
+            int(require_client_cert),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def set_tls_client(
+        self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
+    ):
+        ca_value = (
+            None
+            if ca_cert is None
+            else _validated_c_string_text(ca_cert, field="ca_cert")
+        )
+        host_value = (
+            None
+            if hostname is None
+            else _validated_c_string_text(hostname, field="hostname")
+        )
+        rc = lib().zlink_set_tls_client(
+            self._handle, ca_value, host_value, int(trust_system)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
 
 class _DiscoveryAttachSocket:
     def attach_discovery(self, discovery):
@@ -902,26 +931,20 @@ class _SubscriberOptionSocket(_Socket):
 
 class _MessageSocket(_Socket):
     def send(self, payload, *, flags=0):
-        self._send_native_parts(self._native_parts_from_payload(payload), flags)
-
-    def try_send(self, payload):
         try:
-            self.send(payload, flags=1)
+            self._send_native_parts(self._native_parts_from_payload(payload), flags)
             return True
         except SubmitError as ex:
-            if ex.result == SubmitResult.BACKPRESSURED:
+            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
                 return False
             raise
 
     def recv(self, *, flags=0):
-        routing, owner = _recv_native_parts(self._handle, flags)
-        return Received(owner, routing)
-
-    def try_recv(self):
         try:
-            return self.recv(flags=1)
+            routing, owner = _recv_native_parts(self._handle, flags)
+            return Received(owner, routing)
         except RecvError as ex:
-            if ex.result == RecvResult.NO_DATA:
+            if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
                 return None
             raise
 
@@ -983,38 +1006,41 @@ class _MessageSocket(_Socket):
 
 class _RoutedMessageSocket(_MessageSocket):
     def send(self, routing_id, payload, *, flags=0):
-        self._send_native_parts_to_routing_id(
-            routing_id, self._native_parts_from_payload(payload), flags
-        )
-
-    def try_send(self, routing_id, payload):
         try:
-            self.send(routing_id, payload, flags=1)
+            self._send_native_parts_to_routing_id(
+                routing_id, self._native_parts_from_payload(payload), flags
+            )
             return True
         except SubmitError as ex:
-            if ex.result == SubmitResult.BACKPRESSURED:
+            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
                 return False
             raise
 
 
 class _PublisherSocket(_Socket):
     def publish(self, topic, payload, *, flags=0):
-        _ensure_not_in_callback("blocking publish")
-        topic_bytes = _validated_c_string_value(topic, field="topic")
-        native_parts = self._native_parts_from_payload(payload)
-        part_count = len(native_parts)
-        for index, native in enumerate(native_parts):
-            rc = lib().zlink_publish_part(
-                self._handle,
-                topic_bytes,
-                ctypes.byref(native),
-                int(flags),
-                _part_flag(index, part_count),
-            )
-            if rc != 0:
-                err = lib().zlink_errno()
-                _close_native_parts(native_parts, index)
-                _raise_result_error(SubmitError, SubmitResult, rc, err)
+        try:
+            _ensure_not_in_callback("blocking publish")
+            topic_bytes = _validated_c_string_value(topic, field="topic")
+            native_parts = self._native_parts_from_payload(payload)
+            part_count = len(native_parts)
+            for index, native in enumerate(native_parts):
+                rc = lib().zlink_publish_part(
+                    self._handle,
+                    topic_bytes,
+                    ctypes.byref(native),
+                    int(flags),
+                    _part_flag(index, part_count),
+                )
+                if rc != 0:
+                    err = lib().zlink_errno()
+                    _close_native_parts(native_parts, index)
+                    _raise_result_error(SubmitError, SubmitResult, rc, err)
+            return True
+        except SubmitError as ex:
+            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
 
 
 class _SubscriberSocket(_Socket):
@@ -1056,7 +1082,12 @@ class _SubscriberSocket(_Socket):
         return TopicMessage(topic, owner, routing)
 
     def subscribe(self, *, flags=0):
-        return self._subscribe_once(flags)
+        try:
+            return self._subscribe_once(flags)
+        except RecvError as ex:
+            if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
+                return None
+            raise
 
     def set_subscription(self, topic):
         topic_bytes = _validated_c_string_value(topic, field="subscription")

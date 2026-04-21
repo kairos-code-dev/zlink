@@ -186,12 +186,10 @@ final class PerfMultiSpotReqRep {
             }
             PerfUtil.await(go, "spot reqrep start", Duration.ofSeconds(10));
 
-            try (Message active = PerfUtil.payloadTemplate(config.size());
-                 Message cooldown = PerfUtil.payloadTemplate(config.size())) {
-                long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
-                while (System.nanoTime() < activeEnd) {
-                    PerfUtil.writePayload(active, config.size(),
-                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+            long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                try (Message active = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
                     sendWhenWritable(requester, requesterPollSet, active,
                         System.nanoTime() + Duration.ofSeconds(2).toNanos());
                     PerfUtil.Header reply = awaitReply(requester, requesterPollSet, config,
@@ -200,8 +198,9 @@ final class PerfMultiSpotReqRep {
                         metrics.recordNanos(reply.latencyNanos() / 2L);
                     }
                 }
-                PerfUtil.writePayload(cooldown, config.size(),
-                    (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+            }
+            try (Message cooldown = PerfUtil.payload(config.size(),
+                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
                 sendWhenWritable(requester, requesterPollSet, cooldown,
                     System.nanoTime() + Duration.ofSeconds(5).toNanos());
                 awaitReply(requester, requesterPollSet, config,
@@ -217,14 +216,9 @@ final class PerfMultiSpotReqRep {
                                          Message payload,
                                          long deadlineNs) {
         while (true) {
-            try {
-                requester.sendToSpot(SERVER_NODE_ID, SERVER_SPOT_ID, payload,
-                    SendFlags.DONT_WAIT);
+            if (requester.sendToSpot(SERVER_NODE_ID, SERVER_SPOT_ID, payload,
+                SendFlags.DONT_WAIT)) {
                 return;
-            } catch (SubmitException ex) {
-                if (ex.getResult() != SubmitResult.BACKPRESSURED) {
-                    throw ex;
-                }
             }
             long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
             if (remainingNs <= 0L) {
@@ -407,7 +401,7 @@ final class PerfMultiSpotReqRep {
     }
 
     private static String normalizeClientEndpoint(String endpoint, String transport) {
-        if (!"tls".equals(transport)) {
+        if (!"tls".equals(transport) && !"wss".equals(transport)) {
             return endpoint;
         }
         return endpoint.replace("://127.0.0.1:", "://localhost:");

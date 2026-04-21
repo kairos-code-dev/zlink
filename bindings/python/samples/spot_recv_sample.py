@@ -44,6 +44,8 @@ def main():
                                         ):
                                             raise
                                         return False
+                                    if received is None:
+                                        return False
                                     with received:
                                         if received.service_name != SERVICE_NAME:
                                             raise AssertionError(

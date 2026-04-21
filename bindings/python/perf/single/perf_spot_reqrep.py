@@ -7,6 +7,8 @@ import zlink
 from perf_common import (
     HEADER_MAGIC,
     benchmark_run_id,
+    configure_single_tls_client,
+    configure_single_tls_server,
     decode_header,
     extract_metric_payload,
     is_active_message,
@@ -56,6 +58,8 @@ def main(argv=None):
             with zlink.SpotNode(ctx) as replier_node:
                 with replier_node.create_spot() as replier:
                     endpoint = resolve_single_endpoint(args.transport, "spot-reqrep")
+                    configure_single_tls_server(replier_node, args.transport)
+                    configure_single_tls_client(requester, args.transport)
                     replier_node.bind(endpoint)
                     requester.connect(endpoint)
                     with zlink.Poller() as poller:

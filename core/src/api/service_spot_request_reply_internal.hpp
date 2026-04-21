@@ -11,11 +11,13 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 #include <stdint.h>
 #include <unordered_map>
 #include <vector>
 
 #include "api/internal_pair_queue_internal.hpp"
+#include "api/request_completion_queue_internal.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
 
 namespace zlink
@@ -120,6 +122,7 @@ struct spot_request_reply_state_t
       pending_replies;
     spot_subscribe_dispatch_queue_t subscribe_queue;
     zlink::internal_pair_queue::queue_t recv_queue;
+    zlink::request_completion::queue_state_t completion;
     zlink_spot_handler_fn request_handler;
     void *request_handler_userdata;
     spot_dispatch_state_t dispatch;
@@ -136,6 +139,7 @@ struct router_spot_request_reply_state_t
     uint64_t next_request_seq;
     std::set<uint64_t> pending_sequences;
     std::unordered_map<uint64_t, pending_reply_t> pending_replies;
+    zlink::request_completion::queue_state_t completion;
 };
 
 typedef std::unordered_map<std::string, std::weak_ptr<spot_request_reply_state_t> >
@@ -253,6 +257,53 @@ std::shared_ptr<router_spot_request_reply_state_t> find_router_state_by_rid (
 zlink::spot_runtime_t *resolve_runtime_for_spot_destination (
   const std::string &node_rid_,
   const std::string &spot_rid_);
+int ensure_spot_completion_queue_ready (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+int ensure_router_completion_queue_ready (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+int queue_spot_reply_completion (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int errnum_,
+  zlink_msg_t *parts_,
+  size_t part_count_);
+int queue_router_reply_completion (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int errnum_,
+  zlink_msg_t *parts_,
+  size_t part_count_);
+int drain_spot_reply_completions (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_);
+int drain_router_reply_completions (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_,
+  void *owner_handle_);
+bool has_spot_reply_completions (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+bool has_router_reply_completions (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+zlink::socket_base_t *spot_completion_signal_socket (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+zlink::socket_base_t *router_completion_signal_socket (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+void claim_spot_completion_owner (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+void claim_router_completion_owner (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+bool current_thread_is_spot_completion_owner (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+bool current_thread_is_router_completion_owner (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+bool in_spot_request_completion_callback (void *spot_);
+bool has_pending_spot_request_work (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+bool has_pending_router_spot_request_work (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+int drain_close_spot_request_reply_state (void *spot_);
+int drain_close_router_spot_request_reply_state (void *router_);
 void bind_router_state_rid (
   void *router_,
   const std::string &router_rid_,

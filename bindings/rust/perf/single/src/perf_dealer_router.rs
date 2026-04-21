@@ -75,17 +75,7 @@ fn main() {
         .expect("dealer handshake send");
     let handshake = match router.recv() {
         Ok(received) => received,
-        Err(err) => {
-            if common::handle_local_route_handshake_error(
-                "DEALER_ROUTER",
-                &config.transport,
-                "handshake_recv",
-                err,
-            ) {
-                return;
-            }
-            panic!("router handshake recv: {err}");
-        }
+        Err(err) => panic!("router handshake recv: {err}"),
     };
     let reply_rid = handshake
         .routing_id()
@@ -100,17 +90,7 @@ fn main() {
         .expect("router handshake reply");
     let handshake_reply = match dealer.recv() {
         Ok(received) => received,
-        Err(err) => {
-            if common::handle_local_route_handshake_error(
-                "DEALER_ROUTER",
-                &config.transport,
-                "handshake_reply_recv",
-                err,
-            ) {
-                return;
-            }
-            panic!("dealer handshake recv: {err}");
-        }
+        Err(err) => panic!("dealer handshake recv: {err}"),
     };
     assert_eq!(handshake_reply.parts()[0].as_bytes(), b"PONG");
 

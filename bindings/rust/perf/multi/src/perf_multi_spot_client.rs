@@ -40,7 +40,6 @@ fn tcp_addr(endpoint: &str) -> String {
 
 enum ClientEvent {
     ReadySender(TcpStream),
-    RunnerConnected,
     RunnerStart,
     Started,
     Stop,
@@ -56,6 +55,7 @@ fn main() {
 
     let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
     let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
     let active_collect = Arc::new(AtomicBool::new(false));
     let latency = Arc::new(Mutex::new(common::LatencyStats::new()));
     let (event_tx, event_rx) = mpsc::channel::<ClientEvent>();
@@ -66,9 +66,12 @@ fn main() {
 
     {
         let event_tx = event_tx.clone();
+        let client_control_endpoint = client_control_endpoint.clone();
         thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept server control");
             stream.set_nodelay(true).ok();
+            println!("CONTROL_CONNECTED,{client_control_endpoint}");
+            io::stdout().flush().ok();
             let _ = event_tx.send(ClientEvent::ReadySender(stream));
         });
     }
@@ -80,9 +83,7 @@ fn main() {
             for line in stdin.lock().lines() {
                 let line = line.unwrap_or_default();
                 let text = line.trim();
-                if text.starts_with("CONTROL_CONNECTED,") {
-                    let _ = event_tx.send(ClientEvent::RunnerConnected);
-                } else if text == format!("START,{}", args.msg_size) {
+                if text == format!("START,{}", args.msg_size) {
                     let _ = event_tx.send(ClientEvent::RunnerStart);
                 } else if matches!(text, "STOP" | "QUIT") {
                     let _ = event_tx.send(ClientEvent::Stop);
@@ -155,23 +156,21 @@ fn main() {
     }
 
     let mut ready_sender = None::<TcpStream>;
-    let mut runner_connected = false;
-    let ready_deadline = Instant::now() + Duration::from_secs(15);
+    let ready_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
     while Instant::now() < ready_deadline {
         let remaining = ready_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {
             Ok(ClientEvent::ReadySender(stream)) => ready_sender = Some(stream),
-            Ok(ClientEvent::RunnerConnected) => runner_connected = true,
             Ok(ClientEvent::Stop) => return,
             Ok(ClientEvent::RunnerStart | ClientEvent::Started) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => break,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        if runner_connected && ready_sender.is_some() {
+        if ready_sender.is_some() {
             break;
         }
     }
-    if !runner_connected || ready_sender.is_none() {
+    if ready_sender.is_none() {
         panic!("spot client control connection timeout");
     }
 
@@ -191,14 +190,14 @@ fn main() {
 
     let mut runner_start = false;
     let mut started = false;
-    let start_deadline = Instant::now() + Duration::from_secs(15);
+    let start_deadline = Instant::now() + ready_timeout;
     while Instant::now() < start_deadline {
         let remaining = start_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {
             Ok(ClientEvent::RunnerStart) => runner_start = true,
             Ok(ClientEvent::Started) => started = true,
             Ok(ClientEvent::Stop) => return,
-            Ok(ClientEvent::ReadySender(_) | ClientEvent::RunnerConnected) => {}
+            Ok(ClientEvent::ReadySender(_)) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => break,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }

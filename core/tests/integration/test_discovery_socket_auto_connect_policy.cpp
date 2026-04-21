@@ -3,6 +3,7 @@
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
 
+#include <chrono>
 #include <string.h>
 #include <unity.h>
 
@@ -16,6 +17,17 @@ void tearDown ()
 
 namespace
 {
+int discovery_test_port (int base_)
+{
+    static const int run_offset = [] () {
+        const uint64_t ticks = static_cast<uint64_t> (
+          std::chrono::steady_clock::now ().time_since_epoch ().count ());
+        return static_cast<int> ((ticks % 2000u) * 10u);
+    }();
+
+    return test_port (base_ + run_offset);
+}
+
 bool connect_discovery_registry_with_retry_local (void *discovery_,
                                                   const char *endpoint_,
                                                   int timeout_ms_)
@@ -93,13 +105,13 @@ void test_socket_discovery_default_dealer_mode_targets_router ()
     char router_endpoint[MAX_SOCKET_STRING];
     char dealer_endpoint[MAX_SOCKET_STRING];
     snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5960));
+              discovery_test_port (5960));
     snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5961));
+              discovery_test_port (5961));
     snprintf (router_endpoint, sizeof (router_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5962));
+              discovery_test_port (5962));
     snprintf (dealer_endpoint, sizeof (dealer_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5963));
+              discovery_test_port (5963));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_bind (registry, registry_pub, registry_router));
@@ -180,13 +192,13 @@ void test_socket_discovery_default_dealer_mode_ignores_dealer_peers ()
     char dealer_a_endpoint[MAX_SOCKET_STRING];
     char dealer_b_endpoint[MAX_SOCKET_STRING];
     snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5970));
+              discovery_test_port (5970));
     snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5971));
+              discovery_test_port (5971));
     snprintf (dealer_a_endpoint, sizeof (dealer_a_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5972));
+              discovery_test_port (5972));
     snprintf (dealer_b_endpoint, sizeof (dealer_b_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5973));
+              discovery_test_port (5973));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_bind (registry, registry_pub, registry_router));
@@ -267,13 +279,13 @@ void test_socket_discovery_explicit_dealer_mode_targets_dealer ()
     char dealer_a_endpoint[MAX_SOCKET_STRING];
     char dealer_b_endpoint[MAX_SOCKET_STRING];
     snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5980));
+              discovery_test_port (5980));
     snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5981));
+              discovery_test_port (5981));
     snprintf (dealer_a_endpoint, sizeof (dealer_a_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5982));
+              discovery_test_port (5982));
     snprintf (dealer_b_endpoint, sizeof (dealer_b_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5983));
+              discovery_test_port (5983));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_bind (registry, registry_pub, registry_router));
@@ -360,13 +372,13 @@ void test_socket_discovery_router_router_uses_single_initiator ()
     char router_a_endpoint[MAX_SOCKET_STRING];
     char router_b_endpoint[MAX_SOCKET_STRING];
     snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5984));
+              discovery_test_port (5984));
     snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5985));
+              discovery_test_port (5985));
     snprintf (router_a_endpoint, sizeof (router_a_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5986));
+              discovery_test_port (5986));
     snprintf (router_b_endpoint, sizeof (router_b_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5987));
+              discovery_test_port (5987));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_bind (registry, registry_pub, registry_router));

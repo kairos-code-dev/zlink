@@ -62,14 +62,10 @@ case "$(uname -m)" in
 esac
 
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
+  BUILD_DIR="${ROOT_DIR}/bindings/c/build/windows-x64"
   DEFAULT_TRANSPORTS="tcp,inproc"
 else
-  if [[ -d "${ROOT_DIR}/core/build/bin" ]]; then
-    BUILD_DIR="${ROOT_DIR}/core/build"
-  else
-    BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
-  fi
+  BUILD_DIR="${ROOT_DIR}/bindings/c/build"
   DEFAULT_TRANSPORTS="tcp,ipc,inproc"
 fi
 
@@ -117,7 +113,7 @@ Run SINGLE benchmark comparisons (libzmq vs zlink).
 Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
-  --build-dir PATH            Build directory (default: core/build/<platform>-<arch>).
+  --build-dir PATH            Build directory (default: bindings/c/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
   --output PATH               Tee console logs to a file.
@@ -507,7 +503,7 @@ case "${BUILD_MODE}" in
     ;;
 esac
 
-CMAKE_SOURCE_DIR="${ROOT_DIR}"
+CMAKE_SOURCE_DIR="${ROOT_DIR}/bindings/c"
 if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
   CACHE_CMAKE_SOURCE="$(
     sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
@@ -530,27 +526,23 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -G "${CMAKE_GENERATOR}" \
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_BENCH_ZMQ=ON \
+      -DZLINK_C_BUILD_BENCHES=ON \
+      -DZLINK_C_BUILD_BENCH_ZMQ=ON \
       -DZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES=ON \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_C_BUILD_BENCH_STREAMCOMPARE=OFF \
+      -DZLINK_C_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
       -DZLINK_CXX_STANDARD=17
     cmake --build "${BUILD_DIR}" --config Release --target "${SELECTED_BUILD_TARGETS[@]}"
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_BENCH_ZMQ=ON \
+      -DZLINK_C_BUILD_BENCHES=ON \
+      -DZLINK_C_BUILD_BENCH_ZMQ=ON \
       -DZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES=ON \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_C_BUILD_BENCH_STREAMCOMPARE=OFF \
+      -DZLINK_C_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
       -DZLINK_CXX_STANDARD=17
     cmake --build "${BUILD_DIR}" --target "${SELECTED_BUILD_TARGETS[@]}"
   fi

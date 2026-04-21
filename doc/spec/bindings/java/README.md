@@ -122,17 +122,20 @@ AdmissionState getAdmissionState();                              // @throws Conf
 void setAdmissionState(AdmissionState state);                    // @throws ConfigException
 
 // Available on message-capable sockets
-boolean trySend(Message part);
-boolean trySend(List<Message> parts);
-Received tryRecv();
+boolean send(Message part, SendFlags flags);                            // @throws SubmitException
+boolean send(List<Message> parts, SendFlags flags);                     // @throws SubmitException
+@Nullable Received recv(RecvFlags flags);                               // @throws RecvException
 
 // Available on routed message sockets
-boolean trySend(RoutingId rid, Message part);
-boolean trySend(RoutingId rid, List<Message> parts);
+boolean send(RoutingId rid, Message part, SendFlags flags);             // @throws SubmitException
+boolean send(RoutingId rid, List<Message> parts, SendFlags flags);      // @throws SubmitException
 ```
 
-`trySend(...)` returns `false` only for temporary backpressure. Route-not-ready
-and other submit failures still raise `SubmitException`.
+`send(...)` and `publish(...)` return `false` only for temporary backpressure
+when `SendFlags.DONTWAIT` is used. Blocking submit returns `true` on success.
+Route-not-ready and other submit failures still raise `SubmitException`.
+`recv(...)` and `subscribe(...)` return `null` when `RecvFlags.DONTWAIT`
+finds no message and still raise `RecvException` for real recv failures.
 
 ### PairSocket
 
@@ -147,16 +150,13 @@ public final class PairSocket extends Socket {
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
 
-    void send(Message part);                                         // @throws SubmitException
-    void send(Message part, SendFlags flags);                        // @throws SubmitException
-    void send(List<Message> parts);                                  // @throws SubmitException
-    void send(List<Message> parts, SendFlags flags);                 // @throws SubmitException
-    boolean trySend(Message part);
-    boolean trySend(List<Message> parts);
+    boolean send(Message part);                                      // @throws SubmitException
+    boolean send(Message part, SendFlags flags);                     // @throws SubmitException
+    boolean send(List<Message> parts);                               // @throws SubmitException
+    boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
 
     Received recv();                                                 // @throws RecvException
-    Received recv(RecvFlags flags);                                  // @throws RecvException
-    Received tryRecv();
+    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 }
 ```
@@ -175,10 +175,10 @@ public final class PubSocket extends Socket {
     void disconnect(String endpoint);                                // @throws ConnectException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
-    void publish(String topicId, Message part);                      // @throws SubmitException
-    void publish(String topicId, Message part, SendFlags flags);     // @throws SubmitException
-    void publish(String topicId, List<Message> parts);               // @throws SubmitException
-    void publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    boolean publish(String topicId, Message part);                   // @throws SubmitException
+    boolean publish(String topicId, Message part, SendFlags flags);  // @throws SubmitException
+    boolean publish(String topicId, List<Message> parts);            // @throws SubmitException
+    boolean publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     PubSocketOptions options();
@@ -202,7 +202,7 @@ public final class SubSocket extends Socket {
     void setSubscription(String filter);                             // @throws ConfigException
     void unsetSubscription(String filter);                           // @throws ConfigException
     TopicMessage subscribe();                                        // @throws RecvException
-    TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
+    @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
 
     SubSocketOptions options();
 }
@@ -225,16 +225,13 @@ public final class DealerSocket extends Socket {
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    void send(Message part);                                         // @throws SubmitException
-    void send(Message part, SendFlags flags);                        // @throws SubmitException
-    void send(List<Message> parts);                                  // @throws SubmitException
-    void send(List<Message> parts, SendFlags flags);                 // @throws SubmitException
-    boolean trySend(Message part);
-    boolean trySend(List<Message> parts);
+    boolean send(Message part);                                      // @throws SubmitException
+    boolean send(Message part, SendFlags flags);                     // @throws SubmitException
+    boolean send(List<Message> parts);                               // @throws SubmitException
+    boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
 
     Received recv();                                                 // @throws RecvException
-    Received recv(RecvFlags flags);                                  // @throws RecvException
-    Received tryRecv();
+    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request (async, no flags) ---
@@ -243,29 +240,31 @@ public final class DealerSocket extends Socket {
     CompletableFuture<List<Message>> request(List<Message> parts);                    // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<List<Message>> request(List<Message> parts, Duration timeout);  // @throws SubmitException; future completes with RequestException on failure
 
-    // --- request (callback, blocking submit) ---
-    void request(Message part,
-                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void request(Message part,
-                 BiConsumer<RequestResult, List<Message>> callback,
-                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
-    void request(List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void request(List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback,
-                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
-
-    // --- request (callback, nonblocking submit) ---
-    boolean tryRequest(Message part,
-                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequest(Message part,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequest(List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequest(List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
+    // --- request (callback submit) ---
+    boolean request(Message part,
+                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+    boolean request(Message part,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
+    boolean request(Message part,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
+    boolean request(Message part,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags,
+                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
+    boolean request(List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+    boolean request(List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
+    boolean request(List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
+    boolean request(List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags,
+                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
 
     DealerSocketOptions options();
 }
@@ -288,16 +287,13 @@ public final class RouterSocket extends Socket {
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    void send(RoutingId rid, Message part);                          // @throws SubmitException
-    void send(RoutingId rid, Message part, SendFlags flags);         // @throws SubmitException
-    void send(RoutingId rid, List<Message> parts);                   // @throws SubmitException
-    void send(RoutingId rid, List<Message> parts, SendFlags flags);  // @throws SubmitException
-    boolean trySend(RoutingId rid, Message part);
-    boolean trySend(RoutingId rid, List<Message> parts);
+    boolean send(RoutingId rid, Message part);                       // @throws SubmitException
+    boolean send(RoutingId rid, Message part, SendFlags flags);      // @throws SubmitException
+    boolean send(RoutingId rid, List<Message> parts);                // @throws SubmitException
+    boolean send(RoutingId rid, List<Message> parts, SendFlags flags); // @throws SubmitException
 
     Received recv();                                                 // @throws RecvException
-    Received recv(RecvFlags flags);                                  // @throws RecvException
-    Received tryRecv();
+    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request to a specific peer (async, no flags) ---
@@ -306,29 +302,31 @@ public final class RouterSocket extends Socket {
     CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts);                   // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
 
-    // --- request to a specific peer (callback, blocking submit) ---
-    void request(RoutingId rid, Message part,
-                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId rid, Message part,
-                 BiConsumer<RequestResult, List<Message>> callback,
-                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId rid, List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback);                    // @throws SubmitException; callback receives RequestResult
-    void request(RoutingId rid, List<Message> parts,
-                 BiConsumer<RequestResult, List<Message>> callback,
-                 Duration timeout);                                                     // @throws SubmitException; callback receives RequestResult
-
-    // --- request to a specific peer (callback, nonblocking submit) ---
-    boolean tryRequest(RoutingId rid, Message part,
-                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequest(RoutingId rid, Message part,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequest(RoutingId rid, List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback);              // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequest(RoutingId rid, List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       Duration timeout);                                               // @throws SubmitException; false only on temporary backpressure
+    // --- request to a specific peer (callback submit) ---
+    boolean request(RoutingId rid, Message part,
+                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+    boolean request(RoutingId rid, Message part,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
+    boolean request(RoutingId rid, Message part,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
+    boolean request(RoutingId rid, Message part,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags,
+                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
+    boolean request(RoutingId rid, List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+    boolean request(RoutingId rid, List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
+    boolean request(RoutingId rid, List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
+    boolean request(RoutingId rid, List<Message> parts,
+                    BiConsumer<RequestResult, List<Message>> callback,
+                    SendFlags flags,
+                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
 
     // --- reply to a received request ---
     void reply(RoutingId rid, long requestSeq, Message message);                        // @throws SubmitException
@@ -337,12 +335,12 @@ public final class RouterSocket extends Socket {
     void reply(RoutingId rid, long requestSeq, List<Message> parts, SendFlags flags);   // @throws SubmitException
 
     // --- router -> spot routed send ---
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);         // @throws SubmitException
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
-                    SendFlags flags);                                                    // @throws SubmitException
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts);  // @throws SubmitException
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
-                    SendFlags flags);                                                    // @throws SubmitException
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);      // @throws SubmitException
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
+                       SendFlags flags);                                                 // @throws SubmitException
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts); // @throws SubmitException
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
+                       SendFlags flags);                                                 // @throws SubmitException
 
     // --- router -> spot routed request (async, no flags) ---
     CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
@@ -358,35 +356,39 @@ public final class RouterSocket extends Socket {
                                               RoutingId destSpotRid,
                                               List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
 
-    // --- router -> spot routed request (callback, blocking submit) ---
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message part,
-                       BiConsumer<RequestResult, List<Message>> callback);               // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message part,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       Duration timeout);                                                // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback);               // @throws SubmitException; callback receives RequestResult
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts,
-                       BiConsumer<RequestResult, List<Message>> callback,
-                       Duration timeout);                                                // @throws SubmitException; callback receives RequestResult
-    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                             Message part,
-                             BiConsumer<RequestResult, List<Message>> callback);         // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                             Message part,
-                             BiConsumer<RequestResult, List<Message>> callback,
-                             Duration timeout);                                          // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                             List<Message> parts,
-                             BiConsumer<RequestResult, List<Message>> callback);         // @throws SubmitException; false only on temporary backpressure
-    boolean tryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                             List<Message> parts,
-                             BiConsumer<RequestResult, List<Message>> callback,
-                             Duration timeout);                                          // @throws SubmitException; false only on temporary backpressure
+    // --- router -> spot routed request (callback submit) ---
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          Message part,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags,
+                          Duration timeout);                                             // @throws SubmitException; false only on temporary backpressure
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags,
+                          Duration timeout);                                             // @throws SubmitException; false only on temporary backpressure
 
     // --- router -> spot routed reply ---
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -415,10 +417,10 @@ public final class XPubSocket extends Socket {
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
 
-    void publish(String topicId, Message part);                      // @throws SubmitException
-    void publish(String topicId, Message part, SendFlags flags);     // @throws SubmitException
-    void publish(String topicId, List<Message> parts);               // @throws SubmitException
-    void publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    boolean publish(String topicId, Message part);                   // @throws SubmitException
+    boolean publish(String topicId, Message part, SendFlags flags);  // @throws SubmitException
+    boolean publish(String topicId, List<Message> parts);            // @throws SubmitException
+    boolean publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
 
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
@@ -444,7 +446,7 @@ public final class XSubSocket extends Socket {
     void setSubscription(String filter);                             // @throws ConfigException
     void unsetSubscription(String filter);                           // @throws ConfigException
     TopicMessage subscribe();                                        // @throws RecvException
-    TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
+    @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
 
     SubSocketOptions options();
 }
@@ -461,19 +463,15 @@ public final class StreamSocket extends Socket {
     void bind(String endpoint);                                      // @throws BindException
     void unbind(String endpoint);                                    // @throws ConnectException
 
-    void send(int rid, Message part);                                // @throws SubmitException
-    void send(int rid, Message part, SendFlags flags);               // @throws SubmitException
-    void send(RoutingId rid, Message part);                          // @throws SubmitException
-    void send(RoutingId rid, Message part, SendFlags flags);         // @throws SubmitException
-    void send(RoutingId rid, List<Message> parts);                   // @throws SubmitException
-    void send(RoutingId rid, List<Message> parts, SendFlags flags);  // @throws SubmitException
-    boolean trySend(int rid, Message part);
-    boolean trySend(RoutingId rid, Message part);
-    boolean trySend(RoutingId rid, List<Message> parts);
+    boolean send(int rid, Message part);                             // @throws SubmitException
+    boolean send(int rid, Message part, SendFlags flags);            // @throws SubmitException
+    boolean send(RoutingId rid, Message part);                       // @throws SubmitException
+    boolean send(RoutingId rid, Message part, SendFlags flags);      // @throws SubmitException
+    boolean send(RoutingId rid, List<Message> parts);                // @throws SubmitException
+    boolean send(RoutingId rid, List<Message> parts, SendFlags flags); // @throws SubmitException
 
     Received recv();                                                 // @throws RecvException
-    Received recv(RecvFlags flags);                                  // @throws RecvException
-    Received tryRecv();
+    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // Two mutually-exclusive receive modes on the same StreamSocket:
@@ -1287,23 +1285,47 @@ public final class Spot implements AutoCloseable {
     RoutingId routingId();                                           // @throws ConfigException
 
     // --- channel-aware publish / request ---
-    void publish(String serviceName, String topicId, Message part);                      // @throws SubmitException
-    void publish(String serviceName, String topicId, Message part, SendFlags flags);     // @throws SubmitException
-    void publish(String serviceName, String topicId, List<Message> parts);               // @throws SubmitException
-    void publish(String serviceName, String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
-    void sendChannel(String channelName, Message part);                                  // @throws SubmitException
-    void sendChannel(String channelName, Message part, SendFlags flags);                 // @throws SubmitException
-    void sendChannel(String channelName, List<Message> parts);                           // @throws SubmitException
-    void sendChannel(String channelName, List<Message> parts, SendFlags flags);          // @throws SubmitException
+    boolean publish(String serviceName, String topicId, Message part);                   // @throws SubmitException
+    boolean publish(String serviceName, String topicId, Message part, SendFlags flags);  // @throws SubmitException
+    boolean publish(String serviceName, String topicId, List<Message> parts);            // @throws SubmitException
+    boolean publish(String serviceName, String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    boolean sendChannel(String channelName, Message part);                               // @throws SubmitException
+    boolean sendChannel(String channelName, Message part, SendFlags flags);              // @throws SubmitException
+    boolean sendChannel(String channelName, List<Message> parts);                        // @throws SubmitException
+    boolean sendChannel(String channelName, List<Message> parts, SendFlags flags);       // @throws SubmitException
     CompletableFuture<List<Message>> requestChannel(String channelName, Message part);   // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<List<Message>> requestChannel(String channelName, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
+    boolean requestChannel(String channelName, Message part,
+                           BiConsumer<RequestResult, List<Message>> callback);           // @throws SubmitException; callback receives RequestResult
+    boolean requestChannel(String channelName, Message part,
+                           BiConsumer<RequestResult, List<Message>> callback,
+                           Duration timeout);                                            // @throws SubmitException; callback receives RequestResult
+    boolean requestChannel(String channelName, Message part,
+                           BiConsumer<RequestResult, List<Message>> callback,
+                           SendFlags flags);                                             // @throws SubmitException; false only on temporary backpressure
+    boolean requestChannel(String channelName, Message part,
+                           BiConsumer<RequestResult, List<Message>> callback,
+                           SendFlags flags,
+                           Duration timeout);                                            // @throws SubmitException; false only on temporary backpressure
+    boolean requestChannel(String channelName, List<Message> parts,
+                           BiConsumer<RequestResult, List<Message>> callback);           // @throws SubmitException; callback receives RequestResult
+    boolean requestChannel(String channelName, List<Message> parts,
+                           BiConsumer<RequestResult, List<Message>> callback,
+                           Duration timeout);                                            // @throws SubmitException; callback receives RequestResult
+    boolean requestChannel(String channelName, List<Message> parts,
+                           BiConsumer<RequestResult, List<Message>> callback,
+                           SendFlags flags);                                             // @throws SubmitException; false only on temporary backpressure
+    boolean requestChannel(String channelName, List<Message> parts,
+                           BiConsumer<RequestResult, List<Message>> callback,
+                           SendFlags flags,
+                           Duration timeout);                                            // @throws SubmitException; false only on temporary backpressure
 
     // --- subscribe ---
     void setSubscription(String topicId);                            // @throws ConfigException
     void unsetSubscription(String topicIdOrPattern);                 // @throws ConfigException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
     TopicMessage subscribe();                                        // @throws RecvException
-    TopicMessage subscribe(RecvFlags flags);                         // @throws RecvException
+    @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
 

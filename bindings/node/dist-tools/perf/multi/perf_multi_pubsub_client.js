@@ -11,6 +11,7 @@ async function main() {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
     const subs = [];
+    let rl = null;
     let collector = null;
     let stop = false;
     try {
@@ -28,7 +29,7 @@ async function main() {
             collector.record(decodeMetricHeader(received.parts[0].data()), currentEpochNs());
         }, () => stop));
         console.log(`CLIENT_READY,${options.msgSize}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+        rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
             if (line === `PHASE_ACTIVE,${options.msgSize}`) {
                 const activeStartNs = currentEpochNs();
@@ -44,6 +45,13 @@ async function main() {
                     await sleepImmediate();
                 }
                 stop = true;
+                for (const sub of subs) {
+                    try {
+                        sub.close();
+                    }
+                    catch {
+                    }
+                }
                 break;
             }
         }
@@ -54,6 +62,7 @@ async function main() {
         }
     }
     finally {
+        rl?.close();
         for (const sub of subs) {
             sub.close();
         }

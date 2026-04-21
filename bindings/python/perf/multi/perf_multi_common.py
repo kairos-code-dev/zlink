@@ -13,6 +13,8 @@ from perf_metrics import (
     HEADER_SIZE,
     benchmark_run_id,
     build_report_path,
+    configure_tls_client,
+    configure_tls_server,
     decode_header,
     extract_metric_payload,
     latency_ns_from_message,
@@ -125,6 +127,14 @@ def resolve_multi_timeout_seconds(duration_seconds, pattern, transport, msg_size
     return max(45, int(duration * 3.0) + 20)
 
 
+def configure_multi_tls_server(target, transport):
+    configure_tls_server(target, transport)
+
+
+def configure_multi_tls_client(target, transport):
+    configure_tls_client(target, transport)
+
+
 def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
     send_hwm = resolve_multi_send_hwm()
     recv_hwm = resolve_multi_recv_hwm()
@@ -158,16 +168,13 @@ def send_nonblocking(sock, payload, *, method="send", routing_id=None):
     send_method = getattr(sock, method)
     try:
         if routing_id is None:
-            send_method(payload, flags=zlink_mod.SendFlags.DONT_WAIT)
+            return bool(send_method(payload, flags=zlink_mod.SendFlags.DONT_WAIT))
         else:
-            send_method(routing_id, payload, flags=zlink_mod.SendFlags.DONT_WAIT)
-        return True
+            return bool(
+                send_method(routing_id, payload, flags=zlink_mod.SendFlags.DONT_WAIT)
+            )
     except zlink_mod.SubmitError as exc:
-        if exc.result in (
-            zlink_mod.SubmitResult.BACKPRESSURED,
-            zlink_mod.SubmitResult.NOT_CONNECTED,
-            zlink_mod.SubmitResult.NOT_ADMITTED,
-        ):
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False
         raise
 
@@ -175,19 +182,14 @@ def send_nonblocking(sock, payload, *, method="send", routing_id=None):
 def send_to_spot_nonblocking(sock, dest_node_rid, dest_spot_rid, payload):
     zlink_mod = _require_zlink()
     try:
-        sock.send_to_spot(
+        return bool(sock.send_to_spot(
             dest_node_rid,
             dest_spot_rid,
             payload,
             flags=zlink_mod.SendFlags.DONT_WAIT,
-        )
-        return True
+        ))
     except zlink_mod.SubmitError as exc:
-        if exc.result in (
-            zlink_mod.SubmitResult.BACKPRESSURED,
-            zlink_mod.SubmitResult.NOT_CONNECTED,
-            zlink_mod.SubmitResult.NOT_ADMITTED,
-        ):
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False
         raise
 
@@ -195,14 +197,9 @@ def send_to_spot_nonblocking(sock, dest_node_rid, dest_spot_rid, payload):
 def publish_nonblocking(sock, topic, payload):
     zlink_mod = _require_zlink()
     try:
-        sock.publish(topic, payload, flags=zlink_mod.SendFlags.DONT_WAIT)
-        return True
+        return bool(sock.publish(topic, payload, flags=zlink_mod.SendFlags.DONT_WAIT))
     except zlink_mod.SubmitError as exc:
-        if exc.result in (
-            zlink_mod.SubmitResult.BACKPRESSURED,
-            zlink_mod.SubmitResult.NOT_CONNECTED,
-            zlink_mod.SubmitResult.NOT_ADMITTED,
-        ):
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False
         raise
 
@@ -210,19 +207,14 @@ def publish_nonblocking(sock, topic, payload):
 def spot_publish_nonblocking(spot, service_name, topic, payload):
     zlink_mod = _require_zlink()
     try:
-        spot.publish(
+        return bool(spot.publish(
             service_name,
             topic,
             payload,
             flags=zlink_mod.SendFlags.DONT_WAIT,
-        )
-        return True
+        ))
     except zlink_mod.SubmitError as exc:
-        if exc.result in (
-            zlink_mod.SubmitResult.BACKPRESSURED,
-            zlink_mod.SubmitResult.NOT_CONNECTED,
-            zlink_mod.SubmitResult.NOT_ADMITTED,
-        ):
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False
         raise
 

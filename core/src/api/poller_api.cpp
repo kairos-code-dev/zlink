@@ -8,10 +8,101 @@
 #include "api/close_result_internal.hpp"
 #include "api/config_result_internal.hpp"
 #include "api/poller_api_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
+#include "api/socket_request_reply_internal.hpp"
 #include "api/timer_api_internal.hpp"
+#include "utils/clock.hpp"
 
 namespace
 {
+const poller_registration_t *find_registration_for_native (
+  poller_handle_t *poller_,
+  const zlink::socket_poller_t::event_t &native_)
+{
+    if (!poller_)
+        return NULL;
+    for (size_t i = 0; i < poller_->registrations.size (); ++i) {
+        const poller_registration_t &registration = poller_->registrations[i];
+        if (registration.socket && registration.socket == native_.socket)
+            return &registration;
+        if (!registration.socket && registration.fd == native_.fd)
+            return &registration;
+    }
+    return NULL;
+}
+
+bool is_hidden_completion_registration (const poller_registration_t *registration_)
+{
+    if (!registration_)
+        return false;
+    return registration_->subject_kind == poller_subject_socket_request_completion
+           || registration_->subject_kind
+                == poller_subject_router_spot_request_completion
+           || registration_->subject_kind == poller_subject_spot_request_completion;
+}
+
+int drain_hidden_completion_registration (
+  const poller_registration_t *registration_)
+{
+    if (!registration_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    switch (registration_->subject_kind) {
+        case poller_subject_socket_request_completion: {
+            socket_handle_t handle = as_socket_handle (registration_->subject);
+            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+              state =
+                zlink::socket_reqrep_internal::find_request_reply_state (handle);
+            return state
+                     ? zlink::socket_reqrep_internal::drain_reply_completions (
+                         state, registration_->subject)
+                     : 0;
+        }
+        case poller_subject_router_spot_request_completion: {
+            socket_handle_t handle = as_socket_handle (registration_->subject);
+            if (!handle.socket)
+                return -1;
+            std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+              state =
+                std::static_pointer_cast<
+                  zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
+                  handle.socket->router_spot_request_reply_state ());
+            return state
+                     ? zlink::spot_reqrep_internal::drain_router_reply_completions (
+                         state, registration_->subject)
+                     : 0;
+        }
+        case poller_subject_spot_request_completion: {
+            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+              state =
+                zlink::spot_reqrep_internal::try_find_spot_state (
+                  registration_->subject);
+            return state
+                     ? zlink::spot_reqrep_internal::drain_spot_reply_completions (
+                         state, registration_->subject)
+                     : 0;
+        }
+        default:
+            return 0;
+    }
+}
+
+long remaining_timeout_ms (long timeout_ms_,
+                           zlink::clock_t &clock_,
+                           uint64_t deadline_ms_)
+{
+    if (timeout_ms_ < 0)
+        return -1;
+    if (timeout_ms_ == 0)
+        return 0;
+    const uint64_t now_ms = clock_.now_ms ();
+    if (now_ms >= deadline_ms_)
+        return 0;
+    return static_cast<long> (deadline_ms_ - now_ms);
+}
+
 int fill_public_poller_event (poller_handle_t *poller_,
                               const zlink::socket_poller_t::event_t &native_,
                               zlink_poller_event_t *event_out_)
@@ -423,26 +514,50 @@ int zlink_poller_wait (void *poller_,
                                   : ZLINK_CONFIG_INVALID_ARGUMENT;
         return -1;
     }
-    zlink::socket_poller_t::event_t native_event;
-    const int rc = poller->poller.wait (&native_event, 1, timeout_);
-    if (rc < 0) {
-        if (error_out_)
-            *error_out_ = zlink::config_result_internal::from_errno (errno);
-        return rc;
-    }
-    if (rc == 0) {
+    zlink::clock_t clock;
+    const uint64_t deadline_ms =
+      timeout_ > 0 ? clock.now_ms () + static_cast<uint64_t> (timeout_) : 0;
+    while (true) {
+        zlink::socket_poller_t::event_t native_event;
+        const int rc = poller->poller.wait (
+          &native_event, 1, remaining_timeout_ms (timeout_, clock, deadline_ms));
+        if (rc < 0) {
+            if (errno == EAGAIN) {
+                if (error_out_)
+                    *error_out_ = ZLINK_CONFIG_OK;
+                return 0;
+            }
+            if (error_out_)
+                *error_out_ = zlink::config_result_internal::from_errno (errno);
+            return rc;
+        }
+        if (rc == 0) {
+            if (error_out_)
+                *error_out_ = ZLINK_CONFIG_OK;
+            return 0;
+        }
+
+        const poller_registration_t *registration =
+          find_registration_for_native (poller, native_event);
+        if (is_hidden_completion_registration (registration)) {
+            if (drain_hidden_completion_registration (registration) < 0) {
+                if (error_out_)
+                    *error_out_ =
+                      zlink::config_result_internal::from_errno (errno);
+                return -1;
+            }
+            continue;
+        }
+
+        if (fill_public_poller_event (poller, native_event, event_) != 0) {
+            if (error_out_)
+                *error_out_ = zlink::config_result_internal::from_errno (errno);
+            return -1;
+        }
         if (error_out_)
             *error_out_ = ZLINK_CONFIG_OK;
-        return 0;
+        return rc;
     }
-    if (fill_public_poller_event (poller, native_event, event_) != 0) {
-        if (error_out_)
-            *error_out_ = zlink::config_result_internal::from_errno (errno);
-        return -1;
-    }
-    if (error_out_)
-        *error_out_ = ZLINK_CONFIG_OK;
-    return rc;
 }
 
 int zlink_poller_wait_all (void *poller_,
@@ -463,29 +578,59 @@ int zlink_poller_wait_all (void *poller_,
             *error_out_ = ZLINK_CONFIG_INVALID_ARGUMENT;
         return -1;
     }
-    std::vector<zlink::socket_poller_t::event_t> native_events (
-      static_cast<size_t> (n_events_));
-    const int rc =
-      poller->poller.wait (native_events.data (), n_events_, timeout_);
-    if (rc < 0) {
-        if (error_out_)
-            *error_out_ = zlink::config_result_internal::from_errno (errno);
-        return rc;
-    }
-    if (rc == 0) {
-        if (error_out_)
-            *error_out_ = ZLINK_CONFIG_OK;
-        return 0;
-    }
-    for (int i = 0; i < rc; ++i) {
-        if (fill_public_poller_event (poller, native_events[i], &events_[i])
-            != 0) {
+    zlink::clock_t clock;
+    const uint64_t deadline_ms =
+      timeout_ > 0 ? clock.now_ms () + static_cast<uint64_t> (timeout_) : 0;
+    while (true) {
+        std::vector<zlink::socket_poller_t::event_t> native_events (
+          static_cast<size_t> (n_events_));
+        const int rc = poller->poller.wait (
+          native_events.data (), n_events_,
+          remaining_timeout_ms (timeout_, clock, deadline_ms));
+        if (rc < 0) {
+            if (errno == EAGAIN) {
+                if (error_out_)
+                    *error_out_ = ZLINK_CONFIG_OK;
+                return 0;
+            }
             if (error_out_)
                 *error_out_ = zlink::config_result_internal::from_errno (errno);
-            return -1;
+            return rc;
+        }
+        if (rc == 0) {
+            if (error_out_)
+                *error_out_ = ZLINK_CONFIG_OK;
+            return 0;
+        }
+
+        int public_count = 0;
+        for (int i = 0; i < rc; ++i) {
+            const poller_registration_t *registration =
+              find_registration_for_native (poller, native_events[i]);
+            if (is_hidden_completion_registration (registration)) {
+                if (drain_hidden_completion_registration (registration) < 0) {
+                    if (error_out_)
+                        *error_out_ =
+                          zlink::config_result_internal::from_errno (errno);
+                    return -1;
+                }
+                continue;
+            }
+            if (fill_public_poller_event (poller, native_events[i],
+                                          &events_[public_count])
+                != 0) {
+                if (error_out_)
+                    *error_out_ = zlink::config_result_internal::from_errno (
+                      errno);
+                return -1;
+            }
+            ++public_count;
+        }
+
+        if (public_count > 0) {
+            if (error_out_)
+                *error_out_ = ZLINK_CONFIG_OK;
+            return public_count;
         }
     }
-    if (error_out_)
-        *error_out_ = ZLINK_CONFIG_OK;
-    return rc;
 }

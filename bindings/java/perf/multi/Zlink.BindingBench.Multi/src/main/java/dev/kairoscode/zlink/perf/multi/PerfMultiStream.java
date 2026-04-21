@@ -19,11 +19,8 @@ import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
 
 final class PerfMultiStream {
-    private static final long IDLE_PARK_NS = 1_000_000L;
-
     private PerfMultiStream() {
     }
 
@@ -31,7 +28,8 @@ final class PerfMultiStream {
         AtomicBoolean stopRequested = new AtomicBoolean(false);
         ConcurrentLinkedQueue<PendingReply> pending = new ConcurrentLinkedQueue<>();
         AtomicInteger pendingCount = new AtomicInteger();
-        Thread controlWatcher = startControlWatcher(stopRequested);
+        Object pendingSignal = new Object();
+        Thread controlWatcher = startControlWatcher(stopRequested, pendingSignal);
 
         try (Context ctx = PerfUtil.newContext(config);
              StreamSocket server = new StreamSocket(ctx);
@@ -43,12 +41,13 @@ final class PerfMultiStream {
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
-            server.onPacket((routingId, payload) ->
-                onPacket(server, routingId, payload, pending, pendingCount));
+            server.onFramedPacket((dev.kairoscode.zlink.StreamFramedPacketHandler) (routingId, header, body) ->
+                onPacket(server, routingId, header, body, pending, pendingCount,
+                    pendingSignal));
 
             while (!stopRequested.get()) {
                 if (pendingCount.get() == 0) {
-                    LockSupport.parkNanos(IDLE_PARK_NS);
+                    waitForPending(stopRequested, pendingCount, pendingSignal);
                     continue;
                 }
                 pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
@@ -70,7 +69,8 @@ final class PerfMultiStream {
         throw new IllegalStateException("MULTI_STREAM requires the shared raw stream client");
     }
 
-    private static Thread startControlWatcher(AtomicBoolean stopRequested) {
+    private static Thread startControlWatcher(AtomicBoolean stopRequested,
+                                              Object pendingSignal) {
         Thread watcher = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
@@ -78,6 +78,7 @@ final class PerfMultiStream {
                 while ((line = reader.readLine()) != null) {
                     if ("STOP".equals(line) || "QUIT".equals(line)) {
                         stopRequested.set(true);
+                        signalPending(pendingSignal);
                         return;
                     }
                 }
@@ -93,24 +94,22 @@ final class PerfMultiStream {
 
     private static int onPacket(StreamSocket server,
                                 dev.kairoscode.zlink.RoutingId routingId,
-                                Message payload,
+                                Message header,
+                                Message body,
                                 ConcurrentLinkedQueue<PendingReply> pending,
-                                AtomicInteger pendingCount) {
-        if (routingId == null || isIgnorablePayload(payload)) {
+                                AtomicInteger pendingCount,
+                                Object pendingSignal) {
+        if (routingId == null) {
             return 0;
         }
-        try {
-            server.send(routingId, payload, SendFlags.DONT_WAIT);
-            return 0;
-        } catch (SubmitException ex) {
-            if (ex.getResult() != SubmitResult.BACKPRESSURED) {
-                throw ex;
-            }
-            pending.add(new PendingReply(routingId,
-                Message.copyOf(payload.data())));
-            pendingCount.incrementAndGet();
+        if (server.send(routingId, List.of(header.move(), body.move()),
+            SendFlags.DONT_WAIT)) {
             return 0;
         }
+        pending.add(new PendingReply(routingId, header.move(), body.move()));
+        pendingCount.incrementAndGet();
+        signalPending(pendingSignal);
+        return 0;
     }
 
     private static void flushPending(StreamSocket server,
@@ -121,17 +120,14 @@ final class PerfMultiStream {
             if (reply == null) {
                 return;
             }
-            try {
-                server.send(reply.routingId(), reply.payload(),
-                    SendFlags.DONT_WAIT);
-                pending.poll();
-                pendingCount.decrementAndGet();
-            } catch (SubmitException ex) {
-                if (ex.getResult() == SubmitResult.BACKPRESSURED) {
-                    return;
-                }
-                throw ex;
+            if (!server.send(reply.routingId(),
+                List.of(reply.header(), reply.body()),
+                SendFlags.DONT_WAIT)) {
+                return;
             }
+            pending.poll();
+            pendingCount.decrementAndGet();
+            reply.close();
         }
     }
 
@@ -144,7 +140,7 @@ final class PerfMultiStream {
                 return;
             }
             try {
-                reply.payload().close();
+                reply.close();
             } catch (RuntimeException ignored) {
             } finally {
                 pendingCount.decrementAndGet();
@@ -152,36 +148,33 @@ final class PerfMultiStream {
         }
     }
 
-    private static boolean isIgnorablePayload(Message payload) {
-        int size = payload.size();
-        if (size == 0) {
-            return true;
+    private static void waitForPending(AtomicBoolean stopRequested,
+                                       AtomicInteger pendingCount,
+                                       Object pendingSignal) {
+        synchronized (pendingSignal) {
+            while (!stopRequested.get() && pendingCount.get() == 0) {
+                try {
+                    pendingSignal.wait();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("stream pending wait interrupted", ex);
+                }
+            }
         }
-        if (size == 1) {
-            int value = payload.data()[0] & 0xFF;
-            return value == 0x00 || value == 0x01;
-        }
-        if (size != 4) {
-            return false;
-        }
-        byte[] bytes = payload.data();
-        return matchesToken(bytes, 'S', 'T', 'O', 'P')
-            || matchesToken(bytes, 'Q', 'U', 'I', 'T');
     }
 
-    private static boolean matchesToken(byte[] payload,
-                                        int a,
-                                        int b,
-                                        int c,
-                                        int d) {
-        return payload.length == 4
-            && (payload[0] & 0xFF) == a
-            && (payload[1] & 0xFF) == b
-            && (payload[2] & 0xFF) == c
-            && (payload[3] & 0xFF) == d;
+    private static void signalPending(Object pendingSignal) {
+        synchronized (pendingSignal) {
+            pendingSignal.notifyAll();
+        }
     }
 
     private record PendingReply(dev.kairoscode.zlink.RoutingId routingId,
-                                Message payload) {
+                                Message header,
+                                Message body) {
+        private void close() {
+            header.close();
+            body.close();
+        }
     }
 }

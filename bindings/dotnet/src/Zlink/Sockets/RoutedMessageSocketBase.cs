@@ -19,52 +19,56 @@ public abstract class RoutedMessageSocketBase : SocketBase
     {
     }
 
-    public void Send(string routingId, Message message,
+    public bool Send(string routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+                message));
+        }
+
         Kernel.Send(routingId, message, flags);
+        return true;
     }
 
-    public void Send(RoutingId routingId, Message message,
+    public bool Send(RoutingId routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+                message));
+        }
+
         Kernel.Send(routingId, message, flags);
+        return true;
     }
 
-    public void Send(string routingId, IReadOnlyList<Message> parts,
+    public bool Send(string routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+                parts));
+        }
+
         Kernel.Send(routingId, parts, flags);
+        return true;
     }
 
-    public void Send(RoutingId routingId, IReadOnlyList<Message> parts,
+    public bool Send(RoutingId routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
+                parts));
+        }
+
         Kernel.Send(routingId, parts, flags);
-    }
-
-    public bool TrySend(string routingId, Message message)
-    {
-        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
-            message));
-    }
-
-    public bool TrySend(RoutingId routingId, Message message)
-    {
-        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
-            message));
-    }
-
-    public bool TrySend(string routingId, IReadOnlyList<Message> parts)
-    {
-        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
-            parts));
-    }
-
-    public bool TrySend(RoutingId routingId, IReadOnlyList<Message> parts)
-    {
-        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
-            parts));
+        return true;
     }
 
     internal SendResult SendNoWaitResult(string routingId, Message message)
@@ -92,15 +96,11 @@ public abstract class RoutedMessageSocketBase : SocketBase
         Kernel.RecvHandler(handler);
     }
 
-    public Received Recv(RecvFlags flags = RecvFlags.None)
+    public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.ReceiveRouted(flags);
-    }
-
-    public bool TryRecv(out Received? received)
-    {
-        received = Kernel.ReceiveRoutedNoWait();
-        return received != null;
+        return (flags & RecvFlags.DontWait) != 0
+            ? Kernel.ReceiveRoutedNoWait()
+            : Kernel.ReceiveRouted(flags);
     }
 
     internal Received? RecvNoWait()

@@ -345,6 +345,6 @@ internal static class PerfMultiDealerRouterClient
 
     private static Received? TryRecvNoWait(DealerSocket socket)
     {
-        return socket.TryRecv(out Received? received) ? received : null;
+        return socket.Recv(RecvFlags.DontWait);
     }
 }

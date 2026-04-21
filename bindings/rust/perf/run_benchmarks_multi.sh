@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
-STREAM_BUILD_DIR="${REPO_DIR}/core/build"
-STREAM_CLIENT="${STREAM_BUILD_DIR}/bin/perf_stream_client"
+STREAM_BUILD_DIR="${SCRIPT_DIR}/build/stream-client"
+STREAM_CLIENT=""
 REUSE_BUILD=0
 CLEAN_BUILD=0
 
@@ -96,7 +96,7 @@ Options:
   --output PATH
 
 Notes:
-  - MULTI_STREAM uses the shared core perf_stream_client required by policy.
+  - MULTI_STREAM uses the shared perf_stream_client required by policy.
 EOF
 }
 
@@ -404,9 +404,12 @@ default_hwm_for_pattern() {
     printf '%s' "1000"
 }
 
-ensure_core_stream_client() {
+ensure_shared_stream_client() {
     if [[ "${REUSE_BUILD}" -eq 1 ]]; then
-        if [[ ! -x "${STREAM_CLIENT}" ]]; then
+        if [[ -z "${STREAM_CLIENT}" ]]; then
+            STREAM_CLIENT="${STREAM_BUILD_DIR}/perf_stream_client"
+        fi
+        if [[ -z "${STREAM_CLIENT}" || ! -x "${STREAM_CLIENT}" ]]; then
             echo "shared stream client not found for --reuse-build: ${STREAM_CLIENT}" >&2
             exit 1
         fi
@@ -416,24 +419,29 @@ ensure_core_stream_client() {
     if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
         rm -rf "${STREAM_BUILD_DIR}"
     fi
-    cmake -S "${REPO_DIR}" -B "${STREAM_BUILD_DIR}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DENABLE_LTO=OFF \
-        -DBUILD_BENCHMARKS=ON \
-        -DZLINK_BUILD_TESTS=OFF \
-        -DZLINK_BUILD_BENCH_ZMQ=OFF \
-        -DZLINK_BUILD_BENCH_ZLINK=ON \
-        -DZLINK_BUILD_BENCH_BEAST=OFF \
-        -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-        -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-        -DZLINK_CXX_STANDARD=17 >/dev/null
-    cmake --build "${STREAM_BUILD_DIR}" --target perf_stream_client >/dev/null
+    mkdir -p "${STREAM_BUILD_DIR}"
+    local cxx_bin
+    cxx_bin="${CXX:-g++}"
+    "${cxx_bin}" \
+        -O2 \
+        -std=c++17 \
+        -Wall \
+        -Wextra \
+        "${REPO_DIR}/bindings/c/perf/common/streamclient/perf_stream_client.cpp" \
+        -o "${STREAM_BUILD_DIR}/perf_stream_client" \
+        -pthread \
+        -lssl \
+        -lcrypto >/dev/null
+    STREAM_CLIENT="${STREAM_BUILD_DIR}/perf_stream_client"
+    if [[ -z "${STREAM_CLIENT}" || ! -x "${STREAM_CLIENT}" ]]; then
+        echo "shared stream client binary not found after build: ${STREAM_BUILD_DIR}" >&2
+        exit 1
+    fi
 }
 
 if [[ -n "${BUILD_DIR}" ]]; then
     TARGET_DIR="${BUILD_DIR}/rust-multi"
-    STREAM_BUILD_DIR="${BUILD_DIR}/core"
-    STREAM_CLIENT="${STREAM_BUILD_DIR}/bin/perf_stream_client"
+    STREAM_BUILD_DIR="${BUILD_DIR}/stream-client"
 else
     TARGET_DIR="${SCRIPT_DIR}/multi/target"
 fi
@@ -482,7 +490,7 @@ fi
 PATTERN="$(normalize_patterns "${PATTERN}")"
 IFS=',' read -ra PATTERNS <<< "${PATTERN}"
 if printf '%s\n' "${PATTERNS[@]}" | grep -qx 'MULTI_STREAM'; then
-    ensure_core_stream_client
+    ensure_shared_stream_client
 fi
 
 IFS=',' read -ra TRANSPORT_LIST <<< "${TRANSPORTS}"
@@ -688,6 +696,11 @@ for run in $(seq 1 "${RUNS}"); do
                 export PERF_MULTI_HWM="${HWM:-${ENV_MULTI_HWM:-${pattern_default_hwm}}}"
                 export PERF_MULTI_SNDHWM="${SEND_HWM:-${ENV_MULTI_SNDHWM:-${PERF_MULTI_HWM}}}"
                 export PERF_MULTI_RCVHWM="${RECV_HWM:-${ENV_MULTI_RCVHWM:-${PERF_MULTI_HWM}}}"
+                if [[ "${pat}" == "MULTI_STREAM" ]]; then
+                    export PERF_RECV_MODE="recv"
+                    export PERF_DURATION_SECONDS="${DURATION}"
+                    export PERF_WARMUP_SECONDS="1"
+                fi
                 case_status="success"
                 case_reason=""
                 CLIENT_OUTPUT=""
@@ -734,22 +747,6 @@ for run in $(seq 1 "${RUNS}"); do
                     if [[ -z "${CONTROL_ENDPOINT}" ]]; then
                         case_status="fail"
                         case_reason="control_ready_timeout"
-                        shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
-                        rm -f "${SRV_OUT}"
-                        printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
-                        continue
-                    fi
-                fi
-
-                ROUTE_INFO=""
-                if [[ "${pat}" == "MULTI_SPOT_REQREP" ]]; then
-                    ROUTE_LINE="$(wait_for_file_prefix "${SRV_OUT}" "ROUTE_READY," "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
-                    if [[ "${ROUTE_LINE}" == ROUTE_READY,* ]]; then
-                        ROUTE_INFO="${ROUTE_LINE#ROUTE_READY,}"
-                    fi
-                    if [[ -z "${ROUTE_INFO}" ]]; then
-                        case_status="fail"
-                        case_reason="route_ready_timeout"
                         shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
                         rm -f "${SRV_OUT}"
                         printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
@@ -815,9 +812,6 @@ for run in $(seq 1 "${RUNS}"); do
                     CLIENT_FIFO="$(mktemp -u)"
                     mkfifo "${CLIENT_FIFO}"
                     CLIENT_ENDPOINT="${ENDPOINT},${CONTROL_ENDPOINT}"
-                    if [[ "${pat}" == "MULTI_SPOT_REQREP" ]]; then
-                        CLIENT_ENDPOINT="${CLIENT_ENDPOINT},${ROUTE_INFO}"
-                    fi
                     "${RUN_PREFIX[@]}" "${CLIENT_BIN}" "${transport}" "${size}" "${CLIENT_ENDPOINT}" < "${CLIENT_FIFO}" > "${CLIENT_OUT}" 2> "${CLIENT_ERR}" &
                     CLIENT_PID=$!
                     exec {CLIENT_CONTROL_FD}> "${CLIENT_FIFO}"
@@ -830,8 +824,8 @@ for run in $(seq 1 "${RUNS}"); do
                     else
                         CLIENT_CONTROL_ENDPOINT="${CLIENT_CONTROL_LINE#CLIENT_CONTROL_ENDPOINT,}"
                         printf 'CONNECT_CONTROL,%s\n' "${CLIENT_CONTROL_ENDPOINT}" >&"${SERVER_CONTROL_FD}" || true
-                        SERVER_CONTROL_CONNECTED="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
-                        if [[ "${SERVER_CONTROL_CONNECTED}" != "CONTROL_CONNECTED,${CLIENT_CONTROL_ENDPOINT}" ]]; then
+                        CLIENT_CONTROL_CONNECTED="$(wait_for_file_prefix "${CLIENT_OUT}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+                        if [[ "${CLIENT_CONTROL_CONNECTED}" != "CONTROL_CONNECTED,${CLIENT_CONTROL_ENDPOINT}" ]]; then
                             case_status="fail"
                             case_reason="control_connect_timeout"
                         fi
@@ -881,6 +875,7 @@ for run in $(seq 1 "${RUNS}"); do
                         --sizes "${size}" \
                         --runs 1 \
                         --duration "${DURATION}" \
+                        --warmup 1 \
                         --ccu "${PATTERN_CLIENTS}" \
                         --io-threads 4 \
                         --print-perf-result 1 \

@@ -497,6 +497,12 @@ public final class Native {
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
         ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SOCKET_REQUEST_PROGRESS_INTERNAL =
+      downcall("zlink_socket_request_progress_internal",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_REQUEST_PROGRESS_INTERNAL =
+      downcall("zlink_spot_request_progress_internal",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_HANDLER = downcall(
       "zlink_spot_handler",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -3241,6 +3247,24 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_request_channel_part failed",
               t);
+        }
+    }
+
+    public static int socketRequestProgressInternal(MemorySegment socket) {
+        try {
+            return (int) MH_SOCKET_REQUEST_PROGRESS_INTERNAL.invokeExact(socket);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_socket_request_progress_internal failed", t);
+        }
+    }
+
+    public static int spotRequestProgressInternal(MemorySegment spot) {
+        try {
+            return (int) MH_SPOT_REQUEST_PROGRESS_INTERNAL.invokeExact(spot);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_request_progress_internal failed", t);
         }
     }
 

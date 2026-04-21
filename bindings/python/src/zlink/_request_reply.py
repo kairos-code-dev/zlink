@@ -4,6 +4,8 @@ import asyncio
 import ctypes
 import errno
 import queue
+import threading
+import time
 
 from ._core import (
     HandlerError,
@@ -141,6 +143,40 @@ class _PendingRequest:
                 _leave_callback()
         except Exception:
             _report_unhandled_callback_exception(self.callback)
+
+
+class _RequestProgressPump:
+    def __init__(self, step, is_active):
+        self._step = step
+        self._is_active = is_active
+        self._lock = threading.Lock()
+        self._thread = None
+
+    def ensure_running(self):
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._thread = threading.Thread(
+                target=self._run,
+                name="zlink-request-progress",
+                daemon=True,
+            )
+            self._thread.start()
+
+    def _run(self):
+        try:
+            while self._is_active():
+                try:
+                    self._step()
+                except Exception:
+                    pass
+                if not self._is_active():
+                    break
+                time.sleep(0.001)
+        finally:
+            with self._lock:
+                if self._thread is threading.current_thread():
+                    self._thread = None
 
 
 class _ReceivedPartsOwner:

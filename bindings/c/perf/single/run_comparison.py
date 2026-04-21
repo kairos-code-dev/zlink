@@ -321,6 +321,10 @@ def normalize_build_dir(path: str) -> str:
     if os.path.isdir(nested_bindings_perf):
         return nested_bindings_perf
 
+    perf_dir = os.path.join(abs_path, "perf")
+    if os.path.isdir(perf_dir):
+        return perf_dir
+
     base = os.path.basename(abs_path)
     if base in BUILD_CONFIG_DIRS:
         return abs_path
@@ -352,6 +356,12 @@ def derive_current_lib_dir(build_dir: str) -> str:
             build_root = os.path.dirname(bin_root)
     elif base == "bin":
         build_root = os.path.dirname(build_root)
+    if (
+        os.path.isfile(os.path.join(build_root, "libzlink_c.so"))
+        or os.path.isfile(os.path.join(build_root, "libzlink_c.dylib"))
+        or os.path.isfile(os.path.join(build_root, "zlink_c.dll"))
+    ):
+        return os.path.abspath(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
 
 
@@ -825,7 +835,7 @@ def print_effective_options(label: str, items: List[Tuple[str, str]]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Measure current zlink single-pattern benchmarks from the repo core/build."
+        description="Measure current zlink single-pattern benchmarks from bindings/c/build."
     )
     parser.add_argument("pattern", nargs="?", default="ALL")
     parser.add_argument("--runs", type=int, default=None)
@@ -864,7 +874,7 @@ def main() -> int:
     if IS_WINDOWS:
         build_dir = normalize_build_dir(
             args.build_dir
-            or os.path.join(ROOT_DIR, "core", "build")
+            or os.path.join(ROOT_DIR, "bindings", "c", "build")
         )
     else:
         auto_build_dir, _ = resolve_linux_paths()

@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use crate::domain::{Received, SubscriptionEvent, TopicMessage};
@@ -14,6 +15,7 @@ use crate::error::{
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
+use crate::request_progress::RequestProgressGuard;
 use crate::socket::{
     CallbackBox, cstr_buf_to_string, prepare_send_parts, routing_id_from_ptr,
     send_ready_trampoline, submit_part_sequence, take_parts,
@@ -848,6 +850,7 @@ impl Drop for Discovery {
 /// SPOT node runtime for topology, discovery, and lifecycle.
 pub struct SpotNode {
     handle: *mut c_void,
+    manual_channel_dealers: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 unsafe impl Send for SpotNode {}
@@ -861,7 +864,10 @@ impl SpotNode {
                 last_errno(),
             ));
         }
-        Ok(Self { handle })
+        Ok(Self {
+            handle,
+            manual_channel_dealers: Arc::new(Mutex::new(HashMap::new())),
+        })
     }
 
     pub fn bind(&self, endpoint: &str) -> Result<(), BindError> {
@@ -920,7 +926,12 @@ impl SpotNode {
                 c_channel_name.as_ptr(),
                 dealer.inner.handle,
             )
-        })
+        })?;
+        self.manual_channel_dealers
+            .lock()
+            .expect("manual spot channel dealers")
+            .insert(channel_name.to_string(), dealer.inner.handle as usize);
+        Ok(())
     }
 
     pub fn attach_pub_ingress(
@@ -1074,6 +1085,7 @@ impl Drop for SpotNode {
 /// exposes the canonical data-plane API (publish, subscribe, etc.).
 pub struct Spot {
     handle: *mut c_void,
+    manual_channel_dealers: Arc<Mutex<HashMap<String, usize>>>,
     send_ready_cb: Option<CallbackBox>,
     routed_cb: Option<CallbackBox>,
     dispatch_cb: Option<CallbackBox>,
@@ -1092,6 +1104,7 @@ impl Spot {
         }
         Ok(Self {
             handle,
+            manual_channel_dealers: Arc::clone(&node.manual_channel_dealers),
             send_ready_cb: None,
             routed_cb: None,
             dispatch_cb: None,
@@ -1216,8 +1229,17 @@ impl Spot {
             .map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
+        let progress = self
+            .manual_channel_dealers
+            .lock()
+            .expect("manual spot channel dealers")
+            .get(channel_name)
+            .copied()
+            .map(|handle| RequestProgressGuard::attach_socket(handle as *mut c_void))
+            .unwrap_or_else(|| RequestProgressGuard::attach_spot(self.handle));
         let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
             callback: Some(Box::new(callback)),
+            _progress: progress,
         }));
         let timeout_ms = timeout_to_timeout_ms(timeout);
         let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
@@ -1460,6 +1482,7 @@ type SpotSubscribedParts =
 
 struct SpotReplyCallbackState {
     callback: Option<SpotReplyCallback>,
+    _progress: RequestProgressGuard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -7,6 +7,8 @@ import zlink
 from perf_common import (
     apply_single_socket_options,
     benchmark_run_id,
+    configure_single_tls_client,
+    configure_single_tls_server,
     extract_metric_payload,
     latency_ns_from_message,
     is_active_message,
@@ -41,6 +43,8 @@ def main(argv=None):
             with zlink.DealerSocket(ctx) as dealer:
                 endpoint = resolve_single_endpoint(args.transport, "dealer-router")
                 apply_single_socket_options(router, dealer)
+                configure_single_tls_server(router, args.transport)
+                configure_single_tls_client(dealer, args.transport)
                 with dealer.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
                     router.bind(endpoint)
                     dealer.connect(endpoint)

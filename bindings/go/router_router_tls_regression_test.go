@@ -2,6 +2,8 @@ package zlink_test
 
 import (
 	"context"
+	"path/filepath"
+	"runtime"
 	"os/exec"
 	"strings"
 	"testing"
@@ -9,10 +11,14 @@ import (
 )
 
 func TestRouterRouterTLSSinglePerfDoesNotAbort(t *testing.T) {
-	t.Parallel()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve test source path")
+	}
+	repoDir := filepath.Dir(thisFile)
 
 	cmd := exec.CommandContext(
 		ctx,
@@ -24,7 +30,7 @@ func TestRouterRouterTLSSinglePerfDoesNotAbort(t *testing.T) {
 		"--msg-size", "64",
 		"--duration", "2",
 	)
-	cmd.Dir = "."
+	cmd.Dir = repoDir
 
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {

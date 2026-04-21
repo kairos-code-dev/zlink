@@ -74,11 +74,10 @@ final class PerfSpotReqRep {
                 }
             });
 
-            try (Message probe = PerfUtil.payloadTemplate(config.size())) {
-                long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-                while (ready.getCount() > 0L && System.nanoTime() < deadline) {
-                    PerfUtil.writePayload(probe, config.size(),
-                        (byte) PerfUtil.PHASE_WARMUP, System.nanoTime());
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (ready.getCount() > 0L && System.nanoTime() < deadline) {
+                try (Message probe = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
                     requester.sendToSpot(replierNode.routingId(), replier.routingId(), probe);
                     PerfUtil.Header reply = awaitReply(requester, requesterPollSet, config,
                         System.nanoTime() + Duration.ofMillis(
@@ -91,13 +90,11 @@ final class PerfSpotReqRep {
             PerfUtil.await(ready, "spot reqrep ready", Duration.ofSeconds(10));
             settleAfterReady();
 
-            try (Message active = PerfUtil.payloadTemplate(config.size());
-                 Message cooldown = PerfUtil.payloadTemplate(config.size())) {
-                metrics.startActiveWindow();
-                long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-                while (System.nanoTime() < activeEnd) {
-                    PerfUtil.writePayload(active, config.size(),
-                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+            metrics.startActiveWindow();
+            long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                try (Message active = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
                     requester.sendToSpot(replierNode.routingId(), replier.routingId(), active);
                     PerfUtil.Header reply = awaitReply(requester, requesterPollSet, config,
                         activeEnd + Duration.ofSeconds(2).toNanos());
@@ -105,8 +102,9 @@ final class PerfSpotReqRep {
                         metrics.recordNanos(reply.latencyNanos() / 2L);
                     }
                 }
-                PerfUtil.writePayload(cooldown, config.size(),
-                    (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+            }
+            try (Message cooldown = PerfUtil.payload(config.size(),
+                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
                 requester.sendToSpot(replierNode.routingId(), replier.routingId(), cooldown);
                 awaitReply(requester, requesterPollSet, config,
                     System.nanoTime() + Duration.ofSeconds(2).toNanos());
@@ -163,7 +161,7 @@ final class PerfSpotReqRep {
     }
 
     private static String normalizeSpotEndpoint(String endpoint, String transport) {
-        if (!"tls".equals(transport)) {
+        if (!"tls".equals(transport) && !"wss".equals(transport)) {
             return endpoint;
         }
         return endpoint.replace("://127.0.0.1:", "://localhost:");

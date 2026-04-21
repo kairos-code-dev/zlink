@@ -104,11 +104,10 @@ final class PerfSpot {
             });
 
             Duration probeWait = Duration.ofMillis(Math.max(1, config.recvTimeoutMs()));
-            try (Message probe = PerfUtil.payloadTemplate(config.size())) {
-                long readyDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-                while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
-                    PerfUtil.writePayload(probe, config.size(),
-                        (byte) PerfUtil.PHASE_WARMUP, System.nanoTime());
+            long readyDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
+                try (Message probe = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
                     publisher.publish(SERVICE_NAME, topic, probe);
                     try {
                         ready.await(probeWait.toMillis(), TimeUnit.MILLISECONDS);
@@ -122,24 +121,23 @@ final class PerfSpot {
             settleAfterReady();
 
             Thread traffic = new Thread(() -> {
-                try (Message active = PerfUtil.payloadTemplate(config.size());
-                     Message cooldown = PerfUtil.payloadTemplate(config.size())) {
                 try {
                     metrics.startActiveWindow();
                     long activeEnd = System.nanoTime()
                         + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        PerfUtil.writePayload(active, config.size(),
-                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                        publisher.publish(SERVICE_NAME, topic, active);
+                        try (Message active = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            publisher.publish(SERVICE_NAME, topic, active);
+                        }
                     }
-                    PerfUtil.writePayload(cooldown, config.size(),
-                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                    publisher.publish(SERVICE_NAME, topic, cooldown);
+                    try (Message cooldown = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        publisher.publish(SERVICE_NAME, topic, cooldown);
+                    }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     finished.countDown();
-                }
                 }
             }, "single-spot-sender");
             traffic.start();
@@ -210,7 +208,7 @@ final class PerfSpot {
     }
 
     private static String normalizeSpotEndpoint(String endpoint, String transport) {
-        if (!"tls".equals(transport)) {
+        if (!"tls".equals(transport) && !"wss".equals(transport)) {
             return endpoint;
         }
         return endpoint.replace("://127.0.0.1:", "://localhost:");

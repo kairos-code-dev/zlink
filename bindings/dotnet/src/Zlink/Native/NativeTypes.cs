@@ -4,10 +4,16 @@ using System.Text;
 
 namespace Zlink.Native;
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Explicit, Size = 64)]
 internal unsafe struct ZlinkMsg
 {
+    // zlink_msg_t is a 64-byte opaque value aligned to sizeof(void *).
+    // The pointer-sized field forces native-compatible alignment.
+    [FieldOffset(0)]
     public fixed byte Data[64];
+
+    [FieldOffset(0)]
+    private readonly nuint _align;
 }
 
 [StructLayout(LayoutKind.Sequential)]

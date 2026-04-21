@@ -2,6 +2,8 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.Native;
+import java.lang.foreign.MemorySegment;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -221,6 +223,27 @@ final class RequestReplySupport {
                 future.completeExceptionally(error);
             }
         });
+    }
+
+    static void startSocketRequestProgress(CompletableFuture<?> future,
+                                           MemorySegment socketHandle,
+                                           String threadName) {
+        Thread thread = new Thread(() -> {
+            while (!future.isDone()) {
+                Native.socketRequestProgressInternal(socketHandle);
+                if (future.isDone()) {
+                    break;
+                }
+                try {
+                    Thread.sleep(1L);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }, threadName);
+        thread.setDaemon(true);
+        thread.start();
     }
 
     @FunctionalInterface

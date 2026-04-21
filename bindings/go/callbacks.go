@@ -473,7 +473,10 @@ func goZlinkSpotDispatchEventTrampoline(event C.zlink_spot_dispatch_event_t, use
 	if !ok {
 		return
 	}
-	state := value.(*spotDispatchCallbackState)
+	state, ok := value.(*spotDispatchCallbackState)
+	if !ok || state == nil {
+		return
+	}
 	state.dispatcher.enqueue(&callbackTask{
 		label: "spot-dispatch",
 		invoke: func() {

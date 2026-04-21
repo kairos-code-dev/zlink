@@ -14,6 +14,8 @@ from perf_metrics import (
     HEADER_SIZE,
     benchmark_run_id,
     build_report_path,
+    configure_tls_client,
+    configure_tls_server,
     decode_header,
     extract_metric_payload,
     latency_ns_from_message,
@@ -73,7 +75,7 @@ def resolve_single_recv_hwm():
 
 
 def resolve_single_send_timeout_ms():
-    return _env_int("PERF_SINGLE_SNDTIMEO_MS", 200)
+    return _env_int("PERF_SINGLE_SNDTIMEO_MS", -1)
 
 
 def resolve_single_recv_timeout_ms():
@@ -99,6 +101,14 @@ def resolve_single_endpoint(transport, prefix):
     return transport_endpoint(transport, prefix)
 
 
+def configure_single_tls_server(target, transport):
+    configure_tls_server(target, transport)
+
+
+def configure_single_tls_client(target, transport):
+    configure_tls_client(target, transport)
+
+
 def apply_single_socket_options(*sockets, receive_timeout_ms=None):
     send_hwm = resolve_single_send_hwm()
     recv_hwm = resolve_single_recv_hwm()
@@ -112,7 +122,8 @@ def apply_single_socket_options(*sockets, receive_timeout_ms=None):
         sock.options.linger_ms = 0
         sock.options.send_high_water_mark = send_hwm
         sock.options.receive_high_water_mark = recv_hwm
-        sock.options.send_timeout_ms = send_timeout_ms
+        if send_timeout_ms >= 0:
+            sock.options.send_timeout_ms = send_timeout_ms
         sock.options.receive_timeout_ms = recv_timeout_ms
 
 

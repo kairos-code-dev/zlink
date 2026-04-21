@@ -27,6 +27,7 @@ mod message;
 pub mod monitor;
 mod options;
 pub mod poller;
+mod request_progress;
 mod runtime;
 pub mod service;
 pub mod socket;

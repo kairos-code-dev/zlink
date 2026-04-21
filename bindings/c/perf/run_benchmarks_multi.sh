@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
+OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/c/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
@@ -221,7 +221,7 @@ Options:
   --clean-build          Remove build directory and do a clean build.
   --results-dir PATH     Override results root directory.
   --results-tag NAME     Optional tag appended to the results filename.
-  --build-dir PATH       Official build directory (must be <repo>/core/build).
+  --build-dir PATH       Official build directory (must be <repo>/bindings/c/build).
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
@@ -988,7 +988,7 @@ case "${BUILD_MODE}" in
     ;;
 esac
 
-CMAKE_SOURCE_DIR="${ROOT_DIR}"
+CMAKE_SOURCE_DIR="${ROOT_DIR}/bindings/c"
 if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
   CACHE_CMAKE_SOURCE="$(
     sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
@@ -1014,33 +1014,19 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DENABLE_LTO=OFF \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_CPP_BINDINGS=OFF \
-      -DZLINK_BUILD_C_BINDINGS=ON \
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
       -DZLINK_C_BUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-      -DZLINK_CXX_STANDARD=17
+      -DZLINK_C_BUILD_SAMPLES=OFF
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
       -DENABLE_LTO=OFF \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_CPP_BINDINGS=OFF \
-      -DZLINK_BUILD_C_BINDINGS=ON \
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
       -DZLINK_C_BUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-      -DZLINK_CXX_STANDARD=17
+      -DZLINK_C_BUILD_SAMPLES=OFF
   fi
 
   mapfile -t BUILD_TARGETS < <(resolve_multi_build_targets)

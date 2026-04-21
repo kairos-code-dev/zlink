@@ -9,6 +9,7 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
@@ -72,7 +73,8 @@ final class PerfMultiDealerRouter {
                                 pendingReplies.addLast(pending);
                                 continue;
                             }
-                            if (!server.trySend(pending.routingId(), pending.payload())) {
+                            if (!server.send(pending.routingId(), pending.payload(),
+                                SendFlags.DONT_WAIT)) {
                                 pendingReplies.addLast(pending);
                                 continue;
                             }
@@ -92,9 +94,7 @@ final class PerfMultiDealerRouter {
         PerfMultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             try (Context ctx = PerfUtil.newContext(config);
                  DealerSocket client = new DealerSocket(ctx);
-                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
-                 Message request = PerfUtil.payloadTemplate(config.size());
-                 Message stop = PerfUtil.payloadTemplate(config.size())) {
+                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(client, config);
                 PerfUtil.configureClientTls(client, config.transport());
@@ -112,9 +112,10 @@ final class PerfMultiDealerRouter {
                     List.of(client), PollEventType.POLLIN.getValue())) {
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        PerfUtil.writePayload(request, config.size(),
-                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                        sendUntilSent(client, pollSet, request);
+                        try (Message request = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sendUntilSent(client, pollSet, request, activeEnd);
+                        }
                         if (!awaitReadable(pollSet, activeEnd)) {
                             break;
                         }
@@ -133,9 +134,11 @@ final class PerfMultiDealerRouter {
                             }
                         }
                     }
-                    PerfUtil.writePayload(stop, config.size(),
-                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                    sendUntilSent(client, pollSet, stop);
+                    try (Message stop = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        sendUntilSent(client, pollSet, stop,
+                            System.nanoTime() + Duration.ofSeconds(5).toNanos());
+                    }
                 }
             }
         }, "multi-dr-client-" + index), config.durationSeconds());
@@ -143,21 +146,29 @@ final class PerfMultiDealerRouter {
     }
 
     private static void sendUntilSent(DealerSocket client, PerfSocketPollSet pollSet,
-                                      Message part) {
+                                      Message part,
+                                      long deadlineNs) {
         while (true) {
-            if (client.trySend(part)) {
+            if (client.send(part, SendFlags.DONT_WAIT)) {
                 return;
             }
+            if (System.nanoTime() >= deadlineNs) {
+                throw new IllegalStateException("dealer/router send timed out");
+            }
+            long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
             pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
-            pollSet.poll(-1);
+            pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
+                Duration.ofNanos(remainingNs).toMillis())));
         }
     }
 
     private static boolean awaitReadable(PerfSocketPollSet pollSet, long deadlineNs) {
         while (System.nanoTime() < deadlineNs) {
             try {
+                long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
                 pollSet.setEvents(0, PollEventType.POLLIN.getValue());
-                if (pollSet.poll(5) > 0) {
+                if (pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
+                    Duration.ofNanos(remainingNs).toMillis()))) > 0) {
                     return true;
                 }
             } catch (dev.kairoscode.zlink.ZlinkException ex) {
@@ -176,7 +187,8 @@ final class PerfMultiDealerRouter {
             if (pending == null) {
                 return;
             }
-            if (!server.trySend(pending.routingId(), pending.payload())) {
+            if (!server.send(pending.routingId(), pending.payload(),
+                SendFlags.DONT_WAIT)) {
                 return;
             }
             pendingReplies.removeFirst();

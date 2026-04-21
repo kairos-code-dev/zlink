@@ -225,6 +225,27 @@ case "$(uname -s)" in
   *) PLATFORM="windows" ;;
 esac
 
+run_go_perf() {
+  if [[ "${PIN_CPU}" != "on" ]]; then
+    go run "$@"
+    return
+  fi
+
+  case "$(uname -s)" in
+    Linux*)
+      if ! command -v taskset >/dev/null 2>&1; then
+        echo "Error: --pin-cpu requires taskset on Linux" >&2
+        return 1
+      fi
+      taskset -c 0 go run "$@"
+      ;;
+    *)
+      echo "Error: --pin-cpu is not supported by this runner on $(uname -s)" >&2
+      return 1
+      ;;
+  esac
+}
+
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
@@ -411,12 +432,12 @@ progress_case_row() {
   local pattern="$1"
   local size="$2"
   local case_log="$3"
-  if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
+  if grep -Eq '^UNSUPPORTED,' "${case_log}" || is_unsupported_output "${case_log}"; then
     printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED"
     return
   fi
   if grep -Eq '^SKIP,' "${case_log}"; then
-    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "FAIL" "FAIL" "FAIL" "FAIL" "FAIL"
+    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "SKIP" "SKIP" "SKIP" "SKIP" "SKIP"
     return
   fi
   python3 - "$pattern" "$size" "$case_log" <<'PY'
@@ -602,7 +623,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
-        if go run ./perf/multi \
+        if run_go_perf ./perf/multi \
           --pattern "${pattern}" \
           --transport "${transport}" \
           --msg-size "${size}" \

@@ -20,7 +20,7 @@ final class RouterSpotSupport {
         this.socket = Objects.requireNonNull(socket, "socket");
     }
 
-    void sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                     List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(destNodeRid, "destNodeRid");
         Objects.requireNonNull(destSpotRid, "destSpotRid");
@@ -29,6 +29,13 @@ final class RouterSpotSupport {
         try {
             submitRouterSendSpot(destNodeRid, destSpotRid, payload,
                 flags.value());
+            return true;
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
         } finally {
             RequestReplySupport.closeAll(payload);
         }
@@ -58,6 +65,8 @@ final class RouterSpotSupport {
                 RoutedRequestSupport.userData(requestId),
                 Objects.requireNonNull(flags, "flags").value(),
                 RoutedRequestSupport.toTimeoutInt(timeoutMs));
+            RequestReplySupport.startSocketRequestProgress(future,
+                socket.handle(), "zlink-router-spot-request-progress");
             RequestReplySupport.closeAll(payload);
         } catch (RuntimeException ex) {
             RequestReplySupport.closeAll(payload);
@@ -72,7 +81,7 @@ final class RouterSpotSupport {
         });
     }
 
-    void requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts,
                        BiConsumer<RequestResult, List<Message>> callback,
                        SendFlags flags, Duration timeout) {
@@ -88,11 +97,18 @@ final class RouterSpotSupport {
                 RoutedRequestSupport.userData(requestId),
                 Objects.requireNonNull(flags, "flags").value(),
                 RoutedRequestSupport.toTimeoutInt(timeoutMs));
+            RequestReplySupport.startSocketRequestProgress(future,
+                socket.handle(), "zlink-router-spot-request-progress");
             RequestReplySupport.closeAll(payload);
         } catch (RuntimeException ex) {
             RequestReplySupport.closeAll(payload);
             RoutedRequestSupport.removePending(requestId);
             future.cancel(false);
+            if (ex instanceof SubmitException submitException
+                && flags == SendFlags.DONT_WAIT
+                && submitException.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
             throw ex;
         }
         future.whenComplete((reply, error) -> {
@@ -105,6 +121,7 @@ final class RouterSpotSupport {
             callback.accept(error == null ? RequestResult.OK
                 : RequestReplySupport.requestResult(error), response);
         });
+        return true;
     }
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,

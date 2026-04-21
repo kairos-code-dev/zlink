@@ -127,6 +127,22 @@ func multiSocketTimeout(send bool) time.Duration {
 	return durationFromEnv("PERF_MULTI_RCVTIMEO_MS", BenchmarkSocketTimeout)
 }
 
+func SingleSendTimeout() time.Duration {
+	return singleSocketTimeout(true)
+}
+
+func SingleRecvTimeout() time.Duration {
+	return singleSocketTimeout(false)
+}
+
+func MultiSendTimeout() time.Duration {
+	return multiSocketTimeout(true)
+}
+
+func MultiRecvTimeout() time.Duration {
+	return multiSocketTimeout(false)
+}
+
 func resolveSingleSocketHWM(send bool) int {
 	return resolveSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", send)
 }
@@ -329,21 +345,13 @@ func NewMessage(payload []byte) *zlink.Message {
 	return msg
 }
 
-func CloneMessages(parts []*zlink.Message) []*zlink.Message {
-	cloned := make([]*zlink.Message, 0, len(parts))
-	for _, part := range parts {
-		cloned = append(cloned, NewMessage(append([]byte(nil), part.Data()...)))
-	}
-	return cloned
-}
-
 func IsTransient(err error) bool {
 	var zerr zlink.ZlinkError
 	if !errors.As(err, &zerr) {
 		return false
 	}
 	switch zerr.InternalErrno() {
-	case int(syscall.EAGAIN), int(syscall.EINTR), int(syscall.EIO), int(syscall.ENOTCONN):
+	case int(syscall.EAGAIN), int(syscall.EINTR):
 		return true
 	default:
 		return false

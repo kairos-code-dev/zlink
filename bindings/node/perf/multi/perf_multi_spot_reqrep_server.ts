@@ -7,8 +7,11 @@ const zlink = require('../../dist/canonical');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
+  POLLIN,
+  POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
+  createSocketEventWaiter,
   subscribeNoWait,
   trySocketPublish,
   waitForConnectionReady
@@ -42,12 +45,15 @@ async function main() {
   const dealer = new zlink.DealerSocket(ctx);
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
+  const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+  const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
   let spot = null;
   let readyCount = 0;
   let connected = false;
   let startRequested = false;
   let stop = false;
   let connectedControlEndpoint = '';
+  let rl = null;
 
   try {
     node.attachChannelDealerManual(SERVICE_NAME, dealer);
@@ -79,7 +85,7 @@ async function main() {
     console.log(`READY,${options.endpoint}`);
     console.log(`CONTROL_READY,${options.controlEndpoint}`);
 
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     (async () => {
       for await (const line of rl) {
         if (line === `START,${options.msgSize}`) {
@@ -91,18 +97,20 @@ async function main() {
           }
           await waitForConnectionReady(controlSub, () => controlSub.connect(clientEndpoint));
           connectedControlEndpoint = clientEndpoint;
-        } else if (line === 'STOP') {
+        } else if (line === 'STOP' || line === 'QUIT') {
           stop = true;
         }
       }
     })();
 
-    while (!(connected && readyCount >= options.clients && startRequested)) {
+    while (!stop && !(connected && readyCount >= options.clients && startRequested)) {
+      let drained = false;
       while (true) {
         const received = subscribeNoWait(controlSub);
         if (!received) {
           break;
         }
+        drained = true;
         const payloadText = received.parts[0].data().toString('utf8');
         if (payloadText === 'CONNECTED') {
           connected = true;
@@ -112,17 +120,29 @@ async function main() {
           readyCount = Number(payloadText.split(',')[2]);
         }
       }
-      await sleepImmediate();
+      if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
+        await controlSubWaiter.wait(POLLIN);
+      }
     }
 
-    while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`START,${options.msgSize}`))) {
-      await sleepImmediate();
+    if (stop) {
+      return;
+    }
+
+    for (;;) {
+      if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`START,${options.msgSize}`))) {
+        break;
+      }
+      await controlPubWaiter.wait(POLLOUT);
     }
 
     while (!stop) {
       await sleepImmediate();
     }
   } finally {
+    rl?.close();
+    controlSubWaiter.close();
+    controlPubWaiter.close();
     if (spot) {
       spot.close();
     }

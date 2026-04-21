@@ -240,10 +240,12 @@ static zlink_recv_result_t zlink_c_collect_recv_parts (
     while (has_more_) {
         zlink_msg_t next_;
         zlink_part_flag_t more_ = ZLINK_PART_FINAL;
+        zlink_msg_init (&next_);
         const zlink_recv_result_t rc_ =
           recv_more_ (s_, &next_, &more_);
 
         if (rc_ != ZLINK_RECV_OK) {
+            (void) zlink_msg_close (&next_);
             zlink_c_close_parts (parts_, count_);
             free (parts_);
             return rc_;
@@ -318,7 +320,19 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_send (void *s_,
                                                  size_t part_count_,
                                                  zlink_send_flags_t flags_)
 {
-    ZLINK_C_SEND_LOOP (zlink_send_part (s_, &parts_[i], flags_, part_flag_));
+    zlink_submit_result_t validate_rc_ =
+      zlink_c_validate_send_parts (parts_, part_count_);
+    if (validate_rc_ != ZLINK_SUBMIT_OK)
+        return validate_rc_;
+
+    {
+        const int socket_rc =
+          zlink_socket_send_internal (s_, parts_, part_count_, flags_);
+        const int saved_errno = errno;
+        zlink_c_close_parts (parts_, part_count_);
+        errno = saved_errno;
+        return zlink_c_submit_result_from_rc (socket_rc);
+    }
 }
 
 ZLINK_C_EXPORT zlink_submit_result_t zlink_send_rid (
@@ -328,8 +342,19 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_send_rid (
   size_t part_count_,
   zlink_send_flags_t flags_)
 {
-    ZLINK_C_SEND_LOOP (
-      zlink_send_part_rid (s_, target_rid_, &parts_[i], flags_, part_flag_));
+    zlink_submit_result_t validate_rc_ =
+      zlink_c_validate_send_parts (parts_, part_count_);
+    if (validate_rc_ != ZLINK_SUBMIT_OK)
+        return validate_rc_;
+
+    {
+        const int socket_rc = zlink_socket_send_rid_internal (
+          s_, target_rid_, parts_, part_count_, flags_);
+        const int saved_errno = errno;
+        zlink_c_close_parts (parts_, part_count_);
+        errno = saved_errno;
+        return zlink_c_submit_result_from_rc (socket_rc);
+    }
 }
 
 ZLINK_C_EXPORT zlink_submit_result_t zlink_publish (void *subject_,
@@ -342,6 +367,17 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_publish (void *subject_,
       zlink_c_validate_send_parts (parts_, part_count_);
     if (validate_rc_ != ZLINK_SUBMIT_OK)
         return validate_rc_;
+
+    {
+        const int socket_rc = zlink_socket_publish_internal (
+          subject_, topic_id_, parts_, part_count_, flags_);
+        const int saved_errno = errno;
+        if (socket_rc == 0 || saved_errno != EFAULT) {
+            zlink_c_close_parts (parts_, part_count_);
+            errno = saved_errno;
+            return zlink_c_submit_result_from_rc (socket_rc);
+        }
+    }
 
     {
         const int service_rc = zlink_service_publish_internal (

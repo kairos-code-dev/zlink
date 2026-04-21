@@ -26,6 +26,7 @@ async function main() {
   const server = new zlink.DealerSocket(ctx);
   const poller = new zlink.Poller();
   const payload = createPayload(options.msgSize);
+  let rl = null;
 
   try {
     applySocketPolicy(server);
@@ -34,10 +35,10 @@ async function main() {
     const readyBarrier = waitForConnectionReadyCount(server, options.clients);
     console.log(`READY,${options.endpoint}`);
 
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of rl) {
       if (line !== `START,${options.msgSize}`) {
-        if (line === 'STOP') {
+        if (line === 'STOP' || line === 'QUIT') {
           break;
         }
         continue;
@@ -65,8 +66,13 @@ async function main() {
         }
         pending = false;
       }
+      let cooldownPending = true;
       stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
-      while (!trySocketSend(server, payload)) {
+      while (cooldownPending) {
+        if (trySocketSend(server, payload)) {
+          cooldownPending = false;
+          continue;
+        }
         const ready = poller.wait(25);
         if (!ready || (ready.events & POLLOUT) === 0) {
           await sleepImmediate();
@@ -75,6 +81,7 @@ async function main() {
       break;
     }
   } finally {
+    rl?.close();
     poller.close();
     server.close();
     ctx.close();

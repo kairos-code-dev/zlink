@@ -1,22 +1,11 @@
 cmake_minimum_required(VERSION 3.10)
-project(zlink-root LANGUAGES C CXX)
+project(zlink_root_entrypoint NONE)
 
-option(ZLINK_CPP_BUILD_TESTS "Build C++ binding tests" OFF)
-option(ZLINK_C_BUILD_TESTS "Build C binding tests" OFF)
-if(BUILD_TESTS OR ZLINK_CPP_BUILD_TESTS OR ZLINK_C_BUILD_TESTS OR ZLINK_BUILD_TESTS
-   OR ZLINK_CPP_BUILD_SAMPLES OR ZLINK_BUILD_C_SAMPLES)
-  enable_testing()
-endif()
-
-# Root wrapper to keep existing build scripts working.
-add_subdirectory(core)
-
-option(ZLINK_BUILD_CPP_BINDINGS "Build C++ bindings" OFF)
-if(ZLINK_BUILD_CPP_BINDINGS)
-  add_subdirectory(bindings/cpp)
-endif()
-
-option(ZLINK_BUILD_C_BINDINGS "Build C bindings" OFF)
-if(ZLINK_BUILD_C_BINDINGS)
-  add_subdirectory(bindings/c)
-endif()
+message(FATAL_ERROR
+  "The repository root is no longer a CMake entry point.\n"
+  "Configure one project at a time instead:\n"
+  "  core          : cmake -S core -B core/build\n"
+  "  bindings/c    : cmake -S bindings/c -B bindings/c/build "
+  "-DZLINK_C_CORE_BUILD_DIR=<repo>/core/build\n"
+  "  bindings/cpp  : cmake -S bindings/cpp -B bindings/cpp/build "
+  "-DZLINK_CPP_CORE_BUILD_DIR=<repo>/core/build")

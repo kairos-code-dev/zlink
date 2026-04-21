@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -163,24 +164,17 @@ bool run_pattern_pubsub (const std::string &transport,
         }
 
         for (;;) {
-            try {
-                const zlink::topic_message_t message =
-                  subscriber.subscribe (zlink::recv_flags_t::dontwait);
-                if (!record_subscribed_payload (message,
-                                               run_id,
-                                               msg_size,
-                                               payload_size,
-                                               received_count,
-                                               latency_builder)) {
-                    sender_ok.store (false, std::memory_order_release);
-                    break;
-                }
-            }
-            catch (const zlink::recv_error_t &err) {
-                if (err.result () == zlink::recv_result_t::no_data
-                    || err.result () == zlink::recv_result_t::busy) {
-                    break;
-                }
+            std::optional<zlink::topic_message_t> message =
+              subscriber.subscribe (zlink::recv_flags_t::dontwait);
+            if (!message.has_value ())
+                break;
+
+            if (!record_subscribed_payload (*message,
+                                           run_id,
+                                           msg_size,
+                                           payload_size,
+                                           received_count,
+                                           latency_builder)) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -194,24 +188,17 @@ bool run_pattern_pubsub (const std::string &transport,
     while (received_count.load (std::memory_order_acquire)
              < sent_count.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < drain_deadline) {
-        try {
-            const zlink::topic_message_t message =
-              subscriber.subscribe (zlink::recv_flags_t::dontwait);
-            if (!record_subscribed_payload (message,
-                                           run_id,
-                                           msg_size,
-                                           payload_size,
-                                           received_count,
-                                           latency_builder)) {
-                sender_ok.store (false, std::memory_order_release);
-                break;
-            }
-        }
-        catch (const zlink::recv_error_t &err) {
-            if (err.result () == zlink::recv_result_t::no_data
-                || err.result () == zlink::recv_result_t::busy) {
-                break;
-            }
+        std::optional<zlink::topic_message_t> message =
+          subscriber.subscribe (zlink::recv_flags_t::dontwait);
+        if (!message.has_value ())
+            break;
+
+        if (!record_subscribed_payload (*message,
+                                       run_id,
+                                       msg_size,
+                                       payload_size,
+                                       received_count,
+                                       latency_builder)) {
             sender_ok.store (false, std::memory_order_release);
             break;
         }

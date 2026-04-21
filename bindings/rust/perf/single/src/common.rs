@@ -267,27 +267,6 @@ where
     false
 }
 
-pub fn handle_local_route_handshake_error<E>(
-    pattern: &str,
-    transport: &str,
-    stage: &str,
-    err: E,
-) -> bool
-where
-    E: Into<ZlinkError> + Copy,
-{
-    let err = err.into();
-    if matches!(transport, "inproc" | "ipc") && err.internal_errno() == libc::EPROTO {
-        emit_unsupported(
-            pattern,
-            transport,
-            &format!("{stage}_errno_{}", err.internal_errno()),
-        );
-        return true;
-    }
-    false
-}
-
 pub fn wait_monitor_ready(mon: &mut SocketMonitor, timeout: Duration, name: &str) {
     let (tx, rx) = mpsc::sync_channel::<Result<(), String>>(1);
     mon.on_event(move |event| {
@@ -715,39 +694,13 @@ pub fn resolve_endpoint_or_emit_unsupported(
             std::process::id(),
             now_ns()
         )),
-        "ws" => reserve_tcp_port_for_transport(pattern, transport)
-            .map(|port| format!("ws://127.0.0.1:{port}")),
-        "wss" => reserve_tcp_port_for_transport(pattern, transport)
-            .map(|port| format!("wss://127.0.0.1:{port}")),
-        "tls" => reserve_tcp_port_for_transport(pattern, transport)
-            .map(|port| format!("tls://127.0.0.1:{port}")),
-        "tcp" => reserve_tcp_port_for_transport(pattern, transport)
-            .map(|port| format!("tcp://127.0.0.1:{port}")),
+        "ws" => Some(format!("ws://127.0.0.1:{}", reserve_tcp_port())),
+        "wss" => Some(format!("wss://127.0.0.1:{}", reserve_tcp_port())),
+        "tls" => Some(format!("tls://127.0.0.1:{}", reserve_tcp_port())),
+        "tcp" => Some(format!("tcp://127.0.0.1:{}", reserve_tcp_port())),
         _ => {
             emit_unsupported(pattern, transport, "unsupported_transport");
             None
         }
-    }
-}
-
-fn reserve_tcp_port_for_transport(pattern: &str, transport: &str) -> Option<u16> {
-    match try_reserve_tcp_port() {
-        Ok(listener) => {
-            let port = listener.local_addr().expect("tcp addr").port();
-            drop(listener);
-            Some(port)
-        }
-        Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
-            emit_unsupported(
-                pattern,
-                transport,
-                &format!(
-                    "reserve_port_errno_{}",
-                    err.raw_os_error().unwrap_or(libc::EPERM)
-                ),
-            );
-            None
-        }
-        Err(err) => panic!("reserve tcp port: {err}"),
     }
 }

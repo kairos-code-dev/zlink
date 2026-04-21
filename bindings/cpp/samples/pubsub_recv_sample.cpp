@@ -28,12 +28,13 @@ int main ()
     zlink::message_t outbound = detail::make_message (sent);
     publisher.publish (topic, outbound);
 
-    zlink::topic_message_t inbound = subscriber.subscribe ();
-    assert (inbound.topic () == topic);
-    assert (inbound.parts ().size () == 1);
-    const std::string received = inbound.parts ()[0].to_string ();
+    std::optional<zlink::topic_message_t> inbound = subscriber.subscribe ();
+    assert (inbound.has_value ());
+    assert (inbound->topic () == topic);
+    assert (inbound->parts ().size () == 1);
+    const std::string received = inbound->parts ()[0].to_string ();
     assert (received == detail::k_pubsub_payload);
-    inbound.close ();
+    inbound->close ();
     std::printf ("[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
                  topic.c_str (), sent.c_str (), topic.c_str (), received.c_str ());
     return 0;

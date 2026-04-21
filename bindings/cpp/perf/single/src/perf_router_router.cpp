@@ -168,21 +168,21 @@ bool send_router_samples (zlink::socket_t *sender_,
 
 } // namespace
 
-void run_pattern_router_router (const std::string &transport,
+bool run_pattern_router_router (const std::string &transport,
                                 size_t msg_size,
                                 const std::string &lib_name)
 {
     if (!perf::single::transport_available (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << ",ROUTER_ROUTER,"
                   << transport << std::endl;
-        return;
+        return true;
     }
 
     perf::single::ctx_guard_t ctx;
     if (!ctx.valid ()) {
         perf::single::print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     perf::single::socket_guard_t receiver (ctx, zlink::socket_type::router);
@@ -190,7 +190,7 @@ void run_pattern_router_router (const std::string &transport,
     if (!receiver.valid () || !sender.valid ()) {
         perf::single::print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     (void) receiver.sock ().set_routing_id (std::string (k_receiver_id));
@@ -205,7 +205,7 @@ void run_pattern_router_router (const std::string &transport,
         || !complete_handshake (receiver.sock (), sender.sock ())) {
         perf::single::print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
@@ -299,7 +299,7 @@ void run_pattern_router_router (const std::string &transport,
     if (!sender_ok.load (std::memory_order_acquire)) {
         perf::single::print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
 
     const auto drain_deadline =
@@ -317,7 +317,7 @@ void run_pattern_router_router (const std::string &transport,
                     break;
                 perf::single::print_fail_result (
                   lib_name, "ROUTER_ROUTER", transport, msg_size);
-                return;
+                return false;
             }
             if (!record_router_router_sample (run_id,
                                               msg_size,
@@ -328,13 +328,14 @@ void run_pattern_router_router (const std::string &transport,
                                               &state.active_received)) {
                 perf::single::print_fail_result (
                   lib_name, "ROUTER_ROUTER", transport, msg_size);
-                return;
+                return false;
             }
         }
         catch (const zlink::recv_error_t &err) {
+            (void) err;
             perf::single::print_fail_result (
               lib_name, "ROUTER_ROUTER", transport, msg_size);
-            return;
+            return false;
         }
     }
 
@@ -346,7 +347,7 @@ void run_pattern_router_router (const std::string &transport,
                       << " received=" << received << std::endl;
         perf::single::print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size);
-        return;
+        return false;
     }
     latency = state.latency.snapshot ();
 
@@ -360,6 +361,7 @@ void run_pattern_router_router (const std::string &transport,
                                 latency.mean_ns,
                                 latency.p95_ns,
                                 latency.p99_ns);
+    return true;
 }
 
 int main (int argc, char **argv)

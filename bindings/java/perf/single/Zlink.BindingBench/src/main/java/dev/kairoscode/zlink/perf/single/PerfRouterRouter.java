@@ -107,24 +107,23 @@ final class PerfRouterRouter {
             PerfUtil.await(routed, "router/router self-check", Duration.ofSeconds(10));
 
             Thread traffic = new Thread(() -> {
-                try (Message active = PerfUtil.payloadTemplate(config.size());
-                     Message cooldown = PerfUtil.payloadTemplate(config.size())) {
                 try {
                     metrics.startActiveWindow();
                     long activeEnd = System.nanoTime()
                         + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        PerfUtil.writePayload(active, config.size(),
-                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                        sender.send(ROUTER1, active);
+                        try (Message active = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sender.send(ROUTER1, active);
+                        }
                     }
-                    PerfUtil.writePayload(cooldown, config.size(),
-                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                    sender.send(ROUTER1, cooldown);
+                    try (Message cooldown = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        sender.send(ROUTER1, cooldown);
+                    }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     finished.countDown();
-                }
                 }
             }, "single-router-router-sender");
             traffic.start();

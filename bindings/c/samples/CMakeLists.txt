@@ -17,6 +17,13 @@ function(add_c_sample target_name source_file)
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${ZLINK_C_BINDINGS_INCLUDE_DIR}
     ${ZLINK_CORE_INCLUDE_DIR})
+  if(UNIX AND NOT WIN32)
+    set_target_properties(${target_name} PROPERTIES
+      BUILD_RPATH "$<TARGET_FILE_DIR:zlink_c>;${ZLINK_C_CORE_RUNTIME_DIR}")
+  elseif(APPLE)
+    set_target_properties(${target_name} PROPERTIES
+      BUILD_RPATH "$<TARGET_FILE_DIR:zlink_c>;${ZLINK_C_CORE_RUNTIME_DIR}")
+  endif()
   if(MSVC)
     target_compile_options(${target_name} PRIVATE /UNDEBUG)
   else()
@@ -25,19 +32,23 @@ function(add_c_sample target_name source_file)
   set_target_properties(${target_name} PROPERTIES C_STANDARD 11)
   if(UNIX AND NOT WIN32)
     target_link_libraries(${target_name} PRIVATE pthread)
-    add_test(NAME sample_smoke_${target_name}
-      COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
-  else()
-    add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
   endif()
-  set_tests_properties(sample_smoke_${target_name} PROPERTIES
-    LABELS "sample-smoke"
-    TIMEOUT 120
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  )
-  if(WIN32)
+  if(ZLINK_C_REGISTER_CTEST)
+    if(UNIX AND NOT WIN32)
+      add_test(NAME sample_smoke_${target_name}
+        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+    else()
+      add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
+    endif()
     set_tests_properties(sample_smoke_${target_name} PROPERTIES
-      ENVIRONMENT "PATH=$<TARGET_FILE_DIR:zlink_c>;$ENV{PATH}")
+      LABELS "sample-smoke"
+      TIMEOUT 120
+      WORKING_DIRECTORY ${ZLINK_REPO_ROOT_DIR}
+    )
+    if(WIN32)
+      set_tests_properties(sample_smoke_${target_name} PROPERTIES
+        ENVIRONMENT "PATH=$<TARGET_FILE_DIR:zlink_c>;${ZLINK_C_CORE_RUNTIME_DIR};$ENV{PATH}")
+    endif()
   endif()
 endfunction()
 

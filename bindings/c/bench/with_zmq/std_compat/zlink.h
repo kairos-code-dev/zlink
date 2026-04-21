@@ -34,6 +34,11 @@ typedef int zlink_send_flags_t;
 typedef int zlink_recv_flags_t;
 typedef uint64_t zlink_socket_monitor_event_mask_t;
 typedef zmq_msg_t zlink_msg_t;
+typedef enum zlink_part_flag_t
+{
+    ZLINK_PART_FINAL = 0,
+    ZLINK_PART_MORE = 1
+} zlink_part_flag_t;
 
 enum {
     ZLINK_CONFIG_OK = 0,
@@ -84,19 +89,16 @@ inline size_t &recv_tls_count ()
     return count;
 }
 
-inline void recv_tls_reset ()
+inline size_t &recv_tls_next_index ()
 {
-    std::vector<zlink_msg_t> &parts = recv_tls_parts ();
-    std::vector<unsigned char> &occupied = recv_tls_occupied ();
-    size_t &count = recv_tls_count ();
-    for (size_t i = 0; i < count; ++i) {
-        if (!occupied[i])
-            continue;
-        zmq_msg_close (&parts[i]);
-        zmq_msg_init (&parts[i]);
-        occupied[i] = 0;
-    }
-    count = 0;
+    static thread_local size_t index = 0;
+    return index;
+}
+
+inline uint64_t &recv_tls_request_seq ()
+{
+    static thread_local uint64_t request_seq = 0;
+    return request_seq;
 }
 
 inline int recv_tls_push (zlink_msg_t *src_)
@@ -112,6 +114,36 @@ inline int recv_tls_push (zlink_msg_t *src_)
         return -1;
     occupied[count] = 1;
     ++count;
+    return 0;
+}
+
+inline int recv_tls_take_part (zlink_msg_t *part_out_,
+                               zlink_part_flag_t *has_more_out_)
+{
+    if (!part_out_ || !has_more_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    size_t &count = recv_tls_count ();
+    size_t &next_index = recv_tls_next_index ();
+    std::vector<zlink_msg_t> &parts = recv_tls_parts ();
+    std::vector<unsigned char> &occupied = recv_tls_occupied ();
+    if (next_index >= count || !occupied[next_index]) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    if (zmq_msg_move (part_out_, &parts[next_index]) != 0)
+        return -1;
+
+    occupied[next_index] = 0;
+    ++next_index;
+    *has_more_out_ = next_index < count ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+    if (*has_more_out_ == ZLINK_PART_FINAL) {
+        count = 0;
+        next_index = 0;
+    }
     return 0;
 }
 
@@ -137,6 +169,41 @@ typedef struct zlink_routing_id_t
     uint8_t size;
     unsigned char data[256];
 } zlink_routing_id_t;
+
+namespace zlink_std_compat
+{
+inline zlink_routing_id_t &recv_tls_source_rid ()
+{
+    static thread_local zlink_routing_id_t rid;
+    return rid;
+}
+
+inline zlink_routing_id_t &recv_tls_source_spot_rid ()
+{
+    static thread_local zlink_routing_id_t rid;
+    return rid;
+}
+
+inline void recv_tls_reset ()
+{
+    std::vector<zlink_msg_t> &parts = recv_tls_parts ();
+    std::vector<unsigned char> &occupied = recv_tls_occupied ();
+    size_t &count = recv_tls_count ();
+    size_t &next_index = recv_tls_next_index ();
+    for (size_t i = 0; i < count; ++i) {
+        if (!occupied[i])
+            continue;
+        zmq_msg_close (&parts[i]);
+        zmq_msg_init (&parts[i]);
+        occupied[i] = 0;
+    }
+    count = 0;
+    next_index = 0;
+    std::memset (&recv_tls_source_rid (), 0, sizeof (zlink_routing_id_t));
+    std::memset (&recv_tls_source_spot_rid (), 0, sizeof (zlink_routing_id_t));
+    recv_tls_request_seq () = 0;
+}
+}
 
 typedef struct zlink_monitor_event_t
 {
@@ -603,6 +670,11 @@ inline int zlink_recv (void *s_,
     *part_count_out_ = 0;
     if (source_rid_out_)
         source_rid_out_->size = 0;
+    std::memset (&zlink_std_compat::recv_tls_source_rid (), 0,
+                 sizeof (zlink_routing_id_t));
+    std::memset (&zlink_std_compat::recv_tls_source_spot_rid (), 0,
+                 sizeof (zlink_routing_id_t));
+    zlink_std_compat::recv_tls_request_seq () = 0;
 
     int socket_type = 0;
     size_t socket_type_size = sizeof (socket_type);
@@ -649,6 +721,7 @@ inline int zlink_recv (void *s_,
                   source_rid_out_->data, zmq_msg_data (&frames[0]), rid_size);
             }
         }
+        zlink_std_compat::recv_tls_source_rid () = *source_rid_out_;
         start_index = 1;
     }
 
@@ -701,7 +774,88 @@ inline int zlink_router_recv (void *router_,
         *peer_rid_out_ = tls_peer_rid.size > 0 ? &tls_peer_rid : NULL;
     if (source_spot_rid_out_)
         *source_spot_rid_out_ = &tls_source_spot_rid;
+    zlink_std_compat::recv_tls_source_rid () = tls_peer_rid;
+    zlink_std_compat::recv_tls_source_spot_rid () = tls_source_spot_rid;
+    zlink_std_compat::recv_tls_request_seq () =
+      request_seq_out_ ? *request_seq_out_ : 0;
     return 0;
+}
+
+inline int zlink_recv_part (void *s_,
+                            const zlink_routing_id_t **source_rid_out_,
+                            zlink_msg_t *part_out_,
+                            zlink_part_flag_t *has_more_out_,
+                            zlink_recv_flags_t flags_)
+{
+    if (!part_out_ || !has_more_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (zlink_std_compat::recv_tls_count () == 0) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        zlink_routing_id_t source_rid;
+        std::memset (&source_rid, 0, sizeof (source_rid));
+        if (zlink_recv (s_, &source_rid, &parts, &part_count, flags_) != 0) {
+            if (source_rid_out_)
+                *source_rid_out_ = NULL;
+            return -1;
+        }
+    }
+
+    if (source_rid_out_) {
+        *source_rid_out_ =
+          zlink_std_compat::recv_tls_source_rid ().size > 0
+            ? &zlink_std_compat::recv_tls_source_rid ()
+            : NULL;
+    }
+    return zlink_std_compat::recv_tls_take_part (part_out_, has_more_out_);
+}
+
+inline int zlink_router_recv_part (
+  void *router_,
+  const zlink_routing_id_t **peer_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_,
+  zlink_recv_flags_t flags_)
+{
+    if (!part_out_ || !has_more_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (zlink_std_compat::recv_tls_count () == 0) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        if (zlink_router_recv (router_, peer_rid_out_, source_spot_rid_out_,
+                               request_seq_out_, &parts, &part_count, flags_)
+            != 0) {
+            if (peer_rid_out_)
+                *peer_rid_out_ = NULL;
+            if (source_spot_rid_out_)
+                *source_spot_rid_out_ = NULL;
+            if (request_seq_out_)
+                *request_seq_out_ = 0;
+            return -1;
+        }
+    }
+
+    if (peer_rid_out_) {
+        *peer_rid_out_ =
+          zlink_std_compat::recv_tls_source_rid ().size > 0
+            ? &zlink_std_compat::recv_tls_source_rid ()
+            : NULL;
+    }
+    if (source_spot_rid_out_) {
+        *source_spot_rid_out_ =
+          &zlink_std_compat::recv_tls_source_spot_rid ();
+    }
+    if (request_seq_out_)
+        *request_seq_out_ = zlink_std_compat::recv_tls_request_seq ();
+    return zlink_std_compat::recv_tls_take_part (part_out_, has_more_out_);
 }
 
 inline int zlink_publish (void *subject_,

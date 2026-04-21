@@ -14,6 +14,7 @@ else()
         set(STD_LIBZMQ_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/libzmq_dist")
     endif()
 endif()
+
 set(STD_LIBZMQ_INCLUDE_DIR "${STD_LIBZMQ_ROOT}/include")
 
 if(WIN32)
@@ -24,11 +25,11 @@ else()
     file(GLOB STD_LIBZMQ_LIBRARY "${STD_LIBZMQ_ROOT}/lib/libzmq.so*")
 endif()
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/core/include")
-    set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
-else()
-    set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
-endif()
+set(ZLINK_INCLUDE_DIR "${ZLINK_CORE_DIR}/include")
+set(ZLINK_C_PERF_COMMON_DIR "${ZLINK_C_BINDINGS_DIR}/perf/common")
+set(ZLINK_C_PERF_STREAMCLIENT_DIR
+    "${ZLINK_C_BINDINGS_DIR}/perf/common/streamclient")
+set(ZLINK_C_PERF_MULTI_COMMON_DIR "${ZLINK_C_BINDINGS_DIR}/perf/multi/common")
 
 if(MSVC)
     set(BENCH_CXX_FLAGS "/O2")
@@ -69,9 +70,9 @@ function(add_std_zmq_bench_multi name source)
         target_link_libraries(${name} PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     endif()
     target_include_directories(${name} PRIVATE
-        ${CMAKE_SOURCE_DIR}/bindings/c/perf/common
-        ${CMAKE_SOURCE_DIR}/bindings/c/perf/common/streamclient
-        ${CMAKE_SOURCE_DIR}/bindings/c/perf/multi/common
+        ${ZLINK_C_PERF_COMMON_DIR}
+        ${ZLINK_C_PERF_STREAMCLIENT_DIR}
+        ${ZLINK_C_PERF_MULTI_COMMON_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/std_compat
         ${STD_LIBZMQ_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/multi/zmq
@@ -97,9 +98,12 @@ endfunction()
 
 function(add_zlink_bench_single name source)
     add_executable(${name} ${source})
-    target_link_libraries(${name} PRIVATE libzlink Threads::Threads)
+    target_link_libraries(${name} PRIVATE ${ZLINK_C_CORE_TARGET} Threads::Threads)
     if(NOT WIN32)
         target_link_libraries(${name} PRIVATE dl)
+        set_target_properties(${name} PROPERTIES
+            BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
+            INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
     endif()
     target_include_directories(${name} PRIVATE ${ZLINK_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/single/common)
     target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
@@ -117,14 +121,17 @@ endfunction()
 
 function(add_zlink_bench_multi name source)
     add_executable(${name} ${source})
-    target_link_libraries(${name} PRIVATE libzlink Threads::Threads)
+    target_link_libraries(${name} PRIVATE ${ZLINK_C_CORE_TARGET} Threads::Threads)
     if(NOT WIN32)
         target_link_libraries(${name} PRIVATE dl)
+        set_target_properties(${name} PROPERTIES
+            BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
+            INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
     endif()
     target_include_directories(${name} PRIVATE
-        ${CMAKE_SOURCE_DIR}/bindings/c/perf/common
-        ${CMAKE_SOURCE_DIR}/bindings/c/perf/common/streamclient
-        ${CMAKE_SOURCE_DIR}/bindings/c/perf/multi/common
+        ${ZLINK_C_PERF_COMMON_DIR}
+        ${ZLINK_C_PERF_STREAMCLIENT_DIR}
+        ${ZLINK_C_PERF_MULTI_COMMON_DIR}
         ${ZLINK_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/multi/zlink
         ${CMAKE_CURRENT_SOURCE_DIR}/multi/common)

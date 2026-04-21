@@ -2,7 +2,10 @@
 
 #include "support.hpp"
 
+#include <chrono>
 #include <cstdint>
+#include <optional>
+#include <thread>
 #include <type_traits>
 
 namespace {
@@ -421,10 +424,18 @@ void test_unified_spot_self_delivery_recv_contract ()
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
     const std::string service_name = "spot-self";
+    zlink::service::registry_t registry (ctx);
+    const std::string registry_pub =
+      zlink_cpp_contract::unique_tcp ("spot-self-reg-pub");
+    const std::string registry_router =
+      zlink_cpp_contract::unique_tcp ("spot-self-reg-router");
+    registry.bind (registry_pub, registry_router);
     zlink::service::discovery_t discovery (
       ctx, zlink::service_type::spot, service_name);
     assert (discovery.valid ());
+    discovery.connect_registry (registry_router);
     node.attach_discovery (discovery);
+    node.bind (zlink_cpp_contract::unique_inproc ("spot-self"));
 
     zlink::service::spot_t spot = node.create_spot ();
     assert (spot.valid ());
@@ -439,12 +450,21 @@ void test_unified_spot_self_delivery_recv_contract ()
     assert (spot.routing_id ().to_string () == "spot-self-rid");
     spot.publish (service_name, "topic:service-self", outbound);
 
-    const zlink::topic_message_t inbound = spot.subscribe ();
-    assert (inbound.service_name ());
-    assert (*inbound.service_name () == service_name);
-    assert (inbound.topic () == "topic:service-self");
-    assert (inbound.parts ().size () == 1);
-    assert (inbound.parts ()[0].to_string () == "service-self");
+    std::optional<zlink::topic_message_t> inbound;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    while (std::chrono::steady_clock::now () < deadline) {
+        inbound = spot.subscribe (zlink::recv_flags_t::dontwait);
+        if (inbound.has_value ())
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    assert (inbound.has_value ());
+    assert (inbound->service_name ());
+    assert (*inbound->service_name () == service_name);
+    assert (inbound->topic () == "topic:service-self");
+    assert (inbound->parts ().size () == 1);
+    assert (inbound->parts ()[0].to_string () == "service-self");
 
 }
 

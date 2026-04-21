@@ -14,6 +14,8 @@ public sealed class DealerSocket : MessageSocketBase
     private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(5);
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RequestReplyHandler =
         OnRequestReply;
+    private static readonly IntPtr RequestReplyHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(RequestReplyHandler);
 
     public DealerSocketOptions DealerOptions { get; }
 
@@ -63,54 +65,44 @@ public sealed class DealerSocket : MessageSocketBase
         return received.Parts;
     }
 
-    public void Request(Message part,
+    public bool Request(Message part,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
         => Request(part, callback, SendFlags.None, timeout);
 
-    public void Request(IReadOnlyList<Message> parts,
+    public bool Request(IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
         => Request(parts, callback, SendFlags.None, timeout);
 
-    public void Request(Message part,
+    public bool Request(Message part,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
         => Request(new[] { part }, callback, flags, timeout);
 
-    public void Request(IReadOnlyList<Message> parts,
+    public bool Request(IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
-        => RequestReplySupport.AttachResultCallback(
-            () => RequestAsyncCore(parts, timeout ?? TimeSpan.Zero,
-                CancellationToken.None, (int)flags),
-            (result, reply) =>
-            {
-                IReadOnlyList<Message> payload = Array.Empty<Message>();
-                if (reply != null)
-                {
-                    Received copy = RequestReplySupport.CloneReceived(reply);
-                    reply.Dispose();
-                    payload = copy.Parts;
-                }
-                callback(result, payload);
-            });
-
-    public bool TryRequest(Message part,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
-        => TryRequest(new[] { part }, callback, timeout);
-
-    public bool TryRequest(IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
     {
         try
         {
-            Request(parts, callback, SendFlags.DontWait, timeout);
+            RequestReplySupport.AttachResultCallback(
+                () => RequestAsyncCore(parts, timeout ?? TimeSpan.Zero,
+                    CancellationToken.None, (int)flags),
+                (result, reply) =>
+                {
+                    IReadOnlyList<Message> payload = Array.Empty<Message>();
+                    if (reply != null)
+                    {
+                        Received copy = RequestReplySupport.CloneReceived(reply);
+                        reply.Dispose();
+                        payload = copy.Parts;
+                    }
+                    callback(result, payload);
+                });
             return true;
         }
-        catch (ZlinkException error)
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
         {
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
@@ -171,7 +163,7 @@ public sealed class DealerSocket : MessageSocketBase
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final,
                         i + 1 < cloned.Length ? 0u : timeoutMs,
-                        i + 1 < cloned.Length ? null : RequestReplyHandler,
+                        i + 1 < cloned.Length ? IntPtr.Zero : RequestReplyHandlerPtr,
                         i + 1 < cloned.Length ? IntPtr.Zero : userData);
                     submitted = true;
                     if (rc != 0)
@@ -184,7 +176,7 @@ public sealed class DealerSocket : MessageSocketBase
                 }
             }
 
-            return completion.Task;
+            return RequestProgressPump.AttachSocket(Handle, completion.Task);
         }
         catch
         {

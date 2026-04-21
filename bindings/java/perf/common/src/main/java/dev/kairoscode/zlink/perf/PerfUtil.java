@@ -232,19 +232,19 @@ public final class PerfUtil {
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(PairSocket socket) {
-        return socket.tryRecv();
+        return socket.recv(RecvFlags.DONT_WAIT);
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(DealerSocket socket) {
-        return socket.tryRecv();
+        return socket.recv(RecvFlags.DONT_WAIT);
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(RouterSocket socket) {
-        return socket.tryRecv();
+        return socket.recv(RecvFlags.DONT_WAIT);
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(StreamSocket socket) {
-        return socket.tryRecv();
+        return socket.recv(RecvFlags.DONT_WAIT);
     }
 
     public static Optional<TopicMessage> subscribeNoWait(SubSocket socket) {

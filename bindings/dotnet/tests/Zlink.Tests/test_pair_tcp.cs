@@ -190,7 +190,7 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
-    public void receive_dontwait_throws_eagain_on_empty_queue()
+    public void receive_dontwait_returns_null_on_empty_queue()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -204,7 +204,7 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        Assert.Throws<ZlinkRecvException>(() => receiver.Recv(RecvFlags.DontWait));
+        Assert.Null(receiver.Recv(RecvFlags.DontWait));
     }
 
     [Fact]
@@ -260,7 +260,7 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
-    public void try_send_reports_backpressured_when_pair_hwm_is_exhausted()
+    public void send_nonblocking_reports_backpressured_when_pair_hwm_is_exhausted()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -278,20 +278,13 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         SendResult result = SendResult.Sent;
-        for (int i = 0; i < 1024; i++)
+        byte[] payloadBytes = new byte[64 * 1024];
+        for (int i = 0; i < 16 * 1024; i++)
         {
-            using Message payload = Message.FromString($"bp-{i}");
-            try
-            {
-                sender.Send(payload, SendFlags.DontWait);
-                result = SendResult.Sent;
-            }
-            catch (ZlinkSubmitException ex)
-            {
-                result = ex.Result == SubmitResult.Backpressured
-                    ? SendResult.Backpressured
-                    : throw ex;
-            }
+            using Message payload = Message.FromBytes(payloadBytes);
+            result = sender.Send(payload, SendFlags.DontWait)
+                ? SendResult.Sent
+                : SendResult.Backpressured;
             if (result != SendResult.Sent)
                 break;
         }
@@ -300,7 +293,7 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
-    public void try_send_returns_false_only_for_backpressured_pair_queue()
+    public void send_nonblocking_returns_false_only_for_backpressured_pair_queue()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -318,10 +311,11 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         bool sent = true;
-        for (int i = 0; i < 1024; i++)
+        byte[] payloadBytes = new byte[64 * 1024];
+        for (int i = 0; i < 16 * 1024; i++)
         {
-            using Message payload = Message.FromString($"bp-{i}");
-            sent = sender.TrySend(payload);
+            using Message payload = Message.FromBytes(payloadBytes);
+            sent = sender.Send(payload, SendFlags.DontWait);
             if (!sent)
                 break;
         }
@@ -330,7 +324,7 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
-    public void try_send_reports_not_ready_for_unknown_router_peer()
+    public void send_nonblocking_reports_not_ready_for_unknown_router_peer()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -346,7 +340,7 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
-    public void public_try_send_throws_not_ready_for_unknown_router_peer()
+    public void send_nonblocking_throws_not_ready_for_unknown_router_peer()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -357,7 +351,7 @@ public sealed class test_pair_tcp
 
         using Message message = Message.FromString("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
-            router.TrySend("UNKNOWN", message));
+            router.Send("UNKNOWN", message, SendFlags.DontWait));
         Assert.Equal(SubmitResult.NotConnected, ex.Result);
     }
 }

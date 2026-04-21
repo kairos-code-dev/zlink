@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
-BUILD_DIR="${ROOT_DIR}/core/build"
+BUILD_DIR="${ROOT_DIR}/bindings/c/build"
 
 LOCK_FILE="/tmp/bench_streamcompare.lock"
 if [[ "${BENCH_STREAMCOMPARE_LOCKED:-0}" != "1" ]]; then
@@ -29,7 +29,7 @@ Usage:
 Options:
   --stack <asio|cppserver|dotnet|netzlink|jvmzlink|jvmzlink-recv|jvmzmq|netty|zlink|zlink_packet|zmq|all|comma-list>
   --size <64|1024|65536|all|comma-list>
-  --build-dir PATH            Build directory (default: core/build).
+  --build-dir PATH            Build directory (default: bindings/c/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
   --ccu <N>                    default: 1000
@@ -47,7 +47,7 @@ Examples:
   ./run_benchmarks.sh
   ./run_benchmarks.sh --stack zlink,zmq --size 1024 --runs 3
   ./run_benchmarks.sh --reuse-build
-  ./run_benchmarks.sh --clean-build --build-dir ./core/build/linux-x64
+  ./run_benchmarks.sh --clean-build --build-dir ./bindings/c/build
 USAGE
 }
 
@@ -945,11 +945,11 @@ build_core_targets()
         esac
     done
 
-    log "configure core build"
-    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
-        -DZLINK_BUILD_TESTS=ON \
-        -DBUILD_BENCHMARKS=ON \
-        -DZLINK_BUILD_BENCH_STREAMCOMPARE=ON >/dev/null
+    log "configure bindings/c build"
+    cmake -S "${ROOT_DIR}/bindings/c" -B "${BUILD_DIR}" \
+        -DZLINK_C_BUILD_BENCHES=ON \
+        -DZLINK_C_BUILD_BENCH_STREAMCOMPARE=ON \
+        -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" >/dev/null
 
     if [[ "${needs_zlink_core}" -eq 1 ]]; then
         log "build bench_streamcompare_client + libzlink"
@@ -999,8 +999,8 @@ prepare_build_directory_policy()
             sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
                 | tail -n 1
         )"
-        if [[ -n "${cache_cmake_source}" && "${cache_cmake_source}" != "${ROOT_DIR}" ]]; then
-            log "build cache source mismatch detected: cache=${cache_cmake_source} required=${ROOT_DIR}"
+        if [[ -n "${cache_cmake_source}" && "${cache_cmake_source}" != "${ROOT_DIR}/bindings/c" ]]; then
+            log "build cache source mismatch detected: cache=${cache_cmake_source} required=${ROOT_DIR}/bindings/c"
             log "resetting build directory: ${BUILD_DIR}"
             rm -rf "${BUILD_DIR}"
         fi

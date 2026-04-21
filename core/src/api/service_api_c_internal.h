@@ -15,6 +15,23 @@ int zlink_service_publish_internal (void *subject_,
                                     size_t part_count_,
                                     zlink_send_flags_t flags_);
 
+int zlink_socket_send_internal (void *socket_,
+                                zlink_msg_t *parts_,
+                                size_t part_count_,
+                                zlink_send_flags_t flags_);
+
+int zlink_socket_send_rid_internal (void *socket_,
+                                    const zlink_routing_id_t *target_rid_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    zlink_send_flags_t flags_);
+
+int zlink_socket_publish_internal (void *socket_,
+                                   const char *topic_id_,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_,
+                                   zlink_send_flags_t flags_);
+
 int zlink_service_subscribe_recv_internal (void *subject_,
                                            zlink_routing_id_t *source_rid_out_,
                                            zlink_msg_t **parts_out_,

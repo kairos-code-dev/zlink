@@ -94,19 +94,11 @@ template<typename SpotHandle>
 inline zlink::maybe_t<zlink::topic_message_t>
 try_subscribe_nowait (SpotHandle &spot_)
 {
-    try {
-        return zlink::maybe_t<zlink::topic_message_t> (
-          spot_.subscribe (zlink::recv_flags_t::dontwait));
-    }
-    catch (const zlink::recv_error_t &err) {
-        switch (err.result ()) {
-        case zlink::recv_result_t::no_data:
-        case zlink::recv_result_t::busy:
-            return zlink::maybe_t<zlink::topic_message_t> ();
-        default:
-            throw;
-        }
-    }
+    std::optional<zlink::topic_message_t> message =
+      spot_.subscribe (zlink::recv_flags_t::dontwait);
+    if (!message.has_value ())
+        return zlink::maybe_t<zlink::topic_message_t> ();
+    return zlink::maybe_t<zlink::topic_message_t> (std::move (*message));
 }
 
 inline void start_client_start_watcher (start_signal_state_t *start_gate_)

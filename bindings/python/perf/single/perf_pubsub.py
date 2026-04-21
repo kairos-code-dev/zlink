@@ -7,6 +7,8 @@ import zlink
 from perf_common import (
     apply_single_socket_options,
     benchmark_run_id,
+    configure_single_tls_client,
+    configure_single_tls_server,
     latency_ns_from_message,
     is_active_message,
     new_payload,
@@ -47,6 +49,8 @@ def main(argv=None):
                     subscriber,
                     receive_timeout_ms=resolve_single_pubsub_recv_timeout_ms(),
                 )
+                configure_single_tls_server(publisher, args.transport)
+                configure_single_tls_client(subscriber, args.transport)
                 subscriber.set_subscription(TOPIC)
                 with subscriber.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
                     publisher.bind(endpoint)

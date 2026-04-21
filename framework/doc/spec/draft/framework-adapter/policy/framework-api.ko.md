@@ -1,0 +1,332 @@
+[스펙 목차](../../README.ko.md)
+
+[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
+
+# Draft -- ZLink Framework API
+
+> 이 문서는 **구현 전 초안**이다.
+> 현재 공개 계약이 아니며, 아래 API 이름은 방향 설명을 위한 예시다.
+
+## 1. 목적
+
+같은 `ZLink Framework`라도 `ASP.NET Core`, `Spring Boot`, `NestJS`,
+`FastAPI`, `C++ standalone host/runtime` 사용자가 기대하는 표면은 조금씩
+다르다. 이 문서는 각 환경에서 "어떤 식으로 보이면 자연스러운가"를 정리한다.
+
+핵심 원칙은 단순하다.
+
+- 프레임워크 사용자가 익숙한 등록 방식에 맞춘다.
+- low-level socket 이름을 공용 API 앞면으로 내세우지 않는다.
+- request handler, event handler, outbound client를 DI와 함께 설명한다.
+- runtime monitoring도 DI와 함께 설명할 수 있어야 한다.
+- 서버 간 `send/request`는 HTTP handler mapping과 닮은 경험으로 보이게 한다.
+- raw transport header는 handler 인자로 직접 노출하지 않는다.
+
+## 2. 공통 방향
+
+### 2.1 서버 쪽
+
+- handler를 프레임워크 표준 등록 방식으로 붙인다.
+- 요청 body는 typed object로 받는다.
+- header metadata와 timeout 정보는 context에서 조회한다.
+- `send`는 응답 없는 handler, `request`는 응답 있는 handler로 설명할 수 있어야
+  한다.
+- `stream`은 일반 request handler와 다른 전용 handler 그룹으로 분리할 수
+  있어야 한다.
+- `stream`은 packet/raw session 두 축을 우선 지원하고, recv loop는
+  기본 application 표면에 올리지 않는다.
+- `stream` callback은 write와 peer 식별을 함께 가진 stream 객체를 받고,
+  session error는 error kind enum과 native detail을 함께 가진 구조화된 값으로
+  받는 편이 자연스럽다.
+
+### 2.2 클라이언트 쪽
+
+- 공용 outbound client를 DI로 주입한다.
+- 요청 메서드는 async 중심으로 제공한다.
+- codec, timeout, target channel을 설정할 수 있다.
+- gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
+  삼는다.
+- send/publish는 기본적으로 blocking submit으로 두고, 필요하면 별도 non-blocking
+  옵션을 붙이는 편이 자연스럽다.
+- framework runtime은 등록한 outbound channel마다 별도 outbound runtime을 관리할
+  수 있어야 한다.
+- 단순 unary request 외에 event publish와 필요하면 aggregate helper를 분리할 수
+  있어야 한다.
+- 운영 점검이나 관리 API에서는 Registry topology snapshot/query 결과를 읽는
+  별도 surface를 둘 수 있어야 한다.
+- socket/discovery/registry/spot runtime 변화를 typed event handler로 받을 수
+  있는 별도 monitoring surface도 둘 수 있어야 한다.
+- 이 outbound client는 framework 전용 메시지 handler 안뿐 아니라, 기존 HTTP
+  handler나 controller 안에서도 그대로 쓸 수 있어야 한다.
+- caller가 `targetRid`와 `spotRid`를 이미 알고 있는 경우에는, channel name이
+  아니라 direct routed 호출을 여는 별도 표면도 둘 수 있어야 한다.
+
+### 2.3 transport 통합 축
+
+framework가 직접 통합할 transport 축은 [overview.ko.md](./overview.ko.md)의
+section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `STREAM`
+세 축을 중심으로 보되, 공통 API 원칙과 lifecycle 경계에 직접 영향을 주는
+`SPOT` 표면도 함께 다룬다. `SPOT`의 자세한 계약과 샘플은
+[../bindings/dotnet/aspnet-core-spot.ko.md](../bindings/dotnet/aspnet-core-spot.ko.md) 등 별도
+문서에서 따로 다룬다.
+
+핵심은 transport 축은 명확히 두되, 프레임워크 사용자가 보는 이름은 socket
+이름보다 역할 이름이 되게 만드는 것이다.
+
+### 2.4 runtime monitoring
+
+운영 이벤트는 일반 request/send/event handler와 다른 성격을 가진다. 따라서
+framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
+
+- event kind는 enum으로 둔다.
+- 실제 callback payload는 source 이름과 상세 정보를 함께 가진 구조화된 값으로
+  둔다.
+- socket/discovery는 하부 monitor를 감싸는 편이 자연스럽다.
+- registry/spot는 raw monitor를 가장한 표면보다 snapshot diff 기반 event로
+  설명하는 편이 맞다.
+- application은 typed runtime event handler를 구현해서 이 이벤트를 받는 모델을
+  기본으로 본다.
+
+즉 framework는 모든 source를 같은 raw monitor API로 보이게 하기보다,
+source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 편이 더
+자연스럽다.
+
+## 3. ASP.NET Core 방향
+
+### 3.1 기대하는 표면
+
+- `AddZLinkFramework(...)`
+- `AddZLinkHandlersFromAssemblyContaining<...>()` 또는 그와 비슷한 등록
+- outbound client DI
+- runtime monitoring 등록
+- `SPOT` node / publisher / subscriber의 hosted lifecycle 통합
+- stream hosted lifecycle 또는 stream session 등록
+
+### 3.2 예시
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddChannel("profile", channel =>
+    {
+        channel.EnableServer();
+        channel.EnableSubscriber();
+    });
+
+    options.AddChannel("account", channel =>
+    {
+        channel.EnableClient(client =>
+        {
+            client.UseManualConnections(peers =>
+            {
+                peers.Connect("tcp://10.0.20.15:7101");
+            });
+        });
+    });
+});
+
+builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
+
+public sealed class ProfileHandlers
+{
+    [ZLinkRequest]
+    public ValueTask<ProfileReply> GetAsync(
+        GetProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult(new ProfileReply());
+    }
+}
+```
+
+이 예시에서 중요한 점은 handler가 raw header part를 직접 받지 않는다는 점이다.
+필요한 metadata는 `ZLinkRequestContext` 같은 context에서 조회한다.
+
+또한 framework는 startup 시점에 channel별 역할을 등록하고, 필요한 capability만
+여는 쪽을 기본 방향으로 본다.
+
+수동 연결을 둘 때는 `channel` 전체가 아니라 `channel + capability` 기준으로
+설정해야 한다. 예를 들어 `account.client` 수동 연결과 `account.subscriber`
+수동 연결은 별도 집합으로 보는 편이 맞다. 그리고 수동 연결 capability는 startup
+설정만이 아니라, 런타임 `Connect`, `Disconnect`, `ListConnections` 같은 제어도
+지원해야 한다.
+
+여기서 channel client manual 연결은 remote `RoutingId`를 따로 받지 않는 편이
+자연스럽다. 하부 `DEALER(client)`가 connect된 peer 집합으로 요청을 보내는
+모델이므로, startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
+
+또한 send/publish는 기본 blocking submit으로 두고, 필요하면 `DontWait` 같은
+non-blocking 변형을 builder 옵션으로 여는 편이 맞다. 이 경우 temporary
+backpressure에서는 예외보다 `bool false`를 돌려주고, route-not-ready 같은 다른
+실패는 예외로 보는 쪽이 더 자연스럽다. 반면 request는 여전히 reply를 기다리는
+async 호출로 설명하는 편이 맞다.
+
+보다 자세한 `.NET` 초안은 [../bindings/dotnet/README.ko.md](../bindings/dotnet/README.ko.md)를 참고한다.
+
+### 3.3 ASP.NET Core의 SPOT 방향
+
+`SPOT`은 일반 channel messaging과 달리, logical instance lifecycle까지 함께
+설명해야 한다. 현재 공통 정책은 아래 방향을 기본으로 본다.
+
+- `UseSpotDiscovery(channelName, ...)`가 `SpotNode`의 active channel view를 정한다.
+- `SpotNode` 안의 capability는 `router`, `pub/sub`, attach된 channel client,
+  attach된 spot publisher client로 나눠서 설명한다.
+- local spot 인스턴스를 만들 spot 타입은 `AddSpotFactory<TSpot>(spotName)`처럼
+  이름과 함께 등록한다.
+- 같은 `SpotNode`에서 이미 등록된 `spotName`을 다시 쓰면 조용히 덮어쓰지 않고
+  startup 시점에 예외를 던진다.
+- spot 생성은 `CreateAsync(spotName, ...)`처럼 등록 이름으로 설명한다.
+- 생성 결과에는 `spotRid`만이 아니라 `spotName`도 함께 돌려주는 편이 맞다.
+- runtime이 들고 있는 `spotRid -> spotName` 매핑은 `GetAsync(...)`,
+  `ListAsync(...)` 같은 조회 표면으로 다시 볼 수 있어야 한다.
+- local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish할 때는
+  별도 `IZLinkSpotPublisherClient` 같은 표면을 둔다.
+- timer는 공용 client scheduler보다, `ZLinkSpot.AddTimer<THandler>(...)`처럼
+  spot lifecycle registration 표면으로 두는 편이 더 자연스럽다.
+- cross-channel 호출은 attach된 channel client를 통한 `SendChannel(...)`,
+  `RequestChannel(...)`가 먼저 보이는 편이 맞다.
+- 다만 caller가 `targetRid`와 `spotRid`를 이미 알고 있으면, advanced surface로
+  direct routed `SendTo(...)`, `RequestTo(...)`를 둘 수 있다.
+
+즉 공통 정책 차원에서는 `SPOT`을 단순 pub/sub helper로 보지 않고, named
+instance 생성, lifecycle, 현재 channel publish, attach된 외부 호출, 운영 조회를
+함께 가진 상위 모델로 설명하는 편이 맞다.
+
+## 4. Spring Boot 방향
+
+### 4.1 기대하는 표면
+
+Spring에서는 annotation 기반 handler가 자연스럽다.
+RSocket의 `@MessageMapping`과 비슷한 경험을 주는 방향이 적합하다.
+서버 간 `send/request`도 이 annotation 계열에 자연스럽게 올라가야 한다.
+
+### 4.2 예시
+
+```java
+@ZLinkController
+public final class ProfileController {
+
+    @ZLinkMapping(packetName = "profile.get")
+    public Mono<ProfileReply> get(ProfileRequest request, ZLinkContext ctx) {
+        return Mono.just(new ProfileReply());
+    }
+}
+```
+
+여기서는 annotation에 packet 이름을 직접 적는 예시를 들었지만, 실제 구현에서는
+request 타입 이름을 기본 packet key로 삼고 annotation 값은 explicit override로
+쓰는 쪽이 더 자연스럽다.
+
+## 5. NestJS 방향
+
+### 5.1 기대하는 표면
+
+NestJS는 메시지 기반 프로그래밍 모델이 이미 익숙하므로, 가능하면
+`@MessagePattern`, `@EventPattern` 같은 기존 감각과 닮게 가는 편이 좋다.
+다만 raw header를 message payload에 섞어 넣는 방식은 기본으로 두지 않는다.
+
+### 5.2 예시
+
+```typescript
+@Controller()
+export class ProfileController {
+  @MessagePattern('profile.get')
+  getProfile(data: ProfileRequest, ctx: ZLinkContext): Promise<ProfileReply> {
+    return Promise.resolve({} as ProfileReply);
+  }
+
+  @EventPattern('cache.invalidate')
+  invalidate(data: InvalidateEvent, ctx: ZLinkContext): void {
+  }
+}
+```
+
+NestJS 예시도 같은 맥락이다. decorator 값은 packet key 또는 event name override
+예시로 보는 편이 맞다.
+
+## 6. FastAPI 방향
+
+### 6.1 기대하는 표면
+
+FastAPI에서는 dependency 주입과 startup/shutdown hook이 핵심이다.
+그래서 zlink runtime도 application 수명과 함께 올라가고 내려가는 형태가
+자연스럽다.
+
+- `add_zlink_framework(...)`
+- `Depends(...)`로 받는 outbound client
+- startup 시 local channel / outbound channel 등록
+- route handler 안에서 그대로 쓰는 request/send client
+
+### 6.2 예시
+
+```python
+app = FastAPI()
+add_zlink_framework(
+    app,
+    channel_name="profile",
+    outbound_channels=["account"],
+)
+
+
+@app.post("/profiles/get")
+async def get_profile(
+    request: GetProfileHttpRequest,
+    client: ZLinkClient = Depends(get_zlink_client),
+) -> ProfileReply:
+    return await client.request(
+        "account",
+        GetProfileRequest(account_id=request.account_id),
+    )
+```
+
+FastAPI 방향에서는 framework 내부 dispatch loop를 route 함수로 끌어올리지 않고,
+기존 async application 구조 안에 zlink runtime을 붙이는 모양을 기본으로 본다.
+
+## 7. C++ standalone host 방향
+
+### 7.1 기대하는 표면
+
+`C++`는 다른 언어처럼 기존 웹 프레임워크 위 adapter보다, zlink framework가
+host/runtime 역할 일부를 직접 제공하는 쪽이 더 자연스럽다.
+
+- application host builder
+- local channel 등록
+- outbound channel 등록
+- request/send handler registry
+- poll loop와 lifecycle 통합
+- registry/discovery/manual connection 설정
+
+### 7.2 예시
+
+```cpp
+using namespace zlink::framework;
+
+int main() {
+    app_t app = app_t::build();
+    app.set_channel_name("profile")
+       .add_outbound_channel("account")
+       .add_request_handler("GetProfileRequest", profile_handler)
+       .run();
+}
+```
+
+`C++` 방향에서는 DI container보다 host builder와 registration API가 더 중요하다.
+핵심은 raw socket 배선을 application 코드로 퍼뜨리지 않으면서, lifecycle과
+dispatch loop를 framework가 직접 관리하는 것이다.
+
+## 8. 아직 확정하지 않는 것
+
+- 공용 annotation 이름을 프레임워크마다 통일할지
+- NestJS에서 기존 decorator를 그대로 재사용할지, zlink 전용 decorator를 둘지
+- ASP.NET Core에서 endpoint mapping과 attribute model 중 어디를 우선할지
+- FastAPI에서 decorator보다 helper registration을 더 앞세울지
+- `C++` host가 어느 수준까지 scheduler/timer를 기본 제공할지
+- pub/sub을 `PUB/SUB` 중심으로 설명할지, `SPOT`와 묶은 상위 event 모델로 먼저
+  설명할지
+- stream을 packet/raw session 두 축과 session lifecycle만으로 충분히 설명할 수 있는지
+- scatter-gather 같은 aggregate helper를 adapter 기본 기능으로 둘지
+- workflow metadata를 context에 어느 수준까지 노출할지
+
+지금 단계에서는 이름보다 "그 프레임워크 사용자가 낯설지 않게 느끼는가"를 더
+중요하게 본다.

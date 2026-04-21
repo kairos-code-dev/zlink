@@ -41,9 +41,7 @@ final class PerfMultiSpot {
              DealerSocket channelDealer = new DealerSocket(ctx);
              SpotNode node = new SpotNode(ctx);
              Spot publisher = node.createSpot();
-             RouterSocket control = new RouterSocket(ctx);
-             Message active = PerfUtil.payloadTemplate(config.size());
-             Message cooldown = PerfUtil.payloadTemplate(config.size())) {
+             RouterSocket control = new RouterSocket(ctx)) {
             String registryPub = PerfUtil.endpoint(config.transport(),
                 "multi-spot-registry-pub");
             String registryRouter = PerfUtil.endpoint(config.transport(),
@@ -65,14 +63,16 @@ final class PerfMultiSpot {
             broadcastControlStart(control, readyPeers, config.size());
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
-                PerfUtil.writePayload(active, config.size(),
-                    (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                publisher.publish(SERVICE_NAME, TOPIC, active);
+                try (Message active = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                    publisher.publish(SERVICE_NAME, TOPIC, active);
+                }
             }
             for (int i = 0; i < Math.max(16, config.clients() * 8); i++) {
-                PerfUtil.writePayload(cooldown, config.size(),
-                    (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                publisher.publish(SERVICE_NAME, TOPIC, cooldown);
+                try (Message cooldown = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                    publisher.publish(SERVICE_NAME, TOPIC, cooldown);
+                }
             }
             return PerfUtil.Result.silent(config);
         }
@@ -337,7 +337,7 @@ final class PerfMultiSpot {
     }
 
     private static String normalizeClientEndpoint(String endpoint, String transport) {
-        if (!"tls".equals(transport)) {
+        if (!"tls".equals(transport) && !"wss".equals(transport)) {
             return endpoint;
         }
         return endpoint.replace("://127.0.0.1:", "://localhost:");

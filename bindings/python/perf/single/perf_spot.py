@@ -7,6 +7,8 @@ import zlink
 from perf_common import (
     HEADER_MAGIC,
     benchmark_run_id,
+    configure_single_tls_client,
+    configure_single_tls_server,
     decode_header,
     latency_ns_from_message,
     is_active_message,
@@ -44,6 +46,8 @@ def main(argv=None):
                 with publisher_node.create_spot() as publisher:
                     with subscriber_node.create_spot() as subscriber:
                         endpoint = resolve_single_endpoint(args.transport, "spot")
+                        configure_single_tls_server(publisher_node, args.transport)
+                        configure_single_tls_client(subscriber_node, args.transport)
                         publisher_node.bind(endpoint)
                         subscriber.set_subscription(TOPIC)
                         subscriber_node.connect_peer(endpoint)

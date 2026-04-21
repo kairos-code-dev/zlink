@@ -18,8 +18,11 @@ const {
   resolveMultiSpotReadySettleMs
 } = require('./perf_multi_common');
 const {
+  POLLIN,
+  POLLOUT,
   applySocketPolicy,
   applyContextPolicy,
+  createSocketEventWaiter,
   resolveMultiLatencySampleCap,
   subscribeNoWait,
   trySocketPublish,
@@ -51,7 +54,10 @@ async function main() {
   applyContextPolicy(ctx, 'client', 'MULTI_SPOT');
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
+  const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+  const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
   const slots = [];
+  let rl = null;
   let collector = null;
 
   try {
@@ -100,19 +106,25 @@ async function main() {
     while (Date.now() < stabilizationDeadline) {
       await sleepImmediate();
     }
-    while (!tryControlPublish(controlPub, 'CONNECTED')) {
-      await sleepImmediate();
+    for (;;) {
+      if (tryControlPublish(controlPub, 'CONNECTED')) {
+        break;
+      }
+      await controlPubWaiter.wait(POLLOUT);
     }
     const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
     while (Date.now() < controlSettleDeadline) {
       await sleepImmediate();
     }
-    while (!tryControlPublish(controlPub, `READY_COUNT,${options.msgSize},${slots.length}`)) {
-      await sleepImmediate();
+    for (;;) {
+      if (tryControlPublish(controlPub, `READY_COUNT,${options.msgSize},${slots.length}`)) {
+        break;
+      }
+      await controlPubWaiter.wait(POLLOUT);
     }
     console.log(`CLIENT_READY,${options.msgSize}`);
 
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     let startRequested = false;
     let startBroadcast = false;
     (async () => {
@@ -124,17 +136,21 @@ async function main() {
     })();
 
     while (!(startRequested && startBroadcast)) {
+      let drained = false;
       while (true) {
         const received = subscribeNoWait(controlSub);
         if (!received) {
           break;
         }
+        drained = true;
         const payloadText = received.parts[0].data().toString('utf8');
         if (payloadText === `START,${options.msgSize}`) {
           startBroadcast = true;
         }
       }
-      await sleepImmediate();
+      if (!(startRequested && startBroadcast) && !drained) {
+        await controlSubWaiter.wait(POLLIN);
+      }
     }
 
     const activeStartNs = currentEpochNs();
@@ -162,6 +178,9 @@ async function main() {
       console.log(metricLine);
     }
   } finally {
+    rl?.close();
+    controlSubWaiter.close();
+    controlPubWaiter.close();
     controlSub.close();
     controlPub.close();
     for (const slot of slots) {

@@ -37,7 +37,7 @@ func drainMultiSpotSubscriber(
 					perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
 				}
 			} else if tracker != nil {
-				if _, ok := perfcommon.SentAtFromMessage(part, 64); ok {
+				if _, ok := perfcommon.SentAtFromMessagePhase(part, 64, perfcommon.PhaseWarmup); ok {
 					tracker.mark(index)
 				}
 			}

@@ -214,7 +214,7 @@ internal static class PerfMultiRouterRouterClient
                 ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
                     .AsReadOnlySpan();
                 long recvTicks = Stopwatch.GetTimestamp();
-                if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
+                if (PerfShared.TryDecodeMetricHeader(body, out PerfMetricHeader header)
                     && header.RunId == runId
                     && header.MsgSize == (uint)msgSize
                     && header.Phase == (uint)phase
@@ -363,6 +363,6 @@ internal static class PerfMultiRouterRouterClient
 
     private static Received? TryRecvNoWait(RouterSocket socket)
     {
-        return socket.TryRecv(out Received? received) ? received : null;
+        return socket.Recv(RecvFlags.DontWait);
     }
 }

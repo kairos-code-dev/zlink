@@ -378,7 +378,13 @@ func (p *Poller) Wait(timeout time.Duration) (*PollerEvent, error) {
 	count := C.zlink_poller_wait(p.handle, &raw, C.long(ms), &errCode)
 	if count < 0 {
 		if errCode != 0 {
+			if errCode == C.ZLINK_CONFIG_INTERNAL_ERROR && currentErrno() == int(C.EINTR) {
+				return nil, nil
+			}
 			return nil, configErrorFromResult(errCode)
+		}
+		if currentErrno() == int(C.EINTR) {
+			return nil, nil
 		}
 		return nil, configErrorFromErrno(currentErrno())
 	}
@@ -405,7 +411,13 @@ func (p *Poller) WaitAll(timeout time.Duration) ([]PollerEvent, error) {
 	count := C.zlink_poller_wait_all(p.handle, &events[0], C.int(size), C.long(ms), &errCode)
 	if count < 0 {
 		if errCode != 0 {
+			if errCode == C.ZLINK_CONFIG_INTERNAL_ERROR && currentErrno() == int(C.EINTR) {
+				return []PollerEvent{}, nil
+			}
 			return nil, configErrorFromResult(errCode)
+		}
+		if currentErrno() == int(C.EINTR) {
+			return []PollerEvent{}, nil
 		}
 		return nil, configErrorFromErrno(currentErrno())
 	}

@@ -93,12 +93,12 @@ core의 `*_part` helper substrate를 사용해야 한다. 이는 `Required` 규�
 
 아래 계열에 해당하는 모든 binding 내부 구현 경로에 적용한다.
 
-- send / trySend (단일 part, 복수 part, routed 포함)
-- recv / tryRecv (단일 part, 복수 part, routed 포함)
-- request / tryRequest (dealer, router, SPOT 계열 포함)
+- send (단일 part, 복수 part, routed 포함)
+- recv (단일 part, 복수 part, routed 포함)
+- request (dealer, router, SPOT 계열 포함)
 - reply (router, SPOT 계열 포함)
-- publish / tryPublish
-- subscribe / trySubscribe (SPOT subscribe 포함)
+- publish
+- subscribe (SPOT subscribe 포함)
 
 ### 이유
 
@@ -175,8 +175,8 @@ public shape를 기준으로 고정한다.
 즉 helper substrate가 `*_part`, `has_more`, caller-provided message storage
 형태로 바뀌더라도, binding public API는 아래 원칙을 유지해야 한다.
 
-- binding 사용자는 언어 문서에 정의된 `send`, `trySend`, `recv`, `tryRecv`,
-  request/reply, callback 형태를 본다.
+- binding 사용자는 언어 문서에 정의된 `send`, `recv`, request/reply,
+  callback 형태를 본다.
 - multipart는 각 언어 문서가 정한 aggregate convenience 모델로 계속 제공할 수
   있다.
 - helper substrate 변경만을 이유로 binding public `send/recv` shape를 함께
@@ -408,21 +408,26 @@ public shape를 기준으로 고정한다.
      (`BindError`, `SubmitError` 등)를 쓰고, 여러 함수군이 섞이는 경계에서만
      `ZlinkError` 로 승격한다. 에러 값에는 `int` 코드가 포함된다.
      `?` 연산자로 호출측 전파를 쓴다.
-3. **데이터 plane primitive 와 callback request submit 은 canonical `Try*` 쌍을 둘 수 있다.**
-   - 대상은 `send` / `recv` 계열 primitive operation 이다.
-   - 공개 surface 는 `send` / `trySend`, `recv` / `tryRecv` 쌍으로 노출할 수 있다.
-   - callback completion request 는 submit 단계가 따로 있으므로
-     `request(..., callback, ...)` / `tryRequest(..., callback, ...)` 쌍을 둘 수 있다.
-   - coroutine / await request 에는 `tryRequest` 를 두지 않는다.
-   - `reply`, `publish`, `subscribe` 는 composite operation 이므로
-     `tryReply`, `tryPublish`, `trySubscribe` 를 추가하지 않는다.
+3. **`Try*` 대신 `flags` 와 반환 규칙으로 blocking 여부를 표현한다.**
+   - C / Go / Rust 는 기존 C 스타일, return-based 계약을 유지한다.
+   - `.NET` / `Java` / `Node` / `Python` / `C++` 는 public
+     `trySend`, `tryRecv`, `tryRequest` 를 두지 않는다.
+   - 위 언어에서 blocking과 non-blocking은 같은 함수 이름과 `flags` 인자로
+     표현한다.
+   - `send`, `publish`, callback completion `request` 는 성공 여부를 `bool`
+     계열 반환값으로 드러낸다.
+   - blocking submit 성공 시 반환값은 항상 `true` 다.
+   - non-blocking submit 에서 temporary backpressure 만 `false` 로 돌려주고,
+     route-not-ready 를 포함한 다른 submit 오류는 예외로 전달한다.
+   - `recv`, `subscribe` 는 payload 를 돌려주는 함수이므로 `bool` 이 아니라
+     payload 또는 empty 표현을 반환한다.
+   - non-blocking receive 에서 현재 읽을 데이터가 없으면 언어 관용구에 맞는
+     empty 표현 (`null`, `None`, `optional` 등) 을 반환하고, 진짜 오류만
+     예외 또는 반환 에러로 전달한다.
+   - coroutine / await request 는 지금처럼 별도 `request` surface 를 유지하고,
+     submit flags 를 받지 않는다.
    - `sendNoWait`, `recvNoWait`, `publishNoWait` 같은 transport-style 이름은
      공개 surface 에 두지 않는다.
-   - `trySend` 는 temporary backpressure 만 `false` 로 돌려주고,
-     route-not-ready 를 포함한 다른 submit 오류는 예외 또는 반환 에러로
-     전달한다.
-   - `tryRecv` 는 현재 읽을 데이터가 없으면 `false` 또는 `null` 로 돌려주고,
-     진짜 오류만 예외 또는 반환 에러로 전달한다.
 4. **`INTERNAL_ERROR` 상세 조회.**
    - result code 가 `INTERNAL_ERROR` 계열 (12, 104 등) 이면
      `zlink_errno()` 로 내부 raw errno 를 조회할 수 있다.
@@ -535,9 +540,12 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
 | `request` (coroutine/async) | flags 없음 — 항상 blocking submit |
 
 - flags 기본값은 `0` (blocking).
-- non-blocking 호출에서 데이터 없음 / backpressure 시 언어 관용구에 맞춰
-  전달한다 (submit result 코드로 구분 가능).
-  - exception 언어 (C++/Java/.NET/Node/Python): 예외를 던진다.
+- non-blocking 호출의 temporary 상태는 언어별 public 계약에 맞춰 전달한다.
+  - `.NET` / `Java` / `Node` / `Python` / `C++`
+    - `send`, `publish`, callback `request`: temporary backpressure 면
+      `false`
+    - `recv`, `subscribe`: 현재 데이터가 없으면 empty 표현
+    - 그 외 실패: typed exception
   - return-based 언어 (C/Go/Rust): 에러 반환 (C=result enum,
     Go=`error`, Rust=`Err(E)`).
 - 언어별 flags 표현:
@@ -607,13 +615,20 @@ async request(parts, timeout = 0) → List<Message>    // throws on any failure
 #### Callback request
 
 ```
-request(parts, callback, flags = 0, timeout = 0)    // throws on submit failure
+request(parts, callback, flags = 0, timeout = 0)    // blocking success=true,
+                                                    // non-blocking temporary
+                                                    // backpressure=false
 ```
 
 - flags 파라미터 있음. `DONTWAIT` 으로 non-blocking submit 가능.
 - `timeout = 0` 이면 소켓 기본 timeout 을 사용한다. 호출 시 생략 가능.
-- submit 실패 시 언어 관용구로 전달 (exception 언어=예외, return-based
-  언어=에러 반환). 실패 시 callback 은 등록되지 않는다.
+- submit 단계는 아래처럼 해석한다.
+  - exception 기반 언어:
+    blocking 성공=`true`, non-blocking temporary backpressure=`false`,
+    그 외 submit 실패=예외
+  - return-based 언어:
+    기존 에러 반환 계약 유지
+  실패 시 callback 은 등록되지 않는다.
 - submit 성공 시 callback 이 정확히 한 번 호출된다.
   - 성공: `result = OK`, reply parts 포함
   - 실패: `result != OK` (TIMED_OUT 등), parts 는 empty / null / None /
@@ -938,9 +953,13 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 - `RouterSocket`과 `StreamSocket`의 send는 routingId를 **필수** 인자로 받아야 한다.
 - routingId를 optional/default 파라미터로 만들면 plain send가 가능해지므로 금지한다.
 
-### Blocking Send 반환값
-- blocking `send` / `publish`는 성공 시 반환값 없이 정상 반환하고,
-  실패 시 예외 또는 언어별 오류 경로로 전달해야 한다.
+### Send / Publish 반환값
+- `.NET` / `Java` / `Node` / `Python` / `C++` 에서는 blocking
+  `send` / `publish` / callback `request` submit 성공 시 항상 `true` 를
+  반환한다.
+- 위 언어의 non-blocking submit 에서는 temporary backpressure 일 때만
+  `false` 를 반환한다.
+- temporary backpressure 가 아닌 submit 실패는 예외로 전달해야 한다.
 - 상태 코드(int, number 등)를 반환하는 방식은 금지한다.
 
 ### 언어별 네이밍 일관성
@@ -1536,34 +1555,27 @@ request 는 두 층으로 나눈다.
 coroutine / await request 는 완성된 request-reply 연산으로 보고, 기본 이름은
 항상 `request` 로 둔다.
 
-callback completion request 는 submit 단계가 따로 있으므로, `send/trySend` 와 같은
-수준의 쌍을 가져야 한다.
-
-- blocking submit callback request
-- nonblocking submit callback request
+callback completion request 는 submit 단계가 따로 있으므로, public surface 는
+같은 `request` 이름 아래에서 `flags` 로 submit 방식을 고른다.
 
 오버로드가 가능한 언어는 아래 형태를 권장한다.
 
 - `request(parts, timeout)`
-- `request(parts, callback, timeout)`
-- `tryRequest(parts, callback, timeout)`
+- `request(parts, callback, flags, timeout)`
 
-오버로드가 어려운 언어는 같은 의미를 아래처럼 짝으로 맞춘다.
+오버로드가 어려운 언어도 의미는 동일해야 한다. exception 기반 언어에서는
+별도 `TryRequest` 이름을 두지 않는다.
 
-- `RequestCallback(...)`
-- `TryRequestCallback(...)`
+C binding 은 기존 `zlink_*_request(..., flags, timeout)` 형태를 유지한다.
+즉 callback request submit 제어를 별도 함수명이 아니라 flags 로 표현한다.
 
-C binding 은 예외다. C 는 public `try_*` request family 를 만들지 않고, 기존
-`zlink_*_request(..., flags, timeout)` 형태를 유지한다. 즉 C 에서는 callback
-request submit 제어를 별도 함수명이 아니라 flags 로 표현한다.
-
-| | `request(parts, timeout)` | `request(parts, callback, timeout)` | `tryRequest(parts, callback, timeout)` |
-|---|---|---|---|
-| submit | blocking / suspending | blocking submit | nonblocking submit |
-| reply 전달 | 반환값 `List<Message>` | callback | callback |
-| submit 실패 시 | 예외 또는 에러 반환 | 예외 또는 에러 반환 (callback 등록 안 됨) | backpressure는 `false`/동등 표현, 그 외는 예외 또는 에러 |
-| reply 실패 시 | 예외 또는 에러 반환 (ETIMEDOUT 등) | callback (`result != OK`) | callback (`result != OK`) |
-| flags | 없음 | 없음 | 없음 |
+| | `request(parts, timeout)` | `request(parts, callback, flags, timeout)` |
+|---|---|---|
+| submit | blocking / suspending | blocking 또는 non-blocking (`flags`) |
+| reply 전달 | 반환값 `List<Message>` | callback |
+| submit 실패 시 | 예외 또는 에러 반환 | blocking 성공 시 `true`, non-blocking temporary backpressure 는 `false`, 그 외는 예외 또는 에러 |
+| reply 실패 시 | 예외 또는 에러 반환 (ETIMEDOUT 등) | callback (`result != OK`) |
+| flags | 없음 | `DONTWAIT` 사용 가능 |
 
 - 에러 처리는 Error Handling Policy 를 따른다.
   callback request 의 submit 실패도 언어 관용구를 그대로 적용한다:

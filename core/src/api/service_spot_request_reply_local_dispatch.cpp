@@ -246,13 +246,14 @@ int deliver_reply_to_spot (
           rr_envelope_.payload_part_count, &callback_errno, &callback_parts,
           &callback_part_count)
         != 0) {
+        (void) zlink::spot_reqrep_internal::queue_spot_reply_completion (
+          state, pending.handler, pending.userdata, EPROTO, NULL, 0);
         return -1;
     }
 
-    zlink::request_reply::complete_reply_callback (
-      pending.handler, callback_errno, callback_parts, callback_part_count,
-      pending.userdata);
-    return 0;
+    return zlink::spot_reqrep_internal::queue_spot_reply_completion (
+      state, pending.handler, pending.userdata, callback_errno, callback_parts,
+      callback_part_count);
 }
 
 int deliver_reply_to_router (
@@ -293,13 +294,14 @@ int deliver_reply_to_router (
           rr_envelope_.payload_part_count, &callback_errno, &callback_parts,
           &callback_part_count)
         != 0) {
+        (void) zlink::spot_reqrep_internal::queue_router_reply_completion (
+          state, pending.handler, pending.userdata, EPROTO, NULL, 0);
         return -1;
     }
 
-    zlink::request_reply::complete_reply_callback (
-      pending.handler, callback_errno, callback_parts, callback_part_count,
-      pending.userdata);
-    return 0;
+    return zlink::spot_reqrep_internal::queue_router_reply_completion (
+      state, pending.handler, pending.userdata, callback_errno, callback_parts,
+      callback_part_count);
 }
 
 int synthesize_local_error_reply (const parsed_spot_envelope_t &request_envelope_,

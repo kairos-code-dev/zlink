@@ -1,62 +1,44 @@
 package main
 
 import (
-	"sync"
+	"sync/atomic"
 
 	"zlink"
 	"zlink/perf/internal/perfcommon"
 )
 
 type multiSpotReadyTracker struct {
-	mu        sync.Mutex
-	readySeen []bool
-	signaled  bool
-	readyCh   chan struct{}
+	readySeen  []uint32
+	readyCount atomic.Uint32
+	signaled   atomic.Uint32
+	readyCh    chan struct{}
 }
 
 func newMultiSpotReadyTracker(clientCount int) *multiSpotReadyTracker {
 	return &multiSpotReadyTracker{
-		readySeen: make([]bool, clientCount),
+		readySeen: make([]uint32, clientCount),
 		readyCh:   make(chan struct{}, 1),
 	}
 }
 
 func (t *multiSpotReadyTracker) mark(index int) {
-	t.mu.Lock()
-	t.markLocked(index)
-	t.mu.Unlock()
-}
-
-func (t *multiSpotReadyTracker) markLocked(index int) {
 	if index < 0 || index >= len(t.readySeen) {
 		return
 	}
-	t.readySeen[index] = true
-	if t.signaled {
+	if !atomic.CompareAndSwapUint32(&t.readySeen[index], 0, 1) {
 		return
 	}
-	for _, ready := range t.readySeen {
-		if !ready {
-			return
-		}
+	readyCount := t.readyCount.Add(1)
+	if int(readyCount) != len(t.readySeen) {
+		return
 	}
-	t.signaled = true
+	if !t.signaled.CompareAndSwap(0, 1) {
+		return
+	}
 	select {
 	case t.readyCh <- struct{}{}:
 	default:
 	}
-}
-
-func (t *multiSpotReadyTracker) countReady() int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	count := 0
-	for _, ready := range t.readySeen {
-		if ready {
-			count++
-		}
-	}
-	return count
 }
 
 func waitForMultiSpotReady(

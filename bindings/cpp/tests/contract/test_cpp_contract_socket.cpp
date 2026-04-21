@@ -2,6 +2,7 @@
 
 #include "support.hpp"
 
+#include <optional>
 #include <type_traits>
 
 namespace {
@@ -155,9 +156,10 @@ void test_pair_send_recv_single_part ()
     zlink::message_t outbound = zlink_cpp_contract::make_message ("ping");
     right.send (outbound);
 
-    const zlink::received_t inbound = left.recv ();
-    assert (inbound.parts ().size () == 1);
-    assert (inbound.parts ()[0].to_string () == "ping");
+    const std::optional<zlink::received_t> inbound = left.recv ();
+    assert (inbound.has_value ());
+    assert (inbound->parts ().size () == 1);
+    assert (inbound->parts ()[0].to_string () == "ping");
 }
 
 void test_pair_send_recv_multipart ()
@@ -184,10 +186,11 @@ void test_pair_send_recv_multipart ()
     outbound.push_back (zlink_cpp_contract::make_message ("two"));
     right.send (outbound);
 
-    const zlink::received_t inbound = left.recv ();
-    assert (inbound.parts ().size () == 2);
-    assert (inbound.parts ()[0].to_string () == "one");
-    assert (inbound.parts ()[1].to_string () == "two");
+    const std::optional<zlink::received_t> inbound = left.recv ();
+    assert (inbound.has_value ());
+    assert (inbound->parts ().size () == 2);
+    assert (inbound->parts ()[0].to_string () == "one");
+    assert (inbound->parts ()[1].to_string () == "two");
 }
 
 } // namespace

@@ -13,6 +13,7 @@ async function main() {
     const pub = new zlink.PubSocket(ctx);
     const poller = new zlink.Poller();
     const payload = createPayload(options.msgSize);
+    let rl = null;
     try {
         applySocketPolicy(pub, {
             noDrop: Number(process.env.PERF_MULTI_PUBSUB_XPUB_NODROP ?? 1) !== 0
@@ -20,10 +21,10 @@ async function main() {
         pub.bind(options.endpoint);
         poller.addSocket(pub, POLLOUT);
         console.log(`READY,${options.endpoint}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+        rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
             if (line !== `START,${options.msgSize}`) {
-                if (line === 'STOP') {
+                if (line === 'STOP' || line === 'QUIT') {
                     break;
                 }
                 continue;
@@ -48,8 +49,13 @@ async function main() {
                 }
                 pending = false;
             }
+            let cooldownPending = true;
             stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
-            while (!trySocketPublish(pub, 'perf.topic', payload)) {
+            while (cooldownPending) {
+                if (trySocketPublish(pub, 'perf.topic', payload)) {
+                    cooldownPending = false;
+                    continue;
+                }
                 const ready = poller.wait(25);
                 if (!ready || (ready.events & POLLOUT) === 0) {
                     await sleepImmediate();
@@ -59,6 +65,7 @@ async function main() {
         }
     }
     finally {
+        rl?.close();
         poller.close();
         pub.close();
         ctx.close();

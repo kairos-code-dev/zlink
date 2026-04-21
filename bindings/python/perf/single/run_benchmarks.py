@@ -176,6 +176,8 @@ def _failure_reason(output):
 
 
 def _status_kind(output):
+    if parse_result_lines(output):
+        return "ok"
     for line in _parse_status_lines(output):
         if line.startswith("UNSUPPORTED,"):
             return "unsupported"

@@ -48,9 +48,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(xsub.setRoutingId, undefined);
     assert.equal(xsub.onSubscribe, undefined);
     assert.equal(typeof pair.send, 'function');
-    assert.equal(typeof pair.trySend, 'function');
+    assert.equal(pair.trySend, undefined);
     assert.equal(typeof pair.recv, 'function');
-    assert.equal(typeof pair.tryRecv, 'function');
+    assert.equal(pair.tryRecv, undefined);
     assert.equal(typeof pair.onSendReady, 'function');
     assert.equal(typeof pair.options, 'object');
     assert.equal(pair.subscribe, undefined);
@@ -58,9 +58,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(pair.setRoutingId, undefined);
     assert.equal(pair.onReceive, undefined);
     assert.equal(typeof dealer.send, 'function');
-    assert.equal(typeof dealer.trySend, 'function');
+    assert.equal(dealer.trySend, undefined);
     assert.equal(typeof dealer.recv, 'function');
-    assert.equal(typeof dealer.tryRecv, 'function');
+    assert.equal(dealer.tryRecv, undefined);
     assert.equal(typeof dealer.onSendReady, 'function');
     assert.equal(typeof dealer.options, 'object');
     assert.equal(dealer.subscribe, undefined);
@@ -70,9 +70,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof dealer.attachDiscovery, 'function');
     assert.equal(dealer.onReceive, undefined);
     assert.equal(typeof stream.send, 'function');
-    assert.equal(typeof stream.trySend, 'function');
+    assert.equal(stream.trySend, undefined);
     assert.equal(typeof stream.recv, 'function');
-    assert.equal(typeof stream.tryRecv, 'function');
+    assert.equal(stream.tryRecv, undefined);
     assert.equal(stream.onReceive, undefined);
     assert.equal(typeof stream.onPacket, 'function');
     assert.equal(typeof stream.onSendReady, 'function');
@@ -85,9 +85,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof stream.setRoutingId, 'function');
     assert.equal(typeof stream.getRoutingId, 'function');
     assert.equal(typeof router.recv, 'function');
-    assert.equal(typeof router.tryRecv, 'function');
+    assert.equal(router.tryRecv, undefined);
     assert.equal(typeof router.send, 'function');
-    assert.equal(typeof router.trySend, 'function');
+    assert.equal(router.trySend, undefined);
     assert.equal(typeof router.onSendReady, 'function');
     assert.equal(typeof router.options, 'object');
     assert.equal(router.subscribe, undefined);

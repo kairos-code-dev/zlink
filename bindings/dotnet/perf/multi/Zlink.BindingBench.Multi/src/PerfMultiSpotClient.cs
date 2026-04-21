@@ -246,13 +246,18 @@ internal static class PerfMultiSpotClient
         {
             while (true)
             {
-                using TopicMessage subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                using TopicMessage? subscribed = subscriber.Subscribe(
+                    RecvFlags.DontWait);
+                if (subscribed == null)
+                    break;
+
                 ReadOnlySpan<byte> payload = subscribed.SinglePartOrThrow().AsReadOnlySpan();
                 long recvTicks = Stopwatch.GetTimestamp();
                 if (state.ActiveOpen == 0 || recvTicks > state.ActiveDeadlineTicks)
                     continue;
 
-                if (!TryDecodeMetricHeader(payload, out PerfMetricHeader header))
+                if (!PerfShared.TryDecodeMetricHeader(payload,
+                        out PerfMetricHeader header))
                     continue;
                 if (header.RunId != ExpectedRunId
                     || header.MsgSize != (uint)msgSize

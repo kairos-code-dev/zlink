@@ -66,27 +66,35 @@ func DecodeMetricHeader(data []byte) (MetricHeader, bool) {
 	}, true
 }
 
-func validActiveHeader(header MetricHeader, expectedMsgSize int) bool {
+func validHeaderPhase(header MetricHeader, expectedMsgSize int, phase uint8) bool {
 	return header.Magic == MetricMagic &&
 		header.RunID == MetricRunID &&
-		header.Phase == PhaseActive &&
+		header.Phase == phase &&
 		int(header.MsgSize) == expectedMsgSize
 }
 
 func SentAtFromBytes(data []byte, expectedMsgSize int) (time.Time, bool) {
+	return SentAtFromBytesPhase(data, expectedMsgSize, PhaseActive)
+}
+
+func SentAtFromBytesPhase(data []byte, expectedMsgSize int, phase uint8) (time.Time, bool) {
 	header, ok := DecodeMetricHeader(data)
-	if !ok || !validActiveHeader(header, expectedMsgSize) {
+	if !ok || !validHeaderPhase(header, expectedMsgSize, phase) {
 		return time.Time{}, false
 	}
 	return time.Unix(0, header.SentTsNs), true
 }
 
 func SentAtFromMessage(part *zlink.Message, expectedMsgSize int) (time.Time, bool) {
+	return SentAtFromMessagePhase(part, expectedMsgSize, PhaseActive)
+}
+
+func SentAtFromMessagePhase(part *zlink.Message, expectedMsgSize int, phase uint8) (time.Time, bool) {
 	if part == nil {
 		return time.Time{}, false
 	}
 	data := part.Data()
-	return SentAtFromBytes(data, expectedMsgSize)
+	return SentAtFromBytesPhase(data, expectedMsgSize, phase)
 }
 
 func percentile(values []float64, pct float64) float64 {

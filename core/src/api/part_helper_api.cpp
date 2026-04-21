@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "api/part_helper_internal.hpp"
+#include "api/socket_api_internal.hpp"
 #include "core/msg.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
@@ -54,6 +55,41 @@ std::unique_ptr<zlink::socket_public_send_scope_t> create_send_scope (
     const bool needs_sync =
       send_family_requires_routed_scope (spec_.family);
     return sink_socket_->begin_public_send_scope (needs_sync);
+}
+}
+
+namespace
+{
+std::shared_ptr<zlink::part_helper_internal::handle_state_t>
+try_socket_owned_handle_state (void *handle_)
+{
+    zlink::socket_base_t *socket = try_as_socket (handle_);
+    return socket ? std::static_pointer_cast<zlink::part_helper_internal::handle_state_t> (
+                      socket->part_helper_state ())
+                  : std::shared_ptr<zlink::part_helper_internal::handle_state_t> ();
+}
+
+std::shared_ptr<zlink::part_helper_internal::handle_state_t>
+create_socket_owned_handle_state (void *handle_)
+{
+    zlink::socket_base_t *socket = try_as_socket (handle_);
+    if (!socket)
+        return std::shared_ptr<zlink::part_helper_internal::handle_state_t> ();
+
+    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state =
+      std::static_pointer_cast<zlink::part_helper_internal::handle_state_t> (
+        socket->part_helper_state ());
+    if (state)
+        return state;
+
+    state.reset (new (std::nothrow) zlink::part_helper_internal::handle_state_t ());
+    if (!state) {
+        errno = ENOMEM;
+        return std::shared_ptr<zlink::part_helper_internal::handle_state_t> ();
+    }
+
+    socket->set_part_helper_state (state);
+    return state;
 }
 }
 
@@ -191,6 +227,13 @@ zlink::part_helper_internal::find_or_create_handle_state (void *handle_)
         return std::shared_ptr<handle_state_t> ();
     }
 
+    std::shared_ptr<handle_state_t> socket_state =
+      create_socket_owned_handle_state (handle_);
+    if (socket_state)
+        return socket_state;
+    if (try_as_socket (handle_))
+        return std::shared_ptr<handle_state_t> ();
+
     std::lock_guard<std::mutex> lock (g_part_helper_mutex);
     std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
       g_part_helper_state.find (handle_);
@@ -210,11 +253,161 @@ zlink::part_helper_internal::find_or_create_handle_state (void *handle_)
 std::shared_ptr<zlink::part_helper_internal::handle_state_t>
 zlink::part_helper_internal::find_handle_state (void *handle_)
 {
+    std::shared_ptr<handle_state_t> socket_state =
+      try_socket_owned_handle_state (handle_);
+    if (socket_state)
+        return socket_state;
+    if (try_as_socket (handle_))
+        return std::shared_ptr<handle_state_t> ();
+
     std::lock_guard<std::mutex> lock (g_part_helper_mutex);
     std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
       g_part_helper_state.find (handle_);
     return it != g_part_helper_state.end () ? it->second
                                             : std::shared_ptr<handle_state_t> ();
+}
+
+bool zlink::part_helper_internal::recv_sequence_active (
+  const std::shared_ptr<handle_state_t> &state_)
+{
+    if (!state_)
+        return false;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    return state_->recv.active;
+}
+
+int zlink::part_helper_internal::stage_recv_sequence (
+  const std::shared_ptr<handle_state_t> &state_,
+  recv_family_t family_,
+  zlink::socket_base_t *source_socket_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_spot_rid_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  std::thread::id owner_thread_)
+{
+    if (!state_ || !parts_ || part_count_ == 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->recv.active) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    state_->recv.active = true;
+    state_->recv.family = family_;
+    state_->recv.source_socket = source_socket_;
+    state_->recv.owner_thread = owner_thread_;
+    set_recv_metadata (&state_->recv, source_node_rid_, source_spot_rid_,
+                       request_seq_);
+    return buffer_recv_parts (&state_->recv, parts_, part_count_);
+}
+
+void zlink::part_helper_internal::set_recv_metadata (
+  recv_sequence_state_t *recv_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_spot_rid_,
+  uint64_t request_seq_)
+{
+    if (!recv_)
+        return;
+
+    recv_->return_source_rid_as_null = source_node_rid_ == NULL;
+    recv_->return_source_spot_rid_as_null = source_spot_rid_ == NULL;
+    copy_routing_id (source_node_rid_, &recv_->source_node_rid);
+    copy_routing_id (source_spot_rid_, &recv_->source_spot_rid);
+    recv_->request_seq = request_seq_;
+}
+
+int zlink::part_helper_internal::buffer_recv_parts (recv_sequence_state_t *recv_,
+                                                    zlink_msg_t *parts_,
+                                                    size_t part_count_)
+{
+    if (!recv_ || !parts_ || part_count_ == 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    recv_->buffered_parts.resize (part_count_);
+    recv_->next_part_index = 0;
+    for (size_t i = 0; i < part_count_; ++i) {
+        zlink_msg_init (&recv_->buffered_parts[i]);
+        if (zlink_msg_move (&recv_->buffered_parts[i], &parts_[i]) != 0) {
+            errno = EFAULT;
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int zlink::part_helper_internal::take_recv_part (recv_sequence_state_t *recv_,
+                                                 zlink_msg_t *part_out_,
+                                                 zlink_part_flag_t *has_more_out_)
+{
+    if (!recv_ || !part_out_ || !has_more_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (recv_->next_part_index >= recv_->buffered_parts.size ()) {
+        errno = EPROTO;
+        return -1;
+    }
+    if (zlink_msg_move (part_out_, &recv_->buffered_parts[recv_->next_part_index])
+        != 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    ++recv_->next_part_index;
+    *has_more_out_ = recv_->next_part_index < recv_->buffered_parts.size ()
+                       ? ZLINK_PART_MORE
+                       : ZLINK_PART_FINAL;
+    return 0;
+}
+
+int zlink::part_helper_internal::take_recv_part (
+  const std::shared_ptr<handle_state_t> &state_,
+  zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    return take_recv_part (&state_->recv, part_out_, has_more_out_);
+}
+
+void zlink::part_helper_internal::export_recv_metadata (
+  const std::shared_ptr<handle_state_t> &state_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_)
+{
+    if (!state_)
+        return;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (source_node_rid_out_) {
+        *source_node_rid_out_ =
+          state_->recv.return_source_rid_as_null ? NULL
+                                                 : &state_->recv.source_node_rid;
+    }
+    if (source_spot_rid_out_) {
+        *source_spot_rid_out_ =
+          state_->recv.return_source_spot_rid_as_null
+            ? NULL
+            : &state_->recv.source_spot_rid;
+    }
+    if (request_seq_out_)
+        *request_seq_out_ = state_->recv.request_seq;
 }
 
 void zlink::part_helper_internal::reset_send_sequence (send_sequence_state_t *state_)
@@ -451,6 +644,13 @@ void zlink::part_helper_internal::invalidate_recv_sequence (void *handle_)
 void zlink::part_helper_internal::cleanup_handle (void *handle_)
 {
     std::shared_ptr<handle_state_t> state;
+    zlink::socket_base_t *socket = try_as_socket (handle_);
+    if (socket) {
+        state = std::static_pointer_cast<handle_state_t> (socket->part_helper_state ());
+        if (!state)
+            return;
+        socket->clear_part_helper_state ();
+    } else {
     {
         std::lock_guard<std::mutex> lock (g_part_helper_mutex);
         std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
@@ -459,6 +659,7 @@ void zlink::part_helper_internal::cleanup_handle (void *handle_)
             return;
         state = it->second;
         g_part_helper_state.erase (it);
+    }
     }
 
     std::lock_guard<std::mutex> lock (state->mutex);

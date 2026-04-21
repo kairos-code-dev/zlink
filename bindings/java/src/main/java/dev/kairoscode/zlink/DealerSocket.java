@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
@@ -30,18 +29,14 @@ public final class DealerSocket extends Socket {
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
-    public void send(Message part) { super.send(part); }
-    public void send(Message part, SendFlags flags) { super.send(part, SendFlag.fromValue(flags.value())); }
-    public void send(List<Message> parts) { super.send(parts); }
-    public void send(List<Message> parts, SendFlags flags) { super.send(parts, SendFlag.fromValue(flags.value())); }
-    public boolean trySend(Message part) { return super.trySend(part); }
-    public boolean trySend(List<Message> parts) { return super.trySend(parts); }
+    public boolean send(Message part) { return super.send(part); }
+    public boolean send(Message part, SendFlags flags) { return super.send(part, SendFlag.fromValue(flags.value())); }
+    public boolean send(List<Message> parts) { return super.send(parts); }
+    public boolean send(List<Message> parts, SendFlags flags) { return super.send(parts, SendFlag.fromValue(flags.value())); }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
     public Received recv() { return super.recv(); }
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
-    public Received tryRecv() { return super.tryRecv(); }
-    Optional<Received> recvNoWait() { return super.recvNoWait(); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(Message part) { return request(List.of(part)); }
     public CompletableFuture<List<Message>> request(Message part, SendFlags flags) {
@@ -75,37 +70,46 @@ public final class DealerSocket extends Socket {
             }
         });
     }
-    public void request(Message part, BiConsumer<RequestResult, List<Message>> callback) {
-        request(List.of(part), callback);
+    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback) {
+        return request(List.of(part), callback);
     }
-    public void request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback) {
-        request(parts, callback, SendFlags.NONE,
+    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback) {
+        return request(parts, callback, SendFlags.NONE,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
-    public void request(Message part, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback,
                         SendFlags flags) {
-        request(List.of(part), callback, flags);
+        return request(List.of(part), callback, flags);
     }
-    public void request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
                         SendFlags flags) {
-        request(parts, callback, flags,
+        return request(parts, callback, flags,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
-    public void request(Message part, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback,
                         SendFlags flags, Duration timeout) {
-        request(List.of(part), callback, flags, timeout);
+        return request(List.of(part), callback, flags, timeout);
     }
-    public void request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
                         SendFlags flags, Duration timeout) {
-        dealerRequests.request(parts, (result, reply) -> {
-            List<Message> payload = List.of();
-            if (reply != null) {
-                Received copy = RequestReplySupport.cloneReceived(reply);
-                reply.close();
-                payload = copy.parts();
+        try {
+            dealerRequests.request(parts, (result, reply) -> {
+                List<Message> payload = List.of();
+                if (reply != null) {
+                    Received copy = RequestReplySupport.cloneReceived(reply);
+                    reply.close();
+                    payload = copy.parts();
+                }
+                callback.accept(result, payload);
+            }, flags, timeout);
+            return true;
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
             }
-            callback.accept(result, payload);
-        }, flags, timeout);
+            throw ex;
+        }
     }
     @Override
     public void close() {

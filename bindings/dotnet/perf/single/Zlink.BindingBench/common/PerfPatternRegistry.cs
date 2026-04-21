@@ -17,6 +17,8 @@ internal static class SinglePerfPatternRegistry
                 PerfRouterRouter.RunRouterRouter(options.Transport, options.Size)),
             new SinglePerfPattern("SPOT", static options =>
                 PerfSpot.RunSpot(options.Transport, options.Size)),
+            new SinglePerfPattern("SPOT_REQREP", static options =>
+                PerfSpotReqRep.Run(options.Transport, options.Size)),
         });
 
     internal static bool TryGet(string pattern, out IPerfPattern perfPattern)

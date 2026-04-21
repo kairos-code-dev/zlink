@@ -663,7 +663,7 @@ class spot_t
 
     int last_error () const noexcept { return _last_error; }
 
-    void publish (const std::string &service_name_,
+    bool publish (const std::string &service_name_,
                   const std::string &topic_,
                   std::vector<message_t> &parts_,
                   send_flags_t flags_ = send_flags_t::none)
@@ -673,11 +673,18 @@ class spot_t
         const int rc = publish_impl (
           service_name_.c_str (), topic_.c_str (), parts_, flags_);
         if (rc != 0)
+        {
+            if (flags_ == send_flags_t::dontwait
+                && static_cast<submit_result_t> (rc)
+                    == submit_result_t::backpressured)
+                return false;
             throw submit_error_t (
               static_cast<submit_result_t> (rc), zlink_errno ());
+        }
+        return true;
     }
 
-    void publish (const std::string &service_name_,
+    bool publish (const std::string &service_name_,
                   const std::string &topic_,
                   message_t &part_,
                   send_flags_t flags_ = send_flags_t::none)
@@ -687,11 +694,18 @@ class spot_t
         const int rc = publish_impl (
           service_name_.c_str (), topic_.c_str (), part_, flags_);
         if (rc != 0)
+        {
+            if (flags_ == send_flags_t::dontwait
+                && static_cast<submit_result_t> (rc)
+                    == submit_result_t::backpressured)
+                return false;
             throw submit_error_t (
               static_cast<submit_result_t> (rc), zlink_errno ());
+        }
+        return true;
     }
 
-    void send_channel (const std::string &channel_name_,
+    bool send_channel (const std::string &channel_name_,
                        std::vector<message_t> &parts_,
                        send_flags_t flags_ = send_flags_t::none)
     {
@@ -699,11 +713,18 @@ class spot_t
         const int rc = send_channel_impl (
           channel_name_.c_str (), parts_, flags_);
         if (rc != 0)
+        {
+            if (flags_ == send_flags_t::dontwait
+                && static_cast<submit_result_t> (rc)
+                    == submit_result_t::backpressured)
+                return false;
             throw submit_error_t (
               static_cast<submit_result_t> (rc), zlink_errno ());
+        }
+        return true;
     }
 
-    void request_channel (
+    bool request_channel (
       const std::string &channel_name_,
       std::vector<message_t> &parts_,
       std::function<void(request_result_t, std::vector<message_t>)> callback_,
@@ -733,11 +754,15 @@ class spot_t
         if (rc != submit_result_t::ok) {
             detail::close_native_parts (native, failed_index);
             delete state;
+            if (flags_ == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
             throw submit_error_t (rc, zlink_errno ());
         }
+        return true;
     }
 
-    topic_message_t subscribe (recv_flags_t flags_ = recv_flags_t::none)
+    std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)
     {
         std::vector<message_t> parts;
         std::string service_name;
@@ -745,14 +770,16 @@ class spot_t
         routing_id_t source_rid;
         const recv_result_t rc = static_cast<recv_result_t> (subscribe_impl (
           parts, service_name, topic, flags_, &source_rid));
+        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+            return std::nullopt;
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
-        return topic_message_t (
+        return std::optional<topic_message_t> (topic_message_t (
           source_rid.empty () ? std::nullopt
                               : std::optional<routing_id_t> (source_rid),
           service_name.empty () ? std::nullopt
                                 : std::optional<std::string> (service_name),
-          std::move (topic), std::move (parts));
+          std::move (topic), std::move (parts)));
     }
 
     subscription_event_t

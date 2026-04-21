@@ -268,6 +268,40 @@ class _PendingRequest:
             _report_unhandled_callback_exception(self.callback)
 
 
+class _RequestProgressPump:
+    def __init__(self, step, is_active):
+        self._step = step
+        self._is_active = is_active
+        self._lock = threading.Lock()
+        self._thread = None
+
+    def ensure_running(self):
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._thread = threading.Thread(
+                target=self._run,
+                name="zlink-spot-request-progress",
+                daemon=True,
+            )
+            self._thread.start()
+
+    def _run(self):
+        try:
+            while self._is_active():
+                try:
+                    self._step()
+                except Exception:
+                    pass
+                if not self._is_active():
+                    break
+                threading.Event().wait(0.001)
+        finally:
+            with self._lock:
+                if self._thread is threading.current_thread():
+                    self._thread = None
+
+
 def _recv_spot_subscribed(handle, flags):
     routing_id = None
     native_parts = []
@@ -435,6 +469,7 @@ class SpotNode:
         if not self._handle:
             _raise_config_error_from_errno()
         self._spots = set()
+        self._manual_channel_dealers = {}
 
     def bind(self, endpoint: str):
         rc = lib().zlink_spot_node_bind(
@@ -491,13 +526,17 @@ class SpotNode:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def attach_channel_dealer_manual(self, channel_name, dealer):
+        channel_bytes = _validated_c_string_value(
+            channel_name, field="channel_name", max_length=255
+        )
         rc = lib().zlink_spot_node_attach_channel_dealer_manual(
             self._handle,
-            _validated_c_string_value(channel_name, field="channel_name", max_length=255),
+            channel_bytes,
             dealer._handle,
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._manual_channel_dealers[channel_bytes] = dealer._handle
 
     def attach_pub_ingress(self, pub):
         rc = lib().zlink_spot_node_attach_pub_ingress(self._handle, pub._handle)
@@ -723,6 +762,7 @@ class Spot:
     def _init_state(self, node):
         self._node = node
         self._request_pending = {}
+        self._request_progress_targets = {}
         self._request_reply_handler = None
         self._routed_handler = None
         self._routed_handler_cb = None
@@ -739,6 +779,28 @@ class Spot:
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
         self._own = True
+        self._request_progress = _RequestProgressPump(
+            self._drain_request_progress,
+            lambda: bool(self._request_pending),
+        )
+
+    def _drain_request_progress(self):
+        seen = set()
+        for kind, handle in list(self._request_progress_targets.values()):
+            if not handle or (kind, handle) in seen:
+                continue
+            seen.add((kind, handle))
+            if kind == "socket":
+                lib().zlink_socket_request_progress_internal(handle)
+            else:
+                lib().zlink_spot_request_progress_internal(handle)
+
+    def _request_progress_target(self, channel_bytes=None):
+        if channel_bytes is not None:
+            dealer_handle = self._node._manual_channel_dealers.get(channel_bytes)
+            if dealer_handle:
+                return ("socket", dealer_handle)
+        return ("spot", self._handle)
 
     def __init__(self, node, *, _internal=None):
         if _internal is not _SPOT_INIT_TOKEN:
@@ -799,44 +861,56 @@ class Spot:
         return native_parts
 
     def publish(self, service_name, topic, payload, *, flags=0):
-        _ensure_not_in_callback("blocking publish")
-        service_bytes = _validated_c_string_value(
-            service_name, field="service_name", max_length=255
-        )
-        topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
-        native_parts = self._native_parts_from_payload(payload)
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_spot_publish_part(
-                self._handle,
-                service_bytes,
-                topic_bytes,
-                part_ptr,
-                int(flags),
-                part_flag,
-            ),
-        )
-        if rc != 0:
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
+        try:
+            _ensure_not_in_callback("blocking publish")
+            service_bytes = _validated_c_string_value(
+                service_name, field="service_name", max_length=255
+            )
+            topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
+            native_parts = self._native_parts_from_payload(payload)
+            rc, err = _submit_parts(
+                native_parts,
+                lambda part_ptr, part_flag: lib().zlink_spot_publish_part(
+                    self._handle,
+                    service_bytes,
+                    topic_bytes,
+                    part_ptr,
+                    int(flags),
+                    part_flag,
+                ),
+            )
+            if rc != 0:
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
+            return True
+        except SubmitError as ex:
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
 
     def send_channel(self, channel_name, payload, *, flags=0):
-        _ensure_not_in_callback("blocking send")
-        channel_bytes = _validated_c_string_value(
-            channel_name, field="channel_name", max_length=255
-        )
-        native_parts = self._native_parts_from_payload(payload)
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_spot_send_channel_part(
-                self._handle,
-                channel_bytes,
-                part_ptr,
-                int(flags),
-                part_flag,
-            ),
-        )
-        if rc != 0:
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
+        try:
+            _ensure_not_in_callback("blocking send")
+            channel_bytes = _validated_c_string_value(
+                channel_name, field="channel_name", max_length=255
+            )
+            native_parts = self._native_parts_from_payload(payload)
+            rc, err = _submit_parts(
+                native_parts,
+                lambda part_ptr, part_flag: lib().zlink_spot_send_channel_part(
+                    self._handle,
+                    channel_bytes,
+                    part_ptr,
+                    int(flags),
+                    part_flag,
+                ),
+            )
+            if rc != 0:
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
+            return True
+        except SubmitError as ex:
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
 
     def request_channel(self, channel_name, payload, *args, timeout=0, flags=_UNSET):
         if len(args) > 1:
@@ -878,7 +952,9 @@ class Spot:
                 )
             except Exception:
                 self._request_pending.pop(handle, None)
+                self._request_progress_targets.pop(handle, None)
                 raise
+            self._request_progress.ensure_running()
             return await pending.future
 
         return _run()
@@ -889,13 +965,25 @@ class Spot:
         self._request_pending[handle] = pending
         try:
             self._start_channel_request(channel_bytes, payload, flags, timeout, handle)
+            self._request_progress.ensure_running()
+            return True
+        except SubmitError as ex:
+            self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
         except Exception:
             self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
             raise
 
     def _start_channel_request(self, channel_bytes, payload, flags, timeout, handle):
         native_parts = self._native_parts_from_payload(payload)
         reply_handler = self._ensure_request_reply_handler()
+        self._request_progress_targets[handle] = self._request_progress_target(
+            channel_bytes
+        )
         rc, err = _submit_parts(
             native_parts,
             lambda part_ptr, part_flag: lib().zlink_spot_request_channel_part(
@@ -911,13 +999,19 @@ class Spot:
         )
         if rc != 0:
             self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
     def _recv_subscribed(self, flags):
         return _recv_spot_subscribed(self._handle, flags)
 
     def subscribe(self, *, flags=0):
-        return self._recv_subscribed(flags)
+        try:
+            return self._recv_subscribed(flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return None
+            raise
 
     def receive_subscription_event(self, *, flags=0):
         _ = flags
@@ -1046,7 +1140,9 @@ class Spot:
                 self._start_request(native_func, routing_ids, payload, flags, timeout, handle)
             except Exception:
                 self._request_pending.pop(handle, None)
+                self._request_progress_targets.pop(handle, None)
                 raise
+            self._request_progress.ensure_running()
             return await pending.future
 
         return _run()
@@ -1057,14 +1153,18 @@ class Spot:
         self._request_pending[handle] = pending
         try:
             self._start_request(native_func, routing_ids, payload, flags, timeout, handle)
+            self._request_progress.ensure_running()
+            return True
         except Exception:
             self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
             raise
 
     def _start_request(self, native_func, routing_ids, payload, flags, timeout, handle):
         native_parts = _clone_payload(payload)
         native_rids = [_copy_routing_id(rid) for rid in routing_ids]
         reply_handler = self._ensure_request_reply_handler()
+        self._request_progress_targets[handle] = self._request_progress_target()
         if len(native_rids) == 2:
             rc, err = _submit_parts(
                 native_parts,
@@ -1098,10 +1198,12 @@ class Spot:
             raise ValueError("routing_ids must not be empty")
         if rc != 0:
             self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
     def _on_reply(self, result_code, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        self._request_progress_targets.pop(handle, None)
         pending = self._request_pending.pop(handle, None)
         if pending is None:
             return
@@ -1148,19 +1250,24 @@ class Spot:
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
     def recv_routed(self, *, flags=0):
-        return _recv_spot_routed(
-            self._handle,
-            flags,
-            reply_sender_factory=lambda node_rid, spot_rid, seq: (
-                lambda payload, *, flags=0, node_rid=node_rid, spot_rid=spot_rid, seq=seq: self.reply_to_spot(
-                    node_rid,
-                    spot_rid,
-                    seq,
-                    payload,
-                    flags=flags,
-                )
-            ),
-        )
+        try:
+            return _recv_spot_routed(
+                self._handle,
+                flags,
+                reply_sender_factory=lambda node_rid, spot_rid, seq: (
+                    lambda payload, *, flags=0, node_rid=node_rid, spot_rid=spot_rid, seq=seq: self.reply_to_spot(
+                        node_rid,
+                        spot_rid,
+                        seq,
+                        payload,
+                        flags=flags,
+                    )
+                ),
+            )
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return None
+            raise
 
     def on_routed_receive(self, handler):
         if handler is None:
@@ -1219,6 +1326,7 @@ class Spot:
     def _cancel_pending_requests(self):
         for handle, pending in list(self._request_pending.items()):
             self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
             pending.resolve(RequestResult.TERMINATED, None, _ERRNO_ETERM)
 
     def close(self):

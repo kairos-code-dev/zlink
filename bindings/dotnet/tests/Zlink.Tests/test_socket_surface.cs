@@ -159,19 +159,20 @@ public sealed class test_socket_surface
         Assert.Null(typeof(ContextOptions).GetProperty("ThreadNamePrefix",
             BindingFlags.Instance | BindingFlags.Public));
 
-        Assert.Null(typeof(MessageSocketBase).GetMethod("Recv",
-            BindingFlags.Instance | BindingFlags.Public, binder: null,
-            types: new[] { typeof(int) }, modifiers: null));
-        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
+            typeof(Message), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
+            typeof(IReadOnlyList<Message>), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Recv",
+            typeof(RecvFlags)));
+        Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
             typeof(Message)));
-        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
+        Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
             typeof(IReadOnlyList<Message>)));
-        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "TryRecv",
+        Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TryRecv",
             typeof(Received).MakeByRefType()));
-        Assert.Null(typeof(PublisherSocketBase).GetMethod("Publish",
-            BindingFlags.Instance | BindingFlags.Public, binder: null,
-            types: new[] { typeof(string), typeof(Message), typeof(int) },
-            modifiers: null));
+        Assert.True(HasPublicInstanceMethod(typeof(PublisherSocketBase), "Publish",
+            typeof(string), typeof(Message), typeof(SendFlags)));
         Assert.Null(typeof(SocketMonitor).GetMethod("Recv",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
             types: new[] { typeof(int) }, modifiers: null));
@@ -235,11 +236,17 @@ public sealed class test_socket_surface
             typeof(Message), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "RecvSpot"));
         Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "OnSpotReceive"));
-        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Send",
+            typeof(RoutingId), typeof(Message), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Send",
+            typeof(string), typeof(Message), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Recv",
+            typeof(RecvFlags)));
+        Assert.False(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
             typeof(RoutingId), typeof(Message)));
-        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
+        Assert.False(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
             typeof(string), typeof(Message)));
-        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TryRecv",
+        Assert.False(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TryRecv",
             typeof(Received).MakeByRefType()));
     }
 

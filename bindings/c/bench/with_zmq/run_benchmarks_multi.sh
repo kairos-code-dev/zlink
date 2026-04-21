@@ -85,14 +85,10 @@ default_build_dir() {
   platform="$(detect_platform_tag)"
   arch="$(detect_arch_tag)"
   if [[ "${platform}" == "windows" ]]; then
-    echo "${ROOT_DIR}/core/build/windows-x64"
+    echo "${ROOT_DIR}/bindings/c/build/windows-x64"
     return
   fi
-  if [[ -d "${ROOT_DIR}/core/build/bin" ]]; then
-    echo "${ROOT_DIR}/core/build"
-  else
-    echo "${ROOT_DIR}/core/build/${platform}-${arch}"
-  fi
+  echo "${ROOT_DIR}/bindings/c/build"
 }
 
 usage() {

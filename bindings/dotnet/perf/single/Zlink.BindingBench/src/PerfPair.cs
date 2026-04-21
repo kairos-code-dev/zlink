@@ -105,9 +105,13 @@ internal static class PerfPair
                         continue;
                     }
 
-                    while (receiver.TryRecv(out Received? receivedMessage)
-                           && receivedMessage != null)
+                    while (true)
                     {
+                        using Received? receivedMessage = receiver.Recv(
+                            RecvFlags.DontWait);
+                        if (receivedMessage == null)
+                            break;
+
                         using (receivedMessage)
                         {
                             lastRecvTicks = Stopwatch.GetTimestamp();

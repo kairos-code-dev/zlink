@@ -1,11 +1,129 @@
 cmake_minimum_required(VERSION 3.10)
 project(zlink_cpp LANGUAGES CXX)
 
-set(ZLINK_CORE_DIR "${CMAKE_SOURCE_DIR}/core" CACHE PATH "Path to zlink core")
+get_filename_component(ZLINK_CPP_BINDINGS_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
+get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_CPP_BINDINGS_DIR}/../.." ABSOLUTE)
+
+set(ZLINK_CORE_DIR "${ZLINK_REPO_ROOT_DIR}/core" CACHE PATH "Path to zlink core")
+set(ZLINK_CPP_CORE_BUILD_DIR "${ZLINK_REPO_ROOT_DIR}/core/build" CACHE PATH
+    "Path to an existing zlink core build directory")
 set(ZLINK_CPP_STANDALONE FALSE)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(ZLINK_CPP_STANDALONE TRUE)
 endif()
+
+function(zlink_cpp_resolve_native_layout out_dir_var out_lib_var)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+      set(_subdir "linux-aarch64")
+    else()
+      set(_subdir "linux-x86_64")
+    endif()
+    set(_libname "libzlink.so")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+      set(_subdir "darwin-aarch64")
+    else()
+      set(_subdir "darwin-x86_64")
+    endif()
+    set(_libname "libzlink.dylib")
+  elseif(WIN32)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|aarch64|arm64)$")
+      set(_subdir "windows-aarch64")
+    else()
+      set(_subdir "windows-x86_64")
+    endif()
+    set(_libname "zlink.dll")
+  else()
+    set(_subdir "")
+    set(_libname "")
+  endif()
+
+  if(_subdir)
+    set(${out_dir_var} "${CMAKE_CURRENT_LIST_DIR}/native/${_subdir}" PARENT_SCOPE)
+    set(${out_lib_var} "${CMAKE_CURRENT_LIST_DIR}/native/${_subdir}/${_libname}" PARENT_SCOPE)
+  else()
+    set(${out_dir_var} "" PARENT_SCOPE)
+    set(${out_lib_var} "" PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(zlink_cpp_resolve_core_build_layout out_dir_var out_lib_var)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_libname "libzlink.so")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(_libname "libzlink.dylib")
+  elseif(WIN32)
+    set(_libname "zlink.dll")
+  else()
+    set(_libname "")
+  endif()
+
+  if(NOT _libname)
+    set(${out_dir_var} "" PARENT_SCOPE)
+    set(${out_lib_var} "" PARENT_SCOPE)
+    return()
+  endif()
+
+  set(_candidate_dirs
+    "${ZLINK_CPP_CORE_BUILD_DIR}/lib"
+    "${ZLINK_CPP_CORE_BUILD_DIR}/bin")
+  find_file(_core_lib
+    NAMES "${_libname}"
+    PATHS ${_candidate_dirs}
+    NO_DEFAULT_PATH)
+  if(_core_lib)
+    get_filename_component(_core_dir "${_core_lib}" DIRECTORY)
+    set(${out_dir_var} "${_core_dir}" PARENT_SCOPE)
+    set(${out_lib_var} "${_core_lib}" PARENT_SCOPE)
+    return()
+  endif()
+
+  set(${out_dir_var} "" PARENT_SCOPE)
+  set(${out_lib_var} "" PARENT_SCOPE)
+endfunction()
+
+function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
+  if(TARGET libzlink)
+    set(${out_target_var} libzlink PARENT_SCOPE)
+    set(${out_runtime_dir_var} "$<TARGET_FILE_DIR:libzlink>" PARENT_SCOPE)
+    return()
+  endif()
+
+  zlink_cpp_resolve_core_build_layout(_core_build_dir _core_build_lib)
+  if(_core_build_lib)
+    if(NOT TARGET zlink-core-build-runtime)
+      add_library(zlink-core-build-runtime SHARED IMPORTED GLOBAL)
+      set_target_properties(zlink-core-build-runtime PROPERTIES
+        IMPORTED_LOCATION "${_core_build_lib}"
+      )
+    endif()
+    set(${out_target_var} zlink-core-build-runtime PARENT_SCOPE)
+    set(${out_runtime_dir_var} "${_core_build_dir}" PARENT_SCOPE)
+    return()
+  endif()
+
+  zlink_cpp_resolve_native_layout(_native_dir _native_lib)
+
+  if(_native_lib AND EXISTS "${_native_lib}")
+    if(NOT TARGET zlink-native)
+      add_library(zlink-native SHARED IMPORTED GLOBAL)
+      set_target_properties(zlink-native PROPERTIES
+        IMPORTED_LOCATION "${_native_lib}"
+      )
+    endif()
+    set(${out_target_var} zlink-native PARENT_SCOPE)
+    set(${out_runtime_dir_var} "${_native_dir}" PARENT_SCOPE)
+    return()
+  endif()
+
+  message(FATAL_ERROR
+    "No zlink core runtime found for this platform. "
+    "Expected an existing libzlink target, a core build under "
+    "${ZLINK_CPP_CORE_BUILD_DIR}, or ${_native_lib}.")
+endfunction()
+
+zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)
 
 add_library(zlink-cpp INTERFACE)
 target_include_directories(zlink-cpp INTERFACE
@@ -41,14 +159,23 @@ if(NOT DEFINED ZLINK_CPP_REGISTER_CTEST)
   )
 endif()
 
-if(ZLINK_CPP_BUILD_TESTS OR ZLINK_CPP_BUILD_SAMPLES)
-  if(NOT TARGET libzlink)
-    message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
-  endif()
+if(ZLINK_CPP_STANDALONE AND ZLINK_CPP_REGISTER_CTEST)
+  enable_testing()
+endif()
 
+if(ZLINK_CPP_BUILD_TESTS OR ZLINK_CPP_BUILD_SAMPLES)
   function(add_cpp_binding_executable target_name source_file)
     add_executable(${target_name} ${source_file})
-    target_link_libraries(${target_name} PRIVATE libzlink zlink-cpp)
+    target_link_libraries(${target_name} PRIVATE ${ZLINK_CPP_CORE_TARGET} zlink-cpp)
+    if(UNIX AND NOT APPLE)
+      set_target_properties(${target_name} PROPERTIES
+        BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR}"
+      )
+    elseif(APPLE)
+      set_target_properties(${target_name} PROPERTIES
+        BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR}"
+      )
+    endif()
     if(MSVC)
       target_compile_options(${target_name} PRIVATE /UNDEBUG)
     else()
@@ -58,10 +185,16 @@ if(ZLINK_CPP_BUILD_TESTS OR ZLINK_CPP_BUILD_SAMPLES)
 
   function(configure_cpp_binding_runtime target_name)
     set_tests_properties(${target_name} PROPERTIES
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+      WORKING_DIRECTORY ${ZLINK_REPO_ROOT_DIR})
     if(WIN32)
       set_tests_properties(${target_name} PROPERTIES
-        ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+        ENVIRONMENT "PATH=${ZLINK_CPP_RUNTIME_DIR};$ENV{PATH}")
+    elseif(APPLE)
+      set_tests_properties(${target_name} PROPERTIES
+        ENVIRONMENT "DYLD_LIBRARY_PATH=${ZLINK_CPP_RUNTIME_DIR}:$ENV{DYLD_LIBRARY_PATH}")
+    elseif(UNIX)
+      set_tests_properties(${target_name} PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=${ZLINK_CPP_RUNTIME_DIR}:$ENV{LD_LIBRARY_PATH}")
     endif()
   endfunction()
 endif()
@@ -186,8 +319,5 @@ endif()
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)
 
 if(ZLINK_CPP_BUILD_BENCHMARKS)
-  if(NOT TARGET libzlink)
-    message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
-  endif()
   add_subdirectory(perf)
 endif()

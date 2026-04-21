@@ -21,6 +21,7 @@ _zlink = None
 _seq = 0
 _port_counter = 0
 _port_seed = uuid.uuid4().int % 30000
+_tls_assets = None
 
 
 def _env_int(name, default):
@@ -203,6 +204,47 @@ def transport_endpoint(transport, prefix="perf"):
         )
         return f"ipc://{sock_path}"
     raise ValueError(f"unsupported transport: {transport}")
+
+
+def is_tls_transport(transport):
+    return str(transport).lower() in {"tls", "wss"}
+
+
+def _resolve_tls_assets():
+    global _tls_assets
+    if _tls_assets is not None:
+        return _tls_assets
+    current = Path.cwd().resolve()
+    while True:
+        candidate = current / "core" / "tests" / "certs" / "gen"
+        ca = candidate / "ca.crt"
+        cert = candidate / "server.crt"
+        key = candidate / "server.key"
+        if ca.exists() and cert.exists() and key.exists():
+            _tls_assets = {
+                "ca": str(ca),
+                "cert": str(cert),
+                "key": str(key),
+            }
+            return _tls_assets
+        if current.parent == current:
+            break
+        current = current.parent
+    raise RuntimeError("TLS perf assets not found under core/tests/certs/gen")
+
+
+def configure_tls_server(target, transport):
+    if not is_tls_transport(transport):
+        return
+    assets = _resolve_tls_assets()
+    target.set_tls_server(assets["cert"], assets["key"], False)
+
+
+def configure_tls_client(target, transport, *, hostname="localhost", trust_system=False):
+    if not is_tls_transport(transport):
+        return
+    assets = _resolve_tls_assets()
+    target.set_tls_client(assets["ca"], hostname, trust_system)
 
 
 def resolve_single_timeout_seconds(duration_seconds):

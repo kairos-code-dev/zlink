@@ -18,6 +18,9 @@ READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TI
 RESULTS_TAG=""
 CONFIGURATION="${PERF_CONFIGURATION:-Release}"
 REPORT=""
+REUSE_BUILD=0
+CLEAN_BUILD=0
+BUILD_DIR=""
 
 prune_report_dir() {
   local report_dir="$1"
@@ -74,6 +77,9 @@ Options:
   --transports LIST     Transport list override (default: tcp,tls,ws,wss).
   --clients N           Client socket count (default: 100, stream=10000).
   --runs N              Iterations per configuration (default: 1).
+  --build-dir PATH      Accepted for policy compatibility.
+  --reuse-build         Reuse existing build output.
+  --clean-build         Remove project bin/obj before build.
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional report suffix tag.
 
@@ -81,6 +87,17 @@ Notes:
   - result is saved under results/multi/report/ as
     perf_dotnet_multi_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.
 USAGE
+}
+
+ensure_build_output() {
+  if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
+    rm -rf "${PROJECT_DIR}/bin" "${PROJECT_DIR}/obj"
+  fi
+  if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+    return
+  fi
+
+  dotnet build "${PROJECT}" -c "${CONFIGURATION}" >/dev/null
 }
 
 normalize_platform() {
@@ -119,13 +136,14 @@ allowed = {
     "ROUTER_ROUTER",
     "PUBSUB",
     "SPOT",
+    "SPOT_REQREP",
     "STREAM",
 }
 
 if raw == "ALL":
     print(
         "MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,"
-        "MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM"
+        "MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM"
     )
     raise SystemExit(0)
 
@@ -163,6 +181,23 @@ default_clients_for_pattern() {
   else
     printf '%s' "100"
   fi
+}
+
+pattern_uses_control_pipe() {
+  local pattern="${1:-}"
+  case "${pattern}" in
+    MULTI_DEALER_DEALER|MULTI_PUBSUB|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_STREAM)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+pattern_requires_client_phase_active() {
+  local pattern="${1:-}"
+  [[ "${pattern}" == "MULTI_PUBSUB" ]]
 }
 
 wait_for_ready_endpoint() {
@@ -344,7 +379,7 @@ emit_markdown_table() {
 
   local pattern_kind="one-way"
   case "${pattern}" in
-    MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_STREAM)
+    MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_STREAM|MULTI_SPOT_REQREP)
       pattern_kind="echo"
       ;;
   esac
@@ -358,7 +393,12 @@ import sys
 from collections import OrderedDict
 
 pattern = sys.argv[2].upper()
-echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM"}
+echo_patterns = {
+    "MULTI_DEALER_ROUTER",
+    "MULTI_ROUTER_ROUTER",
+    "MULTI_STREAM",
+    "MULTI_SPOT_REQREP",
+}
 rows = OrderedDict()
 with open(sys.argv[1], encoding="utf-8") as handle:
     reader = csv.reader(handle)
@@ -451,6 +491,16 @@ while [[ $# -gt 0 ]]; do
       CLIENTS="${2:-}"
       shift
       ;;
+    --build-dir)
+      BUILD_DIR="${2:-}"
+      shift
+      ;;
+    --reuse-build)
+      REUSE_BUILD=1
+      ;;
+    --clean-build)
+      CLEAN_BUILD=1
+      ;;
     --duration)
       DURATION="${2:-}"
       shift
@@ -479,6 +529,11 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ "${REUSE_BUILD}" -eq 1 && "${CLEAN_BUILD}" -eq 1 ]]; then
+  echo "--reuse-build and --clean-build are mutually exclusive." >&2
+  exit 1
+fi
 
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
@@ -511,6 +566,8 @@ REPORT="${RESULTS_ROOT}/multi/report/${report_base}.txt"
 : > "${REPORT}"
 prune_report_dir "${RESULTS_ROOT}/multi/report" \
   "${PERF_RESULTS_MAX_FILES:-100}"
+
+ensure_build_output
 
 if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench.Multi")"; then
   echo "multi benchmark binary not found under ${PROJECT_DIR}/bin/${CONFIGURATION}/net8.0." >&2
@@ -569,21 +626,24 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
         server_log="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_server_run${run_index}.log"
         client_log="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_client_run${run_index}.log"
-        control_fifo="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_run${run_index}.ctl"
-        rm -f "${server_log}" "${client_log}" "${control_fifo}"
+        server_control_fifo="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_server_run${run_index}.ctl"
+        client_control_fifo="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_client_run${run_index}.ctl"
+        rm -f "${server_log}" "${client_log}" \
+          "${server_control_fifo}" "${client_control_fifo}"
 
-        control_fd=''
+        server_control_fd=''
+        client_control_fd=''
         server_endpoint=''
-        if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_STREAM" ]]; then
-          mkfifo "${control_fifo}"
-          exec {control_fd}<>"${control_fifo}"
-          rm -f "${control_fifo}"
+        if pattern_uses_control_pipe "${pattern}"; then
+          mkfifo "${server_control_fifo}"
+          exec {server_control_fd}<>"${server_control_fifo}"
+          rm -f "${server_control_fifo}"
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
           DOTNET_TieredCompilation=0 \
           PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
           bash -lc "${PERF_BINARY@Q} --multi-server ${pattern@Q} ${transport@Q} ${size@Q}" \
-          <&${control_fd} > "${server_log}" 2>&1 &
+          <&${server_control_fd} > "${server_log}" 2>&1 &
         else
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
@@ -601,16 +661,16 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             print_line "${unsupported_line}"
             expected_result_lines=$((expected_result_lines - 5))
             terminate_pid "${server_pid}"
-            if [[ -n "${control_fd}" ]]; then
-              exec {control_fd}>&-
+            if [[ -n "${server_control_fd}" ]]; then
+              exec {server_control_fd}>&-
             fi
             continue
           fi
           cat "${server_log}" >&2 || true
           echo "server did not become ready for ${pattern} ${transport} ${size}" >&2
           terminate_pid "${server_pid}"
-          if [[ -n "${control_fd}" ]]; then
-            exec {control_fd}>&-
+          if [[ -n "${server_control_fd}" ]]; then
+            exec {server_control_fd}>&-
           fi
           status=1
           continue
@@ -623,7 +683,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
             bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
             > "${client_log}" 2>&1; then
-            printf 'STOP\n' >&${control_fd} || true
+            printf 'STOP\n' >&${server_control_fd} || true
             if ! wait_for_pid "${server_pid}" 5; then
               terminate_pid "${server_pid}"
             else
@@ -632,7 +692,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
               expected_result_lines=$((expected_result_lines - 5))
-              exec {control_fd}>&-
+              exec {server_control_fd}>&-
               continue
             fi
             extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
@@ -640,21 +700,24 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
               expected_result_lines=$((expected_result_lines - 5))
-              printf 'STOP\n' >&${control_fd} || true
+              printf 'STOP\n' >&${server_control_fd} || true
               terminate_pid "${server_pid}"
-              exec {control_fd}>&-
+              exec {server_control_fd}>&-
               continue
             fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
-            printf 'STOP\n' >&${control_fd} || true
+            printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${server_pid}"
             status=1
-            exec {control_fd}>&-
+            exec {server_control_fd}>&-
             continue
           fi
-          exec {control_fd}>&-
+          exec {server_control_fd}>&-
         elif [[ "${pattern}" == "MULTI_SPOT" ]]; then
+          mkfifo "${client_control_fifo}"
+          exec {client_control_fd}<>"${client_control_fifo}"
+          rm -f "${client_control_fifo}"
           PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
           DOTNET_TieredCompilation=0 \
@@ -668,45 +731,49 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
               print_line "${unsupported_line}"
               expected_result_lines=$((expected_result_lines - 5))
               terminate_pid "${client_pid}"
-              printf 'STOP\n' >&${control_fd} || true
+              printf 'STOP\n' >&${server_control_fd} || true
               terminate_pid "${server_pid}"
-              exec {control_fd}>&-
+              exec {server_control_fd}>&-
+              exec {client_control_fd}>&-
               continue
             fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${client_pid}"
-            printf 'STOP\n' >&${control_fd} || true
+            printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${server_pid}"
-            exec {control_fd}>&-
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
             status=1
             continue
           fi
 
-          printf 'START,%s\n' "${size}" >&${control_fd}
+          printf 'START,%s\n' "${size}" >&${server_control_fd}
           if ! wait_for_result_line "${client_log}" \
             "RESULT,current,SPOT,${transport},${size},latency_p99," \
             $((DURATION + 30)); then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
               expected_result_lines=$((expected_result_lines - 5))
-              printf 'STOP\n' >&${control_fd} || true
+              printf 'STOP\n' >&${server_control_fd} || true
               terminate_pid "${client_pid}"
               terminate_pid "${server_pid}"
-              exec {control_fd}>&-
+              exec {server_control_fd}>&-
+              exec {client_control_fd}>&-
               continue
             fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
-            printf 'STOP\n' >&${control_fd} || true
+            printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${client_pid}"
             terminate_pid "${server_pid}"
-            exec {control_fd}>&-
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
             status=1
             continue
           fi
 
-          printf 'STOP\n' >&${control_fd} || true
+          printf 'STOP\n' >&${server_control_fd} || true
           if ! wait_for_pid "${client_pid}" 5; then
             terminate_pid "${client_pid}"
           else
@@ -720,11 +787,99 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
             print_line "${unsupported_line}"
             expected_result_lines=$((expected_result_lines - 5))
-            exec {control_fd}>&-
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
             continue
           fi
           extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
-          exec {control_fd}>&-
+          exec {server_control_fd}>&-
+          exec {client_control_fd}>&-
+        elif [[ "${pattern}" == "MULTI_DEALER_DEALER" || "${pattern}" == "MULTI_PUBSUB" || "${pattern}" == "MULTI_SPOT_REQREP" ]]; then
+          mkfifo "${client_control_fifo}"
+          exec {client_control_fd}<>"${client_control_fifo}"
+          rm -f "${client_control_fifo}"
+          PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
+            PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
+            DOTNET_TieredCompilation=0 \
+            PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
+            bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
+            <&${client_control_fd} > "${client_log}" 2>&1 &
+          client_pid=$!
+
+          if ! wait_for_client_ready_line "${client_log}"; then
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              terminate_pid "${client_pid}"
+              printf 'STOP\n' >&${server_control_fd} || true
+              terminate_pid "${server_pid}"
+              exec {server_control_fd}>&-
+              exec {client_control_fd}>&-
+              continue
+            fi
+            cat "${server_log}" >&2 || true
+            cat "${client_log}" >&2 || true
+            terminate_pid "${client_pid}"
+            printf 'STOP\n' >&${server_control_fd} || true
+            terminate_pid "${server_pid}"
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            status=1
+            continue
+          fi
+
+          printf 'START,%s\n' "${size}" >&${server_control_fd} || true
+          printf 'START,%s\n' "${size}" >&${client_control_fd} || true
+          if pattern_requires_client_phase_active "${pattern}"; then
+            printf 'PHASE_ACTIVE,%s\n' "${size}" >&${client_control_fd} || true
+          fi
+
+          if ! wait_for_result_line "${client_log}" \
+            "RESULT,current,${pattern#MULTI_},${transport},${size},latency_p99," \
+            $((DURATION + 30)); then
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              printf 'STOP\n' >&${server_control_fd} || true
+              terminate_pid "${client_pid}"
+              terminate_pid "${server_pid}"
+              exec {server_control_fd}>&-
+              exec {client_control_fd}>&-
+              continue
+            fi
+            cat "${server_log}" >&2 || true
+            cat "${client_log}" >&2 || true
+            printf 'STOP\n' >&${server_control_fd} || true
+            terminate_pid "${client_pid}"
+            terminate_pid "${server_pid}"
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            status=1
+            continue
+          fi
+
+          printf 'STOP\n' >&${server_control_fd} || true
+          printf 'STOP\n' >&${client_control_fd} || true
+          if ! wait_for_pid "${client_pid}" 5; then
+            terminate_pid "${client_pid}"
+          else
+            wait "${client_pid}" || true
+          fi
+          if ! wait_for_pid "${server_pid}" 5; then
+            terminate_pid "${server_pid}"
+          else
+            wait "${server_pid}" || true
+          fi
+          if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+            print_line "${unsupported_line}"
+            expected_result_lines=$((expected_result_lines - 5))
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            continue
+          fi
+          extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
+          exec {server_control_fd}>&-
+          exec {client_control_fd}>&-
         else
           if PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
             PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \

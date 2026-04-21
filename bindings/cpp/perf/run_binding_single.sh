@@ -65,7 +65,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-BUILD_DIR="${ROOT_DIR}/core/build"
+BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
 MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM"
@@ -83,6 +83,7 @@ PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
+PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
@@ -106,7 +107,7 @@ Measure current zlink C++ binding single-pattern performance.
 Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
-  --build-dir PATH            Official build directory (must be core/build).
+  --build-dir PATH            Official build directory (must be bindings/cpp/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
   --output PATH               Tee console logs to a file.
@@ -409,7 +410,7 @@ fi
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 PERF_COMPARISON_SCRIPT="$(realpath -m "${PERF_COMPARISON_SCRIPT}")"
-OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
+OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
 
 if [[ "${BUILD_DIR}" != "${OFFICIAL_BUILD_DIR}" ]]; then
   echo "Build directory must be exactly: ${OFFICIAL_BUILD_DIR}" >&2
@@ -468,7 +469,7 @@ case "${BUILD_MODE}" in
     ;;
 esac
 
-CMAKE_SOURCE_DIR="${ROOT_DIR}"
+CMAKE_SOURCE_DIR="${ROOT_DIR}/bindings/cpp"
 if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
   CACHE_CMAKE_SOURCE="$(
     sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
@@ -494,31 +495,17 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DENABLE_LTO=OFF \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_CPP_BINDINGS=ON \
-      -DZLINK_CPP_BUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-      -DZLINK_CXX_STANDARD=17
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_BUILD_BENCHMARKS=ON
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
       -DENABLE_LTO=OFF \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_CPP_BINDINGS=ON \
-      -DZLINK_CPP_BUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-      -DZLINK_CXX_STANDARD=17
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_BUILD_BENCHMARKS=ON
   fi
 
   CPP_SINGLE_TARGETS=(
@@ -541,7 +528,6 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
     cpp_comp_src_spot_server
     cpp_comp_src_spot_client
     cpp_comp_src_stream_server
-    perf_stream_client
   )
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
@@ -593,8 +579,9 @@ if [[ "${PERF_ALLOW_MULTI:-0}" == "1" ]]; then
 else
   RUNTIME_BUILD_DIR="$(prepare_cpp_runtime_dir single)"
 fi
+RUNTIME_BIN_DIR="${RUNTIME_BUILD_DIR}/bin"
 
-RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${RUNTIME_BUILD_DIR}" "--runs" "${RUNS}")
+RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${RUNTIME_BIN_DIR}" "--runs" "${RUNS}")
 if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
 fi
@@ -729,6 +716,7 @@ print_effective_option "result_file" "${RESULT_FILE}"
 print_effective_option "output_file" "$(value_or_default "${OUTPUT_FILE}" "none")"
 print_effective_option "comparison_script" "${PERF_COMPARISON_SCRIPT}"
 print_effective_option "runtime_build_dir" "${RUNTIME_BUILD_DIR}"
+print_effective_option "runtime_bin_dir" "${RUNTIME_BIN_DIR}"
 print_effective_option "python" "${PYTHON_BIN[*]}"
 echo
 echo "## Effective Env (runner)"

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import stat
+import platform
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CPP_PERF_DIR = ROOT / "bindings" / "cpp" / "perf"
 RUNTIME_ROOT = CPP_PERF_DIR / ".runtime"
 CORE_BUILD = ROOT / "core" / "build"
+C_STREAM_CLIENT = ROOT / "bindings" / "c" / "build" / "perf" / "perf_stream_client"
+CPP_NATIVE_ROOT = ROOT / "bindings" / "cpp" / "native"
 
 SINGLE_MAP = {
     "perf_pair": CPP_PERF_DIR / "single" / "build" / "cpp_perf_pair",
@@ -33,6 +36,25 @@ MULTI_CLIENT_MAP = {
     "comp_src_pubsub_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_pubsub_client",
     "comp_src_spot_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_client",
 }
+
+
+def native_runtime_dir() -> Path:
+    system = platform.system()
+    machine = platform.machine().lower()
+
+    if system == "Linux":
+        subdir = "linux-aarch64" if machine in {"aarch64", "arm64"} else "linux-x86_64"
+    elif system == "Darwin":
+        subdir = "darwin-aarch64" if machine in {"aarch64", "arm64"} else "darwin-x86_64"
+    elif system == "Windows":
+        subdir = "windows-aarch64" if machine in {"aarch64", "arm64"} else "windows-x86_64"
+    else:
+        raise SystemExit(f"unsupported platform for cpp perf runtime: {system}/{machine}")
+
+    runtime_dir = CPP_NATIVE_ROOT / subdir
+    if not runtime_dir.exists():
+        raise SystemExit(f"missing cpp native runtime directory: {runtime_dir}")
+    return runtime_dir
 
 
 def reset_dir(path: Path) -> None:
@@ -63,13 +85,14 @@ if [[ $# -lt 2 ]]; then
   echo \"usage: <lib> <transport>\" >&2
   exit 1
 fi
+lib=\"$1\"
 transport=\"$2\"
 size_csv=\"${{PERF_MSG_SIZES:-64}}\"
 size=\"${{size_csv%%,*}}\"
 if [[ -z \"${{size}}\" ]]; then
   size=64
 fi
-exec \"{target}\" \"$transport\" \"$size\"
+exec \"{target}\" \"$lib\" \"$transport\" \"$size\"
 """
 
 
@@ -80,11 +103,11 @@ if [[ $# -lt 3 ]]; then
   echo \"usage: <lib> <transport> <size> [args...]\" >&2
   exit 1
 fi
-shift
-transport=\"$1\"
-size=\"$2\"
-shift 2
-exec \"{target}\" \"$transport\" \"$size\" \"$@\"
+lib=\"$1\"
+transport=\"$2\"
+size=\"$3\"
+shift 3
+exec \"{target}\" \"$lib\" \"$transport\" \"$size\" \"$@\"
 """
 
 
@@ -98,7 +121,7 @@ def prepare_multi(runtime_bin: Path) -> None:
         write_executable(runtime_bin / name, server_wrapper(target))
     for name, target in MULTI_CLIENT_MAP.items():
         write_executable(runtime_bin / name, client_wrapper(target))
-    make_symlink(runtime_bin / "perf_stream_client", CORE_BUILD / "bin" / "perf_stream_client")
+    make_symlink(runtime_bin / "perf_stream_client", C_STREAM_CLIENT)
 
 
 def main() -> int:
@@ -113,7 +136,7 @@ def main() -> int:
     reset_dir(runtime_bin)
     if runtime_lib.exists() or runtime_lib.is_symlink():
         runtime_lib.unlink()
-    runtime_lib.symlink_to(CORE_BUILD / "lib")
+    runtime_lib.symlink_to(native_runtime_dir())
 
     if args.suite == "single":
         prepare_single(runtime_bin)

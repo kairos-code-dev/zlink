@@ -19,24 +19,22 @@ public abstract class MessageSocketBase : ConnectableSocketBase
     {
     }
 
-    public void Send(Message message, SendFlags flags = SendFlags.None)
+    public bool Send(Message message, SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(message));
+
         Kernel.Send(message, flags);
+        return true;
     }
 
-    public void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    public bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(parts));
+
         Kernel.Send(parts, flags);
-    }
-
-    public bool TrySend(Message message)
-    {
-        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(message));
-    }
-
-    public bool TrySend(IReadOnlyList<Message> parts)
-    {
-        return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(parts));
+        return true;
     }
 
     internal SendResult SendNoWaitResult(Message message)
@@ -54,15 +52,11 @@ public abstract class MessageSocketBase : ConnectableSocketBase
         Kernel.RecvHandler(handler);
     }
 
-    public Received Recv(RecvFlags flags = RecvFlags.None)
+    public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.Recv(flags);
-    }
-
-    public bool TryRecv(out Received? received)
-    {
-        received = Kernel.RecvNoWait();
-        return received != null;
+        return (flags & RecvFlags.DontWait) != 0
+            ? Kernel.RecvNoWait()
+            : Kernel.Recv(flags);
     }
 
     internal Received? RecvNoWait()

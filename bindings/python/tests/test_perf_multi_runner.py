@@ -42,7 +42,7 @@ class PerfMultiRunnerTests(unittest.TestCase):
             timeout=10,
         )
         self.assertEqual(result.returncode, 0)
-        self.assertIn("usage: run_benchmarks.sh", result.stdout)
+        self.assertIn("usage: run_benchmarks_multi.sh", result.stdout)
         self.assertIn("--clients", result.stdout)
         self.assertIn("--msg-sizes", result.stdout)
 
@@ -55,7 +55,7 @@ class PerfMultiRunnerTests(unittest.TestCase):
             timeout=10,
         )
         self.assertEqual(result.returncode, 0)
-        self.assertIn("usage: run_benchmarks.sh", result.stdout)
+        self.assertIn("usage: run_benchmarks_multi.sh", result.stdout)
         self.assertIn("--clients", result.stdout)
         self.assertIn("--results-dir", result.stdout)
 
@@ -131,8 +131,12 @@ class PerfMultiRunnerTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
             self.assertIn("## Effective Options (start)", result.stdout)
-            self.assertIn("| Pattern | Transport | Size |", result.stdout)
-            reports = list(Path(tmpdir).glob("perf_python_multi_linux_*_smoke.txt"))
+            self.assertIn("| Size     |       Throughput |", result.stdout)
+            reports = list(
+                (Path(tmpdir) / "multi" / "report").glob(
+                    "perf_python_multi_linux_*_smoke.txt"
+                )
+            )
             self.assertEqual(len(reports), 1)
             report_text = reports[0].read_text(encoding="utf-8")
             self.assertIn("RESULT,current,MULTI_PUBSUB,tcp,64,throughput,", report_text)

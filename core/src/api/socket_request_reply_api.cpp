@@ -7,6 +7,7 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/part_helper_internal.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "api/handler_result_internal.hpp"
 #include "api/recv_result_internal.hpp"
@@ -20,6 +21,9 @@ extern "C" int zlink_router_enable_spot_receive (void *router_);
 
 namespace
 {
+thread_local zlink_routing_id_t g_router_recv_part_source_node_rid;
+thread_local zlink_routing_id_t g_router_recv_part_source_spot_rid;
+
 int validate_socket_type (void *socket_, int expected_type_)
 {
     const socket_handle_t handle = as_socket_handle (socket_);
@@ -43,12 +47,116 @@ int validate_request_send_flags (zlink_send_flags_t flags_)
     return 0;
 }
 
+void drain_router_completion_queues (
+  void *router_,
+  const std::shared_ptr<reqrep::socket_request_reply_state_t> &socket_state_,
+  const std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+    &router_spot_state_)
+{
+    if (socket_state_)
+        (void) reqrep::drain_reply_completions (socket_state_, router_);
+    if (router_spot_state_)
+        (void) zlink::spot_reqrep_internal::drain_router_reply_completions (
+          router_spot_state_, router_);
+}
+
+int wait_router_input_or_completion (
+  zlink::socket_base_t *input_,
+  zlink::socket_base_t *socket_signal_,
+  zlink::socket_base_t *router_spot_signal_,
+  long timeout_ms_,
+  bool *input_ready_out_,
+  bool *socket_signal_ready_out_,
+  bool *router_spot_signal_ready_out_)
+{
+    if (!input_ || !input_ready_out_ || !socket_signal_ready_out_
+        || !router_spot_signal_ready_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    *input_ready_out_ = false;
+    *socket_signal_ready_out_ = false;
+    *router_spot_signal_ready_out_ = false;
+
+    zlink::socket_poller_t poller;
+    if (poller.add (input_, NULL, ZLINK_POLLIN) != 0)
+        return -1;
+    if (socket_signal_ && poller.add (socket_signal_, NULL, ZLINK_POLLIN) != 0)
+        return -1;
+    if (router_spot_signal_
+        && poller.add (router_spot_signal_, NULL, ZLINK_POLLIN) != 0)
+        return -1;
+
+    zlink::socket_poller_t::event_t events[3];
+    const int rc = poller.wait (events, 3, timeout_ms_);
+    if (rc <= 0)
+        return rc;
+
+    for (int i = 0; i < rc; ++i) {
+        if (events[i].socket == input_)
+            *input_ready_out_ = true;
+        else if (events[i].socket == socket_signal_)
+            *socket_signal_ready_out_ = true;
+        else if (events[i].socket == router_spot_signal_)
+            *router_spot_signal_ready_out_ = true;
+    }
+    return rc;
+}
+
 void consume_send_frames_local (zlink_msg_t *parts_,
                                 size_t start_index_,
                                 size_t part_count_)
 {
     for (size_t i = start_index_; i < part_count_; ++i)
         zlink::part_helper_internal::consume_send_part (&parts_[i]);
+}
+
+void export_router_recv_part_metadata_view (
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_spot_rid_,
+  uint64_t request_seq_,
+  const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_)
+{
+    zlink::part_helper_internal::copy_routing_id (
+      source_node_rid_, &g_router_recv_part_source_node_rid);
+    zlink::part_helper_internal::copy_routing_id (
+      source_spot_rid_, &g_router_recv_part_source_spot_rid);
+
+    if (source_node_rid_out_) {
+        *source_node_rid_out_ =
+          source_node_rid_ ? &g_router_recv_part_source_node_rid : NULL;
+    }
+    if (source_spot_rid_out_) {
+        *source_spot_rid_out_ =
+          source_spot_rid_ ? &g_router_recv_part_source_spot_rid : NULL;
+    }
+    if (request_seq_out_)
+        *request_seq_out_ = request_seq_;
+}
+
+int lookup_socket_pending_request_by_seq (
+  const std::shared_ptr<reqrep::socket_request_reply_state_t> &state_,
+  uint64_t request_seq_,
+  reqrep::pending_key_t *key_out_)
+{
+    if (!state_ || !key_out_ || request_seq_ == 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    std::unordered_map<uint64_t, reqrep::pending_key_t>::const_iterator it =
+      state_->pending_request_keys_by_seq.find (request_seq_);
+    if (it == state_->pending_request_keys_by_seq.end ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *key_out_ = it->second;
+    return 0;
 }
 
 int send_request_frame (zlink::socket_base_t *socket_,
@@ -201,7 +309,29 @@ int ensure_socket_pending_request (
               static_cast<socket_timeout_callback_ctx_t *> (userdata_));
             if (!ctx || !ctx->state)
                 return;
-            erase_socket_pending_request (ctx->state, ctx->key);
+
+            reqrep::pending_request_t pending;
+            bool found = false;
+            {
+                std::lock_guard<std::mutex> lock (ctx->state->mutex);
+                std::unordered_map<reqrep::pending_key_t,
+                                   reqrep::pending_request_t,
+                                   reqrep::pending_key_hash_t>::iterator it =
+                  ctx->state->pending_requests.find (ctx->key);
+                if (it == ctx->state->pending_requests.end ())
+                    return;
+                pending = it->second;
+                ctx->state->pending_sequences.erase (ctx->key.request_seq);
+                ctx->state->pending_request_keys_by_seq.erase (
+                  ctx->key.request_seq);
+                ctx->state->pending_requests.erase (it);
+                found = true;
+            }
+            if (found) {
+                (void) reqrep::queue_reply_completion (
+                  ctx->state, pending.handler, pending.userdata, ETIMEDOUT,
+                  NULL, 0);
+            }
         };
         std::unique_ptr<socket_timeout_callback_ctx_t> timeout_ctx (
           new (std::nothrow) socket_timeout_callback_ctx_t ());
@@ -285,6 +415,16 @@ zlink_submit_result_t request_part_common (
                                            userdata_, &spec.request_seq,
                                            &request_state, &pending_key)
             != 0) {
+            zlink::part_helper_internal::consume_send_part (part_);
+            return zlink::submit_result_internal::from_errno (errno);
+        }
+    } else {
+        request_state = reqrep::find_or_create_request_reply_state (handle);
+        if (!request_state
+            || lookup_socket_pending_request_by_seq (request_state,
+                                                     spec.request_seq,
+                                                     &pending_key)
+                 != 0) {
             zlink::part_helper_internal::consume_send_part (part_);
             return zlink::submit_result_internal::from_errno (errno);
         }
@@ -554,16 +694,156 @@ zlink_recv_result_t zlink_router_recv_part (
         return zlink::recv_result_internal::from_errno (errno);
 
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
-      zlink::part_helper_internal::find_or_create_handle_state (router_);
-    if (!helper_state)
-        return zlink::recv_result_internal::from_errno (errno);
+      zlink::part_helper_internal::find_handle_state (router_);
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_request_reply_state (handle);
+    std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+      router_spot_state =
+        zlink::spot_reqrep_internal::find_or_create_router_state (router_);
     bool use_helper_queue = false;
     if (state) {
         std::lock_guard<std::mutex> lock (state->mutex);
         use_helper_queue = state->internal_dispatch_installed;
+    }
+
+    const bool recv_sequence_active =
+      zlink::part_helper_internal::recv_sequence_active (helper_state);
+    auto recv_router_parts_once =
+      [&] (const zlink_routing_id_t **source_node_rid_out,
+           const zlink_routing_id_t **source_spot_rid_out,
+           uint64_t *request_seq_out,
+           zlink_msg_t **parts_out,
+           size_t *part_count_out) -> zlink_recv_result_t {
+        drain_router_completion_queues (router_, state, router_spot_state);
+
+        const zlink_recv_flags_t try_flags =
+          static_cast<zlink_recv_flags_t> (flags_ | ZLINK_DONTWAIT);
+        const bool blocking = (flags_ & ZLINK_DONTWAIT) == 0;
+        zlink::socket_base_t *input_socket =
+          use_helper_queue && state ? state->recv_queue.rx : handle.socket;
+        zlink::socket_base_t *socket_signal =
+          state ? reqrep::completion_signal_socket (state) : NULL;
+        zlink::socket_base_t *router_spot_signal =
+          router_spot_state
+            ? zlink::spot_reqrep_internal::router_completion_signal_socket (
+                router_spot_state)
+            : NULL;
+
+        while (true) {
+            zlink_recv_result_t rc =
+              use_helper_queue
+                ? recv_router_parts_with_helper (state, source_node_rid_out,
+                                                 source_spot_rid_out,
+                                                 request_seq_out, parts_out,
+                                                 part_count_out, try_flags)
+                : static_cast<zlink_recv_result_t> (
+                    reqrep::recv_router_message_direct (
+                      handle, source_node_rid_out, source_spot_rid_out,
+                      request_seq_out, parts_out, part_count_out,
+                      static_cast<int> (try_flags))
+                    == 0
+                      ? ZLINK_RECV_OK
+                      : zlink::recv_result_internal::from_errno (errno));
+            if (rc == ZLINK_RECV_OK)
+                return rc;
+            if (!blocking || errno != EAGAIN)
+                return zlink::recv_result_internal::from_errno (errno);
+
+            bool input_ready = false;
+            bool socket_signal_ready = false;
+            bool router_spot_signal_ready = false;
+            const int wait_rc = wait_router_input_or_completion (
+              input_socket, socket_signal, router_spot_signal, -1, &input_ready,
+              &socket_signal_ready, &router_spot_signal_ready);
+            if (wait_rc <= 0) {
+                if (wait_rc == 0)
+                    errno = EAGAIN;
+                return zlink::recv_result_internal::from_errno (errno);
+            }
+
+            if (socket_signal_ready || router_spot_signal_ready)
+                drain_router_completion_queues (router_, state,
+                                                router_spot_state);
+            if (!input_ready && !socket_signal_ready && !router_spot_signal_ready) {
+                errno = EAGAIN;
+                return zlink::recv_result_internal::from_errno (errno);
+            }
+        }
+      };
+
+    if (!recv_sequence_active) {
+        const zlink_routing_id_t *source_node_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        const zlink_recv_result_t recv_rc =
+          recv_router_parts_once (&source_node_rid, &source_spot_rid,
+                                  &request_seq, &parts, &part_count);
+        if (recv_rc != ZLINK_RECV_OK)
+            return zlink::recv_result_internal::from_errno (errno);
+
+        if (!parts || part_count == 0) {
+            errno = EPROTO;
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+
+        if (part_count == 1) {
+            if (zlink_msg_move (part_out_, &parts[0]) != 0) {
+                zlink_multipart_close (parts, part_count);
+                errno = EFAULT;
+                return zlink::recv_result_internal::from_errno (errno);
+            }
+            zlink_multipart_close (parts, part_count);
+            export_router_recv_part_metadata_view (
+              source_node_rid, source_spot_rid, request_seq,
+              source_node_rid_out_, source_spot_rid_out_, request_seq_out_);
+            *has_more_out_ = ZLINK_PART_FINAL;
+            return ZLINK_RECV_OK;
+        }
+
+        if (!helper_state) {
+            helper_state = zlink::part_helper_internal::find_or_create_handle_state (
+              router_);
+            if (!helper_state) {
+                zlink_multipart_close (parts, part_count);
+                return zlink::recv_result_internal::from_errno (errno);
+            }
+        }
+
+        const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
+          helper_state,
+          zlink::part_helper_internal::recv_family_router,
+          use_helper_queue && state ? state->recv_queue.rx : handle.socket,
+          source_node_rid,
+          source_spot_rid,
+          request_seq,
+          parts,
+          part_count,
+          std::this_thread::get_id ());
+        zlink_multipart_close (parts, part_count);
+        if (stage_rc != 0) {
+            zlink::part_helper_internal::abort_recv_step (helper_state);
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+        if (helper_state->recv.buffered_parts.empty ()) {
+            zlink::part_helper_internal::abort_recv_step (helper_state);
+            errno = EPROTO;
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+        if (zlink::part_helper_internal::take_recv_part (
+              helper_state, part_out_, has_more_out_)
+            != 0) {
+            zlink::part_helper_internal::abort_recv_step (helper_state);
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+        zlink::part_helper_internal::export_recv_metadata (
+          helper_state, source_node_rid_out_, source_spot_rid_out_,
+          request_seq_out_);
+        zlink::part_helper_internal::complete_recv_step (helper_state,
+                                                         *has_more_out_);
+        return ZLINK_RECV_OK;
     }
 
     zlink::socket_base_t *source_socket =
@@ -583,22 +863,8 @@ zlink_recv_result_t zlink_router_recv_part (
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         const zlink_recv_result_t recv_rc =
-          use_helper_queue
-            ? recv_router_parts_with_helper (state, &source_node_rid,
-                                             &source_spot_rid, &request_seq,
-                                             &parts, &part_count, flags_)
-            : static_cast<zlink_recv_result_t> (
-                reqrep::recv_router_message_direct (
-                  handle,
-                  &source_node_rid,
-                  &source_spot_rid,
-                  &request_seq,
-                  &parts,
-                  &part_count,
-                  static_cast<int> (flags_))
-                == 0
-                  ? ZLINK_RECV_OK
-                  : zlink::recv_result_internal::from_errno (errno));
+          recv_router_parts_once (&source_node_rid, &source_spot_rid,
+                                  &request_seq, &parts, &part_count);
         if (recv_rc
             != ZLINK_RECV_OK) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
@@ -612,18 +878,6 @@ zlink_recv_result_t zlink_router_recv_part (
         }
 
         if (part_count == 1) {
-            {
-                std::lock_guard<std::mutex> lock (helper_state->mutex);
-                helper_state->recv.return_source_rid_as_null =
-                  source_node_rid == NULL;
-                helper_state->recv.return_source_spot_rid_as_null =
-                  source_spot_rid == NULL;
-                zlink::part_helper_internal::copy_routing_id (
-                  source_node_rid, &helper_state->recv.source_node_rid);
-                zlink::part_helper_internal::copy_routing_id (
-                  source_spot_rid, &helper_state->recv.source_spot_rid);
-                helper_state->recv.request_seq = request_seq;
-            }
             if (zlink_msg_move (part_out_, &parts[0]) != 0) {
                 zlink_multipart_close (parts, part_count);
                 zlink::part_helper_internal::abort_recv_step (helper_state);
@@ -631,50 +885,28 @@ zlink_recv_result_t zlink_router_recv_part (
                 return zlink::recv_result_internal::from_errno (errno);
             }
             zlink_multipart_close (parts, part_count);
-            {
-                std::lock_guard<std::mutex> lock (helper_state->mutex);
-                *source_node_rid_out_ =
-                  helper_state->recv.return_source_rid_as_null
-                    ? NULL
-                    : &helper_state->recv.source_node_rid;
-                *source_spot_rid_out_ =
-                  helper_state->recv.return_source_spot_rid_as_null
-                    ? NULL
-                    : &helper_state->recv.source_spot_rid;
-                *request_seq_out_ = helper_state->recv.request_seq;
-            }
+            export_router_recv_part_metadata_view (
+              source_node_rid, source_spot_rid, request_seq,
+              source_node_rid_out_, source_spot_rid_out_, request_seq_out_);
             *has_more_out_ = ZLINK_PART_FINAL;
             zlink::part_helper_internal::complete_recv_step (helper_state,
                                                              *has_more_out_);
             return ZLINK_RECV_OK;
         }
 
-        bool move_failed = false;
-        {
-            std::lock_guard<std::mutex> lock (helper_state->mutex);
-            helper_state->recv.return_source_rid_as_null = source_node_rid == NULL;
-            helper_state->recv.return_source_spot_rid_as_null =
-              source_spot_rid == NULL;
-            zlink::part_helper_internal::copy_routing_id (
-              source_node_rid, &helper_state->recv.source_node_rid);
-            zlink::part_helper_internal::copy_routing_id (
-              source_spot_rid, &helper_state->recv.source_spot_rid);
-            helper_state->recv.request_seq = request_seq;
-            helper_state->recv.buffered_parts.resize (part_count);
-            helper_state->recv.next_part_index = 0;
-            for (size_t i = 0; i < part_count; ++i) {
-                zlink_msg_init (&helper_state->recv.buffered_parts[i]);
-                if (zlink_msg_move (&helper_state->recv.buffered_parts[i], &parts[i])
-                    != 0) {
-                    move_failed = true;
-                    break;
-                }
-            }
-        }
+        const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
+          helper_state,
+          zlink::part_helper_internal::recv_family_router,
+          source_socket,
+          source_node_rid,
+          source_spot_rid,
+          request_seq,
+          parts,
+          part_count,
+          std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
-        if (move_failed) {
+        if (stage_rc != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
-            errno = EFAULT;
             return zlink::recv_result_internal::from_errno (errno);
         }
         if (helper_state->recv.buffered_parts.empty ()) {
@@ -682,62 +914,24 @@ zlink_recv_result_t zlink_router_recv_part (
             errno = EPROTO;
             return zlink::recv_result_internal::from_errno (errno);
         }
-        if (zlink_msg_move (part_out_, &helper_state->recv.buffered_parts[0]) != 0) {
+        if (zlink::part_helper_internal::take_recv_part (
+              helper_state, part_out_, has_more_out_)
+            != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
-            errno = EFAULT;
             return zlink::recv_result_internal::from_errno (errno);
         }
-        helper_state->recv.next_part_index = 1;
     } else {
-        bool range_failed = false;
-        bool move_failed = false;
-        {
-            std::lock_guard<std::mutex> lock (helper_state->mutex);
-            if (helper_state->recv.next_part_index
-                >= helper_state->recv.buffered_parts.size ()) {
-                range_failed = true;
-            } else {
-                move_failed =
-                  zlink_msg_move (
-                    part_out_,
-                    &helper_state
-                       ->recv.buffered_parts[helper_state->recv.next_part_index])
-                  != 0;
-                if (!move_failed)
-                    ++helper_state->recv.next_part_index;
-            }
-        }
-        if (range_failed) {
+        if (zlink::part_helper_internal::take_recv_part (
+              helper_state, part_out_, has_more_out_)
+            != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
-            errno = EPROTO;
-            return zlink::recv_result_internal::from_errno (errno);
-        }
-        if (move_failed) {
-            zlink::part_helper_internal::abort_recv_step (helper_state);
-            errno = EFAULT;
             return zlink::recv_result_internal::from_errno (errno);
         }
     }
 
-    {
-        std::lock_guard<std::mutex> lock (helper_state->mutex);
-        *source_node_rid_out_ =
-          helper_state->recv.return_source_rid_as_null
-            ? NULL
-            : &helper_state->recv.source_node_rid;
-        *source_spot_rid_out_ =
-          helper_state->recv.return_source_spot_rid_as_null
-            ? NULL
-            : &helper_state->recv.source_spot_rid;
-        *request_seq_out_ = helper_state->recv.request_seq;
-    }
-    {
-        std::lock_guard<std::mutex> lock (helper_state->mutex);
-        *has_more_out_ =
-          (helper_state->recv.next_part_index
-           < helper_state->recv.buffered_parts.size ())
-            ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-    }
+    zlink::part_helper_internal::export_recv_metadata (
+      helper_state, source_node_rid_out_, source_spot_rid_out_,
+      request_seq_out_);
     zlink::part_helper_internal::complete_recv_step (helper_state,
                                                      *has_more_out_);
     return ZLINK_RECV_OK;
@@ -833,4 +1027,41 @@ extern "C" int zlink_socket_request_reply_get_default_timeout (
     memcpy (optval_, &timeout_ms, sizeof (timeout_ms));
     *optvallen_ = sizeof (timeout_ms);
     return 0;
+}
+
+extern "C" int zlink_socket_request_progress_internal (void *socket_)
+{
+    const socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    int drained = 0;
+
+    const std::shared_ptr<reqrep::socket_request_reply_state_t> socket_state =
+      reqrep::find_request_reply_state (handle);
+    if (socket_state) {
+        const int rc = reqrep::drain_reply_completions (socket_state, socket_);
+        if (rc < 0)
+            return -1;
+        drained += rc;
+    }
+
+    const std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+      router_spot_state =
+        std::static_pointer_cast<
+          zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
+          handle.socket->router_spot_request_reply_state ());
+    if (router_spot_state) {
+        const int rc =
+          zlink::spot_reqrep_internal::drain_router_reply_completions (
+            router_spot_state, socket_);
+        if (rc < 0)
+            return -1;
+        drained += rc;
+    }
+
+    errno = 0;
+    return drained;
 }

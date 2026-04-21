@@ -2,6 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "../src/api/socket_request_reply_internal.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -62,6 +63,26 @@ bool wait_for_reply (reply_probe_t *probe_, int timeout_ms_)
     return probe_->cv.wait_for (
       lock, std::chrono::milliseconds (timeout_ms_),
       [probe_] () { return probe_->done; });
+}
+
+bool wait_for_reply_with_router_progress (void *router_,
+                                          reply_probe_t *probe_,
+                                          int timeout_ms_)
+{
+    const socket_handle_t handle = as_socket_handle (router_);
+    const std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+      state = zlink::socket_reqrep_internal::find_request_reply_state (handle);
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (wait_for_reply (probe_, 10))
+            return true;
+        if (state)
+            (void) zlink::socket_reqrep_internal::drain_reply_completions (
+              state, router_);
+    }
+
+    return false;
 }
 
 void init_part (zlink_msg_t *part_, const char *text_)
@@ -146,7 +167,7 @@ void test_router_request_part_failure_discards_pending_sequence_and_allows_fresh
     memcpy (peer_a.data, "srv-a", 5);
     peer_a.size = 5;
 
-    reply_probe_t failed_probe;
+    reply_probe_t *failed_probe = new reply_probe_t ();
     zlink_msg_t first_part;
     init_part (&first_part, "multipart-first");
     TEST_ASSERT_EQUAL_INT (
@@ -154,7 +175,7 @@ void test_router_request_part_failure_discards_pending_sequence_and_allows_fresh
       zlink_router_request_part (client, &peer_a, &first_part,
                                  static_cast<zlink_send_flags_t> (0),
                                  ZLINK_PART_MORE, 3000, &capture_reply,
-                                 &failed_probe));
+                                 failed_probe));
 
     zlink_msg_t final_part;
     init_part (&final_part, "multipart-final");
@@ -163,35 +184,40 @@ void test_router_request_part_failure_discards_pending_sequence_and_allows_fresh
       zlink_router_request_part (client, &peer_a, &final_part,
                                  static_cast<zlink_send_flags_t> (0),
                                  ZLINK_PART_FINAL, 3000, &capture_reply,
-                                 &failed_probe);
+                                 failed_probe);
     TEST_ASSERT_TRUE (failed_rc != ZLINK_SUBMIT_OK);
     TEST_ASSERT_TRUE (zlink_errno () != 0);
 
-    TEST_ASSERT_FALSE (wait_for_reply (&failed_probe, 200));
+    TEST_ASSERT_FALSE (wait_for_reply (failed_probe, 200));
     {
-        std::lock_guard<std::mutex> lock (failed_probe.mutex);
-        TEST_ASSERT_FALSE (failed_probe.done);
-        TEST_ASSERT_EQUAL_INT (0, failed_probe.callback_count);
+        std::lock_guard<std::mutex> lock (failed_probe->mutex);
+        TEST_ASSERT_FALSE (failed_probe->done);
+        TEST_ASSERT_EQUAL_INT (0, failed_probe->callback_count);
     }
 
-    reply_probe_t fresh_probe;
+    reply_probe_t *fresh_probe = new reply_probe_t ();
     zlink_msg_t fresh_part;
     init_part (&fresh_part, "fresh-request");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_router_request (
-        client, &peer_a, &fresh_part, 1, &capture_reply, &fresh_probe,
+        client, &peer_a, &fresh_part, 1, &capture_reply, fresh_probe,
         static_cast<zlink_send_flags_t> (0), 3000));
 
     wait_and_reply_from_router (server_a, "fresh-request");
-    TEST_ASSERT_TRUE (wait_for_reply (&fresh_probe, 3000));
+    TEST_ASSERT_TRUE (
+      wait_for_reply_with_router_progress (client, fresh_probe, 3000));
     {
-        std::lock_guard<std::mutex> lock (fresh_probe.mutex);
-        TEST_ASSERT_TRUE (fresh_probe.done);
-        TEST_ASSERT_EQUAL_INT (1, fresh_probe.callback_count);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, fresh_probe.result);
-        TEST_ASSERT_EQUAL_STRING_LEN ("fresh-reply", fresh_probe.payload.c_str (),
-                                      fresh_probe.payload.size ());
+        std::lock_guard<std::mutex> lock (fresh_probe->mutex);
+        TEST_ASSERT_TRUE (fresh_probe->done);
+        TEST_ASSERT_EQUAL_INT (1, fresh_probe->callback_count);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, fresh_probe->result);
+        TEST_ASSERT_EQUAL_STRING_LEN ("fresh-reply",
+                                      fresh_probe->payload.c_str (),
+                                      fresh_probe->payload.size ());
     }
+
+    test_context_socket_close_zero_linger (server_a);
+    test_context_socket_close_zero_linger (client);
 }
 
 int main (void)

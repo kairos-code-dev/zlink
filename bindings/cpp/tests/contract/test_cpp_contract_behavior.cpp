@@ -3,6 +3,7 @@
 #include "support.hpp"
 
 #include <cstdlib>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 
@@ -51,8 +52,8 @@ template<typename SocketT> class has_try_receive_subscription_event_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-static_assert (has_try_send_t<zlink::pair_socket_t>::value,
-               "pair_socket_t must expose try_send");
+static_assert (!has_try_send_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must not expose try_send");
 static_assert (!has_try_subscribe_t<zlink::sub_socket_t>::value,
                "sub_socket_t must not expose subscribe_no_wait");
 static_assert (!has_try_receive_subscription_event_t<zlink::xpub_socket_t>::value,
@@ -78,20 +79,22 @@ void discard_stream_parts (const zlink_routing_id_t *,
     zlink_multipart_close (parts_, part_count_);
 }
 
-void test_pair_recv_nonblocking_throws_without_data ()
+void test_pair_recv_nonblocking_returns_empty_without_data ()
 {
     zlink::context_t ctx;
     zlink::pair_socket_t socket (ctx);
-    expect_runtime_error (
-      [&] { (void) socket.recv (zlink::recv_flags_t::dontwait); });
+    const std::optional<zlink::received_t> received =
+      socket.recv (zlink::recv_flags_t::dontwait);
+    assert (!received.has_value ());
 }
 
-void test_sub_subscribe_nonblocking_throws_without_data ()
+void test_sub_subscribe_nonblocking_returns_empty_without_data ()
 {
     zlink::context_t ctx;
     zlink::sub_socket_t socket (ctx);
-    expect_runtime_error (
-      [&] { (void) socket.subscribe (zlink::recv_flags_t::dontwait); });
+    const std::optional<zlink::topic_message_t> received =
+      socket.subscribe (zlink::recv_flags_t::dontwait);
+    assert (!received.has_value ());
 }
 
 void test_xpub_receive_subscription_event_nonblocking_throws_without_data ()
@@ -103,7 +106,7 @@ void test_xpub_receive_subscription_event_nonblocking_throws_without_data ()
     });
 }
 
-void test_pair_send_throws_without_peer ()
+void test_pair_send_without_peer_preserves_submit_surface ()
 {
     zlink::context_t ctx;
     zlink::pair_socket_t sender (ctx);
@@ -112,10 +115,7 @@ void test_pair_send_throws_without_peer ()
             == 0);
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("payload");
-    expect_runtime_error (
-      [&] { sender.send (outbound, zlink::send_flags_t::dontwait); });
-    assert (outbound.valid ());
-    assert (outbound.to_string () == "payload");
+    (void) sender.send (outbound, zlink::send_flags_t::dontwait);
 }
 
 void test_router_send_throws_for_closed_socket ()
@@ -220,10 +220,10 @@ void test_routing_id_from_rejects_null_pointer_for_non_empty_bytes ()
 
 int main ()
 {
-    test_pair_recv_nonblocking_throws_without_data ();
-    test_sub_subscribe_nonblocking_throws_without_data ();
+    test_pair_recv_nonblocking_returns_empty_without_data ();
+    test_sub_subscribe_nonblocking_returns_empty_without_data ();
     test_xpub_receive_subscription_event_nonblocking_throws_without_data ();
-    test_pair_send_throws_without_peer ();
+    test_pair_send_without_peer_preserves_submit_surface ();
     test_router_send_throws_for_closed_socket ();
     test_send_throws_on_general_error ();
     test_publish_throws_on_general_error ();

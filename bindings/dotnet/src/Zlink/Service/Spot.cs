@@ -9,12 +9,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Zlink;
 using Zlink.Native;
+using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
 public sealed class SpotNode : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
+    private readonly Dictionary<string, DealerSocket> _channelDealers =
+        new(StringComparer.Ordinal);
     public SpotNodePublisherOptions PublisherOptions { get; }
     public SpotNodeSubscriberOptions SubscriberOptions { get; }
 
@@ -151,6 +154,8 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         int rc = NativeMethods.zlink_spot_node_attach_channel_dealer_manual(
             _handle, channelName, dealer.Handle);
         ZlinkException.ThrowIfError(rc);
+        lock (_channelDealers)
+            _channelDealers[channelName] = dealer;
     }
 
     public void AttachPubIngress(PubSocket pub)
@@ -296,6 +301,8 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     {
         if (_handle == IntPtr.Zero)
             return;
+        lock (_channelDealers)
+            _channelDealers.Clear();
         NativeMethods.zlink_spot_node_destroy(ref _handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
@@ -316,6 +323,21 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(SpotNode));
+    }
+
+    internal bool TryGetChannelDealerHandle(string channelName, out IntPtr handle)
+    {
+        lock (_channelDealers)
+        {
+            if (_channelDealers.TryGetValue(channelName, out DealerSocket? dealer))
+            {
+                handle = dealer.Handle;
+                return handle != IntPtr.Zero;
+            }
+        }
+
+        handle = IntPtr.Zero;
+        return false;
     }
 
     private SpotNodePeerEntry[] ReadPeerEntries(IntPtr filterPtr)
@@ -418,6 +440,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RoutedReplyHandler =
         OnRoutedReply;
+    private static readonly IntPtr RoutedReplyHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(RoutedReplyHandler);
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int DontWaitFlag = 1;
@@ -430,6 +454,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private const int ErrnoETimedOut = 110;
     private const int ErrnoETimedOutWin = 10060;
     private IntPtr _handle;
+    private readonly SpotNode _node;
     private readonly bool _ownsHandle;
     private Action? _sendReadyHandler;
     private Action<Received>? _routedReceiveHandler;
@@ -448,6 +473,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(node));
         if (node.Handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(node));
+        _node = node;
         _handle = NativeMethods.zlink_spot_new(node.Handle);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
@@ -498,7 +524,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return (AdmissionState)state;
     }
 
-    public void Publish(string serviceName, string topic, Message message,
+    public bool Publish(string serviceName, string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
         ValidateServiceName(serviceName, nameof(serviceName));
@@ -506,7 +532,14 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(PublishNoWaitResult(serviceName,
+                topic, message));
+        }
+
         PublishSingleCore(serviceName, topic, message, (int)flags);
+        return true;
     }
 
     internal SendResult PublishNoWaitResult(string serviceName, string topic,
@@ -520,7 +553,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return PublishNoWaitSingleCore(serviceName, topic, message);
     }
 
-    public void Publish(string serviceName, string topic,
+    public bool Publish(string serviceName, string topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         if (parts == null)
@@ -531,18 +564,24 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         if (parts.Count == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
 
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(PublishNoWaitResult(serviceName,
+                topic, parts));
+        }
+
         if (parts is Message[] array)
         {
             PublishPartsWithFlags(serviceName, topic, array, (int)flags,
                 nameof(parts));
-            return;
+            return true;
         }
 
         if (parts is List<Message> list)
         {
             PublishPartsWithFlags(serviceName, topic, list, (int)flags,
                 nameof(parts));
-            return;
+            return true;
         }
 
         Message[] copied = new Message[parts.Count];
@@ -550,6 +589,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             copied[i] = parts[i];
         PublishPartsWithFlags(serviceName, topic, copied, (int)flags,
             nameof(parts));
+        return true;
     }
 
     internal SendResult PublishNoWaitResult(string serviceName, string topic,
@@ -577,18 +617,28 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return PublishNoWaitParts(serviceName, topic, copied, nameof(parts));
     }
 
-    public void SendChannel(string channelName, Message message,
+    public bool SendChannel(string channelName, Message message,
         SendFlags flags = SendFlags.None)
     {
         ValidateServiceName(channelName, nameof(channelName));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
-        SendChannelCore(channelName, new[] { message }, (int)flags,
-            nameof(message));
+        try
+        {
+            SendChannelCore(channelName, new[] { message }, (int)flags,
+                nameof(message));
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
     }
 
-    public void SendChannel(string channelName, IReadOnlyList<Message> parts,
+    public bool SendChannel(string channelName, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         if (parts == null)
@@ -597,24 +647,35 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         EnsureParts(parts, nameof(parts));
 
-        if (parts is Message[] array)
+        try
         {
-            SendChannelCore(channelName, array, (int)flags,
+            if (parts is Message[] array)
+            {
+                SendChannelCore(channelName, array, (int)flags,
+                    nameof(parts));
+                return true;
+            }
+
+            if (parts is List<Message> list)
+            {
+                SendChannelCore(channelName, CollectionsMarshal.AsSpan(list),
+                    (int)flags, nameof(parts));
+                return true;
+            }
+
+            Message[] copied = new Message[parts.Count];
+            for (int i = 0; i < copied.Length; i++)
+                copied[i] = parts[i];
+            SendChannelCore(channelName, copied.AsSpan(), (int)flags,
                 nameof(parts));
-            return;
+            return true;
         }
-
-        if (parts is List<Message> list)
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
         {
-            SendChannelCore(channelName, CollectionsMarshal.AsSpan(list),
-                (int)flags, nameof(parts));
-            return;
+            return false;
         }
-
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        SendChannelCore(channelName, copied.AsSpan(), (int)flags, nameof(parts));
     }
 
     public Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName,
@@ -634,6 +695,57 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ValidateServiceName(channelName, nameof(channelName));
         return RequestChannelAsyncInternal(channelName, parts, timeout, ct)
             .ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+    }
+
+    public bool RequestChannel(string channelName, Message message,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        TimeSpan timeout = default)
+        => RequestChannel(channelName, message, callback, SendFlags.None, timeout);
+
+    public bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        TimeSpan timeout = default)
+        => RequestChannel(channelName, parts, callback, SendFlags.None, timeout);
+
+    public bool RequestChannel(string channelName, Message message,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags, TimeSpan timeout = default)
+        => RequestChannel(channelName, new[] { message }, callback, flags,
+            timeout);
+
+    public bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags, TimeSpan timeout = default)
+    {
+        ValidateServiceName(channelName, nameof(channelName));
+        try
+        {
+            RequestReplySupport.AttachResultCallback(
+                () => RequestChannelAsyncInternal(channelName, parts, timeout,
+                    CancellationToken.None, (int)flags),
+                (result, reply) =>
+                {
+                    IReadOnlyList<Message> payload = Array.Empty<Message>();
+                    if (reply != null)
+                    {
+                        Received copy = RequestReplySupport.CloneReceived(reply);
+                        reply.Dispose();
+                        payload = copy.Parts;
+                    }
+                    callback(result, payload);
+                });
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
+        {
+            if (RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+            {
+                return false;
+            }
+
+            throw;
+        }
     }
 
     internal void PublishRawSingle(string serviceName, string topic,
@@ -693,10 +805,12 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public TopicMessage Subscribe(RecvFlags flags = RecvFlags.None)
+    public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        return SubscribeCore((int)flags);
+        return (flags & RecvFlags.DontWait) != 0
+            ? TryReceiveCore(() => SubscribeCore((int)flags))
+            : SubscribeCore((int)flags);
     }
 
     internal bool SubscribeNoWait(out TopicMessage? subscribed)
@@ -1071,7 +1185,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 {
                     int rc = NativeMethods.zlink_spot_request_channel_part(_handle,
                         channelName, ref nativePart,
-                        i + 1 < cloned.Length ? null : RoutedReplyHandler,
+                        i + 1 < cloned.Length ? IntPtr.Zero : RoutedReplyHandlerPtr,
                         i + 1 < cloned.Length ? IntPtr.Zero : GCHandle.ToIntPtr(handle),
                         flags,
                         i + 1 < cloned.Length
@@ -1090,7 +1204,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 }
             }
 
-            return completion.Task;
+            if (_node.TryGetChannelDealerHandle(channelName, out IntPtr dealerHandle))
+                return RequestProgressPump.AttachSocket(dealerHandle, completion.Task);
+            return RequestProgressPump.AttachSpot(_handle, completion.Task);
         }
         catch
         {

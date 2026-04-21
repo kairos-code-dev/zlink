@@ -34,7 +34,7 @@ SampleSupport.WaitOrThrow(() =>
         using Message message = Message.FromString(payload);
         publisher.Publish(serviceName, topic, message);
         subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-        return true;
+        return subscribed is not null;
     }
     catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
     {

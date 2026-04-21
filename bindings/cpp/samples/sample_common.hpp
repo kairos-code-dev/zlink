@@ -246,6 +246,30 @@ inline T wait_future (std::future<T> &future_, int timeout_ms_)
     return future_.get ();
 }
 
+template<typename T, typename ProgressFn>
+inline T wait_future_with_progress (std::future<T> &future_,
+                                    int timeout_ms_,
+                                    ProgressFn progress_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (future_.wait_for (std::chrono::milliseconds (0))
+            == std::future_status::ready)
+            return future_.get ();
+
+        progress_ ();
+        if (future_.wait_for (std::chrono::milliseconds (1))
+            == std::future_status::ready)
+            return future_.get ();
+    }
+
+    assert (false && "future did not become ready before timeout");
+    return future_.get ();
+}
+
 inline bool parse_tcp_endpoint (const std::string &endpoint_,
                                 std::string &host_,
                                 std::string &port_)

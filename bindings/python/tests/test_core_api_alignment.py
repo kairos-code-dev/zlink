@@ -25,8 +25,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink, "SendFlag"))
         self.assertFalse(hasattr(zlink, "ReceiveFlag"))
         self.assertFalse(hasattr(zlink, "errno"))
-        self.assertTrue(hasattr(zlink.PairSocket, "try_send"))
-        self.assertTrue(hasattr(zlink.PairSocket, "try_recv"))
+        self.assertFalse(hasattr(zlink.PairSocket, "try_send"))
+        self.assertFalse(hasattr(zlink.PairSocket, "try_recv"))
         self.assertFalse(hasattr(zlink.PairSocket, "on_receive"))
         self.assertFalse(hasattr(zlink.DealerSocket, "on_receive"))
         self.assertFalse(hasattr(zlink.RouterSocket, "on_receive"))
@@ -111,6 +111,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     endpoint = "inproc://py-canonical-pair"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
+                    self.assertIsNone(receiver.recv(flags=zlink.RecvFlags.DONT_WAIT))
                     sender.send(b"payload", flags=zlink.SendFlags.NONE)
                     with receiver.recv(flags=zlink.RecvFlags.NONE) as received:
                         self.assertTrue(received.is_single_part())
@@ -124,11 +125,15 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.PairSocket(ctx) as sender:
-                sender.bind("inproc://py-canonical-backpressure")
+            with zlink.RouterSocket(ctx) as router:
+                router.options.mandatory = True
                 with self.assertRaises(zlink.SubmitError) as cm:
-                    sender.send(b"payload", flags=zlink.SendFlags.DONT_WAIT)
-                self.assertIsInstance(cm.exception.result, zlink.SubmitResult)
+                    router.send(
+                        b"UNKNOWN",
+                        b"payload",
+                        flags=zlink.SendFlags.DONT_WAIT,
+                    )
+                self.assertEqual(cm.exception.result, zlink.SubmitResult.NOT_CONNECTED)
 
     def test_pubsub_canonical_roundtrip(self):
         try:

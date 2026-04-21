@@ -136,10 +136,13 @@ Connectable sockets also expose `connect()` and `disconnect()`.
 
 Node / TypeScript nonblocking data-plane helpers follow this rule:
 
-- `trySend(...)` returns `false` only for temporary backpressure.
-- Route-not-ready and other submit failures still throw `SubmitError`.
-- `tryRecv()` returns `null` when no message is currently available and still
-  throws `RecvError` for real recv failures.
+- `send(...)` and `publish(...)` return `false` only for temporary
+  backpressure when `SendFlags.DontWait` is used.
+- Blocking submit returns `true` on success. Route-not-ready and other submit
+  failures still throw `SubmitError`.
+- `recv(...)` and `subscribe(...)` return `null` when
+  `RecvFlags.DontWait` finds no message and still throw `RecvError` for real
+  recv failures.
 
 All sockets (and `Spot`) also expose the admission-state accessor pair:
 
@@ -167,17 +170,11 @@ class PairSocket {
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
     /** @throws {SubmitError} */
-    send(message: MessageLike, flags?: SendFlags): void;
+    send(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    send(parts: readonly MessageLike[], flags?: SendFlags): void;
+    send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    trySend(message: MessageLike): boolean;
-    /** @throws {SubmitError} */
-    trySend(parts: readonly MessageLike[]): boolean;
-    /** @throws {RecvError} */
-    recv(flags?: RecvFlags): Received;
-    /** @throws {RecvError} */
-    tryRecv(): Received | null;
+    recv(flags?: RecvFlags): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {CloseError} */
@@ -200,9 +197,9 @@ class PubSocket {
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
     /** @throws {SubmitError} */
-    publish(topic: string, message: MessageLike, flags?: SendFlags): void;
+    publish(topic: string, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): void;
+    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -231,7 +228,7 @@ class SubSocket {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): TopicMessage;
+    subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
     /** @throws {CloseError} */
@@ -258,17 +255,11 @@ class DealerSocket {
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
     /** @throws {SubmitError} */
-    send(message: MessageLike, flags?: SendFlags): void;
+    send(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    send(parts: readonly MessageLike[], flags?: SendFlags): void;
+    send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    trySend(message: MessageLike): boolean;
-    /** @throws {SubmitError} */
-    trySend(parts: readonly MessageLike[]): boolean;
-    /** @throws {RecvError} */
-    recv(flags?: RecvFlags): Received;
-    /** @throws {RecvError} */
-    tryRecv(): Received | null;
+    recv(flags?: RecvFlags): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -280,35 +271,23 @@ class DealerSocket {
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     request(parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
 
-    // --- dealer request (callback, blocking submit) — throws on submit failure, timeout = 0 uses socket default ---
+    // --- dealer request (callback submit) — timeout = 0 uses socket default ---
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(message: MessageLike,
             callback: RequestResultCallback,
-            timeout?: number): void;
+            flags?: SendFlags,
+            timeout?: number): boolean;
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(parts: readonly MessageLike[],
             callback: RequestResultCallback,
-            timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequest(message: MessageLike,
-               callback: RequestResultCallback,
-               timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequest(parts: readonly MessageLike[],
-               callback: RequestResultCallback,
-               timeout?: number): boolean;
+            flags?: SendFlags,
+            timeout?: number): boolean;
 
     /** @throws {CloseError} */
     close(): void;
@@ -334,17 +313,11 @@ class RouterSocket {
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
     /** @throws {SubmitError} */
-    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): void;
+    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    trySend(routingId: RoutingId, message: MessageLike): boolean;
-    /** @throws {SubmitError} */
-    trySend(routingId: RoutingId, parts: readonly MessageLike[]): boolean;
-    /** @throws {RecvError} */
-    recv(flags?: RecvFlags): Received;
-    /** @throws {RecvError} */
-    tryRecv(): Received | null;
+    recv(flags?: RecvFlags): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -358,31 +331,19 @@ class RouterSocket {
     request(peerRid: RoutingId, parts: readonly MessageLike[],
             timeout?: number): Promise<Message[]>;
 
-    // --- router request (callback, blocking submit) — throws on submit failure, timeout = 0 uses socket default ---
+    // --- router request (callback submit) — timeout = 0 uses socket default ---
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(peerRid: RoutingId, message: MessageLike,
-            callback: RequestResultCallback, timeout?: number): void;
+            callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(peerRid: RoutingId, parts: readonly MessageLike[],
-            callback: RequestResultCallback, timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequest(peerRid: RoutingId, message: MessageLike,
-               callback: RequestResultCallback, timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequest(peerRid: RoutingId, parts: readonly MessageLike[],
-               callback: RequestResultCallback, timeout?: number): boolean;
+            callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
 
     // --- router reply ---
     /** @throws {SubmitError} */
@@ -395,10 +356,10 @@ class RouterSocket {
     // --- router → spot routed send ---
     /** @throws {SubmitError} */
     sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               message: MessageLike, flags?: SendFlags): void;
+               message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               parts: readonly MessageLike[], flags?: SendFlags): void;
+               parts: readonly MessageLike[], flags?: SendFlags): boolean;
 
     // --- router → spot routed request (async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
@@ -408,35 +369,21 @@ class RouterSocket {
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
 
-    // --- router → spot routed request (callback, blocking submit) — throws on submit failure ---
+    // --- router → spot routed request (callback submit) ---
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike,
-                  callback: RequestResultCallback, timeout?: number): void;
+                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[],
-                  callback: RequestResultCallback, timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                     message: MessageLike,
-                     callback: RequestResultCallback, timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                     parts: readonly MessageLike[],
-                     callback: RequestResultCallback, timeout?: number): boolean;
+                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
 
     // --- router → spot routed reply ---
     /** @throws {SubmitError} */
@@ -473,9 +420,9 @@ class XPubSocket {
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
     /** @throws {SubmitError} */
-    publish(topic: string, message: MessageLike, flags?: SendFlags): void;
+    publish(topic: string, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): void;
+    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {RecvError} */
     receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent;
     /** @throws {HandlerError} */
@@ -504,7 +451,7 @@ class XSubSocket {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): TopicMessage;
+    subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -525,22 +472,17 @@ class StreamSocket {
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
     /** @throws {SubmitError} */
-    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): void;
+    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): void;
+    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    trySend(routingId: RoutingId, message: MessageLike): boolean;
-    /** @throws {SubmitError} */
-    trySend(routingId: RoutingId, parts: readonly MessageLike[]): boolean;
     /**
      * Three mutually-exclusive receive modes on the same StreamSocket:
      *   (1) recv(), (2) onPacket(handler). Second attach throws
      *   HandlerError(HandlerResult.Busy).
      * @throws {RecvError}
      */
-    recv(flags?: RecvFlags): Received;
-    /** @throws {RecvError} */
-    tryRecv(): Received | null;
+    recv(flags?: RecvFlags): Received | null;
     /**
      * Mode (3): framed packet callback mapped to
      * `zlink_stream_packet_handler()`. Wire frame is big-endian u16
@@ -1351,51 +1293,39 @@ and is not part of the public API contract.
 class Spot {
     // The SpotNode constructor path is internal. Public code must use SpotNode.createSpot().
     /** @throws {SubmitError} */
-    publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): void;
+    publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    publish(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
+    publish(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    sendChannel(channelName: string, payload: MessageLike, flags?: SendFlags): void;
+    sendChannel(channelName: string, payload: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
-    sendChannel(channelName: string, payloadParts: readonly MessageLike[], flags?: SendFlags): void;
+    sendChannel(channelName: string, payloadParts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestChannel(channelName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
     requestChannel(channelName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly.
      */
     requestChannel(channelName: string, message: MessageLike,
                    callback: RequestResultCallback,
-                   timeout?: number): void;
+                   flags?: SendFlags,
+                   timeout?: number): boolean;
     /**
-     * @throws {SubmitError} on submit failure.
+     * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly.
      */
     requestChannel(channelName: string, parts: readonly MessageLike[],
                    callback: RequestResultCallback,
-                   timeout?: number): void;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequestChannel(channelName: string, message: MessageLike,
-                      callback: RequestResultCallback,
-                      timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only for temporary backpressure.
-     */
-    tryRequestChannel(channelName: string, parts: readonly MessageLike[],
-                      callback: RequestResultCallback,
-                      timeout?: number): boolean;
+                   flags?: SendFlags,
+                   timeout?: number): boolean;
     /** @throws {ConfigError} */
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): TopicMessage;
+    subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {RecvError} */
     receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent;
     /** @throws {HandlerError} */

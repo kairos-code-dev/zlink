@@ -20,6 +20,7 @@ async function main() {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx, 'server', 'MULTI_STREAM');
     const stream = new zlink.StreamSocket(ctx);
+    let rl = null;
     try {
         applySocketPolicy(stream);
         stream.bind(options.endpoint);
@@ -27,14 +28,15 @@ async function main() {
             stream.send(routingId, buildPacketFrame(header, body));
         });
         console.log(`READY,${options.endpoint}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+        rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
-            if (line === 'STOP') {
+            if (line === 'STOP' || line === 'QUIT') {
                 break;
             }
         }
     }
     finally {
+        rl?.close();
         stream.close();
         ctx.close();
     }

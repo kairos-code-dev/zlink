@@ -85,24 +85,23 @@ final class PerfPair {
             receiverThread.start();
 
             Thread traffic = new Thread(() -> {
-                try (Message active = PerfUtil.payloadTemplate(config.size());
-                     Message cooldown = PerfUtil.payloadTemplate(config.size())) {
                 try {
                     metrics.startActiveWindow();
                     long activeEnd = System.nanoTime()
                         + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        PerfUtil.writePayload(active, config.size(),
-                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                        sender.send(active);
+                        try (Message active = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sender.send(active);
+                        }
                     }
-                    PerfUtil.writePayload(cooldown, config.size(),
-                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+                    try (Message cooldown = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
                         sender.send(cooldown);
+                    }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     finished.countDown();
-                }
                 }
             }, "single-pair-sender");
             traffic.start();

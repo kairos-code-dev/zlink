@@ -158,8 +158,7 @@ async function waitForConnectionReadyCount(
 
 function trySocketSend(socket, ...args) {
   try {
-    socket.send(...args, zlink.SendFlags.DontWait);
-    return true;
+    return socket.send(...args, zlink.SendFlags.DontWait);
   } catch (error) {
     if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
       return false;
@@ -174,8 +173,7 @@ function trySocketSend(socket, ...args) {
 
 function trySocketPublish(socket, topic, payload) {
   try {
-    socket.publish(topic, payload, zlink.SendFlags.DontWait);
-    return true;
+    return socket.publish(topic, payload, zlink.SendFlags.DontWait);
   } catch (error) {
     if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
       return false;
@@ -190,8 +188,7 @@ function trySocketPublish(socket, topic, payload) {
 
 function trySendToSpot(socket, destNodeRid, destSpotRid, payload) {
   try {
-    socket.sendToSpot(destNodeRid, destSpotRid, payload, zlink.SendFlags.DontWait);
-    return true;
+    return socket.sendToSpot(destNodeRid, destSpotRid, payload, zlink.SendFlags.DontWait);
   } catch (error) {
     if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
       return false;
@@ -248,11 +245,42 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
   }
 }
 
+function createSocketEventWaiter(socket, events, pollTimeoutMs = 25) {
+  const poller = new zlink.Poller();
+  poller.addSocket(socket, events);
+
+  return {
+    async wait(mask = events) {
+      while (true) {
+        let ready = null;
+        try {
+          ready = poller.wait(pollTimeoutMs);
+        } catch (error) {
+          const text = String(error && error.message ? error.message : error);
+          if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
+            await sleepImmediate();
+            continue;
+          }
+          throw error;
+        }
+        if (ready && (ready.events & mask) !== 0) {
+          return ready;
+        }
+        await sleepImmediate();
+      }
+    },
+    close() {
+      poller.close();
+    }
+  };
+}
+
 module.exports = {
   POLLIN,
   POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
+  createSocketEventWaiter,
   drainRecvSocket,
   recvNoWait,
   resolveMultiLatencySampleCap,

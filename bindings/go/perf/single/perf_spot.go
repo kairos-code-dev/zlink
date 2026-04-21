@@ -41,7 +41,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
-	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SingleRecvTimeout()))
 
 	stats := perfcommon.NewStats()
 	var window perfcommon.BenchmarkWindow
@@ -133,7 +133,7 @@ func drainSingleSpotReadable(
 				if stats != nil {
 					perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
 				}
-			} else if _, ok := perfcommon.SentAtFromMessage(part, msgSize); ok {
+			} else if _, ok := perfcommon.SentAtFromMessagePhase(part, msgSize, perfcommon.PhaseWarmup); ok {
 				if readySeen.CompareAndSwap(false, true) {
 					select {
 					case readySignal <- struct{}{}:

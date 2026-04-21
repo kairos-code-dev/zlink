@@ -4,16 +4,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${CPP_DIR}/../.." && pwd)"
-BUILD_DIR="${ROOT_DIR}/core/build"
+CORE_BUILD_DIR="${ROOT_DIR}/core/build"
+BUILD_DIR="${CPP_DIR}/build"
 
 CONFIGURE_ARGS=(
-  -DZLINK_BUILD_CPP_BINDINGS=ON
+  -DZLINK_CORE_DIR=${ROOT_DIR}/core
+  -DZLINK_CPP_CORE_BUILD_DIR=${CORE_BUILD_DIR}
   -DZLINK_CPP_BUILD_TESTS=ON
 )
 
 TEST_TARGETS=(
   test_cpp_contract_message
   test_cpp_contract_socket
+  test_cpp_contract_request_reply
   test_cpp_contract_callback_mode
   test_cpp_contract_options
   test_cpp_contract_monitor
@@ -26,7 +29,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 echo "[cpp-tests] configure: ${BUILD_DIR}"
-cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
+cmake -S "${CPP_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
 
 echo "[cpp-tests] build"
 cmake --build "${BUILD_DIR}" --target "${TEST_TARGETS[@]}" -j"$(nproc)"

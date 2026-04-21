@@ -2,12 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CORE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ROOT_DIR="$(cd "${CORE_DIR}/.." && pwd)"
-BUILD_DIR="${ROOT_DIR}/build"
+C_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROOT_DIR="$(cd "${C_DIR}/../.." && pwd)"
+CORE_BUILD_DIR="${ROOT_DIR}/core/build"
+BUILD_DIR="${C_DIR}/build"
 
 CONFIGURE_ARGS=(
-  -DZLINK_BUILD_C_SAMPLES=ON
+  -DZLINK_CORE_DIR=${ROOT_DIR}/core
+  -DZLINK_C_CORE_BUILD_DIR=${CORE_BUILD_DIR}
+  -DZLINK_C_BUILD_SAMPLES=ON
+  -DZLINK_C_REGISTER_CTEST=ON
 )
 
 if [[ $# -gt 0 ]]; then
@@ -15,7 +19,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 echo "[c-samples] configure: ${BUILD_DIR}"
-cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
+cmake -S "${C_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
 
 echo "[c-samples] build"
 cmake --build "${BUILD_DIR}" -j"$(nproc)"

@@ -32,8 +32,8 @@ func runSpotReqRep(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(requester.Connect(endpoint))
 	perfcommon.ApplySingleBenchmarkSocketOptions(requester, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(replier, cfg.transport)
-	perfcommon.Must(requester.SetRecvTimeout(perfcommon.BenchmarkSocketTimeout))
-	perfcommon.Must(requester.SetSendTimeout(perfcommon.BenchmarkSocketTimeout))
+	perfcommon.Must(requester.SetRecvTimeout(perfcommon.SingleRecvTimeout()))
+	perfcommon.Must(requester.SetSendTimeout(perfcommon.SingleSendTimeout()))
 	replierNodeRID, err := replierNode.RoutingID()
 	perfcommon.Must(err)
 	replierSpotRID, err := replier.RoutingID()
@@ -56,8 +56,7 @@ func runSpotReqRep(cfg benchmarkConfig) perfcommon.Result {
 			}
 			part, err := received.SinglePartOrError()
 			if err == nil {
-				reply := perfcommon.NewMessage(append([]byte(nil), part.Data()...))
-				perfcommon.Must(received.Reply([]*zlink.Message{reply}))
+				perfcommon.Must(received.Reply([]*zlink.Message{part}))
 			}
 			_ = received.Close()
 		}
@@ -91,7 +90,7 @@ func runSpotReqRep(cfg benchmarkConfig) perfcommon.Result {
 				}
 				replyDone <- nil
 			},
-			perfcommon.BenchmarkSocketTimeout,
+			perfcommon.SingleRecvTimeout(),
 			perfcommon.NewMessage(payload),
 		)
 		if err != nil {
@@ -126,13 +125,13 @@ func waitSingleSpotReqRepReady(requester *zlink.RouterSocket, nodeRID, spotRID z
 				ready <- fmt.Errorf("spot reqrep ready probe failed: %v", result)
 				return
 			}
-			if _, ok := perfcommon.SentAtFromMessage(parts[0], msgSize); !ok {
+			if _, ok := perfcommon.SentAtFromMessagePhase(parts[0], msgSize, perfcommon.PhaseWarmup); !ok {
 				ready <- fmt.Errorf("spot reqrep ready probe returned invalid payload")
 				return
 			}
 			ready <- nil
 		},
-		perfcommon.BenchmarkSocketTimeout,
+		perfcommon.SingleRecvTimeout(),
 		perfcommon.NewMessage(payload),
 	)
 	if err != nil {

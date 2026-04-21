@@ -37,6 +37,9 @@ type tlsAssetSet struct {
 	caPath   string
 	certPath string
 	keyPath  string
+	caPEM    string
+	certPEM  string
+	keyPEM   string
 	rootCAs  *x509.CertPool
 }
 
@@ -80,6 +83,12 @@ func ConfigureTLSClient(socket interface {
 }
 
 func buildTLSAssets() (tlsAssetSet, error) {
+	if assets, ok, err := resolveRepoTLSAssets(); err != nil {
+		return tlsAssetSet{}, err
+	} else if ok {
+		return assets, nil
+	}
+
 	dir, err := os.MkdirTemp("", "zlink-perf-tls-*")
 	if err != nil {
 		return tlsAssetSet{}, err
@@ -134,18 +143,22 @@ func buildTLSAssets() (tlsAssetSet, error) {
 	certPath := filepath.Join(dir, "server_cert.pem")
 	keyPath := filepath.Join(dir, "server_key.pem")
 
-	if err := os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), 0o600); err != nil {
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(serverKey)})
+
+	if err := os.WriteFile(caPath, caPEM, 0o600); err != nil {
 		return tlsAssetSet{}, err
 	}
-	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverDER}), 0o600); err != nil {
+	if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
 		return tlsAssetSet{}, err
 	}
-	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(serverKey)}), 0o600); err != nil {
+	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
 		return tlsAssetSet{}, err
 	}
 
 	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})) {
+	if !pool.AppendCertsFromPEM(caPEM) {
 		return tlsAssetSet{}, fmt.Errorf("failed to append generated CA certificate")
 	}
 
@@ -153,8 +166,68 @@ func buildTLSAssets() (tlsAssetSet, error) {
 		caPath:   caPath,
 		certPath: certPath,
 		keyPath:  keyPath,
+		caPEM:    string(caPEM),
+		certPEM:  string(certPEM),
+		keyPEM:   string(keyPEM),
 		rootCAs:  pool,
 	}, nil
+}
+
+func resolveRepoTLSAssets() (tlsAssetSet, bool, error) {
+	roots := []string{}
+	if cwd, err := os.Getwd(); err == nil {
+		roots = append(roots, cwd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		roots = append(roots, filepath.Dir(exe))
+	}
+	for _, root := range roots {
+		current := root
+		for {
+			candidate := filepath.Join(current, "core", "tests", "certs", "gen")
+			caPath := filepath.Join(candidate, "ca.crt")
+			certPath := filepath.Join(candidate, "server.crt")
+			keyPath := filepath.Join(candidate, "server.key")
+			if fileExists(caPath) && fileExists(certPath) && fileExists(keyPath) {
+				caPEM, err := os.ReadFile(caPath)
+				if err != nil {
+					return tlsAssetSet{}, false, err
+				}
+				certPEM, err := os.ReadFile(certPath)
+				if err != nil {
+					return tlsAssetSet{}, false, err
+				}
+				keyPEM, err := os.ReadFile(keyPath)
+				if err != nil {
+					return tlsAssetSet{}, false, err
+				}
+				pool := x509.NewCertPool()
+				if !pool.AppendCertsFromPEM(caPEM) {
+					return tlsAssetSet{}, false, fmt.Errorf("failed to append repo CA certificate")
+				}
+				return tlsAssetSet{
+					caPath:   caPath,
+					certPath: certPath,
+					keyPath:  keyPath,
+					caPEM:    string(caPEM),
+					certPEM:  string(certPEM),
+					keyPEM:   string(keyPEM),
+					rootCAs:  pool,
+				}, true, nil
+			}
+			parent := filepath.Dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+	return tlsAssetSet{}, false, nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func DialEndpoint(endpoint string) StreamConn {

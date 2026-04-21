@@ -9,6 +9,9 @@
 
 #include "zlink.h"
 
+extern "C" int zlink_socket_request_progress_internal(void *socket_);
+extern "C" int zlink_spot_request_progress_internal(void *spot_);
+
 napi_value throw_last_error(napi_env env, const char *prefix);
 std::string get_string(napi_env env, napi_value val);
 bool build_msg_vector(napi_env env, napi_value arr, std::vector<zlink_msg_t> *out);
@@ -70,6 +73,7 @@ napi_value handle_get_routing_id(napi_env env, napi_callback_info info);
 napi_value handle_set_admission_state(napi_env env, napi_callback_info info);
 napi_value handle_get_admission_state(napi_env env, napi_callback_info info);
 napi_value dealer_request(napi_env env, napi_callback_info info);
+napi_value socket_request_progress(napi_env env, napi_callback_info info);
 napi_value router_request(napi_env env, napi_callback_info info);
 napi_value router_reply(napi_env env, napi_callback_info info);
 napi_value router_handler_message(napi_env env, napi_callback_info info);
@@ -165,6 +169,7 @@ napi_value spot_publish(napi_env env, napi_callback_info info);
 napi_value spot_try_publish(napi_env env, napi_callback_info info);
 napi_value spot_send_channel(napi_env env, napi_callback_info info);
 napi_value spot_request_channel(napi_env env, napi_callback_info info);
+napi_value spot_request_progress(napi_env env, napi_callback_info info);
 napi_value spot_reply_spot(napi_env env, napi_callback_info info);
 napi_value spot_reply_router(napi_env env, napi_callback_info info);
 napi_value spot_routed_handler(napi_env env, napi_callback_info info);

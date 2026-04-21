@@ -45,6 +45,7 @@ from ._core import (
 )
 from ._request_reply import (
     _PendingRequest,
+    _RequestProgressPump,
     _clone_payload,
     _ensure_reply_flags_supported,
     _message_list_from_parts,
@@ -220,6 +221,10 @@ class DealerSocket(
         super().__init__(context)
         self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
         self._pending_requests = {}
+        self._request_progress = _RequestProgressPump(
+            lambda: lib().zlink_socket_request_progress_internal(self._handle),
+            lambda: bool(self._pending_requests),
+        )
 
     def request(self, payload, *args, timeout=0, flags=_UNSET):
         if len(args) > 1:
@@ -230,8 +235,9 @@ class DealerSocket(
             return self._request_async(payload, timeout=timeout)
         callback = args[0]
         callback_flags = 0 if flags is _UNSET else flags
-        self._request_callback(payload, callback, flags=callback_flags, timeout=timeout)
-        return None
+        return self._request_callback(
+            payload, callback, flags=callback_flags, timeout=timeout
+        )
 
     def close(self):
         self._cancel_pending_requests(RequestResult.TERMINATED)
@@ -248,6 +254,7 @@ class DealerSocket(
             except Exception:
                 self._pending_requests.pop(handle, None)
                 raise
+            self._request_progress.ensure_running()
             return await pending.future
 
         return _run()
@@ -258,6 +265,13 @@ class DealerSocket(
         self._pending_requests[handle] = pending
         try:
             self._start_request(payload, flags, timeout, handle)
+            self._request_progress.ensure_running()
+            return True
+        except SubmitError as ex:
+            self._pending_requests.pop(handle, None)
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
         except Exception:
             self._pending_requests.pop(handle, None)
             raise
@@ -322,6 +336,10 @@ class RouterSocket(
         self._pending_requests = {}
         self._spot_request_pending = {}
         self._spot_request_reply_handler = None
+        self._request_progress = _RequestProgressPump(
+            lambda: lib().zlink_socket_request_progress_internal(self._handle),
+            lambda: bool(self._pending_requests) or bool(self._spot_request_pending),
+        )
 
     @property
     def router_options(self):
@@ -336,10 +354,9 @@ class RouterSocket(
             return self._request_async(routing_id, payload, timeout=timeout)
         callback = args[0]
         callback_flags = 0 if flags is _UNSET else flags
-        self._request_callback(
+        return self._request_callback(
             routing_id, payload, callback, flags=callback_flags, timeout=timeout
         )
-        return None
 
     def reply(self, routing_id, request_seq, payload, *, flags=0):
         _ensure_reply_flags_supported(flags)
@@ -359,30 +376,35 @@ class RouterSocket(
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
     def recv(self, *, flags=0):
-        source_node_rid = ctypes.POINTER(ZlinkRoutingId)()
-        source_spot_rid = ctypes.POINTER(ZlinkRoutingId)()
-        request_seq = ctypes.c_uint64()
-        native_parts = []
         try:
-            while True:
-                native_part = ZlinkMsg()
-                has_more = ctypes.c_int()
-                rc = lib().zlink_router_recv_part(
-                    self._handle,
-                    ctypes.byref(source_node_rid),
-                    ctypes.byref(source_spot_rid),
-                    ctypes.byref(request_seq),
-                    ctypes.byref(native_part),
-                    ctypes.byref(has_more),
-                    int(flags),
-                )
-                if rc != 0:
-                    _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-                native_parts.append(native_part)
-                if has_more.value == 0:
-                    break
-        except Exception:
-            _close_native_parts(native_parts)
+            source_node_rid = ctypes.POINTER(ZlinkRoutingId)()
+            source_spot_rid = ctypes.POINTER(ZlinkRoutingId)()
+            request_seq = ctypes.c_uint64()
+            native_parts = []
+            try:
+                while True:
+                    native_part = ZlinkMsg()
+                    has_more = ctypes.c_int()
+                    rc = lib().zlink_router_recv_part(
+                        self._handle,
+                        ctypes.byref(source_node_rid),
+                        ctypes.byref(source_spot_rid),
+                        ctypes.byref(request_seq),
+                        ctypes.byref(native_part),
+                        ctypes.byref(has_more),
+                        int(flags),
+                    )
+                    if rc != 0:
+                        _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+                    native_parts.append(native_part)
+                    if has_more.value == 0:
+                        break
+            except Exception:
+                _close_native_parts(native_parts)
+                raise
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return None
             raise
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
@@ -409,22 +431,28 @@ class RouterSocket(
         )
 
     def send_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
-        native_parts = _spot_clone_payload(payload)
-        native_node = _copy_routing_id(dest_node_rid)
-        native_spot = _copy_routing_id(dest_spot_rid)
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_router_send_spot_part(
-                self._handle,
-                ctypes.byref(native_node),
-                ctypes.byref(native_spot),
-                part_ptr,
-                int(flags),
-                part_flag,
-            ),
-        )
-        if rc != 0:
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
+        try:
+            native_parts = _spot_clone_payload(payload)
+            native_node = _copy_routing_id(dest_node_rid)
+            native_spot = _copy_routing_id(dest_spot_rid)
+            rc, err = _submit_parts(
+                native_parts,
+                lambda part_ptr, part_flag: lib().zlink_router_send_spot_part(
+                    self._handle,
+                    ctypes.byref(native_node),
+                    ctypes.byref(native_spot),
+                    part_ptr,
+                    int(flags),
+                    part_flag,
+                ),
+            )
+            if rc != 0:
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
+            return True
+        except SubmitError as ex:
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
 
     def _ensure_spot_reply_handler(self):
         if self._spot_request_reply_handler is None:
@@ -472,6 +500,7 @@ class RouterSocket(
             except Exception:
                 self._pending_requests.pop(handle, None)
                 raise
+            self._request_progress.ensure_running()
             return await pending.future
 
         return _run()
@@ -482,6 +511,13 @@ class RouterSocket(
         self._pending_requests[handle] = pending
         try:
             self._start_request(routing_id, payload, flags, timeout, handle)
+            self._request_progress.ensure_running()
+            return True
+        except SubmitError as ex:
+            self._pending_requests.pop(handle, None)
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
         except Exception:
             self._pending_requests.pop(handle, None)
             raise
@@ -542,6 +578,7 @@ class RouterSocket(
                 if rc != 0:
                     self._spot_request_pending.pop(handle, None)
                     _raise_result_error(SubmitError, SubmitResult, rc, err)
+                self._request_progress.ensure_running()
                 return await pending.future
 
             return _run()
@@ -549,24 +586,31 @@ class RouterSocket(
         pending = _PendingRequest(callback=args[0])
         handle = id(pending)
         self._spot_request_pending[handle] = pending
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_router_request_spot_part(
-                self._handle,
-                ctypes.byref(native_node),
-                ctypes.byref(native_spot),
-                part_ptr,
-                reply_handler,
-                ctypes.c_void_p(handle),
-                int(0 if flags is _UNSET else flags),
-                part_flag,
-                _spot_timeout_to_ms(timeout),
-            ),
-        )
-        if rc != 0:
+        try:
+            rc, err = _submit_parts(
+                native_parts,
+                lambda part_ptr, part_flag: lib().zlink_router_request_spot_part(
+                    self._handle,
+                    ctypes.byref(native_node),
+                    ctypes.byref(native_spot),
+                    part_ptr,
+                    reply_handler,
+                    ctypes.c_void_p(handle),
+                    int(0 if flags is _UNSET else flags),
+                    part_flag,
+                    _spot_timeout_to_ms(timeout),
+                ),
+            )
+            if rc != 0:
+                self._spot_request_pending.pop(handle, None)
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
+            self._request_progress.ensure_running()
+            return True
+        except SubmitError as ex:
             self._spot_request_pending.pop(handle, None)
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
-        return None
+            if int(0 if flags is _UNSET else flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
 
     def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, payload, *, flags=0):
         _ensure_reply_flags_supported(flags)

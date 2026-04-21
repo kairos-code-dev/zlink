@@ -4,6 +4,7 @@
 
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
 #include "api/timer_api_internal.hpp"
 
 int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
@@ -33,6 +34,9 @@ void release_poller_registration (const poller_registration_t &registration_)
               as_timer_handle (registration_.subject));
             break;
         case poller_subject_fd:
+        case poller_subject_socket_request_completion:
+        case poller_subject_router_spot_request_completion:
+        case poller_subject_spot_request_completion:
             break;
         case poller_subject_spot_pub:
         case poller_subject_spot_sub:
@@ -153,6 +157,28 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
             registration.events = events_;
             release_poller_registration (registration);
             return -1;
+        }
+
+        if (!is_pub) {
+            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+              state = zlink::spot_reqrep_internal::try_find_spot_state (socket_);
+            if (state
+                && (zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
+                      state)
+                      != 0
+                    || poller_add_registration (
+                         poller_,
+                         zlink::spot_reqrep_internal::spot_completion_signal_socket (
+                           state),
+                         NULL, ZLINK_POLLIN, socket_,
+                         poller_subject_spot_request_completion)
+                         != 0)) {
+                const int err = errno;
+                (void) poller_remove_all_registrations_for_subject (poller_,
+                                                                    socket_);
+                errno = err;
+                return -1;
+            }
         }
         return 0;
     }

@@ -7,6 +7,8 @@ import zlink
 from perf_common import (
     apply_single_socket_options,
     benchmark_run_id,
+    configure_single_tls_client,
+    configure_single_tls_server,
     extract_metric_payload,
     latency_ns_from_message,
     is_active_message,
@@ -29,18 +31,24 @@ def main(argv=None):
     payload = new_payload(args.msg_size)
     run_id = benchmark_run_id()
     latencies = []
+    sender_errors = []
 
     def send_loop(client):
-        active_end = time.perf_counter() + args.duration
-        while time.perf_counter() < active_end:
-            client.send(stamp_payload(payload, phase=1, run_id=run_id))
-        client.send(stamp_payload(payload, phase=2, run_id=run_id))
+        try:
+            active_end = time.perf_counter() + args.duration
+            while time.perf_counter() < active_end:
+                client.send(stamp_payload(payload, phase=1, run_id=run_id))
+            client.send(stamp_payload(payload, phase=2, run_id=run_id))
+        except BaseException as exc:  # pragma: no cover - surfaced on main thread
+            sender_errors.append(exc)
 
     with zlink.Context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
                 endpoint = resolve_single_endpoint(args.transport, "pair")
                 apply_single_socket_options(server, client)
+                configure_single_tls_server(server, args.transport)
+                configure_single_tls_client(client, args.transport)
                 with client.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
                     server.bind(endpoint)
                     client.connect(endpoint)
@@ -65,6 +73,8 @@ def main(argv=None):
                         )
                         events = safe_poll(poller, timeout_ms)
                         if not events:
+                            if sender.is_alive():
+                                continue
                             break
                         for _event in events:
                             while True:
@@ -83,7 +93,11 @@ def main(argv=None):
                                     continue
                                 latencies.append(latency_ns_from_message(data))
 
-                sender.join()
+                sender.join(timeout=max(1.0, resolve_single_recv_timeout_ms() / 1000.0))
+                if sender.is_alive():
+                    raise RuntimeError("pair sender thread did not finish")
+                if sender_errors:
+                    raise sender_errors[0]
                 if not latencies:
                     raise RuntimeError("pair benchmark did not receive any active message")
                 metrics = result_metrics(

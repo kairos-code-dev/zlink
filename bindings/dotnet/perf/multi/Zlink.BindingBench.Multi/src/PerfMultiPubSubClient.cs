@@ -9,17 +9,19 @@ internal static class PerfMultiPubSubClient
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
-        int durationSeconds = ResolveMultiDurationSeconds(options);
         int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
         const int pollTimeoutMs = 50;
+        int durationSeconds = ResolveMultiDurationSeconds(options);
         string endpoint = options.Endpoint;
 
         using var ctx = new Context();
         using var pollManager = new PollManager();
+        using var controlState = new RunnerControlState(size,
+            requirePhaseActive: true);
         ApplyMultiClientContextOptions(ctx, options);
         var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
@@ -49,6 +51,13 @@ internal static class PerfMultiPubSubClient
             DisposeAllQuietly(monitors);
             monitors.Clear();
             WriteStdoutLine($"CLIENT_READY,{size}");
+
+            if (!controlState.WaitForStart(readyTimeoutMs))
+            {
+                if (!controlState.StopRequested)
+                    Console.Error.WriteLine("multi_client_error:no_start");
+                return controlState.StopRequested ? 0 : 2;
+            }
 
             var result = RunMultiPubSubClientLoop(pollManager, activeClients,
                 size, latencySampleCap, pollTimeoutMs, durationSeconds);

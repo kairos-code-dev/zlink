@@ -25,6 +25,10 @@ struct socket_handle_t
     zlink::socket_base_t *socket;
 };
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 int zlink_socket_subscribe_recv_internal (void *s_,
                                           zlink_routing_id_t *source_rid_out_,
                                           zlink_msg_t **parts_out_,
@@ -38,6 +42,14 @@ int zlink_socket_recv_internal (void *socket_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
                                 zlink_send_flags_t flags_);
+
+int zlink_socket_request_progress_internal (void *socket_);
+
+int zlink_spot_request_progress_internal (void *spot_);
+
+#if defined(__cplusplus)
+}
+#endif
 
 namespace zlink
 {

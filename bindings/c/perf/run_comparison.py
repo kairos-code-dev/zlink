@@ -265,10 +265,10 @@ def resolve_latency_triplet(latency, latency_p95, latency_p99):
 
 
 def resolve_linux_paths():
-    """Return build/library paths rooted at the official repo core/build directory."""
-    build_root = os.path.join(ROOT_DIR, "core", "build")
+    """Return build/library paths rooted at the official bindings/c build directory."""
+    build_root = os.path.join(ROOT_DIR, "bindings", "c", "build")
     build_dir = normalize_build_dir(build_root)
-    current_lib_dir = os.path.abspath(os.path.join(build_root, "lib"))
+    current_lib_dir = derive_current_lib_dir(build_dir)
     return build_dir, current_lib_dir
 
 
@@ -282,6 +282,10 @@ def normalize_build_dir(path):
     nested_bindings_perf = os.path.join(abs_path, "bindings", "c", "perf")
     if os.path.isdir(nested_bindings_perf):
         return nested_bindings_perf
+
+    perf_dir = os.path.join(abs_path, "perf")
+    if os.path.isdir(perf_dir):
+        return perf_dir
 
     base = os.path.basename(abs_path)
     if base in BUILD_CONFIG_DIRS:
@@ -317,6 +321,11 @@ def derive_current_lib_dir(build_dir):
             build_root = os.path.dirname(bin_root)
     elif base == "bin":
         build_root = os.path.dirname(build_root)
+    direct_lib = os.path.join(build_root, "libzlink_c.so")
+    direct_lib_dylib = os.path.join(build_root, "libzlink_c.dylib")
+    direct_lib_dll = os.path.join(build_root, "zlink_c.dll")
+    if os.path.isfile(direct_lib) or os.path.isfile(direct_lib_dylib) or os.path.isfile(direct_lib_dll):
+        return os.path.abspath(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
 
 
@@ -362,7 +371,7 @@ def derive_cmake_build_dir(runtime_build_dir):
 
 
 if IS_WINDOWS:
-    BUILD_DIR = normalize_build_dir(os.path.join(ROOT_DIR, "core", "build"))
+    BUILD_DIR = normalize_build_dir(os.path.join(ROOT_DIR, "bindings", "c", "build"))
     CURRENT_LIB_DIR = derive_current_lib_dir(BUILD_DIR)
 else:
     BUILD_DIR, CURRENT_LIB_DIR = resolve_linux_paths()

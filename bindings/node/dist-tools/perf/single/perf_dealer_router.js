@@ -3,18 +3,33 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, waitForConnectionReady, } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runDealerRouterBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
     const router = new zlink.RouterSocket(ctx);
-    const dealer = new zlink.DealerSocket(ctx);
+    const routerMonitor = router.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     const endpoint = await benchmarkEndpoint(options.transport, `dealer-router-${msgSize}`);
+    let worker = null;
     try {
         applySocketPolicy(router, options);
-        applySocketPolicy(dealer, options);
+        configureTlsServer(router, options.transport);
         router.bind(endpoint);
-        await waitForConnectionReady(dealer, () => dealer.connect(endpoint));
+        worker = spawnSenderWorker({
+            kind: 'dealer_router',
+            transport: options.transport,
+            endpoint,
+            duration: options.duration,
+            msgSize,
+            runId: options.runId ?? 1,
+            options,
+        });
+        const workerError = waitForWorkerMessage(worker, 'error');
+        await Promise.race([
+            waitForWorkerMessage(worker, 'ready'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
+        await waitForMonitorConnectionReady(routerMonitor);
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -26,25 +41,16 @@ async function runDealerRouterBenchmark(msgSize, options) {
             activeStopNs,
             sampleCap: resolveSingleLatencySampleCap()
         });
-        const payload = createPayload(msgSize);
-        let seq = 1n;
         let stop = false;
         const recvTask = drainRecvSocket(router, (received) => {
             const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
         }, () => stop);
-        while (currentEpochNs() < activeStopNs) {
-            stampPayload(payload, {
-                phase: 1,
-                runId,
-                msgSize,
-                seq
-            });
-            dealer.send(payload);
-            seq += 1n;
-        }
-        stampPayload(payload, { phase: 2, runId, msgSize, seq });
-        dealer.send(payload);
+        worker.postMessage({ type: 'start' });
+        await Promise.race([
+            waitForWorkerMessage(worker, 'done'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
         const drainDeadlineNs = activeStopNs
             + BigInt(resolveSingleIdleDrainMs(options)) * 1000000n;
         while (currentEpochNs() < drainDeadlineNs) {
@@ -55,7 +61,8 @@ async function runDealerRouterBenchmark(msgSize, options) {
         return collector.finish();
     }
     finally {
-        dealer.close();
+        await closeSenderWorker(worker);
+        routerMonitor.close();
         router.close();
         ctx.close();
     }

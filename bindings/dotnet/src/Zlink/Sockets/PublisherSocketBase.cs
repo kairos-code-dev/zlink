@@ -19,16 +19,30 @@ public abstract class PublisherSocketBase : ConnectableSocketBase
     {
     }
 
-    public void Publish(string topic, Message message,
+    public bool Publish(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(Kernel.PublishNoWaitResult(topic,
+                message));
+        }
+
         Kernel.Publish(topic, message, flags);
+        return true;
     }
 
-    public void Publish(string topic, IReadOnlyList<Message> parts,
+    public bool Publish(string topic, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SocketKernel.TrySendOrThrow(Kernel.PublishNoWaitResult(topic,
+                parts));
+        }
+
         Kernel.Publish(topic, parts, flags);
+        return true;
     }
 
     internal SendResult PublishNoWaitResult(string topic, Message message)

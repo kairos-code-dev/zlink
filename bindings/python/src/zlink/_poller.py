@@ -10,6 +10,7 @@ from ._core import (
     ConfigResult,
     RecvError,
     RecvResult,
+    _raise_last_error,
     _raise_result_error,
 )
 
@@ -95,20 +96,26 @@ class Poller:
         self._remove_item(lambda item: item["timer"] is timer)
 
     def size(self):
-        rc = lib().zlink_poller_size(self._handle)
+        error_out = ctypes.c_int()
+        rc = lib().zlink_poller_size(self._handle, ctypes.byref(error_out))
         if rc < 0:
-            _raise_result_error(ConfigError, ConfigResult, 702, lib().zlink_errno())
+            _raise_result_error(ConfigError, ConfigResult, error_out.value, lib().zlink_errno())
         return int(rc)
 
     def poll(self, timeout_ms):
         if not self._items:
             return []
         events = (ZlinkPollerEvent * len(self._items))()
+        error_out = ctypes.c_int()
         ready = lib().zlink_poller_wait_all(
-            self._handle, events, len(self._items), int(timeout_ms)
+            self._handle,
+            events,
+            len(self._items),
+            int(timeout_ms),
+            ctypes.byref(error_out),
         )
         if ready < 0:
-            _raise_result_error(RecvError, RecvResult, 201, lib().zlink_errno())
+            _raise_result_error(RecvError, RecvResult, error_out.value, lib().zlink_errno())
         results = []
         for index in range(ready):
             event = events[index]

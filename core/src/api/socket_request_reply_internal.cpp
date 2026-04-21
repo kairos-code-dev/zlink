@@ -5,6 +5,7 @@
 #include <memory>
 #include <new>
 
+#include "api/request_completion_queue_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 
@@ -48,6 +49,87 @@ socket_request_reply_state_t::socket_request_reply_state_t (
     next_request_seq (1),
     internal_dispatch_installed (false)
 {
+}
+
+int ensure_completion_queue_ready (
+  const std::shared_ptr<socket_request_reply_state_t> &state_)
+{
+    if (!state_ || !state_->socket || !state_->socket->get_ctx ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return zlink::request_completion::ensure_signal_ready (
+      &state_->completion, state_->socket->get_ctx (),
+      "zlink.router.reqrep.completion");
+}
+
+int queue_reply_completion (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int errnum_,
+  zlink_msg_t *parts_,
+  size_t part_count_)
+{
+    if (!state_ || !state_->socket || !state_->socket->get_ctx ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return zlink::request_completion::enqueue (
+      &state_->completion, state_->socket->get_ctx (),
+      "zlink.router.reqrep.completion", handler_, userdata_, errnum_, parts_,
+      part_count_);
+}
+
+int drain_reply_completions (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return zlink::request_completion::drain (&state_->completion, owner_handle_);
+}
+
+bool has_pending_reply_completions (
+  const std::shared_ptr<socket_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::has_pending (&state_->completion)
+             : false;
+}
+
+zlink::socket_base_t *completion_signal_socket (
+  const std::shared_ptr<socket_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::signal_socket (&state_->completion)
+             : NULL;
+}
+
+void claim_completion_owner (
+  const std::shared_ptr<socket_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return;
+    zlink::request_completion::claim_owner_thread (&state_->completion);
+}
+
+bool current_thread_is_completion_owner (
+  const std::shared_ptr<socket_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::current_thread_is_owner (
+                 &state_->completion)
+             : false;
+}
+
+bool in_socket_request_completion_callback (void *socket_)
+{
+    return zlink::request_completion::in_request_completion_callback (socket_);
 }
 
 namespace
@@ -120,8 +202,8 @@ void on_socket_request_timeout (void *userdata_)
     }
 
     if (found)
-        zlink::request_reply::complete_reply_callback (
-          pending.handler, ETIMEDOUT, NULL, 0, pending.userdata);
+        (void) queue_reply_completion (ctx->state, pending.handler,
+                                       pending.userdata, ETIMEDOUT, NULL, 0);
 }
 }
 
@@ -161,6 +243,8 @@ int start_request (socket_handle_t handle_,
 {
     std::shared_ptr<socket_request_reply_state_t> state =
       find_or_create_request_reply_state (handle_);
+    if (ensure_completion_queue_ready (state) != 0)
+        return -1;
     if (ensure_internal_dispatch_installed (state) != 0)
         return -1;
 

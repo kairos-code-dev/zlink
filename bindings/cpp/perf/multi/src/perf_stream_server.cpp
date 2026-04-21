@@ -1,31 +1,31 @@
-// STREAM multi server benchmark: poll-based echo relay.
+// STREAM multi server benchmark: callback-based echo relay.
 // Topology: client STREAM(connect, N) -> server STREAM(bind, 1)
-// Measurement role: echo incoming payloads back to the originating peer.
+// Measurement role: echo incoming framed payloads back to the originating peer.
 
 #include "../common/perf_common.hpp"
 #include "../common/perf_entry.hpp"
-#include "../common/perf_stream_session.hpp"
 
 #include <atomic>
-#include <cerrno>
 #include <csignal>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <thread>
-#include <vector>
 
 namespace {
 
 static const char *k_pattern = "MULTI_STREAM";
-static const char k_stop_token[] = "__zlink_perf_stop__";
+static std::atomic<bool> g_stop_requested (false);
 
-static perf::multi::stream_session_t g_stream_session;
+struct stream_handler_context_t
+{
+    zlink::socket_t *server;
+};
 
 inline void on_signal (int)
 {
-    g_stream_session.stop_requested.store (true, std::memory_order_release);
+    g_stop_requested.store (true, std::memory_order_release);
 }
 
 inline void install_signal_handlers ()
@@ -36,11 +36,76 @@ inline void install_signal_handlers ()
 #endif
 }
 
-inline void emit_requested_queue_probe (const std::string &transport)
+inline zlink::message_t build_packet_frame (zlink_msg_t *header_,
+                                            zlink_msg_t *body_)
 {
-    perf::multi::emit_requested_queue_probe (&g_stream_session,
-                                             k_pattern,
-                                             transport);
+    const size_t header_size = zlink_msg_size (header_);
+    const size_t body_size = zlink_msg_size (body_);
+    const size_t packet_size = 6 + header_size + body_size;
+    zlink::message_t packet (packet_size);
+    if (!packet.valid ())
+        throw zlink::last_error ();
+
+    unsigned char *dst = static_cast<unsigned char *> (packet.data ());
+    dst[0] = static_cast<unsigned char> ((header_size >> 8) & 0xFF);
+    dst[1] = static_cast<unsigned char> (header_size & 0xFF);
+    dst[2] = static_cast<unsigned char> ((body_size >> 24) & 0xFF);
+    dst[3] = static_cast<unsigned char> ((body_size >> 16) & 0xFF);
+    dst[4] = static_cast<unsigned char> ((body_size >> 8) & 0xFF);
+    dst[5] = static_cast<unsigned char> (body_size & 0xFF);
+    if (header_size > 0) {
+        std::memcpy (
+          dst + 6, zlink_msg_data (header_), header_size);
+    }
+    if (body_size > 0) {
+        std::memcpy (
+          dst + 6 + header_size, zlink_msg_data (body_), body_size);
+    }
+    return packet;
+}
+
+void stream_packet_handler (void *,
+                            const zlink_routing_id_t *source_rid_,
+                            zlink_msg_t *header_,
+                            zlink_msg_t *body_,
+                            void *userdata_)
+{
+    stream_handler_context_t *ctx =
+      static_cast<stream_handler_context_t *> (userdata_);
+    if (!source_rid_ || !header_ || !body_ || !ctx || !ctx->server) {
+        if (header_)
+            (void) zlink_msg_close (header_);
+        if (body_)
+            (void) zlink_msg_close (body_);
+        g_stop_requested.store (true, std::memory_order_release);
+        return;
+    }
+
+    try {
+        zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+          source_rid_->data, source_rid_->size);
+        zlink::message_t packet = build_packet_frame (header_, body_);
+        (void) ctx->server->send (routing_id, packet);
+    }
+    catch (const std::exception &) {
+        g_stop_requested.store (true, std::memory_order_release);
+    }
+
+    (void) zlink_msg_close (header_);
+    (void) zlink_msg_close (body_);
+}
+
+void wait_for_stop_stdin ()
+{
+    std::string line;
+    while (std::getline (std::cin, line)) {
+        if (line == "STOP" || line == "QUIT") {
+            g_stop_requested.store (true, std::memory_order_release);
+            return;
+        }
+    }
+
+    g_stop_requested.store (true, std::memory_order_release);
 }
 
 } // namespace
@@ -85,101 +150,28 @@ bool perf_stream_server (const std::string &lib_name,
     if (endpoint.empty ())
         return false;
 
-    g_stream_session.stop_requested.store (false, std::memory_order_release);
-    g_stream_session.queue_probe_pending.store (false, std::memory_order_release);
-    g_stream_session.queue_probe_size.store (0, std::memory_order_release);
-    g_stream_session.server_socket = &server.sock ();
+    g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();
-    perf::multi::start_control_stdin_watcher (&g_stream_session);
+
+    stream_handler_context_t handler_context = {&server.sock ()};
+    if (zlink_stream_packet_handler (
+          server.sock ().handle (), &stream_packet_handler, &handler_context)
+        != ZLINK_HANDLER_OK) {
+        return false;
+    }
+
+    std::thread stdin_watcher (&wait_for_stop_stdin);
+    stdin_watcher.detach ();
 
     perf::multi::print_ready (endpoint);
-
-    int rc = 0;
-    zlink::poller_t poller;
-    if (!poller.valid ()) {
-        return false;
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
-    try {
-        poller.add (server.sock (), zlink::poll_event::pollin);
-    }
-    catch (const zlink::zlink_error_t &) {
-        return false;
-    }
-    g_stream_session.pending_capacity = std::max<size_t> (
-      64,
-      std::max<size_t> (
-        settings.clients,
-        static_cast<size_t> (settings.hwm > 0 ? settings.hwm : 1))
-        * 2);
-    g_stream_session.pending_messages =
-      new perf::multi::pending_stream_message_t[g_stream_session.pending_capacity];
-    g_stream_session.pending_count = 0;
-    while (!g_stream_session.stop_requested.load (std::memory_order_acquire)) {
-        emit_requested_queue_probe (transport);
-        const bool want_send = g_stream_session.pending_count > 0;
-        const zlink::poll_event wait_events =
-          want_send ? (zlink::poll_event::pollin | zlink::poll_event::pollout)
-                    : zlink::poll_event::pollin;
-        try {
-            poller.modify (server.sock (), wait_events);
-        }
-        catch (const zlink::zlink_error_t &) {
-            rc = 1;
-            break;
-        }
-
-        zlink::poll_event_t event = {};
-        const int prc = poller.wait (&event, 50);
-        if (prc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            rc = 1;
-            break;
-        }
-        if ((event.revents & static_cast<short> (zlink::poll_event::pollout)) != 0
-            && g_stream_session.pending_count > 0) {
-            if (!perf::multi::flush_pending_locked (&g_stream_session)) {
-                rc = 1;
-                break;
-            }
-        }
-        if (prc == 0
-            || (event.revents & static_cast<short> (zlink::poll_event::pollin))
-                 == 0) {
-            continue;
-        }
-
-        while (!g_stream_session.stop_requested.load (std::memory_order_acquire)) {
-            zlink::received_t received;
-            int recv_rc =
-              server.sock ().receive (received, zlink::recv_flags_t::dontwait);
-            while (recv_rc != 0 && errno == EINTR)
-                recv_rc =
-                  server.sock ().receive (received, zlink::recv_flags_t::dontwait);
-            if (recv_rc != 0) {
-                const int err = errno;
-                if (err == EAGAIN || err == EINTR)
-                    break;
-                rc = 1;
-                break;
-            }
-            const bool ok = perf::multi::process_stream_recv_parts (
-              &g_stream_session, received, k_stop_token);
-            if (!ok) {
-                rc = 1;
-                break;
-            }
-        }
-        if (rc != 0)
-            break;
-    }
-
-    perf::multi::clear_session (&g_stream_session);
 
     perf::multi::print_server_queue_metrics (
       lib_name, k_pattern, transport, 0,
       perf::multi::server_queue_stats_t ());
-    return rc == 0;
+    return true;
 }
 
 int main (int argc, char **argv)

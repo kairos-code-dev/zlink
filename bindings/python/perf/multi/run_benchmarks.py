@@ -229,6 +229,14 @@ def _server_popen_kwargs():
     return kwargs
 
 
+def _coerce_text(chunk):
+    if chunk is None:
+        return ""
+    if isinstance(chunk, bytes):
+        return chunk.decode("utf-8", errors="replace")
+    return str(chunk)
+
+
 def _parse_status_lines(output):
     rows = []
     for line in output.splitlines():
@@ -318,6 +326,8 @@ def _warn_runner(message):
 
 
 def _status_kind(output):
+    if parse_result_lines(output):
+        return "ok"
     for line in _parse_status_lines(output):
         if line.startswith("UNSUPPORTED,"):
             return "unsupported"
@@ -608,18 +618,18 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 stderr_chunks.append(client_run.stderr.strip())
     except subprocess.CalledProcessError as exc:
         if exc.stdout:
-            stdout_chunks.append(exc.stdout.strip())
+            stdout_chunks.append(_coerce_text(exc.stdout).strip())
         if exc.stderr:
-            stderr_chunks.append(exc.stderr.strip())
+            stderr_chunks.append(_coerce_text(exc.stderr).strip())
         output = "\n".join(chunk for chunk in stderr_chunks + stdout_chunks if chunk)
         if _is_unsupported_output(output):
             return f"UNSUPPORTED,current,MULTI_{pattern},{transport}"
         raise SystemExit(output)
     except subprocess.TimeoutExpired as exc:
         if exc.stdout:
-            stdout_chunks.append(exc.stdout.strip())
+            stdout_chunks.append(_coerce_text(exc.stdout).strip())
         if exc.stderr:
-            stderr_chunks.append(exc.stderr.strip())
+            stderr_chunks.append(_coerce_text(exc.stderr).strip())
         output = "\n".join(
             chunk
             for chunk in stderr_chunks + stdout_chunks + [f"client timed out for pattern {pattern}"]

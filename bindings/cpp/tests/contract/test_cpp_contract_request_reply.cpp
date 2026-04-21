@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
+#include <optional>
 #include <thread>
 
 namespace {
@@ -41,20 +42,22 @@ void test_request_dealer_router_roundtrip ()
     zlink::message_t warmup = make_request_message ("warmup");
     dealer_socket.send (warmup);
     std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    const zlink::received_t warmup_received = router_socket.recv ();
-    assert (warmup_received.parts ().size () == 1);
-    assert (warmup_received.parts ()[0].to_string () == "warmup");
+    const std::optional<zlink::received_t> warmup_received = router_socket.recv ();
+    assert (warmup_received.has_value ());
+    assert (warmup_received->parts ().size () == 1);
+    assert (warmup_received->parts ()[0].to_string () == "warmup");
 
     zlink::message_t request = make_request_message ("request:ping");
     std::future<void> router_done = std::async (
       std::launch::async, [&router_socket] () {
-          const zlink::received_t request = router_socket.recv ();
-          assert (request.parts ().size () == 1);
-          assert (request.request_seq ().has_value ());
-          assert (*request.request_seq () != 0u);
+          const std::optional<zlink::received_t> request = router_socket.recv ();
+          assert (request.has_value ());
+          assert (request->parts ().size () == 1);
+          assert (request->request_seq ().has_value ());
+          assert (*request->request_seq () != 0u);
 
           zlink::message_t reply = make_request_message ("reply:ok");
-          request.reply (reply);
+          request->reply (reply);
       });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =
@@ -88,10 +91,11 @@ void test_request_router_preserves_data_recv_surface ()
     zlink::message_t data = make_request_message ("plain-data");
     dealer_socket.send (data);
 
-    const zlink::received_t received = router_socket.recv ();
-    assert (received.parts ().size () == 1);
-    assert (received.parts ()[0].to_string () == "plain-data");
-    assert (!received.request_seq ().has_value ());
+    const std::optional<zlink::received_t> received = router_socket.recv ();
+    assert (received.has_value ());
+    assert (received->parts ().size () == 1);
+    assert (received->parts ()[0].to_string () == "plain-data");
+    assert (!received->request_seq ().has_value ());
 }
 
 void test_received_reply_rejects_non_none_flags ()
@@ -122,12 +126,13 @@ void test_received_reply_rejects_non_none_flags ()
     zlink::message_t request = make_request_message ("request:flags");
     std::future<void> router_done = std::async (
       std::launch::async, [&router_socket] () {
-          const zlink::received_t received = router_socket.recv ();
-          assert (received.request_seq ().has_value ());
+          const std::optional<zlink::received_t> received = router_socket.recv ();
+          assert (received.has_value ());
+          assert (received->request_seq ().has_value ());
 
           zlink::message_t rejected = make_request_message ("reply:rejected");
           try {
-              received.reply (rejected, zlink::send_flags_t::dontwait);
+              received->reply (rejected, zlink::send_flags_t::dontwait);
               assert (false && "reply flags must be rejected");
           } catch (const zlink::submit_error_t &error) {
               assert (error.result () == zlink::submit_result_t::not_supported);
@@ -135,7 +140,7 @@ void test_received_reply_rejects_non_none_flags ()
           }
 
           zlink::message_t accepted = make_request_message ("reply:ok");
-          received.reply (accepted);
+          received->reply (accepted);
       });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =

@@ -185,48 +185,73 @@ public final class Spot implements AutoCloseable {
     }
 
     /** Publishes one payload part through a service-aware Spot attachment. */
-    public void publish(String serviceName, String topicId, Message part) {
+    public boolean publish(String serviceName, String topicId, Message part) {
         Objects.requireNonNull(part, "part");
-        publishInternal(serviceName, topicId, part, false);
+        return publish(serviceName, topicId, part, SendFlags.NONE);
     }
 
-    public void publish(String serviceName, String topicId, Message part,
+    public boolean publish(String serviceName, String topicId, Message part,
                         SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
-        publishInternal(serviceName, topicId, part,
-          flags == SendFlags.DONT_WAIT);
+        try {
+            return publishInternal(serviceName, topicId, part,
+              flags == SendFlags.DONT_WAIT);
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
     }
 
     /** Publishes a multipart payload through a service-aware Spot attachment. */
-    public void publish(String serviceName, String topicId,
+    public boolean publish(String serviceName, String topicId,
                         List<Message> parts) {
-        publishInternal(serviceName, topicId, parts, false);
+        return publish(serviceName, topicId, parts, SendFlags.NONE);
     }
 
-    public void publish(String serviceName, String topicId,
+    public boolean publish(String serviceName, String topicId,
                         List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
-        publishInternal(serviceName, topicId, parts,
-          flags == SendFlags.DONT_WAIT);
+        try {
+            return publishInternal(serviceName, topicId, parts,
+              flags == SendFlags.DONT_WAIT);
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
     }
 
-    public void sendChannel(String channelName, Message part) {
-        sendChannel(channelName, part, SendFlags.NONE);
+    public boolean sendChannel(String channelName, Message part) {
+        return sendChannel(channelName, part, SendFlags.NONE);
     }
 
-    public void sendChannel(String channelName, Message part, SendFlags flags) {
+    public boolean sendChannel(String channelName, Message part, SendFlags flags) {
         Objects.requireNonNull(part, "part");
-        sendChannel(channelName, List.of(part), flags);
+        return sendChannel(channelName, List.of(part), flags);
     }
 
-    public void sendChannel(String channelName, List<Message> parts) {
-        sendChannel(channelName, parts, SendFlags.NONE);
+    public boolean sendChannel(String channelName, List<Message> parts) {
+        return sendChannel(channelName, parts, SendFlags.NONE);
     }
 
-    public void sendChannel(String channelName, List<Message> parts,
+    public boolean sendChannel(String channelName, List<Message> parts,
                             SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
-        sendChannelInternal(channelName, parts, flags == SendFlags.DONT_WAIT);
+        try {
+            return sendChannelInternal(channelName, parts,
+              flags == SendFlags.DONT_WAIT);
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
     }
 
     public CompletableFuture<List<Message>> requestChannel(String channelName,
@@ -279,7 +304,77 @@ public final class Spot implements AutoCloseable {
         return requestChannelInternal(channelName, parts, timeout, flags);
     }
 
-    private void publishInternal(String serviceName, String topicId,
+    public boolean requestChannel(String channelName, Message part,
+                                  BiConsumer<RequestResult, List<Message>> callback) {
+        return requestChannel(channelName, List.of(part), callback,
+          SendFlags.NONE, Duration.ofMillis(5_000L));
+    }
+
+    public boolean requestChannel(String channelName, Message part,
+                                  BiConsumer<RequestResult, List<Message>> callback,
+                                  SendFlags flags) {
+        return requestChannel(channelName, List.of(part), callback, flags,
+          Duration.ofMillis(5_000L));
+    }
+
+    public boolean requestChannel(String channelName, Message part,
+                                  BiConsumer<RequestResult, List<Message>> callback,
+                                  Duration timeout) {
+        return requestChannel(channelName, List.of(part), callback,
+          SendFlags.NONE, timeout);
+    }
+
+    public boolean requestChannel(String channelName, Message part,
+                                  BiConsumer<RequestResult, List<Message>> callback,
+                                  SendFlags flags, Duration timeout) {
+        return requestChannel(channelName, List.of(part), callback, flags, timeout);
+    }
+
+    public boolean requestChannel(String channelName, List<Message> parts,
+                                  BiConsumer<RequestResult, List<Message>> callback) {
+        return requestChannel(channelName, parts, callback, SendFlags.NONE,
+          Duration.ofMillis(5_000L));
+    }
+
+    public boolean requestChannel(String channelName, List<Message> parts,
+                                  BiConsumer<RequestResult, List<Message>> callback,
+                                  SendFlags flags) {
+        return requestChannel(channelName, parts, callback, flags,
+          Duration.ofMillis(5_000L));
+    }
+
+    public boolean requestChannel(String channelName, List<Message> parts,
+                                  BiConsumer<RequestResult, List<Message>> callback,
+                                  Duration timeout) {
+        return requestChannel(channelName, parts, callback, SendFlags.NONE,
+          timeout);
+    }
+
+    public boolean requestChannel(String channelName, List<Message> parts,
+                                  BiConsumer<RequestResult, List<Message>> callback,
+                                  SendFlags flags, Duration timeout) {
+        Objects.requireNonNull(callback, "callback");
+        try {
+            requestChannelInternal(channelName, parts, timeout, flags)
+              .whenComplete((reply, error) -> {
+                  List<Message> response = List.of();
+                  if (reply != null) {
+                      response = List.copyOf(reply);
+                  }
+                  callback.accept(error == null ? RequestResult.OK
+                      : requestResult(error), response);
+              });
+            return true;
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private boolean publishInternal(String serviceName, String topicId,
                                  Message part, boolean nonBlocking) {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(part, "part");
@@ -291,7 +386,7 @@ public final class Spot implements AutoCloseable {
             int rc = spotPublishPartOnce(serviceName, topicId, part,
                 nonBlocking ? SEND_DONTWAIT : 0, Native.PART_FINAL);
             if (rc == 0)
-                return;
+                return true;
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
@@ -299,7 +394,7 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    private void publishInternal(String serviceName, String topicId,
+    private boolean publishInternal(String serviceName, String topicId,
                                  List<Message> parts, boolean nonBlocking) {
         validateMessages(parts, "parts");
         if (!nonBlocking && InternalAccess.inCallback()) {
@@ -321,9 +416,10 @@ public final class Spot implements AutoCloseable {
                 throw submitFailure("zlink_spot_publish_part");
             }
         }
+        return true;
     }
 
-    private void sendChannelInternal(String channelName, List<Message> parts,
+    private boolean sendChannelInternal(String channelName, List<Message> parts,
                                      boolean nonBlocking) {
         validateMessages(parts, "parts");
         if (!nonBlocking && InternalAccess.inCallback()) {
@@ -345,6 +441,7 @@ public final class Spot implements AutoCloseable {
                 throw submitFailure("zlink_spot_send_channel_part");
             }
         }
+        return true;
     }
 
     private CompletableFuture<List<Message>> requestChannelInternal(
@@ -355,6 +452,7 @@ public final class Spot implements AutoCloseable {
         List<Message> payload = clonePayload(parts);
         CompletableFuture<Received> future = registerPending(requestId,
           timeoutMs);
+        startRequestProgress(future, requestProgressHandle(channelName));
         try {
             submitSpotRequestChannel(channelName, payload, REPLY_CALLBACK,
                 MemorySegment.ofAddress(requestId),
@@ -372,6 +470,41 @@ public final class Spot implements AutoCloseable {
                 return cloneReceivedParts(reply);
             }
         });
+    }
+
+    private MemorySegment requestProgressHandle(String channelName) {
+        if (ownerNode != null) {
+            MemorySegment dealerHandle = ownerNode.manualChannelDealerHandle(
+              channelName);
+            if (dealerHandle != null && dealerHandle.address() != 0) {
+                return dealerHandle;
+            }
+        }
+        return null;
+    }
+
+    private void startRequestProgress(CompletableFuture<?> future,
+                                      MemorySegment socketHandle) {
+        Thread thread = new Thread(() -> {
+            while (!future.isDone()) {
+                if (socketHandle != null && socketHandle.address() != 0) {
+                    Native.socketRequestProgressInternal(socketHandle);
+                } else {
+                    Native.spotRequestProgressInternal(handle);
+                }
+                if (future.isDone()) {
+                    break;
+                }
+                try {
+                    Thread.sleep(1L);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }, "zlink-spot-request-progress");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     private SubmitException submitFailure(String apiName) {
@@ -448,8 +581,7 @@ public final class Spot implements AutoCloseable {
     public TopicMessage subscribe(RecvFlags flags) {
         Objects.requireNonNull(flags, "flags");
         if (flags == RecvFlags.DONT_WAIT) {
-            return receiveTopicMessage(true).orElseThrow(
-                () -> new RecvException(RecvResult.NO_DATA, ERRNO_EAGAIN));
+            return receiveTopicMessage(true).orElse(null);
         }
         return receiveTopicMessage(false).orElseThrow(
             () -> new IllegalStateException(

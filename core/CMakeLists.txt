@@ -957,6 +957,7 @@ set(api-sources
     src/api/internal_pair_queue_internal.cpp
     src/api/part_helper_api.cpp
     src/api/poller_api.cpp
+    src/api/request_completion_queue_internal.cpp
   src/api/service_api.cpp
     src/api/service_discovery_api.cpp
     src/api/service_handler_api.cpp

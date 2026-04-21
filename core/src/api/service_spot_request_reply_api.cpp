@@ -1412,11 +1412,36 @@ zlink_recv_result_t spot_recv_impl (void *spot_,
                                             &state->recv_queue)
         != 0)
         return ZLINK_RECV_TERMINATED;
+    if (ensure_spot_completion_queue_ready (state) != 0)
+        return ZLINK_RECV_TERMINATED;
     lock.unlock ();
-    return zlink::recv_result_internal::from_rc (
-      recv_internal_spot_queue (&state->recv_queue, source_rid_out_,
-                                spot_rid_out_, request_seq_out_,
-                                parts_out_, part_count_out_, flags_));
+
+    const zlink_recv_flags_t try_flags =
+      static_cast<zlink_recv_flags_t> (flags_ | ZLINK_DONTWAIT);
+    const bool blocking = (flags_ & ZLINK_DONTWAIT) == 0;
+    while (true) {
+        (void) drain_spot_reply_completions (state, spot_);
+        const int recv_rc = recv_internal_spot_queue (
+          &state->recv_queue, source_rid_out_, spot_rid_out_, request_seq_out_,
+          parts_out_, part_count_out_, try_flags);
+        if (recv_rc == 0)
+            return ZLINK_RECV_OK;
+        if (!blocking || errno != EAGAIN)
+            return zlink::recv_result_internal::from_rc (recv_rc);
+
+        bool input_ready = false;
+        bool signal_ready = false;
+        const int wait_rc = zlink::request_completion::wait_input_or_signal (
+          state->recv_queue.rx, spot_completion_signal_socket (state), -1,
+          &input_ready, &signal_ready);
+        if (wait_rc <= 0) {
+            if (wait_rc == 0)
+                errno = EAGAIN;
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+        if (signal_ready)
+            (void) drain_spot_reply_completions (state, spot_);
+    }
 }
 
 zlink_recv_result_t zlink_spot_recv_part (
@@ -1555,6 +1580,23 @@ zlink_recv_result_t zlink_spot_recv_part (
     zlink::part_helper_internal::complete_recv_step (helper_state,
                                                      *has_more_out_);
     return ZLINK_RECV_OK;
+}
+
+extern "C" int zlink_spot_request_progress_internal (void *spot_)
+{
+    if (!as_spot_handle (spot_)) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const std::shared_ptr<spot_request_reply_state_t> state =
+      try_find_spot_state (spot_);
+    if (!state) {
+        errno = 0;
+        return 0;
+    }
+
+    return drain_spot_reply_completions (state, spot_);
 }
 
 zlink_submit_result_t router_request_spot_impl (
@@ -1965,11 +2007,13 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     if (!spot)
         return;
 
-    std::vector<std::shared_ptr<zlink::request_timeout::task_t> > timeout_tasks;
     zlink::service_control_runtime_t *dispatch_runtime = NULL;
     uint64_t dispatch_task_id = 0;
     std::shared_ptr<spot_request_reply_state_t> state =
       try_find_spot_state (spot);
+    if (state)
+        (void) zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
+          spot_);
     if (state) {
         {
             std::lock_guard<std::mutex> dispatch_lock (
@@ -1979,15 +2023,6 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
         }
 
         std::lock_guard<std::mutex> state_lock (state->mutex);
-        for (std::unordered_map<pending_spot_key_t,
-                                pending_reply_t,
-                                zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
-               state->pending_replies.begin ();
-             it != state->pending_replies.end (); ++it) {
-            timeout_tasks.push_back (it->second.timeout_task);
-        }
-        state->pending_replies.clear ();
-        state->pending_sequences.clear ();
         state->request_handler = NULL;
         state->request_handler_userdata = NULL;
         state->dispatch.handler = NULL;
@@ -2003,9 +2038,8 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
         std::lock_guard<std::mutex> state_lock (state->mutex);
         close_spot_subscribe_dispatch_queue (&state->subscribe_queue);
         zlink::internal_pair_queue::close (&state->recv_queue);
+        zlink::request_completion::close (&state->completion);
     }
-    for (size_t i = 0; i < timeout_tasks.size (); ++i)
-        zlink::request_timeout::cancel (timeout_tasks[i]);
     erase_spot_owner_state (spot_);
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     for (spot_state_identity_index_t::iterator it =
@@ -2025,22 +2059,17 @@ extern "C" void zlink_spot_request_reply_cleanup_router (void *router_)
     if (!handle.socket)
         return;
 
-    std::vector<std::shared_ptr<zlink::request_timeout::task_t> > timeout_tasks;
     std::shared_ptr<router_spot_request_reply_state_t> state =
       std::static_pointer_cast<router_spot_request_reply_state_t> (
         handle.socket->router_spot_request_reply_state ());
+    if (state)
+        (void)
+          zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (
+            router_);
     if (state) {
         std::lock_guard<std::mutex> state_lock (state->mutex);
-        for (std::unordered_map<uint64_t, pending_reply_t>::iterator it =
-               state->pending_replies.begin ();
-             it != state->pending_replies.end (); ++it) {
-            timeout_tasks.push_back (it->second.timeout_task);
-        }
-        state->pending_replies.clear ();
-        state->pending_sequences.clear ();
+        zlink::request_completion::close (&state->completion);
     }
-    for (size_t i = 0; i < timeout_tasks.size (); ++i)
-        zlink::request_timeout::cancel (timeout_tasks[i]);
     handle.socket->clear_router_spot_request_reply_state ();
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     for (router_state_identity_index_t::iterator it =

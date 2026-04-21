@@ -16,9 +16,7 @@ public class SendResultContractTest {
 
         try (Context ctx = new Context();
              SubSocket sub = new SubSocket(ctx)) {
-            RecvException ex = assertThrows(RecvException.class,
-                () -> sub.subscribe(RecvFlags.DONT_WAIT));
-            assertEquals(RecvResult.NO_DATA, ex.getResult());
+            assertEquals(null, sub.subscribe(RecvFlags.DONT_WAIT));
         }
     }
 
@@ -50,7 +48,7 @@ public class SendResultContractTest {
     }
 
     @Test
-    public void trySendThrowsWhenRouterHasNoMatchingPeer() {
+    public void sendDontWaitThrowsWhenRouterHasNoMatchingPeer() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
@@ -60,7 +58,7 @@ public class SendResultContractTest {
             RoutingId missingRid = RoutingId.fromBytes(
                 "router-missing-peer".getBytes(StandardCharsets.UTF_8));
             SubmitException ex = assertThrows(SubmitException.class,
-                () -> router.trySend(missingRid, payload));
+                () -> router.send(missingRid, payload, SendFlags.DONT_WAIT));
             assertEquals(SubmitResult.NOT_CONNECTED, ex.getResult());
         }
     }
@@ -98,7 +96,7 @@ public class SendResultContractTest {
     }
 
     @Test
-    public void trySendReturnsFalseWhenPairQueueFills() {
+    public void sendDontWaitReturnsFalseWhenPairQueueFills() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
@@ -119,7 +117,7 @@ public class SendResultContractTest {
             boolean sent = true;
             for (int i = 0; i < 1_024; i++) {
                 try (Message payload = Message.copyOfUtf8("bp-" + i)) {
-                    sent = sender.trySend(payload);
+                    sent = sender.send(payload, SendFlags.DONT_WAIT);
                 }
                 if (!sent) {
                     break;

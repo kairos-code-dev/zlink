@@ -19,17 +19,16 @@ internal static partial class PerfRunner
                 {
                     if ((flags & RecvFlags.DontWait) != 0)
                     {
-                        if (!messageSocket.TryRecv(out Received? maybe)
-                            || maybe == null)
+                        using Received? maybe = messageSocket.Recv(flags);
+                        if (maybe == null)
                         {
                             return 0;
                         }
 
-                        using (maybe)
-                            return CopyReceivedToBuffer(maybe, buffer);
+                        return CopyReceivedToBuffer(maybe, buffer);
                     }
 
-                    using Received received = messageSocket.Recv(flags);
+                    using Received received = messageSocket.Recv(flags)!;
                     return CopyReceivedToBuffer(received, buffer);
                 }
 
@@ -37,17 +36,16 @@ internal static partial class PerfRunner
                 {
                     if ((flags & RecvFlags.DontWait) != 0)
                     {
-                        if (!routedSocket.TryRecv(out Received? maybe)
-                            || maybe == null)
+                        using Received? maybe = routedSocket.Recv(flags);
+                        if (maybe == null)
                         {
                             return 0;
                         }
 
-                        using (maybe)
-                            return CopyReceivedToBuffer(maybe, buffer);
+                        return CopyReceivedToBuffer(maybe, buffer);
                     }
 
-                    using Received received = routedSocket.Recv(flags);
+                    using Received received = routedSocket.Recv(flags)!;
                     return CopyReceivedToBuffer(received, buffer);
                 }
 

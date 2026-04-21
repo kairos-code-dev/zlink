@@ -63,7 +63,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-BUILD_DIR="${ROOT_DIR}/core/build"
+BUILD_DIR="${ROOT_DIR}/bindings/c/build"
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
 PATTERN="ALL"
@@ -103,7 +103,7 @@ Measure current zlink single-pattern performance.
 Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
-  --build-dir PATH            Official build directory (must be <repo>/core/build).
+  --build-dir PATH            Official build directory (must be <repo>/bindings/c/build).
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
   --output PATH               Tee console logs to a file.
@@ -375,7 +375,7 @@ fi
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 PERF_COMPARISON_SCRIPT="$(realpath -m "${PERF_COMPARISON_SCRIPT}")"
-OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
+OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/c/build"
 
 if [[ "${BUILD_DIR}" != "${OFFICIAL_BUILD_DIR}" ]]; then
   echo "Build directory must be exactly: ${OFFICIAL_BUILD_DIR}" >&2
@@ -460,7 +460,7 @@ case "${BUILD_MODE}" in
     ;;
 esac
 
-CMAKE_SOURCE_DIR="${ROOT_DIR}"
+CMAKE_SOURCE_DIR="${ROOT_DIR}/bindings/c"
 if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
   CACHE_CMAKE_SOURCE="$(
     sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
@@ -486,27 +486,19 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DENABLE_LTO=OFF \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-      -DZLINK_CXX_STANDARD=17
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_C_BUILD_BENCHMARKS=ON \
+      -DZLINK_C_BUILD_SAMPLES=OFF
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
       -DENABLE_LTO=OFF \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_TESTS=OFF \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_ZLINK=ON \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-      -DZLINK_CXX_STANDARD=17
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_C_BUILD_BENCHMARKS=ON \
+      -DZLINK_C_BUILD_SAMPLES=OFF
   fi
 
   mapfile -t BUILD_TARGETS < <(resolve_single_build_targets)

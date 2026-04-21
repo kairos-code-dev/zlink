@@ -17,11 +17,16 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
+  closeSenderWorker,
+  configureTlsClient,
+  configureTlsServer,
   drainRecvSocket,
   parseSingleBinaryArgs,
   resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
-  waitForConnectionReady,
+  spawnSenderWorker,
+  waitForMonitorConnectionReady,
+  waitForWorkerMessage,
 } = require('./perf_single_common');
 
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
@@ -33,8 +38,7 @@ function partStrings(received) {
   return received.parts.map((part) => part.data().toString());
 }
 
-async function handshake(receiver, sender) {
-  sender.send(RECEIVER_ROUTING_ID, Buffer.from('PING'));
+async function handshakeReceiver(receiver) {
   const ping = receiver.recv();
   if (ping.routingId === null || partStrings(ping).join(',') !== 'PING') {
     throw new Error('router-router handshake receive failed');
@@ -51,17 +55,38 @@ async function runRouterRouterBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
   const receiver = new zlink.RouterSocket(ctx);
-  const sender = new zlink.RouterSocket(ctx);
+  const receiverMonitor = receiver.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
   const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
+  let worker = null;
 
   try {
     applySocketPolicy(receiver, options);
-    applySocketPolicy(sender, options);
     receiver.setRoutingId(RECEIVER_ROUTING_ID);
-    sender.setRoutingId(SENDER_ROUTING_ID);
+    configureTlsServer(receiver, options.transport);
     receiver.bind(endpoint);
-    await waitForConnectionReady(sender, () => sender.connect(endpoint));
-    await handshake(receiver, sender);
+    worker = spawnSenderWorker({
+      kind: 'router_router',
+      transport: options.transport,
+      endpoint,
+      duration: options.duration,
+      msgSize,
+      runId: options.runId ?? 1,
+      receiverRoutingIdBytes: RECEIVER_ID,
+      senderRoutingIdBytes: SENDER_ID,
+      options,
+    });
+    const workerError = waitForWorkerMessage(worker, 'error');
+    await Promise.race([
+      waitForWorkerMessage(worker, 'connected'),
+      workerError.then((message) => Promise.reject(new Error(message.message)))
+    ]);
+    await waitForMonitorConnectionReady(receiverMonitor);
+    await handshakeReceiver(receiver);
+    worker.postMessage({ type: 'handshake' });
+    await Promise.race([
+      waitForWorkerMessage(worker, 'ready'),
+      workerError.then((message) => Promise.reject(new Error(message.message)))
+    ]);
 
     const activeStartNs = currentEpochNs();
     const activeStopNs = activeStartNs
@@ -87,18 +112,11 @@ async function runRouterRouterBenchmark(msgSize, options) {
       () => stop
     );
 
-    while (currentEpochNs() < activeStopNs) {
-      stampPayload(payload, {
-        phase: 1,
-        runId,
-        msgSize,
-        seq
-      });
-      sender.send(RECEIVER_ROUTING_ID, payload);
-      seq += 1n;
-    }
-    stampPayload(payload, { phase: 2, runId, msgSize, seq });
-    sender.send(RECEIVER_ROUTING_ID, payload);
+    worker.postMessage({ type: 'start' });
+    await Promise.race([
+      waitForWorkerMessage(worker, 'done'),
+      workerError.then((message) => Promise.reject(new Error(message.message)))
+    ]);
     const drainDeadlineNs = activeStopNs
       + BigInt(resolveSingleIdleDrainMs(options)) * 1_000_000n;
     while (currentEpochNs() < drainDeadlineNs) {
@@ -108,7 +126,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
     await recvTask;
     return collector.finish();
   } finally {
-    sender.close();
+    await closeSenderWorker(worker);
+    receiverMonitor.close();
     receiver.close();
     ctx.close();
   }

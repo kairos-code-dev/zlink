@@ -16,6 +16,10 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         OnRequestReply;
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate SpotReplyHandler =
         OnSpotReply;
+    private static readonly IntPtr RequestReplyHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(RequestReplyHandler);
+    private static readonly IntPtr SpotReplyHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(SpotReplyHandler);
     public RouterSocketOptions RouterOptions { get; }
 
     public RouterSocket(Context context)
@@ -54,54 +58,44 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         return received.Parts;
     }
 
-    public void Request(RoutingId peerRid, Message part,
+    public bool Request(RoutingId peerRid, Message part,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
         => Request(peerRid, part, callback, SendFlags.None, timeout);
 
-    public void Request(RoutingId peerRid, IReadOnlyList<Message> parts,
+    public bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
         => Request(peerRid, parts, callback, SendFlags.None, timeout);
 
-    public void Request(RoutingId peerRid, Message part,
+    public bool Request(RoutingId peerRid, Message part,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
         => Request(peerRid, new[] { part }, callback, flags, timeout);
 
-    public void Request(RoutingId peerRid, IReadOnlyList<Message> parts,
+    public bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
-        => RequestReplySupport.AttachResultCallback(
-            () => RequestAsyncCore(peerRid, parts, timeout ?? TimeSpan.Zero,
-                CancellationToken.None, (int)flags),
-            (result, reply) =>
-            {
-                IReadOnlyList<Message> payload = Array.Empty<Message>();
-                if (reply != null)
-                {
-                    Received copy = RequestReplySupport.CloneReceived(reply);
-                    reply.Dispose();
-                    payload = copy.Parts;
-                }
-                callback(result, payload);
-            });
-
-    public bool TryRequest(RoutingId peerRid, Message part,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
-        => TryRequest(peerRid, new[] { part }, callback, timeout);
-
-    public bool TryRequest(RoutingId peerRid, IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
     {
         try
         {
-            Request(peerRid, parts, callback, SendFlags.DontWait, timeout);
+            RequestReplySupport.AttachResultCallback(
+                () => RequestAsyncCore(peerRid, parts, timeout ?? TimeSpan.Zero,
+                    CancellationToken.None, (int)flags),
+                (result, reply) =>
+                {
+                    IReadOnlyList<Message> payload = Array.Empty<Message>();
+                    if (reply != null)
+                    {
+                        Received copy = RequestReplySupport.CloneReceived(reply);
+                        reply.Dispose();
+                        payload = copy.Parts;
+                    }
+                    callback(result, payload);
+                });
             return true;
         }
-        catch (ZlinkException error)
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
         {
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
@@ -158,11 +152,11 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         }
     }
 
-    public void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, SendFlags flags = SendFlags.None)
         => SendToSpot(destNodeRid, destSpotRid, new[] { message }, flags);
 
-    public unsafe void SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public unsafe bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         EnsureParts(parts, nameof(parts));
@@ -196,6 +190,13 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                         NativeMethods.zlink_msg_close(ref nativePart);
                 }
             }
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
         }
         catch
         {
@@ -216,62 +217,49 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts, timeout, ct)
             .ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
 
-    public void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan timeout = default)
         => RequestToSpot(destNodeRid, destSpotRid, message, callback,
             SendFlags.None, timeout);
 
-    public void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan timeout = default)
         => RequestToSpot(destNodeRid, destSpotRid, parts, callback,
             SendFlags.None, timeout);
 
-    public void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan timeout = default)
         => RequestToSpot(destNodeRid, destSpotRid, new[] { message }, callback,
             flags, timeout);
 
-    public void RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan timeout = default)
-        => RequestReplySupport.AttachResultCallback(
-            () => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts,
-                timeout, CancellationToken.None, (int)flags),
-            (result, reply) =>
-            {
-                IReadOnlyList<Message> payload = Array.Empty<Message>();
-                if (reply != null)
-                {
-                    Received copy = RequestReplySupport.CloneReceived(reply);
-                    reply.Dispose();
-                    payload = copy.Parts;
-                }
-                callback(result, payload);
-            });
-
-    public bool TryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        Message message, Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan timeout = default)
-        => TryRequestToSpot(destNodeRid, destSpotRid, new[] { message }, callback,
-            timeout);
-
-    public bool TryRequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan timeout = default)
     {
         try
         {
-            RequestToSpot(destNodeRid, destSpotRid, parts, callback,
-                SendFlags.DontWait, timeout);
+            RequestReplySupport.AttachResultCallback(
+                () => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts,
+                    timeout, CancellationToken.None, (int)flags),
+                (result, reply) =>
+                {
+                    IReadOnlyList<Message> payload = Array.Empty<Message>();
+                    if (reply != null)
+                    {
+                        Received copy = RequestReplySupport.CloneReceived(reply);
+                        reply.Dispose();
+                        payload = copy.Parts;
+                    }
+                    callback(result, payload);
+                });
             return true;
         }
-        catch (ZlinkException error)
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
         {
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
@@ -379,7 +367,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                 {
                     int rc = NativeMethods.zlink_router_request_spot_part(Handle,
                         ref nodeRid, ref spotRid, ref nativePart,
-                        i + 1 < cloned.Length ? null : SpotReplyHandler,
+                        i + 1 < cloned.Length ? IntPtr.Zero : SpotReplyHandlerPtr,
                         i + 1 < cloned.Length ? IntPtr.Zero : GCHandle.ToIntPtr(handle),
                         flags,
                         i + 1 < cloned.Length
@@ -398,7 +386,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                 }
             }
 
-            return completion.Task;
+            return RequestProgressPump.AttachSocket(Handle, completion.Task);
         }
         catch
         {
@@ -459,7 +447,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final,
                         i + 1 < cloned.Length ? 0u : timeoutMs,
-                        i + 1 < cloned.Length ? null : RequestReplyHandler,
+                        i + 1 < cloned.Length ? IntPtr.Zero : RequestReplyHandlerPtr,
                         i + 1 < cloned.Length ? IntPtr.Zero : userData);
                     submitted = true;
                     if (rc != 0)
@@ -472,7 +460,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                 }
             }
 
-            return completion.Task;
+            return RequestProgressPump.AttachSocket(Handle, completion.Task);
         }
         catch
         {

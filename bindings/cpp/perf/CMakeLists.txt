@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
 project(zlink_cpp_perf LANGUAGES CXX)
 
-if(NOT TARGET libzlink)
-  message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
+if(NOT DEFINED ZLINK_CPP_CORE_TARGET)
+  message(FATAL_ERROR "ZLINK_CPP_CORE_TARGET is not configured")
 endif()
 
 find_package(Threads REQUIRED)
 
 set(PERF_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-set(PERF_CPP_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/bindings/cpp/include")
+set(PERF_CPP_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../include")
 set(PERF_CORE_INCLUDE_DIR "${ZLINK_CORE_DIR}/include")
 
 set(PERF_SINGLE_COMMON_SRCS
@@ -18,13 +18,22 @@ set(PERF_SINGLE_COMMON_SRCS
 
 function(configure_perf_target target_name out_subdir)
   target_compile_features(${target_name} PRIVATE cxx_std_17)
-  target_link_libraries(${target_name} PRIVATE libzlink zlink-cpp Threads::Threads)
+  target_link_libraries(${target_name} PRIVATE ${ZLINK_CPP_CORE_TARGET} zlink-cpp Threads::Threads)
   target_include_directories(${target_name} PRIVATE
     "${PERF_CORE_INCLUDE_DIR}"
     "${PERF_CPP_INCLUDE_DIR}"
     "${PERF_ROOT_DIR}/single/common"
     "${PERF_ROOT_DIR}/multi/common"
   )
+  if(UNIX AND NOT APPLE)
+    set_target_properties(${target_name} PROPERTIES
+      BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR}"
+    )
+  elseif(APPLE)
+    set_target_properties(${target_name} PROPERTIES
+      BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR}"
+    )
+  endif()
 
   if(MSVC)
     target_compile_options(${target_name} PRIVATE /O2 /W4)

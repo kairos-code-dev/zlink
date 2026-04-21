@@ -251,7 +251,8 @@ async function main() {
         duration: 5,
         msgSizes: defaultMultiMsgSizes(['MULTI_DEALER_DEALER'], false),
         resultsDir: path.join(process.cwd(), 'perf', 'results'),
-        transports: DEFAULT_MULTI_TRANSPORTS
+        transports: DEFAULT_MULTI_TRANSPORTS,
+        clients: defaultClientsForPattern('MULTI_DEALER_DEALER')
     });
     if (options.helpRequested) {
         usage();

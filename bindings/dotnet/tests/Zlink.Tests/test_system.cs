@@ -28,7 +28,7 @@ public sealed class test_system
         using var ctx = new Context();
         using var socket = new PairSocket(ctx);
 
-        Assert.Throws<ZlinkRecvException>(() => socket.Recv(RecvFlags.DontWait));
+        Assert.Null(socket.Recv(RecvFlags.DontWait));
         Assert.True(Runtime.Has("tcp") || !Runtime.Has("tcp"));
     }
 

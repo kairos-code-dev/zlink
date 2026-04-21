@@ -363,6 +363,22 @@ inline bool run_one_size_benchmark (
         return false;
     }
 
+    // This server process is reused across size cases. Drain the tail of the
+    // just-finished active phase so stale messages do not spill into the next
+    // run and keep later sizes permanently behind old backlog.
+    if (!drain_phase_until_idle (server,
+                                 msg_size,
+                                 run_id,
+                                 perf_multi_metric::phase_active,
+                                 2.0,
+                                 50)) {
+        if (bench_transition_debug_enabled ()) {
+            std::cerr << "[multi-dealer-dealer-server] drain failed size="
+                      << msg_size << " run=" << run_id << std::endl;
+        }
+        return false;
+    }
+
     if (recv_count <= 0 || lat_count <= 0) {
         if (bench_transition_debug_enabled ()) {
             std::cerr << "[multi-dealer-dealer-server] active empty size="

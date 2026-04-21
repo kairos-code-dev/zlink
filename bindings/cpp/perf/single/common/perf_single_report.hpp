@@ -46,4 +46,13 @@ inline void print_result (const std::string &lib_type,
               << "," << size << ",latency_p99," << std::fixed
               << std::setprecision (3) << latency_p99_ms << std::endl;
 }
+
+inline void print_fail_result (const std::string &lib_type,
+                               const std::string &pattern,
+                               const std::string &transport,
+                               size_t size)
+{
+    std::cerr << "FAIL," << lib_type << "," << pattern << "," << transport
+              << "," << size << std::endl;
+}
 #endif

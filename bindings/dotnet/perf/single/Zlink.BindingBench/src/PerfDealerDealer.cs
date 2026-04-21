@@ -151,8 +151,9 @@ internal static class PerfDealerDealer
 
                     while (true)
                     {
-                        if (!receiver.TryRecv(out Received? maybe)
-                            || maybe is null)
+                        using Received? maybe = receiver.Recv(
+                            RecvFlags.DontWait);
+                        if (maybe is null)
                             break;
 
                         using (maybe)

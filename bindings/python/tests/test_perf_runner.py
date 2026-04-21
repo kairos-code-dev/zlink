@@ -74,11 +74,18 @@ class PerfRunnerTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
             self.assertIn("## Effective Options (start)", result.stdout)
-            self.assertIn("| Pattern | Transport | Size |", result.stdout)
-            reports = list(Path(tmpdir).glob("perf_python_single_linux_*_smoke.txt"))
+            self.assertIn("| Size     |       Throughput |", result.stdout)
+            reports = list(
+                (Path(tmpdir) / "single" / "report").glob(
+                    "perf_python_single_linux_*_smoke.txt"
+                )
+            )
             self.assertEqual(len(reports), 1)
             report_text = reports[0].read_text(encoding="utf-8")
-            self.assertIn("RESULT,current,PAIR,inproc,64,throughput,", report_text)
+            self.assertIn("## Completion", report_text)
+            self.assertIn("- status: complete", report_text)
+            self.assertIn("- expected_result_lines: 5", report_text)
+            self.assertIn("- actual_result_lines: 5", report_text)
             self.assertRegex(
                 reports[0].name,
                 r"^perf_python_single_linux_\d{8}_\d{6}_smoke\.txt$",

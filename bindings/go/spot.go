@@ -45,6 +45,7 @@ type SpotNode struct {
 	closing bool
 	mu      sync.Mutex
 	spots   map[*spotCore]struct{}
+	manualChannelDealers map[string]unsafe.Pointer
 }
 
 func newSpotNode(ctx *Context) (*SpotNode, error) {
@@ -55,7 +56,11 @@ func newSpotNode(ctx *Context) (*SpotNode, error) {
 	if handle == nil {
 		return nil, configErrorFromErrno(currentErrno())
 	}
-	return &SpotNode{handle: handle, spots: make(map[*spotCore]struct{})}, nil
+	return &SpotNode{
+		handle: handle,
+		spots: make(map[*spotCore]struct{}),
+		manualChannelDealers: make(map[string]unsafe.Pointer),
+	}, nil
 }
 
 func (n *SpotNode) raw() unsafe.Pointer {
@@ -121,8 +126,25 @@ func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerS
 		return err
 	}
 	return n.withCString(channelName, func(cstr *C.char) error {
-		return configErrorFromResult(C.zlink_spot_node_attach_channel_dealer_manual(handle, cstr, dealerHandle))
+		if err := configErrorFromResult(C.zlink_spot_node_attach_channel_dealer_manual(handle, cstr, dealerHandle)); err != nil {
+			return err
+		}
+		n.mu.Lock()
+		if n.manualChannelDealers != nil {
+			n.manualChannelDealers[channelName] = dealerHandle
+		}
+		n.mu.Unlock()
+		return nil
 	})
+}
+
+func (n *SpotNode) manualChannelDealerHandle(channelName string) unsafe.Pointer {
+	if n == nil {
+		return nil
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.manualChannelDealers[channelName]
 }
 
 func (n *SpotNode) AttachPubIngress(pub *PubSocket) error {
@@ -238,6 +260,7 @@ func (n *SpotNode) Close() error {
 	n.closing = false
 	n.handle = nil
 	n.spots = nil
+	n.manualChannelDealers = nil
 	return nil
 }
 
@@ -632,8 +655,11 @@ func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout 
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	resultCh := make(chan requestResult, 1)
-	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
+	state := &replyCallbackState{
+		result: make(chan requestResult, 1),
+		done:   make(chan struct{}),
+	}
+	handle := cgo.NewHandle(state)
 	if err := s.core.withCString(channelName, func(cstr *C.char) error {
 		return submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_request_channel_part_go_local(
@@ -652,5 +678,12 @@ func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout 
 		return nil, err
 	}
 	prepared.commit()
-	return resultCh, nil
+	if s.core != nil && s.core.owner != nil {
+		if dealerHandle := s.core.owner.manualChannelDealerHandle(channelName); dealerHandle != nil {
+			startSocketRequestProgress(dealerHandle, state)
+			return state.result, nil
+		}
+	}
+	startSpotRequestProgress(s.raw(), state)
+	return state.result, nil
 }

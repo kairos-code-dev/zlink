@@ -91,6 +91,14 @@ async function waitForPrefix(processRef, prefix, label, timeoutMs) {
   });
 }
 
+function isControlLine(line) {
+  return line.startsWith('READY,')
+    || line.startsWith('CONTROL_READY,')
+    || line.startsWith('CLIENT_READY,')
+    || line.startsWith('CLIENT_CONTROL_ENDPOINT,')
+    || line.startsWith('CONTROL_CONNECTED,');
+}
+
 function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
   child.__waiters = [];
   child.__seenLines = [];
@@ -106,7 +114,9 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
       resultLines.push(line);
       return;
     }
-    console.log(line);
+    if (!isControlLine(line)) {
+      console.log(line);
+    }
   });
   collectLines(child.stderr, (line) => {
     child.__stderrLines.push(line);

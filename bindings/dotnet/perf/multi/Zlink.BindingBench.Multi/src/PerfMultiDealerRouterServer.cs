@@ -132,7 +132,7 @@ internal static class PerfMultiDealerRouterServer
 
     private static Received? TryRecvNoWait(RouterSocket socket)
     {
-        return socket.TryRecv(out Received? received) ? received : null;
+        return socket.Recv(RecvFlags.DontWait);
     }
 
     private sealed class PendingReply : IDisposable

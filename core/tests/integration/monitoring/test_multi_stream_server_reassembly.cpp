@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../../../perf/multi/common/perf_multi_stream_session.hpp"
 #include "testutil.hpp"
+#include "test_multi_stream_session_support.hpp"
 
 #include <unity.h>
 
@@ -48,6 +48,8 @@ int main ()
 
 namespace
 {
+
+static const size_t kEndpointSize = 256;
 
 bool parse_tcp_endpoint (const char *endpoint_, char host_[64], int *port_)
 {
@@ -168,7 +170,7 @@ std::vector<unsigned char> make_frame (const char *payload_)
     std::vector<unsigned char> frame (6 + payload_size);
     frame[0] = 0;
     frame[1] = 0;
-    perf_stream_common::perf_stream_store_u32_be (
+    test_stream_common::store_u32_be (
       &frame[2], static_cast<uint32_t> (payload_size));
     std::memcpy (&frame[6], payload_, payload_size);
     return frame;
@@ -181,24 +183,24 @@ void test_multi_stream_server_reassembles_complete_frames_per_connection ()
     void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
-    char endpoint[MAX_SOCKET_STRING];
+    char endpoint[kEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    perf_multi_stream::session_t session;
-    perf_multi_stream::packet_handler_context_t packet_handler_ctx;
-    perf_stop_requested ().store (false, std::memory_order_release);
-    perf_multi_stream::reset_session (&session, server);
+    test_multi_stream::session_t session;
+    test_multi_stream::packet_handler_context_t packet_handler_ctx;
+    test_multi_stream::stop_requested ().store (false, std::memory_order_release);
+    test_multi_stream::reset_session (&session, server);
     packet_handler_ctx.session = &session;
     packet_handler_ctx.stop_token = "STOP";
     TEST_ASSERT_EQUAL_INT (
       ZLINK_HANDLER_OK,
       zlink_stream_packet_handler (
-        server, &perf_multi_stream::stream_packet_handler_callback,
+        server, &test_multi_stream::stream_packet_handler_callback,
         &packet_handler_ctx));
     int server_rc = -1;
 
     std::thread server_thread ([&session, server, &server_rc] () {
-        server_rc = perf_multi_stream::run_server_event_loop (
+        server_rc = test_multi_stream::run_server_event_loop (
           &session, server, "STOP", NULL, NULL);
     });
 
@@ -243,11 +245,11 @@ void test_multi_stream_server_reassembles_complete_frames_per_connection ()
       0, recv_exact (client_a, &echo_a[0], echo_a.size ()));
     TEST_ASSERT_EQUAL_MEMORY (&frame_a[0], &echo_a[0], frame_a.size ());
 
-    perf_stop_requested ().store (true, std::memory_order_release);
+    test_multi_stream::stop_requested ().store (true, std::memory_order_release);
     server_thread.join ();
     TEST_ASSERT_EQUAL_INT (0, server_rc);
 
-    perf_multi_stream::clear_session (&session);
+    test_multi_stream::clear_session (&session);
     close_raw_fd (client_a);
     close_raw_fd (client_b);
     test_context_socket_close_zero_linger (server);

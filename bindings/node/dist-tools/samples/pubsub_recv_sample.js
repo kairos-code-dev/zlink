@@ -41,7 +41,9 @@ async function main() {
             pub.publish(topic, Buffer.from(sent));
             try {
                 received = sub.subscribe(zlink.RecvFlags.DontWait);
-                break;
+                if (received) {
+                    break;
+                }
             }
             catch (error) {
                 if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {

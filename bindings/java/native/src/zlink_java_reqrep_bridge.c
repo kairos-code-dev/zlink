@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "zlink.h"
 #include "api/recv_result_internal.hpp"
@@ -12,6 +13,7 @@
 namespace reqrep = zlink::socket_reqrep_internal;
 
 extern "C" int zlink_router_enable_spot_receive(void *router_);
+extern "C" int zlink_socket_request_progress_internal(void *socket_);
 
 #ifdef __cplusplus
 #define ZLINK_JAVA_EXPORT extern "C"
@@ -103,25 +105,50 @@ static void zlink_java_reqrep_complete(zlink_request_result_t result,
 }
 
 static int zlink_java_reqrep_wait(zlink_java_reqrep_state_t *state,
+                                  void *handle,
                                   int *request_result_out,
                                   zlink_msg_t **reply_parts_out,
                                   size_t *reply_part_count_out) {
-    pthread_mutex_lock(&state->mutex);
-    while (!state->done) {
-        pthread_cond_wait(&state->cond, &state->mutex);
-    }
+    for (;;) {
+        pthread_mutex_lock(&state->mutex);
+        if (state->done) {
+            if (request_result_out != NULL) {
+                *request_result_out = state->result;
+            }
+            if (reply_parts_out != NULL) {
+                *reply_parts_out = state->reply_parts;
+            }
+            if (reply_part_count_out != NULL) {
+                *reply_part_count_out = state->reply_part_count;
+            }
+            pthread_mutex_unlock(&state->mutex);
+            break;
+        }
+        pthread_mutex_unlock(&state->mutex);
 
-    if (request_result_out != NULL) {
-        *request_result_out = state->result;
-    }
-    if (reply_parts_out != NULL) {
-        *reply_parts_out = state->reply_parts;
-    }
-    if (reply_part_count_out != NULL) {
-        *reply_part_count_out = state->reply_part_count;
-    }
+        if (zlink_socket_request_progress_internal(handle) < 0) {
+            int request_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+            if (errno == ETERM || errno == EFAULT || errno == ENOTSOCK) {
+                request_result = ZLINK_REQUEST_TERMINATED;
+            }
 
-    pthread_mutex_unlock(&state->mutex);
+            pthread_mutex_lock(&state->mutex);
+            if (!state->done) {
+                state->result = request_result;
+                state->reply_parts = NULL;
+                state->reply_part_count = 0;
+                state->done = 1;
+                pthread_cond_signal(&state->cond);
+            }
+            pthread_mutex_unlock(&state->mutex);
+            continue;
+        }
+
+        struct timespec sleep_req;
+        sleep_req.tv_sec = 0;
+        sleep_req.tv_nsec = 1000000L;
+        nanosleep(&sleep_req, NULL);
+    }
     pthread_cond_destroy(&state->cond);
     pthread_mutex_destroy(&state->mutex);
     return 0;
@@ -250,7 +277,7 @@ ZLINK_JAVA_EXPORT int zlink_java_dealer_request_sync(void *dealer,
         }
     }
 
-    return zlink_java_reqrep_wait(&state, request_result_out,
+    return zlink_java_reqrep_wait(&state, dealer, request_result_out,
       reply_parts_out, reply_part_count_out);
 }
 
@@ -291,7 +318,7 @@ ZLINK_JAVA_EXPORT int zlink_java_router_request_sync(
         }
     }
 
-    return zlink_java_reqrep_wait(&state, request_result_out,
+    return zlink_java_reqrep_wait(&state, router, request_result_out,
       reply_parts_out, reply_part_count_out);
 }
 

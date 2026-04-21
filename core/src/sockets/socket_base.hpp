@@ -264,6 +264,9 @@ class socket_base_t : public own_t,
     std::shared_ptr<void> request_reply_state () const;
     void set_request_reply_state (const std::shared_ptr<void> &state_);
     void clear_request_reply_state ();
+    std::shared_ptr<void> part_helper_state () const;
+    void set_part_helper_state (const std::shared_ptr<void> &state_);
+    void clear_part_helper_state ();
 
     bool is_ctx_terminated () const;
 
@@ -615,6 +618,7 @@ class socket_base_t : public own_t,
     socket_discovery_attachment_t *_service_attachment;
     std::shared_ptr<void> _router_spot_request_reply_state;
     std::shared_ptr<void> _request_reply_state;
+    std::shared_ptr<void> _part_helper_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 };

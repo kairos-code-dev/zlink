@@ -4,6 +4,7 @@
 
 #include "api/monitor_api_internal.hpp"
 #include "api/part_helper_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/zlink_testing.hpp"
@@ -98,6 +99,18 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
 
     if (in_spot_node_send_ready_callback (node)
         || in_spot_node_monitor_callback (node)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+    if (zlink::spot_reqrep_internal::in_spot_request_completion_callback (spot)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (spot);
+    if (zlink::spot_reqrep_internal::has_pending_spot_request_work (state)
+        && !zlink::spot_reqrep_internal::current_thread_is_spot_completion_owner (
+          state)) {
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
     }

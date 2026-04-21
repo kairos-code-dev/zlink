@@ -54,8 +54,7 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 			}
 			part, partErr := received.SinglePartOrError()
 			if partErr == nil {
-				reply := perfcommon.NewMessage(append([]byte(nil), part.Data()...))
-				perfcommon.Must(received.Reply([]*zlink.Message{reply}))
+				perfcommon.Must(received.Reply([]*zlink.Message{part}))
 			}
 			perfcommon.Must(received.Close())
 		}
@@ -115,7 +114,7 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 						}
 						replyDone <- nil
 					},
-					perfcommon.BenchmarkSocketTimeout,
+					perfcommon.MultiRecvTimeout(),
 					perfcommon.NewMessage(payload),
 				)
 				if requestErr != nil {
@@ -158,13 +157,13 @@ func waitMultiSpotReqRepReady(
 				ready <- fmt.Errorf("multi spot reqrep ready probe failed: %v", result)
 				return
 			}
-			if _, ok := perfcommon.SentAtFromMessage(parts[0], msgSize); !ok {
+			if _, ok := perfcommon.SentAtFromMessagePhase(parts[0], msgSize, perfcommon.PhaseWarmup); !ok {
 				ready <- fmt.Errorf("multi spot reqrep ready probe returned invalid payload")
 				return
 			}
 			ready <- nil
 		},
-		perfcommon.BenchmarkSocketTimeout,
+		perfcommon.MultiRecvTimeout(),
 		perfcommon.NewMessage(payload),
 	)
 	if err != nil {

@@ -34,7 +34,9 @@ struct iovec
 #include "api/part_helper_internal.hpp"
 #include "api/poller_api_internal.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_api_internal.hpp"
+#include "api/socket_request_reply_internal.hpp"
 #include "api/close_result_internal.hpp"
 #include "api/config_result_internal.hpp"
 #include "api/zlink_testing.hpp"
@@ -111,6 +113,38 @@ zlink_close_result_t zlink_close (void *s_)
     if (!handle.socket)
         return ZLINK_CLOSE_INVALID_HANDLE;
 
+    std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+      request_reply_state =
+        zlink::socket_reqrep_internal::find_request_reply_state (handle);
+    std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+      router_spot_state =
+        std::static_pointer_cast<
+          zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
+          handle.socket->router_spot_request_reply_state ());
+    if (zlink::socket_reqrep_internal::in_socket_request_completion_callback (
+          s_)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+    if (zlink::spot_reqrep_internal::in_spot_request_completion_callback (s_)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+    if (zlink::socket_reqrep_internal::has_pending_request_work (
+          request_reply_state)
+        && !zlink::socket_reqrep_internal::current_thread_is_completion_owner (
+          request_reply_state)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+    if (zlink::spot_reqrep_internal::has_pending_router_spot_request_work (
+          router_spot_state)
+        && !zlink::spot_reqrep_internal::current_thread_is_router_completion_owner (
+          router_spot_state)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
+
     monitor_handler_state_t *monitor_state =
       find_monitor_handler_state (handle.socket);
     zlink::socket_base_t *raw_monitor_source =
@@ -162,6 +196,16 @@ zlink_close_result_t zlink_close (void *s_)
         handle.socket->stop ();
         stream_api_lock_t api_lock (handle);
         (void) handle.socket->stream_dispatch_stop ();
+        if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (
+              handle)
+            != 0) {
+            return zlink::close_result_internal::from_rc (-1);
+        }
+        if (zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (
+              s_)
+            != 0) {
+            return zlink::close_result_internal::from_rc (-1);
+        }
         zlink_socket_request_reply_cleanup (s_);
         zlink_spot_request_reply_cleanup_router (s_);
         const int rc = handle.socket->close ();
@@ -178,6 +222,15 @@ zlink_close_result_t zlink_close (void *s_)
     }
 
     (void) handle.socket->stream_dispatch_stop ();
+    if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle)
+        != 0) {
+        return zlink::close_result_internal::from_rc (-1);
+    }
+    if (zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (
+          s_)
+        != 0) {
+        return zlink::close_result_internal::from_rc (-1);
+    }
     zlink_socket_request_reply_cleanup (s_);
     zlink_spot_request_reply_cleanup_router (s_);
     const int rc = handle.socket->close ();
@@ -203,9 +256,58 @@ zlink_config_result_t zlink_poller_add (void *poller_,
         return ZLINK_CONFIG_INVALID_HANDLE;
     if (validate_socket_callback_poller_events (handle, events_) != 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
-    return zlink::config_result_internal::from_rc (
-      poller_add_registration (poller, handle.socket, user_data_, events_,
-                               socket_, poller_subject_none));
+    if (poller_add_registration (poller, handle.socket, user_data_, events_,
+                                 socket_, poller_subject_none)
+        != 0) {
+        return zlink::config_result_internal::from_errno (errno);
+    }
+
+    const int type = socket_type (handle);
+    if (type == ZLINK_CORE_SOCKET_DEALER || type == ZLINK_CORE_SOCKET_ROUTER) {
+        std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+          state =
+            zlink::socket_reqrep_internal::find_or_create_request_reply_state (
+              handle);
+        if (!state
+            || zlink::socket_reqrep_internal::ensure_completion_queue_ready (
+                 state)
+                 != 0
+            || poller_add_registration (
+                 poller,
+                 zlink::socket_reqrep_internal::completion_signal_socket (state),
+                 NULL, ZLINK_POLLIN, socket_,
+                 poller_subject_socket_request_completion)
+                 != 0) {
+            const int err = errno;
+            (void) poller_remove_all_registrations_for_subject (poller, socket_);
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+    }
+
+    if (type == ZLINK_CORE_SOCKET_ROUTER) {
+        std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+          state = zlink::spot_reqrep_internal::find_or_create_router_state (
+            socket_);
+        if (!state
+            || zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (
+                 state)
+                 != 0
+            || poller_add_registration (
+                 poller,
+                 zlink::spot_reqrep_internal::router_completion_signal_socket (
+                   state),
+                 NULL, ZLINK_POLLIN, socket_,
+                 poller_subject_router_spot_request_completion)
+                 != 0) {
+            const int err = errno;
+            (void) poller_remove_all_registrations_for_subject (poller, socket_);
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+    }
+
+    return ZLINK_CONFIG_OK;
 }
 
 zlink_config_result_t zlink_poller_modify (void *poller_,

@@ -24,6 +24,7 @@ const {
   POLLOUT,
   applySocketPolicy,
   applyContextPolicy,
+  createSocketEventWaiter,
   recvNoWait,
   resolveMultiLatencySampleCap,
   subscribeNoWait,
@@ -52,11 +53,14 @@ async function main() {
   applyContextPolicy(ctx, 'client', 'MULTI_SPOT_REQREP');
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
+  const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+  const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
   const routers = [];
   const payloads = [];
   const waiting = [];
   const sendPending = [];
   const poller = new zlink.Poller();
+  let rl = null;
 
   try {
     applySocketPolicy(controlPub);
@@ -84,19 +88,25 @@ async function main() {
     while (Date.now() < stabilizationDeadline) {
       await sleepImmediate();
     }
-    while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
-      await sleepImmediate();
+    for (;;) {
+      if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
+        break;
+      }
+      await controlPubWaiter.wait(POLLOUT);
     }
     const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
     while (Date.now() < controlSettleDeadline) {
       await sleepImmediate();
     }
-    while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`READY_COUNT,${options.msgSize},${routers.length}`))) {
-      await sleepImmediate();
+    for (;;) {
+      if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`READY_COUNT,${options.msgSize},${routers.length}`))) {
+        break;
+      }
+      await controlPubWaiter.wait(POLLOUT);
     }
     console.log(`CLIENT_READY,${options.msgSize}`);
 
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     let startRequested = false;
     let startBroadcast = false;
     (async () => {
@@ -108,17 +118,21 @@ async function main() {
     })();
 
     while (!(startRequested && startBroadcast)) {
+      let drained = false;
       while (true) {
         const received = subscribeNoWait(controlSub);
         if (!received) {
           break;
         }
+        drained = true;
         const payloadText = received.parts[0].data().toString('utf8');
         if (payloadText === `START,${options.msgSize}`) {
           startBroadcast = true;
         }
       }
-      await sleepImmediate();
+      if (!(startRequested && startBroadcast) && !drained) {
+        await controlSubWaiter.wait(POLLIN);
+      }
     }
 
     const runId = createRunId(1);
@@ -214,7 +228,10 @@ async function main() {
       console.log(metricLine);
     }
   } finally {
+    rl?.close();
     poller.close();
+    controlSubWaiter.close();
+    controlPubWaiter.close();
     controlSub.close();
     controlPub.close();
     for (const router of routers) {

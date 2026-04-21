@@ -2,7 +2,6 @@
 
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
-
 #include <string>
 #include <chrono>
 #include <condition_variable>
@@ -24,10 +23,40 @@ struct reply_probe_t
     zlink_request_result_t result;
     size_t part_count;
     std::string payload;
+    void *progress_handle;
 
     reply_probe_t () : done (false),
                        result (ZLINK_REQUEST_PROTOCOL_ERROR),
-                       part_count (0)
+                       part_count (0),
+                       progress_handle (NULL)
+    {
+    }
+};
+
+struct router_recv_probe_t
+{
+    zlink_recv_result_t recv_rc;
+    int recv_errno;
+    bool source_rid_present;
+    bool source_spot_rid_present;
+    size_t source_spot_rid_size;
+    uint64_t request_seq;
+    size_t part_count;
+    std::string source_rid;
+    std::string payload;
+    zlink_submit_result_t reply_rc;
+    int reply_errno;
+
+    router_recv_probe_t () :
+        recv_rc (ZLINK_RECV_INTERNAL_ERROR),
+        recv_errno (0),
+        source_rid_present (false),
+        source_spot_rid_present (false),
+        source_spot_rid_size (0),
+        request_seq (0),
+        part_count (0),
+        reply_rc (ZLINK_SUBMIT_INTERNAL_ERROR),
+        reply_errno (0)
     {
     }
 };
@@ -48,10 +77,51 @@ void init_string_part (zlink_msg_t *part_, const char *text_)
 
 bool wait_for_reply (reply_probe_t *probe_)
 {
-    std::unique_lock<std::mutex> lock (probe_->mutex);
-    return probe_->cv.wait_for (
-      lock, std::chrono::milliseconds (SETTLE_TIME * 20),
-      [probe_]() { return probe_->done; });
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (SETTLE_TIME * 20);
+
+    if (!probe_->progress_handle) {
+        std::unique_lock<std::mutex> lock (probe_->mutex);
+        return probe_->cv.wait_until (
+          lock, deadline, [probe_]() { return probe_->done; });
+    }
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        {
+            std::lock_guard<std::mutex> lock (probe_->mutex);
+            if (probe_->done)
+                return true;
+        }
+
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_msg_t part;
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        zlink_msg_init (&part);
+        const zlink_recv_result_t rc = zlink_recv_part (
+          probe_->progress_handle, &source_rid, &part, &has_more,
+          ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc == ZLINK_RECV_OK) {
+            zlink_msg_close (&part);
+            while (has_more == ZLINK_PART_MORE) {
+                zlink_msg_init (&part);
+                if (zlink_recv_part (probe_->progress_handle, &source_rid,
+                                     &part, &has_more,
+                                     ZLINK_RECV_FLAGS_DONTWAIT)
+                    != ZLINK_RECV_OK) {
+                    zlink_msg_close (&part);
+                    break;
+                }
+                zlink_msg_close (&part);
+            }
+        } else {
+            zlink_msg_close (&part);
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+
+    std::lock_guard<std::mutex> lock (probe_->mutex);
+    return probe_->done;
 }
 
 void capture_reply (zlink_request_result_t result_,
@@ -107,45 +177,70 @@ void assert_dealer_request_visible_through_router_recv (bool prime_recv_plane_)
     zlink_msg_init (&request_part);
     init_string_part (&request_part, "dealer-request-recv");
 
-    std::future<void> router_done = std::async (
+    std::future<router_recv_probe_t> router_done = std::async (
       std::launch::async, [router] () {
+          router_recv_probe_t result;
           const zlink_routing_id_t *source_rid = NULL;
           const zlink_routing_id_t *source_spot_rid = NULL;
           uint64_t request_seq = 0;
           zlink_msg_t *parts = NULL;
           size_t part_count = 0;
-          TEST_ASSERT_SUCCESS_ERRNO (
-            zlink_router_recv (
-              router, &source_rid, &source_spot_rid, &request_seq, &parts,
-              &part_count, 0));
-
-          TEST_ASSERT_NOT_NULL (source_rid);
-          TEST_ASSERT_NOT_NULL (source_spot_rid);
-          TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
-          TEST_ASSERT_TRUE (request_seq != 0);
-          TEST_ASSERT_EQUAL_UINT64 (1, part_count);
-          TEST_ASSERT_EQUAL_STRING_LEN (
-            "dealer-recv", reinterpret_cast<const char *> (source_rid->data),
-            source_rid->size);
-          const std::string request_payload = msg_to_string (&parts[0]);
-          TEST_ASSERT_EQUAL_STRING_LEN (
-            "dealer-request-recv", request_payload.c_str (),
-            request_payload.size ());
-          zlink_multipart_close (parts, part_count);
+          result.recv_rc = zlink_router_recv (
+            router, &source_rid, &source_spot_rid, &request_seq, &parts,
+            &part_count, 0);
+          result.recv_errno = zlink_errno ();
+          result.source_rid_present = source_rid != NULL;
+          result.source_spot_rid_present = source_spot_rid != NULL;
+          result.source_spot_rid_size =
+            source_spot_rid ? source_spot_rid->size : 0;
+          result.request_seq = request_seq;
+          result.part_count = part_count;
+          if (source_rid) {
+              result.source_rid.assign (
+                reinterpret_cast<const char *> (source_rid->data),
+                source_rid->size);
+          }
+          if (parts && part_count > 0)
+              result.payload = msg_to_string (&parts[0]);
 
           zlink_msg_t reply_part;
           zlink_msg_init (&reply_part);
           init_string_part (&reply_part, "router-reply-recv");
-          TEST_ASSERT_SUCCESS_ERRNO (
-            zlink_router_reply (router, source_rid, request_seq, &reply_part,
-                                1));
+          if (result.recv_rc == ZLINK_RECV_OK && source_rid
+              && request_seq != 0) {
+              result.reply_rc =
+                zlink_router_reply (router, source_rid, request_seq,
+                                    &reply_part, 1);
+              result.reply_errno = zlink_errno ();
+          } else {
+              zlink_msg_close (&reply_part);
+          }
+          if (parts)
+              zlink_multipart_close (parts, part_count);
+          return result;
       });
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
+    reply_probe.progress_handle = dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
     TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
-    router_done.get ();
+    const router_recv_probe_t router_result = router_done.get ();
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, router_result.recv_rc);
+    TEST_ASSERT_TRUE (router_result.source_rid_present);
+    TEST_ASSERT_TRUE (router_result.source_spot_rid_present);
+    TEST_ASSERT_EQUAL_UINT64 (0, router_result.source_spot_rid_size);
+    TEST_ASSERT_TRUE (router_result.request_seq != 0);
+    TEST_ASSERT_EQUAL_UINT64 (1, router_result.part_count);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "dealer-recv", router_result.source_rid.c_str (),
+      router_result.source_rid.size ());
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      "dealer-request-recv", router_result.payload.c_str (),
+      router_result.payload.size ());
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, router_result.reply_rc);
 
     {
         std::lock_guard<std::mutex> lock (reply_probe.mutex);
@@ -191,6 +286,8 @@ void test_dealer_request_is_visible_through_nonblocking_router_recv_polling ()
     init_string_part (&request_part, "dealer-request-poll");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
+    reply_probe.progress_handle = dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
 
@@ -270,6 +367,8 @@ void test_dealer_request_is_visible_through_first_blocking_router_recv ()
     init_string_part (&request_part, "dealer-request-block");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
+    reply_probe.progress_handle = dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
 
@@ -336,6 +435,7 @@ void test_dealer_request_is_visible_through_router_recv_over_tcp ()
     init_string_part (&request_part, "dealer-request-recv-tcp");
 
     reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe,
       ZLINK_SEND_FLAGS_NONE, 5000));

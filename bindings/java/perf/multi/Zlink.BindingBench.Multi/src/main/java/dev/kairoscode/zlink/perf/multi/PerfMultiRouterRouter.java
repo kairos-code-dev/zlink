@@ -8,6 +8,7 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
@@ -75,7 +76,8 @@ final class PerfMultiRouterRouter {
                                 pendingReplies.addLast(pending);
                                 continue;
                             }
-                            if (!server.trySend(pending.routingId(), pending.payload())) {
+                            if (!server.send(pending.routingId(), pending.payload(),
+                                SendFlags.DONT_WAIT)) {
                                 pendingReplies.addLast(pending);
                                 continue;
                             }
@@ -95,9 +97,7 @@ final class PerfMultiRouterRouter {
         PerfMultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
             Context ctx = PerfUtil.newContext(config);
             try (RouterSocket client = new RouterSocket(ctx);
-                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
-                 Message request = PerfUtil.payloadTemplate(config.size());
-                 Message stop = PerfUtil.payloadTemplate(config.size())) {
+                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY)) {
                 client.setRoutingId(RoutingId.fromBytes(
                     ("PERF_CLIENT_" + index).getBytes(StandardCharsets.UTF_8)));
                 client.options().connectRoutingId(SERVER_ID);
@@ -118,9 +118,10 @@ final class PerfMultiRouterRouter {
                     List.of(client), PollEventType.POLLIN.getValue())) {
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
-                        PerfUtil.writePayload(request, config.size(),
-                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                        sendUntilSent(client, pollSet, request);
+                        try (Message request = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            sendUntilSent(client, pollSet, request, activeEnd);
+                        }
                         if (!awaitReadable(pollSet, activeEnd)) {
                             break;
                         }
@@ -139,9 +140,11 @@ final class PerfMultiRouterRouter {
                             }
                         }
                     }
-                    PerfUtil.writePayload(stop, config.size(),
-                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                    sendUntilSent(client, pollSet, stop);
+                    try (Message stop = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        sendUntilSent(client, pollSet, stop,
+                            System.nanoTime() + Duration.ofSeconds(5).toNanos());
+                    }
                 }
             }
         }, "multi-rr-client-" + index), config.durationSeconds());
@@ -149,21 +152,29 @@ final class PerfMultiRouterRouter {
     }
 
     private static void sendUntilSent(RouterSocket client, PerfSocketPollSet pollSet,
-                                      Message part) {
+                                      Message part,
+                                      long deadlineNs) {
         while (true) {
-            if (client.trySend(SERVER_ID, part)) {
+            if (client.send(SERVER_ID, part, SendFlags.DONT_WAIT)) {
                 return;
             }
+            if (System.nanoTime() >= deadlineNs) {
+                throw new IllegalStateException("router/router send timed out");
+            }
+            long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
             pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
-            pollSet.poll(-1);
+            pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
+                Duration.ofNanos(remainingNs).toMillis())));
         }
     }
 
     private static boolean awaitReadable(PerfSocketPollSet pollSet, long deadlineNs) {
         while (System.nanoTime() < deadlineNs) {
             try {
+                long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
                 pollSet.setEvents(0, PollEventType.POLLIN.getValue());
-                if (pollSet.poll(5) > 0) {
+                if (pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
+                    Duration.ofNanos(remainingNs).toMillis()))) > 0) {
                     return true;
                 }
             } catch (dev.kairoscode.zlink.ZlinkException ex) {
@@ -182,7 +193,8 @@ final class PerfMultiRouterRouter {
             if (pending == null) {
                 return;
             }
-            if (!server.trySend(pending.routingId(), pending.payload())) {
+            if (!server.send(pending.routingId(), pending.payload(),
+                SendFlags.DONT_WAIT)) {
                 return;
             }
             pendingReplies.removeFirst();

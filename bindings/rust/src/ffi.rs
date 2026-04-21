@@ -904,6 +904,7 @@ unsafe extern "C" {
         handler: Option<zlink_reply_handler_fn>,
         userdata: *mut c_void,
     ) -> c_int;
+    pub fn zlink_socket_request_progress_internal(socket: *mut c_void) -> c_int;
     pub fn zlink_router_reply_part(
         router: *mut c_void,
         peer_rid: *const zlink_routing_id_t,
@@ -1142,6 +1143,7 @@ unsafe extern "C" {
         part_flag: zlink_part_flag_t,
         timeout_ms: u32,
     ) -> c_int;
+    pub fn zlink_spot_request_progress_internal(spot: *mut c_void) -> c_int;
     pub fn zlink_spot_publish_part(
         spot: *mut c_void,
         service_name: *const c_char,

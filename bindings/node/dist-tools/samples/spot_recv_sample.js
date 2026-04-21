@@ -45,7 +45,9 @@ async function main() {
             publisher.publish(SERVICE_NAME, topic, Buffer.from(sent));
             try {
                 received = subscriber.subscribe(zlink.RecvFlags.DontWait);
-                break;
+                if (received) {
+                    break;
+                }
             }
             catch (error) {
                 if (!(error instanceof zlink.RecvError)) {

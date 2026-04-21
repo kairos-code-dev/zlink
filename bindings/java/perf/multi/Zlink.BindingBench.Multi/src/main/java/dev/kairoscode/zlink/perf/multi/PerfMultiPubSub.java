@@ -25,9 +25,7 @@ final class PerfMultiPubSub {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
-             PubSocket pub = new PubSocket(ctx);
-             Message active = PerfUtil.payloadTemplate(config.size());
-             Message cooldown = PerfUtil.payloadTemplate(config.size())) {
+             PubSocket pub = new PubSocket(ctx)) {
             PerfUtil.applySocketOptions(pub, config);
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
@@ -35,14 +33,16 @@ final class PerfMultiPubSub {
             PerfControl.awaitStart(config.size(), "pubsub server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
-                PerfUtil.writePayload(active, config.size(),
-                    (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                pub.publish(TOPIC, active);
+                try (Message active = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                    pub.publish(TOPIC, active);
+                }
             }
             for (int i = 0; i < Math.max(3, config.clients() * 3); i++) {
-                PerfUtil.writePayload(cooldown, config.size(),
-                    (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
-                pub.publish(TOPIC, cooldown);
+                try (Message cooldown = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                    pub.publish(TOPIC, cooldown);
+                }
             }
             return PerfUtil.Result.silent(config);
         }
@@ -81,16 +81,10 @@ final class PerfMultiPubSub {
                             continue;
                         }
                         while (true) {
-                            TopicMessage received;
-                            try {
-                                received = sub.subscribe(RecvFlags.DONT_WAIT);
-                            } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                                if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
+                            try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
+                                if (received == null) {
                                     break;
                                 }
-                                throw ex;
-                            }
-                            try (received) {
                                 PerfUtil.Header header = PerfUtil.decodeHeader(
                                     received.firstPart(), config.size());
                                 if (header == null) {

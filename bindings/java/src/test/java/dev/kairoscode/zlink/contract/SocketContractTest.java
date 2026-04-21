@@ -346,9 +346,10 @@ public class SocketContractTest {
       throws Exception {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket routerSocket = new RouterSocket(ctx);
-             DealerSocket dealerSocket = new DealerSocket(ctx)) {
+        Context ctx = new Context();
+        RouterSocket routerSocket = new RouterSocket(ctx);
+        DealerSocket dealerSocket = new DealerSocket(ctx);
+        try {
             String endpoint = TestSupport.inprocEndpoint("request-reply-flags");
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
@@ -370,6 +371,19 @@ public class SocketContractTest {
             ExecutionException completion = assertThrows(ExecutionException.class,
                 () -> future.get(1, TimeUnit.SECONDS));
             assertTrue(completion.getCause() instanceof dev.kairoscode.zlink.RequestException);
+        } finally {
+            try {
+                dealerSocket.close();
+            } catch (RuntimeException ignored) {
+            }
+            try {
+                routerSocket.close();
+            } catch (RuntimeException ignored) {
+            }
+            try {
+                ctx.shutdown();
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 
@@ -493,18 +507,18 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(PairSocket.class, "sendNoWaitResult", Message.class));
             assertFalse(hasPublicMethod(PairSocket.class, "recvNoWait"));
             assertFalse(hasPublicMethod(MonitorSocket.class, "recvNoWait"));
-            assertTrue(hasPublicMethod(PairSocket.class, "trySend", Message.class));
-            assertTrue(hasPublicMethod(PairSocket.class, "trySend", List.class));
-            assertTrue(hasPublicMethod(PairSocket.class, "tryRecv"));
-            assertTrue(hasPublicMethod(DealerSocket.class, "trySend", Message.class));
-            assertTrue(hasPublicMethod(DealerSocket.class, "trySend", List.class));
-            assertTrue(hasPublicMethod(DealerSocket.class, "tryRecv"));
-            assertTrue(hasPublicMethod(RouterSocket.class, "trySend", RoutingId.class, Message.class));
-            assertTrue(hasPublicMethod(RouterSocket.class, "trySend", RoutingId.class, List.class));
-            assertTrue(hasPublicMethod(RouterSocket.class, "tryRecv"));
-            assertTrue(hasPublicMethod(StreamSocket.class, "trySend", int.class, Message.class));
-            assertTrue(hasPublicMethod(StreamSocket.class, "trySend", RoutingId.class, Message.class));
-            assertTrue(hasPublicMethod(StreamSocket.class, "tryRecv"));
+            assertFalse(hasPublicMethod(PairSocket.class, "trySend", Message.class));
+            assertFalse(hasPublicMethod(PairSocket.class, "trySend", List.class));
+            assertFalse(hasPublicMethod(PairSocket.class, "tryRecv"));
+            assertFalse(hasPublicMethod(DealerSocket.class, "trySend", Message.class));
+            assertFalse(hasPublicMethod(DealerSocket.class, "trySend", List.class));
+            assertFalse(hasPublicMethod(DealerSocket.class, "tryRecv"));
+            assertFalse(hasPublicMethod(RouterSocket.class, "trySend", RoutingId.class, Message.class));
+            assertFalse(hasPublicMethod(RouterSocket.class, "trySend", RoutingId.class, List.class));
+            assertFalse(hasPublicMethod(RouterSocket.class, "tryRecv"));
+            assertFalse(hasPublicMethod(StreamSocket.class, "trySend", int.class, Message.class));
+            assertFalse(hasPublicMethod(StreamSocket.class, "trySend", RoutingId.class, Message.class));
+            assertFalse(hasPublicMethod(StreamSocket.class, "tryRecv"));
             assertFalse(hasPublicMethod(PubSocket.class, "publishNoWaitResult",
                 String.class, Message.class));
             assertFalse(hasPublicMethod(SubSocket.class, "subscribeNoWait"));
@@ -549,7 +563,7 @@ public class SocketContractTest {
     }
 
     @Test
-    public void trySendAndTryRecvUseCanonicalNonBlockingSurface() {
+    public void sendAndRecvUseCanonicalNonBlockingSurface() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
@@ -559,11 +573,11 @@ public class SocketContractTest {
             server.bind(endpoint);
             client.connect(endpoint);
 
-            assertNull(server.tryRecv());
+            assertNull(server.recv(RecvFlags.DONT_WAIT));
             try (Message outbound = Message.copyOfUtf8("pair-try")) {
-                assertTrue(client.trySend(outbound));
+                assertTrue(client.send(outbound, SendFlags.DONT_WAIT));
             }
-            try (var received = server.tryRecv()) {
+            try (var received = server.recv(RecvFlags.DONT_WAIT)) {
                 assertNotNull(received);
                 assertEquals(List.of("pair-try"),
                     List.of(received.singlePartOrThrow().toUtf8String()));

@@ -422,6 +422,28 @@ zlink_config_result_t zlink_set_tls_server (void *handle_,
                                            const char *key_,
                                            int require_client_cert_)
 {
+    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+        if (!cert_ || !key_) {
+            errno = EFAULT;
+            return ZLINK_CONFIG_INVALID_HANDLE;
+        }
+
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CERT, cert_,
+                                strlen (cert_))
+              != 0
+            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_KEY, key_,
+                                   strlen (key_))
+                 != 0
+            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT,
+                                   &require_client_cert_,
+                                   sizeof (require_client_cert_))
+                 != 0) {
+            return zlink::config_result_internal::from_rc (-1);
+        }
+
+        return ZLINK_CONFIG_OK;
+    }
+    errno = 0;
     return zlink::config_result_internal::from_rc (zlink_service_set_tls_server (
       handle_, cert_, key_, require_client_cert_));
 }
@@ -431,6 +453,28 @@ zlink_config_result_t zlink_set_tls_client (void *handle_,
                                             const char *hostname_,
                                             int trust_system_)
 {
+    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+        if (!ca_cert_ || !hostname_) {
+            errno = EFAULT;
+            return ZLINK_CONFIG_INVALID_HANDLE;
+        }
+
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_,
+                                strlen (ca_cert_))
+              != 0
+            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_HOSTNAME, hostname_,
+                                   strlen (hostname_))
+                 != 0
+            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM,
+                                   &trust_system_,
+                                   sizeof (trust_system_))
+                 != 0) {
+            return zlink::config_result_internal::from_rc (-1);
+        }
+
+        return ZLINK_CONFIG_OK;
+    }
+    errno = 0;
     return zlink::config_result_internal::from_rc (zlink_service_set_tls_client (
       handle_, ca_cert_, hostname_, trust_system_));
 }

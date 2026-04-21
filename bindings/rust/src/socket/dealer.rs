@@ -13,6 +13,7 @@ use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, DealerSocketOptions};
+use crate::request_progress::RequestProgressGuard;
 
 use super::{
     SendHandle, SocketInner, check_send_result, impl_attach_discovery, impl_base_socket,
@@ -25,11 +26,13 @@ type RequestCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send
 
 struct BlockingRequestState {
     tx: mpsc::Sender<Result<Vec<Message>, RequestError>>,
+    _progress: RequestProgressGuard,
 }
 
 struct CallbackRequestState {
     callback: Option<RequestCallback>,
     native_parts: Vec<ffi::zlink_msg_t>,
+    _progress: RequestProgressGuard,
 }
 
 /// DEALER socket – asynchronous request/reply pattern (client side).
@@ -85,7 +88,10 @@ impl DealerSocket {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| RequestError::new(RequestResult::ProtocolError, err.internal_errno()))?;
         let (tx, rx) = mpsc::channel();
-        let state_ptr = Box::into_raw(Box::new(BlockingRequestState { tx }));
+        let state_ptr = Box::into_raw(Box::new(BlockingRequestState {
+            tx,
+            _progress: RequestProgressGuard::attach_socket(self.inner.handle),
+        }));
         let submit_result = submit_dealer_request(
             self.inner.handle,
             messages,
@@ -138,6 +144,7 @@ impl DealerSocket {
         let mut state = Box::new(CallbackRequestState {
             callback: Some(Box::new(callback)),
             native_parts,
+            _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
         let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
         let userdata = (&mut *state as *mut CallbackRequestState).cast();
@@ -235,6 +242,7 @@ impl DealerSocket {
         let mut state = Box::new(CallbackRequestState {
             callback: Some(Box::new(callback)),
             native_parts,
+            _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
         let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
         let userdata = (&mut *state as *mut CallbackRequestState).cast();

@@ -169,13 +169,9 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
-            {
-                return socket.Recv(RecvFlags.DontWait);
-            }
-            catch (ZlinkRecvException)
-            {
-            }
+            Received? received = socket.Recv(RecvFlags.DontWait);
+            if (received != null)
+                return received;
             Thread.Sleep(10);
         }
         throw new TimeoutException("receive timeout");
@@ -221,9 +217,9 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Subscribed? subscribed = socket.Subscribe(RecvFlags.DontWait);
+            if (subscribed != null)
             {
-                Subscribed subscribed = socket.Subscribe(RecvFlags.DontWait);
                 topic = subscribed.Topic;
                 try
                 {
@@ -237,9 +233,6 @@ internal static class CoreTestSupport
                 {
                     DisposeAll(subscribed.Parts);
                 }
-            }
-            catch (ZlinkRecvException)
-            {
             }
             Thread.Sleep(10);
         }
@@ -305,17 +298,13 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            Received received;
-            try
-            {
-                received = socket.Recv(RecvFlags.DontWait);
-            }
-            catch (ZlinkRecvException)
+            Received? received = socket.Recv(RecvFlags.DontWait);
+            if (received == null)
             {
                 lastPart = Array.Empty<byte>();
                 return false;
             }
-            IReadOnlyList<Message> parts = received!.Parts;
+            IReadOnlyList<Message> parts = received.Parts;
             if (parts.Count == 0)
             {
                 lastPart = Array.Empty<byte>();
@@ -345,17 +334,13 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            Received received;
-            try
-            {
-                received = socket.Recv(RecvFlags.DontWait);
-            }
-            catch (ZlinkRecvException)
+            Received? received = socket.Recv(RecvFlags.DontWait);
+            if (received == null)
             {
                 lastPart = Array.Empty<byte>();
                 return false;
             }
-            IReadOnlyList<Message> parts = received!.Parts;
+            IReadOnlyList<Message> parts = received.Parts;
             if (parts.Count == 0)
             {
                 lastPart = Array.Empty<byte>();
@@ -384,14 +369,11 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Received? received = socket.Recv(RecvFlags.DontWait);
+            if (received != null)
             {
-                Received received = socket.Recv(RecvFlags.DontWait);
                 DisposeAll(received.Parts);
                 return false;
-            }
-            catch (ZlinkRecvException)
-            {
             }
             Thread.Sleep(5);
         }
@@ -404,14 +386,11 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Subscribed? subscribed = socket.Subscribe(RecvFlags.DontWait);
+            if (subscribed != null)
             {
-                Subscribed subscribed = socket.Subscribe(RecvFlags.DontWait);
                 DisposeAll(subscribed.Parts);
                 return false;
-            }
-            catch (ZlinkRecvException)
-            {
             }
             Thread.Sleep(5);
         }

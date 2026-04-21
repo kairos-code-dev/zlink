@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Zlink;
 
 internal static partial class PerfRunner
@@ -186,5 +187,96 @@ internal static partial class PerfRunner
     {
         foreach (T resource in resources)
             TryDisposeQuietly(resource);
+    }
+
+    internal sealed class RunnerControlState : IDisposable
+    {
+        private readonly int _msgSize;
+        private readonly bool _requirePhaseActive;
+        private readonly ManualResetEventSlim _startSignal = new(false);
+        private readonly Thread _readerThread;
+        private int _startRequested;
+        private int _phaseActiveRequested;
+        private int _stopRequested;
+
+        internal RunnerControlState(int msgSize, bool requirePhaseActive = false)
+        {
+            _msgSize = msgSize;
+            _requirePhaseActive = requirePhaseActive;
+            if (!requirePhaseActive)
+                _phaseActiveRequested = 1;
+
+            _readerThread = new Thread(ReadLoop)
+            {
+                IsBackground = true,
+            };
+            _readerThread.Start();
+        }
+
+        internal bool StopRequested => Volatile.Read(ref _stopRequested) != 0;
+
+        internal bool WaitForStart(int timeoutMs)
+        {
+            if (_startSignal.IsSet)
+                return true;
+
+            int boundedTimeoutMs = Math.Max(1, timeoutMs);
+            _startSignal.Wait(boundedTimeoutMs);
+            return _startSignal.IsSet && !StopRequested;
+        }
+
+        public void Dispose()
+        {
+            _startSignal.Dispose();
+        }
+
+        private void ReadLoop()
+        {
+            string expectedStart = $"START,{_msgSize}";
+            string expectedPhaseActive = $"PHASE_ACTIVE,{_msgSize}";
+
+            while (true)
+            {
+                string? line = Console.ReadLine();
+                if (line == null)
+                {
+                    Volatile.Write(ref _stopRequested, 1);
+                    _startSignal.Set();
+                    return;
+                }
+
+                string command = line.Trim();
+                if (string.IsNullOrEmpty(command))
+                    continue;
+
+                if (string.Equals(command, "STOP",
+                        StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(command, "QUIT",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    Volatile.Write(ref _stopRequested, 1);
+                    _startSignal.Set();
+                    return;
+                }
+
+                if (string.Equals(command, expectedStart,
+                        StringComparison.Ordinal))
+                {
+                    Volatile.Write(ref _startRequested, 1);
+                }
+                else if (_requirePhaseActive
+                         && string.Equals(command, expectedPhaseActive,
+                             StringComparison.Ordinal))
+                {
+                    Volatile.Write(ref _phaseActiveRequested, 1);
+                }
+
+                if (Volatile.Read(ref _startRequested) != 0
+                    && Volatile.Read(ref _phaseActiveRequested) != 0)
+                {
+                    _startSignal.Set();
+                }
+            }
+        }
     }
 }

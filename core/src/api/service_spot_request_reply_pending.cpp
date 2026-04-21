@@ -4,7 +4,11 @@
 
 #include <memory>
 
+#include "api/socket_api_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_subject_access.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 
 namespace
@@ -60,8 +64,8 @@ void on_spot_request_timeout (void *userdata_)
     }
 
     if (found)
-        zlink::request_reply::complete_reply_callback (
-          pending.handler, ETIMEDOUT, NULL, 0, pending.userdata);
+        (void) zlink::spot_reqrep_internal::queue_spot_reply_completion (
+          ctx->state, pending.handler, pending.userdata, ETIMEDOUT, NULL, 0);
 }
 
 void on_router_spot_request_timeout (void *userdata_)
@@ -86,9 +90,284 @@ void on_router_spot_request_timeout (void *userdata_)
     }
 
     if (found)
-        zlink::request_reply::complete_reply_callback (
-          pending.handler, ETIMEDOUT, NULL, 0, pending.userdata);
+        (void) zlink::spot_reqrep_internal::queue_router_reply_completion (
+          ctx->state, pending.handler, pending.userdata, ETIMEDOUT, NULL, 0);
 }
+}
+
+namespace
+{
+zlink::ctx_t *resolve_spot_state_ctx (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return NULL;
+
+    spot_handle_t *spot = as_spot_handle (state_->owner);
+    if (!spot || !spot->node) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return zlink::spot_node_access_t::ctx (spot->node);
+}
+
+zlink::ctx_t *resolve_router_state_ctx (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return NULL;
+
+    socket_handle_t handle = as_socket_handle (state_->owner);
+    if (!handle.socket) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return handle.socket->get_ctx ();
+}
+}
+
+int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    zlink::ctx_t *ctx = resolve_spot_state_ctx (state_);
+    if (!ctx)
+        return -1;
+    return zlink::request_completion::ensure_signal_ready (
+      &state_->completion, ctx, "zlink.spot.reqrep.completion");
+}
+
+int zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_)
+{
+    zlink::ctx_t *ctx = resolve_router_state_ctx (state_);
+    if (!ctx)
+        return -1;
+    return zlink::request_completion::ensure_signal_ready (
+      &state_->completion, ctx, "zlink.router.spot.reqrep.completion");
+}
+
+int zlink::spot_reqrep_internal::queue_spot_reply_completion (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int errnum_,
+  zlink_msg_t *parts_,
+  size_t part_count_)
+{
+    zlink::ctx_t *ctx = resolve_spot_state_ctx (state_);
+    if (!ctx)
+        return -1;
+    return zlink::request_completion::enqueue (
+      &state_->completion, ctx, "zlink.spot.reqrep.completion", handler_,
+      userdata_, errnum_, parts_, part_count_);
+}
+
+int zlink::spot_reqrep_internal::queue_router_reply_completion (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int errnum_,
+  zlink_msg_t *parts_,
+  size_t part_count_)
+{
+    zlink::ctx_t *ctx = resolve_router_state_ctx (state_);
+    if (!ctx)
+        return -1;
+    return zlink::request_completion::enqueue (
+      &state_->completion, ctx, "zlink.router.spot.reqrep.completion",
+      handler_, userdata_, errnum_, parts_, part_count_);
+}
+
+int zlink::spot_reqrep_internal::drain_spot_reply_completions (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return zlink::request_completion::drain (&state_->completion,
+                                             owner_handle_);
+}
+
+int zlink::spot_reqrep_internal::drain_router_reply_completions (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return zlink::request_completion::drain (&state_->completion,
+                                             owner_handle_);
+}
+
+bool zlink::spot_reqrep_internal::has_spot_reply_completions (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::has_pending (&state_->completion)
+             : false;
+}
+
+bool zlink::spot_reqrep_internal::has_router_reply_completions (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::has_pending (&state_->completion)
+             : false;
+}
+
+zlink::socket_base_t *zlink::spot_reqrep_internal::spot_completion_signal_socket (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::signal_socket (&state_->completion)
+             : NULL;
+}
+
+zlink::socket_base_t *
+zlink::spot_reqrep_internal::router_completion_signal_socket (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::signal_socket (&state_->completion)
+             : NULL;
+}
+
+void zlink::spot_reqrep_internal::claim_spot_completion_owner (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return;
+    zlink::request_completion::claim_owner_thread (&state_->completion);
+}
+
+void zlink::spot_reqrep_internal::claim_router_completion_owner (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return;
+    zlink::request_completion::claim_owner_thread (&state_->completion);
+}
+
+bool zlink::spot_reqrep_internal::current_thread_is_spot_completion_owner (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::current_thread_is_owner (
+                 &state_->completion)
+             : false;
+}
+
+bool zlink::spot_reqrep_internal::current_thread_is_router_completion_owner (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_)
+{
+    return state_
+             ? zlink::request_completion::current_thread_is_owner (
+                 &state_->completion)
+             : false;
+}
+
+bool zlink::spot_reqrep_internal::in_spot_request_completion_callback (
+  void *spot_)
+{
+    return zlink::request_completion::in_request_completion_callback (spot_);
+}
+
+bool zlink::spot_reqrep_internal::has_pending_spot_request_work (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return false;
+    if (has_spot_reply_completions (state_))
+        return true;
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    return !state_->pending_replies.empty ();
+}
+
+bool zlink::spot_reqrep_internal::has_pending_router_spot_request_work (
+  const std::shared_ptr<router_spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return false;
+    if (has_router_reply_completions (state_))
+        return true;
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    return !state_->pending_replies.empty ();
+}
+
+int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
+  void *spot_)
+{
+    std::shared_ptr<spot_request_reply_state_t> state = try_find_spot_state (spot_);
+    if (!state)
+        return 0;
+
+    std::vector<pending_reply_t> pending;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        for (std::unordered_map<pending_spot_key_t,
+                                pending_reply_t,
+                                pending_spot_key_hash_t>::iterator it =
+               state->pending_replies.begin ();
+             it != state->pending_replies.end (); ++it) {
+            pending.push_back (it->second);
+        }
+        state->pending_replies.clear ();
+        state->pending_sequences.clear ();
+    }
+
+    for (size_t i = 0; i < pending.size (); ++i) {
+        zlink::request_timeout::cancel (pending[i].timeout_task);
+        if (queue_spot_reply_completion (state, pending[i].handler,
+                                         pending[i].userdata, ETERM, NULL, 0)
+            != 0) {
+            return -1;
+        }
+    }
+
+    return drain_spot_reply_completions (state, spot_);
+}
+
+int zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (
+  void *router_)
+{
+    socket_handle_t handle = as_socket_handle (router_);
+    if (!handle.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::shared_ptr<router_spot_request_reply_state_t> state =
+      std::static_pointer_cast<router_spot_request_reply_state_t> (
+        handle.socket->router_spot_request_reply_state ());
+    if (!state)
+        return 0;
+
+    std::vector<pending_reply_t> pending;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        for (std::unordered_map<uint64_t, pending_reply_t>::iterator it =
+               state->pending_replies.begin ();
+             it != state->pending_replies.end (); ++it) {
+            pending.push_back (it->second);
+        }
+        state->pending_replies.clear ();
+        state->pending_sequences.clear ();
+    }
+
+    for (size_t i = 0; i < pending.size (); ++i) {
+        zlink::request_timeout::cancel (pending[i].timeout_task);
+        if (queue_router_reply_completion (state, pending[i].handler,
+                                           pending[i].userdata, ETERM, NULL,
+                                           0)
+            != 0) {
+            return -1;
+        }
+    }
+
+    return drain_router_reply_completions (state, router_);
 }
 
 int zlink::spot_reqrep_internal::register_spot_pending_request (

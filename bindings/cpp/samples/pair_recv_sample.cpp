@@ -20,11 +20,12 @@ int main ()
     zlink::message_t outbound = detail::make_message (sent);
     client.send (outbound);
 
-    zlink::received_t inbound = server.recv ();
-    assert (inbound.parts ().size () == 1);
-    const std::string received = inbound.parts ()[0].to_string ();
+    std::optional<zlink::received_t> inbound = server.recv ();
+    assert (inbound.has_value ());
+    assert (inbound->parts ().size () == 1);
+    const std::string received = inbound->parts ()[0].to_string ();
     assert (received == detail::k_pair_payload);
-    inbound.close ();
+    inbound->close ();
     std::printf ("[pair/recv] send: \"%s\" → recv: \"%s\"\n",
                  sent.c_str (), received.c_str ());
     return 0;

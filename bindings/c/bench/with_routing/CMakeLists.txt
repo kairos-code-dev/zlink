@@ -12,11 +12,7 @@
 # 4. Run: ./core/bench/with_routing/run_benchmarks.sh --runs 3
 
 # --- zlink include ---
-if(EXISTS "${CMAKE_SOURCE_DIR}/core/include")
-    set(RC_ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
-else()
-    set(RC_ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
-endif()
+set(RC_ZLINK_INCLUDE_DIR "${ZLINK_CORE_DIR}/include")
 
 # --- libzmq (local dist inside libzmq/) ---
 set(RC_LIBZMQ_PLATFORM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/libzmq_dist/linux-x64")
@@ -57,16 +53,22 @@ option(ZLINK_BUILD_WITH_ROUTING_ZLINK_BENCHES
 if(EXISTS "${RC_ZLINK_INCLUDE_DIR}/zlink.h")
     if(ZLINK_BUILD_WITH_ROUTING_ZLINK_BENCHES)
         add_executable(bench_rc_zlink_server zlink/bench_zlink_router_server.cpp)
-        target_link_libraries(bench_rc_zlink_server PRIVATE libzlink Threads::Threads)
+        target_link_libraries(bench_rc_zlink_server PRIVATE ${ZLINK_C_CORE_TARGET} Threads::Threads)
         target_include_directories(bench_rc_zlink_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
         target_compile_options(bench_rc_zlink_server PRIVATE ${RC_BENCH_CXX_FLAGS})
         target_compile_features(bench_rc_zlink_server PRIVATE cxx_std_17)
+        set_target_properties(bench_rc_zlink_server PROPERTIES
+            BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
+            INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
 
         add_executable(bench_rc_zlink_client zlink/bench_zlink_router_client.cpp)
-        target_link_libraries(bench_rc_zlink_client PRIVATE libzlink Threads::Threads)
+        target_link_libraries(bench_rc_zlink_client PRIVATE ${ZLINK_C_CORE_TARGET} Threads::Threads)
         target_include_directories(bench_rc_zlink_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
         target_compile_options(bench_rc_zlink_client PRIVATE ${RC_BENCH_CXX_FLAGS})
         target_compile_features(bench_rc_zlink_client PRIVATE cxx_std_17)
+        set_target_properties(bench_rc_zlink_client PROPERTIES
+            BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
+            INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
     else()
         message(STATUS
                 "Skipping core/bench/with_routing zlink benches: they still rely on removed sync recv APIs under the direct-callback ABI.")

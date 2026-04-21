@@ -9,6 +9,9 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
+const SERVER_NODE_RID: &[u8] = b"perf-spot-reqrep-server-node";
+const SERVER_SPOT_RID: &[u8] = b"perf-spot-reqrep-server-spot";
+
 fn env_u64(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
@@ -32,27 +35,8 @@ fn tcp_addr(endpoint: &str) -> String {
         .to_string()
 }
 
-fn hex_value(ch: u8) -> u8 {
-    match ch {
-        b'0'..=b'9' => ch - b'0',
-        b'a'..=b'f' => ch - b'a' + 10,
-        b'A'..=b'F' => ch - b'A' + 10,
-        _ => panic!("invalid hex digit"),
-    }
-}
-
-fn decode_routing_id(hex: &str) -> RoutingId {
-    assert!(hex.len() % 2 == 0, "routing id hex length must be even");
-    let mut bytes = Vec::with_capacity(hex.len() / 2);
-    for pair in hex.as_bytes().chunks(2) {
-        bytes.push((hex_value(pair[0]) << 4) | hex_value(pair[1]));
-    }
-    RoutingId::from_bytes(&bytes)
-}
-
 enum ClientEvent {
     ReadySender(TcpStream),
-    RunnerConnected,
     RunnerStart,
     Started,
     Stop,
@@ -61,14 +45,13 @@ enum ClientEvent {
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
-    let mut endpoint_parts = args.endpoint.splitn(4, ',');
+    let mut endpoint_parts = args.endpoint.splitn(2, ',');
     let data_endpoint = endpoint_parts.next().expect("data endpoint");
     let control_endpoint = endpoint_parts.next().expect("control endpoint");
-    let node_rid_hex = endpoint_parts.next().expect("node rid");
-    let spot_rid_hex = endpoint_parts.next().expect("spot rid");
 
     let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
     let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
     let (event_tx, event_rx) = mpsc::channel::<ClientEvent>();
 
     let (listener, client_control_endpoint) = control_listener();
@@ -77,9 +60,12 @@ fn main() {
 
     {
         let event_tx = event_tx.clone();
+        let client_control_endpoint = client_control_endpoint.clone();
         thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept server control");
             stream.set_nodelay(true).ok();
+            println!("CONTROL_CONNECTED,{client_control_endpoint}");
+            io::stdout().flush().ok();
             let _ = event_tx.send(ClientEvent::ReadySender(stream));
         });
     }
@@ -91,9 +77,7 @@ fn main() {
             for line in stdin.lock().lines() {
                 let line = line.unwrap_or_default();
                 let text = line.trim();
-                if text.starts_with("CONTROL_CONNECTED,") {
-                    let _ = event_tx.send(ClientEvent::RunnerConnected);
-                } else if text == format!("START,{}", args.msg_size) {
+                if text == format!("START,{}", args.msg_size) {
                     let _ = event_tx.send(ClientEvent::RunnerStart);
                 } else if matches!(text, "STOP" | "QUIT") {
                     let _ = event_tx.send(ClientEvent::Stop);
@@ -119,8 +103,8 @@ fn main() {
         });
     }
 
-    let node_rid = decode_routing_id(node_rid_hex);
-    let spot_rid = decode_routing_id(spot_rid_hex);
+    let node_rid = RoutingId::from_bytes(SERVER_NODE_RID);
+    let spot_rid = RoutingId::from_bytes(SERVER_SPOT_RID);
     let ctx = common::perf_client_context();
     let request_timeout =
         Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms));
@@ -160,23 +144,21 @@ fn main() {
     }
 
     let mut ready_sender = None::<TcpStream>;
-    let mut runner_connected = false;
-    let ready_deadline = Instant::now() + Duration::from_secs(15);
+    let ready_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
     while Instant::now() < ready_deadline {
         let remaining = ready_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {
             Ok(ClientEvent::ReadySender(stream)) => ready_sender = Some(stream),
-            Ok(ClientEvent::RunnerConnected) => runner_connected = true,
             Ok(ClientEvent::Stop) => return,
             Ok(ClientEvent::RunnerStart | ClientEvent::Started) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => break,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        if runner_connected && ready_sender.is_some() {
+        if ready_sender.is_some() {
             break;
         }
     }
-    if !runner_connected || ready_sender.is_none() {
+    if ready_sender.is_none() {
         panic!("spot reqrep client control connection timeout");
     }
 
@@ -195,14 +177,14 @@ fn main() {
 
     let mut runner_start = false;
     let mut started = false;
-    let start_deadline = Instant::now() + Duration::from_secs(15);
+    let start_deadline = Instant::now() + ready_timeout;
     while Instant::now() < start_deadline {
         let remaining = start_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {
             Ok(ClientEvent::RunnerStart) => runner_start = true,
             Ok(ClientEvent::Started) => started = true,
             Ok(ClientEvent::Stop) => return,
-            Ok(ClientEvent::ReadySender(_) | ClientEvent::RunnerConnected) => {}
+            Ok(ClientEvent::ReadySender(_)) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => break,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }

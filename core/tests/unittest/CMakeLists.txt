@@ -31,9 +31,10 @@ if(WIN32)
   link_libraries(ws2_32.lib)
 endif()
 
-# Note: Using CMAKE_SOURCE_DIR instead of Zlink_SOURCE_DIR since project name is now zlink
-include_directories("${CMAKE_SOURCE_DIR}/core/include" "${CMAKE_SOURCE_DIR}/core/src" "${CMAKE_BINARY_DIR}")
-include_directories("${CMAKE_SOURCE_DIR}/core/external/unity")
+include_directories("${ZLINK_CORE_SOURCE_DIR}/include"
+                    "${ZLINK_CORE_SOURCE_DIR}/src"
+                    "${CMAKE_BINARY_DIR}")
+include_directories("${ZLINK_CORE_SOURCE_DIR}/external/unity")
 # Add Boost headers for ASIO poller
 include_directories("${BUNDLED_BOOST_INCLUDE_DIR}")
 

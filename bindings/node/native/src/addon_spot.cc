@@ -158,32 +158,69 @@ static void copy_routing_id(zlink_routing_id_t *out,
         memset(out, 0, sizeof(*out));
 }
 
+static bool append_msg_move(std::vector<zlink_msg_t> *parts, zlink_msg_t *part)
+{
+    if (!parts || !part)
+        return false;
+
+    parts->emplace_back();
+    zlink_msg_t *slot = &parts->back();
+    if (zlink_msg_init(slot) != 0) {
+        parts->pop_back();
+        return false;
+    }
+    if (zlink_msg_move(slot, part) != 0) {
+        zlink_msg_close(slot);
+        parts->pop_back();
+        return false;
+    }
+    return true;
+}
+
 static int collect_recv_parts(void *socket,
-                              zlink_msg_t first_part,
+                              zlink_msg_t *first_part,
                               zlink_part_flag_t has_more,
                               std::vector<zlink_msg_t> *parts)
 {
     if (!parts) {
-        zlink_msg_close(&first_part);
+        if (first_part)
+            zlink_msg_close(first_part);
         errno = EFAULT;
         return ZLINK_RECV_INTERNAL_ERROR;
     }
 
     parts->clear();
-    parts->push_back(first_part);
+    if (!append_msg_move(parts, first_part)) {
+        if (first_part)
+            zlink_msg_close(first_part);
+        errno = ENOMEM;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
 
     while (has_more) {
         const zlink_routing_id_t *source_rid = NULL;
         zlink_msg_t next_part;
+        if (zlink_msg_init(&next_part) != 0) {
+            close_msg_vector(*parts);
+            parts->clear();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
         zlink_part_flag_t more = ZLINK_PART_FINAL;
         int rc = zlink_recv_part(
           socket, &source_rid, &next_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close(&next_part);
             close_msg_vector(*parts);
             parts->clear();
             return rc;
         }
-        parts->push_back(next_part);
+        if (!append_msg_move(parts, &next_part)) {
+            zlink_msg_close(&next_part);
+            close_msg_vector(*parts);
+            parts->clear();
+            errno = ENOMEM;
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
         has_more = more;
     }
 
@@ -280,6 +317,8 @@ static int spot_recv_parts(void *spot,
     const zlink_routing_id_t *source_rid_ptr = NULL;
     const zlink_routing_id_t *spot_rid_ptr = NULL;
     zlink_msg_t first_part;
+    if (zlink_msg_init(&first_part) != 0)
+        return ZLINK_RECV_INTERNAL_ERROR;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     copy_routing_id(source_rid, NULL);
@@ -297,12 +336,14 @@ static int spot_recv_parts(void *spot,
       &first_part,
       &has_more,
       flags);
-    if (rc != ZLINK_RECV_OK)
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&first_part);
         return rc;
+    }
 
     copy_routing_id(source_rid, source_rid_ptr);
     copy_routing_id(spot_rid, spot_rid_ptr);
-    return collect_recv_parts(spot, first_part, has_more, parts);
+    return collect_recv_parts(spot, &first_part, has_more, parts);
 }
 
 static int router_request_spot_parts(void *router,
@@ -474,6 +515,8 @@ static int spot_subscribe_recv_parts(void *spot,
 {
     const zlink_routing_id_t *source_rid_ptr = NULL;
     zlink_msg_t first_part;
+    if (zlink_msg_init(&first_part) != 0)
+        return ZLINK_RECV_INTERNAL_ERROR;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     copy_routing_id(source_rid, NULL);
@@ -492,11 +535,13 @@ static int spot_subscribe_recv_parts(void *spot,
       &first_part,
       &has_more,
       flags);
-    if (rc != ZLINK_RECV_OK)
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&first_part);
         return rc;
+    }
 
     copy_routing_id(source_rid, source_rid_ptr);
-    return collect_recv_parts(spot, first_part, has_more, parts);
+    return collect_recv_parts(spot, &first_part, has_more, parts);
 }
 
 static void copy_recv_parts_to_vectors(
@@ -2415,6 +2460,23 @@ napi_value spot_request_channel(napi_env env, napi_callback_info info)
         }
         return throw_last_error(env, "spotRequestChannel failed");
     }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_request_progress(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 1) {
+        napi_throw_type_error(env, NULL, "spotRequestProgress requires (spot)");
+        return NULL;
+    }
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    (void) zlink_spot_request_progress_internal(spot);
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;

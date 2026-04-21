@@ -2,8 +2,6 @@
 
 package dev.kairoscode.zlink;
 
-import java.util.Optional;
-
 public final class XSubSocket extends Socket {
     private final SubSocketOptions options = new SubSocketOptions(this);
 

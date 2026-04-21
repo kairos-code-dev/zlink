@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, recvNoWait, resolveMultiLatencySampleCap, subscribeNoWait, trySendToSpot, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, createSocketEventWaiter, recvNoWait, resolveMultiLatencySampleCap, subscribeNoWait, trySendToSpot, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'perf.control';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
@@ -20,11 +20,14 @@ async function main() {
     applyContextPolicy(ctx, 'client', 'MULTI_SPOT_REQREP');
     const controlPub = new zlink.PubSocket(ctx);
     const controlSub = new zlink.SubSocket(ctx);
+    const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+    const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
     const routers = [];
     const payloads = [];
     const waiting = [];
     const sendPending = [];
     const poller = new zlink.Poller();
+    let rl = null;
     try {
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
@@ -49,18 +52,24 @@ async function main() {
         while (Date.now() < stabilizationDeadline) {
             await sleepImmediate();
         }
-        while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
-            await sleepImmediate();
+        for (;;) {
+            if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
+                break;
+            }
+            await controlPubWaiter.wait(POLLOUT);
         }
         const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
         while (Date.now() < controlSettleDeadline) {
             await sleepImmediate();
         }
-        while (!trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`READY_COUNT,${options.msgSize},${routers.length}`))) {
-            await sleepImmediate();
+        for (;;) {
+            if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`READY_COUNT,${options.msgSize},${routers.length}`))) {
+                break;
+            }
+            await controlPubWaiter.wait(POLLOUT);
         }
         console.log(`CLIENT_READY,${options.msgSize}`);
-        const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+        rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         let startRequested = false;
         let startBroadcast = false;
         (async () => {
@@ -71,17 +80,21 @@ async function main() {
             }
         })();
         while (!(startRequested && startBroadcast)) {
+            let drained = false;
             while (true) {
                 const received = subscribeNoWait(controlSub);
                 if (!received) {
                     break;
                 }
+                drained = true;
                 const payloadText = received.parts[0].data().toString('utf8');
                 if (payloadText === `START,${options.msgSize}`) {
                     startBroadcast = true;
                 }
             }
-            await sleepImmediate();
+            if (!(startRequested && startBroadcast) && !drained) {
+                await controlSubWaiter.wait(POLLIN);
+            }
         }
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();
@@ -158,7 +171,10 @@ async function main() {
         }
     }
     finally {
+        rl?.close();
         poller.close();
+        controlSubWaiter.close();
+        controlPubWaiter.close();
         controlSub.close();
         controlPub.close();
         for (const router of routers) {

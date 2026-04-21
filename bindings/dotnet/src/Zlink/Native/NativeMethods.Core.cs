@@ -40,6 +40,7 @@ internal static partial class NativeMethods
         "zlink_multipart_close",
         "zlink_dealer_request_part",
         "zlink_router_request_part",
+        "zlink_socket_request_progress_internal",
         "zlink_router_reply_part",
         "zlink_router_request_spot_part",
         "zlink_router_reply_spot_part",
@@ -51,6 +52,7 @@ internal static partial class NativeMethods
         "zlink_spot_recv_part",
         "zlink_spot_send_channel_part",
         "zlink_spot_request_channel_part",
+        "zlink_spot_request_progress_internal",
         "zlink_spot_publish_part",
         "zlink_spot_subscribe_part",
         "zlink_spot_node_attach_channel_dealer",
@@ -167,13 +169,16 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_dealer_request_part(IntPtr dealer,
         ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag, uint timeoutMs,
-        ZlinkReplyHandlerDelegate? handler, IntPtr userData);
+        IntPtr handler, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_request_part(IntPtr router,
         ref ZlinkRoutingId peerRoutingId, ref ZlinkMsg part, int flags,
         ZlinkPartFlag partFlag, uint timeoutMs,
-        ZlinkReplyHandlerDelegate? handler, IntPtr userData);
+        IntPtr handler, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_socket_request_progress_internal(IntPtr socket);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_reply_part(IntPtr router,
@@ -184,7 +189,7 @@ internal static partial class NativeMethods
     internal static extern int zlink_router_request_spot_part(IntPtr router,
         ref ZlinkRoutingId destNodeRoutingId,
         ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part,
-        ZlinkReplyHandlerDelegate? handler, IntPtr userData, int flags,
+        IntPtr handler, IntPtr userData, int flags,
         ZlinkPartFlag partFlag, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

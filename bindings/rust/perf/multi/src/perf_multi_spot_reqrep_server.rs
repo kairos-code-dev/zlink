@@ -1,7 +1,7 @@
 #[path = "perf_common.rs"]
 mod common;
 
-use std::io::{self, BufRead, BufReader, ErrorKind, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{
     Arc,
@@ -12,6 +12,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::*;
+
+const SERVER_NODE_RID: &[u8] = b"perf-spot-reqrep-server-node";
+const SERVER_SPOT_RID: &[u8] = b"perf-spot-reqrep-server-spot";
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
 
 fn control_listener() -> io::Result<(TcpListener, String)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
@@ -27,16 +37,6 @@ fn tcp_addr(endpoint: &str) -> String {
         .strip_prefix("tcp://")
         .expect("tcp control endpoint")
         .to_string()
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[(byte >> 4) as usize] as char);
-        out.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    out
 }
 
 enum ServerEvent {
@@ -55,23 +55,13 @@ fn main() {
 
     let (listener, control_endpoint) = match control_listener() {
         Ok(value) => value,
-        Err(err) if err.kind() == ErrorKind::PermissionDenied => {
-            common::emit_unsupported(
-                "MULTI_SPOT_REQREP",
-                &args.transport,
-                &format!(
-                    "control_bind_errno_{}",
-                    err.raw_os_error().unwrap_or(libc::EPERM)
-                ),
-            );
-            return;
-        }
         Err(err) => panic!("control bind: {err}"),
     };
     {
         let event_tx = event_tx.clone();
         thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept control");
+            stream.set_nodelay(true).ok();
             let _ = event_tx.send(ServerEvent::StartSender(stream));
         });
     }
@@ -88,8 +78,6 @@ fn main() {
                     let stream = TcpStream::connect(tcp_addr(endpoint)).expect("connect control");
                     stream.set_nodelay(true).ok();
                     let reader = BufReader::new(stream);
-                    println!("CONTROL_CONNECTED,{endpoint}");
-                    io::stdout().flush().ok();
                     let event_tx = event_tx.clone();
                     let stop_reader = Arc::clone(&stop);
                     thread::spawn(move || {
@@ -134,6 +122,8 @@ fn main() {
 
     let ctx = common::perf_server_context();
     let node = SpotNode::new(&ctx).expect("spot node");
+    node.set_routing_id(&RoutingId::from_bytes(SERVER_NODE_RID))
+        .expect("node routing id");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         let pem = common::load_tls_pem(&tls);
@@ -141,6 +131,8 @@ fn main() {
             .expect("spot tls");
     }
     let mut spot = node.create_spot().expect("spot");
+    spot.set_routing_id(&RoutingId::from_bytes(SERVER_SPOT_RID))
+        .expect("spot routing id");
     let stop_dispatch = Arc::clone(&stop);
     let spot_ptr = (&spot as *const Spot) as usize;
     spot.on_dispatch_event(move |event| {
@@ -174,22 +166,18 @@ fn main() {
         panic!("bind: {err}");
     }
     let endpoint = node.last_endpoint().expect("endpoint");
-    let node_rid = node.routing_id().expect("node rid");
-    let spot_rid = spot.routing_id().expect("spot rid");
     common::print_ready(&endpoint);
     println!("CONTROL_READY,{control_endpoint}");
-    println!(
-        "ROUTE_READY,{},{}",
-        hex_encode(node_rid.as_bytes()),
-        hex_encode(spot_rid.as_bytes())
-    );
     io::stdout().flush().ok();
 
+    let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
+    let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
     let mut runner_start = false;
     let mut client_connected = false;
     let mut ready_count = 0usize;
     let mut start_sender = None::<TcpStream>;
-    let handshake_deadline = Instant::now() + Duration::from_secs(20);
+    let handshake_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
     while Instant::now() < handshake_deadline {
         let remaining = handshake_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {

@@ -28,9 +28,11 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase
         Kernel.UnsetSubscription(topicOrPattern);
     }
 
-    public TopicMessage Subscribe(RecvFlags flags = RecvFlags.None)
+    public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.Subscribe(flags);
+        return (flags & RecvFlags.DontWait) != 0
+            ? Kernel.SubscribeNoWait()
+            : Kernel.Subscribe(flags);
     }
 
     internal bool SubscribeNoWait(out TopicMessage? subscribed)

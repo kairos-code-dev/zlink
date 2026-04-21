@@ -5,9 +5,11 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
+const { Worker } = require('node:worker_threads');
 const zlink = require('../../dist/canonical');
 const { MonitorEvent, RecvFlags, RecvResult } = zlink;
 const { MIN_MSG_SIZE, integerEnv, sleepImmediate } = require('../common/perf_metrics');
+const { configureTlsClient, configureTlsServer, } = require('../common/perf_tls');
 const POLLIN = 1;
 async function reservePort() {
     const server = net.createServer();
@@ -73,7 +75,10 @@ function applySocketPolicy(socket, options = {}) {
     }
 }
 function applyContextPolicy(ctx) {
-    ctx.options.ioThreads = integerEnv('PERF_IO_THREADS', 0);
+    const ioThreads = integerEnv('PERF_IO_THREADS', 0);
+    if (ioThreads > 0) {
+        ctx.options.ioThreads = ioThreads;
+    }
     const maxSockets = integerEnv('PERF_MAX_SOCKETS', NaN);
     if (Number.isFinite(maxSockets) && maxSockets > 0) {
         ctx.options.maxSockets = maxSockets;
@@ -131,6 +136,27 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = inte
     finally {
         monitor.close();
     }
+}
+async function waitForSocketConnectionReady(socket, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
+    return waitForConnectionReady(socket, null, timeoutMs);
+}
+async function waitForMonitorConnectionReady(monitor, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        try {
+            const event = monitor.recv(RecvFlags.DontWait);
+            if (event.event === MonitorEvent.CONNECTION_READY) {
+                return;
+            }
+        }
+        catch (error) {
+            if (!(error instanceof zlink.RecvError && error.result === RecvResult.NoData)) {
+                throw error;
+            }
+        }
+        await sleepImmediate();
+    }
+    throw new Error(`connection ready timeout after ${timeoutMs}ms`);
 }
 async function waitForPostReadySettle(timeoutMs) {
     const deadline = Date.now() + Math.max(0, timeoutMs | 0);
@@ -233,15 +259,96 @@ function parseSingleBinaryArgs(argv) {
         recvTimeoutMs: integerEnv('PERF_SINGLE_RCVTIMEO_MS', NaN)
     };
 }
+function spawnSenderWorker(workerData) {
+    const worker = new Worker(path.join(__dirname, 'perf_single_sender_worker.js'), { workerData });
+    worker.__seenMessages = [];
+    worker.__waiters = [];
+    worker.on('message', (message) => {
+        worker.__seenMessages.push(message);
+        for (const waiter of worker.__waiters.slice()) {
+            if (waiter(message)) {
+                return;
+            }
+        }
+    });
+    return worker;
+}
+function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
+    return new Promise((resolve, reject) => {
+        const seen = worker.__seenMessages.find((message) => message && message.type === expectedType);
+        if (seen) {
+            resolve(seen);
+            return;
+        }
+        let done = false;
+        const timeout = setTimeout(() => {
+            if (done) {
+                return;
+            }
+            done = true;
+            reject(new Error(`worker timeout waiting for ${expectedType}`));
+        }, timeoutMs);
+        const onExit = (code) => {
+            if (done) {
+                return;
+            }
+            done = true;
+            clearTimeout(timeout);
+            reject(new Error(`worker exited before ${expectedType}: ${code}`));
+        };
+        worker.once('exit', onExit);
+        worker.__waiters.push((message) => {
+            if (done || !message || message.type !== expectedType) {
+                return false;
+            }
+            done = true;
+            clearTimeout(timeout);
+            worker.off('exit', onExit);
+            resolve(message);
+            return true;
+        });
+    });
+}
+async function closeSenderWorker(worker) {
+    if (!worker) {
+        return;
+    }
+    const waitForExit = new Promise((resolve) => {
+        worker.once('exit', () => resolve());
+    });
+    try {
+        worker.postMessage({ type: 'stop' });
+    }
+    catch {
+    }
+    const exited = await Promise.race([
+        waitForExit.then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 1000))
+    ]);
+    if (!exited && worker.threadId && Number.isFinite(worker.threadId)) {
+        try {
+            await worker.terminate();
+        }
+        catch {
+        }
+    }
+}
 module.exports = {
     applyContextPolicy,
     applySocketPolicy,
+    configureTlsClient,
+    configureTlsServer,
     benchmarkEndpoint,
+    closeSenderWorker,
     drainRecvSocket,
     drainRecvNow,
     parseSingleBinaryArgs,
     resolveSingleLatencySampleCap,
     resolveSingleIdleDrainMs,
+    spawnSenderWorker,
+    waitForWorkerMessage,
     waitForPostReadySettle,
     waitForConnectionReady,
+    waitForSocketConnectionReady,
+    waitForMonitorConnectionReady,
 };

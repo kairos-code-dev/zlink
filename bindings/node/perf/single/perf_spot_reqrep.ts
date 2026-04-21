@@ -17,6 +17,8 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
+  configureTlsClient,
+  configureTlsServer,
   parseSingleBinaryArgs,
   resolveSingleLatencySampleCap,
   waitForPostReadySettle
@@ -140,6 +142,8 @@ async function runSpotReqRepBenchmark(msgSize, options) {
   try {
     applySocketPolicy(requester, options);
     applySocketPolicy(replier, options);
+    configureTlsServer(replierNode, options.transport);
+    configureTlsClient(requester, options.transport);
     replierNode.bind(endpoint);
     requester.connect(endpoint);
     requesterPoller.addSocket(requester, POLLIN);

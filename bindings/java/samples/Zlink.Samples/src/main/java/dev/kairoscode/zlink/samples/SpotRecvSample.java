@@ -5,9 +5,8 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.registry.ServiceType;
-import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
-import dev.kairoscode.zlink.RecvResult;
+import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
@@ -44,7 +43,11 @@ public final class SpotRecvSample {
                 try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
                     publisher.publish(serviceName, topic, payload);
                 }
-                try (var topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                try (TopicMessage topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                    if (topicMessage == null) {
+                        Thread.onSpinWait();
+                        continue;
+                    }
                     if (!java.util.Optional.of(serviceName)
                         .equals(topicMessage.serviceName())) {
                         throw new IllegalStateException(
@@ -60,14 +63,7 @@ public final class SpotRecvSample {
                         + "\" tick: 1 publish: \"" + published
                         + "\" -> recv: \"" + value + "\"");
                     return;
-                } catch (RecvException ex) {
-                    if (ex.getResult() != RecvResult.NO_DATA
-                        && ex.getResult() != RecvResult.BUSY
-                        && ex.getInternalErrno() != 2) {
-                        throw ex;
-                    }
                 }
-                Thread.onSpinWait();
             }
             throw new IllegalStateException("spot delivery did not arrive");
         }

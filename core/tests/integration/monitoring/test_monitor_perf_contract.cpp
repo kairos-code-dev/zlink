@@ -3,14 +3,16 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 #undef MAX_SOCKET_STRING
-#include "../../../perf/common/perf_infra.hpp"
-#include "../../../perf/multi/common/perf_multi_metric_header.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <climits>
 #include <condition_variable>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
 #include <mutex>
 #include <string.h>
 #include <thread>
@@ -20,6 +22,52 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+int parse_positive_env (const char *name_, int default_value_)
+{
+    if (!name_)
+        return default_value_;
+
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol (env, &end, 10);
+    if (errno != 0 || end == env || parsed <= 0)
+        return default_value_;
+
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int> (parsed);
+}
+
+bool bench_debug_enabled ()
+{
+    static const bool enabled = std::getenv ("PERF_DEBUG") != NULL;
+    return enabled;
+}
+
+bool set_sockopt_int (void *socket_,
+                      zlink_option_t option_,
+                      int value_,
+                      const char *name_)
+{
+    const int rc = zlink_set_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "setsockopt(" << name_ << ") failed: "
+                  << zlink_strerror (zlink_errno ()) << std::endl;
+    }
+    return rc == 0;
+}
+
+namespace perf_multi_metric {
+inline size_t header_size ()
+{
+    return sizeof (uint32_t) * 4 + sizeof (uint64_t) * 2;
+}
+} // namespace perf_multi_metric
+
 static const size_t kPerfMonitorEndpointSize = 256;
 
 std::atomic<unsigned int> g_inproc_endpoint_counter (0);

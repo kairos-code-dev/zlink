@@ -219,8 +219,10 @@ class ZlinkPollItem(ctypes.Structure):
 
 class ZlinkPollerEvent(ctypes.Structure):
     _fields_ = [
+        ("source_kind", ctypes.c_uint32),
         ("socket", ctypes.c_void_p),
         ("fd", ZlinkFD),
+        ("timer", ctypes.c_void_p),
         ("user_data", ctypes.c_void_p),
         ("events", ctypes.c_short),
     ]
@@ -385,6 +387,16 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.c_void_p,
             ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_socket_request_progress_internal",
+            [ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_request_progress_internal",
+            [ctypes.c_void_p],
             ctypes.c_int,
         )
         self._require(
@@ -1096,7 +1108,12 @@ class _Lib:
 
         self._require(
             "zlink_poll",
-            [ctypes.POINTER(ZlinkPollItem), ctypes.c_int, ctypes.c_long],
+            [
+                ctypes.POINTER(ZlinkPollItem),
+                ctypes.c_int,
+                ctypes.c_long,
+                ctypes.POINTER(ctypes.c_int),
+            ],
             ctypes.c_int,
         )
         self._require("zlink_poller_new", [], ctypes.c_void_p)
@@ -1105,7 +1122,11 @@ class _Lib:
             [ctypes.POINTER(ctypes.c_void_p)],
             ctypes.c_int,
         )
-        self._require("zlink_poller_size", [ctypes.c_void_p], ctypes.c_int)
+        self._require(
+            "zlink_poller_size",
+            [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)],
+            ctypes.c_int,
+        )
         self._require(
             "zlink_poller_add",
             [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_short],
@@ -1148,7 +1169,12 @@ class _Lib:
         )
         self._require(
             "zlink_poller_wait",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkPollerEvent), ctypes.c_long],
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkPollerEvent),
+                ctypes.c_long,
+                ctypes.POINTER(ctypes.c_int),
+            ],
             ctypes.c_int,
         )
         self._require(
@@ -1158,6 +1184,7 @@ class _Lib:
                 ctypes.POINTER(ZlinkPollerEvent),
                 ctypes.c_int,
                 ctypes.c_long,
+                ctypes.POINTER(ctypes.c_int),
             ],
             ctypes.c_int,
         )

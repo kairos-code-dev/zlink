@@ -6,6 +6,7 @@
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/handler_result_internal.hpp"
+#include "api/socket_request_reply_internal.hpp"
 
 namespace
 {
@@ -116,7 +117,22 @@ int validate_socket_callback_poller_events (socket_handle_t handle_,
         return 0;
     const int type = socket_type (handle_);
     if ((events_ & ZLINK_POLLIN) != 0) {
+        bool allow_request_reply_progress = false;
         if (handle_.socket->socket_msg_dispatch_active ()
+            && (type == ZLINK_CORE_SOCKET_DEALER
+                || type == ZLINK_CORE_SOCKET_ROUTER)) {
+            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+              state =
+                zlink::socket_reqrep_internal::find_request_reply_state (
+                  handle_);
+            if (state) {
+                std::lock_guard<std::mutex> lock (state->mutex);
+                allow_request_reply_progress = state->internal_dispatch_installed;
+            }
+        }
+
+        if ((handle_.socket->socket_msg_dispatch_active ()
+             && !allow_request_reply_progress)
             || ((type == ZLINK_CORE_SOCKET_SUB
                  || type == ZLINK_CORE_SOCKET_XSUB)
                 && handle_.socket->sub_dispatch_active ())

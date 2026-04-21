@@ -3,16 +3,18 @@
 package dev.kairoscode.zlink.perf;
 
 import java.util.Arrays;
+import java.util.concurrent.ThreadLocalRandom;
 
 final class PerfMetricsCollector {
     private long[] latencies;
+    private final int sampleCap;
     private int size;
     private long count;
     private long sum;
 
     PerfMetricsCollector(String suite) {
-        int initialCapacity = Math.max(1, resolveInitialLatencyCapacity(suite));
-        latencies = new long[Math.min(initialCapacity, 1 << 20)];
+        sampleCap = Math.max(1, resolveInitialLatencyCapacity(suite));
+        latencies = new long[sampleCap];
     }
 
     void startActiveWindow() {
@@ -21,8 +23,14 @@ final class PerfMetricsCollector {
     synchronized void recordNanos(long value) {
         count++;
         sum += value;
-        ensureCapacity();
-        latencies[size++] = value;
+        if (size < sampleCap) {
+            latencies[size++] = value;
+            return;
+        }
+        long slot = ThreadLocalRandom.current().nextLong(count);
+        if (slot < sampleCap) {
+            latencies[(int) slot] = value;
+        }
     }
 
     void recordMillis(double value) {
@@ -54,13 +62,6 @@ final class PerfMetricsCollector {
         double p99 = sorted[index(sorted.length, 0.99d)] / latencyDivisor;
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
             config.size(), throughput, bandwidth, mean, p95, p99);
-    }
-
-    private void ensureCapacity() {
-        if (size < latencies.length) {
-            return;
-        }
-        latencies = Arrays.copyOf(latencies, latencies.length * 2);
     }
 
     private static int index(int length, double percentile) {

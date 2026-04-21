@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"zlink"
@@ -34,12 +35,18 @@ func runSingleOneWay(
 				if perfcommon.IsTransient(err) {
 					continue
 				}
+				if os.Getenv("PERF_DEBUG") != "" {
+					fmt.Fprintf(os.Stderr, "single active send error: %v\n", err)
+				}
 				perfcommon.Must(err)
 			}
 		}
 		perfcommon.StampCooldownPayload(payload)
 		err := send(payload)
 		if err != nil && !perfcommon.IsTransient(err) {
+			if os.Getenv("PERF_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "single cooldown send error: %v\n", err)
+			}
 			perfcommon.Must(err)
 		}
 	}()
@@ -51,6 +58,9 @@ func runSingleOneWay(
 		}
 		event, err := poller.Wait(timeout)
 		if err != nil {
+			if os.Getenv("PERF_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "single active poller wait error: %v\n", err)
+			}
 			perfcommon.Must(err)
 		}
 		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
@@ -70,6 +80,9 @@ func runSingleOneWay(
 		}
 		event, err := poller.Wait(timeout)
 		if err != nil {
+			if os.Getenv("PERF_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "single idle drain poller wait error: %v\n", err)
+			}
 			perfcommon.Must(err)
 		}
 		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
@@ -94,6 +107,9 @@ func drainSingleOneWay(
 		if perfcommon.IsTransient(err) {
 			return false
 		}
+		if os.Getenv("PERF_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "single drain recv error: %v\n", err)
+		}
 		perfcommon.Must(err)
 	}
 	if received == nil {
@@ -113,11 +129,20 @@ func waitSingleRouteReady(
 	receiver recvSocket,
 ) {
 	payload := perfcommon.PreparePayload(64)
+	if os.Getenv("PERF_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "%s ready probe poller create\n", name)
+	}
 	poller := perfcommon.NewSocketPoller(receiver, perfcommon.ZLinkPollIn)
 	defer poller.Close()
 	perfcommon.StampProbePayload(payload)
+	if os.Getenv("PERF_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "%s ready probe send\n", name)
+	}
 	if err := send(payload); err != nil {
 		perfcommon.Must(fmt.Errorf("%s ready probe send: %w", name, err))
+	}
+	if os.Getenv("PERF_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "%s ready probe sent\n", name)
 	}
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
@@ -127,12 +152,24 @@ func waitSingleRouteReady(
 		}
 		event, err := poller.Wait(timeout)
 		if err != nil {
+			if os.Getenv("PERF_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "%s ready probe poller wait error: %v\n", name, err)
+			}
 			perfcommon.Must(err)
 		}
 		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			if os.Getenv("PERF_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "%s ready probe poller wait timeout\n", name)
+			}
 			continue
 		}
+		if os.Getenv("PERF_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "%s ready probe poller readable\n", name)
+		}
 		for drainSingleOneWay(receiver, nil, len(payload), time.Time{}, false) {
+			if os.Getenv("PERF_DEBUG") != "" {
+				fmt.Fprintf(os.Stderr, "%s ready probe drained\n", name)
+			}
 			return
 		}
 	}

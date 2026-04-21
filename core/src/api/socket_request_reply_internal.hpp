@@ -6,12 +6,15 @@
 #include <zlink.h>
 
 #include <memory>
+#include <deque>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
 #include "api/internal_pair_queue_internal.hpp"
+#include "api/request_completion_queue_internal.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
 #include "api/socket_api_internal.hpp"
 
@@ -57,6 +60,7 @@ struct socket_request_reply_state_t
     std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;
     bool internal_dispatch_installed;
     zlink::internal_pair_queue::queue_t recv_queue;
+    zlink::request_completion::queue_state_t completion;
 };
 
 extern thread_local zlink_routing_id_t g_router_recv_source_rid;
@@ -97,6 +101,27 @@ std::shared_ptr<socket_request_reply_state_t>
 find_or_create_request_reply_state (socket_handle_t handle_);
 std::shared_ptr<socket_request_reply_state_t>
 find_request_reply_state (socket_handle_t handle_);
+int ensure_completion_queue_ready (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
+int queue_reply_completion (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int errnum_,
+  zlink_msg_t *parts_,
+  size_t part_count_);
+int drain_reply_completions (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *owner_handle_);
+bool has_pending_reply_completions (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
+zlink::socket_base_t *completion_signal_socket (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
+void claim_completion_owner (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
+bool current_thread_is_completion_owner (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
+bool in_socket_request_completion_callback (void *socket_);
 int ensure_recv_queue_ready (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
 int ensure_internal_dispatch_installed (
@@ -109,6 +134,9 @@ int start_request (socket_handle_t handle_,
                    uint32_t timeout_ms_,
                    zlink_reply_handler_fn handler_,
                    void *userdata_);
+bool has_pending_request_work (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
+int drain_close_request_reply_socket (socket_handle_t handle_);
 void cleanup_request_reply_socket (socket_handle_t handle_);
 }
 }

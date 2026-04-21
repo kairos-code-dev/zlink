@@ -36,3 +36,17 @@ void zlink::socket_base_t::clear_request_reply_state ()
     _request_reply_state.reset ();
 }
 
+std::shared_ptr<void> zlink::socket_base_t::part_helper_state () const
+{
+    return _part_helper_state;
+}
+
+void zlink::socket_base_t::set_part_helper_state (const std::shared_ptr<void> &state_)
+{
+    _part_helper_state = state_;
+}
+
+void zlink::socket_base_t::clear_part_helper_state ()
+{
+    _part_helper_state.reset ();
+}

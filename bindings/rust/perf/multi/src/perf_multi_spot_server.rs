@@ -1,7 +1,7 @@
 #[path = "perf_common.rs"]
 mod common;
 
-use std::io::{self, BufRead, BufReader, ErrorKind, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::thread;
@@ -11,6 +11,13 @@ use zlink::*;
 
 const SERVICE_NAME: &str = "perf-spot-svc";
 const TOPIC: &str = "bench.topic";
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
 
 fn control_listener() -> io::Result<(TcpListener, String)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
@@ -43,23 +50,13 @@ fn main() {
 
     let (listener, control_endpoint) = match control_listener() {
         Ok(value) => value,
-        Err(err) if err.kind() == ErrorKind::PermissionDenied => {
-            common::emit_unsupported(
-                "MULTI_SPOT",
-                &args.transport,
-                &format!(
-                    "control_bind_errno_{}",
-                    err.raw_os_error().unwrap_or(libc::EPERM)
-                ),
-            );
-            return;
-        }
         Err(err) => panic!("control bind: {err}"),
     };
     {
         let event_tx = event_tx.clone();
         thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept control");
+            stream.set_nodelay(true).ok();
             let _ = event_tx.send(ServerEvent::StartSender(stream));
         });
     }
@@ -75,8 +72,6 @@ fn main() {
                     let stream = TcpStream::connect(tcp_addr(endpoint)).expect("connect control");
                     stream.set_nodelay(true).ok();
                     let reader = BufReader::new(stream);
-                    println!("CONTROL_CONNECTED,{endpoint}");
-                    io::stdout().flush().ok();
                     let event_tx = event_tx.clone();
                     thread::spawn(move || {
                         for line in reader.lines() {
@@ -139,11 +134,14 @@ fn main() {
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();
 
+    let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
+    let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
     let mut runner_start = false;
     let mut client_connected = false;
     let mut ready_count = 0usize;
     let mut start_sender = None::<TcpStream>;
-    let handshake_deadline = Instant::now() + Duration::from_secs(20);
+    let handshake_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
     while Instant::now() < handshake_deadline {
         let remaining = handshake_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {

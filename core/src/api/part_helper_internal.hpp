@@ -119,6 +119,33 @@ bool send_spec_equals (const send_sequence_spec_t &lhs_,
                        const send_sequence_spec_t &rhs_);
 std::shared_ptr<handle_state_t> find_or_create_handle_state (void *handle_);
 std::shared_ptr<handle_state_t> find_handle_state (void *handle_);
+bool recv_sequence_active (const std::shared_ptr<handle_state_t> &state_);
+int stage_recv_sequence (const std::shared_ptr<handle_state_t> &state_,
+                         recv_family_t family_,
+                         zlink::socket_base_t *source_socket_,
+                         const zlink_routing_id_t *source_node_rid_,
+                         const zlink_routing_id_t *source_spot_rid_,
+                         uint64_t request_seq_,
+                         zlink_msg_t *parts_,
+                         size_t part_count_,
+                         std::thread::id owner_thread_);
+void set_recv_metadata (recv_sequence_state_t *recv_,
+                        const zlink_routing_id_t *source_node_rid_,
+                        const zlink_routing_id_t *source_spot_rid_,
+                        uint64_t request_seq_);
+int buffer_recv_parts (recv_sequence_state_t *recv_,
+                       zlink_msg_t *parts_,
+                       size_t part_count_);
+int take_recv_part (recv_sequence_state_t *recv_,
+                    zlink_msg_t *part_out_,
+                    zlink_part_flag_t *has_more_out_);
+int take_recv_part (const std::shared_ptr<handle_state_t> &state_,
+                    zlink_msg_t *part_out_,
+                    zlink_part_flag_t *has_more_out_);
+void export_recv_metadata (const std::shared_ptr<handle_state_t> &state_,
+                           const zlink_routing_id_t **source_node_rid_out_,
+                           const zlink_routing_id_t **source_spot_rid_out_,
+                           uint64_t *request_seq_out_);
 void reset_send_sequence (send_sequence_state_t *state_);
 void reset_recv_sequence (recv_sequence_state_t *state_);
 bool aggregate_send_mode_active ();

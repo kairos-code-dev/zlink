@@ -28,7 +28,13 @@ if(NOT TARGET test_scenario_stream_zlink)
     add_executable(
         test_scenario_stream_zlink
         ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink.cpp)
-    target_link_libraries(test_scenario_stream_zlink libzlink Threads::Threads)
+    target_link_libraries(
+        test_scenario_stream_zlink
+        ${ZLINK_C_CORE_TARGET}
+        Threads::Threads)
+    set_target_properties(test_scenario_stream_zlink PROPERTIES
+        BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
+        INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
 endif()
 target_compile_options(test_scenario_stream_zlink PRIVATE ${STREAMCOMPARE_CXX_FLAGS})
 target_compile_features(test_scenario_stream_zlink PRIVATE cxx_std_17)
@@ -37,7 +43,13 @@ if(NOT TARGET test_scenario_stream_zlink_packet)
     add_executable(
         test_scenario_stream_zlink_packet
         ${STREAM_SCENARIO_ROOT}/zlink_packet/test_scenario_stream_zlink_packet.cpp)
-    target_link_libraries(test_scenario_stream_zlink_packet libzlink Threads::Threads)
+    target_link_libraries(
+        test_scenario_stream_zlink_packet
+        ${ZLINK_C_CORE_TARGET}
+        Threads::Threads)
+    set_target_properties(test_scenario_stream_zlink_packet PROPERTIES
+        BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
+        INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
 endif()
 target_compile_options(test_scenario_stream_zlink_packet PRIVATE ${STREAMCOMPARE_CXX_FLAGS})
 target_compile_features(test_scenario_stream_zlink_packet PRIVATE cxx_std_17)

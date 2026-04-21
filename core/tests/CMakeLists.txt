@@ -21,19 +21,18 @@ if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
       "${ZLINK_CORE_SOURCE_DIR}/bench/benchwithstreamcompare/stacks")
 endif()
 
+option(
+  ZLINK_CORE_BUILD_BINDING_INTEGRATION_TESTS
+  "Build core tests that depend on bindings/c perf or bench sources"
+  OFF)
+
 set(tests
   ${INTEGRATION_TEST_ROOT}/test_ancillaries
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_enhanced
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_socket_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_dealer_dealer_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_server_reassembly
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
   ${INTEGRATION_TEST_ROOT}/test_capabilities
@@ -74,11 +73,21 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/routing-id/test_router_auto_id_format
   ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
   ${E2E_TEST_ROOT}/spot/test_spot_pubsub_scenario
-  ${E2E_TEST_ROOT}/spot/test_spot_service_introspection
-  ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
-  ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
-  ${STREAM_SCENARIO_ROOT}/zlink_packet/test_scenario_stream_zlink_packet
-  ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
+  ${E2E_TEST_ROOT}/spot/test_spot_service_introspection)
+
+if(ZLINK_CORE_BUILD_BINDING_INTEGRATION_TESTS)
+  list(APPEND tests
+    ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_dealer_dealer_benchmark_process
+    ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
+    ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
+    ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
+    ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
+    ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
+    ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
+    ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
+    ${STREAM_SCENARIO_ROOT}/zlink_packet/test_scenario_stream_zlink_packet
+    ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
+endif()
 
 set(ROUTER_ROUTER_ZLINK_CONNECT_TEST
     "scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect")
@@ -153,7 +162,8 @@ if(STREAM_SCENARIO_ZMQ_LIBRARY)
   list(GET STREAM_SCENARIO_ZMQ_LIBRARY 0 STREAM_SCENARIO_ZMQ_LIBRARY_FILE)
 endif()
 
-if(EXISTS "${STREAM_SCENARIO_ZMQ_INCLUDE_DIR}/zmq.h"
+if(ZLINK_CORE_BUILD_BINDING_INTEGRATION_TESTS
+   AND EXISTS "${STREAM_SCENARIO_ZMQ_INCLUDE_DIR}/zmq.h"
    AND STREAM_SCENARIO_ZMQ_LIBRARY_FILE)
   list(APPEND tests ${STREAM_SCENARIO_ROOT}/zmq/test_scenario_stream_zmq)
 else()
@@ -345,9 +355,11 @@ if(TARGET test_thread_safe_contract_policy)
       TEST_REPO_ROOT="${ZLINK_REPO_ROOT}")
 endif()
 
-target_sources(
-  test_scenario_stream_client
-  PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
+if(TARGET test_scenario_stream_client)
+  target_sources(
+    test_scenario_stream_client
+    PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
+endif()
 
 if(TARGET zlink_c)
   if(TARGET test_scenario_stream_zlink)
@@ -797,14 +809,22 @@ if(TARGET test_scenario_router_router_zlink_connect)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
 endif()
-set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
-set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
-set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES LABELS "scenario;stream;zlink_packet")
-set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
+if(TARGET test_scenario_stream_client)
+  set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
+endif()
+if(TARGET test_scenario_stream_zlink)
+  set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
+endif()
+if(TARGET test_scenario_stream_zlink_packet)
+  set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES LABELS "scenario;stream;zlink_packet")
+endif()
+if(TARGET test_scenario_stream_asio)
+  set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
+endif()
 if(TARGET test_scenario_stream_zmq)
   set_tests_properties(test_scenario_stream_zmq PROPERTIES TIMEOUT 120)
   set_tests_properties(test_scenario_stream_zmq PROPERTIES LABELS "scenario;stream;zmq")
@@ -812,11 +832,19 @@ endif()
 
 set(E2E_SERIAL_TESTS
     test_spot_pubsub_scenario
-    test_spot_service_introspection
-    test_scenario_stream_client
-    test_scenario_stream_zlink
-    test_scenario_stream_zlink_packet
-    test_scenario_stream_asio)
+    test_spot_service_introspection)
+if(TARGET test_scenario_stream_client)
+  list(APPEND E2E_SERIAL_TESTS test_scenario_stream_client)
+endif()
+if(TARGET test_scenario_stream_zlink)
+  list(APPEND E2E_SERIAL_TESTS test_scenario_stream_zlink)
+endif()
+if(TARGET test_scenario_stream_zlink_packet)
+  list(APPEND E2E_SERIAL_TESTS test_scenario_stream_zlink_packet)
+endif()
+if(TARGET test_scenario_stream_asio)
+  list(APPEND E2E_SERIAL_TESTS test_scenario_stream_asio)
+endif()
 if(TARGET test_scenario_stream_zmq)
   list(APPEND E2E_SERIAL_TESTS test_scenario_stream_zmq)
 endif()
@@ -825,12 +853,16 @@ if(TARGET test_scenario_router_router_zlink_connect)
 endif()
 
 set(REGRESSION_SERIAL_TESTS
-    test_multi_dealer_dealer_benchmark_process
-    test_multi_spot_benchmark_process
     test_router_concurrent_routed_recv
     test_transport_matrix
     ${STREAM_SOCKET_REGRESSION_TEST_NAMES}
     ${STREAM_THREADSAFE_REGRESSION_TEST_NAMES})
+if(TARGET test_multi_dealer_dealer_benchmark_process)
+  list(APPEND REGRESSION_SERIAL_TESTS test_multi_dealer_dealer_benchmark_process)
+endif()
+if(TARGET test_multi_spot_benchmark_process)
+  list(APPEND REGRESSION_SERIAL_TESTS test_multi_spot_benchmark_process)
+endif()
 
 set(INTEGRATION_SERIAL_TESTS ${REGISTERED_TESTS})
 list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})

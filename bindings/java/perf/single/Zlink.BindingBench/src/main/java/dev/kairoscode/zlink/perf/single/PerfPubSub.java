@@ -70,28 +70,24 @@ final class PerfPubSub {
                         int rc = pollSet.poll(timeoutMs);
                         if (rc > 0 && pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
                             while (true) {
-                                try {
-                                    try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
-                                        PerfUtil.Header header = PerfUtil.decodeHeader(
-                                            received.firstPart(), config.size());
-                                        if (header == null) {
-                                            continue;
-                                        }
-                                        if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                            idleDrain.set(true);
-                                            lastRecvNs = System.nanoTime();
-                                            continue;
-                                        }
-                                        if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                            metrics.recordNanos(header.latencyNanos());
-                                            lastRecvNs = System.nanoTime();
-                                        }
-                                    }
-                                } catch (dev.kairoscode.zlink.ZlinkException ex) {
-                                    if (ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4) {
+                                try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
+                                    if (received == null) {
                                         break;
                                     }
-                                    throw ex;
+                                    PerfUtil.Header header = PerfUtil.decodeHeader(
+                                        received.firstPart(), config.size());
+                                    if (header == null) {
+                                        continue;
+                                    }
+                                    if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                                        idleDrain.set(true);
+                                        lastRecvNs = System.nanoTime();
+                                        continue;
+                                    }
+                                    if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                        metrics.recordNanos(header.latencyNanos());
+                                        lastRecvNs = System.nanoTime();
+                                    }
                                 }
                             }
                             continue;
@@ -106,19 +102,18 @@ final class PerfPubSub {
             }, "single-pubsub-recv");
             recvThread.start();
 
-            try (Message active = PerfUtil.payloadTemplate(config.size());
-                 Message cooldown = PerfUtil.payloadTemplate(config.size())) {
-                metrics.startActiveWindow();
-                long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-                while (System.nanoTime() < activeEnd) {
-                    PerfUtil.writePayload(active, config.size(),
-                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+            metrics.startActiveWindow();
+            long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                try (Message active = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
                     pub.publish(TOPIC, active);
                 }
-                int cooldownBursts = Math.max(3, 3);
-                for (int i = 0; i < cooldownBursts; i++) {
-                    PerfUtil.writePayload(cooldown, config.size(),
-                        (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime());
+            }
+            int cooldownBursts = Math.max(3, 3);
+            for (int i = 0; i < cooldownBursts; i++) {
+                try (Message cooldown = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
                     pub.publish(TOPIC, cooldown);
                 }
             }

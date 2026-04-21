@@ -23,6 +23,7 @@ async function main() {
   const router = new zlink.RouterSocket(ctx);
   const poller = new zlink.Poller();
   const pending = [];
+  let rl = null;
   let stop = false;
 
   try {
@@ -32,10 +33,10 @@ async function main() {
     const readyBarrier = waitForConnectionReadyCount(router, options.clients);
     console.log(`READY,${options.endpoint}`);
 
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     (async () => {
       for await (const line of rl) {
-        if (line === 'STOP') {
+        if (line === 'STOP' || line === 'QUIT') {
           stop = true;
           break;
         }
@@ -87,6 +88,7 @@ async function main() {
       }
     }
   } finally {
+    rl?.close();
     while (pending.length > 0) {
       pending.shift().close();
     }

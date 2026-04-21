@@ -19,6 +19,7 @@ use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, RouterSocketOptions};
+use crate::request_progress::RequestProgressGuard;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 type RequestCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
@@ -26,11 +27,13 @@ type SpotReplyCallback = Box<dyn FnOnce(Result<Vec<Message>, crate::error::Reque
 
 struct BlockingRouterRequestState {
     tx: mpsc::Sender<Result<Vec<Message>, RequestError>>,
+    _progress: RequestProgressGuard,
 }
 
 struct CallbackRouterRequestState {
     callback: Option<RequestCallback>,
     native_parts: Vec<ffi::zlink_msg_t>,
+    _progress: RequestProgressGuard,
 }
 
 /// ROUTER socket – asynchronous request/reply pattern (server side).
@@ -100,7 +103,10 @@ impl RouterSocket {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| RequestError::new(RequestResult::ProtocolError, err.internal_errno()))?;
         let (tx, rx) = mpsc::channel();
-        let state_ptr = Box::into_raw(Box::new(BlockingRouterRequestState { tx }));
+        let state_ptr = Box::into_raw(Box::new(BlockingRouterRequestState {
+            tx,
+            _progress: RequestProgressGuard::attach_socket(self.inner.handle),
+        }));
         let submit_result = submit_router_request(
             self.inner.handle,
             peer_rid,
@@ -159,6 +165,7 @@ impl RouterSocket {
         let mut state = Box::new(CallbackRouterRequestState {
             callback: Some(Box::new(callback)),
             native_parts,
+            _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
         let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
         let userdata = (&mut *state as *mut CallbackRouterRequestState).cast();
@@ -303,6 +310,7 @@ impl RouterSocket {
         let mut native = super::prepare_send_parts(&mut parts)?;
         let state_ptr = Box::into_raw(Box::new(RouterSpotReplyCallbackState {
             callback: Some(Box::new(callback)),
+            _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         }));
         let timeout_ms = timeout_to_ms(timeout);
         let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
@@ -456,6 +464,7 @@ impl RouterSocket {
         let mut state = Box::new(CallbackRouterRequestState {
             callback: Some(Box::new(callback)),
             native_parts,
+            _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
         let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
         let userdata = (&mut *state as *mut CallbackRouterRequestState).cast();
@@ -706,6 +715,7 @@ unsafe extern "C" fn router_callback_request_callback(
 
 struct RouterSpotReplyCallbackState {
     callback: Option<SpotReplyCallback>,
+    _progress: RequestProgressGuard,
 }
 
 unsafe extern "C" fn router_spot_reply_callback(

@@ -933,8 +933,11 @@ func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flag
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	resultCh := make(chan requestResult, 1)
-	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
+	state := &replyCallbackState{
+		result: make(chan requestResult, 1),
+		done:   make(chan struct{}),
+	}
+	handle := cgo.NewHandle(state)
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
 	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -954,7 +957,8 @@ func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flag
 		return nil, err
 	}
 	prepared.commit()
-	return resultCh, nil
+	startSocketRequestProgress(s.raw(), state)
+	return state.result, nil
 }
 
 type subscribeSocket struct {

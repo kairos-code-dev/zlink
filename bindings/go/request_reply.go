@@ -7,6 +7,8 @@ package zlink
 #include "zlink.h"
 
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern int zlink_socket_request_progress_internal(void *socket_);
+extern int zlink_spot_request_progress_internal(void *spot_);
 
 static inline int zlink_dealer_request_part_go_local(void *dealer, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
 	return zlink_dealer_request_part(dealer, part, flags, part_flag, timeout_ms, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata);
@@ -22,7 +24,9 @@ import "C"
 import (
 	"errors"
 	"runtime/cgo"
+	"sync"
 	"time"
+	"unsafe"
 )
 
 const defaultRequestTimeout = 5 * time.Second
@@ -36,6 +40,8 @@ type requestResult struct {
 
 type replyCallbackState struct {
 	result chan requestResult
+	done   chan struct{}
+	once   sync.Once
 }
 
 type dealerRequestSupport struct {
@@ -112,8 +118,11 @@ func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Dura
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	resultCh := make(chan requestResult, 1)
-	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
+	state := &replyCallbackState{
+		result: make(chan requestResult, 1),
+		done:   make(chan struct{}),
+	}
+	handle := cgo.NewHandle(state)
 	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_dealer_request_part_go_local(
 			socket.raw(),
@@ -129,7 +138,8 @@ func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Dura
 		return nil, err
 	}
 	prepared.commit()
-	return resultCh, nil
+	startSocketRequestProgress(socket.raw(), state)
+	return state.result, nil
 }
 
 func newRouterRequestSupport(socket *RouterSocket) *routerRequestSupport {
@@ -202,8 +212,11 @@ func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFla
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	resultCh := make(chan requestResult, 1)
-	handle := cgo.NewHandle(&replyCallbackState{result: resultCh})
+	state := &replyCallbackState{
+		result: make(chan requestResult, 1),
+		done:   make(chan struct{}),
+	}
+	handle := cgo.NewHandle(state)
 	rid := routingID.toC()
 	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_router_request_part_go_local(
@@ -221,7 +234,47 @@ func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFla
 		return nil, err
 	}
 	prepared.commit()
-	return resultCh, nil
+	startSocketRequestProgress(socket.raw(), state)
+	return state.result, nil
+}
+
+func (s *replyCallbackState) complete(result requestResult) {
+	s.result <- result
+	s.once.Do(func() {
+		close(s.done)
+	})
+}
+
+func startSocketRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
+	startRequestProgress(state, func() {
+		C.zlink_socket_request_progress_internal(handle)
+	})
+}
+
+func startSpotRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
+	startRequestProgress(state, func() {
+		C.zlink_spot_request_progress_internal(handle)
+	})
+}
+
+func startRequestProgress(state *replyCallbackState, step func()) {
+	go func() {
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-state.done:
+				return
+			default:
+			}
+			step()
+			select {
+			case <-state.done:
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 }
 
 func requestTimeoutMillis(timeout time.Duration) uint32 {
@@ -285,11 +338,11 @@ func goZlinkReplyTrampoline(result C.zlink_request_result_t, parts *C.zlink_msg_
 	if result == C.ZLINK_REQUEST_OK {
 		clonedParts, err := takeParts(parts, partCount)
 		if err != nil {
-			state.result <- requestResult{result: RequestProtocolError}
+			state.complete(requestResult{result: RequestProtocolError})
 			return
 		}
-		state.result <- requestResult{result: RequestOK, parts: clonedParts}
+		state.complete(requestResult{result: RequestOK, parts: clonedParts})
 		return
 	}
-	state.result <- requestResult{result: RequestResult(result), parts: nil}
+	state.complete(requestResult{result: RequestResult(result), parts: nil})
 }

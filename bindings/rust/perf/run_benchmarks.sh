@@ -228,12 +228,6 @@ for pat in "${PATTERNS[@]}"; do
                     case_reason="${unsupported_line}"
                     break
                 fi
-                skip_line="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^SKIP,/ {print; exit}')"
-                if [[ -n "${skip_line}" ]]; then
-                    case_status="skip"
-                    case_reason="${skip_line}"
-                    break
-                fi
                 while IFS= read -r line; do
                     [[ "${line}" == RESULT,* ]] || continue
                     IFS=',' read -r tag lib result_pattern result_transport result_size metric value <<< "${line}"
@@ -396,7 +390,7 @@ for pattern_index, pattern in enumerate(patterns):
                 for size in pattern_sizes[pattern]:
                     key = (pattern, transport, size)
                     status, _reason = cases.get(key, ("fail", "missing_case_status"))
-                    if status in {"unsupported", "skip"}:
+                    if status == "unsupported":
                         emit(
                             f"| {size}B | {status.upper()} | {status.upper()} | "
                             f"{status.upper()} | {status.upper()} | {status.upper()} |"
@@ -416,7 +410,7 @@ for pattern_index, pattern in enumerate(patterns):
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             status, reason = cases.get(key, ("fail", "missing_case_status"))
-            if status in {"unsupported", "skip"}:
+            if status == "unsupported":
                 emit(
                     f"| {size}B | {status.upper()} | {status.upper()} | "
                     f"{status.upper()} | {status.upper()} | {status.upper()} |"

@@ -63,8 +63,8 @@ final class PerfSpot {
             pubNode.bind(publisherEndpoint);
             subNode.bind(subscriberEndpoint);
             subscriber.setSubscription(topic);
-            subscriber.onDispatchEvent(event -> {
-                if (event != SpotDispatchEvent.SUBSCRIBE_READABLE) {
+            subscriber.onDispatchEvent(info -> {
+                if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     return;
                 }
                 try {

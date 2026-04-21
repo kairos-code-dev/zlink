@@ -1054,6 +1054,60 @@ void test_spot_node_attach_channel_dealer_manual_rejects_duplicate_channel ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_socket_channel_name_metadata_roundtrip ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    char buf[32];
+    size_t len = sizeof (buf);
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK,
+                           zlink_socket_get_channel_name (dealer, buf,
+                                                          sizeof (buf), &len));
+    TEST_ASSERT_EQUAL_INT (ENOENT, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_socket_set_channel_name (dealer,
+                                                          "fixed-chan"));
+
+    len = sizeof (buf);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_socket_get_channel_name (dealer, buf,
+                                                          sizeof (buf), &len));
+    TEST_ASSERT_EQUAL_UINT (10, len);
+    TEST_ASSERT_EQUAL_STRING_LEN ("fixed-chan", buf, len);
+
+    close_zero_linger (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_socket_set_channel_name (dealer,
+                                                          "preset-chan"));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK,
+      zlink_spot_node_attach_channel_dealer_manual (node, "other-chan",
+                                                    dealer));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    close_zero_linger (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_node_attach_pub_ingress_rejects_duplicate_attach ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1098,6 +1152,9 @@ int main (void)
     RUN_TEST (test_spot_service_send_and_request_fail_for_missing_service);
     RUN_TEST (test_spot_send_channel_rejects_inactive_dealer_attachment);
     RUN_TEST (test_spot_node_attach_channel_dealer_manual_rejects_duplicate_channel);
+    RUN_TEST (test_socket_channel_name_metadata_roundtrip);
+    RUN_TEST (
+      test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch);
     RUN_TEST (test_spot_node_attach_pub_ingress_rejects_duplicate_attach);
     RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
     RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);

@@ -111,8 +111,8 @@ fn main() {
     replier
         .on_dispatch_event({
             let responder_ready = Arc::clone(&responder_ready);
-            move |event| {
-                if event != SpotDispatchEvent::RoutedReadable {
+            move |info| {
+                if info.event != SpotDispatchEvent::RoutedReadable {
                     return;
                 }
 

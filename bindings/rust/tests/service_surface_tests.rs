@@ -92,7 +92,11 @@ fn spot_callback_surfaces_exist() {
     let _ = spot.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
     let _on_send_ready = Spot::on_send_ready::<fn()>;
     let _on_routed_receive = Spot::on_routed_receive::<fn(RoutingId, RoutingId, u64, Vec<Message>)>;
-    let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchEvent)>;
+    let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchInfo)>;
+    let _ = spot.drain_channel_reply_from(std::ptr::null_mut());
+    let dealer = ctx.dealer_socket().unwrap();
+    let _ = dealer.set_channel_name("surface-channel");
+    let _ = dealer.channel_name();
 }
 
 #[test]

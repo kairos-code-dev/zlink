@@ -518,7 +518,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private readonly bool _ownsHandle;
     private Action? _sendReadyHandler;
     private Action<Received>? _routedReceiveHandler;
-    private Action<SpotDispatchEvent>? _dispatchEventHandler;
+    private Action<Spot, SpotDispatchInfo>? _dispatchEventHandler;
     private SynchronizationContext? _sendReadyHandlerContext;
     private SynchronizationContext? _routedReceiveHandlerContext;
     private SynchronizationContext? _dispatchEventHandlerContext;
@@ -1052,7 +1052,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    public void OnDispatchEvent(Action<SpotDispatchEvent> handler)
+    public unsafe void OnDispatchEvent(Action<Spot, SpotDispatchInfo> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -1063,6 +1063,18 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             _dispatchEventHandlerNative, IntPtr.Zero);
         if (rc != 0)
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
+    }
+
+    public void DrainChannelReplyFrom(IntPtr dealerSubject)
+    {
+        EnsureNotDisposed();
+        if (dealerSubject == IntPtr.Zero)
+            throw new ArgumentException("dealerSubject must not be null.",
+                nameof(dealerSubject));
+        int rc = NativeMethods.zlink_spot_channel_reply_progress_from(_handle,
+            dealerSubject);
+        if (rc < 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Close()
@@ -1284,8 +1296,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 }
             }
 
-            if (_node.TryGetChannelDealerHandle(channelName, out IntPtr dealerHandle))
-                return RequestProgressPump.AttachSocket(dealerHandle, completion.Task);
             return RequestProgressPump.AttachSpot(_handle, completion.Task);
         }
         catch
@@ -1384,14 +1394,17 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         CallbackDelivery.Post(_routedReceiveHandlerContext, () => handler(received));
     }
 
-    private void OnNativeDispatchEvent(IntPtr spot, int @event, IntPtr userData)
+    private unsafe void OnNativeDispatchEvent(IntPtr spot,
+        ZlinkSpotDispatchInfoNative* info, IntPtr userData)
     {
-        Action<SpotDispatchEvent>? handler = _dispatchEventHandler;
-        if (handler == null)
+        Action<Spot, SpotDispatchInfo>? handler = _dispatchEventHandler;
+        if (handler == null || info == null)
             return;
 
+        SpotDispatchInfo dispatchInfo = new((SpotDispatchEvent)info->Event,
+            (SpotDispatchSubjectKind)info->SubjectKind, info->Subject);
         CallbackDelivery.Post(_dispatchEventHandlerContext,
-            () => handler((SpotDispatchEvent)@event));
+            () => handler(this, dispatchInfo));
     }
 
     private static void OnRoutedReply(int result, IntPtr parts, nuint partCount,

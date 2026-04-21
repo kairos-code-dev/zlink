@@ -158,6 +158,38 @@ public abstract class Socket implements AutoCloseable {
         socketCore.attachDiscovery(discovery);
     }
 
+    void setChannelName(String channelName) {
+        Objects.requireNonNull(channelName, "channelName");
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.socketSetChannelName(handle,
+              NativeHelpers.toCString(arena, channelName));
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_socket_set_channel_name");
+            }
+        }
+    }
+
+    String getChannelName() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buffer = arena.allocate(256);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = Native.socketGetChannelName(handle, buffer, 256,
+              lengthOut);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_socket_get_channel_name");
+            }
+            int len = (int) lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            if (len <= 0) {
+                return "";
+            }
+            return NativeHelpers.fromCString(buffer, len);
+        }
+    }
+
     void attachStreamRaw(StreamPacketHandler handler) {
         socketCore.attachStreamRaw(handler);
     }

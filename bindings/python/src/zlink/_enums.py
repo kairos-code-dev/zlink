@@ -337,6 +337,13 @@ class SpotDispatchEvent(IntEnum):
     SUBSCRIBE_READABLE = 1
     ROUTED_READABLE = 2
     TIMER_READABLE = 3
+    CHANNEL_REPLY_READABLE = 4
+
+
+class SpotDispatchSubjectKind(IntEnum):
+    SPOT = 1
+    TIMER = 2
+    CHANNEL_DEALER = 3
 
 
 class RegistryState(IntEnum):

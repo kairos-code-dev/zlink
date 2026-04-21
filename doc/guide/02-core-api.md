@@ -233,7 +233,7 @@ Each socket type uses a dedicated registration function:
 | STREAM (packet) | `zlink_stream_packet_handler(socket, fn, userdata)` | `void fn(void *stream, const zlink_routing_id_t *source_rid, zlink_msg_t *header, zlink_msg_t *body, void *userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` reply is delivered through a separate completion callback |
 | SPOT (routed direct callback) | `zlink_spot_handler(spot, fn, userdata)` — optional; still supported | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
-| SPOT (dispatch readable events) | `zlink_spot_dispatch_event_handler(spot, fn, userdata)` — unified readable-event callback for topic/routed/timer | `void fn(void *spot, zlink_spot_dispatch_event_t event, void *userdata)` |
+| SPOT (dispatch readable events) | `zlink_spot_dispatch_event_handler(spot, fn, userdata)` — unified readable-event callback for topic/routed/channel-reply/timer | `void fn(void *spot, const zlink_spot_dispatch_info_t *info, void *userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv-driven; drained after a `SUBSCRIBE_READABLE` dispatch event |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv-driven; drained after a `ROUTED_READABLE` dispatch event |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` or `zlink_subscribe()` | N/A |

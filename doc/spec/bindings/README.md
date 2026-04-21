@@ -216,7 +216,7 @@ public shape를 기준으로 고정한다.
   channel-aware publish / subscribe 표면을 제공해야 한다.
 - service-aware SPOT subscribe 결과는 topic / parts 와 함께 반드시
   `service_name` 을 노출해야 한다.
-- `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/timer plane 의
+- `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer plane 의
   canonical readable notification surface 이다.
   `zlink_spot_handler()` 와 routed 축에서 mutually exclusive 다.
 - `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
@@ -1273,7 +1273,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Spot | `receiveSubscriptionEvent` | service-aware 구독 이벤트 수신 |
 | Spot | `setSubscription` / `unsetSubscription` | 구독 필터 관리 |
 | Spot | `sendChannel` / `requestChannel` | channel 단위 routed 송신 / 요청 |
-| Spot | `onDispatchEvent` | topic/routed/timer readable 알림 |
+| Spot | `onDispatchEvent` | topic/routed/channel reply/timer readable 알림 |
 | Spot | `onRoutedReceive` | direct routed callback |
 | Spot | `onSendReady` | send ready callback |
 | Spot | `close` | facade 종료 |
@@ -1813,11 +1813,24 @@ callback 안에서 event 종류를 확인하고 recv 를 호출하면서 Spot �
 typedef enum zlink_spot_dispatch_event_t {
     ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,  /* pub/sub 메시지 도착 */
     ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,  /* routed/request 메시지 도착 */
-    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3   /* timer fire */
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3,  /* timer fire */
+    ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4 /* channel reply completion */
 } zlink_spot_dispatch_event_t;
 
+typedef enum zlink_spot_dispatch_subject_kind_t {
+    ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1,
+    ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2,
+    ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3
+} zlink_spot_dispatch_subject_kind_t;
+
+typedef struct zlink_spot_dispatch_info_t {
+    zlink_spot_dispatch_event_t event;
+    zlink_spot_dispatch_subject_kind_t subject_kind;
+    void *subject;
+} zlink_spot_dispatch_info_t;
+
 typedef void (*zlink_spot_dispatch_event_handler_fn)(
-    void *spot, zlink_spot_dispatch_event_t event, void *userdata);
+    void *spot, const zlink_spot_dispatch_info_t *info, void *userdata);
 
 zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
     zlink_spot_dispatch_event_handler_fn handler, void *userdata);
@@ -1825,12 +1838,14 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
 
 사용 패턴:
 - dispatch event handler 를 등록한다.
-- callback 이 호출되면 `event` 를 확인한다.
+- callback 이 호출되면 `info->event`, `info->subject_kind`, `info->subject`를 확인한다.
 - 같은 `spot` 의 활성 dispatch callback 안에서는 기본 recv surface 를 사용할 수 있다.
 - `SUBSCRIBE_READABLE` 이면 `zlink_spot_subscribe()` 또는
   `zlink_spot_subscription_event()` 로 pub/sub plane 을 drain 한다.
 - `ROUTED_READABLE` 이면 `zlink_spot_recv()` 로 routed/request 메시지를 recv 한다.
-- `TIMER_READABLE` 이면 `zlink_timer_recv()` 로 timer fire 를 recv 한다.
+- `TIMER_READABLE` 이면 `info->subject` timer handle에 대해 `zlink_timer_recv()` 로 timer fire 를 recv 한다.
+- `CHANNEL_REPLY_READABLE` 이면 `info->subject` dealer handle에 대해
+  `zlink_spot_channel_reply_progress_from()` 로 channel reply completion 을 drain 한다.
 - dispatch event 는 readable 알림이다. callback 1회가 메시지 1개를 뜻하지는 않는다.
 - callback 안에서는 해당 plane 을 더 이상 읽을 것이 없을 때까지 drain 할 수 있어야 한다.
 - 같은 `spot` 의 dispatch callback 은 직렬화되므로 Spot 메시징을 순차적으로 처리할 수 있다.

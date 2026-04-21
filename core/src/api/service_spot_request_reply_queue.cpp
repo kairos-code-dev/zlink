@@ -16,7 +16,7 @@ namespace
 {
 using zlink::spot_reqrep_internal::g_spot_recv_source_rid;
 using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
-using zlink::spot_reqrep_internal::maybe_dispatch_spot_event;
+using zlink::spot_reqrep_internal::maybe_dispatch_spot_info;
 using zlink::spot_reqrep_internal::queued_spot_subscribe_message_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_subscribe_dispatch_queue_t;
@@ -149,7 +149,9 @@ int zlink::spot_reqrep_internal::queue_spot_message (
         }
     }
 
-    maybe_dispatch_spot_event (state_, ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE);
+    maybe_dispatch_spot_info (state_, ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
+                              ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
+                              state_->owner);
     return 0;
 }
 
@@ -194,8 +196,10 @@ int zlink::spot_reqrep_internal::queue_spot_subscribe_message (
     }
     state_->subscribe_queue.cv.notify_one ();
 
-    maybe_dispatch_spot_event (state_,
-                               ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
+    maybe_dispatch_spot_info (state_,
+                              ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
+                              ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
+                              state_->owner);
     return 0;
 }
 

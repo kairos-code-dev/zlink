@@ -209,12 +209,13 @@ void fail_server(spot_reqrep_server_state_t *state, int err)
 }
 
 void on_spot_dispatch(void *spot,
-                      zlink_spot_dispatch_event_t event,
+                      const zlink_spot_dispatch_info_t *info,
                       void *userdata)
 {
     spot_reqrep_server_state_t *state =
       static_cast<spot_reqrep_server_state_t *>(userdata);
-    if (!state || event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE) {
+    if (!state || !info
+        || info->event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE) {
         return;
     }
 

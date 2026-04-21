@@ -65,8 +65,8 @@ fn main() {
             let active_collect = Arc::clone(&active_collect);
             let ready_tx = ready_tx.clone();
             let activity_tx = activity_tx.clone();
-            move |event| {
-                if event != SpotDispatchEvent::SubscribeReadable {
+            move |info| {
+                if info.event != SpotDispatchEvent::SubscribeReadable {
                     return;
                 }
 

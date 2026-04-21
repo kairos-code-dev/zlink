@@ -475,7 +475,7 @@ public final class Spot implements AutoCloseable {
         List<Message> payload = clonePayload(parts);
         CompletableFuture<Received> future = registerPending(requestId,
           timeoutMs);
-        startRequestProgress(future, requestProgressHandle(channelName));
+        startRequestProgress(future);
         try {
             submitSpotRequestChannel(channelName, payload, REPLY_CALLBACK,
                 MemorySegment.ofAddress(requestId),
@@ -495,26 +495,10 @@ public final class Spot implements AutoCloseable {
         });
     }
 
-    private MemorySegment requestProgressHandle(String channelName) {
-        if (ownerNode != null) {
-            MemorySegment dealerHandle = ownerNode.manualChannelDealerHandle(
-              channelName);
-            if (dealerHandle != null && dealerHandle.address() != 0) {
-                return dealerHandle;
-            }
-        }
-        return null;
-    }
-
-    private void startRequestProgress(CompletableFuture<?> future,
-                                      MemorySegment socketHandle) {
+    private void startRequestProgress(CompletableFuture<?> future) {
         Thread thread = new Thread(() -> {
             while (!future.isDone()) {
-                if (socketHandle != null && socketHandle.address() != 0) {
-                    Native.socketRequestProgressInternal(socketHandle);
-                } else {
-                    Native.spotRequestProgressInternal(handle);
-                }
+                Native.spotRequestProgressInternal(handle);
                 if (future.isDone()) {
                     break;
                 }
@@ -528,6 +512,16 @@ public final class Spot implements AutoCloseable {
         }, "zlink-spot-request-progress");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    public void drainChannelReplyFrom(MemorySegment dealerSubject) {
+        Objects.requireNonNull(dealerSubject, "dealerSubject");
+        ensureOpen();
+        int rc = Native.spotChannelReplyProgressFrom(handle, dealerSubject);
+        if (rc != 0) {
+            throw ZlinkException.fromLastError(
+              "zlink_spot_channel_reply_progress_from");
+        }
     }
 
     private SubmitException submitFailure(String apiName) {

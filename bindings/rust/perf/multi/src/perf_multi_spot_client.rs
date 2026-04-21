@@ -127,8 +127,8 @@ fn main() {
         let spot_ptr = (&*spot as *const Spot) as usize;
         let active_collect = Arc::clone(&active_collect);
         let latency = Arc::clone(&latency);
-        spot.on_dispatch_event(move |event| {
-            if event != SpotDispatchEvent::SubscribeReadable {
+        spot.on_dispatch_event(move |info| {
+            if info.event != SpotDispatchEvent::SubscribeReadable {
                 return;
             }
             let spot = unsafe { &*(spot_ptr as *const Spot) };

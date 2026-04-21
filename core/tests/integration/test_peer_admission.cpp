@@ -10,6 +10,54 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+bool bind_registry_test_endpoints_local (void *registry_,
+                                         char *pub_out_,
+                                         size_t pub_size_,
+                                         char *router_out_,
+                                         size_t router_size_)
+{
+    if (!registry_ || !pub_out_ || !router_out_ || pub_size_ == 0
+        || router_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const int base_port = 49900 + test_port_offset ();
+    for (int i = 0; i < 128; ++i) {
+        snprintf (pub_out_, pub_size_, "tcp://127.0.0.1:%d",
+                  base_port + i * 2);
+        snprintf (router_out_, router_size_, "tcp://127.0.0.1:%d",
+                  base_port + i * 2 + 1);
+        if (zlink_registry_bind (registry_, pub_out_, router_out_)
+            == ZLINK_BIND_OK) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool bind_socket_test_endpoint_local (void *socket_,
+                                      int base_port_,
+                                      char *endpoint_out_,
+                                      size_t endpoint_size_)
+{
+    if (!socket_ || !endpoint_out_ || endpoint_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const int base_port = base_port_ + test_port_offset ();
+    for (int i = 0; i < 128; ++i) {
+        snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%d",
+                  base_port + i);
+        if (zlink_bind (socket_, endpoint_out_) == ZLINK_BIND_OK)
+            return true;
+    }
+
+    return false;
+}
+
 void noop_reply_handler (zlink_request_result_t result_,
                          zlink_msg_t *parts_,
                          size_t part_count_,
@@ -528,17 +576,10 @@ void test_discovery_member_peers_reports_admission_and_service_monitor_event ()
     char registry_router[MAX_SOCKET_STRING];
     char router_endpoint[MAX_SOCKET_STRING];
     char dealer_endpoint[MAX_SOCKET_STRING];
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (5990));
-    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (5991));
-    snprintf (router_endpoint, sizeof (router_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5992));
-    snprintf (dealer_endpoint, sizeof (dealer_endpoint), "tcp://127.0.0.1:%d",
-              test_port (5993));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, registry_pub, registry_router));
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
 
     void *router_discovery = zlink_discovery_new (
       ctx, ZLINK_SERVICE_TYPE_SOCKET, "peer-admission-socket");
@@ -570,8 +611,10 @@ void test_discovery_member_peers_reports_admission_and_service_monitor_event ()
       zlink_socket_attach_discovery (router, router_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_socket_attach_discovery (dealer, dealer_discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, router_endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (dealer, dealer_endpoint));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      router, 50160, router_endpoint, sizeof (router_endpoint)));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      dealer, 50320, dealer_endpoint, sizeof (dealer_endpoint)));
 
     zlink_routing_id_t router_rid;
     memset (&router_rid, 0, sizeof (router_rid));

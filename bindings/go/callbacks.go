@@ -211,12 +211,14 @@ func (s *spotRoutedCallbackState) close() {
 
 type spotDispatchCallbackState struct {
 	dispatcher *callbackDispatcher
-	handler    func(SpotDispatchEvent)
+	spot       *Spot
+	handler    func(*Spot, SpotDispatchInfo)
 }
 
-func newSpotDispatchCallbackState(handler func(SpotDispatchEvent)) *spotDispatchCallbackState {
+func newSpotDispatchCallbackState(spot *Spot, handler func(*Spot, SpotDispatchInfo)) *spotDispatchCallbackState {
 	return &spotDispatchCallbackState{
 		dispatcher: newCallbackDispatcher(),
+		spot:       spot,
 		handler:    handler,
 	}
 }
@@ -468,19 +470,24 @@ func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpot
 }
 
 //export goZlinkSpotDispatchEventTrampoline
-func goZlinkSpotDispatchEventTrampoline(event C.zlink_spot_dispatch_event_t, userdata C.uintptr_t) {
+func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dispatch_info_t, userdata C.uintptr_t) {
 	value, ok := safeHandleValue(userdata)
 	if !ok {
 		return
 	}
 	state, ok := value.(*spotDispatchCallbackState)
-	if !ok || state == nil {
+	if !ok || state == nil || info == nil {
 		return
+	}
+	dispatchInfo := SpotDispatchInfo{
+		Event:       SpotDispatchEvent(info.event),
+		SubjectKind: SpotDispatchSubjectKind(info.subject_kind),
+		Subject:     info.subject,
 	}
 	state.dispatcher.enqueue(&callbackTask{
 		label: "spot-dispatch",
 		invoke: func() {
-			state.handler(SpotDispatchEvent(event))
+			state.handler(state.spot, dispatchInfo)
 		},
 	})
 }

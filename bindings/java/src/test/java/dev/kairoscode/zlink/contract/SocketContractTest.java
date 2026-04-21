@@ -317,9 +317,14 @@ public class SocketContractTest {
             dev.kairoscode.zlink.SpotRoutedHandler.class));
         assertTrue(hasPublicMethod(Spot.class, "onDispatchEvent",
             dev.kairoscode.zlink.SpotDispatchEventHandler.class));
+        assertTrue(hasPublicMethod(Spot.class, "drainChannelReplyFrom",
+            MemorySegment.class));
         assertTrue(hasPublicMethod(Spot.class, "setRoutingId",
             RoutingId.class));
         assertTrue(hasPublicMethod(Spot.class, "routingId"));
+        assertTrue(hasPublicMethod(DealerSocket.class, "setChannelName",
+            String.class));
+        assertTrue(hasPublicMethod(DealerSocket.class, "getChannelName"));
         assertTrue(hasPublicMethod(SpotNode.class, "setRoutingId",
             RoutingId.class));
         assertTrue(hasPublicMethod(SpotNode.class, "routingId"));

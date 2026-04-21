@@ -8,6 +8,7 @@
 #include <memory>
 #include <deque>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -58,6 +59,7 @@ struct socket_request_reply_state_t
     std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>
       pending_requests;
     std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;
+    std::set<void *> spot_channel_dispatch_observers;
     bool internal_dispatch_installed;
     zlink::internal_pair_queue::queue_t recv_queue;
     zlink::request_completion::queue_state_t completion;
@@ -122,6 +124,12 @@ void claim_completion_owner (
 bool current_thread_is_completion_owner (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
 bool in_socket_request_completion_callback (void *socket_);
+void register_spot_channel_dispatch_observer (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *spot_);
+void unregister_spot_channel_dispatch_observer (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *spot_);
 int ensure_recv_queue_ready (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
 int ensure_internal_dispatch_installed (

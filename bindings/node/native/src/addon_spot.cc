@@ -13,6 +13,14 @@ static napi_value unsupported_spot_node(napi_env env, const char *method);
 static napi_value create_message_snapshot_value(napi_env env,
                                                 const zlink_routing_id_t *routing_id,
                                                 zlink_msg_t *msg);
+static void set_uint32_property(napi_env env,
+                                napi_value obj,
+                                const char *name,
+                                uint32_t value);
+static void set_string_property(napi_env env,
+                                napi_value obj,
+                                const char *name,
+                                const char *value);
 
 static const size_t k_spot_send_ready_slot_count = 8;
 
@@ -85,6 +93,8 @@ struct router_spot_js_state_t
 struct spot_dispatch_event_js_payload_t
 {
     int event;
+    uint32_t subject_kind;
+    uint64_t subject_handle;
 };
 
 struct spot_dispatch_event_js_state_t
@@ -835,7 +845,15 @@ static void spot_dispatch_event_tsfn_call_js(napi_env env,
         return;
 
     napi_value argv[1];
-    napi_create_int32(env, payload->event, &argv[0]);
+    napi_value info;
+    napi_create_object(env, &info);
+    set_uint32_property(env, info, "event",
+                        static_cast<uint32_t>(payload->event));
+    set_uint32_property(env, info, "subjectKind", payload->subject_kind);
+    napi_value subject_handle;
+    napi_create_bigint_uint64(env, payload->subject_handle, &subject_handle);
+    napi_set_named_property(env, info, "subjectHandle", subject_handle);
+    argv[0] = info;
     napi_value recv;
     napi_value this_arg;
     napi_get_undefined(env, &this_arg);
@@ -859,13 +877,13 @@ static void release_spot_dispatch_event_handler_slot(void *spot)
 }
 
 static void spot_dispatch_event_dispatch(void *spot_,
-                                         zlink_spot_dispatch_event_t event,
+                                         const zlink_spot_dispatch_info_t *info,
                                          void *userdata)
 {
     (void) spot_;
     spot_dispatch_event_js_state_t *state =
       static_cast<spot_dispatch_event_js_state_t *>(userdata);
-    if (!state)
+    if (!state || !info)
         return;
 
     napi_threadsafe_function tsfn = NULL;
@@ -878,7 +896,10 @@ static void spot_dispatch_event_dispatch(void *spot_,
 
     std::unique_ptr<spot_dispatch_event_js_payload_t> payload(
       new spot_dispatch_event_js_payload_t());
-    payload->event = event;
+    payload->event = static_cast<int>(info->event);
+    payload->subject_kind = static_cast<uint32_t>(info->subject_kind);
+    payload->subject_handle =
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(info->subject));
     if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
         != napi_ok) {
         return;
@@ -2477,6 +2498,35 @@ napi_value spot_request_progress(napi_env env, napi_callback_info info)
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
     (void) zlink_spot_request_progress_internal(spot);
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_channel_reply_progress(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL,
+                              "spotChannelReplyProgress requires (spot, subjectHandle)");
+        return NULL;
+    }
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    uint64_t subject_handle = 0;
+    bool lossless = false;
+    if (napi_get_value_bigint_uint64(env, argv[1], &subject_handle, &lossless)
+        != napi_ok || !lossless) {
+        napi_throw_type_error(env, NULL,
+                              "subjectHandle must be a BigInt pointer value");
+        return NULL;
+    }
+    int rc = zlink_spot_channel_reply_progress_from(
+      spot, reinterpret_cast<void *>(static_cast<uintptr_t>(subject_handle)));
+    if (rc != 0)
+        return throw_last_error(env, "spotChannelReplyProgress failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;

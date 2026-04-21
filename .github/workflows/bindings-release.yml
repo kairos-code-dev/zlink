@@ -3,6 +3,8 @@ name: Release Bindings (Language-specific)
 on:
   push:
     tags:
+      - 'go/v*'
+      - 'rust/v*'
       - 'node/v*'
       - 'python/v*'
       - 'java/v*'
@@ -11,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Target binding: node|python|java|dotnet|cpp|all'
+        description: 'Target binding: go|rust|node|python|java|dotnet|cpp|all'
         required: true
         default: 'node'
         type: string
@@ -66,7 +68,7 @@ jobs:
           fi
 
           case "${TARGET}" in
-            node|python|java|dotnet|cpp|all) ;;
+            go|rust|node|python|java|dotnet|cpp|all) ;;
             *)
               echo "Unsupported target: ${TARGET}" >&2
               exit 1
@@ -85,6 +87,10 @@ jobs:
           if [ "${TARGET}" = "all" ] && [ "${PUBLISH_REGISTRY}" = "true" ]; then
             echo "'all' target with publish_registry=true is not allowed. Publish each language separately." >&2
             exit 1
+          fi
+
+          if [ "${TARGET}" = "go" ]; then
+            PUBLISH_REGISTRY="false"
           fi
 
           CORE_TAG=""
@@ -175,6 +181,41 @@ jobs:
           tag_name: node/v${{ needs.resolve.outputs.version }}
           name: node binding v${{ needs.resolve.outputs.version }}
           files: dist/node/*.tgz
+
+  release-go:
+    name: Release Go Binding
+    runs-on: ubuntu-22.04
+    needs: resolve
+    if: needs.resolve.outputs.target == 'go' || needs.resolve.outputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build and test
+        run: |
+          cd bindings/go
+          go test ./...
+
+      - name: Package source archive
+        run: |
+          mkdir -p dist/go
+          tar -C bindings -czf dist/go/zlink-go-${{ needs.resolve.outputs.version }}.tar.gz go
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binding-go-${{ needs.resolve.outputs.version }}
+          path: dist/go/zlink-go-${{ needs.resolve.outputs.version }}.tar.gz
+
+      - name: Create GitHub Release
+        if: needs.resolve.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: go/v${{ needs.resolve.outputs.version }}
+          name: go binding v${{ needs.resolve.outputs.version }}
+          files: dist/go/zlink-go-${{ needs.resolve.outputs.version }}.tar.gz
 
   release-python:
     name: Release Python Binding
@@ -359,10 +400,8 @@ jobs:
 
       - name: Build and test
         run: |
-          cmake -B build_cpp_release \
-            -DZLINK_BUILD_CPP_BINDINGS=ON \
-            -DZLINK_CPP_BUILD_TESTS=ON \
-            -DZLINK_BUILD_TESTS=OFF
+          cmake -S bindings/cpp -B build_cpp_release \
+            -DZLINK_CPP_BUILD_TESTS=ON
           cmake --build build_cpp_release --parallel
           ctest --test-dir build_cpp_release --output-on-failure -R test_cpp_
 
@@ -384,3 +423,66 @@ jobs:
           tag_name: cpp/v${{ needs.resolve.outputs.version }}
           name: cpp binding v${{ needs.resolve.outputs.version }}
           files: dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}.tar.gz
+
+  release-rust:
+    name: Release Rust Binding
+    runs-on: ubuntu-22.04
+    needs: resolve
+    if: needs.resolve.outputs.target == 'rust' || needs.resolve.outputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate version
+        shell: bash
+        run: |
+          file_version=$(sed -n 's/^version = "\(.*\)"/\1/p' bindings/rust/Cargo.toml | head -n1)
+          if [ "${file_version}" != "${{ needs.resolve.outputs.version }}" ]; then
+            echo "Version mismatch: Cargo.toml=${file_version}, requested=${{ needs.resolve.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Build and test
+        run: |
+          cd bindings/rust
+          cargo test
+
+      - name: Package crates
+        run: |
+          mkdir -p dist/rust
+          cd bindings/rust
+          cargo package -p zlink --allow-dirty
+          cargo package -p zlink-codec-json --allow-dirty
+          cargo package -p zlink-codec-messagepack --allow-dirty
+          cargo package -p zlink-codec-protobuf --allow-dirty
+          cp target/package/*.crate ../../dist/rust/
+
+      - name: Publish to crates.io
+        if: needs.resolve.outputs.publish_registry == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
+            echo "CRATES_IO_TOKEN secret is required for crates.io publish" >&2
+            exit 1
+          fi
+          cd bindings/rust
+          cargo publish -p zlink --token "${CARGO_REGISTRY_TOKEN}"
+          sleep 30
+          cargo publish -p zlink-codec-json --token "${CARGO_REGISTRY_TOKEN}"
+          cargo publish -p zlink-codec-messagepack --token "${CARGO_REGISTRY_TOKEN}"
+          cargo publish -p zlink-codec-protobuf --token "${CARGO_REGISTRY_TOKEN}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binding-rust-${{ needs.resolve.outputs.version }}
+          path: dist/rust/*.crate
+
+      - name: Create GitHub Release
+        if: needs.resolve.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rust/v${{ needs.resolve.outputs.version }}
+          name: rust binding v${{ needs.resolve.outputs.version }}
+          files: dist/rust/*.crate

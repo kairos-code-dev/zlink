@@ -39,9 +39,14 @@
 | handler | `IZLinkRequestHandler<TRequest, TResponse>` | request-response handler | 4.1 |
 | handler | `IZLinkSendHandler<TMessage>` | one-way send handler | 4.2 |
 | handler | `IZLinkEventHandler<TEvent>` | pub/sub event handler | 4.3 |
+| handler | `IZLinkSpotPacketHandler<TSpot, TMessage>` | SPOT one-way packet handler | 4.3.1 |
+| handler | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | SPOT request-response handler | 4.3.1 |
+| handler | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | SPOT subscription handler | 4.3.1 |
+| handler | `IZLinkSpotTimerHandler<TSpot>` | SPOT lifecycle timer handler | 4.3.1 |
 | handler | `IZLinkPacketStreamSession` | packet stream session lifecycle + packet callback | 4.4 |
 | handler | `IZLinkRawStreamSession` | raw stream session lifecycle + raw callback | 4.4 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
+| lifecycle | `ZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
 | value | `ZLinkStreamSessionError` | stream session error category enum | 4.4 |
 | value | `ZLinkStreamError` | stream error detail + errno helper | 4.4 |
@@ -178,6 +183,221 @@ public interface IZLinkTopicHandler<in TEvent>
 ```
 
 `IZLinkEventHandler`와 `IZLinkTopicHandler` 중 최종 이름은 미정이다.
+
+### 4.3.1 SPOT lifecycle handler
+
+현재 framework 초안은 `SpotNode.CreateSpot()`로 만든 low-level `Spot` 위에
+application-friendly lifecycle를 얹는 방향이다. 샘플과 wrapper 문서에서 공통으로
+쓰는 최소 표면은 아래 정도다.
+
+```csharp
+public abstract class ZLinkSpot
+{
+    protected ZLinkSpot(RoutingId spotRid, RoutingId nodeRid)
+    {
+        SpotRid = spotRid;
+        NodeRid = nodeRid;
+    }
+
+    public RoutingId SpotRid { get; }
+    public RoutingId NodeRid { get; }
+
+    protected void AddPacket<THandler>(IServiceProvider services)
+        where THandler : class
+    {
+    }
+
+    protected void AddSubscribe<THandler>(
+        string topic,
+        IServiceProvider services)
+        where THandler : class
+    {
+    }
+
+    protected ValueTask<IZLinkTimer> AddTimer<THandler>(
+        string name,
+        TimeSpan period,
+        IServiceProvider services,
+        CancellationToken cancellationToken = default)
+        where THandler : class
+    {
+        return ValueTask.FromResult<IZLinkTimer>(default!);
+    }
+
+    public virtual ValueTask OnInitializeAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+}
+
+public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
+    where TSpot : ZLinkSpot
+{
+    ValueTask HandleAsync(
+        TSpot spot,
+        TMessage message,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSpotRequestHandler<TSpot, in TRequest, TReply>
+    where TSpot : ZLinkSpot
+{
+    ValueTask<TReply> HandleAsync(
+        TSpot spot,
+        TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
+    where TSpot : ZLinkSpot
+{
+    ValueTask HandleAsync(
+        TSpot spot,
+        TEvent message,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSpotTimerHandler<TSpot>
+    where TSpot : ZLinkSpot
+{
+    ValueTask HandleAsync(
+        TSpot spot,
+        CancellationToken cancellationToken);
+}
+```
+
+이 초안이 기대하는 low-level `.NET` 바인딩 기반 표면도 문서 안에 같이 고정해 둘
+필요가 있다. 현재 `bindings/dotnet/src/Zlink` 기준 실제 public surface는 아래와
+같다.
+
+```csharp
+public sealed class SpotNode : IDisposable, IAsyncDisposable
+{
+    public SpotNodePublisherOptions PublisherOptions { get; }
+    public SpotNodeSubscriberOptions SubscriberOptions { get; }
+
+    public Spot CreateSpot();
+}
+
+public sealed class Spot : IDisposable, IAsyncDisposable
+{
+    public void SetSubscription(string topicOrPattern);
+
+    public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
+
+    public SubscriptionEvent ReceiveSubscriptionEvent(
+        RecvFlags flags = RecvFlags.None);
+
+    public Received RecvRouted(RecvFlags flags = RecvFlags.None);
+
+    // channel 이름 기반 호출 (attach된 dealer 경유)
+    public void SendChannel(string channelName, ReadOnlyMemory<byte> payload);
+
+    public Task<Received> RequestChannelAsync(
+        string channelName,
+        ReadOnlyMemory<byte> payload,
+        TimeSpan timeout = default,
+        CancellationToken cancellationToken = default);
+
+    // SPOT routed 호출
+    public void SendToRouter(RoutingId targetRid, RoutingId spotRid, ReadOnlyMemory<byte> payload);
+
+    public Task<Received> RequestToRouterAsync(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken = default);
+
+    public void ReplyToSpot(RoutingId targetRid, ReadOnlyMemory<byte> payload);
+
+    // dispatch_info 기반 통합 dispatch callback
+    public void OnDispatchEvent(Action<Spot, SpotDispatchInfo> handler);
+
+    public void OnRoutedReceive(Action<Received> handler);
+
+    // CHANNEL_REPLY_READABLE dispatch 시 사용
+    public void DrainChannelReplyFrom(object dealerSubject);
+}
+
+public sealed class Timer : IDisposable, IAsyncDisposable
+{
+    public static Timer FromSpot(Spot spot);
+
+    public void Start(ulong intervalNs, ulong repeatCount);
+
+    public void Stop();
+
+    public ulong Recv(int flags = 0);
+
+    public void OnFire(Action<Timer, ulong> handler);
+}
+```
+
+`SpotDispatchInfo`는 core `zlink_spot_dispatch_info_t`를 감싸는 managed 타입으로,
+`Event`, `SubjectKind`, `Subject`를 노출한다.
+
+```csharp
+public readonly struct SpotDispatchInfo
+{
+    public SpotDispatchEvent Event { get; }
+    public SpotDispatchSubjectKind SubjectKind { get; }
+    public object? Subject { get; }  // Timer handle 또는 dealer handle
+}
+
+public enum SpotDispatchEvent
+{
+    SubscribeReadable    = 1,
+    RoutedReadable       = 2,
+    TimerReadable        = 3,
+    ChannelReplyReadable = 4
+}
+
+public enum SpotDispatchSubjectKind
+{
+    Spot          = 1,
+    Timer         = 2,
+    ChannelDealer = 3
+}
+```
+
+framework의 dispatch loop 는 아래처럼 event 종류와 `Subject`를 함께 처리한다.
+
+```csharp
+spot.OnDispatchEvent((s, info) =>
+{
+    switch (info.Event)
+    {
+        case SpotDispatchEvent.SubscribeReadable:
+            /* s.Subscribe() 로 drain */
+            break;
+        case SpotDispatchEvent.RoutedReadable:
+            /* s.RecvRouted() 로 drain */
+            break;
+        case SpotDispatchEvent.ChannelReplyReadable:
+            /* info.Subject 가 dealer handle */
+            s.DrainChannelReplyFrom(info.Subject!);
+            break;
+        case SpotDispatchEvent.TimerReadable:
+            /* info.Subject 가 Timer handle */
+            ((Timer)info.Subject!).Recv();
+            break;
+    }
+});
+```
+
+`RequestChannelAsync(...)` completion 은 **같은 spot execution context 안에서**
+실행된다. arbitrary thread 에서 promise 를 직접 완료하지 않는다. 이 덕분에
+continuation 도 별도 SynchronizationContext 설정 없이 spot state 와 같은 실행
+규칙을 따른다.
+
+framework의 `AddTimer<THandler>(...)`는 low-level `Timer.FromSpot(spot)`와
+`Timer.OnFire(Action<Timer, ulong>)` 위에 얹는 wrapper로 읽는 편이 맞다.
+low-level callback의 실제 시그니처는 `Action<Timer, ulong>`이며, 두 번째 인자는
+native timer가 전달하는 `fireCount`다. framework의 `IZLinkTimer.CancelAsync()`는
+low-level binding의 `Timer.Stop()`와 dispose lifecycle을 framework 쪽에서 감싼
+표면으로 보는 편이 자연스럽다.
 
 ### 4.4 stream session
 
@@ -756,26 +976,116 @@ public interface ISpotPublisherConnections
     IReadOnlyList<string> ListConnections();
 }
 
+public interface IZLinkCommonSocketOptions
+{
+    long MaxMessageSize { get; set; }
+
+    int SendHighWaterMark { get; set; }
+
+    int ReceiveHighWaterMark { get; set; }
+
+    int SendBufferSize { get; set; }
+
+    int ReceiveBufferSize { get; set; }
+
+    TimeSpan? Linger { get; set; }
+
+    TimeSpan? ReceiveTimeout { get; set; }
+
+    TimeSpan? SendTimeout { get; set; }
+
+    TimeSpan? ConnectTimeout { get; set; }
+
+    TimeSpan? HandshakeInterval { get; set; }
+
+    bool IPv6 { get; set; }
+
+    bool TcpNoDelay { get; set; }
+
+    bool Immediate { get; set; }
+}
+
+public interface IRouterSocketOptions
+{
+    RoutingId RoutingId { get; set; }
+
+    bool Mandatory { get; set; }
+
+    bool Handover { get; set; }
+
+    bool Probe { get; set; }
+
+    RoutingId ConnectRoutingId { get; set; }
+}
+
+public interface IDealerSocketOptions
+{
+    RoutingId RoutingId { get; set; }
+
+    bool ProbeRouter { get; set; }
+}
+
+public interface ISpotNodePublisherOptions
+{
+    int SendHighWaterMark { set; }
+
+    TimeSpan? SendTimeout { set; }
+
+    TimeSpan? Linger { set; }
+
+    bool NoDrop { set; }
+}
+
+public interface ISpotNodeSubscriberOptions
+{
+    int ReceiveHighWaterMark { set; }
+
+    TimeSpan? ReceiveTimeout { set; }
+
+    TimeSpan? Linger { set; }
+}
+
 public interface ISpotRouterCapabilityBuilder
 {
+    void ConfigureSocket(
+        Action<IZLinkCommonSocketOptions> configure);
+
+    void ConfigureRouter(
+        Action<IRouterSocketOptions> configure);
+
     void UseManualConnections(
         Action<ISpotRouterConnections> configure);
 }
 
 public interface ISpotPubSubCapabilityBuilder
 {
+    void ConfigurePublisherOptions(
+        Action<ISpotNodePublisherOptions> configure);
+
+    void ConfigureSubscriberOptions(
+        Action<ISpotNodeSubscriberOptions> configure);
+
     void UseManualConnections(
         Action<ISpotPublisherConnections> configure);
 }
 
 public interface ISpotPublisherClientCapabilityBuilder
 {
+    void ConfigureSocket(
+        Action<IZLinkCommonSocketOptions> configure);
+
     void UseManualConnections(
         Action<ISpotPublisherConnections> configure);
 }
 
 public interface ISpotChannelClientCapabilityBuilder
 {
+    void ConfigureSocket(
+        Action<IZLinkCommonSocketOptions> configure);
+
+    void ConfigureDealer(
+        Action<IDealerSocketOptions> configure);
+
     void UseManualConnections(
         Action<IChannelClientConnections> configure);
 }
@@ -843,6 +1153,24 @@ endpoint 집합을 따로 관리하면 된다. 이 초안에서는 manual `Conne
 `UseManualConnections(...)`도 한 군데에 모아 두지 않고 capability builder별로
 따로 두는 편이 맞다.
 
+소켓 옵션도 같은 식으로 소유자를 나눠서 설명하는 편이 맞다.
+
+- `ConfigureSocket(...)`
+  - 실제 `.NET` 바인딩의 `CommonSocketOptions`와 같은 공통 socket facade를
+    capability 아래에 노출하는 모델이다.
+- `ConfigurePublisherOptions(...)`, `ConfigureSubscriberOptions(...)`
+  - 실제 `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions`와 같은
+    `SPOT` pub/sub 전용 facade를 framework 등록 쪽으로 끌어올린다.
+- `ConfigureRouter(...)`, `ConfigureDealer(...)`
+  - 실제 `RouterSocket.RouterOptions`, `DealerSocket.DealerOptions`처럼 socket type
+    전용 facade를 capability 아래에서 따로 둔다.
+- `WithTimeout(...)`
+  - request 한 번에만 적용되는 호출 단위 옵션이다.
+  - 실제 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`,
+    `RouterSocket.RequestAsync(..., TimeSpan timeout, ...)`,
+    `Spot.RequestChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 인자로 받는다.
+  - 위 등록 설정과 달리 capability runtime 기본값을 바꾸지 않는다.
+
 또한 `UseSpotDiscovery(...)`에서 이미 SPOT channel 이름을 등록하므로,
 `AddSpotNode(...)` 안에서 같은 channel 이름을 다시 받는 함수는 두지 않는다.
 
@@ -893,6 +1221,31 @@ public interface IZLinkTimer : IAsyncDisposable
         CancellationToken cancellationToken = default);
 }
 ```
+
+framework timer abstraction이 low-level `.NET` binding과 어떻게 이어지는지도
+문서에 같이 적어 두는 편이 맞다. 현재 `bindings/dotnet/src/Zlink/Timer.cs`
+기준 실제 표면은 아래와 같다.
+
+```csharp
+public sealed class Timer : IDisposable, IAsyncDisposable
+{
+    public static Timer FromSpot(Spot spot);
+
+    public void Start(ulong intervalNs, ulong repeatCount);
+
+    public void Stop();
+
+    public ulong Recv(int flags = 0);
+
+    public void OnFire(Action<Timer, ulong> handler);
+}
+```
+
+즉 low-level callback의 실제 시그니처는 `Action<Timer, ulong>`이다. framework
+초안의 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`는 이 callback을 spot
+lifecycle와 DI handler 모델로 감싼 상위 wrapper로 읽어야 한다.
+마찬가지로 `IZLinkTimer.CancelAsync()`는 low-level `Timer.Stop()`와 dispose
+lifecycle을 framework 쪽에서 감싼 고수준 handle로 읽는 편이 맞다.
 
 timer가 어떤 실행 문맥에서 callback을 호출하는지가 중요하다.
 

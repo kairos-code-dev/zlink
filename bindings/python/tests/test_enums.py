@@ -49,6 +49,8 @@ class EnumValueTests(unittest.TestCase):
     def test_spot_role_values(self):
         self.assertEqual(int(zlink.SpotSocketRole.PUB), 1)
         self.assertEqual(int(zlink.SpotSocketRole.SUB), 2)
+        self.assertEqual(int(zlink.SpotDispatchEvent.CHANNEL_REPLY_READABLE), 4)
+        self.assertEqual(int(zlink.SpotDispatchSubjectKind.CHANNEL_DEALER), 3)
 
 
 class EnumTypeTests(unittest.TestCase):

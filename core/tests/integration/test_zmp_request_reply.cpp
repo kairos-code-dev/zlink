@@ -957,6 +957,7 @@ void test_multiple_in_flight_requests_complete_independently ()
                                       reply_b.payload.size ());
     }
 
+    msleep (SETTLE_TIME);
     test_context_socket_close_zero_linger (client_router);
     test_context_socket_close_zero_linger (server_router);
 }
@@ -1037,6 +1038,7 @@ void test_out_of_order_replies_match_original_request ()
                                       reply_b.payload.size ());
     }
 
+    msleep (SETTLE_TIME);
     test_context_socket_close_zero_linger (client_router);
     test_context_socket_close_zero_linger (server_router);
 }
@@ -1096,6 +1098,7 @@ void test_extra_reply_is_dropped_after_first_completion ()
                                       reply_probe.payload.size ());
     }
 
+    msleep (SETTLE_TIME);
     test_context_socket_close_zero_linger (client_router);
     test_context_socket_close_zero_linger (server_router);
 }
@@ -1130,6 +1133,7 @@ void test_dealer_to_dealer_request_is_not_supported ()
         TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.callback_count);
     }
 
+    msleep (SETTLE_TIME);
     test_context_socket_close_zero_linger (client_dealer);
     test_context_socket_close_zero_linger (server_dealer);
 }
@@ -1172,6 +1176,7 @@ void test_router_request_rejects_non_router_target ()
         TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.callback_count);
     }
 
+    msleep (SETTLE_TIME);
     test_context_socket_close_zero_linger (router);
     test_context_socket_close_zero_linger (dealer);
 }
@@ -1224,6 +1229,7 @@ void test_dealer_request_uses_socket_default_timeout_when_reply_is_missing ()
         TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.callback_count);
     }
 
+    msleep (SETTLE_TIME);
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
 }
@@ -1281,6 +1287,7 @@ void test_router_to_spot_request_reply_basic ()
                                       reply_probe.payload.size ());
     }
 
+    msleep (SETTLE_TIME);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
     teardown_connected_spot_case (&spot_case);
 }
@@ -1322,6 +1329,7 @@ void test_router_to_missing_spot_completes_with_enoent ()
         TEST_ASSERT_EQUAL_UINT64 (0, reply_probe.part_count);
     }
 
+    msleep (SETTLE_TIME);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));

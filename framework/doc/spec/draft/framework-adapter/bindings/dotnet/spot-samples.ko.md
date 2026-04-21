@@ -104,6 +104,20 @@ public interface IZLinkSpotTimerHandler<TSpot>
         CancellationToken cancellationToken);
 }
 
+// Low-level Zlink binding basis
+public sealed class Timer : IDisposable, IAsyncDisposable
+{
+    public static Timer FromSpot(Spot spot);
+
+    public void Start(ulong intervalNs, ulong repeatCount);
+
+    public void Stop();
+
+    public ulong Recv(int flags = 0);
+
+    public void OnFire(Action<Timer, ulong> handler);
+}
+
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
     string SpotName,
@@ -204,6 +218,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
 
     options.AddChannel("play", channel =>
@@ -219,10 +234,70 @@ builder.Services.AddZLinkFramework(options =>
     options.AddSpotNode("stage-node", spot =>
     {
         spot.Bind("tcp://0.0.0.0:9000");
-        spot.EnableRouter();
-        spot.EnablePubSub();
-        spot.AttachChannelClient("orders");
-        spot.AttachSpotPublisherClient("game.stage");
+
+        spot.EnableRouter(router =>
+        {
+            router.ConfigureSocket(socket =>
+            {
+                socket.MaxMessageSize = 1024 * 1024;
+                socket.SendHighWaterMark = 10_000;
+                socket.ReceiveHighWaterMark = 10_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(200);
+                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+                socket.Immediate = true;
+            });
+
+            router.ConfigureRouter(options =>
+            {
+                options.Mandatory = true;
+                options.Handover = true;
+            });
+        });
+
+        spot.EnablePubSub(pubsub =>
+        {
+            pubsub.ConfigurePublisherOptions(options =>
+            {
+                options.SendHighWaterMark = 50_000;
+                options.SendTimeout = TimeSpan.FromMilliseconds(100);
+                options.NoDrop = true;
+            });
+
+            pubsub.ConfigureSubscriberOptions(options =>
+            {
+                options.ReceiveHighWaterMark = 50_000;
+                options.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+                options.Linger = TimeSpan.Zero;
+            });
+        });
+
+        spot.AttachChannelClient("orders", client =>
+        {
+            client.ConfigureSocket(socket =>
+            {
+                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
+                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
+                socket.SendHighWaterMark = 5_000;
+                socket.ReceiveHighWaterMark = 5_000;
+                socket.Immediate = true;
+            });
+
+            client.ConfigureDealer(dealer =>
+            {
+                dealer.ProbeRouter = true;
+            });
+        });
+
+        spot.AttachSpotPublisherClient("game.stage", publisher =>
+        {
+            publisher.ConfigureSocket(socket =>
+            {
+                socket.SendHighWaterMark = 20_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
+                socket.Immediate = true;
+            });
+        });
+
         spot.AddSpotFactory<StageSpot>("stage");
     });
 });
@@ -243,6 +318,12 @@ app.Run();
 - `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     별도 publisher client를 붙인다.
+- `ConfigureSocket(...)`, `ConfigureRouter(...)`, `ConfigureDealer(...)`,
+  `ConfigurePublisherOptions(...)`, `ConfigureSubscriberOptions(...)`
+  - 실제 `.NET` 바인딩의 `CommonSocketOptions`, `RouterSocketOptions`,
+    `DealerSocketOptions`, `SpotNodePublisherOptions`,
+    `SpotNodeSubscriberOptions`와 같은 typed facade를 capability별로 등록한다.
+  - 호출 단위 `WithTimeout(...)`과 달리 runtime 기본 동작을 정하는 설정이다.
 - `AddSpotFactory<StageSpot>("stage")`
   - 이 node가 생성하고 소유할 `StageSpot` factory를 `stage` 이름으로 등록한다.
   - 같은 `SpotNode`에는 서로 다른 이름으로 여러 spot factory를 둘 수 있고,
@@ -333,11 +414,12 @@ builder.Services.AddZLinkFramework(options =>
 
 `SPOT`에서는 옵션 소유자를 두 단계로 나눠서 보는 편이 읽기 쉽다.
 
-- `SpotNode` 자체 기본값
-  - topic routed data plane 전체에 공통으로 적용되는 기본값
+- `SpotNode` pub/sub 기본값
+  - 실제 low-level 바인딩의 `SpotNode.PublisherOptions`,
+    `SpotNode.SubscriberOptions`에 대응한다.
 - capability별 socket 기본값
-  - `router`, `pub/sub`, attach된 channel client, attach된 spot publisher client가
-    각각 들고 있는 socket 기본값
+  - `router`, attach된 channel client, attach된 spot publisher client가 각각
+    들고 있는 `CommonSocketOptions` 계열 기본값
 
 아래 코드는 아직 확정 계약이 아니라, `.NET` 표면에서 이런 식으로 보이는 편이
 자연스럽다는 방향 예시다.
@@ -356,43 +438,39 @@ builder.Services.AddZLinkFramework(options =>
     {
         spot.Bind("tcp://0.0.0.0:9000");
 
-        spot.ConfigureNode(node =>
-        {
-            node.TopicSendHighWaterMark = 20_000;
-            node.TopicReceiveHighWaterMark = 20_000;
-            node.RoutedSendHighWaterMark = 10_000;
-            node.RoutedReceiveHighWaterMark = 10_000;
-        });
-
         spot.EnableRouter(router =>
         {
             router.ConfigureSocket(socket =>
             {
+                socket.MaxMessageSize = 1024 * 1024;
                 socket.SendHighWaterMark = 10_000;
                 socket.ReceiveHighWaterMark = 10_000;
                 socket.SendTimeout = TimeSpan.FromMilliseconds(200);
                 socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+                socket.Immediate = true;
             });
 
             router.ConfigureRouter(options =>
             {
-                options.RequestTimeout = TimeSpan.FromMilliseconds(700);
                 options.Mandatory = true;
+                options.Handover = true;
             });
         });
 
         spot.EnablePubSub(pubsub =>
         {
-            pubsub.ConfigurePublisherSocket(socket =>
+            pubsub.ConfigurePublisherOptions(options =>
             {
-                socket.SendHighWaterMark = 50_000;
-                socket.TcpNoDelay = true;
+                options.SendHighWaterMark = 50_000;
+                options.SendTimeout = TimeSpan.FromMilliseconds(100);
+                options.NoDrop = true;
             });
 
-            pubsub.ConfigureSubscriberSocket(socket =>
+            pubsub.ConfigureSubscriberOptions(options =>
             {
-                socket.ReceiveHighWaterMark = 50_000;
-                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+                options.ReceiveHighWaterMark = 50_000;
+                options.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+                options.Linger = TimeSpan.Zero;
             });
         });
 
@@ -401,13 +479,15 @@ builder.Services.AddZLinkFramework(options =>
             client.ConfigureSocket(socket =>
             {
                 socket.ConnectTimeout = TimeSpan.FromSeconds(3);
-                socket.ReconnectInterval = TimeSpan.FromMilliseconds(200);
-                socket.ReconnectIntervalMax = TimeSpan.FromSeconds(5);
+                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
+                socket.SendHighWaterMark = 5_000;
+                socket.ReceiveHighWaterMark = 5_000;
+                socket.Immediate = true;
             });
 
             client.ConfigureDealer(dealer =>
             {
-                dealer.RequestTimeout = TimeSpan.FromMilliseconds(500);
+                dealer.ProbeRouter = true;
             });
         });
 
@@ -417,6 +497,7 @@ builder.Services.AddZLinkFramework(options =>
             {
                 socket.SendHighWaterMark = 20_000;
                 socket.SendTimeout = TimeSpan.FromMilliseconds(100);
+                socket.Immediate = true;
             });
         });
 
@@ -427,11 +508,14 @@ builder.Services.AddZLinkFramework(options =>
 
 이 예시에서 의도하는 구분은 아래와 같다.
 
-- `spot.ConfigureNode(...)`는 `SpotNode` data plane 전체 기본값을 정한다.
-- `router.ConfigureSocket(...)`, `pubsub.ConfigurePublisherSocket(...)` 같은 표면은
-  각 capability가 소유한 socket 기본 동작을 정한다.
-- `client.ConfigureDealer(...)`처럼 socket type 전용 옵션은 capability 전용
-  builder에 따로 두는 편이 읽기 쉽다.
+- `pubsub.ConfigurePublisherOptions(...)`, `pubsub.ConfigureSubscriberOptions(...)`
+  는 실제 `.NET` 바인딩의 `SpotNode.PublisherOptions`,
+  `SpotNode.SubscriberOptions`처럼 `SPOT` mesh 자체가 소유한 옵션 facade를
+  capability 표면으로 끌어온다.
+- `router.ConfigureSocket(...)`, `client.ConfigureSocket(...)` 같은 표면은 실제
+  `CommonSocketOptions`와 같은 공통 socket 기본 동작을 정한다.
+- `router.ConfigureRouter(...)`, `client.ConfigureDealer(...)`는 실제
+  `RouterSocketOptions`, `DealerSocketOptions`에 대응하는 socket type 전용 facade다.
 - `RequestTo(...).WithTimeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
   적용되고, 위 설정은 runtime 기본값이다.
 
@@ -775,6 +859,13 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 }
 ```
 
+이 high-level timer handler는 low-level `.NET` 바인딩의
+`Timer.OnFire(Action<Timer, ulong>)` 위에 얹는 wrapper로 읽어야 한다.
+framework runtime은 `Timer.FromSpot(spot)`로 timer를 만들고, `fireCount`를
+내부적으로 drain한 뒤 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`를 호출하는
+모델이 자연스럽다. 이때 framework의 `IZLinkTimer.CancelAsync()`는 low-level
+`Timer.Stop()`와 dispose lifecycle을 감싼 고수준 handle에 가깝다.
+
 ### 3.4 protobuf packet 타입
 
 ```csharp
@@ -786,7 +877,7 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 
 ## 4. 이 샘플을 어떻게 읽으면 되는가
 
-이 샘플에서 중요한 부분은 아래 아홉 가지다.
+이 샘플에서 중요한 부분은 아래다.
 
 - `stage-node`는 논리 `SpotNode` 이름이고, `UseSpotDiscovery("game.stage", ...)`가
   `game.stage` channel mesh 범위를 정한다.
@@ -800,10 +891,17 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 - `AddSubscribe<THandler>(...)`는 topic subscription consumer를 등록한다.
 - `AddTimer<THandler>(...)`는 spot lifecycle 안에서 timer를 등록한다.
 - 다른 channel 호출은 attach된 channel client를 통해 보낸다.
+- **`RequestChannel(...).ExecAsync(...)`는 같은 spot execution context 안에서 완료된다.**
+  arbitrary thread 에서 promise 를 직접 resolve 하지 않으므로, continuation 도
+  spot state 에 대해 별도 lock 없이 접근할 수 있다.
 
-즉 이 샘플의 핵심은 "`StageSpot`이 이미 생성된 spot 객체"라는 점이다.
-그래서 현재 spot rid는 요청 scope에서 따로 꺼내는 값이 아니라, `StageSpot.SpotRid`
-속성으로 바로 읽는다.
+즉 이 샘플의 핵심은 두 가지다.
+
+1. `StageSpot`이 이미 생성된 spot 객체라서, spot rid는 요청 scope에서 따로 꺼내는
+   값이 아니라 `StageSpot.SpotRid` 속성으로 바로 읽는다.
+2. subscribe handler, packet handler, timer handler, channel reply callback이 모두
+   같은 spot execution context 에서 직렬 실행된다. `StageSpot` 의 mutable state
+   (`UserCount` 등)에 별도 lock 이 필요 없는 이유다.
 
 ## 5. packet 등록과 subscribe 등록은 어떻게 다른가
 

@@ -123,8 +123,8 @@ final class PerfMultiSpot {
             PerfUtil.configureClientTls(control, config.transport());
             node.attachChannelDealerManual(SERVICE_NAME, channelDealer);
             subscriber.setSubscription(TOPIC);
-            subscriber.onDispatchEvent(event -> {
-                if (event != SpotDispatchEvent.SUBSCRIBE_READABLE) {
+            subscriber.onDispatchEvent(info -> {
+                if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     return;
                 }
                 try {

@@ -42,8 +42,8 @@ final class PerfSpotReqRep {
             replierNode.bind(endpoint);
             requester.connect(endpoint);
 
-            replier.onDispatchEvent(event -> {
-                if (event != SpotDispatchEvent.ROUTED_READABLE) {
+            replier.onDispatchEvent(info -> {
+                if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
                     return;
                 }
                 try {

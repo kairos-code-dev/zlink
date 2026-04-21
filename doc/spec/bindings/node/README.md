@@ -255,6 +255,10 @@ class DealerSocket {
     setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
+    /** @throws {ConfigError} */
+    setChannelName(channelName: string): void;
+    /** @throws {ConfigError} */
+    getChannelName(): string;
     /** @throws {SubmitError} */
     send(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
@@ -1415,6 +1419,8 @@ class Spot {
     onRoutedReceive(handler: SpotRoutedHandler): void;
     /** @throws {HandlerError} */
     onDispatchEvent(handler: SpotDispatchEventHandler): void;
+    /** @throws {ConfigError} */
+    drainChannelReplyFrom(subjectHandle: bigint): void;
 
     // --- identity / routing ---
     /**
@@ -1683,7 +1689,13 @@ type SpotSubHandler = SocketSubscribeHandler;
 type SpotSendReadyHandler = () => void;
 type SpotRoutedHandler = (sourceRid: RoutingId | null, spotRid: RoutingId | null,
                           requestSeq: bigint, parts: Message[]) => void;
-type SpotDispatchEventHandler = (event: number) => void;
+interface SpotDispatchInfo {
+  event: number;
+  subjectKind: number;
+  subjectHandle: bigint;
+}
+type SpotDispatchSubjectKind = number;
+type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
 type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 type ServiceMonitorHandler = (event: ServiceEvent) => void;

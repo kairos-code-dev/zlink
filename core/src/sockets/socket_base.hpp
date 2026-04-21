@@ -267,6 +267,13 @@ class socket_base_t : public own_t,
     std::shared_ptr<void> part_helper_state () const;
     void set_part_helper_state (const std::shared_ptr<void> &state_);
     void clear_part_helper_state ();
+    int set_channel_name_metadata (const char *channel_name_);
+    int get_channel_name_metadata (char *channel_name_buf_,
+                                   size_t channel_name_capacity_,
+                                   size_t *channel_name_len_out_) const;
+    int ensure_channel_name_metadata (const char *channel_name_);
+    void lock_channel_name_metadata ();
+    bool has_channel_name_metadata () const;
 
     bool is_ctx_terminated () const;
 
@@ -619,6 +626,8 @@ class socket_base_t : public own_t,
     std::shared_ptr<void> _router_spot_request_reply_state;
     std::shared_ptr<void> _request_reply_state;
     std::shared_ptr<void> _part_helper_state;
+    std::string _channel_name;
+    bool _channel_name_locked;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 };

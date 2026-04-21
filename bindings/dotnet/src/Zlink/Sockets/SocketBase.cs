@@ -74,6 +74,25 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         return (AdmissionState)state;
     }
 
+    public void SetChannelName(string channelName)
+    {
+        if (channelName == null)
+            throw new ArgumentNullException(nameof(channelName));
+        int rc = NativeMethods.zlink_socket_set_channel_name(Handle, channelName);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+    }
+
+    public string GetChannelName()
+    {
+        byte[] buffer = new byte[256];
+        int rc = NativeMethods.zlink_socket_get_channel_name(Handle, buffer,
+            (nuint)buffer.Length, out nuint length);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        return System.Text.Encoding.UTF8.GetString(buffer, 0, checked((int)length));
+    }
+
     public void SetAdmissionState(AdmissionState state)
     {
         int rc = NativeMethods.zlink_set_admission_state(Handle, (int)state);

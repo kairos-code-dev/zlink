@@ -435,6 +435,7 @@ flowchart LR
     subgraph DataPlane["SpotNode data-plane thread"]
         ingress["sub plane<br/>spot_sub readable"]
         routed["routed dispatch<br/>(node_router → queue)"]
+        bridge["channel reply bridge<br/>(attached dealer completion)"]
     end
 
     subgraph Scheduler["SpotNode-local timer scheduler thread"]
@@ -442,28 +443,33 @@ flowchart LR
     end
 
     subgraph UserHandler["zlink_spot_dispatch_event_handler (one per Spot)"]
-        handler["zlink_spot_dispatch_event_handler_fn"]
+        handler["zlink_spot_dispatch_event_handler_fn<br/>(spot, dispatch_info, userdata)"]
     end
 
-    ingress -->|"SUBSCRIBE_READABLE"| handler
-    routed  -->|"ROUTED_READABLE"| handler
-    tick    -->|"TIMER_READABLE"| handler
+    ingress -->|"SUBSCRIBE_READABLE<br/>subject=spot"| handler
+    routed  -->|"ROUTED_READABLE<br/>subject=spot"| handler
+    bridge  -->|"CHANNEL_REPLY_READABLE<br/>subject=dealer"| handler
+    tick    -->|"TIMER_READABLE<br/>subject=timer"| handler
 ```
 
-| Event | Source producer | Thread that fires the callback |
-|-------|----------------|-------------------------------|
-| `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` | `spot_sub_handler_adapter` in `service_handler_spot_api.cpp` — installed as the direct handler of the `spot_sub_t` | SpotNode data-plane polling thread (see §7 *Data Plane Polling Loop*) |
-| `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` | `queue_spot_message()` in `service_spot_request_reply_api.cpp` — invoked after enqueuing a routed delivery into the internal PAIR queue | SpotNode data-plane polling thread (the same thread that parsed the routed envelope from `node_router` / mesh ingress) |
-| `ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE` | `scheduler_fire_timer()` in `timer_scheduler_backend.cpp` — invoked *after* pushing the fire-count into the timer's deque and raising its signaler, and *only* when no direct timer handler is attached | SpotNode-local timer scheduler thread (separate from the data-plane thread) |
+| Event | Source producer | `subject_kind` | Thread that fires the callback |
+|-------|----------------|----------------|-------------------------------|
+| `SUBSCRIBE_READABLE` | `spot_sub_handler_adapter` — direct handler on `spot_sub_t` | `SUBJECT_SPOT` | SpotNode data-plane polling thread |
+| `ROUTED_READABLE` | `queue_spot_message()` — after enqueuing a routed delivery into the internal PAIR queue | `SUBJECT_SPOT` | SpotNode data-plane polling thread |
+| `CHANNEL_REPLY_READABLE` | attached dealer completion bridge — after enqueuing dealer completion into the Spot dealer-source queue | `SUBJECT_CHANNEL_DEALER` | dealer completion thread (data-plane or dedicated completion thread) |
+| `TIMER_READABLE` | `scheduler_fire_timer()` — after pushing the fire count and raising the timer signaler, and only when no direct timer handler is attached | `SUBJECT_TIMER` | SpotNode-local timer scheduler thread |
 
-All three producers reach the callback through one shared entry point,
-`zlink_spot_notify_dispatch_event()` → `maybe_dispatch_spot_event()`, which
-reads the handler pointer under the per-Spot mutex and then invokes it
-without holding any internal lock:
+Dispatch priority is fixed as:
+`SUBSCRIBE_READABLE` → `ROUTED_READABLE` → `CHANNEL_REPLY_READABLE` → `TIMER_READABLE`.
+
+All four producers reach the callback through one shared entry point,
+`zlink_spot_notify_dispatch_info()` → `maybe_dispatch_spot_info()`, which
+snapshots the handler pointer and dispatch info under the per-Spot mutex
+and then invokes the callback without holding any internal lock:
 
 ```cpp
-void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
-                                zlink_spot_dispatch_event_t event_)
+void maybe_dispatch_spot_info (spot_request_reply_state_t *state_,
+                               const zlink_spot_dispatch_info_t &info_)
 {
     zlink_spot_dispatch_event_handler_fn handler = NULL;
     void *userdata = NULL;
@@ -475,15 +481,16 @@ void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
         owner = state_->owner;
     }
     if (handler)
-        handler (owner, event_, userdata);
+        handler (owner, &info_, userdata);
 }
 ```
 
 The snapshot-then-invoke pattern is deliberate. The handler runs while
 no zlink-internal locks are held, so the application is free to call
 back into the zlink API (e.g. `zlink_timer_recv()`, `zlink_spot_recv()`,
-`zlink_subscribe()`) from inside the callback — but see §10.4 for why it
-is still recommended to hand off to an application worker.
+`zlink_subscribe()`, `zlink_spot_channel_reply_progress_from()`) from
+inside the callback — but see §10.4 for why it is still recommended to
+hand off to an application worker.
 
 ### 10.2 Registration and mutual exclusion
 
@@ -529,80 +536,134 @@ one payload on the next `zlink_spot_recv()`. When `request_handler` is
 installed instead, the routed direct callback is invoked in place of
 the queue write and the notification is not fired.
 
+**`CHANNEL_REPLY_READABLE`** — fired by the attached dealer completion
+bridge once a dealer completion (normal reply, timeout, terminate,
+local failure, protocol error) has been finalized and enqueued into the
+originating Spot's dealer-source queue. `subject_kind` is
+`SUBJECT_CHANNEL_DEALER` and `subject` is the attached dealer handle.
+The application drains that queue by calling
+`zlink_spot_channel_reply_progress_from(spot, subject)`. Late replies
+and double completions are discarded before this bridge event is raised.
+
 **`TIMER_READABLE`** — fired from `scheduler_fire_timer()` only when the
 timer has an owning Spot (created via `zlink_spot_timer_new(spot)`) and
 **no direct timer handler** is attached. In that branch, the scheduler
 first pushes the fire count into `timer->fired_counts`, then raises
 `timer->signaler` (eventfd), then calls
-`zlink_spot_notify_dispatch_event(owner_spot, TIMER_READABLE)`. If a
-direct `zlink_timer_handler()` is attached to the same timer, the
-scheduler runs that handler inline and the dispatch event is not fired
-— this is the per-timer precedence rule noted in the user guide.
+`zlink_spot_notify_dispatch_info(owner_spot, TIMER_READABLE,
+SUBJECT_TIMER, timer)`. `subject_kind` is `SUBJECT_TIMER` and `subject`
+is the timer handle. If a direct `zlink_timer_handler()` is attached to
+the same timer, the scheduler runs that handler inline and the dispatch
+event is not fired — this is the per-timer precedence rule noted in the
+user guide.
 
 ### 10.4 End-to-end flow with an application worker
 
 ```mermaid
 sequenceDiagram
-    participant DP as Data-plane thread
+    participant DP as Data-plane / completion thread
     participant Sched as Timer scheduler thread
-    participant Notify as notify_dispatch_event
+    participant Notify as notify_dispatch_info
     participant UH as User event handler
     participant App as App worker thread
-    participant Q as Internal queues<br/>(sub buffer / routed PAIR / timer deque)
+    participant Q as Internal queues<br/>(sub buffer / routed PAIR /<br/>dealer source queue / timer deque)
 
     alt topic message arrives
         DP->>Q: push to sub buffer
-        DP->>Notify: SUBSCRIBE_READABLE
+        DP->>Notify: SUBSCRIBE_READABLE (subject=spot)
     else routed message arrives
         DP->>Q: push to routed PAIR
-        DP->>Notify: ROUTED_READABLE
+        DP->>Notify: ROUTED_READABLE (subject=spot)
+    else channel reply completion
+        DP->>Q: enqueue dealer completion into source queue
+        DP->>Notify: CHANNEL_REPLY_READABLE (subject=dealer)
     else spot-owned timer fires
         Sched->>Q: push fire_count + signal eventfd
-        Sched->>Notify: TIMER_READABLE
+        Sched->>Notify: TIMER_READABLE (subject=timer)
     end
-    Notify->>UH: handler(spot, event, userdata)
-    UH->>App: wake worker (cv / eventfd / channel)
-    App->>Q: zlink_subscribe / zlink_spot_recv / zlink_timer_recv
-    Q-->>App: payload / fire_count
+    Notify->>UH: handler(spot, &dispatch_info, userdata)
+    UH->>App: wake worker (cv / eventfd / channel) + pass dispatch_info
+    alt SUBSCRIBE_READABLE
+        App->>Q: zlink_subscribe()
+    else ROUTED_READABLE
+        App->>Q: zlink_spot_recv()
+    else CHANNEL_REPLY_READABLE
+        App->>Q: zlink_spot_channel_reply_progress_from(spot, subject)
+    else TIMER_READABLE
+        App->>Q: zlink_timer_recv(subject)
+    end
+    Q-->>App: payload / completion / fire_count
 ```
 
 The producers never execute application-domain logic past
-`notify_dispatch_event`. All message decoding, topic matching, and
-timer rescheduling happen on the internal threads; the worker thread
-only touches queues that are already drained or appended atomically
-(via `internal_pair_queue_t` for routed, `spot_sub_t` recv buffer for
-topic, and the timer's `fired_counts` deque guarded by `timer->mutex`).
+`notify_dispatch_info`. All message decoding, topic matching, timer
+rescheduling, and dealer completion decoding happen on the internal
+threads; the worker thread only touches queues that are already drained
+or appended atomically.
 
-### 10.5 Thread-safety invariants
+### 10.5 Channel reply delivery bridge
+
+The path from attached dealer completion to the Spot dispatch stream is:
+
+```text
+network reply
+    -> attached DEALER (transport owner, pending request matching)
+    -> dealer completion (decode, timeout/error classification)
+    -> bridge callback (enqueue into originating Spot dealer-source queue)
+    -> CHANNEL_REPLY_READABLE dispatch event (subject = dealer handle)
+    -> application worker: zlink_spot_channel_reply_progress_from(spot, dealer)
+    -> request completion callback runs
+```
+
+Key bridge rules:
+
+- A dealer completion never invokes the user callback directly. It is
+  first enqueued into the originating Spot's dealer-source queue and
+  surfaced as a dispatch event.
+- If the originating Spot is already terminating, the completion is
+  discarded quietly or resolved under the usual `ETERM` rules. A dead
+  Spot is not reawakened.
+- Spot progress (`zlink_spot_request_progress_internal()`) also watches
+  attached dealer completion signals and advances them into the bridge
+  stage, so bindings do not need a separate per-dealer progress pump.
+
+Each attached dealer owns its own source queue. If several dealers are
+ready at the same time, each one raises its own
+`CHANNEL_REPLY_READABLE` pending item.
+
+### 10.6 Thread-safety invariants
 
 | Invariant | Enforced by |
 |---|---|
-| Handler pointer read is race-free | Snapshot under `state->mutex` in `maybe_dispatch_spot_event` |
+| Handler pointer read is race-free | Snapshot under `state->mutex` in `maybe_dispatch_spot_info` |
 | Handler is invoked without internal locks held | Snapshot-then-release before invocation |
-| Payload is in the queue before notification | Producers call the notifier *after* the queue push (sub buffer / PAIR queue / fired_counts + signaler) |
+| Payload is in the queue before notification | Producers call the notifier *after* the queue push (sub buffer / PAIR queue / dealer-source queue / fired_counts + signaler) |
 | No missed wake-up | Level-triggered — the worker drains each queue until the matching pull API returns `ZLINK_RECV_NO_DATA`; a redundant notification during drain is harmless |
 | Direct handler vs dispatch event | Compile-time separation: `spot_sub_handler_adapter` for subscribe, `request_handler` slot for routed, timer's own handler slot for timers. Registration-time mutex in the routed axis rejects double-install. Per-timer precedence for timers is decided inside `scheduler_fire_timer` |
 | Callback may call zlink API | Producers release their internal locks before invoking the notifier |
+| Channel reply does not race routed / subscribe delivery in app code | One Spot receives one serialized dispatch callback stream. A single worker-thread handoff pattern needs no extra app lock |
+| No late-reply double completion | Completion is finalized in dealer pending state before the bridge emits the dispatch item |
 
-### 10.6 Why this is a single-writer design from the app's perspective
+### 10.7 Why this is a single dispatch stream from the app's perspective
 
-With three internal producers but a single handler, the application can
+With four internal producers but a single handler, the application can
 treat the notification as a condition-variable wake and then drive all
-three queues from one application thread:
+four queues from one application thread:
 
-- No user-owned lock is needed between sub / routed / timer consumers;
-  they read *different* underlying queues, so the only shared state is
-  application bookkeeping that the single worker thread owns outright.
-- The handler itself can be `lock_guard + cv.notify + bitmask |=`; it
-  does not need to touch any zlink API.
+- No user-owned lock is needed between sub / routed / channel-reply /
+  timer consumers; they read different underlying queues, so the only
+  shared state is application bookkeeping owned by one worker thread.
+- The handler itself can stay at `lock_guard + cv.notify +
+  capture(dispatch_info)` level; it does not need to touch any zlink API.
 - The producer threads never wait for the handler to finish beyond the
-  raw function call — they immediately return to their polling loops,
-  so slow consumer threads cannot back-pressure the SpotNode mesh or
-  the timer scheduler past the configured HWMs.
+  raw function call — they immediately return to their polling loops.
+- Channel reply delivery is on the same dispatch stream, so bindings do
+  not need a separate progress pump per attached dealer.
 
 This is the core reason the user-facing guide recommends
 `zlink_spot_dispatch_event_handler` as the unified consumption pattern
-when timer, routed recv, and subscribe all live on one Spot handle.
+when timer, routed recv, subscribe, and channel reply all live on one
+Spot handle.
 
 ## 11. Channel Topology Internals
 

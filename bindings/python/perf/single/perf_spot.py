@@ -52,8 +52,8 @@ def main(argv=None):
                         subscriber.set_subscription(TOPIC)
                         subscriber_node.connect_peer(endpoint)
 
-                        def on_dispatch(current_spot, event):
-                            if event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
+                        def on_dispatch(current_spot, info):
+                            if info.event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
                                 return
                             while True:
                                 received = recv_nonblocking(

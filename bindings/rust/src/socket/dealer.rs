@@ -200,6 +200,14 @@ impl DealerSocket {
         self.inner.on_send_ready(handler)
     }
 
+    pub fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError> {
+        self.inner.set_channel_name(channel_name)
+    }
+
+    pub fn channel_name(&self) -> Result<String, ConfigError> {
+        self.inner.channel_name()
+    }
+
     /// Obtain a lightweight, cloneable handle for sending from callbacks or
     /// other threads. The returned handle does not own the socket; the
     /// `DealerSocket` must remain alive while the handle is in use.

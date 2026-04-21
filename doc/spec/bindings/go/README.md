@@ -36,8 +36,8 @@ with the rules here, this section wins.
 - `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `ServiceName *string` or equivalent optional
   field, populated for SPOT subscribe results and empty for raw `SUB` / `XSUB`.
-- `Spot` must not expose `OnSubscribe(...)`. Use `OnDispatchEvent(...)`
-  plus `Subscribe(...)` / routed recv / timer recv.
+- `Spot` must not expose `OnSubscribe(...)`. Use `OnDispatchEvent(...)` plus
+  `Subscribe(...)` / routed recv / timer recv.
 - `Spot.OnRoutedReceive(...)` and `OnDispatchEvent(...)` are mutually exclusive
   on the routed axis.
 - Every socket and `Spot` exposes `SetAdmissionState(state)` and
@@ -254,6 +254,10 @@ func (s *DealerSocket) Disconnect(endpoint string) error
 func (s *DealerSocket) SetRoutingID(id RoutingID) error
 func (s *DealerSocket) RoutingID() (RoutingID, error)
 func (s *DealerSocket) SetProbe(value bool) error
+// ChannelName metadata is a fixed logical tag used by attached channel dealers.
+// It must be set before attach and becomes read-only after attach.
+func (s *DealerSocket) SetChannelName(value string) error
+func (s *DealerSocket) ChannelName() (string, error)
 // Send submits parts on the socket. Returns *SubmitError on failure.
 func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) error
 // TrySend submits parts without blocking. Returns (false, nil) only when the
@@ -1212,8 +1216,10 @@ func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error)
 // OnRoutedReceive registers a routed receive handler. Returns *HandlerError on failure.
 func (s *Spot) OnRoutedReceive(handler func(sourceRid, spotRid RoutingID,
     requestSeq uint64, parts []*Message)) error
-// OnDispatchEvent registers a dispatch event handler. Returns *HandlerError on failure.
-func (s *Spot) OnDispatchEvent(handler func(event SpotDispatchEvent)) error
+// OnDispatchEvent registers a source-aware dispatch handler. Returns *HandlerError on failure.
+func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error
+// DrainChannelReplyFrom drains pending channel reply completions for an attached dealer subject.
+func (s *Spot) DrainChannelReplyFrom(subject unsafe.Pointer) error
 
 // Close closes the spot. Returns *CloseError on failure.
 func (s *Spot) Close() error
@@ -1287,6 +1293,13 @@ type SpotNodeStatus struct {
 }
 
 func (s *SpotNodeStatus) HasNodeRoutingID() bool
+
+// SpotDispatchInfo — source-aware payload delivered to Spot.OnDispatchEvent.
+type SpotDispatchInfo struct {
+    Event       SpotDispatchEvent
+    SubjectKind SpotDispatchSubjectKind
+    Subject     unsafe.Pointer
+}
 ```
 
 Advanced / Diagnostic entry types and filters:
@@ -1378,6 +1391,23 @@ type SpotNodeSubjectFilter struct {
     Subject     *string
     SubjectKind *SubjectKind
 }
+
+type SpotDispatchEvent int
+
+const (
+    SpotDispatchEventSubscribeReadable    SpotDispatchEvent = 1
+    SpotDispatchEventRoutedReadable       SpotDispatchEvent = 2
+    SpotDispatchEventTimerReadable        SpotDispatchEvent = 3
+    SpotDispatchEventChannelReplyReadable SpotDispatchEvent = 4
+)
+
+type SpotDispatchSubjectKind int
+
+const (
+    SpotDispatchSubjectSpot          SpotDispatchSubjectKind = 1
+    SpotDispatchSubjectTimer         SpotDispatchSubjectKind = 2
+    SpotDispatchSubjectChannelDealer SpotDispatchSubjectKind = 3
+)
 ```
 
 ---

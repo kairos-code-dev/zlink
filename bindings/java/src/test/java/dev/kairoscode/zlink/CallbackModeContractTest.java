@@ -1,6 +1,7 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.SpotDispatchEvent;
+import dev.kairoscode.zlink.SpotDispatchSubjectKind;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.registry.ServiceType;
@@ -75,12 +76,13 @@ public class CallbackModeContractTest {
             awaitCondition(() -> subscriberNode.statusSnapshot()
                 .connectedPeerCount() > 0, "spot peer connection");
 
-            subscriber.onDispatchEvent(event -> {
-                if (event != SpotDispatchEvent.SUBSCRIBE_READABLE) {
+            subscriber.onDispatchEvent(info -> {
+                if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     return;
                 }
                 callbackThread.set(Thread.currentThread());
-                eventRef.set(event);
+                eventRef.set(info.event());
+                assertEquals(SpotDispatchSubjectKind.SPOT, info.subjectKind());
                 delivered.countDown();
             });
 

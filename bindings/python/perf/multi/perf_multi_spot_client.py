@@ -118,9 +118,9 @@ def main(argv=None):
             spot.set_subscription(TOPIC)
             clients.append((node, spot))
 
-        def on_dispatch(spot, event):
+        def on_dispatch(spot, info):
             nonlocal received_count
-            if event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
+            if info.event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
                 return
             while True:
                 try:

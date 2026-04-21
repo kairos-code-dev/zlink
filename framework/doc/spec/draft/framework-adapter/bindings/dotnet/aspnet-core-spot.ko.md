@@ -224,6 +224,113 @@ builder.Services.AddZLinkFramework(options =>
 - `pub/sub`, spot publisher client manual 연결은 endpoint 집합만 등록한다.
   다만 전자는 peer `SpotNode` mesh 주소이고, 후자는 외부 publish ingress 주소다.
 
+#### capability별 소켓 옵션
+
+소켓 옵션은 호출 단위 builder 옵션과 섞지 않고, 등록 시점의 runtime 기본값으로
+정의하는 편이 맞다.
+
+- `router.ConfigureSocket(...)`
+  - 실제 `.NET` 바인딩의 `CommonSocketOptions`와 같은 공통 socket 기본값을 정한다.
+- `router.ConfigureRouter(...)`
+  - 실제 `RouterSocket.RouterOptions`에 있는 전용 옵션을 정한다.
+- `pubsub.ConfigurePublisherOptions(...)`
+  - 실제 `SpotNode.PublisherOptions`에 있는 mesh publish 기본값을 정한다.
+- `pubsub.ConfigureSubscriberOptions(...)`
+  - 실제 `SpotNode.SubscriberOptions`에 있는 mesh subscribe 기본값을 정한다.
+- `client.ConfigureSocket(...)`, `client.ConfigureDealer(...)`
+  - attach된 channel client의 `CommonSocketOptions`, `DealerSocketOptions`를 나눠 둔다.
+- `publisher.ConfigureSocket(...)`
+  - attach된 spot publisher client의 publish ingress 기본값을 정한다.
+
+예시는 아래처럼 읽는 편이 자연스럽다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
+
+    options.UseSpotDiscovery("game.stage", registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+    });
+
+    options.AddSpotNode("stage-node", spot =>
+    {
+        spot.Bind("tcp://0.0.0.0:9000");
+
+        spot.EnableRouter(router =>
+        {
+            router.ConfigureSocket(socket =>
+            {
+                socket.MaxMessageSize = 1024 * 1024;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(200);
+                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+                socket.SendHighWaterMark = 10_000;
+                socket.ReceiveHighWaterMark = 10_000;
+                socket.Immediate = true;
+            });
+
+            router.ConfigureRouter(options =>
+            {
+                options.Mandatory = true;
+                options.Handover = true;
+            });
+        });
+
+        spot.EnablePubSub(pubsub =>
+        {
+            pubsub.ConfigurePublisherOptions(options =>
+            {
+                options.SendHighWaterMark = 50_000;
+                options.SendTimeout = TimeSpan.FromMilliseconds(100);
+                options.NoDrop = true;
+            });
+
+            pubsub.ConfigureSubscriberOptions(options =>
+            {
+                options.ReceiveHighWaterMark = 50_000;
+                options.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+                options.Linger = TimeSpan.Zero;
+            });
+        });
+
+        spot.AttachChannelClient("orders", client =>
+        {
+            client.ConfigureSocket(socket =>
+            {
+                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
+                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
+                socket.SendHighWaterMark = 5_000;
+                socket.ReceiveHighWaterMark = 5_000;
+                socket.Immediate = true;
+            });
+
+            client.ConfigureDealer(dealer =>
+            {
+                dealer.ProbeRouter = true;
+            });
+        });
+
+        spot.AttachSpotPublisherClient("game.stage", publisher =>
+        {
+            publisher.ConfigureSocket(socket =>
+            {
+                socket.SendHighWaterMark = 20_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
+                socket.Immediate = true;
+            });
+        });
+
+        spot.AddSpotFactory<StageSpot>("stage");
+    });
+});
+```
+
+이때 timeout은 socket option이 아니라 실제 low-level 바인딩의
+`Spot.RequestChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 단위 인자로
+들어간다. 즉 `RequestChannel(...).WithTimeout(...)` 같은 framework builder 옵션은
+특정 요청 하나에만 적용되고, 위 등록 설정은 runtime 기본값으로 유지된다.
+
 ### 4.2 spot 실행 문맥과 timer
 
 이 부분은 framework가 새로 의미를 만드는 일보다, 하부 C API 계약을 그대로
@@ -232,14 +339,33 @@ framework 표면으로 끌어올리는 성격이 더 강하다.
 현재 core spec 기준으로 아래는 이미 정해져 있다.
 
 - 같은 `spot`의 dispatch callback delivery는 직렬화된다.
-- subscribe, routed, timer readable 알림은 같은 dispatch event 축으로 올라온다.
+- subscribe, routed, **channel reply**, timer readable 알림은 같은 dispatch event
+  축으로 올라온다.
 - `zlink_spot_timer_new(spot)`로 만든 timer는 해당 `spot`에 종속된다.
-- dispatch callback 안에서는 `zlink_timer_recv()`로 pending timer fire를 drain할 수
-  있다.
+- dispatch callback 안에서는 `zlink_timer_recv()`로 pending timer fire를 drain하고,
+  `zlink_spot_channel_reply_progress_from()`으로 channel reply completion을 drain한다.
+
+channel reply completion 이 이제 같은 dispatch stream 안에 포함된다는 점이 핵심이다.
+
+- `Spot.RequestChannelAsync(...)` 호출이 반환하는 `Task` 는 arbitrary thread 가
+  아니라 **spot execution context 안에서** complete 된다.
+- request completion callback 이 같은 spot executor 에서 실행되므로, continuation
+  도 spot state 에 대해 별도 lock 없이 접근할 수 있다.
+- binding 이 attached dealer 별 별도 progress pump 를 돌리지 않아도 된다.
+  `Spot` progress loop 하나로 channel reply completion 까지 처리된다.
+
+dispatch event 종류와 drain 대상은 아래처럼 정리된다.
+
+| dispatch event | `SpotDispatchSubjectKind` | drain 방법 |
+|---------------|--------------------------|------------|
+| `SubscribeReadable` | `Spot` | `Subscribe()` |
+| `RoutedReadable` | `Spot` | `RecvRouted()` |
+| `ChannelReplyReadable` | `ChannelDealer` | `DrainChannelReplyFrom(subject)` |
+| `TimerReadable` | `Timer` | `((Timer)subject).Recv()` |
 
 즉 framework 문서에서 "같은 spot 문맥"이라고 설명하는 부분은 새 semantics를
 정하는 일이 아니라, 기존 core 계약을 `.NET` 사용자 눈높이로 풀어 적는 일에
-가깝다.
+가깝다. channel reply 도 이제 그 "같은 spot 문맥" 안에 포함된다.
 
 ### 4.3 Spot 생성과 lifecycle 초안
 

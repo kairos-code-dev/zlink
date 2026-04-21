@@ -135,8 +135,10 @@ fn main() {
         .expect("spot routing id");
     let stop_dispatch = Arc::clone(&stop);
     let spot_ptr = (&spot as *const Spot) as usize;
-    spot.on_dispatch_event(move |event| {
-        if stop_dispatch.load(Ordering::Acquire) || event != SpotDispatchEvent::RoutedReadable {
+    spot.on_dispatch_event(move |info| {
+        if stop_dispatch.load(Ordering::Acquire)
+            || info.event != SpotDispatchEvent::RoutedReadable
+        {
             return;
         }
         let spot = unsafe { &*(spot_ptr as *const Spot) };

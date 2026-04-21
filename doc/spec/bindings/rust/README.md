@@ -317,6 +317,10 @@ impl DealerSocket {
     pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn channel_name(&self) -> Result<String, ConfigError>;
     /// # Errors: SubmitError
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
@@ -1544,7 +1548,10 @@ impl Spot {
         where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
     /// # Errors: HandlerError
     pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(SpotDispatchEvent) + Send + 'static;
+        where F: Fn(SpotDispatchInfo) + Send + 'static;
+    /// # Errors: ConfigError
+    pub fn drain_channel_reply_from(&self, subject: *mut c_void)
+        -> Result<(), ConfigError>;
 
     // --- identity / routing ---
     /// Spot's logical address / routed ownership key.
@@ -1558,6 +1565,32 @@ impl Spot {
     pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
+
+```rust
+pub enum SpotDispatchEvent {
+    SubscribeReadable,
+    RoutedReadable,
+    TimerReadable,
+    ChannelReplyReadable,
+}
+
+pub enum SpotDispatchSubjectKind {
+    Spot,
+    Timer,
+    ChannelDealer,
+}
+
+pub struct SpotDispatchInfo {
+    pub event: SpotDispatchEvent,
+    pub subject_kind: SpotDispatchSubjectKind,
+    pub subject: *mut c_void,
+}
+```
+
+`ChannelReplyReadable` identifies the attached DEALER source through
+`SpotDispatchInfo.subject_kind` and `SpotDispatchInfo.subject`. Read the
+logical channel name from that attached DEALER with
+`DealerSocket::channel_name()`.
 
 ### RegistryQueryClient
 

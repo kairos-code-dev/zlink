@@ -27,6 +27,8 @@ public final class DealerSocket extends Socket {
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
+    public void setChannelName(String channelName) { super.setChannelName(channelName); }
+    public String getChannelName() { return super.getChannelName(); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
     public boolean send(Message part) { return super.send(part); }

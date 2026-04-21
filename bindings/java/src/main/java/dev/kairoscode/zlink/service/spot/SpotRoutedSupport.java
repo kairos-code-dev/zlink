@@ -13,8 +13,10 @@ import dev.kairoscode.zlink.RequestException;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
+import dev.kairoscode.zlink.SpotDispatchInfo;
 import dev.kairoscode.zlink.SpotDispatchEvent;
 import dev.kairoscode.zlink.SpotDispatchEventHandler;
+import dev.kairoscode.zlink.SpotDispatchSubjectKind;
 import dev.kairoscode.zlink.SpotRoutedHandler;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
@@ -58,7 +60,7 @@ final class SpotRoutedSupport implements AutoCloseable {
         ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
         ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_DISPATCH_HANDLER =
-      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS);
     private static final Arena CALLBACK_ARENA = Arena.ofShared();
     private static final MemorySegment REPLY_CALLBACK = LINKER.upcallStub(
@@ -218,8 +220,8 @@ final class SpotRoutedSupport implements AutoCloseable {
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
           "handleDispatchEventCallback",
-          MethodType.methodType(void.class, MemorySegment.class, int.class,
-            MemorySegment.class), this),
+          MethodType.methodType(void.class, MemorySegment.class,
+            MemorySegment.class, MemorySegment.class), this),
           FD_DISPATCH_HANDLER, arena);
         boolean success = false;
         try {
@@ -285,7 +287,8 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    private void handleDispatchEventCallback(MemorySegment spotHandle, int event,
+    private void handleDispatchEventCallback(MemorySegment spotHandle,
+                                             MemorySegment info,
                                              MemorySegment userdata) {
         SpotDispatchEventHandler handler = dispatchEventHandler;
         ExecutorService executor = callbackExecutor;
@@ -293,8 +296,8 @@ final class SpotRoutedSupport implements AutoCloseable {
             return;
         }
         try {
-            SpotDispatchEvent dispatchEvent = SpotDispatchEvent.fromValue(event);
-            executor.execute(() -> dispatchEvent(handler, dispatchEvent));
+            SpotDispatchInfo dispatchInfo = decodeDispatchInfo(info);
+            executor.execute(() -> dispatchEvent(handler, dispatchInfo));
         } catch (RejectedExecutionException ex) {
             recordCallbackFailure(ex);
         } catch (RuntimeException ex) {
@@ -330,15 +333,30 @@ final class SpotRoutedSupport implements AutoCloseable {
     }
 
     private void dispatchEvent(SpotDispatchEventHandler handler,
-                               SpotDispatchEvent event) {
+                               SpotDispatchInfo info) {
         InternalAccess.enterCallback();
         try {
-            handler.onEvent(event);
+            handler.onEvent(info);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
         } finally {
             InternalAccess.leaveCallback();
         }
+    }
+
+    private static SpotDispatchInfo decodeDispatchInfo(MemorySegment info) {
+        if (info == null || info.address() == 0) {
+            throw new IllegalArgumentException("dispatch info must not be null");
+        }
+        info = info.reinterpret(NativeLayouts.SPOT_DISPATCH_INFO_LAYOUT.byteSize());
+        SpotDispatchEvent event = SpotDispatchEvent.fromValue(info.get(
+          ValueLayout.JAVA_INT, NativeLayouts.SPOT_DISPATCH_INFO_EVENT_OFFSET));
+        SpotDispatchSubjectKind subjectKind = SpotDispatchSubjectKind.fromValue(
+          info.get(ValueLayout.JAVA_INT,
+            NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_KIND_OFFSET));
+        MemorySegment subject = info.get(ValueLayout.ADDRESS,
+          NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_OFFSET);
+        return new SpotDispatchInfo(event, subjectKind, subject);
     }
 
     private CompletableFuture<List<Message>> requestViaNative(List<Message> parts,

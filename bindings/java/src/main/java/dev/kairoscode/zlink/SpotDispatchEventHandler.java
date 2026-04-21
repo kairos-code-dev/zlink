@@ -4,5 +4,5 @@ package dev.kairoscode.zlink;
 
 @FunctionalInterface
 public interface SpotDispatchEventHandler {
-    void onEvent(SpotDispatchEvent event);
+    void onEvent(SpotDispatchInfo info);
 }

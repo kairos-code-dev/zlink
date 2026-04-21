@@ -37,8 +37,8 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 	replierSpotRID, err := replier.RoutingID()
 	perfcommon.Must(err)
 
-	perfcommon.Must(replier.OnDispatchEvent(func(event zlink.SpotDispatchEvent) {
-		if event != zlink.SpotDispatchEventRoutedReadable {
+	perfcommon.Must(replier.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
+		if info.Event != zlink.SpotDispatchEventRoutedReadable {
 			return
 		}
 		for {

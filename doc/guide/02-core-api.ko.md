@@ -232,7 +232,7 @@ zlink_recv_handler(socket, on_message, NULL);
 | STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 completion callback 으로 전달 |
 | SPOT (routed direct callback) | `zlink_spot_handler()` — 선택적, 여전히 지원 | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
-| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/timer를 모두 한 콜백으로 통합 | `fn(spot, zlink_spot_dispatch_event_t event, userdata)` |
+| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/channel reply/timer를 모두 한 콜백으로 통합 | `fn(spot, const zlink_spot_dispatch_info_t *info, userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv 기반; `SUBSCRIBE_READABLE` 이벤트 후 drain |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv 기반; `ROUTED_READABLE` 이벤트 후 drain |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |

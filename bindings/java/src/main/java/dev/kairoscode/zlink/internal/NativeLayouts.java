@@ -120,6 +120,21 @@ public final class NativeLayouts {
             SERVICE_EVENT_LAYOUT.byteOffset(
                     PathElement.groupElement("subject_kind"));
 
+    public static final MemoryLayout SPOT_DISPATCH_INFO_LAYOUT =
+            MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("event"),
+                    ValueLayout.JAVA_INT.withName("subject_kind"),
+                    ValueLayout.ADDRESS.withName("subject"));
+    public static final long SPOT_DISPATCH_INFO_EVENT_OFFSET =
+            SPOT_DISPATCH_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("event"));
+    public static final long SPOT_DISPATCH_INFO_SUBJECT_KIND_OFFSET =
+            SPOT_DISPATCH_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("subject_kind"));
+    public static final long SPOT_DISPATCH_INFO_SUBJECT_OFFSET =
+            SPOT_DISPATCH_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("subject"));
+
     public static final MemoryLayout SPOT_NODE_STATUS_LAYOUT =
             MemoryLayout.structLayout(
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),

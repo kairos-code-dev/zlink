@@ -604,6 +604,25 @@ class _BaseSocket:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return _routing_id_bytes(rid)
 
+    def set_channel_name(self, channel_name):
+        channel_bytes = _validated_c_string_bytes(channel_name, "channel_name")
+        rc = lib().zlink_socket_set_channel_name(self._handle, channel_bytes)
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def get_channel_name(self):
+        buf = ctypes.create_string_buffer(256)
+        out_size = ctypes.c_size_t()
+        rc = lib().zlink_socket_get_channel_name(
+            self._handle,
+            buf,
+            len(buf),
+            ctypes.byref(out_size),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return buf.raw[: out_size.value].decode("utf-8")
+
     def _send_result(self, native_result):
         if int(native_result) < 0:
             _raise_result_error(SubmitError, SubmitResult, SubmitResult.INTERNAL_ERROR, lib().zlink_errno())

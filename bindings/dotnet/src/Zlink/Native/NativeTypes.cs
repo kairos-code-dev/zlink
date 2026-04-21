@@ -62,6 +62,14 @@ internal struct ZlinkPollerEvent
     public short Events;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotDispatchInfoNative
+{
+    public int Event;
+    public int SubjectKind;
+    public IntPtr Subject;
+}
+
 internal static class NativeHelpers
 {
     public static unsafe string ReadString(byte* buffer, int maxLen)

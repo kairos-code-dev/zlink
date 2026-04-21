@@ -86,9 +86,9 @@ internal static class PerfMultiSpotClient
             node.AttachChannelDealerManual("bench-svc", control);
             node.ConnectPeer(config.DataEndpoint);
             subscriber.SetSubscription(Topic);
-            subscriber.OnDispatchEvent(evt =>
+            subscriber.OnDispatchEvent((_, info) =>
             {
-                if (evt != SpotDispatchEvent.SubscribeReadable)
+                if (info.Event != SpotDispatchEvent.SubscribeReadable)
                     return;
 
                 DrainSubscriber(subscriber, state, config.Size);

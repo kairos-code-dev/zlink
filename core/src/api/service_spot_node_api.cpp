@@ -108,12 +108,8 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
     }
     std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> state =
       zlink::spot_reqrep_internal::try_find_spot_state (spot);
-    if (zlink::spot_reqrep_internal::has_pending_spot_request_work (state)
-        && !zlink::spot_reqrep_internal::current_thread_is_spot_completion_owner (
-          state)) {
-        errno = EBUSY;
-        return ZLINK_CLOSE_BUSY;
-    }
+    if (zlink::spot_reqrep_internal::has_pending_spot_request_work (state))
+        zlink::spot_reqrep_internal::claim_spot_completion_owner (state);
 
     zlink::part_helper_internal::cleanup_handle (spot);
     zlink_spot_request_reply_cleanup_spot (spot);

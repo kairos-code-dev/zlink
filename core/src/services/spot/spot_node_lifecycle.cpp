@@ -469,12 +469,20 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
         errno = EBUSY;
         return -1;
     }
+    if (dealer_->ensure_channel_name_metadata (channel_name.c_str ()) != 0) {
+        const int saved_errno = errno;
+        zlink_monitor_close (&monitor);
+        discovery_->remove_observer (this);
+        errno = saved_errno;
+        return -1;
+    }
 
     _channel_dealer_discoveries[channel_name] = discovery_;
     service_attachment_t &attachment = _service_attachments[channel_name];
     attachment.manual.routers.push_back (dealer_);
     attachment.manual.channel_dealer_discovery = discovery_;
     _service_attachment_socket_index[dealer_] = channel_name;
+    dealer_->lock_channel_name_metadata ();
     register_service_monitor_locked (dealer_, monitor, channel_name);
     rebuild_service_attachment_caches_locked ();
     _summary_last_changed_ms = zlink::clock_t ().now_ms ();
@@ -513,11 +521,18 @@ int spot_node_t::attach_channel_dealer_manual (const char *channel_name_,
         errno = EBUSY;
         return -1;
     }
+    if (dealer_->ensure_channel_name_metadata (channel_name.c_str ()) != 0) {
+        const int saved_errno = errno;
+        zlink_monitor_close (&monitor);
+        errno = saved_errno;
+        return -1;
+    }
 
     service_attachment_t &attachment = _service_attachments[channel_name];
     attachment.manual.routers.push_back (dealer_);
     attachment.manual.channel_dealer_discovery = NULL;
     _service_attachment_socket_index[dealer_] = channel_name;
+    dealer_->lock_channel_name_metadata ();
     register_service_monitor_locked (dealer_, monitor, channel_name);
     rebuild_service_attachment_caches_locked ();
     _summary_last_changed_ms = zlink::clock_t ().now_ms ();

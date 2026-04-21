@@ -3841,6 +3841,43 @@ napi_value socket_getopt(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value socket_set_channel_name(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    std::string channel_name = get_string(env, argv[1]);
+    int rc = zlink_socket_set_channel_name(sock, channel_name.c_str());
+    if (rc != 0)
+        return throw_last_error(env, "socketSetChannelName failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_get_channel_name(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    char channel_name[256];
+    size_t channel_name_len = 0;
+    memset(channel_name, 0, sizeof(channel_name));
+    int rc = zlink_socket_get_channel_name(sock, channel_name,
+                                           sizeof(channel_name),
+                                           &channel_name_len);
+    if (rc != 0)
+        return throw_last_error(env, "socketGetChannelName failed");
+    napi_value out;
+    napi_create_string_utf8(env, channel_name,
+                            static_cast<size_t>(channel_name_len), &out);
+    return out;
+}
+
 napi_value handle_set_routing_id(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];

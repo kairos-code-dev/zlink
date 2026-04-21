@@ -54,6 +54,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink, "RequestResult"))
         self.assertTrue(hasattr(zlink, "RecvResult"))
         self.assertTrue(hasattr(zlink, "SpotDispatchEvent"))
+        self.assertTrue(hasattr(zlink, "SpotDispatchSubjectKind"))
         self.assertTrue(hasattr(zlink, "SpotServiceAttachmentRole"))
         self.assertTrue(hasattr(zlink, "MonitorEvent"))
         self.assertTrue(hasattr(zlink, "MonitorEventMask"))
@@ -86,6 +87,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
             with zlink.PairSocket(ctx) as sock:
                 self.assertTrue(hasattr(sock, "get_admission_state"))
                 self.assertTrue(hasattr(sock, "set_admission_state"))
+                self.assertTrue(hasattr(sock, "get_channel_name"))
+                self.assertTrue(hasattr(sock, "set_channel_name"))
                 options = sock.options
                 self.assertIn("connect_timeout_ms", dir(options))
                 self.assertIn("ipv6", dir(options))
@@ -217,6 +220,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertEqual(node.routing_id, zlink.RoutingId.from_bytes(b"node-1"))
                 with node.create_spot() as spot:
                     self.assertIsInstance(spot, zlink.Spot)
+                    self.assertTrue(hasattr(spot, "on_dispatch_event"))
+                    self.assertTrue(hasattr(spot, "drain_channel_reply_from"))
                     spot.set_routing_id(b"spot-1")
                     self.assertEqual(spot.routing_id, zlink.RoutingId.from_bytes(b"spot-1"))
                     self.assertFalse(hasattr(spot, "send_to_spot"))

@@ -131,6 +131,15 @@ public final class Native {
             "zlink_socket_attach_discovery",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SOCKET_SET_CHANNEL_NAME = downcall(
+            "zlink_socket_set_channel_name",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SOCKET_GET_CHANNEL_NAME = downcall(
+            "zlink_socket_get_channel_name",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_RECV_HANDLER = downcall(
             "zlink_recv_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -509,6 +518,10 @@ public final class Native {
     private static final MethodHandle MH_SPOT_REQUEST_PROGRESS_INTERNAL =
       downcall("zlink_spot_request_progress_internal",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_CHANNEL_REPLY_PROGRESS_FROM =
+      downcall("zlink_spot_channel_reply_progress_from",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_HANDLER = downcall(
       "zlink_spot_handler",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -1047,6 +1060,30 @@ public final class Native {
                 discovery);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_socket_attach_discovery failed",
+              t);
+        }
+    }
+
+    public static int socketSetChannelName(MemorySegment socket,
+                                           MemorySegment channelName) {
+        try {
+            return (int) MH_SOCKET_SET_CHANNEL_NAME.invokeExact(socket,
+                channelName);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_socket_set_channel_name failed",
+              t);
+        }
+    }
+
+    public static int socketGetChannelName(MemorySegment socket,
+                                           MemorySegment channelNameOut,
+                                           long channelNameCapacity,
+                                           MemorySegment channelNameLenOut) {
+        try {
+            return (int) MH_SOCKET_GET_CHANNEL_NAME.invokeExact(socket,
+                channelNameOut, channelNameCapacity, channelNameLenOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_socket_get_channel_name failed",
               t);
         }
     }
@@ -3288,6 +3325,17 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_request_progress_internal failed", t);
+        }
+    }
+
+    public static int spotChannelReplyProgressFrom(MemorySegment spot,
+                                                   MemorySegment subject) {
+        try {
+            return (int) MH_SPOT_CHANNEL_REPLY_PROGRESS_FROM.invokeExact(spot,
+                subject);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_channel_reply_progress_from failed", t);
         }
     }
 

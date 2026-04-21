@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 1
+#define ZLINK_VERSION_PATCH 2
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -351,9 +351,16 @@ typedef void (*zlink_spot_handler_fn) (
   size_t part_count_,
   void *userdata_);
 
+typedef struct zlink_spot_dispatch_info_t
+{
+    zlink_spot_dispatch_event_t event;
+    zlink_spot_dispatch_subject_kind_t subject_kind;
+    void *subject;
+} zlink_spot_dispatch_info_t;
+
 typedef void (*zlink_spot_dispatch_event_handler_fn) (
   void *spot_,
-  zlink_spot_dispatch_event_t event_,
+  const zlink_spot_dispatch_info_t *info_,
   void *userdata_);
 
 typedef enum zlink_part_flag_t
@@ -715,6 +722,19 @@ ZLINK_EXPORT zlink_handler_result_t zlink_spot_dispatch_event_handler (
   void *spot_,
   zlink_spot_dispatch_event_handler_fn handler_,
   void *userdata_);
+
+ZLINK_EXPORT int zlink_spot_channel_reply_progress_from (void *spot_,
+                                                         void *dealer_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_socket_set_channel_name (
+  void *socket_,
+  const char *channel_name_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (
+  void *socket_,
+  char *channel_name_buf_,
+  size_t channel_name_capacity_,
+  size_t *channel_name_len_out_);
 
 /* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_part (

@@ -466,6 +466,9 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "OnDispatchEvent") {
 		t.Fatalf("Spot should expose OnDispatchEvent")
 	}
+	if !hasMethod((*zlink.Spot)(nil), "DrainChannelReplyFrom") {
+		t.Fatalf("Spot should expose DrainChannelReplyFrom")
+	}
 	if !hasMethod((*zlink.Spot)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("Spot should expose ReceiveSubscriptionEvent")
 	}
@@ -495,6 +498,12 @@ func TestSurfaceSpotDoesNotExposeDirectMessaging(t *testing.T) {
 	}
 	if hasMethod((*zlink.Spot)(nil), "SubscriptionAt") {
 		t.Fatalf("Spot should not expose SubscriptionAt")
+	}
+	if !hasMethod((*zlink.DealerSocket)(nil), "SetChannelName") {
+		t.Fatalf("DealerSocket should expose SetChannelName")
+	}
+	if !hasMethod((*zlink.DealerSocket)(nil), "ChannelName") {
+		t.Fatalf("DealerSocket should expose ChannelName")
 	}
 	if !hasMethod((*zlink.Timer)(nil), "Start") || !hasMethod((*zlink.Timer)(nil), "Recv") || !hasMethod((*zlink.Timer)(nil), "OnFire") {
 		t.Fatalf("Timer should expose canonical timer methods")

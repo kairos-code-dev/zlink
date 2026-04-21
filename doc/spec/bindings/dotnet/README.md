@@ -42,6 +42,14 @@ with the rules here, this section wins.
 - `Spot` must expose channel-aware data-plane methods:
   `SendChannel(...)`, `RequestChannelAsync(...)`, and
   `Publish(string serviceName, string topic, ...)`.
+- `Spot.OnDispatchEvent(...)` takes `Action<Spot, SpotDispatchInfo>`.
+  `SpotDispatchInfo` carries `Event`, `SubjectKind`, and `Subject`
+  (`IntPtr`, the source handle). `Spot` must also expose
+  `DrainChannelReplyFrom(IntPtr dealerSubject)` for draining
+  `ChannelReplyReadable` completions from the given attached dealer.
+- `DealerSocket` must expose `SetChannelName(string channelName)` and
+  `GetChannelName()` for fixed logical channel name metadata used by
+  `AttachChannelDealerManual`. Must be set before attach; read-only after.
 - `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `ServiceName` populated for SPOT subscribe
   results and `null` for raw `SUB` / `XSUB`.
@@ -364,6 +372,15 @@ public sealed class DealerSocket : MessageSocketBase
 
     /// <exception cref="ZlinkConfigException"/>
     void AttachDiscovery(Discovery discovery);
+
+    // --- channel name metadata ---
+    // Fixed logical channel name for this dealer when attached via AttachChannelDealerManual.
+    // Maps to zlink_socket_set_channel_name / zlink_socket_get_channel_name.
+    // Must be set before AttachChannelDealerManual; read-only after attach.
+    /// <exception cref="ZlinkConfigException"/>
+    void SetChannelName(string channelName);
+    /// <exception cref="ZlinkConfigException"/>
+    string GetChannelName();
 
     // inherited from MessageSocketBase
     /// <exception cref="ZlinkSubmitException"/>
@@ -1174,6 +1191,51 @@ public sealed record SubscriptionEvent(
     bool Subscribed);                        // true=subscribe, false=unsubscribe
 ```
 
+### SpotDispatchEvent
+
+Dispatch event kind delivered to `Spot.OnDispatchEvent`. Maps 1-to-1 to the
+C API `zlink_spot_dispatch_event_t`.
+
+```csharp
+public enum SpotDispatchEvent
+{
+    SubscribeReadable    = 1,  // topic message ready — drain via Spot.Subscribe()
+    RoutedReadable       = 2,  // routed message ready — drain via Spot.RecvRouted()
+    TimerReadable        = 3,  // timer fired — drain via Timer.Recv(); Subject is Timer
+    ChannelReplyReadable = 4   // channel reply ready — drain via Spot.DrainChannelReplyFrom(Subject)
+}
+```
+
+### SpotDispatchSubjectKind
+
+Subject kind accompanying a `SpotDispatchInfo`. Maps to the C API
+`zlink_spot_dispatch_subject_kind_t`.
+
+```csharp
+public enum SpotDispatchSubjectKind
+{
+    Spot          = 1,   // Subject is the Spot itself (SubscribeReadable / RoutedReadable)
+    Timer         = 2,   // Subject is a Timer handle (TimerReadable)
+    ChannelDealer = 3    // Subject is a DealerSocket handle (ChannelReplyReadable)
+}
+```
+
+### SpotDispatchInfo
+
+Structured dispatch event info passed to `Spot.OnDispatchEvent`. Maps to
+the C API `zlink_spot_dispatch_info_t`. Pure value object.
+
+```csharp
+public sealed record SpotDispatchInfo(
+    SpotDispatchEvent        Event,
+    SpotDispatchSubjectKind  SubjectKind,
+    object?                  Subject);   // Spot | Timer | DealerSocket depending on SubjectKind
+```
+
+`Subject` is `null` only for `SubscribeReadable` and `RoutedReadable` (where
+`SubjectKind == Spot`); cast to `Timer` for `TimerReadable`, to `DealerSocket`
+for `ChannelReplyReadable`.
+
 ### SendFlags
 
 ```csharp
@@ -1700,8 +1762,23 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     Received RecvRouted(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnRoutedReceive(Action<Received> handler);
+    /// <summary>
+    /// Register the unified dispatch event handler. info.Subject is the source
+    /// handle (Spot, Timer, or DealerSocket) for the event.
+    /// Maps to zlink_spot_set_dispatch_event_handler with zlink_spot_dispatch_info_t.
+    /// </summary>
     /// <exception cref="ZlinkHandlerException"/>
-    void OnDispatchEvent(Action<SpotDispatchEvent> handler);
+    void OnDispatchEvent(Action<Spot, SpotDispatchInfo> handler);
+
+    // --- channel reply dispatch ---
+    /// <summary>
+    /// Drain pending channel reply completions from the given attached dealer.
+    /// Call only from within an OnDispatchEvent callback when event is
+    /// SpotDispatchEvent.ChannelReplyReadable. info.Subject is the DealerSocket.
+    /// Maps to zlink_spot_channel_reply_progress_from(spot, dealer).
+    /// </summary>
+    /// <exception cref="ZlinkConfigException"/>
+    void DrainChannelReplyFrom(IntPtr dealerSubject);
 
     /// <exception cref="ZlinkCloseException"/>
     void Close();

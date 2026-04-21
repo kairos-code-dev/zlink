@@ -49,8 +49,8 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	var activeCollect atomic.Bool
 	readySignal := make(chan struct{}, 1)
 
-	perfcommon.Must(subscriber.OnDispatchEvent(func(event zlink.SpotDispatchEvent) {
-		if event != zlink.SpotDispatchEventSubscribeReadable {
+	perfcommon.Must(subscriber.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
+		if info.Event != zlink.SpotDispatchEventSubscribeReadable {
 			return
 		}
 		_ = drainSingleSpotReadable(

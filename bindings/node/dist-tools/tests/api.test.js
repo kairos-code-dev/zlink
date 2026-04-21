@@ -51,6 +51,8 @@ test('service objects expose aligned monitor and query surface', () => {
     assert.equal(typeof discovery.memberPeerMetadata, 'function');
     assert.equal(typeof discovery.resolveSpot, 'function');
     assert.equal(typeof discovery.setDealerPeerMode, 'function');
+    assert.equal(typeof spot.onDispatchEvent, 'function');
+    assert.equal(typeof spot.drainChannelReplyFrom, 'function');
     assert.equal(node.peersSnapshot().length, 0);
     assert.equal(node.peersQuery().length, 0);
     assert.equal(node.subjectsSnapshot().length, 0);
@@ -123,6 +125,8 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     }
     assert.equal(typeof pair.setTlsServer, 'function');
     assert.equal(typeof pair.setTlsClient, 'function');
+    assert.equal(typeof pair.setChannelName, 'function');
+    assert.equal(typeof pair.getChannelName, 'function');
     assert.equal(typeof registry.setTlsServer, 'function');
     assert.equal(typeof registry.setTlsClient, 'function');
     assert.equal(typeof discovery.setTlsServer, 'undefined');

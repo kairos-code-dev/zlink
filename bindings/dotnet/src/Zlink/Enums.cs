@@ -439,5 +439,13 @@ public enum SpotDispatchEvent
 {
     SubscribeReadable = 1,
     RoutedReadable = 2,
-    TimerReadable = 3
+    TimerReadable = 3,
+    ChannelReplyReadable = 4
+}
+
+public enum SpotDispatchSubjectKind
+{
+    Spot = 1,
+    Timer = 2,
+    ChannelDealer = 3
 }

@@ -73,27 +73,82 @@ bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
            && peer_rid_->size <= sizeof (peer_rid_->data);
 }
 
-uint32_t dispatch_event_bit (zlink_spot_dispatch_event_t event_)
+typedef std::pair<int, void *> dispatch_key_t;
+
+std::deque<zlink_spot_dispatch_info_t> *
+dispatch_queue_for_event (zlink::spot_reqrep_internal::spot_dispatch_state_t *state_,
+                          zlink_spot_dispatch_event_t event_)
 {
     switch (event_) {
     case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
-        return 1u << 0;
+        return state_ ? &state_->subscribe_pending : NULL;
     case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
-        return 1u << 1;
+        return state_ ? &state_->routed_pending : NULL;
+    case ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE:
+        return state_ ? &state_->channel_reply_pending : NULL;
     case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
-        return 1u << 2;
+        return state_ ? &state_->timer_pending : NULL;
     default:
-        return 0;
+        return NULL;
     }
 }
 
-zlink_spot_dispatch_event_t next_dispatch_event (uint32_t mask_)
+dispatch_key_t dispatch_key_from_info (const zlink_spot_dispatch_info_t &info_)
 {
-    if ((mask_ & (1u << 0)) != 0)
-        return ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE;
-    if ((mask_ & (1u << 1)) != 0)
-        return ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE;
-    return ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE;
+    return std::make_pair (static_cast<int> (info_.event), info_.subject);
+}
+
+bool dispatch_has_pending (
+  const zlink::spot_reqrep_internal::spot_dispatch_state_t &dispatch_)
+{
+    return !dispatch_.subscribe_pending.empty ()
+           || !dispatch_.routed_pending.empty ()
+           || !dispatch_.channel_reply_pending.empty ()
+           || !dispatch_.timer_pending.empty ();
+}
+
+bool pop_next_dispatch_info (
+  zlink::spot_reqrep_internal::spot_dispatch_state_t *dispatch_,
+  zlink_spot_dispatch_info_t *info_out_)
+{
+    if (!dispatch_ || !info_out_)
+        return false;
+
+    std::deque<zlink_spot_dispatch_info_t> *queue =
+      dispatch_queue_for_event (dispatch_,
+                                ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
+    if (queue && !queue->empty ()) {
+        *info_out_ = queue->front ();
+        queue->pop_front ();
+        return true;
+    }
+
+    queue = dispatch_queue_for_event (dispatch_,
+                                      ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE);
+    if (queue && !queue->empty ()) {
+        *info_out_ = queue->front ();
+        queue->pop_front ();
+        return true;
+    }
+
+    queue =
+      dispatch_queue_for_event (dispatch_,
+                                ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE);
+    if (queue && !queue->empty ()) {
+        *info_out_ = queue->front ();
+        queue->pop_front ();
+        return true;
+    }
+
+    queue = dispatch_queue_for_event (dispatch_,
+                                      ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE);
+    if (queue && !queue->empty ()) {
+        *info_out_ = queue->front ();
+        queue->pop_front ();
+        return true;
+    }
+
+    return false;
 }
 
 void run_pending_spot_dispatch_events (
@@ -102,16 +157,17 @@ void run_pending_spot_dispatch_events (
     while (true) {
         zlink::spot_reqrep_internal::spot_dispatch_state_t &dispatch =
           state_->dispatch;
-        zlink_spot_dispatch_event_t event =
-          ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE;
+        zlink_spot_dispatch_info_t info;
+        memset (&info, 0, sizeof (info));
         {
             std::lock_guard<std::mutex> dispatch_lock (dispatch.mutex);
-            if (dispatch.pending_event_mask == 0) {
+            if (!pop_next_dispatch_info (&dispatch, &info)) {
                 dispatch.running = false;
                 return;
             }
-            event = next_dispatch_event (dispatch.pending_event_mask);
-            dispatch.pending_event_mask &= ~dispatch_event_bit (event);
+            dispatch.queued_keys.erase (dispatch_key_from_info (info));
+            dispatch.active_info = info;
+            dispatch.active_info_valid = true;
         }
 
         zlink_spot_dispatch_event_handler_fn handler = NULL;
@@ -126,14 +182,39 @@ void run_pending_spot_dispatch_events (
 
         if (!handler || !owner) {
             std::lock_guard<std::mutex> dispatch_lock (dispatch.mutex);
-            dispatch.pending_event_mask = 0;
+            dispatch.subscribe_pending.clear ();
+            dispatch.routed_pending.clear ();
+            dispatch.channel_reply_pending.clear ();
+            dispatch.timer_pending.clear ();
+            dispatch.queued_keys.clear ();
+            dispatch.rearm_keys.clear ();
+            dispatch.active_info_valid = false;
             dispatch.running = false;
             return;
         }
 
         const zlink::spot_dispatch_event_callback_context_t dispatch_scope (
           owner);
-        handler (owner, event, userdata);
+        handler (owner, &info, userdata);
+
+        {
+            std::lock_guard<std::mutex> dispatch_lock (dispatch.mutex);
+            const dispatch_key_t key = dispatch_key_from_info (info);
+            dispatch.active_info_valid = false;
+            if (dispatch.rearm_keys.erase (key) != 0
+                && dispatch.queued_keys.count (key) == 0) {
+                std::deque<zlink_spot_dispatch_info_t> *queue =
+                  dispatch_queue_for_event (&dispatch, info.event);
+                if (queue) {
+                    queue->push_back (info);
+                    dispatch.queued_keys.insert (key);
+                }
+            }
+            if (!dispatch_has_pending (dispatch)) {
+                dispatch.running = false;
+                return;
+            }
+        }
     }
 }
 
@@ -153,6 +234,9 @@ void spot_dispatch_event_task_main (void *arg_)
     if (!state)
         return;
 
+    (void)
+      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
+        state);
     run_pending_spot_dispatch_events (state);
 }
 
@@ -264,8 +348,7 @@ int zlink::spot_reqrep_internal::install_spot_dispatch_event_task (
     }
 
     const uint64_t task_id = runtime->add_periodic_task (
-      &spot_dispatch_event_task_main, state_->owner, 24u * 60u * 60u * 1000u,
-      false);
+      &spot_dispatch_event_task_main, state_->owner, 10u, true);
     if (task_id == 0)
         return -1;
 
@@ -274,9 +357,11 @@ int zlink::spot_reqrep_internal::install_spot_dispatch_event_task (
     return 0;
 }
 
-void zlink::spot_reqrep_internal::maybe_dispatch_spot_event (
+void zlink::spot_reqrep_internal::maybe_dispatch_spot_info (
   spot_request_reply_state_t *state_,
-  zlink_spot_dispatch_event_t event_)
+  zlink_spot_dispatch_event_t event_,
+  zlink_spot_dispatch_subject_kind_t subject_kind_,
+  void *subject_)
 {
     if (!state_)
         return;
@@ -287,10 +372,28 @@ void zlink::spot_reqrep_internal::maybe_dispatch_spot_event (
             return;
     }
 
+    zlink_spot_dispatch_info_t info;
+    memset (&info, 0, sizeof (info));
+    info.event = event_;
+    info.subject_kind = subject_kind_;
+    info.subject = subject_;
+
     bool should_run = false;
     {
         std::lock_guard<std::mutex> dispatch_lock (state_->dispatch.mutex);
-        state_->dispatch.pending_event_mask |= dispatch_event_bit (event_);
+        const dispatch_key_t key = dispatch_key_from_info (info);
+        if (state_->dispatch.active_info_valid
+            && dispatch_key_from_info (state_->dispatch.active_info) == key) {
+            state_->dispatch.rearm_keys.insert (key);
+        } else if (state_->dispatch.queued_keys.count (key) == 0
+                   && state_->dispatch.rearm_keys.count (key) == 0) {
+            std::deque<zlink_spot_dispatch_info_t> *queue =
+              dispatch_queue_for_event (&state_->dispatch, event_);
+            if (queue) {
+                queue->push_back (info);
+                state_->dispatch.queued_keys.insert (key);
+            }
+        }
         if (!state_->dispatch.running) {
             state_->dispatch.running = true;
             should_run = true;

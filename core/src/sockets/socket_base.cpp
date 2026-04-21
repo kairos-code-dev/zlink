@@ -106,7 +106,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _ctx_terminated (false),
     _runtime (),
     _local_admission_state (ZLINK_ADMISSION_SERVING),
-    _service_attachment (NULL)
+    _service_attachment (NULL),
+    _channel_name_locked (false)
 {
     _term_pipe_acks_registered = 0;
     _term_pipe_acks_received = 0;

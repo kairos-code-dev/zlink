@@ -61,8 +61,14 @@ spot_dispatch_state_t::spot_dispatch_state_t () :
     handler_userdata (NULL),
     runtime (NULL),
     task_id (0),
-    pending_event_mask (0),
+    active_info_valid (false),
     running (false)
+{
+    memset (&active_info, 0, sizeof (active_info));
+}
+
+spot_channel_reply_source_t::spot_channel_reply_source_t (void *dealer_) :
+    dealer (dealer_)
 {
 }
 
@@ -114,6 +120,7 @@ spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) :
     owner (owner_),
     default_timeout_ms (zlink::request_reply::default_timeout_ms),
     next_request_seq (1),
+    pending_channel_requests (0),
     request_handler (NULL),
     request_handler_userdata (NULL)
 {

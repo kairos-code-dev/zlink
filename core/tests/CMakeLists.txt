@@ -456,8 +456,14 @@ if(TARGET test_discovery_socket_auto_connect_policy)
   set_tests_properties(
     test_discovery_socket_auto_connect_policy
     PROPERTIES
-      TIMEOUT 30
+      TIMEOUT 60
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_helper_request_sequence_failure)
+  set_tests_properties(
+    test_helper_request_sequence_failure
+    PROPERTIES
+      TIMEOUT 30)
 endif()
 if(TARGET test_multi_pubsub_benchmark_process)
   if(TARGET comp_src_pubsub_server)

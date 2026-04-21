@@ -10,7 +10,7 @@ package zlink
 extern void goZlinkSubscribeTrampoline(zlink_routing_id_t *source_rid_, char *topic_, size_t topic_len_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSendReadyTrampoline(void *subject_, uintptr_t userdata_);
 extern void goZlinkSpotRoutedTrampoline(zlink_routing_id_t *source_node_rid_, zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern void goZlinkSpotDispatchEventTrampoline(zlink_spot_dispatch_event_t event_, uintptr_t userdata_);
+extern void goZlinkSpotDispatchEventTrampoline(void *spot_, const zlink_spot_dispatch_info_t *info_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_spot_send_ready_handler_go_local(void *s, uintptr_t userdata) {
@@ -45,7 +45,6 @@ type SpotNode struct {
 	closing bool
 	mu      sync.Mutex
 	spots   map[*spotCore]struct{}
-	manualChannelDealers map[string]unsafe.Pointer
 }
 
 func newSpotNode(ctx *Context) (*SpotNode, error) {
@@ -59,7 +58,6 @@ func newSpotNode(ctx *Context) (*SpotNode, error) {
 	return &SpotNode{
 		handle: handle,
 		spots: make(map[*spotCore]struct{}),
-		manualChannelDealers: make(map[string]unsafe.Pointer),
 	}, nil
 }
 
@@ -126,25 +124,8 @@ func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerS
 		return err
 	}
 	return n.withCString(channelName, func(cstr *C.char) error {
-		if err := configErrorFromResult(C.zlink_spot_node_attach_channel_dealer_manual(handle, cstr, dealerHandle)); err != nil {
-			return err
-		}
-		n.mu.Lock()
-		if n.manualChannelDealers != nil {
-			n.manualChannelDealers[channelName] = dealerHandle
-		}
-		n.mu.Unlock()
-		return nil
+		return configErrorFromResult(C.zlink_spot_node_attach_channel_dealer_manual(handle, cstr, dealerHandle))
 	})
-}
-
-func (n *SpotNode) manualChannelDealerHandle(channelName string) unsafe.Pointer {
-	if n == nil {
-		return nil
-	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.manualChannelDealers[channelName]
 }
 
 func (n *SpotNode) AttachPubIngress(pub *PubSocket) error {
@@ -260,7 +241,6 @@ func (n *SpotNode) Close() error {
 	n.closing = false
 	n.handle = nil
 	n.spots = nil
-	n.manualChannelDealers = nil
 	return nil
 }
 
@@ -624,11 +604,11 @@ func (s *Spot) OnRoutedReceive(handler func(sourceRid, spotRid RoutingID, reques
 	return nil
 }
 
-func (s *Spot) OnDispatchEvent(handler func(event SpotDispatchEvent)) error {
+func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	state := newSpotDispatchCallbackState(handler)
+	state := newSpotDispatchCallbackState(s, handler)
 	handle := cgo.NewHandle(state)
 	if err := handlerErrorFromResult(C.zlink_spot_dispatch_event_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
 		state.close()
@@ -639,6 +619,19 @@ func (s *Spot) OnDispatchEvent(handler func(event SpotDispatchEvent)) error {
 		releaseCallbackHandle(s.core.dispatchHandle)
 	}
 	s.core.dispatchHandle = handle
+	return nil
+}
+
+func (s *Spot) DrainChannelReplyFrom(subject unsafe.Pointer) error {
+	if s == nil || s.core == nil || s.core.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	if subject == nil {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if rc := C.zlink_spot_channel_reply_progress_from(s.raw(), subject); rc != 0 {
+		return configErrorFromErrno(currentErrno())
+	}
 	return nil
 }
 
@@ -678,12 +671,6 @@ func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout 
 		return nil, err
 	}
 	prepared.commit()
-	if s.core != nil && s.core.owner != nil {
-		if dealerHandle := s.core.owner.manualChannelDealerHandle(channelName); dealerHandle != nil {
-			startSocketRequestProgress(dealerHandle, state)
-			return state.result, nil
-		}
-	}
 	startSpotRequestProgress(s.raw(), state)
 	return state.result, nil
 }

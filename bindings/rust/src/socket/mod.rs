@@ -146,6 +146,25 @@ impl SocketInner {
         check_config_rc(unsafe { ffi::zlink_socket_attach_discovery(self.handle, discovery.raw()) })
     }
 
+    pub fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError> {
+        let c = CString::new(channel_name).map_err(|_| config_validation_error())?;
+        check_config_rc(unsafe { ffi::zlink_socket_set_channel_name(self.handle, c.as_ptr()) })
+    }
+
+    pub fn channel_name(&self) -> Result<String, ConfigError> {
+        let mut buf = [0i8; 256];
+        let mut len = 0usize;
+        check_config_rc(unsafe {
+            ffi::zlink_socket_get_channel_name(
+                self.handle,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut len,
+            )
+        })?;
+        Ok(cstr_buf_to_string(&buf, len))
+    }
+
     // -- Send (non-routed) -------------------------------------------------
 
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {

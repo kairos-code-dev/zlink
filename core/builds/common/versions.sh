@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # libzlink version definitions
-LIBZLINK_VERSION="5.3.0"
+LIBZLINK_VERSION="5.3.2"
 
 # Download URLs
 LIBZLINK_URL="https://github.com/zlink/libzlink/releases/download/v${LIBZLINK_VERSION}/zlink-${LIBZLINK_VERSION}.tar.gz"

@@ -114,6 +114,15 @@ zlink_submit_result_t zlink_spot_request_channel(
 - Channel calls always use an attached `DEALER`.
 - Lookup is keyed by `channel_name`.
 - The request reply is bound to the specific dealer selected for that request.
+- Channel request reply has separate owners:
+  transport owner is the selected attached `DEALER`, while delivery owner is
+  the originating `Spot` dispatch stream.
+- A matched channel reply is delivered through
+  `ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE` and the final callback
+  runs from `zlink_spot_channel_reply_progress_from()`.
+- Attached channel dealer metadata may be queried with
+  `zlink_socket_get_channel_name()`. Manual setups may pre-set the same fixed
+  metadata with `zlink_socket_set_channel_name()`.
 - `Spot` does not expose ordinary one-way send targeting a `ROUTER` by direct `rid`.
   For direct routed request initiation see the dedicated section below.
 
@@ -187,6 +196,56 @@ zlink_submit_result_t zlink_spot_reply_router(
 
 ### Handlers
 
+#### Dispatch event types
+
+```c
+typedef enum zlink_spot_dispatch_event_t {
+  ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+  ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
+  ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
+  ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4
+} zlink_spot_dispatch_event_t;
+
+typedef enum zlink_spot_dispatch_subject_kind_t {
+  ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1,
+  ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2,
+  ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3
+} zlink_spot_dispatch_subject_kind_t;
+
+typedef struct zlink_spot_dispatch_info_t {
+  zlink_spot_dispatch_event_t event;
+  zlink_spot_dispatch_subject_kind_t subject_kind;
+  void *subject;
+} zlink_spot_dispatch_info_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn)(
+  void *spot,
+  const zlink_spot_dispatch_info_t *info,
+  void *userdata);
+```
+
+- `event` identifies the readable work plane.
+- `subject_kind` tells the caller how to interpret `subject`.
+- `subject` is the concrete drain target instance.
+- `CHANNEL_REPLY_READABLE` means a channel request completion is ready for the
+  originating `Spot`. It does not expose raw dealer receive.
+
+Drain rules by dispatch subject:
+
+| event | subject_kind | subject | drain |
+|-------|--------------|---------|-------|
+| `SUBSCRIBE_READABLE` | `SPOT` | `spot` | `zlink_spot_subscribe()` / `zlink_spot_subscription_event()` |
+| `ROUTED_READABLE` | `SPOT` | `spot` | `zlink_spot_recv()` |
+| `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
+| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | `zlink_spot_channel_reply_progress_from()` |
+
+Dispatch priority is fixed as:
+
+1. `SUBSCRIBE_READABLE`
+2. `ROUTED_READABLE`
+3. `CHANNEL_REPLY_READABLE`
+4. `TIMER_READABLE`
+
 ```c
 zlink_handler_result_t zlink_spot_handler(
   void *spot,
@@ -197,7 +256,30 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
   void *spot,
   zlink_spot_dispatch_event_handler_fn handler,
   void *userdata);
+
+int zlink_spot_channel_reply_progress_from(
+  void *spot,
+  void *dealer);
+
+zlink_config_result_t zlink_socket_set_channel_name(
+  void *socket,
+  const char *channel_name);
+
+zlink_config_result_t zlink_socket_get_channel_name(
+  void *socket,
+  char *channel_name_buf,
+  size_t channel_name_capacity,
+  size_t *channel_name_len_out);
 ```
+
+- `zlink_spot_dispatch_event_handler()` serializes all dispatch callbacks for
+  the same `Spot`.
+- `zlink_spot_channel_reply_progress_from()` drains channel reply completions
+  for the attached dealer identified by the dispatch `subject`.
+- `zlink_socket_set_channel_name()` stores fixed logical channel metadata on a
+  socket. It does not change transport routing or discovery by itself.
+- `zlink_socket_get_channel_name()` returns that fixed metadata and fails with
+  `ENOENT` when the socket has no channel binding metadata.
 
 ## Spot routed request initiation
 

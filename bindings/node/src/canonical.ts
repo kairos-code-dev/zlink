@@ -363,7 +363,12 @@ export type SpotRoutedHandler = (
   requestSeq: bigint,
   parts: Message[]
 ) => void;
-export type SpotDispatchEventHandler = (event: number) => void;
+export interface SpotDispatchInfo {
+  readonly event: number;
+  readonly subjectKind: number;
+  readonly subjectHandle: bigint;
+}
+export type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
 export type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 export type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 export type ServiceMonitorHandler = (event: ServiceEvent) => void;
@@ -813,6 +818,17 @@ class BaseSocket extends NativeHandle {
 
   setAdmissionState(state: AdmissionState): void {
     requireNative().handleSetAdmissionState(this.nativeHandle(), state | 0);
+  }
+
+  setChannelName(channelName: string): void {
+    requireNative().socketSetChannelName(
+      this.nativeHandle(),
+      validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER)
+    );
+  }
+
+  getChannelName(): string {
+    return requireNative().socketGetChannelName(this.nativeHandle()) as string;
   }
 
   close(): void {
@@ -1859,10 +1875,8 @@ export class Spot extends NativeHandle {
   requestChannel(channelName: string, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestResultCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     const normalizedChannelName = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
-    const progressHandle = this._node.channelDealerHandle(normalizedChannelName) ?? this._native;
-    const progressPump = this._node.channelDealerHandle(normalizedChannelName)
-      ? (handle: unknown) => requireNative().socketRequestProgress(handle)
-      : (handle: unknown) => requireNative().spotRequestProgress(handle);
+    const progressHandle = this._native;
+    const progressPump = (handle: unknown) => requireNative().spotRequestProgress(handle);
     if (typeof callbackOrTimeout === 'function') {
       const { flags, timeoutMs } = normalizeCallbackFlagsAndTimeout(flagsOrTimeout, maybeTimeout);
       const releaseProgress = startRequestProgress(progressHandle, progressPump);
@@ -1967,6 +1981,9 @@ export class Spot extends NativeHandle {
   }
   onDispatchEvent(handler: SpotDispatchEventHandler): void {
     requireNative().spotDispatchEventHandler(this._native, handler);
+  }
+  drainChannelReplyFrom(subjectHandle: bigint): void {
+    requireNative().spotChannelReplyProgress(this._native, subjectHandle);
   }
   setLinger(milliseconds: number): void { requireNative().socketSetOpt(this._native, SocketOption.LINGER, int32Buffer(milliseconds, 'milliseconds')); }
   setSendHighWaterMark(value: number): void { requireNative().socketSetOpt(this._native, SocketOption.SNDHWM, int32Buffer(value, 'value')); }

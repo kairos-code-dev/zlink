@@ -201,12 +201,13 @@ builder.Services.AddZLinkFramework(options =>
                 socket.ReceiveHighWaterMark = 20_000;
                 socket.SendTimeout = TimeSpan.FromMilliseconds(200);
                 socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+                socket.Immediate = true;
             });
 
             server.ConfigureRouter(router =>
             {
                 router.Mandatory = true;
-                router.RequestTimeout = TimeSpan.FromSeconds(2);
+                router.Handover = true;
             });
         });
 
@@ -228,15 +229,15 @@ builder.Services.AddZLinkFramework(options =>
             client.ConfigureSocket(socket =>
             {
                 socket.ConnectTimeout = TimeSpan.FromSeconds(3);
-                socket.ReconnectInterval = TimeSpan.FromMilliseconds(200);
-                socket.ReconnectIntervalMax = TimeSpan.FromSeconds(5);
+                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
                 socket.SendHighWaterMark = 5_000;
                 socket.ReceiveHighWaterMark = 5_000;
+                socket.Immediate = true;
             });
 
             client.ConfigureDealer(dealer =>
             {
-                dealer.RequestTimeout = TimeSpan.FromMilliseconds(700);
+                dealer.ProbeRouter = true;
             });
         });
     });
@@ -253,9 +254,11 @@ builder.Services.AddZLinkFramework(options =>
 - `server.ConfigureSocket(...)`, `client.ConfigureSocket(...)`는 capability가 들고
   있는 socket 기본 동작을 정한다.
 - `server.ConfigureRouter(...)`, `client.ConfigureDealer(...)`는 socket type 전용
-  옵션을 따로 둔다는 뜻이다.
+  facade를 따로 둔다는 뜻이다. 실제 `.NET` 바인딩 기준으로 전자는
+  `RouterSocketOptions`, 후자는 `DealerSocketOptions`에 대응한다.
 - `client.Request(...).WithTimeout(...)`은 특정 호출 하나에만 적용되는 값이고,
-  위 설정은 capability 전체의 기본값이다.
+  실제 low-level 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`
+  처럼 호출 인자로 준다. 위 설정은 capability 전체의 기본값이다.
 
 이렇게 두면 framework 사용자는 low-level `setsockopt` 이름을 직접 외우지 않아도
 되고, 어떤 옵션이 어느 runtime에 적용되는지도 `channel + capability` 기준으로

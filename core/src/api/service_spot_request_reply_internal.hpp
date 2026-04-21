@@ -8,6 +8,7 @@
 #include <memory>
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string>
@@ -73,8 +74,23 @@ struct spot_dispatch_state_t
     zlink::service_control_runtime_t *runtime;
     uint64_t task_id;
     std::mutex mutex;
-    uint32_t pending_event_mask;
+    std::deque<zlink_spot_dispatch_info_t> subscribe_pending;
+    std::deque<zlink_spot_dispatch_info_t> routed_pending;
+    std::deque<zlink_spot_dispatch_info_t> channel_reply_pending;
+    std::deque<zlink_spot_dispatch_info_t> timer_pending;
+    std::set<std::pair<int, void *> > queued_keys;
+    std::set<std::pair<int, void *> > rearm_keys;
+    zlink_spot_dispatch_info_t active_info;
+    bool active_info_valid;
     bool running;
+};
+
+struct spot_channel_reply_source_t
+{
+    explicit spot_channel_reply_source_t (void *dealer_);
+
+    void *dealer;
+    zlink::request_completion::queue_state_t completion;
 };
 
 struct queued_spot_subscribe_message_t
@@ -124,6 +140,9 @@ struct spot_request_reply_state_t
     spot_subscribe_dispatch_queue_t subscribe_queue;
     zlink::internal_pair_queue::queue_t recv_queue;
     zlink::request_completion::queue_state_t completion;
+    std::map<void *, std::shared_ptr<spot_channel_reply_source_t> >
+      channel_reply_sources;
+    size_t pending_channel_requests;
     zlink_spot_handler_fn request_handler;
     void *request_handler_userdata;
     spot_dispatch_state_t dispatch;
@@ -161,8 +180,11 @@ int init_buffer_frame (zlink_msg_t *msg_, const void *data_, size_t size_);
 std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_);
 void erase_spot_owner_state (void *spot_);
 int install_spot_dispatch_event_task (spot_request_reply_state_t *state_);
-void maybe_dispatch_spot_event (spot_request_reply_state_t *state_,
-                                zlink_spot_dispatch_event_t event_);
+void maybe_dispatch_spot_info (
+  spot_request_reply_state_t *state_,
+  zlink_spot_dispatch_event_t event_,
+  zlink_spot_dispatch_subject_kind_t subject_kind_,
+  void *subject_);
 void close_spot_dispatch_parts (zlink_msg_t *parts_, size_t part_count_);
 int queue_spot_message (spot_request_reply_state_t *state_,
                         const zlink_routing_id_t *source_rid_,
@@ -293,13 +315,27 @@ int queue_router_reply_completion (
   int errnum_,
   zlink_msg_t *parts_,
   size_t part_count_);
+int queue_spot_channel_reply_completion (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *dealer_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  int errnum_,
+  zlink_msg_t *parts_,
+  size_t part_count_);
 int drain_spot_reply_completions (
   const std::shared_ptr<spot_request_reply_state_t> &state_,
   void *owner_handle_);
+int drain_spot_channel_reply_completions_from (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_,
+  void *dealer_);
 int drain_router_reply_completions (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_,
   void *owner_handle_);
 bool has_spot_reply_completions (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+bool has_spot_channel_reply_completions (
   const std::shared_ptr<spot_request_reply_state_t> &state_);
 bool has_router_reply_completions (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_);
@@ -316,6 +352,10 @@ bool current_thread_is_spot_completion_owner (
 bool current_thread_is_router_completion_owner (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_);
 bool in_spot_request_completion_callback (void *spot_);
+int drain_attached_channel_reply_bridge_progress (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
+void unregister_spot_channel_reply_observers (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
 bool has_pending_spot_request_work (
   const std::shared_ptr<spot_request_reply_state_t> &state_);
 bool has_pending_router_spot_request_work (

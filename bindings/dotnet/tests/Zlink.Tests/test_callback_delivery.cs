@@ -196,4 +196,104 @@ public sealed class test_callback_delivery
             Assert.Throws<ZlinkCloseException>(() => provider.Close());
         }
     }
+
+    [Fact]
+    public void spot_channel_reply_dispatch_and_callback_hop_to_registered_context()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = node.CreateSpot();
+        using var dealer = new DealerSocket(ctx);
+        using var router = new RouterSocket(ctx);
+        using var dispatchSignal = new ManualResetEventSlim(false);
+        using var callbackSignal = new ManualResetEventSlim(false);
+        using var callbackContext = new SingleThreadSynchronizationContext();
+
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "callback-delivery-spot-channel");
+        router.Bind(endpoint);
+        dealer.Connect(endpoint);
+        Thread.Sleep(50);
+        node.AttachChannelDealerManual("svc", dealer);
+
+        int dispatchThreadId = -1;
+        int callbackThreadId = -1;
+        int dispatchCount = 0;
+        int callbackCount = 0;
+        RequestResult observedResult = RequestResult.ProtocolError;
+        string observedPayload = string.Empty;
+        IntPtr observedSubject = IntPtr.Zero;
+        Exception? dispatchError = null;
+        Exception? callbackError = null;
+
+        callbackContext.Invoke(() =>
+        {
+            spot.OnDispatchEvent((currentSpot, info) =>
+            {
+                dispatchThreadId = Environment.CurrentManagedThreadId;
+                if (info.Event == SpotDispatchEvent.ChannelReplyReadable)
+                {
+                    observedSubject = info.Subject;
+                    dispatchCount++;
+                    try
+                    {
+                        currentSpot.DrainChannelReplyFrom(info.Subject);
+                    }
+                    catch (Exception ex)
+                    {
+                        dispatchError = ex;
+                    }
+                    finally
+                    {
+                        dispatchSignal.Set();
+                    }
+                }
+            });
+
+            using Message request = Message.FromString("ping");
+            spot.RequestChannel("svc", request, (result, parts) =>
+            {
+                callbackThreadId = Environment.CurrentManagedThreadId;
+                callbackCount++;
+                try
+                {
+                    observedResult = result;
+                    Assert.Single(parts);
+                    observedPayload = parts[0].GetString();
+                    foreach (Message part in parts)
+                        part.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    callbackError = ex;
+                }
+                finally
+                {
+                    callbackSignal.Set();
+                }
+            }, timeout: TimeSpan.FromSeconds(2));
+        });
+
+        using Received received = router.Recv();
+        Assert.Equal("ping", received.Parts[0].GetString());
+        Assert.True(received.RequestSeq.HasValue);
+        using Message reply = Message.FromString("pong");
+        router.Reply(received.RoutingId ?? throw new InvalidOperationException(
+            "missing routing id"), received.RequestSeq.Value, reply);
+
+        Assert.True(dispatchSignal.Wait(3000));
+        Assert.True(callbackSignal.Wait(3000));
+        Assert.Null(dispatchError);
+        Assert.Null(callbackError);
+        Assert.NotEqual(IntPtr.Zero, observedSubject);
+        Assert.Equal(callbackContext.ThreadId, dispatchThreadId);
+        Assert.Equal(callbackContext.ThreadId, callbackThreadId);
+        Assert.Equal(1, dispatchCount);
+        Assert.Equal(1, callbackCount);
+        Assert.Equal(RequestResult.Ok, observedResult);
+        Assert.Equal("pong", observedPayload);
+    }
 }

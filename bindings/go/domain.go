@@ -7,6 +7,8 @@ package zlink
 */
 import "C"
 
+import "unsafe"
+
 type SendFlags int
 
 const (
@@ -115,7 +117,22 @@ const (
 	SpotDispatchEventSubscribeReadable SpotDispatchEvent = 1
 	SpotDispatchEventRoutedReadable    SpotDispatchEvent = 2
 	SpotDispatchEventTimerReadable     SpotDispatchEvent = 3
+	SpotDispatchEventChannelReplyReadable SpotDispatchEvent = 4
 )
+
+type SpotDispatchSubjectKind int
+
+const (
+	SpotDispatchSubjectSpot          SpotDispatchSubjectKind = 1
+	SpotDispatchSubjectTimer         SpotDispatchSubjectKind = 2
+	SpotDispatchSubjectChannelDealer SpotDispatchSubjectKind = 3
+)
+
+type SpotDispatchInfo struct {
+	Event       SpotDispatchEvent
+	SubjectKind SpotDispatchSubjectKind
+	Subject     unsafe.Pointer
+}
 
 type AdmissionState int
 

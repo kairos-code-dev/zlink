@@ -67,8 +67,8 @@ final class PerfMultiSpotReqRep {
             PerfUtil.configureServerTls(control, config.transport());
             node.bind(config.endpoint());
             control.bind(controlEndpoint);
-            replier.onDispatchEvent(event -> {
-                if (event != SpotDispatchEvent.ROUTED_READABLE) {
+            replier.onDispatchEvent(info -> {
+                if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
                     return;
                 }
                 try {

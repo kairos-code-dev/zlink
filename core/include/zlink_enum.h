@@ -172,8 +172,16 @@ typedef enum zlink_spot_dispatch_event_t
 {
     ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
     ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
-    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
+    ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4
 } zlink_spot_dispatch_event_t;
+
+typedef enum zlink_spot_dispatch_subject_kind_t
+{
+    ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1,
+    ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2,
+    ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3
+} zlink_spot_dispatch_subject_kind_t;
 
 typedef enum zlink_monitor_source_kind_t
 {

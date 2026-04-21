@@ -327,6 +327,14 @@ public sealed class test_socket_surface
             typeof(SendFlags), typeof(TimeSpan?)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.ReceiveSubscriptionEvent), typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.OnDispatchEvent), typeof(Action<Spot, SpotDispatchInfo>)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.DrainChannelReplyFrom), typeof(IntPtr)));
+        Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
+            nameof(SocketBase.SetChannelName), typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
+            nameof(SocketBase.GetChannelName)));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "TryPublish",
             typeof(string), typeof(Message)));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "TryPublish",

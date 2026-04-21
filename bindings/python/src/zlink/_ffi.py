@@ -124,6 +124,14 @@ class ZlinkSpotNodeSubjectFilter(ctypes.Structure):
     ]
 
 
+class ZlinkSpotDispatchInfo(ctypes.Structure):
+    _fields_ = [
+        ("event", ctypes.c_int),
+        ("subject_kind", ctypes.c_int),
+        ("subject", ctypes.c_void_p),
+    ]
+
+
 class ZlinkMemberPeerEntry(ctypes.Structure):
     _fields_ = [
         ("service_type", ctypes.c_uint16),
@@ -400,6 +408,11 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_spot_channel_reply_progress_from",
+            [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_router_reply_part",
             [
                 ctypes.c_void_p,
@@ -542,6 +555,21 @@ class _Lib:
         self._require(
             "zlink_socket_attach_discovery",
             [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_socket_set_channel_name",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_socket_get_channel_name",
+            [
+                ctypes.c_void_p,
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
             ctypes.c_int,
         )
         self._require(

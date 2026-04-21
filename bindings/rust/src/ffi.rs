@@ -392,11 +392,28 @@ pub enum zlink_spot_dispatch_event_t {
     ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
     ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
     ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
+    ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_spot_dispatch_subject_kind_t {
+    ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1,
+    ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2,
+    ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct zlink_spot_dispatch_info_t {
+    pub event: zlink_spot_dispatch_event_t,
+    pub subject_kind: zlink_spot_dispatch_subject_kind_t,
+    pub subject: *mut c_void,
 }
 
 pub type zlink_spot_dispatch_event_handler_fn = unsafe extern "C" fn(
     spot: *mut c_void,
-    event: zlink_spot_dispatch_event_t,
+    info: *const zlink_spot_dispatch_info_t,
     userdata: *mut c_void,
 );
 
@@ -870,6 +887,16 @@ unsafe extern "C" {
     pub fn zlink_unbind(socket: *mut c_void, addr: *const c_char) -> c_int;
     pub fn zlink_disconnect(socket: *mut c_void, addr: *const c_char) -> c_int;
     pub fn zlink_socket_attach_discovery(socket: *mut c_void, discovery: *mut c_void) -> c_int;
+    pub fn zlink_socket_set_channel_name(
+        socket: *mut c_void,
+        channel_name: *const c_char,
+    ) -> c_int;
+    pub fn zlink_socket_get_channel_name(
+        socket: *mut c_void,
+        channel_name_buf: *mut c_char,
+        channel_name_capacity: usize,
+        channel_name_len_out: *mut usize,
+    ) -> c_int;
 
     // -- Send / recv -------------------------------------------------------
     pub fn zlink_send_part(
@@ -1144,6 +1171,10 @@ unsafe extern "C" {
         timeout_ms: u32,
     ) -> c_int;
     pub fn zlink_spot_request_progress_internal(spot: *mut c_void) -> c_int;
+    pub fn zlink_spot_channel_reply_progress_from(
+        spot: *mut c_void,
+        subject: *mut c_void,
+    ) -> c_int;
     pub fn zlink_spot_publish_part(
         spot: *mut c_void,
         service_name: *const c_char,

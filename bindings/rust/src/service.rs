@@ -1,8 +1,7 @@
-use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::domain::{Received, SubscriptionEvent, TopicMessage};
@@ -850,7 +849,6 @@ impl Drop for Discovery {
 /// SPOT node runtime for topology, discovery, and lifecycle.
 pub struct SpotNode {
     handle: *mut c_void,
-    manual_channel_dealers: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 unsafe impl Send for SpotNode {}
@@ -866,7 +864,6 @@ impl SpotNode {
         }
         Ok(Self {
             handle,
-            manual_channel_dealers: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -926,12 +923,7 @@ impl SpotNode {
                 c_channel_name.as_ptr(),
                 dealer.inner.handle,
             )
-        })?;
-        self.manual_channel_dealers
-            .lock()
-            .expect("manual spot channel dealers")
-            .insert(channel_name.to_string(), dealer.inner.handle as usize);
-        Ok(())
+        })
     }
 
     pub fn attach_pub_ingress(
@@ -1085,7 +1077,6 @@ impl Drop for SpotNode {
 /// exposes the canonical data-plane API (publish, subscribe, etc.).
 pub struct Spot {
     handle: *mut c_void,
-    manual_channel_dealers: Arc<Mutex<HashMap<String, usize>>>,
     send_ready_cb: Option<CallbackBox>,
     routed_cb: Option<CallbackBox>,
     dispatch_cb: Option<CallbackBox>,
@@ -1104,7 +1095,6 @@ impl Spot {
         }
         Ok(Self {
             handle,
-            manual_channel_dealers: Arc::clone(&node.manual_channel_dealers),
             send_ready_cb: None,
             routed_cb: None,
             dispatch_cb: None,
@@ -1229,17 +1219,9 @@ impl Spot {
             .map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
-        let progress = self
-            .manual_channel_dealers
-            .lock()
-            .expect("manual spot channel dealers")
-            .get(channel_name)
-            .copied()
-            .map(|handle| RequestProgressGuard::attach_socket(handle as *mut c_void))
-            .unwrap_or_else(|| RequestProgressGuard::attach_spot(self.handle));
         let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
             callback: Some(Box::new(callback)),
-            _progress: progress,
+            _progress: RequestProgressGuard::attach_spot(self.handle),
         }));
         let timeout_ms = timeout_to_timeout_ms(timeout);
         let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
@@ -1268,6 +1250,10 @@ impl Spot {
             }
         }
         check_submit_rc(rc)
+    }
+
+    pub fn drain_channel_reply_from(&self, subject: *mut c_void) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_spot_channel_reply_progress_from(self.handle, subject) })
     }
 
     pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError> {
@@ -1432,7 +1418,7 @@ impl Spot {
 
     pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
-        F: Fn(SpotDispatchEvent) + Send + 'static,
+        F: Fn(SpotDispatchInfo) + Send + 'static,
     {
         let (cb, userdata) = CallbackBox::new(handler);
         let rc = unsafe {
@@ -1490,6 +1476,21 @@ pub enum SpotDispatchEvent {
     SubscribeReadable,
     RoutedReadable,
     TimerReadable,
+    ChannelReplyReadable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpotDispatchSubjectKind {
+    Spot,
+    Timer,
+    ChannelDealer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpotDispatchInfo {
+    pub event: SpotDispatchEvent,
+    pub subject_kind: SpotDispatchSubjectKind,
+    pub subject: *mut c_void,
 }
 
 impl SpotDispatchEvent {
@@ -1503,6 +1504,25 @@ impl SpotDispatchEvent {
             }
             ffi::zlink_spot_dispatch_event_t::ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE => {
                 Self::TimerReadable
+            }
+            ffi::zlink_spot_dispatch_event_t::ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE => {
+                Self::ChannelReplyReadable
+            }
+        }
+    }
+}
+
+impl SpotDispatchSubjectKind {
+    fn from_raw(raw: ffi::zlink_spot_dispatch_subject_kind_t) -> Self {
+        match raw {
+            ffi::zlink_spot_dispatch_subject_kind_t::ZLINK_SPOT_DISPATCH_SUBJECT_SPOT => {
+                Self::Spot
+            }
+            ffi::zlink_spot_dispatch_subject_kind_t::ZLINK_SPOT_DISPATCH_SUBJECT_TIMER => {
+                Self::Timer
+            }
+            ffi::zlink_spot_dispatch_subject_kind_t::ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER => {
+                Self::ChannelDealer
             }
         }
     }
@@ -1717,13 +1737,18 @@ unsafe extern "C" fn spot_handler_trampoline<
     );
 }
 
-unsafe extern "C" fn spot_dispatch_trampoline<F: Fn(SpotDispatchEvent) + Send + 'static>(
+unsafe extern "C" fn spot_dispatch_trampoline<F: Fn(SpotDispatchInfo) + Send + 'static>(
     _spot: *mut c_void,
-    event: ffi::zlink_spot_dispatch_event_t,
+    info: *const ffi::zlink_spot_dispatch_info_t,
     userdata: *mut c_void,
 ) {
     let handler = unsafe { &*(userdata as *const F) };
-    handler(SpotDispatchEvent::from_raw(event));
+    let info = unsafe { &*info };
+    handler(SpotDispatchInfo {
+        event: SpotDispatchEvent::from_raw(info.event),
+        subject_kind: SpotDispatchSubjectKind::from_raw(info.subject_kind),
+        subject: info.subject,
+    });
 }
 
 /// Read-only registry query client for remote topology snapshots.

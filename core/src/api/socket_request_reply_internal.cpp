@@ -7,6 +7,7 @@
 
 #include "api/request_completion_queue_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
+#include "api/service_api_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 
 namespace zlink
@@ -77,10 +78,26 @@ int queue_reply_completion (
         return -1;
     }
 
-    return zlink::request_completion::enqueue (
+    std::vector<void *> observers;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        observers.assign (state_->spot_channel_dispatch_observers.begin (),
+                          state_->spot_channel_dispatch_observers.end ());
+    }
+
+    const int rc = zlink::request_completion::enqueue (
       &state_->completion, state_->socket->get_ctx (),
       "zlink.router.reqrep.completion", handler_, userdata_, errnum_, parts_,
       part_count_);
+    if (rc != 0)
+        return rc;
+
+    for (size_t i = 0; i < observers.size (); ++i) {
+        zlink_spot_notify_dispatch_info (
+          observers[i], ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
+          ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER, state_->socket);
+    }
+    return 0;
 }
 
 int drain_reply_completions (
@@ -130,6 +147,28 @@ bool current_thread_is_completion_owner (
 bool in_socket_request_completion_callback (void *socket_)
 {
     return zlink::request_completion::in_request_completion_callback (socket_);
+}
+
+void register_spot_channel_dispatch_observer (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *spot_)
+{
+    if (!state_ || !spot_)
+        return;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    state_->spot_channel_dispatch_observers.insert (spot_);
+}
+
+void unregister_spot_channel_dispatch_observer (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  void *spot_)
+{
+    if (!state_ || !spot_)
+        return;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    state_->spot_channel_dispatch_observers.erase (spot_);
 }
 
 namespace

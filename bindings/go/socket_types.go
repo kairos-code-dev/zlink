@@ -646,6 +646,35 @@ func (s *connectionSocket) LastEndpoint() (string, error) {
 	return s.getStringOption(C.ZLINK_OPT_LAST_ENDPOINT, 256)
 }
 
+func (s *connectionSocket) SetChannelName(value string) error {
+	if s == nil || s.closed {
+		return stateError("socket is closed")
+	}
+	if strings.IndexByte(value, 0) >= 0 || value == "" {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	cstr := C.CString(value)
+	defer C.free(unsafe.Pointer(cstr))
+	return configErrorFromResult(C.zlink_socket_set_channel_name(s.raw(), cstr))
+}
+
+func (s *connectionSocket) ChannelName() (string, error) {
+	if s == nil || s.closed {
+		return "", stateError("socket is closed")
+	}
+	buf := make([]byte, 256)
+	size := C.size_t(0)
+	if err := configErrorFromResult(C.zlink_socket_get_channel_name(
+		s.raw(),
+		(*C.char)(unsafe.Pointer(&buf[0])),
+		C.size_t(len(buf)),
+		&size,
+	)); err != nil {
+		return "", err
+	}
+	return string(buf[:int(size)]), nil
+}
+
 func (s *connectionSocket) setPubBoolOption(option C.zlink_pub_option_t, value bool) error {
 	return setNativePubBoolOption(s.raw(), s.socketCore.closed, "socket is closed", option, value)
 }

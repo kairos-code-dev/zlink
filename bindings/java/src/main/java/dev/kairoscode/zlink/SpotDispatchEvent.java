@@ -5,7 +5,8 @@ package dev.kairoscode.zlink;
 public enum SpotDispatchEvent {
     SUBSCRIBE_READABLE(1),
     ROUTED_READABLE(2),
-    TIMER_READABLE(3);
+    TIMER_READABLE(3),
+    CHANNEL_REPLY_READABLE(4);
 
     private final int value;
 

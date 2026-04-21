@@ -1,6 +1,6 @@
 {
   "name": "@ulalax/zlink-codec-protobuf",
-  "version": "5.3.0",
+  "version": "5.3.2",
   "description": "protobuf codec extension for @ulalax/zlink",
   "license": "MPL-2.0",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@ulalax/zlink": ">=5.3.0",
+    "@ulalax/zlink": ">=5.3.2",
     "protobufjs": ">=7.0.0"
   },
   "devDependencies": {

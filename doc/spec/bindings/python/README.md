@@ -39,7 +39,7 @@ with the rules here, this section wins.
 - `Spot` must not expose `on_subscribe(...)`. Use
   `on_dispatch_event(...)` plus `subscribe(...)` / `recv_routed(...)` /
   timer recv.
-- `Spot.on_routed_receive(...)` and `Spot.on_dispatch_event(...)` are mutually
+- `Spot.on_routed_receive(...)` and `on_dispatch_event(...)` are mutually
   exclusive on the routed axis.
 - Every socket and `Spot` exposes `set_admission_state(state)` and
   `get_admission_state()` using the typed enum
@@ -205,6 +205,8 @@ class DealerSocket:
     def disconnect(self, endpoint: str) -> None: ...                               # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...           # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                              # Raises: ConfigError
+    def set_channel_name(self, channel_name: str) -> None: ...                     # Raises: ConfigError
+    def get_channel_name(self) -> str: ...                                         # Raises: ConfigError
     def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
@@ -1190,9 +1192,29 @@ class Spot:
     # --- routed receive ---
     def recv_routed(self, *, flags: int = 0) -> Received: ...                    # Raises: RecvError
     def on_routed_receive(self, handler: Callable) -> None: ...                  # Raises: HandlerError
-    def on_dispatch_event(self, handler: Callable) -> None: ...                  # Raises: HandlerError
+    def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
+    def drain_channel_reply_from(self, subject) -> None: ...                     # Raises: ConfigError
 
     def close(self) -> None: ...                                                 # Raises: CloseError
+```
+
+```python
+class SpotDispatchEvent(IntEnum):
+    SUBSCRIBE_READABLE = 1
+    ROUTED_READABLE = 2
+    TIMER_READABLE = 3
+    CHANNEL_REPLY_READABLE = 4
+
+class SpotDispatchSubjectKind(IntEnum):
+    SPOT = 1
+    TIMER = 2
+    CHANNEL_DEALER = 3
+
+@dataclass(frozen=True)
+class SpotDispatchInfo:
+    event: SpotDispatchEvent
+    subject_kind: SpotDispatchSubjectKind
+    subject: object
 ```
 
 ### RegistryQueryClient

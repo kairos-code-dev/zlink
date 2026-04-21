@@ -222,6 +222,8 @@ public final class DealerSocket extends Socket {
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
+    void setChannelName(String channelName);                         // @throws ConfigException
+    String getChannelName();                                         // @throws ConfigException
 
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
@@ -1440,10 +1442,16 @@ public final class Spot implements AutoCloseable {
     Received recvRouted(RecvFlags flags);                            // @throws RecvException
     void onRoutedReceive(SpotRoutedHandler handler);                 // @throws HandlerException
     void onDispatchEvent(SpotDispatchEventHandler handler);          // @throws HandlerException
+    void drainChannelReplyFrom(MemorySegment dealerSubject);         // @throws ConfigException
 
     void close();                                                    // @throws CloseException
 }
 ```
+
+`onDispatchEvent` delivers `SpotDispatchInfo`. `CHANNEL_REPLY_READABLE`
+dispatches identify the attached DEALER source through
+`SpotDispatchInfo.subjectKind()` and `SpotDispatchInfo.subject()`. Read the
+logical channel name from the attached DEALER with `getChannelName()`.
 
 ### RegistryQueryClient
 
@@ -1514,6 +1522,35 @@ public record SpotNodeStatus(String serviceName,
                              int readySubjectCount,
                              int lastError,
                              long lastChangedMs) {}
+```
+
+### SpotDispatchEvent
+
+```java
+public enum SpotDispatchEvent {
+    SUBSCRIBE_READABLE,
+    ROUTED_READABLE,
+    TIMER_READABLE,
+    CHANNEL_REPLY_READABLE
+}
+```
+
+### SpotDispatchSubjectKind
+
+```java
+public enum SpotDispatchSubjectKind {
+    SPOT,
+    TIMER,
+    CHANNEL_DEALER
+}
+```
+
+### SpotDispatchInfo
+
+```java
+public record SpotDispatchInfo(SpotDispatchEvent event,
+                               SpotDispatchSubjectKind subjectKind,
+                               MemorySegment subject) {}
 ```
 
 Advanced / Diagnostic entry types and filters:

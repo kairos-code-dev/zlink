@@ -143,9 +143,9 @@ internal static class PerfSpot
                 }
             }
 
-            spotSub.OnDispatchEvent(evt =>
+            spotSub.OnDispatchEvent((_, info) =>
             {
-                if (evt != SpotDispatchEvent.SubscribeReadable)
+                if (info.Event != SpotDispatchEvent.SubscribeReadable)
                     return;
 
                 try

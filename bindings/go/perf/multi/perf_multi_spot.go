@@ -51,8 +51,8 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		perfcommon.ApplyMultiBenchmarkSocketOptions(spot, cfg.transport)
 		perfcommon.Must(spot.SetSubscription("bench."))
 		index := i
-		perfcommon.Must(spot.OnDispatchEvent(func(event zlink.SpotDispatchEvent) {
-			if event != zlink.SpotDispatchEventSubscribeReadable {
+		perfcommon.Must(spot.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
+			if info.Event != zlink.SpotDispatchEventSubscribeReadable {
 				return
 			}
 			_ = drainMultiSpotSubscriber(

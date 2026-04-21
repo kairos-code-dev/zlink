@@ -152,8 +152,9 @@ void scheduler_fire_timer (timer_handle_t *timer_)
         handler (timer_, fire_count, handler_userdata);
 
     if (notify_spot)
-        zlink_spot_notify_dispatch_event (
-          owner_spot, ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE);
+        zlink_spot_notify_dispatch_info (
+          owner_spot, ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
+          ZLINK_SPOT_DISPATCH_SUBJECT_TIMER, timer_);
 
     std::unique_lock<std::mutex> scheduler_lock (scheduler->mutex);
     std::unique_lock<std::mutex> timer_lock (timer_->mutex);

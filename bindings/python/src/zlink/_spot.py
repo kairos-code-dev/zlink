@@ -18,6 +18,7 @@ from ._request_reply import _ensure_reply_flags_supported
 from ._enums import (
     AdmissionState,
     SpotDispatchEvent,
+    SpotDispatchSubjectKind,
     SpotNodeState,
     SpotPeerSource,
     SpotPeerState,
@@ -27,6 +28,7 @@ from ._ffi import (
     ZLINK_PART_MORE,
     ZlinkMsg,
     ZlinkRoutingId,
+    ZlinkSpotDispatchInfo,
     ZlinkSpotNodePeerEntry,
     ZlinkSpotNodePeerFilter,
     ZlinkSpotNodeStatus,
@@ -104,7 +106,7 @@ _ROUTER_SPOT_HANDLER = ctypes.CFUNCTYPE(
 _SPOT_DISPATCH_EVENT_HANDLER = ctypes.CFUNCTYPE(
     None,
     ctypes.c_void_p,
-    ctypes.c_int,
+    ctypes.POINTER(ZlinkSpotDispatchInfo),
     ctypes.c_void_p,
 )
 
@@ -136,6 +138,13 @@ def _timeout_to_ms(timeout):
     if timeout in (None, 0):
         return 0
     return max(1, int(float(timeout) * 1000))
+
+
+@dataclass(frozen=True)
+class SpotDispatchInfo:
+    event: SpotDispatchEvent
+    subject_kind: SpotDispatchSubjectKind
+    subject: int | None
 
 
 def _payload_parts(payload):
@@ -469,7 +478,6 @@ class SpotNode:
         if not self._handle:
             _raise_config_error_from_errno()
         self._spots = set()
-        self._manual_channel_dealers = {}
 
     def bind(self, endpoint: str):
         rc = lib().zlink_spot_node_bind(
@@ -536,7 +544,6 @@ class SpotNode:
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._manual_channel_dealers[channel_bytes] = dealer._handle
 
     def attach_pub_ingress(self, pub):
         rc = lib().zlink_spot_node_attach_pub_ingress(self._handle, pub._handle)
@@ -796,10 +803,6 @@ class Spot:
                 lib().zlink_spot_request_progress_internal(handle)
 
     def _request_progress_target(self, channel_bytes=None):
-        if channel_bytes is not None:
-            dealer_handle = self._node._manual_channel_dealers.get(channel_bytes)
-            if dealer_handle:
-                return ("socket", dealer_handle)
         return ("spot", self._handle)
 
     def __init__(self, node, *, _internal=None):
@@ -1310,9 +1313,23 @@ class Spot:
         if self._dispatch_handler_cb is not None:
             raise RuntimeError("dispatch handler is already attached")
 
-        def _callback(_spot, event, _):
+        def _callback(_spot, info_ptr, _):
+            if not info_ptr:
+                return
+            info = info_ptr.contents
             try:
-                handler(self, SpotDispatchEvent(int(event)))
+                handler(
+                    self,
+                    SpotDispatchInfo(
+                        event=SpotDispatchEvent(int(info.event)),
+                        subject_kind=SpotDispatchSubjectKind(int(info.subject_kind)),
+                        subject=(
+                            None
+                            if not info.subject
+                            else int(ctypes.cast(info.subject, ctypes.c_void_p).value)
+                        ),
+                    ),
+                )
             except Exception:
                 _report_unhandled_callback_exception(handler)
 
@@ -1322,6 +1339,20 @@ class Spot:
             _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
         self._dispatch_handler = handler
         self._dispatch_handler_cb = callback
+
+    def drain_channel_reply_from(self, subject):
+        if hasattr(subject, "_handle"):
+            subject = subject._handle
+        if isinstance(subject, ctypes.c_void_p):
+            subject = subject.value
+        if not subject:
+            raise ValueError("subject must not be null")
+        rc = lib().zlink_spot_channel_reply_progress_from(
+            self._handle,
+            ctypes.c_void_p(int(subject)),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def _cancel_pending_requests(self):
         for handle, pending in list(self._request_pending.items()):

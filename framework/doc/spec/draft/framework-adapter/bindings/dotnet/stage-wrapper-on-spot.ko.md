@@ -77,7 +77,7 @@
 
 ## 4. 아직 부족한 부분
 
-### 3.1 실행 문맥 계약
+### 4.1 실행 문맥 계약
 
 가장 먼저 필요한 것은 같은 spot 안의 작업이 어떤 문맥에서 실행되는지에 대한
 계약이다.
@@ -87,18 +87,35 @@
 - 같은 `spotRid`로 들어오는 handler가 직렬 실행되는가
 - timer handler도 같은 실행 문맥으로 들어오는가
 - publish subscription callback도 같은 문맥으로 들어오는가
+- **channel reply callback도 같은 문맥으로 들어오는가**
 - 응용이 별도 lock 없이 stage state를 다뤄도 되는가
 
 이 계약이 없으면 `Stage` wrapper는 단순 DTO 라우팅 레이어만 되고, 실제 room/stage
 상태를 안전하게 다루는 상위 모델로 설명하기 어렵다.
 
-좋은 점은 이 부분이 완전히 비어 있는 것은 아니라는 점이다. core spec에는 이미
-"같은 `spot`의 dispatch callback은 직렬화되고, subscribe/routed/timer readable
-알림이 같은 dispatch 축으로 올라온다"는 계약이 있다. 따라서 framework 문서에서
-해야 할 일은 새 의미를 만드는 것보다, 그 계약을 상위 표면으로 분명하게 옮기는
-일에 가깝다.
+이 부분은 이제 **core spec이 명확하게 답하는 영역**이다. core spec은 아래를
+보장한다.
 
-### 3.2 timer 등록
+- 같은 `Spot`의 dispatch callback은 직렬화된다.
+- `SUBSCRIBE_READABLE`, `ROUTED_READABLE`, **`CHANNEL_REPLY_READABLE`**,
+  `TIMER_READABLE` 이 모두 같은 dispatch event 축으로 올라온다.
+- channel request reply 의 transport owner 는 attached `DEALER` 이지만,
+  callback delivery owner 는 request 를 시작한 `Spot` dispatch stream 이다.
+- `RequestChannelAsync(...)` 의 continuation 도 같은 spot execution context 에서
+  실행된다 (arbitrary thread 에서 직접 promise resolve 하지 않는다).
+
+따라서 framework 문서에서 해야 할 일은 새 의미를 만드는 것이 아니라, 그 계약을
+상위 표면으로 분명하게 옮기는 일이다.
+
+`Stage` wrapper 관점에서는 아래처럼 정리할 수 있다.
+
+- `StageSpot.UserCount` 같은 mutable state 는 단일 spot executor 만 접근한다.
+- routed packet handler, subscription handler, timer handler, channel reply
+  continuation 에서 `StageSpot` state 를 읽고 쓸 때 별도 lock 이 필요 없다.
+- 단, `Stage` wrapper 외부에서 `SpotRid` 를 받아 직접 state 를 건드리려 하면
+  executor 외부 접근이 되므로 그 경우는 별도 동기화가 필요하다.
+
+### 4.2 timer 등록
 
 `Stage` 성격의 모델에는 timer가 거의 필수다.
 
@@ -131,11 +148,31 @@ public abstract class ZLinkSpot
 }
 ```
 
+하부 `.NET` 바인딩 자체는 이미 아래 timer 표면을 제공한다.
+
+```csharp
+public sealed class Timer : IDisposable, IAsyncDisposable
+{
+    public static Timer FromSpot(Spot spot);
+    public void Start(ulong intervalNs, ulong repeatCount);
+    public void Stop();
+    public ulong Recv(int flags = 0);
+    public void OnFire(Action<Timer, ulong> handler);
+}
+```
+
+즉 framework의 `AddTimer<THandler>(...)`는 `Timer.FromSpot(spot)`와
+`Timer.OnFire(Action<Timer, ulong>)`를 spot lifecycle/DI 모델로 감싼 wrapper로
+읽는 편이 맞다. low-level callback의 실제 시그니처는 `Action<Timer, ulong>`이고,
+두 번째 인자는 누적 `fireCount`다. framework의 `IZLinkTimer.CancelAsync()`는
+low-level `Timer.Stop()`와 dispose lifecycle을 감싼 고수준 timer handle로 읽는
+편이 자연스럽다.
+
 여기서 더 중요한 것은 timer handler가 어느 실행 문맥에서 도는가다.
 `AddTimer<THandler>(...)`로 등록한 timer handler는 가능하면 같은 spot 실행
 문맥에서 도는 쪽이 `Stage wrapper`에 더 자연스럽다.
 
-### 3.3 spot 생성 시 초기값 전달
+### 4.3 spot 생성 시 초기값 전달
 
 현재 `IZLinkSpotManager`는 `spotRid` 생성과 삭제를 설명하기에는 충분하지만,
 `Stage` 생성처럼 초기 payload를 갖는 모델을 설명하기에는 부족하다.
@@ -182,7 +219,7 @@ public interface IZLinkSpotManager
 }
 ```
 
-### 3.4 actor 또는 session membership
+### 4.4 actor 또는 session membership
 
 `SPOT` 자체는 주소 가능한 논리 인스턴스까지만 설명하면 된다.
 하지만 `Stage wrapper`는 보통 membership를 같이 가진다.
@@ -204,7 +241,7 @@ public interface IZLinkSpotManager
 - actor 인증과 입장
 - membership snapshot과 broadcast
 
-### 3.5 stage directory 또는 lookup helper
+### 4.5 stage directory 또는 lookup helper
 
 `Stage wrapper`를 실제로 쓰는 응용은 보통 `stageId`만 알고 있는 경우가 많다.
 

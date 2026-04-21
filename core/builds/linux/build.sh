@@ -17,7 +17,7 @@ MAKE_BIN="$(command -v gmake || command -v make)"
 if [ -f "$REPO_ROOT/VERSION" ]; then
     LIBZLINK_VERSION=$(grep '^LIBZLINK_VERSION=' "$REPO_ROOT/VERSION" | cut -d'=' -f2)
 else
-    LIBZLINK_VERSION="5.3.0"
+    LIBZLINK_VERSION="5.3.2"
 fi
 
 # Parse arguments: ARCH RUN_TESTS

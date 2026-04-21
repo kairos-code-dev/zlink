@@ -95,8 +95,8 @@ def main(argv=None):
                         elif text in {"STOP", "QUIT"}:
                             return
 
-                def on_dispatch(current_spot, event):
-                    if event != zlink.SpotDispatchEvent.ROUTED_READABLE:
+                def on_dispatch(current_spot, info):
+                    if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
                         return
                     while True:
                         try:

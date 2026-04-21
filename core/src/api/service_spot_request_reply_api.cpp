@@ -58,7 +58,7 @@ using zlink::spot_reqrep_internal::find_or_create_spot_state;
 using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::find_spot_state_by_identity;
 using zlink::spot_reqrep_internal::install_spot_dispatch_event_task;
-using zlink::spot_reqrep_internal::maybe_dispatch_spot_event;
+using zlink::spot_reqrep_internal::maybe_dispatch_spot_info;
 using zlink::spot_reqrep_internal::close_spot_dispatch_parts;
 using zlink::spot_reqrep_internal::close_spot_subscribe_dispatch_queue;
 using zlink::spot_reqrep_internal::queue_spot_message;
@@ -95,6 +95,14 @@ struct routing_pair_t
 {
     std::string node_rid;
     std::string spot_rid;
+};
+
+struct channel_reply_bridge_ctx_t
+{
+    std::weak_ptr<spot_request_reply_state_t> state;
+    void *dealer;
+    zlink_reply_handler_fn handler;
+    void *userdata;
 };
 
 enum routed_spot_delivery_kind_t
@@ -149,6 +157,25 @@ bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
            && peer_rid_->size <= sizeof (peer_rid_->data);
 }
 
+int request_result_to_errno (zlink_request_result_t result_)
+{
+    switch (result_) {
+    case ZLINK_REQUEST_OK:
+        return 0;
+    case ZLINK_REQUEST_TIMED_OUT:
+        return ETIMEDOUT;
+    case ZLINK_REQUEST_NOT_FOUND:
+        return ENOENT;
+    case ZLINK_REQUEST_TERMINATED:
+        return ETERM;
+    case ZLINK_REQUEST_PROTOCOL_ERROR:
+        return EPROTO;
+    case ZLINK_REQUEST_INTERNAL_ERROR:
+    default:
+        return EIO;
+    }
+}
+
 bool spot_destination_is_admitted (void *spot_,
                                    const zlink_routing_id_t *dest_node_rid_)
 {
@@ -156,21 +183,59 @@ bool spot_destination_is_admitted (void *spot_,
     return !spot || !spot->node || spot->node->peer_is_admitted (dest_node_rid_);
 }
 
-void notify_spot_dispatch_event (void *spot_,
-                                 zlink_spot_dispatch_event_t event_)
+void notify_spot_dispatch_info (void *spot_,
+                                zlink_spot_dispatch_event_t event_,
+                                zlink_spot_dispatch_subject_kind_t subject_kind_,
+                                void *subject_)
 {
     std::shared_ptr<spot_request_reply_state_t> state =
       try_find_spot_state (spot_);
     if (!state)
         return;
-    maybe_dispatch_spot_event (state.get (), event_);
+    maybe_dispatch_spot_info (state.get (), event_, subject_kind_, subject_);
 }
 
 extern "C" void zlink_spot_notify_dispatch_event (
   void *spot_,
   zlink_spot_dispatch_event_t event_)
 {
-    notify_spot_dispatch_event (spot_, event_);
+    notify_spot_dispatch_info (spot_, event_,
+                               ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, spot_);
+}
+
+extern "C" void zlink_spot_notify_dispatch_info (
+  void *spot_,
+  zlink_spot_dispatch_event_t event_,
+  zlink_spot_dispatch_subject_kind_t subject_kind_,
+  void *subject_)
+{
+    notify_spot_dispatch_info (spot_, event_, subject_kind_, subject_);
+}
+
+void channel_reply_bridge_completion (zlink_request_result_t result_,
+                                      zlink_msg_t *parts_,
+                                      size_t part_count_,
+                                      void *userdata_)
+{
+    std::unique_ptr<channel_reply_bridge_ctx_t> bridge (
+      static_cast<channel_reply_bridge_ctx_t *> (userdata_));
+    if (!bridge.get ())
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> state = bridge->state.lock ();
+    if (!state)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->pending_channel_requests > 0)
+            --state->pending_channel_requests;
+    }
+
+    const int errnum = request_result_to_errno (result_);
+    (void) zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
+      state, bridge->dealer, bridge->handler, bridge->userdata, errnum, parts_,
+      part_count_);
 }
 
 int dispatch_spot_message (spot_request_reply_state_t *state_,
@@ -1051,10 +1116,48 @@ zlink_submit_result_t spot_request_channel_impl (
     if (!router)
         return zlink::submit_result_internal::from_errno (errno);
 
-    return zlink::submit_result_internal::from_request_submit_rc (
-      reqrep::start_request (make_socket_handle (router), NULL, parts_,
-                             part_count_, flags_, timeout_ms_, handler_,
-                             userdata_));
+    std::shared_ptr<spot_request_reply_state_t> state =
+      find_or_create_spot_state (spot_);
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->channel_reply_sources.count (router) == 0) {
+            state->channel_reply_sources[router] =
+              std::shared_ptr<zlink::spot_reqrep_internal::spot_channel_reply_source_t> (
+                new zlink::spot_reqrep_internal::spot_channel_reply_source_t (
+                  router));
+        }
+        ++state->pending_channel_requests;
+    }
+
+    std::shared_ptr<reqrep::socket_request_reply_state_t> socket_state =
+      reqrep::find_or_create_request_reply_state (make_socket_handle (router));
+    reqrep::register_spot_channel_dispatch_observer (socket_state, spot_);
+
+    std::unique_ptr<channel_reply_bridge_ctx_t> bridge (
+      new (std::nothrow) channel_reply_bridge_ctx_t ());
+    if (!bridge.get ()) {
+        {
+            std::lock_guard<std::mutex> lock (state->mutex);
+            if (state->pending_channel_requests > 0)
+                --state->pending_channel_requests;
+        }
+        errno = ENOMEM;
+        return zlink::submit_result_internal::from_errno (errno);
+    }
+    bridge->state = state;
+    bridge->dealer = router;
+    bridge->handler = handler_;
+    bridge->userdata = userdata_;
+
+    const int rc = reqrep::start_request (
+      make_socket_handle (router), NULL, parts_, part_count_, flags_,
+      timeout_ms_, &channel_reply_bridge_completion, bridge.release ());
+    if (rc != 0) {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->pending_channel_requests > 0)
+            --state->pending_channel_requests;
+    }
+    return zlink::submit_result_internal::from_request_submit_rc (rc);
 }
 
 zlink_submit_result_t spot_request_spot_impl (
@@ -1803,7 +1906,98 @@ extern "C" int zlink_spot_request_progress_internal (void *spot_)
         return 0;
     }
 
-    return drain_spot_reply_completions (state, spot_);
+    int drained = 0;
+    const int bridge_rc =
+      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
+        state);
+    if (bridge_rc < 0)
+        return -1;
+    drained += bridge_rc;
+
+    const int direct_rc = drain_spot_reply_completions (state, spot_);
+    if (direct_rc < 0)
+        return -1;
+    drained += direct_rc;
+
+    bool dispatch_handler_installed = false;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        dispatch_handler_installed = state->dispatch.handler != NULL;
+    }
+
+    if (dispatch_handler_installed && !in_spot_dispatch_event_callback (spot_)) {
+        errno = 0;
+        return drained;
+    }
+
+    std::vector<void *> dealers;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        for (std::map<void *,
+                      std::shared_ptr<
+                        zlink::spot_reqrep_internal::spot_channel_reply_source_t> >::const_iterator
+               it = state->channel_reply_sources.begin ();
+             it != state->channel_reply_sources.end (); ++it) {
+            dealers.push_back (it->first);
+        }
+    }
+
+    for (size_t i = 0; i < dealers.size (); ++i) {
+        const int rc = zlink::spot_reqrep_internal::
+          drain_spot_channel_reply_completions_from (state, spot_, dealers[i]);
+        if (rc < 0 && errno != ENOENT)
+            return -1;
+        if (rc > 0)
+            drained += rc;
+    }
+
+    errno = 0;
+    return drained;
+}
+
+extern "C" int zlink_spot_channel_reply_progress_from (void *spot_,
+                                                        void *dealer_)
+{
+    if (!as_spot_handle (spot_) || !as_socket_handle (dealer_).socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const std::shared_ptr<spot_request_reply_state_t> state =
+      try_find_spot_state (spot_);
+    if (!state) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->channel_reply_sources.count (dealer_) == 0) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    const socket_handle_t dealer_handle = as_socket_handle (dealer_);
+    const std::shared_ptr<reqrep::socket_request_reply_state_t> socket_state =
+      reqrep::find_request_reply_state (dealer_handle);
+    int drained = 0;
+    if (socket_state) {
+        const int rc = reqrep::drain_reply_completions (socket_state, dealer_);
+        if (rc < 0)
+            return -1;
+        drained += rc;
+    }
+
+    const int source_rc =
+      zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
+        state, spot_, dealer_);
+    if (source_rc < 0)
+        return -1;
+    drained += source_rc;
+
+    errno = 0;
+    return drained;
 }
 
 extern "C" int zlink_spot_request_channel_progress_internal (void *spot_,
@@ -1815,33 +2009,8 @@ extern "C" int zlink_spot_request_channel_progress_internal (void *spot_,
         return -1;
     }
 
-    int drained = 0;
-
-    const std::shared_ptr<spot_request_reply_state_t> spot_state =
-      try_find_spot_state (spot_);
-    if (spot_state) {
-        const int rc = drain_spot_reply_completions (spot_state, spot_);
-        if (rc < 0)
-            return -1;
-        drained += rc;
-    }
-
-    zlink::socket_base_t *router =
-      zlink::spot_node_access_t::select_service_router (spot->node, channel_name_);
-    if (!router)
-        return drained;
-
-    const std::shared_ptr<reqrep::socket_request_reply_state_t> socket_state =
-      reqrep::find_request_reply_state (make_socket_handle (router));
-    if (socket_state) {
-        const int rc = reqrep::drain_reply_completions (socket_state, router);
-        if (rc < 0)
-            return -1;
-        drained += rc;
-    }
-
-    errno = 0;
-    return drained;
+    LIBZLINK_UNUSED (channel_name_);
+    return zlink_spot_request_progress_internal (spot_);
 }
 
 zlink_submit_result_t router_request_spot_impl (
@@ -2246,7 +2415,13 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
         {
             std::lock_guard<std::mutex> dispatch_lock (
               state->dispatch.mutex);
-            state->dispatch.pending_event_mask = 0;
+            state->dispatch.subscribe_pending.clear ();
+            state->dispatch.routed_pending.clear ();
+            state->dispatch.channel_reply_pending.clear ();
+            state->dispatch.timer_pending.clear ();
+            state->dispatch.queued_keys.clear ();
+            state->dispatch.rearm_keys.clear ();
+            state->dispatch.active_info_valid = false;
             state->dispatch.running = false;
         }
 
@@ -2263,10 +2438,21 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     if (dispatch_runtime && dispatch_task_id != 0)
         (void) dispatch_runtime->remove_task (dispatch_task_id);
     if (state) {
+        zlink::spot_reqrep_internal::unregister_spot_channel_reply_observers (
+          state);
         std::lock_guard<std::mutex> state_lock (state->mutex);
         close_spot_subscribe_dispatch_queue (&state->subscribe_queue);
         zlink::internal_pair_queue::close (&state->recv_queue);
         zlink::request_completion::close (&state->completion);
+        for (std::map<void *,
+                      std::shared_ptr<
+                        zlink::spot_reqrep_internal::spot_channel_reply_source_t> >::iterator
+               it = state->channel_reply_sources.begin ();
+             it != state->channel_reply_sources.end (); ++it) {
+            if (it->second)
+                zlink::request_completion::close (&it->second->completion);
+        }
+        state->channel_reply_sources.clear ();
     }
     erase_spot_owner_state (spot_);
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);

@@ -374,6 +374,31 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
       zlink_service_get_routing_id (handle_, out_));
 }
 
+zlink_config_result_t zlink_socket_set_channel_name (void *socket_,
+                                                     const char *channel_name_)
+{
+    zlink::socket_base_t *socket = as_socket (socket_);
+    if (!socket)
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    return zlink::config_result_internal::from_rc (
+      socket->set_channel_name_metadata (channel_name_));
+}
+
+zlink_config_result_t zlink_socket_get_channel_name (
+  void *socket_,
+  char *channel_name_buf_,
+  size_t channel_name_capacity_,
+  size_t *channel_name_len_out_)
+{
+    zlink::socket_base_t *socket = as_socket (socket_);
+    if (!socket)
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    return zlink::config_result_internal::from_rc (
+      socket->get_channel_name_metadata (channel_name_buf_,
+                                         channel_name_capacity_,
+                                         channel_name_len_out_));
+}
+
 zlink_config_result_t zlink_set_admission_state (void *handle_,
                                                  zlink_admission_state_t state_)
 {

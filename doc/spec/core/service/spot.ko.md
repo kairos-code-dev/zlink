@@ -92,6 +92,43 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress(
 - ingress `PUB`는 node당 하나만 등록할 수 있다. 두 번째 등록은 `EBUSY`다.
 - ingress `PUB`도 `SpotNode` 전용 자원으로 취급한다.
 
+## Socket Channel Name Metadata
+
+attach된 `DEALER`에 논리 channel name을 미리 기록해 두는 편의 API다.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_socket_set_channel_name (
+  void *socket_,
+  const char *channel_name_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (
+  void *socket_,
+  char *channel_name_buf_,
+  size_t channel_name_capacity_,
+  size_t *channel_name_len_out_);
+```
+
+- setter는 socket에 fixed logical channel name metadata를 기록한다.
+- 이 metadata는 transport connect, bind, routing, discovery를 자동으로 바꾸지 않는다.
+- getter는 현재 기록된 channel name을 돌려준다.
+- channel name이 설정되지 않은 socket이면 `ENOENT`로 실패한다.
+- 비어 있거나 잘못된 `channel_name`은 `EINVAL`이다.
+- attach나 discovery가 귀속을 확정한 뒤에는 setter 변경을 `EBUSY` 또는 `EINVAL`로
+  거부한다.
+
+attach와의 관계는 아래처럼 고정한다.
+
+- discovery attach 시 socket metadata가 비어 있으면 discovery channel 이름을 채운다.
+- discovery attach 시 기록된 값과 discovery channel이 같으면 허용한다.
+- discovery attach 시 기록된 값과 discovery channel이 다르면 `EINVAL`이다.
+- manual attach 시 socket metadata가 비어 있으면 attach 인자의 `channel_name`을 채운다.
+- manual attach 시 기록된 값과 attach 인자가 같으면 허용한다.
+- manual attach 시 기록된 값과 attach 인자가 다르면 `EINVAL`이다.
+
+`CHANNEL_REPLY_READABLE` callback에서 `subject_kind == CHANNEL_DEALER`일 때
+`zlink_socket_get_channel_name(subject, ...)`를 호출해 해당 dealer가 어느 channel에
+속하는지 읽을 수 있다.
+
 ## Spot 데이터 평면 계약
 
 ### Channel send/request
@@ -118,9 +155,18 @@ zlink_submit_result_t zlink_spot_request_channel(
 - channel 호출은 attach된 `DEALER` 경로로만 나간다.
 - lookup 키는 `channel_name`이다.
 - 같은 `channel_name`에 attach된 `DEALER`가 없으면 send/request는 실패한다.
-- channel request의 reply 귀속은 요청을 보낸 `DEALER`에 고정된다.
 - `Spot`에서는 direct `rid`로 `ROUTER`를 지정해 ordinary one-way send를 하지 않는다.
   direct routed request 시작은 아래 별도 섹션을 참조한다.
+
+channel request의 transport owner와 delivery owner는 다르다.
+
+- **transport owner**: 실제 request를 내보내고 network reply를 받는 attached `DEALER`
+- **delivery owner**: 최종 user callback을 실행하는 `Spot` dispatch stream
+
+즉 network reply는 선택된 `DEALER` 경로로 돌아오지만, 최종 callback 실행은 request를
+시작한 `Spot`의 dispatch stream이 맡는다. reply는 `CHANNEL_REPLY_READABLE` dispatch
+event로 올라오며, `zlink_spot_channel_reply_progress_from()` 호출 안에서 callback이
+실행된다.
 
 ### Topic publish/subscribe
 
@@ -195,6 +241,75 @@ zlink_submit_result_t zlink_spot_reply_router(
 
 ### Handler
 
+#### Dispatch event 타입
+
+```c
+typedef enum zlink_spot_dispatch_event_t {
+  ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE    = 1,
+  ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE       = 2,
+  ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE        = 3,
+  ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4
+} zlink_spot_dispatch_event_t;
+
+typedef enum zlink_spot_dispatch_subject_kind_t {
+  ZLINK_SPOT_DISPATCH_SUBJECT_SPOT           = 1,
+  ZLINK_SPOT_DISPATCH_SUBJECT_TIMER          = 2,
+  ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3
+} zlink_spot_dispatch_subject_kind_t;
+
+typedef struct zlink_spot_dispatch_info_t {
+  zlink_spot_dispatch_event_t        event;
+  zlink_spot_dispatch_subject_kind_t subject_kind;
+  void                              *subject;
+} zlink_spot_dispatch_info_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn)(
+  void *spot_,
+  const zlink_spot_dispatch_info_t *info_,
+  void *userdata_);
+```
+
+- `event`는 어떤 종류의 work가 준비됐는지 나타낸다.
+- `subject_kind`는 `subject` 포인터를 어떤 타입으로 해석해야 하는지를 나타낸다.
+- `subject`는 실제 drain 대상 인스턴스다.
+
+각 조합의 의미는 아래와 같다.
+
+| event | subject_kind | subject | drain 방법 |
+|-------|-------------|---------|------------|
+| `SUBSCRIBE_READABLE` | `SPOT` | `spot_` (또는 NULL) | `zlink_spot_subscribe()` |
+| `ROUTED_READABLE` | `SPOT` | `spot_` (또는 NULL) | `zlink_spot_recv()` |
+| `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
+| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | `zlink_spot_channel_reply_progress_from()` |
+
+dispatch 우선순위는 아래 순서로 고정한다.
+
+1. `SUBSCRIBE_READABLE`
+2. `ROUTED_READABLE`
+3. `CHANNEL_REPLY_READABLE`
+4. `TIMER_READABLE`
+
+`CHANNEL_REPLY_READABLE` 이벤트가 뜻하는 것은 "해당 attached dealer를 통해 시작한
+channel request 중 user callback을 실행할 준비가 끝난 completion이 하나 이상 있다"는
+것이다. raw dealer frame 수신 여부가 아니라, request completion 준비 상태를 알린다.
+
+#### Channel reply progress
+
+```c
+ZLINK_EXPORT int zlink_spot_channel_reply_progress_from (
+  void *spot_,
+  void *dealer_);
+```
+
+- `CHANNEL_REPLY_READABLE` callback이 전달한 `subject`(dealer handle)에 대해
+  `spot_`에 귀속된 channel reply completion을 drain한다.
+- drain 중 해당 dealer source queue에 적재된 request completion callback을 실행한다.
+- `dealer_`가 해당 `Spot`에 attach된 channel dealer가 아니면 `EINVAL` 또는 `ENOENT`로
+  실패한다.
+- `subject`는 raw socket처럼 직접 recv하라는 뜻이 아니라, 이 함수를 호출하라는 신호다.
+
+#### Handler 등록
+
 ```c
 zlink_handler_result_t zlink_spot_handler(
   void *spot,
@@ -210,6 +325,8 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
 - `zlink_spot_handler()`는 routed callback surface다.
 - `zlink_spot_dispatch_event_handler()`는 readable/send-ready plane을 알리는
   dispatch callback이다.
+- 두 handler는 상호 배타적이다. 하나가 등록된 상태에서 다른 쪽을 등록하면
+  `ZLINK_HANDLER_BUSY`로 실패한다.
 
 ## Spot routed request 시작
 
@@ -359,3 +476,10 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
 - `SpotNode.router`를 channel 호출 경로로 우회해서 쓰지 않는다.
 - discovery attach와 수동 peer connect를 같은 peer 관계에 동시에 섞지 않는다.
 - attach 함수는 socket 생성과 connect를 대신하지 않는다.
+- attach된 `DEALER`를 app이 raw `zlink_recv()`로 직접 읽거나 별도 poller에
+  등록하면 `Spot` progress와 경합할 수 있다. attach 이후 그 socket은 SpotNode
+  runtime 전용으로 취급한다.
+- channel request의 transport owner는 attach된 `DEALER`지만, callback delivery
+  owner는 request를 시작한 `Spot`의 dispatch stream이다.
+- `CHANNEL_REPLY_READABLE` callback에서 `subject`를 일반 dealer처럼 raw recv하지
+  않는다. `zlink_spot_channel_reply_progress_from()`를 통해서만 drain한다.

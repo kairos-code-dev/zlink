@@ -42,11 +42,6 @@ static const char *k_pattern = "MULTI_SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 
-void ensure_multi_spot_mesh_pub_budget_default()
-{
-    // Keep perf aligned with the core default unless the caller overrides it.
-}
-
 struct spot_server_state_t
 {
     spot_server_state_t() :
@@ -432,7 +427,6 @@ int run_server_benchmark(const std::string &lib_name,
                          const std::string &transport)
 {
     set_perf_multi_pattern_env(k_pattern);
-    ensure_multi_spot_mesh_pub_budget_default();
 
     if (!is_supported_transport(transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","

@@ -3,7 +3,6 @@
 #include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_handshake.hpp"
 #include "../common/perf_multi_metric_header.hpp"
-#include "../../common/perf_c_agg.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cerrno>

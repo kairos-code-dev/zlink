@@ -2,8 +2,6 @@
 #include "../common/perf_single_latency.hpp"
 #include "../common/perf_single_metric_header.hpp"
 #include "../common/perf_single_phase.hpp"
-#include "../../common/perf_c_agg.hpp"
-
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -107,26 +105,6 @@ bool service_matches (const char *service_name_, size_t service_name_len_)
         --service_name_len_;
     return service_name_len_ == std::strlen (k_service_name)
            && std::memcmp (service_name_, k_service_name, service_name_len_) == 0;
-}
-
-int wait_for_spot_node_subject_ready_local (void *node_, int timeout_ms_)
-{
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (node_, &status) == 0
-            && status.subject_count > 0
-            && (status.ready_subject_count > 0
-                || status.connected_peer_count > 0
-                || status.active_peer_count > 0
-                || status.configured_peer_count == 0)) {
-            return 1;
-        }
-        (void) perf_socket_poll (NULL, 0, 10);
-    }
-    return 0;
 }
 
 int recv_spot_header_flags (void *subscriber_,

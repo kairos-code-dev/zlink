@@ -4,7 +4,6 @@
 #include "perf_common.hpp"
 #include "perf_common_multi.hpp"
 #include "perf_multi_client_helpers.hpp"
-#include "../../common/perf_c_agg.hpp"
 #include "../../common/perf_tls_setup.hpp"
 #include <atomic>
 #include <cerrno>
@@ -111,18 +110,6 @@ inline bool relay_router_once (void *server)
     return true;
 }
 
-inline void print_server_metrics (
-  const relay_server_config_t &config,
-  const std::string &lib_name,
-  const std::string &transport,
-  const std::vector<size_t> &sizes)
-{
-    (void) config;
-    (void) lib_name;
-    (void) transport;
-    (void) sizes;
-}
-
 inline bool run_server_loop (const relay_server_config_t &config,
                              void *server,
                              const std::string &lib_name,
@@ -203,14 +190,9 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     });
     stdin_watcher.detach ();
 
-    std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
-    if (sizes.empty ())
-        sizes.push_back (64);
-
     std::cout << "READY," << endpoint << std::endl;
 
     const bool loop_ok = run_server_loop (config, server, lib_name, transport);
-    print_server_metrics (config, lib_name, transport, sizes);
 
     zlink_close (server);
     return loop_ok ? 0 : 1;

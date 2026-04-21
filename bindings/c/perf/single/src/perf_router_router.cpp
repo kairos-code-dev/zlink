@@ -3,8 +3,6 @@
 #include "../common/perf_single_metric_header.hpp"
 #include "../common/perf_single_monitor.hpp"
 #include "../common/perf_single_phase.hpp"
-#include "../../common/perf_c_agg.hpp"
-
 #include <zlink_c.h>
 
 #include <algorithm>

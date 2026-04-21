@@ -378,22 +378,29 @@ core/perf/
 
 ### 2.0.1 bindings (바인딩 라이브러리)
 
-각 바인딩은 동일한 `perf/` 하위 구조를 따른다.
+각 바인딩은 동일한 책임 분리를 따른다. 다만 언어와 빌드 시스템에 따라
+entrypoint와 소스 하위 디렉터리 위치는 조금 다를 수 있다.
 
 ```text
 perf/                                       # bindings/<lang>/perf/
-├── single/
-│   ├── run_benchmarks.sh / .ps1            # single 전용 실행 스크립트
-│   └── ...                                 # 언어별 벤치마크 소스
-├── multi/
-│   ├── run_benchmarks.sh / .ps1            # multi 전용 실행 스크립트
-│   └── ...
+├── run_benchmarks.sh / .ps1                # single 공식 entrypoint
+├── run_benchmarks_multi.sh / .ps1          # multi 공식 entrypoint
+├── single/                                 # single 벤치마크 소스
+├── multi/                                  # multi 벤치마크 소스
 └── results/                                # 결과 저장 루트 (core와 동일 구조)
     ├── single/
     │   └── report/
     └── multi/
         └── report/
 ```
+
+- C binding처럼 runner를 `bindings/<lang>/perf/` 루트에 두고, 실제 소스는
+  `single/src/`, `multi/src/`, `single/common/`, `multi/common/` 아래에
+  두는 구조도 정책 준수 구조로 본다.
+- 중요한 점은 경로 이름이 아니라 책임 분리다.
+  - runner: pattern/transport/size/run orchestration
+  - pattern source: 패턴별 측정 로직
+  - common: 공통 계측/출력/보조 인프라
 
 ### 2.0.2 소스 파일 위치 및 명명 규칙
 
@@ -421,6 +428,7 @@ perf/                                       # bindings/<lang>/perf/
 | 언어 | single 소스 위치 | multi 소스 위치 | 공통 유틸리티 |
 |------|-----------------|----------------|-------------|
 | Core (C++) | `perf/single/src/` | `perf/multi/src/` | `perf/single/common/`, `perf/multi/common/` |
+| C binding | `perf/single/src/` | `perf/multi/src/` | `perf/single/common/`, `perf/multi/common/`, `perf/common/streamclient/` |
 | C++ binding | `perf/single/` | `perf/multi/` | `perf_dispatch.hpp` |
 | .NET | `perf/single/Zlink.BindingBench/` | `perf/multi/<project>/` 또는 `perf/single/Zlink.BindingBench/` 내 multi role entrypoint | `PerfCommon.cs` |
 | Java | `perf/single/<project>/` | `perf/multi/<project>/` 또는 `perf/single/<project>/` 내 multi role entrypoint | `PerfUtil.java` |
@@ -944,6 +952,12 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 - single/multi가 같은 메트릭/출력 계약을 쓰도록 runner surface를 공통화한다.
 - helper가 없어도 각 패턴의 측정 의미를 몇 문장으로 설명할 수 있어야 한다.
 - helper는 설정, 출력, 정리, 계측 인프라를 감싸는 용도로만 사용한다.
+- C binding의 raw single one-way 패턴처럼 측정 골격이 거의 같은 경우에는,
+  `single/common`에 recv/send skeleton을 두고 각 패턴 파일에는 아래 항목만
+  남기는 구성을 권장한다.
+  - 어떤 zlink send/recv API를 쓰는지
+  - ready gate와 setup이 어떻게 다른지
+  - topic, routing metadata, probe 같은 패턴 전용 규칙
 
 #### 반드시 인라인 유지할 코어 로직
 

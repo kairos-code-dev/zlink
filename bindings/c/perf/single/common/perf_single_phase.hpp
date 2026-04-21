@@ -5,58 +5,9 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <cstdlib>
 #include <iostream>
 #include <string>
-
-enum perf_send_class_t
-{
-    perf_send_success = 0,
-    perf_send_retry,
-    perf_send_backpressure,
-    perf_send_fatal
-};
-
-inline perf_send_class_t perf_classify_send_result (int rc_)
-{
-    if (rc_ >= 0)
-        return perf_send_success;
-
-    const int err = zlink_errno ();
-    if (err == EINTR)
-        return perf_send_retry;
-    return err == EAGAIN ? perf_send_backpressure : perf_send_fatal;
-}
-
-inline void single_increment_counter (std::atomic<unsigned long long> &counter_)
-{
-    counter_.fetch_add (1, std::memory_order_relaxed);
-}
-
-inline void single_increment_counter (unsigned long long &counter_)
-{
-    ++counter_;
-}
-
-inline unsigned long long single_load_counter (
-  const std::atomic<unsigned long long> &counter_)
-{
-    return counter_.load (std::memory_order_relaxed);
-}
-
-inline unsigned long long single_load_counter (
-  const unsigned long long &counter_)
-{
-    return counter_;
-}
-
-inline int single_phase_completion_timeout_ms (int duration_s_,
-                                               int recv_timeout_ms_)
-{
-    const int duration_ms = std::max (1, duration_s_) * 5000;
-    return std::max (5000, std::max (duration_ms, recv_timeout_ms_ * 10));
-}
 
 inline double single_latency_ns (const perf_single_metric::header_t &header_,
                                  double factor_ = 1.0)
@@ -91,7 +42,7 @@ inline bool single_record_active_header (
     if (!state_ || !single_header_matches_run (*state_, header_))
         return false;
 
-    single_increment_counter (state_->active_received);
+    state_->active_received.fetch_add (1, std::memory_order_relaxed);
     state_->latency.add (single_latency_ns (header_, latency_factor_));
     return true;
 }

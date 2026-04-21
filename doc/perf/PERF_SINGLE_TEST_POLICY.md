@@ -163,6 +163,10 @@ SPOT_REQREP      = [ready] -> [post_ready_settle] -> [active(duration)] -> [done
 - `setup_connected_pair()`는 내부적으로 low-cost monitoring ready gate를
   캡슐화한 helper인 경우에만 허용된다. 별도/독자적인 start gate 규칙으로
   취급하지 않는다.
+- C binding처럼 `PAIR`, `DEALER_DEALER`, `PUBSUB`의 active recv/send 골격이
+  거의 같은 경우에는 `single/common`으로 skeleton을 올릴 수 있다. 이때도
+  패턴 파일에는 각 패턴이 실제로 사용하는 zlink API 호출과 ready 규칙이
+  그대로 보여야 한다.
 - pattern별 low-cost ready event는 single 측정의 공식 start gate다. benchmark
   시작 전 준비 판정은 monitoring event로 해결하고, perf 파일 안의 커스텀
   handshake loop, sleep, monitor snapshot polling으로 대체하지 않는다.

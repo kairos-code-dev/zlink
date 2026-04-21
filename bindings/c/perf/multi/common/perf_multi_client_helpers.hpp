@@ -4,7 +4,6 @@
 #include "perf_common.hpp"
 #include "perf_common_multi.hpp"
 #include "perf_multi_metric_header.hpp"
-#include "../../common/perf_c_agg.hpp"
 #include "../../common/perf_tls_setup.hpp"
 
 #include <algorithm>

@@ -1,7 +1,7 @@
 {
   "name": "@ulalax/zlink",
-  "version": "5.3.0",
-  "description": "zlink Node.js bindings — high-performance async messaging library",
+  "version": "5.3.1",
+  "description": "zlink Node.js bindings \u2014 high-performance async messaging library",
   "license": "MPL-2.0",
   "author": "ulalax",
   "repository": {

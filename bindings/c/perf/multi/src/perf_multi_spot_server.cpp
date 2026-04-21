@@ -79,7 +79,7 @@ struct spot_server_state_t
     std::atomic<int> fatal_errno;
     perf_multi_handshake::start_signal_state_t start_gate;
     perf_multi_spot_handshake::ready_state_t ready_state;
-    perf_multi_spot_handshake::control_peer_registry_t control_peers;
+    perf_multi_spot_handshake::peer_registry_t control_peers;
 };
 
 spot_server_state_t *g_server_state = NULL;

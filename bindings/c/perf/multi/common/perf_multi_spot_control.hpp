@@ -427,7 +427,7 @@ inline bool wait_for_connected_peer_count(void *node,
 
 inline bool ensure_connected_peers(
   void *node,
-  const perf_multi_spot_handshake::control_peer_registry_t &registry)
+  const perf_multi_spot_handshake::peer_registry_t &registry)
 {
     if (!node)
         return false;
@@ -441,7 +441,7 @@ inline bool ensure_connected_peers(
 
 inline bool accept_reverse_connect_request(
   void *node,
-  perf_multi_spot_handshake::control_peer_registry_t *registry,
+  perf_multi_spot_handshake::peer_registry_t *registry,
   const std::string &endpoint,
   int timeout_ms,
   const std::atomic<int> *fatal_errno)
@@ -453,7 +453,7 @@ inline bool accept_reverse_connect_request(
         errno = EINVAL;
         return false;
     }
-    if (!perf_multi_spot_handshake::register_control_peer(registry, endpoint)
+    if (!perf_multi_spot_handshake::register_peer(registry, endpoint)
         || !connect_peer(node, endpoint)) {
         return false;
     }
@@ -462,7 +462,7 @@ inline bool accept_reverse_connect_request(
 
 inline void disconnect_peers(
   void *node,
-  const perf_multi_spot_handshake::control_peer_registry_t &registry)
+  const perf_multi_spot_handshake::peer_registry_t &registry)
 {
     if (!node)
         return;
@@ -623,6 +623,21 @@ inline bool publish_start(void *control_pub,
       control_pub,
       topic,
       perf_multi_spot_handshake::make_start_command(msg_size));
+}
+
+inline bool publish_data_endpoint(void *control_pub,
+                                  const char *topic,
+                                  const std::string &endpoint)
+{
+    if (endpoint.empty()) {
+        errno = EINVAL;
+        return false;
+    }
+
+    return publish_control_payload(
+      control_pub,
+      topic,
+      perf_multi_spot_handshake::make_data_endpoint_command(endpoint));
 }
 
 inline bool wait_for_ready_units(

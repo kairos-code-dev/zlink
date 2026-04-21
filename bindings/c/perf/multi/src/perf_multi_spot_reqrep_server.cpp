@@ -38,7 +38,8 @@ struct spot_reqrep_server_state_t
         control_connected(false),
         start_gate(),
         ready_state(),
-        control_peers()
+        control_peers(),
+        data_peers()
     {
     }
 
@@ -52,8 +53,67 @@ struct spot_reqrep_server_state_t
     std::atomic<bool> control_connected;
     perf_multi_handshake::start_signal_state_t start_gate;
     perf_multi_spot_handshake::ready_state_t ready_state;
-    perf_multi_spot_handshake::control_peer_registry_t control_peers;
+    perf_multi_spot_handshake::peer_registry_t control_peers;
+    perf_multi_spot_handshake::peer_registry_t data_peers;
 };
+
+bool accept_ready_barrier_payload(spot_reqrep_server_state_t *state,
+                                  const std::string &payload)
+{
+    if (!state || payload.empty()) {
+        errno = EINVAL;
+        return false;
+    }
+
+    size_t ready_size = 0;
+    size_t ready_count = 0;
+    size_t slot_index = 0;
+    std::string data_endpoint;
+
+    if (perf_multi_spot_handshake::parse_control_connected(
+          payload.data(), payload.size())) {
+        state->control_connected.store(true, std::memory_order_release);
+        return true;
+    }
+
+    if (perf_multi_spot_handshake::parse_data_endpoint_command(
+          payload.data(), payload.size(), &data_endpoint)) {
+        return perf_multi_spot_handshake::register_peer(&state->data_peers,
+                                                        data_endpoint)
+               && perf_multi_spot_control::ensure_connected_peers(
+                 state->node, state->data_peers);
+    }
+
+    if (perf_multi_spot_handshake::parse_ready_count_command(payload.data(),
+                                                             payload.size(),
+                                                             &ready_size,
+                                                             &ready_count)) {
+        perf_multi_spot_handshake::record_ready_count(
+          &state->ready_state, ready_size, ready_count);
+        return true;
+    }
+
+    if (perf_multi_spot_handshake::parse_ready_slot_command(payload.data(),
+                                                            payload.size(),
+                                                            &ready_size,
+                                                            &slot_index)) {
+        perf_multi_spot_handshake::record_ready_slot(
+          &state->ready_state, ready_size, slot_index);
+    }
+
+    return true;
+}
+
+bool ready_barrier_satisfied(spot_reqrep_server_state_t *state,
+                             size_t msg_size)
+{
+    return state
+           && state->control_connected.load(std::memory_order_acquire)
+           && perf_multi_spot_handshake::ready_units(
+                &state->ready_state,
+                msg_size)
+                >= state->expected_ready_count;
+}
 
 spot_reqrep_server_state_t *g_server_state = NULL;
 
@@ -244,28 +304,9 @@ bool wait_for_ready_barrier(spot_reqrep_server_state_t *state,
             return false;
         }
 
-        if (received && !payload.empty()) {
-            size_t ready_size = 0;
-            size_t ready_count = 0;
-            size_t slot_index = 0;
-            if (perf_multi_spot_handshake::parse_control_connected(
-                  payload.data(), payload.size())) {
-                state->control_connected.store(true, std::memory_order_release);
-            } else if (perf_multi_spot_handshake::parse_ready_count_command(
-                         payload.data(),
-                         payload.size(),
-                         &ready_size,
-                         &ready_count)) {
-                perf_multi_spot_handshake::record_ready_count(
-                  &state->ready_state, ready_size, ready_count);
-            } else if (perf_multi_spot_handshake::parse_ready_slot_command(
-                         payload.data(),
-                         payload.size(),
-                         &ready_size,
-                         &slot_index)) {
-                perf_multi_spot_handshake::record_ready_slot(
-                  &state->ready_state, ready_size, slot_index);
-            }
+        if (received && !payload.empty()
+            && !accept_ready_barrier_payload(state, payload)) {
+            return false;
         }
 
         if (perf_stop_requested().load(std::memory_order_acquire)
@@ -274,9 +315,7 @@ bool wait_for_ready_barrier(spot_reqrep_server_state_t *state,
             return false;
         }
 
-        if (state->control_connected.load(std::memory_order_acquire)
-            && perf_multi_spot_handshake::ready_units(&state->ready_state, msg_size)
-                 >= state->expected_ready_count) {
+        if (ready_barrier_satisfied(state, msg_size)) {
             return true;
         }
 

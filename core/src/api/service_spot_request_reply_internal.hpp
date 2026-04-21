@@ -23,6 +23,7 @@
 namespace zlink
 {
 class service_control_runtime_t;
+class spot_node_t;
 struct spot_runtime_t;
 
 namespace spot_reqrep_internal
@@ -233,6 +234,13 @@ int build_spot_routed_message (uint8_t source_class_,
 bool parse_spot_routed_envelope (zlink_msg_t *parts_,
                                  size_t part_count_,
                                  parsed_spot_envelope_t *out_);
+bool resolve_spot_node_routing_id (spot_node_t *node_,
+                                   std::string *out_);
+bool should_process_spot_routed_locally (
+  spot_node_t *node_,
+  const parsed_spot_envelope_t &envelope_);
+int publish_spot_routed_to_mesh (spot_node_t *node_,
+                                 std::vector<zlink_msg_t> *combined_);
 inline const char *spot_routed_mesh_topic ()
 {
     return "__zlink.spot.routed";
@@ -252,6 +260,9 @@ int dispatch_local_built_message (uint8_t source_class_,
                                   size_t part_count_);
 int process_route_combined_for_local_delivery (
   std::vector<zlink_msg_t> *combined_);
+int process_parsed_route_combined_for_local_delivery (
+  std::vector<zlink_msg_t> *combined_,
+  const parsed_spot_envelope_t &spot_envelope_);
 std::shared_ptr<spot_request_reply_state_t> find_or_create_spot_state (
   void *spot_);
 std::shared_ptr<router_spot_request_reply_state_t> find_or_create_router_state (

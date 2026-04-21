@@ -20,15 +20,15 @@ struct ready_state_t
     std::map<size_t, size_t> ready_count_by_size;
 };
 
-struct control_peer_registry_t
+struct peer_registry_t
 {
-    control_peer_registry_t() : endpoints() {}
+    peer_registry_t() : endpoints() {}
 
     std::vector<std::string> endpoints;
 };
 
-inline bool register_control_peer(control_peer_registry_t *registry,
-                                  const std::string &endpoint)
+inline bool register_peer(peer_registry_t *registry,
+                          const std::string &endpoint)
 {
     if (!registry || endpoint.empty())
         return false;
@@ -98,6 +98,11 @@ inline std::string make_start_command(size_t msg_size)
     return perf_multi_handshake::make_size_command("START,", msg_size);
 }
 
+inline std::string make_data_endpoint_command(const std::string &endpoint)
+{
+    return std::string("DATA_ENDPOINT,") + endpoint;
+}
+
 inline bool parse_ready_slot_command(const void *data,
                                      size_t size,
                                      size_t *msg_size_out,
@@ -133,6 +138,19 @@ inline bool parse_control_connected(const void *data, size_t size)
     static const char payload[] = "CONNECTED";
     return data && size == (sizeof(payload) - 1)
            && std::memcmp(data, payload, sizeof(payload) - 1) == 0;
+}
+
+inline bool parse_data_endpoint_command(const void *data,
+                                        size_t size,
+                                        std::string *endpoint_out)
+{
+    if (!data || !endpoint_out)
+        return false;
+
+    return perf_multi_handshake::parse_endpoint_command_line(
+      std::string(static_cast<const char *>(data), size),
+      "DATA_ENDPOINT,",
+      endpoint_out);
 }
 
 inline bool parse_control_connected_line(const std::string &line)

@@ -85,6 +85,7 @@ struct spot_reqrep_client_state_t
         start_gate(),
         mutex(),
         cv(),
+        data_endpoint(),
         control_endpoint(),
         server_control_endpoint(),
         slots(),
@@ -109,6 +110,7 @@ struct spot_reqrep_client_state_t
     perf_multi_handshake::start_signal_state_t start_gate;
     std::mutex mutex;
     std::condition_variable cv;
+    std::string data_endpoint;
     std::string control_endpoint;
     std::string server_control_endpoint;
     std::vector<spot_reqrep_client_slot_t> slots;
@@ -288,6 +290,9 @@ void destroy_client_state(spot_reqrep_client_state_t *state)
         zlink_spot_node_destroy(&state->control_node);
     if (state->data_node)
         zlink_spot_node_destroy(&state->data_node);
+    state->data_endpoint.clear();
+    state->control_endpoint.clear();
+    state->server_control_endpoint.clear();
 }
 
 bool recv_one_control_message(spot_reqrep_client_state_t *state, bool *received)
@@ -365,6 +370,75 @@ bool publish_ready_count(spot_reqrep_client_state_t *state, size_t msg_size)
 
     return perf_multi_spot_control::publish_ready_count(
       state->control_pub, k_topic, msg_size, state->slots.size());
+}
+
+bool publish_data_endpoint(spot_reqrep_client_state_t *state)
+{
+    if (!state || state->data_endpoint.empty()) {
+        errno = EINVAL;
+        return false;
+    }
+
+    return perf_multi_spot_control::publish_data_endpoint(
+      state->control_pub, k_topic, state->data_endpoint);
+}
+
+bool complete_ready_barrier(spot_reqrep_client_state_t *state,
+                            const multi_bench_settings_t &settings,
+                            size_t msg_size)
+{
+    if (!state || msg_size == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    if (!wait_for_control_link_ready(state, settings.connect_ready_timeout_ms)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-reqrep-client] control link ready timeout size="
+                      << msg_size << std::endl;
+        return false;
+    }
+    if (!wait_for_ready_settle(state)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-reqrep-client] ready settle failed size="
+                      << msg_size << " err=" << zlink_errno() << std::endl;
+        return false;
+    }
+    if (!publish_data_endpoint(state)) {
+        if (bench_debug_enabled())
+            std::cerr
+              << "[multi-spot-reqrep-client] publish DATA_ENDPOINT failed size="
+              << msg_size << " err=" << zlink_errno() << std::endl;
+        return false;
+    }
+    if (!wait_for_control_settle(state)) {
+        if (bench_debug_enabled())
+            std::cerr
+              << "[multi-spot-reqrep-client] data endpoint settle failed size="
+              << msg_size << " err=" << zlink_errno() << std::endl;
+        return false;
+    }
+    if (!publish_connected_once(state)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-reqrep-client] publish CONNECTED failed size="
+                      << msg_size << " err=" << zlink_errno() << std::endl;
+        return false;
+    }
+    if (!wait_for_control_settle(state)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-reqrep-client] control settle failed size="
+                      << msg_size << " err=" << zlink_errno() << std::endl;
+        return false;
+    }
+    if (!publish_ready_count(state, msg_size)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-reqrep-client] publish READY_COUNT failed size="
+                      << msg_size << " err=" << zlink_errno() << std::endl;
+        return false;
+    }
+
+    std::cout << "CLIENT_READY," << msg_size << std::endl;
+    return true;
 }
 
 bool create_control_spot(ctx_guard_t &ctx,
@@ -462,6 +536,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
                       << zlink_errno() << std::endl;
         return false;
     }
+    state->data_endpoint = local_endpoint;
 
     state->slots.resize(settings.clients);
     for (size_t i = 0; i < state->slots.size(); ++i) {
@@ -862,38 +937,8 @@ bool run_single_size_case(spot_reqrep_client_state_t *state,
                std::max(1000, settings.connect_ready_timeout_ms * 6));
 
     state->control_started_msg_size.store(0, std::memory_order_release);
-    if (!wait_for_control_link_ready(state, settings.connect_ready_timeout_ms)) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-reqrep-client] control link ready timeout size="
-                      << msg_size << std::endl;
+    if (!complete_ready_barrier(state, settings, msg_size))
         return false;
-    }
-    if (!wait_for_ready_settle(state)) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-reqrep-client] ready settle failed size="
-                      << msg_size << " err=" << zlink_errno() << std::endl;
-        return false;
-    }
-    if (!publish_connected_once(state)) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-reqrep-client] publish CONNECTED failed size="
-                      << msg_size << " err=" << zlink_errno() << std::endl;
-        return false;
-    }
-    if (!wait_for_control_settle(state)) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-reqrep-client] control settle failed size="
-                      << msg_size << " err=" << zlink_errno() << std::endl;
-        return false;
-    }
-    if (!publish_ready_count(state, msg_size)) {
-        if (bench_debug_enabled())
-            std::cerr << "[multi-spot-reqrep-client] publish READY_COUNT failed size="
-                      << msg_size << " err=" << zlink_errno() << std::endl;
-        return false;
-    }
-
-    std::cout << "CLIENT_READY," << msg_size << std::endl;
 
     if (!wait_for_runner_start(state, msg_size, phase_timeout_ms)) {
         if (bench_debug_enabled())

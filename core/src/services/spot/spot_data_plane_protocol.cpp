@@ -6,6 +6,8 @@
 #include "services/spot/spot_message_parts_internal.hpp"
 #include "services/spot/spot_mesh_pub_budget.hpp"
 
+#include "api/request_reply_protocol_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
@@ -280,6 +282,39 @@ static uint64_t default_bootstrap_broadcast_interval_ms (
     }
 
     return 1000;
+}
+
+static int dispatch_routed_mesh_message (spot_node_t *node_,
+                                         spot_owned_msg_parts_t *frames_)
+{
+    if (!node_ || !frames_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_msg_t> combined;
+    if (spot_move_msg_parts (frames_, &combined) != 0)
+        return -1;
+
+    zlink::spot_reqrep_internal::parsed_spot_envelope_t envelope;
+    const bool parsed =
+      !combined.empty ()
+      && zlink::spot_reqrep_internal::parse_spot_routed_envelope (
+        &combined[0], combined.size (), &envelope);
+
+    int rc = 0;
+    if (parsed
+        && zlink::spot_reqrep_internal::should_process_spot_routed_locally (
+          node_, envelope)) {
+        rc = zlink::spot_reqrep_internal::
+          process_parsed_route_combined_for_local_delivery (&combined,
+                                                            envelope);
+    }
+
+    const int saved_errno = errno;
+    zlink::request_reply::close_built_parts (&combined);
+    errno = saved_errno;
+    return parsed ? rc : 0;
 }
 }
 
@@ -614,6 +649,17 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
 
         const char *topic_data = topic.data ();
         const size_t topic_size = topic.size ();
+
+        if (topic == zlink::spot_reqrep_internal::spot_routed_mesh_topic ()) {
+            if (dispatch_routed_mesh_message (node_, &frames) != 0)
+                return -1;
+
+            ++processed;
+            if (processed >= mesh_xsub_forward_batch_limit
+                || processed_bytes >= mesh_xsub_forward_batch_bytes_limit)
+                return 0;
+            continue;
+        }
 
         if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (
               topic_data, topic_size)) {

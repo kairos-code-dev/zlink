@@ -17,6 +17,10 @@ def nativeOs = System.getProperty('os.name').toLowerCase()
 def nativeArch = System.getProperty('os.arch').toLowerCase()
 def nativeBridgeSupported = nativeOs.contains('linux')
     && ['amd64', 'x86_64'].contains(nativeArch)
+def configuredCoreBuildDir = System.getenv('ZLINK_CORE_BUILD_DIR')
+def coreBuildDir = configuredCoreBuildDir != null && !configuredCoreBuildDir.trim().isEmpty()
+    ? new File(projectDir.parentFile.parentFile, configuredCoreBuildDir)
+    : new File(projectDir.parentFile.parentFile, 'core/build')
 def generatedNativeResourcesDir = layout.buildDirectory.dir(
     'generated/zlink-native-resources/main')
 def bridgeOutputDir = layout.buildDirectory.dir(
@@ -53,7 +57,7 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     inputs.file(source)
     inputs.dir(new File(repoRoot, 'core/include'))
     inputs.dir(new File(repoRoot, 'core/src'))
-    inputs.dir(new File(repoRoot, 'core/build'))
+    inputs.dir(coreBuildDir)
     inputs.dir(linkDir)
     inputs.dir(jniIncludeDir)
     inputs.dir(jniOsIncludeDir)
@@ -69,7 +73,7 @@ tasks.register('buildZlinkJavaBridge', Exec) {
         '-pthread',
         '-I', new File(repoRoot, 'core/include').absolutePath,
         '-I', new File(repoRoot, 'core/src').absolutePath,
-        '-I', new File(repoRoot, 'core/build').absolutePath,
+        '-I', coreBuildDir.absolutePath,
         '-I', jniIncludeDir.absolutePath,
         '-I', jniOsIncludeDir.absolutePath,
         '-L', linkDir.absolutePath,

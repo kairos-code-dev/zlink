@@ -373,6 +373,8 @@ jobs:
           fi
 
       - name: Build and test
+        env:
+          ZLINK_CORE_BUILD_DIR: core/build_bindings_release
         run: |
           cd bindings/java
           chmod +x gradlew
@@ -442,6 +444,9 @@ jobs:
           fi
 
       - name: Build, test, and pack
+        env:
+          ZLINK_LIBRARY_PATH: ${{ github.workspace }}/bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${{ needs.resolve.outputs.version }}
+          LD_LIBRARY_PATH: ${{ github.workspace }}/bindings/dotnet/runtimes/linux-x64/native
         run: |
           dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release
           dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release
@@ -578,15 +583,14 @@ jobs:
           cd bindings/rust
           cargo test
 
-      - name: Package crates
+      - name: Package source archive
         run: |
           mkdir -p dist/rust
-          cd bindings/rust
-          cargo package -p zlink --allow-dirty
-          cargo package -p zlink-codec-json --allow-dirty
-          cargo package -p zlink-codec-messagepack --allow-dirty
-          cargo package -p zlink-codec-protobuf --allow-dirty
-          cp target/package/*.crate ../../dist/rust/
+          git archive \
+            --format=tar.gz \
+            --prefix=zlink-rust-${{ needs.resolve.outputs.version }}/ \
+            -o dist/rust/zlink-rust-${{ needs.resolve.outputs.version }}.tar.gz \
+            HEAD:bindings/rust
 
       - name: Publish to crates.io
         if: needs.resolve.outputs.publish_registry == 'true'
@@ -607,7 +611,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: binding-rust-${{ needs.resolve.outputs.version }}
-          path: dist/rust/*.crate
+          path: dist/rust/zlink-rust-${{ needs.resolve.outputs.version }}.tar.gz
 
       - name: Create GitHub Release
         if: needs.resolve.outputs.create_release == 'true'
@@ -615,4 +619,4 @@ jobs:
         with:
           tag_name: rust/v${{ needs.resolve.outputs.version }}
           name: rust binding v${{ needs.resolve.outputs.version }}
-          files: dist/rust/*.crate
+          files: dist/rust/zlink-rust-${{ needs.resolve.outputs.version }}.tar.gz

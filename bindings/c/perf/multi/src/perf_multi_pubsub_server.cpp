@@ -91,8 +91,6 @@ inline bool publish_once (void *server,
         return true;
     }
 
-    zlink_msg_close (&payload_part);
-
     const int err = zlink_errno ();
     if (err == EAGAIN) {
         if (publish_blocked_count)

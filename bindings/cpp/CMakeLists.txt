@@ -128,6 +128,7 @@ zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)
 add_library(zlink-cpp INTERFACE)
 target_include_directories(zlink-cpp INTERFACE
   ${ZLINK_CORE_DIR}/include
+  ${ZLINK_CORE_DIR}/external/boost
   ${CMAKE_CURRENT_LIST_DIR}/include
 )
 

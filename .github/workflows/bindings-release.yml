@@ -40,6 +40,9 @@ permissions:
   contents: write
   packages: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   resolve:
     name: Resolve Target/Version
@@ -139,8 +142,9 @@ jobs:
             -DBUILD_SHARED=ON \
             -DBUILD_STATIC=OFF \
             -DBUILD_TESTS=OFF \
+            -DENABLE_LTO=OFF \
             -DZLINK_CXX_STANDARD=17
-          cmake --build core/build_bindings_release --parallel
+          cmake --build core/build_bindings_release --parallel 2
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/node/prebuilds/linux-x64/libzlink.so.${{ needs.resolve.outputs.version }}
@@ -182,8 +186,8 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "${NPM_TOKEN}" ]; then
-            echo "NPM_TOKEN secret is required for npm publish" >&2
-            exit 1
+            echo "Skipping npm publish because NPM_TOKEN is not configured."
+            exit 0
           fi
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           cd bindings/node
@@ -222,8 +226,9 @@ jobs:
             -DBUILD_SHARED=ON \
             -DBUILD_STATIC=OFF \
             -DBUILD_TESTS=OFF \
+            -DENABLE_LTO=OFF \
             -DZLINK_CXX_STANDARD=17
-          cmake --build core/build_bindings_release --parallel
+          cmake --build core/build_bindings_release --parallel 2
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/go/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
@@ -293,8 +298,8 @@ jobs:
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           if [ -z "${PYPI_API_TOKEN}" ]; then
-            echo "PYPI_API_TOKEN secret is required for PyPI publish" >&2
-            exit 1
+            echo "Skipping PyPI publish because PYPI_API_TOKEN is not configured."
+            exit 0
           fi
           cd bindings/python
           python -m twine upload \
@@ -340,8 +345,9 @@ jobs:
             -DBUILD_SHARED=ON \
             -DBUILD_STATIC=OFF \
             -DBUILD_TESTS=OFF \
+            -DENABLE_LTO=OFF \
             -DZLINK_CXX_STANDARD=17
-          cmake --build core/build_bindings_release --parallel
+          cmake --build core/build_bindings_release --parallel 2
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/java/src/main/resources/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
@@ -413,8 +419,9 @@ jobs:
             -DBUILD_SHARED=ON \
             -DBUILD_STATIC=OFF \
             -DBUILD_TESTS=OFF \
+            -DENABLE_LTO=OFF \
             -DZLINK_CXX_STANDARD=17
-          cmake --build core/build_bindings_release --parallel
+          cmake --build core/build_bindings_release --parallel 2
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${{ needs.resolve.outputs.version }}
@@ -448,8 +455,8 @@ jobs:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           if [ -z "${NUGET_SOURCE_URL}" ] || [ -z "${NUGET_API_KEY}" ]; then
-            echo "NUGET_SOURCE_URL and NUGET_API_KEY are required for NuGet publish" >&2
-            exit 1
+            echo "Skipping NuGet publish because credentials are not configured."
+            exit 0
           fi
           dotnet nuget push dist/dotnet/*.nupkg \
             --source "${NUGET_SOURCE_URL}" \
@@ -480,11 +487,29 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev libboost-dev
+
+      - name: Build Linux x64 core runtime
+        run: |
+          cmake -S core -B core/build_bindings_release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DENABLE_LTO=OFF \
+            -DZLINK_CXX_STANDARD=17
+          cmake --build core/build_bindings_release --parallel 2
+          mkdir -p bindings/cpp/native/linux-x86_64
+          install -m755 \
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
+            bindings/cpp/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/cpp/native/linux-x86_64/libzlink.so.5
+          ln -sfn libzlink.so.5 bindings/cpp/native/linux-x86_64/libzlink.so
 
       - name: Build and test
         run: |
           cmake -S bindings/cpp -B build_cpp_release \
+            -DZLINK_CPP_CORE_BUILD_DIR="${{ github.workspace }}/core/build_bindings_release" \
             -DZLINK_CPP_BUILD_TESTS=ON
           cmake --build build_cpp_release --parallel
           ctest --test-dir build_cpp_release --output-on-failure -R test_cpp_
@@ -528,8 +553,9 @@ jobs:
             -DBUILD_SHARED=ON \
             -DBUILD_STATIC=OFF \
             -DBUILD_TESTS=OFF \
+            -DENABLE_LTO=OFF \
             -DZLINK_CXX_STANDARD=17
-          cmake --build core/build_bindings_release --parallel
+          cmake --build core/build_bindings_release --parallel 2
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/rust/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
@@ -568,8 +594,8 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: |
           if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
-            echo "CRATES_IO_TOKEN secret is required for crates.io publish" >&2
-            exit 1
+            echo "Skipping crates.io publish because CRATES_IO_TOKEN is not configured."
+            exit 0
           fi
           cd bindings/rust
           cargo publish -p zlink --token "${CARGO_REGISTRY_TOKEN}"

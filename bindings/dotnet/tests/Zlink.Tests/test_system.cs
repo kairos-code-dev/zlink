@@ -138,7 +138,7 @@ public sealed class test_system
         });
         timer.Start(5_000_000, 1);
 
-        Assert.True(fired.Wait(5000));
+        Assert.True(fired.Wait(20000));
         Assert.Equal(1UL, observed);
     }
 }

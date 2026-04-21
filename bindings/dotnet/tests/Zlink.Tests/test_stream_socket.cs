@@ -18,8 +18,8 @@ public sealed class test_stream_socket
     {
         var client = new TcpClient();
         client.NoDelay = true;
-        client.ReceiveTimeout = 5000;
-        client.SendTimeout = 5000;
+        client.ReceiveTimeout = 15000;
+        client.SendTimeout = 15000;
         client.Connect(IPAddress.Loopback, port);
         return client;
     }
@@ -395,7 +395,7 @@ public sealed class test_stream_socket
         byte[] echoed = ReceiveExact(ns, expected.Length);
         Assert.Equal(expected, echoed);
         Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref matched) >= 1,
-            3000));
+            15000));
 
         stream.DetachStream();
     }

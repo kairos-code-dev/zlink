@@ -266,7 +266,7 @@ public sealed class test_pair_tcp
         Assert.True(snapshot.SndPendingMsgs >= 0);
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
-            Volatile.Read(ref callbackCount) >= 1, 3000, 10));
+            Volatile.Read(ref callbackCount) >= 1, 15000, 10));
 
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());

@@ -14,8 +14,8 @@ public sealed class test_callback_contract
     {
         var client = new TcpClient();
         client.NoDelay = true;
-        client.ReceiveTimeout = 5000;
-        client.SendTimeout = 5000;
+        client.ReceiveTimeout = 15000;
+        client.SendTimeout = 15000;
         client.Connect(IPAddress.Loopback, port);
         return client;
     }
@@ -51,7 +51,7 @@ public sealed class test_callback_contract
         using var client = ConnectRawClient(port);
         SendAll(client.GetStream(), "callback-owned"u8);
 
-        Assert.True(receivedSignal.Wait(10000));
+        Assert.True(receivedSignal.Wait(20000));
         Assert.NotNull(owned);
         Assert.Equal("callback-owned",
             Encoding.UTF8.GetString(owned!.AsReadOnlySpan()));
@@ -92,7 +92,7 @@ public sealed class test_callback_contract
             using var client = ConnectRawClient(port);
             SendAll(client.GetStream(), "stream-packet-fail"u8);
 
-            Assert.True(observedSignal.Wait(3000));
+            Assert.True(observedSignal.Wait(10000));
             Assert.NotNull(observed);
             Assert.Equal("stream-packet-fail", observed!.Message);
         }

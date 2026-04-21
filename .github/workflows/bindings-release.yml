@@ -384,6 +384,7 @@ jobs:
         if: needs.resolve.outputs.publish_registry == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          ZLINK_CORE_BUILD_DIR: core/build_bindings_release
         run: |
           cd bindings/java
           ./gradlew publish

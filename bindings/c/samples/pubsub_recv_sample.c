@@ -2,70 +2,101 @@
 
 #include "sample_common.h"
 
+typedef struct
+{
+    void *publisher;
+    void *subscriber;
+    char topic[64];
+    char payload[64];
+    size_t payload_len;
+} pubsub_sample_t;
+
+static void pubsub_subscriber_thread (void *arg_)
+{
+    pubsub_sample_t *sample = (pubsub_sample_t *) arg_;
+    zlink_routing_id_t rid;
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+    size_t topic_len = sizeof (sample->topic);
+
+    memset (&rid, 0, sizeof (rid));
+    assert (zlink_subscribe (sample->subscriber, &rid, &parts, &count,
+                             sample->topic, &topic_len, 0)
+            == ZLINK_RECV_OK);
+    assert (count == 1);
+    sample->payload_len = zlink_msg_size (&parts[0]);
+    assert (sample->payload_len == strlen (k_pubsub_payload));
+    memcpy (sample->payload, zlink_msg_data (&parts[0]), sample->payload_len);
+    sample->payload[sample->payload_len] = '\0';
+    zlink_multipart_close (parts, count);
+}
+
+static void pubsub_publisher_thread (void *arg_)
+{
+    pubsub_sample_t *sample = (pubsub_sample_t *) arg_;
+    zlink_msg_t outbound;
+
+    make_message (&outbound, k_pubsub_payload);
+    assert (zlink_publish (sample->publisher, k_pubsub_topic, &outbound, 1, 0)
+            == ZLINK_SUBMIT_OK);
+}
+
 int main (void)
 {
+    pubsub_sample_t sample;
+    memset (&sample, 0, sizeof (sample));
+
     void *ctx = zlink_ctx_new ();
     assert (ctx != NULL);
-    void *publisher = zlink_socket (ctx, ZLINK_SOCKET_XPUB);
-    void *subscriber = zlink_socket (ctx, ZLINK_SOCKET_SUB);
-    assert (publisher != NULL);
-    assert (subscriber != NULL);
+    sample.publisher = zlink_socket (ctx, ZLINK_SOCKET_XPUB);
+    sample.subscriber = zlink_socket (ctx, ZLINK_SOCKET_SUB);
+    assert (sample.publisher != NULL);
+    assert (sample.subscriber != NULL);
 
     void *pub_monitor = open_socket_monitor (
-      publisher, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+      sample.publisher, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
     void *sub_monitor = open_socket_monitor (
-      subscriber, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+      sample.subscriber, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
-    int rc = zlink_bind (publisher, "tcp://127.0.0.1:0");
-    assert (rc == 0);
+    assert (zlink_bind (sample.publisher, "tcp://127.0.0.1:0")
+            == ZLINK_BIND_OK);
     char endpoint[256];
-    get_last_endpoint (publisher, endpoint, sizeof (endpoint));
-    rc = zlink_connect (subscriber, endpoint);
-    assert (rc == 0);
-    assert (wait_connected (pub_monitor, sub_monitor, 2000));
+    get_last_endpoint (sample.publisher, endpoint, sizeof (endpoint));
+    assert (zlink_connect (sample.subscriber, endpoint) == ZLINK_CONNECT_OK);
 
-    rc = zlink_set_subscription (subscriber, k_pubsub_topic);
-    assert (rc == 0);
+    assert (zlink_set_subscription (sample.subscriber, k_pubsub_topic) == 0);
+
+    void *subscriber = zlink_thread_start (&pubsub_subscriber_thread, &sample);
+    assert (subscriber != NULL);
+
+    assert (wait_connected (pub_monitor, sub_monitor, 2000));
 
     zlink_routing_id_t event_rid;
     int subscribed = 0;
     char event_topic[256];
     size_t event_topic_len = sizeof (event_topic);
-    rc = zlink_subscription_event (publisher, &event_rid, &subscribed,
-                                   event_topic, &event_topic_len, 0);
-    assert (rc == 0);
+    memset (&event_rid, 0, sizeof (event_rid));
+    assert (wait_for_subscription_event (
+      sample.publisher, &subscribed, event_topic, &event_topic_len, 2000));
     assert (subscribed == 1);
     assert (strcmp (event_topic, k_pubsub_topic) == 0);
 
-    zlink_msg_t outbound;
-    make_message (&outbound, k_pubsub_payload);
-    rc = zlink_publish (publisher, k_pubsub_topic, &outbound, 1, 0);
-    assert (rc == 0);
+    void *publisher = zlink_thread_start (&pubsub_publisher_thread, &sample);
+    assert (publisher != NULL);
 
-    zlink_routing_id_t rid;
-    zlink_msg_t *parts = NULL;
-    size_t count = 0;
-    char topic[256];
-    size_t topic_len = sizeof (topic);
-    rc = zlink_subscribe (subscriber, &rid, &parts, &count,
-                          topic, &topic_len, 0);
-    assert (rc == 0);
-    assert (strcmp (topic, k_pubsub_topic) == 0);
-    assert (count == 1);
-    assert (zlink_msg_size (&parts[0]) == strlen (k_pubsub_payload));
-    assert (memcmp (zlink_msg_data (&parts[0]), k_pubsub_payload,
-                    strlen (k_pubsub_payload))
-            == 0);
-    printf ("[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%.*s\"\n",
+    zlink_thread_join (publisher);
+    zlink_thread_join (subscriber);
+
+    assert (strcmp (sample.topic, k_pubsub_topic) == 0);
+    assert (strcmp (sample.payload, k_pubsub_payload) == 0);
+    printf ("[pubsub/recv] publish: \"%s/%s\" -> subscribe: \"%s/%.*s\"\n",
             k_pubsub_topic, k_pubsub_payload,
-            topic, (int) zlink_msg_size (&parts[0]),
-            (const char *) zlink_msg_data (&parts[0]));
-    zlink_multipart_close (parts, count);
+            sample.topic, (int) sample.payload_len, sample.payload);
 
     zlink_monitor_close (&sub_monitor);
     zlink_monitor_close (&pub_monitor);
-    zlink_close (subscriber);
-    zlink_close (publisher);
+    zlink_close (sample.subscriber);
+    zlink_close (sample.publisher);
     zlink_ctx_term (ctx);
     return 0;
 }

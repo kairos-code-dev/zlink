@@ -2,45 +2,27 @@
 
 #include "sample_common.h"
 
-int main (void)
+typedef struct
 {
-    void *ctx = zlink_ctx_new ();
-    assert (ctx != NULL);
-    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
-    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
-    assert (router != NULL);
-    assert (dealer != NULL);
+    void *router;
+    void *dealer;
+    char reply[64];
+    size_t reply_len;
+} dealer_router_sample_t;
 
-    void *router_monitor = open_socket_monitor (
-      router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
-    void *dealer_monitor = open_socket_monitor (
-      dealer, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
-
-    int rc = zlink_bind (router, "tcp://127.0.0.1:0");
-    assert (rc == 0);
-    char endpoint[256];
-    get_last_endpoint (router, endpoint, sizeof (endpoint));
-    rc = zlink_connect (dealer, endpoint);
-    assert (rc == 0);
-    assert (wait_for_socket_monitor_event_with_activity (
-      router_monitor, router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1,
-      2000));
-    assert (wait_for_socket_monitor_event (
-      dealer_monitor, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1, 2000));
-
-    zlink_msg_t outbound;
-    make_message (&outbound, k_dealer_router_request);
-    rc = zlink_send (dealer, &outbound, 1, 0);
-    assert (rc == 0);
-
+static void dealer_router_router_thread (void *arg_)
+{
+    dealer_router_sample_t *sample = (dealer_router_sample_t *) arg_;
     const zlink_routing_id_t *source_node_rid = NULL;
     const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
-    rc = zlink_router_recv (router, &source_node_rid, &source_spot_rid,
-                            &request_seq, &parts, &count, 0);
-    assert (rc == 0);
+    zlink_msg_t reply;
+
+    assert (zlink_router_recv (sample->router, &source_node_rid, &source_spot_rid,
+                               &request_seq, &parts, &count, 0)
+            == ZLINK_RECV_OK);
     assert (source_node_rid != NULL);
     assert (source_node_rid->size > 0);
     assert (source_spot_rid != NULL);
@@ -53,31 +35,78 @@ int main (void)
             == 0);
     zlink_multipart_close (parts, count);
 
-    zlink_msg_t reply;
     make_message (&reply, k_dealer_router_reply);
-    rc = zlink_send_rid (router, source_node_rid, &reply, 1, 0);
-    assert (rc == 0);
+    assert (zlink_send_rid (sample->router, source_node_rid, &reply, 1, 0)
+            == ZLINK_SUBMIT_OK);
+}
 
-    zlink_routing_id_t echo_rid;
-    zlink_msg_t *echo_parts = NULL;
-    size_t echo_count = 0;
-    rc = zlink_recv (dealer, &echo_rid, &echo_parts, &echo_count, 0);
-    assert (rc == 0);
-    assert (echo_count == 1);
-    assert (zlink_msg_size (&echo_parts[0])
-            == strlen (k_dealer_router_reply));
-    assert (memcmp (zlink_msg_data (&echo_parts[0]), k_dealer_router_reply,
-                    strlen (k_dealer_router_reply))
-            == 0);
-    printf ("[dealer-router/recv] send: \"%s\" → recv: \"%.*s\"\n",
-            k_dealer_router_request, (int) zlink_msg_size (&echo_parts[0]),
-            (const char *) zlink_msg_data (&echo_parts[0]));
-    zlink_multipart_close (echo_parts, echo_count);
+static void dealer_router_dealer_thread (void *arg_)
+{
+    dealer_router_sample_t *sample = (dealer_router_sample_t *) arg_;
+    zlink_msg_t outbound;
+    zlink_routing_id_t rid;
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+
+    make_message (&outbound, k_dealer_router_request);
+    assert (zlink_send (sample->dealer, &outbound, 1, 0) == ZLINK_SUBMIT_OK);
+
+    memset (&rid, 0, sizeof (rid));
+    assert (zlink_recv (sample->dealer, &rid, &parts, &count, 0)
+            == ZLINK_RECV_OK);
+    assert (count == 1);
+
+    sample->reply_len = zlink_msg_size (&parts[0]);
+    assert (sample->reply_len == strlen (k_dealer_router_reply));
+    memcpy (sample->reply, zlink_msg_data (&parts[0]), sample->reply_len);
+    sample->reply[sample->reply_len] = '\0';
+    zlink_multipart_close (parts, count);
+}
+
+int main (void)
+{
+    dealer_router_sample_t sample;
+    memset (&sample, 0, sizeof (sample));
+
+    void *ctx = zlink_ctx_new ();
+    assert (ctx != NULL);
+    sample.router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    sample.dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    assert (sample.router != NULL);
+    assert (sample.dealer != NULL);
+
+    void *router_monitor = open_socket_monitor (
+      sample.router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    void *dealer_monitor = open_socket_monitor (
+      sample.dealer, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+
+    assert (zlink_bind (sample.router, "tcp://127.0.0.1:0") == ZLINK_BIND_OK);
+    char endpoint[256];
+    get_last_endpoint (sample.router, endpoint, sizeof (endpoint));
+    assert (zlink_connect (sample.dealer, endpoint) == ZLINK_CONNECT_OK);
+    assert (wait_for_socket_monitor_event_with_activity (
+      router_monitor, sample.router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
+      -1,
+      2000));
+    assert (wait_for_socket_monitor_event (
+      dealer_monitor, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1, 2000));
+
+    void *router = zlink_thread_start (&dealer_router_router_thread, &sample);
+    void *dealer = zlink_thread_start (&dealer_router_dealer_thread, &sample);
+    assert (router != NULL);
+    assert (dealer != NULL);
+
+    zlink_thread_join (dealer);
+    zlink_thread_join (router);
+
+    assert (strcmp (sample.reply, k_dealer_router_reply) == 0);
+    printf ("[dealer-router/recv] send: \"%s\" -> recv: \"%.*s\"\n",
+            k_dealer_router_request, (int) sample.reply_len, sample.reply);
 
     zlink_monitor_close (&dealer_monitor);
     zlink_monitor_close (&router_monitor);
-    zlink_close (dealer);
-    zlink_close (router);
+    zlink_close (sample.dealer);
+    zlink_close (sample.router);
     zlink_ctx_term (ctx);
     return 0;
 }

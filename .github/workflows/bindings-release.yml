@@ -127,6 +127,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+
+      - name: Build Linux x64 core runtime
+        run: |
+          cmake -S core -B core/build_bindings_release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DZLINK_CXX_STANDARD=17
+          cmake --build core/build_bindings_release --parallel
+          install -m755 \
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
+            bindings/node/prebuilds/linux-x64/libzlink.so.${{ needs.resolve.outputs.version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/node/prebuilds/linux-x64/libzlink.so.5
+          ln -sfn libzlink.so.5 bindings/node/prebuilds/linux-x64/libzlink.so
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -189,6 +209,26 @@ jobs:
     if: needs.resolve.outputs.target == 'go' || needs.resolve.outputs.target == 'all'
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+
+      - name: Build Linux x64 core runtime
+        run: |
+          cmake -S core -B core/build_bindings_release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DZLINK_CXX_STANDARD=17
+          cmake --build core/build_bindings_release --parallel
+          install -m755 \
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
+            bindings/go/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/go/native/linux-x86_64/libzlink.so.5
+          ln -sfn libzlink.so.5 bindings/go/native/linux-x86_64/libzlink.so
 
       - uses: actions/setup-go@v5
         with:
@@ -288,6 +328,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+
+      - name: Build Linux x64 core runtime
+        run: |
+          cmake -S core -B core/build_bindings_release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DZLINK_CXX_STANDARD=17
+          cmake --build core/build_bindings_release --parallel
+          install -m755 \
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
+            bindings/java/src/main/resources/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/java/src/main/resources/native/linux-x86_64/libzlink.so
+          mkdir -p bindings/java/native/linux-x86_64
+          install -m755 \
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
+            bindings/java/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/java/native/linux-x86_64/libzlink.so
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -336,6 +400,26 @@ jobs:
     if: needs.resolve.outputs.target == 'dotnet' || needs.resolve.outputs.target == 'all'
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+
+      - name: Build Linux x64 core runtime
+        run: |
+          cmake -S core -B core/build_bindings_release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DZLINK_CXX_STANDARD=17
+          cmake --build core/build_bindings_release --parallel
+          install -m755 \
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
+            bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${{ needs.resolve.outputs.version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/dotnet/runtimes/linux-x64/native/libzlink.so.5
+          ln -sfn libzlink.so.5 bindings/dotnet/runtimes/linux-x64/native/libzlink.so
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -431,6 +515,26 @@ jobs:
     if: needs.resolve.outputs.target == 'rust' || needs.resolve.outputs.target == 'all'
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+
+      - name: Build Linux x64 core runtime
+        run: |
+          cmake -S core -B core/build_bindings_release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DZLINK_CXX_STANDARD=17
+          cmake --build core/build_bindings_release --parallel
+          install -m755 \
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
+            bindings/rust/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/rust/native/linux-x86_64/libzlink.so.5
+          ln -sfn libzlink.so.5 bindings/rust/native/linux-x86_64/libzlink.so
 
       - uses: dtolnay/rust-toolchain@stable
 

@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.RequestProgressPump;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
 import java.util.List;
@@ -52,22 +53,6 @@ final class RequestReplySupport {
         future.whenComplete((ignored, error) -> timeout.cancel(false));
     }
 
-    static Received cloneReceived(Received received) {
-        Message[] parts = new Message[received.parts().size()];
-        for (int i = 0; i < parts.length; i++) {
-            parts[i] = cloneMessage(received.parts().get(i));
-        }
-        RoutingId routingId = received.routingId()
-            .map(rid -> RoutingId.fromBytes(rid.toBytes()))
-            .orElse(null);
-        RoutingId spotRid = received.spotRid()
-            .map(rid -> RoutingId.fromBytes(rid.toBytes()))
-            .orElse(null);
-        return new Received(routingId, spotRid, parts, true,
-            received.requestSeq().orElse(0L),
-            received.requestSeq().isPresent(), null);
-    }
-
     static List<Message> clonePayload(List<Message> parts) {
         Objects.requireNonNull(parts, "parts");
         if (parts.isEmpty()) {
@@ -82,6 +67,10 @@ final class RequestReplySupport {
 
     static Message cloneMessage(Message source) {
         return Message.sharedCopyOf(source);
+    }
+
+    static List<Message> takeReceivedParts(Received received) {
+        return received.takeParts();
     }
 
     static void closeAll(List<Message> parts) {
@@ -228,22 +217,7 @@ final class RequestReplySupport {
     static void startSocketRequestProgress(CompletableFuture<?> future,
                                            MemorySegment socketHandle,
                                            String threadName) {
-        Thread thread = new Thread(() -> {
-            while (!future.isDone()) {
-                Native.socketRequestProgressInternal(socketHandle);
-                if (future.isDone()) {
-                    break;
-                }
-                try {
-                    Thread.sleep(1L);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-        }, threadName);
-        thread.setDaemon(true);
-        thread.start();
+        RequestProgressPump.trackSocketRequest(future, socketHandle, threadName);
     }
 
     @FunctionalInterface

@@ -65,12 +65,8 @@ public final class DealerSocket extends Socket {
     private CompletableFuture<List<Message>> request(List<Message> parts,
                                                      SendFlags flags,
                                                      Duration timeout) {
-        return dealerRequests.request(parts, timeout, flags).thenApply(reply -> {
-            try (reply) {
-                debug("dealer request thenApply parts=" + reply.parts().size());
-                return RequestReplySupport.cloneReceived(reply).parts();
-            }
-        });
+        return dealerRequests.request(parts, timeout, flags).thenApply(reply ->
+            RequestReplySupport.takeReceivedParts(reply));
     }
     public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback) {
         return request(List.of(part), callback);
@@ -106,9 +102,7 @@ public final class DealerSocket extends Socket {
             dealerRequests.request(parts, (result, reply) -> {
                 List<Message> payload = List.of();
                 if (reply != null) {
-                    Received copy = RequestReplySupport.cloneReceived(reply);
-                    reply.close();
-                    payload = copy.parts();
+                    payload = RequestReplySupport.takeReceivedParts(reply);
                 }
                 callback.accept(result, payload);
             }, flags, timeout);

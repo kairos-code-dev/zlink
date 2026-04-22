@@ -50,7 +50,8 @@ public class ReceivedContractTest {
                 }
             };
 
-            try (Received received = new Received(null, null, first, cursor,
+            try (Received received = new Received((RoutingId) null,
+                (RoutingId) null, first, cursor,
                 0L, false, null, null)) {
                 assertSame(first, received.firstPart());
                 assertEquals(0, pulls.get());

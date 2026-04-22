@@ -126,7 +126,7 @@ class pubsub_client_bench_t
         for (size_t i = 0; i < _settings.clients; ++i) {
             _holders.emplace_back (
               new perf::multi::socket_guard_t (_ctx, zlink::socket_type::sub));
-            zlink::socket_t &sock = _holders.back ()->sock ();
+            ::perf::socket_t &sock = _holders.back ()->sock ();
 
             (void) sock.set_subscription (std::string (k_topic));
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
@@ -186,8 +186,8 @@ class pubsub_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
-                zlink::socket_t *sock =
-                  static_cast<zlink::socket_t *> (_poll_events[i].user);
+                ::perf::socket_t *sock =
+                  static_cast<::perf::socket_t *> (_poll_events[i].user);
                 if (!sock)
                     continue;
 
@@ -287,7 +287,7 @@ class pubsub_client_bench_t
     perf::multi::ctx_guard_t _ctx;
     std::vector<std::unique_ptr<perf::multi::socket_guard_t> > _holders;
     std::vector<perf::multi::connect_monitor_t> _monitors;
-    std::vector<zlink::socket_t *> _sockets;
+    std::vector<::perf::socket_t *> _sockets;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;
     std::vector<char> _recv_buffer;

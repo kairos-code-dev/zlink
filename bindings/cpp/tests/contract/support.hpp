@@ -67,16 +67,22 @@ inline bool wait_until (std::condition_variable &cv_,
       });
 }
 
-inline bool wait_for_monitor_readable (void *monitor_handle_, int timeout_ms_)
+template<typename MonitorLike>
+inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
 {
-    zlink_pollitem_t item;
-    item.socket = monitor_handle_;
-    item.fd = 0;
-    item.events = ZLINK_POLLIN;
-    item.revents = 0;
+    zlink::poller_t poller;
+    if (!poller.valid ())
+        return false;
+    try {
+        poller.add (monitor_, zlink::poll_event::pollin);
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
 
-    const int rc = zlink_poll (&item, 1, timeout_ms_, NULL);
-    return rc > 0 && (item.revents & ZLINK_POLLIN) != 0;
+    zlink::poll_event_t event;
+    const int rc = poller.wait (&event, timeout_ms_);
+    return rc > 0;
 }
 
 inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
@@ -93,7 +99,7 @@ inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
         const int remaining_ms = static_cast<int> (
           std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
             .count ());
-        if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
         const zlink::maybe_t<zlink::monitor_event_t> event =
@@ -125,7 +131,7 @@ wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
         const int remaining_ms = static_cast<int> (
           std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
             .count ());
-        if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
         const zlink::maybe_t<zlink::service_event_t> event =
@@ -158,7 +164,7 @@ wait_for_service_monitor_event_endpoint (
         const int remaining_ms = static_cast<int> (
           std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
             .count ());
-        if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
         const zlink::maybe_t<zlink::service_event_t> event =
@@ -201,7 +207,7 @@ wait_for_service_monitor_state (zlink::service_monitor_handle_t &monitor_,
         if (remaining_ms > 200)
             remaining_ms = 200;
 
-        if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
             continue;
 
         (void) monitor_.recv (zlink::non_blocking_t {});

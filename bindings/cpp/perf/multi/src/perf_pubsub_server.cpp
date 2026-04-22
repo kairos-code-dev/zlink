@@ -35,7 +35,7 @@ long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
     return wait_ms;
 }
 
-bool run_phase (zlink::socket_t &publisher,
+bool run_phase (::perf::socket_t &publisher,
                 zlink::poller_t &poller,
                 std::vector<zlink::poll_event_t> &events,
                 std::vector<char> &payload,

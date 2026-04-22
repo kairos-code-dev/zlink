@@ -8,8 +8,10 @@
 #include <atomic>
 #include <csignal>
 #include <cstdint>
+#include <condition_variable>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -17,15 +19,18 @@ namespace {
 
 static const char *k_pattern = "MULTI_STREAM";
 static std::atomic<bool> g_stop_requested (false);
+static std::mutex g_stop_mutex;
+static std::condition_variable g_stop_cv;
 
 struct stream_handler_context_t
 {
-    zlink::socket_t *server;
+    ::perf::socket_t *server;
 };
 
 inline void on_signal (int)
 {
     g_stop_requested.store (true, std::memory_order_release);
+    g_stop_cv.notify_all ();
 }
 
 inline void install_signal_handlers ()
@@ -101,11 +106,13 @@ void wait_for_stop_stdin ()
     while (std::getline (std::cin, line)) {
         if (line == "STOP" || line == "QUIT") {
             g_stop_requested.store (true, std::memory_order_release);
+            g_stop_cv.notify_all ();
             return;
         }
     }
 
     g_stop_requested.store (true, std::memory_order_release);
+    g_stop_cv.notify_all ();
 }
 
 } // namespace
@@ -154,9 +161,7 @@ bool perf_stream_server (const std::string &lib_name,
     install_signal_handlers ();
 
     stream_handler_context_t handler_context = {&server.sock ()};
-    if (zlink_stream_packet_handler (
-          server.sock ().handle (), &stream_packet_handler, &handler_context)
-        != ZLINK_HANDLER_OK) {
+    if (server.sock ().on_packet (&stream_packet_handler, &handler_context) != 0) {
         return false;
     }
 
@@ -164,9 +169,10 @@ bool perf_stream_server (const std::string &lib_name,
     stdin_watcher.detach ();
 
     perf::multi::print_ready (endpoint);
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
-        std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    }
+    std::unique_lock<std::mutex> stop_lock (g_stop_mutex);
+    g_stop_cv.wait (stop_lock, []() {
+        return g_stop_requested.load (std::memory_order_acquire);
+    });
 
     perf::multi::print_server_queue_metrics (
       lib_name, k_pattern, transport, 0,

@@ -51,7 +51,7 @@ struct bench_result_t
 
 struct socket_state_t
 {
-    zlink::socket_t *sock;
+    ::perf::socket_t *sock;
     bool pollout_enabled;
     bool pending;
 
@@ -117,7 +117,7 @@ class dealer_dealer_client_bench_t
         for (size_t i = 0; i < _settings.clients; ++i) {
             _holders.emplace_back (
               new perf::multi::socket_guard_t (_ctx, zlink::socket_type::dealer));
-            zlink::socket_t &sock = _holders.back ()->sock ();
+            ::perf::socket_t &sock = _holders.back ()->sock ();
             if (!sock.handle ()) {
                 debug_log ("socket create failed");
                 return false;

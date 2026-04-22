@@ -22,7 +22,7 @@
 namespace perf {
 namespace single {
 
-typedef zlink::socket_t perf_socket_t;
+typedef ::perf::socket_t perf_socket_t;
 
 typedef ::perf::latency_sampler_stats_t latency_stats_t;
 
@@ -63,10 +63,82 @@ bool set_sockopt_int (perf_socket_t &socket_,
                       zlink::socket_option_key_t<int> option_,
                       int value_,
                       const char *name_);
+template<typename SocketLike>
+bool set_sockopt_int (SocketLike &socket_,
+                      zlink::socket_option_key_t<int> option_,
+                      int value_,
+                      const char *name_)
+{
+    try {
+        zlink::common_socket_options_t options = socket_.options ();
+        switch (option_.option) {
+        case zlink::socket_option::linger:
+            options.linger (value_);
+            return true;
+        case zlink::socket_option::sndhwm:
+            options.send_hwm (value_);
+            return true;
+        case zlink::socket_option::rcvhwm:
+            options.recv_hwm (value_);
+            return true;
+        case zlink::socket_option::sndtimeo:
+            options.send_timeout (value_);
+            return true;
+        case zlink::socket_option::rcvtimeo:
+            options.recv_timeout (value_);
+            return true;
+        case zlink::socket_option::tcp_nodelay:
+            options.tcp_no_delay (value_ != 0);
+            return true;
+        default:
+            errno = EOPNOTSUPP;
+            if (bench_debug_enabled ()) {
+                std::cerr << "setsockopt(" << (name_ ? name_ : "?")
+                          << ") failed: unsupported public option" << std::endl;
+            }
+            return false;
+        }
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        if (bench_debug_enabled ()) {
+            std::cerr << "setsockopt(" << (name_ ? name_ : "?")
+                      << ") failed: " << err.what () << std::endl;
+        }
+        return false;
+    }
+}
 void apply_single_hwm (perf_socket_t &socket_);
+template<typename SocketLike>
+void apply_single_hwm (SocketLike &socket_)
+{
+    const int sndhwm = resolve_single_socket_hwm (true);
+    const int rcvhwm = resolve_single_socket_hwm (false);
+    (void) set_sockopt_int (
+      socket_, zlink::socket_options::sndhwm, sndhwm, "sndhwm");
+    (void) set_sockopt_int (
+      socket_, zlink::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+}
 // Applies linger/send/recv timeout defaults for benchmark sockets.
 void apply_single_benchmark_socket_options (perf_socket_t &socket_,
                                             const std::string &transport_);
+template<typename SocketLike>
+void apply_single_benchmark_socket_options (SocketLike &socket_,
+                                            const std::string &transport_)
+{
+    if (transport_ == "pgm" || transport_ == "epgm")
+        return;
+
+    const int linger_ms = 0;
+    const int sndtimeo_ms = resolve_single_send_timeout_ms ();
+    const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
+    (void) set_sockopt_int (
+      socket_, zlink::socket_options::linger, linger_ms, "linger");
+    (void) set_sockopt_int (
+      socket_, zlink::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
+    (void) set_sockopt_int (
+      socket_, zlink::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
+}
 
 // Creates wildcard endpoint string for a transport/id pair.
 std::string make_endpoint (const std::string &transport,
@@ -76,6 +148,38 @@ std::string make_fixed_endpoint (const std::string &transport, int port);
 std::string bind_and_resolve_endpoint (perf_socket_t &socket_,
                                        const std::string &transport,
                                        const std::string &id);
+template<typename SocketLike>
+std::string bind_and_resolve_endpoint (SocketLike &socket_,
+                                       const std::string &transport,
+                                       const std::string &id)
+{
+    std::string endpoint = make_endpoint (transport, id);
+    if (endpoint.empty ())
+        return std::string ();
+    try {
+        socket_.bind (endpoint);
+    }
+    catch (const zlink::zlink_error_t &) {
+        return std::string ();
+    }
+
+    if (transport != "inproc") {
+        endpoint = socket_.options ().last_endpoint ();
+
+        const std::string any_v4 = "://0.0.0.0:";
+        const std::string any_v6 = "://[::]:";
+        size_t pos = endpoint.find (any_v4);
+        if (pos != std::string::npos) {
+            endpoint.replace (pos, any_v4.size (), "://127.0.0.1:");
+        } else {
+            pos = endpoint.find (any_v6);
+            if (pos != std::string::npos)
+                endpoint.replace (pos, any_v6.size (), "://127.0.0.1:");
+        }
+    }
+
+    return endpoint;
+}
 
 bool transport_available (const std::string &transport);
 // Binds first socket and connects second socket to resolved endpoint.
@@ -83,6 +187,52 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
                            perf_socket_t &connect_socket_,
                            const std::string &transport_,
                            const std::string &id_);
+template<typename BindSocketLike, typename ConnectSocketLike>
+bool setup_connected_pair (BindSocketLike &bind_socket_,
+                           ConnectSocketLike &connect_socket_,
+                           const std::string &transport_,
+                           const std::string &id_)
+{
+    if (!setup_tls_server (bind_socket_, transport_)
+        || !setup_tls_client (connect_socket_, transport_)) {
+        return false;
+    }
+
+    apply_single_hwm (bind_socket_);
+    apply_single_hwm (connect_socket_);
+
+    zlink::monitor_handle_t bind_monitor = zlink::monitor_handle_t::open (
+      bind_socket_, zlink::monitor_event::connection_ready);
+    zlink::monitor_handle_t connect_monitor = zlink::monitor_handle_t::open (
+      connect_socket_, zlink::monitor_event::connection_ready);
+    if (!bind_monitor.valid () || !connect_monitor.valid ())
+        return false;
+
+    const std::string endpoint =
+      bind_and_resolve_endpoint (bind_socket_, transport_, id_);
+    if (endpoint.empty ())
+        return false;
+    try {
+        connect_socket_.connect (endpoint);
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
+
+    apply_single_benchmark_socket_options (bind_socket_, transport_);
+    apply_single_benchmark_socket_options (connect_socket_, transport_);
+    if (!wait_socket_monitor_event (
+          bind_monitor,
+          static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+          10000)
+        || !wait_socket_monitor_event (
+          connect_monitor,
+          static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+          10000)) {
+        return false;
+    }
+    return true;
+}
 // Migrated to unified perf::wait_socket_monitor_event in
 // common/perf_monitor_wait.hpp.
 using ::perf::wait_socket_monitor_event;

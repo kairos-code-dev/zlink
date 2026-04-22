@@ -180,6 +180,24 @@ public final class Received implements AutoCloseable {
         this.cursor = cursor;
     }
 
+    Received(RoutingId routingId, RoutingId spotRid, Message firstPart,
+             PartCursor cursor, long requestSequence,
+             boolean hasRequestSequence,
+             BiConsumer<List<Message>, SendFlags> replySender,
+             Runnable onTerminalState) {
+        this.routingId = routingId;
+        this.spotRid = spotRid;
+        this.routingIdBytes = null;
+        this.spotRidBytes = null;
+        this.requestSequence = requestSequence;
+        this.hasRequestSequence = hasRequestSequence;
+        this.replySender = replySender;
+        this.onTerminalState = onTerminalState;
+        this.realizedParts = new ArrayList<>(4);
+        this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
+        this.cursor = cursor;
+    }
+
     /** Returns the routing id when the transport delivered one. */
     public Optional<RoutingId> routingId() {
         return Optional.ofNullable(routingIdOrNull());
@@ -336,6 +354,24 @@ public final class Received implements AutoCloseable {
                 return;
             materializeAllLocked();
         }
+    }
+
+    List<Message> takeParts() {
+        PartCursor pendingCursor;
+        ArrayList<Message> detached;
+        synchronized (this) {
+            ensureOpen();
+            materializeAllLocked();
+            detached = new ArrayList<>(realizedParts);
+            realizedParts.clear();
+            partsView = Collections.emptyList();
+            pendingCursor = cursor;
+            cursor = null;
+            closed = true;
+        }
+        closeCursorQuietly(pendingCursor);
+        markTerminal();
+        return Collections.unmodifiableList(detached);
     }
 
     private void ensureOpen() {

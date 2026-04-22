@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MPL-2.0 */
 #ifndef ZLINK_CPP_PERF_SOCKET_COMPAT_HPP
 #define ZLINK_CPP_PERF_SOCKET_COMPAT_HPP
 
@@ -5,62 +6,174 @@
 
 #include <cerrno>
 #include <cstring>
+#include <optional>
 #include <string>
-#include <vector>
+#include <type_traits>
+#include <utility>
+#include <variant>
 
 namespace zlink
 {
 
-class socket_t : public base_socket_t
+class socket_t
 {
+  private:
+    using socket_variant_t =
+      std::variant<std::monostate,
+                   pair_socket_t,
+                   dealer_socket_t,
+                   router_socket_t,
+                   pub_socket_t,
+                   sub_socket_t,
+                   xpub_socket_t,
+                   stream_socket_t>;
+
   public:
-    socket_t () noexcept : base_socket_t () {}
+    socket_t () noexcept : _socket (), _type (socket_type::pair) {}
 
-    socket_t (context_t &ctx_, socket_type type_) : base_socket_t (ctx_, type_) {}
-
-    static socket_t adopt (void *socket_)
+    socket_t (context_t &ctx_, socket_type type_) : _socket (), _type (type_)
     {
-        socket_t socket;
-        socket.reset_handle (socket_, true);
-        return socket;
+        switch (type_) {
+        case socket_type::pair:
+            _socket.emplace<pair_socket_t> (ctx_);
+            break;
+        case socket_type::dealer:
+            _socket.emplace<dealer_socket_t> (ctx_);
+            break;
+        case socket_type::router:
+            _socket.emplace<router_socket_t> (ctx_);
+            break;
+        case socket_type::pub:
+            _socket.emplace<pub_socket_t> (ctx_);
+            break;
+        case socket_type::sub:
+            _socket.emplace<sub_socket_t> (ctx_);
+            break;
+        case socket_type::xpub:
+            _socket.emplace<xpub_socket_t> (ctx_);
+            break;
+        case socket_type::stream:
+            _socket.emplace<stream_socket_t> (ctx_);
+            break;
+        default:
+            errno = EOPNOTSUPP;
+            break;
+        }
     }
 
-    static socket_t wrap (void *socket_)
+    bool valid () const noexcept
     {
-        socket_t socket;
-        socket.reset_handle (socket_, false);
-        return socket;
+        return visit_const ([] (const auto &socket_) {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value)
+                return false;
+            else
+                return socket_.valid ();
+        });
     }
 
-    using socket_handle_t::close;
-    using socket_handle_t::handle;
-    using socket_handle_t::valid;
+    void *handle () noexcept
+    {
+        return visit ([] (auto &socket_) -> void * {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value)
+                return NULL;
+            else
+                return socket_.handle ();
+        });
+    }
 
-    using base_socket_t::bind;
-    using base_socket_t::connect;
-    using base_socket_t::disconnect;
-    using base_socket_t::on_receive;
-    using base_socket_t::on_send_ready;
-    using base_socket_t::publish;
-    using base_socket_t::receive;
-    using base_socket_t::send;
-    using base_socket_t::set_subscription;
-    using base_socket_t::subscribe;
-    using base_socket_t::subscription_at;
-    using base_socket_t::subscription_event;
-    using base_socket_t::unbind;
-    using base_socket_t::unset_subscription;
+    const void *handle () const noexcept
+    {
+        return visit_const ([] (const auto &socket_) -> const void * {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value)
+                return NULL;
+            else
+                return socket_.handle ();
+        });
+    }
+
+    int bind (const std::string &endpoint_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                errno = ENOTSOCK;
+                return -1;
+            } else {
+                try {
+                    socket_.bind (endpoint_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            }
+        });
+    }
+
+    int connect (const std::string &endpoint_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, dealer_socket_t>::value
+                          || std::is_same<socket_type_t, pair_socket_t>::value
+                          || std::is_same<socket_type_t, router_socket_t>::value
+                          || std::is_same<socket_type_t, pub_socket_t>::value
+                          || std::is_same<socket_type_t, sub_socket_t>::value
+                          || std::is_same<socket_type_t, xpub_socket_t>::value) {
+                try {
+                    socket_.connect (endpoint_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int disconnect (const std::string &endpoint_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, dealer_socket_t>::value
+                          || std::is_same<socket_type_t, pair_socket_t>::value
+                          || std::is_same<socket_type_t, router_socket_t>::value
+                          || std::is_same<socket_type_t, pub_socket_t>::value
+                          || std::is_same<socket_type_t, sub_socket_t>::value
+                          || std::is_same<socket_type_t, xpub_socket_t>::value) {
+                try {
+                    socket_.disconnect (endpoint_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
 
     template<typename T>
     int set_option (socket_option_key_t<T> key_, const T &value_)
     {
-        return base_socket_t::set_option (key_.option, value_);
+        return invoke_common_set (key_.option, value_);
     }
 
     int set_option (socket_option_key_t<std::string> key_,
                     const std::string &value_)
     {
-        return base_socket_t::set_option (key_.option, value_);
+        return invoke_common_set (key_.option, value_);
     }
 
     template<typename T>
@@ -72,43 +185,47 @@ class socket_t : public base_socket_t
     template<typename T>
     int set (router_option_key_t<T> key_, const T &value_)
     {
-        return base_socket_t::set_router_option (key_, value_);
+        return invoke_router_set (key_.option, value_);
     }
 
     template<typename T>
     int set (dealer_option_key_t<T> key_, const T &value_)
     {
-        return base_socket_t::set_dealer_option (key_, value_);
+        return invoke_dealer_set (key_.option, value_);
     }
 
     template<typename T>
     int set (pub_option_key_t<T> key_, const T &value_)
     {
-        return base_socket_t::set_pub_option (key_, value_);
+        return invoke_pub_set (key_.option, value_);
     }
 
     template<typename T>
     int set (sub_option_key_t<T> key_, const T &value_)
     {
-        return base_socket_t::set_sub_option (key_, value_);
+        return invoke_sub_set (key_.option, value_);
     }
 
     template<typename T>
     int set (stream_option_key_t<T> key_, const T &value_)
     {
-        return base_socket_t::set_stream_option (key_, value_);
+        return invoke_stream_set (key_.option, value_);
     }
 
     template<typename T>
     int get_option (socket_option_key_t<T> key_, T *value_) const
     {
-        return base_socket_t::get_option (key_.option, value_);
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+        return invoke_common_get (key_.option, *value_);
     }
 
     int get_option (socket_option_key_t<std::string> key_,
                     std::string &value_) const
     {
-        return base_socket_t::get_option (key_.option, value_);
+        return invoke_common_get (key_.option, value_);
     }
 
     template<typename T>
@@ -125,175 +242,764 @@ class socket_t : public base_socket_t
     template<typename T>
     int get (router_option_key_t<T> key_, T &value_) const
     {
-        return base_socket_t::get_router_option (key_, &value_);
-    }
-
-    int get (router_option_key_t<std::string> key_, std::string &value_) const
-    {
-        return base_socket_t::get_router_option (key_, value_);
+        return invoke_router_get (key_.option, value_);
     }
 
     template<typename T>
     int get (pub_option_key_t<T> key_, T &value_) const
     {
-        return base_socket_t::get_pub_option (key_, &value_);
-    }
-
-    int get (pub_option_key_t<std::string> key_, std::string &value_) const
-    {
-        return base_socket_t::get_pub_option (key_, value_);
-    }
-
-    template<typename T>
-    int get (sub_option_key_t<T> key_, T &value_) const
-    {
-        return base_socket_t::get_sub_option (key_, &value_);
-    }
-
-    template<typename T>
-    int get (stream_option_key_t<T> key_, T &value_) const
-    {
-        return base_socket_t::get_stream_option (key_, &value_);
+        return invoke_pub_get (key_.option, value_);
     }
 
     int set_routing_id (const void *data_, size_t size_)
     {
-        return base_socket_t::set_routing_id_raw (data_, size_);
+        routing_id_t routing_id;
+        if (routing_id_from (data_, size_, &routing_id) != 0)
+            return -1;
+        return invoke_routing_id_set (routing_id);
     }
 
     int set_routing_id (const std::string &routing_id_)
     {
-        return base_socket_t::set_routing_id_raw (routing_id_);
+        routing_id_t routing_id;
+        if (routing_id_from (routing_id_, &routing_id) != 0)
+            return -1;
+        return invoke_routing_id_set (routing_id);
     }
 
     int get_routing_id (routing_id_t &routing_id_) const
     {
-        return base_socket_t::get_routing_id_raw (routing_id_);
+        return invoke_routing_id_get (routing_id_);
     }
 
     int get_routing_id (std::string &routing_id_) const
     {
-        return base_socket_t::get_routing_id_raw (routing_id_);
+        routing_id_t routing_id;
+        if (get_routing_id (routing_id) != 0)
+            return -1;
+        routing_id_.assign (
+          reinterpret_cast<const char *> (routing_id.data ()), routing_id.size ());
+        return 0;
     }
 
-    int send (const void *data_,
-              size_t size_,
-              send_flags_t flags_ = send_flags_t::none)
+    int set_tls_server (const std::string &cert_,
+                        const std::string &key_,
+                        bool require_client_cert_ = false)
     {
-        message_t part = message_t::from_bytes (data_, size_);
-        if (!part.valid ())
-            return -1;
-        const int rc = base_socket_t::send (part, flags_);
-        return rc == 0 ? static_cast<int> (size_) : -1;
+        return invoke_void ([&] (auto &socket_) {
+            socket_.set_tls_server (cert_, key_, require_client_cert_);
+        });
     }
 
-    int send (const char *data_,
-              size_t size_,
-              send_flags_t flags_ = send_flags_t::none)
+    int set_tls_client (const std::string &ca_cert_,
+                        const std::string &hostname_,
+                        bool trust_system_ = false)
     {
-        return send (static_cast<const void *> (data_), size_, flags_);
+        return invoke_void ([&] (auto &socket_) {
+            socket_.set_tls_client (ca_cert_, hostname_, trust_system_);
+        });
     }
 
-    int send (const std::string &routing_id_,
-              const void *data_,
-              size_t size_,
+    int send (message_t &part_, send_flags_t flags_ = send_flags_t::none)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
+                          || std::is_same<socket_type_t, dealer_socket_t>::value) {
+                return bool_result_to_errno (socket_.send (part_, flags_));
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int send (const routing_id_t &routing_id_,
+              message_t &part_,
               send_flags_t flags_ = send_flags_t::none)
     {
-        routing_id_t rid;
-        if (routing_id_from (routing_id_, &rid) != 0)
-            return -1;
-        message_t part = message_t::from_bytes (data_, size_);
-        if (!part.valid ())
-            return -1;
-        const int rc = base_socket_t::send (rid, part, flags_);
-        return rc == 0 ? static_cast<int> (size_) : -1;
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, router_socket_t>::value
+                          || std::is_same<socket_type_t, stream_socket_t>::value) {
+                return bool_result_to_errno (
+                  socket_.send (routing_id_, part_, flags_));
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int send (const zlink_routing_id_t &routing_id_,
+              message_t &part_,
+              send_flags_t flags_ = send_flags_t::none)
+    {
+        return send (routing_id_t (routing_id_), part_, flags_);
+    }
+
+    int publish (const std::string &topic_id_,
+                 message_t &part_,
+                 send_flags_t flags_ = send_flags_t::none)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
+                          || std::is_same<socket_type_t, xpub_socket_t>::value) {
+                return bool_result_to_errno (socket_.publish (topic_id_, part_, flags_));
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
     }
 
     int recv (message_t &part_, recv_flags_t flags_ = recv_flags_t::none)
     {
-        return detail::recv_single_part (handle (), NULL, flags_, part_);
-    }
-
-    int recv (std::vector<message_t> &parts_,
-              recv_flags_t flags_ = recv_flags_t::none)
-    {
-        return detail::recv_parts (handle (), NULL, flags_, parts_);
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
+                          || std::is_same<socket_type_t, dealer_socket_t>::value) {
+                return recv_single_part_impl (socket_, NULL, part_, flags_);
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
     }
 
     int recv (routing_id_t &source_rid_out_,
               message_t &part_,
               recv_flags_t flags_ = recv_flags_t::none)
     {
-        return detail::recv_single_part (
-          handle (), routing_id_native (source_rid_out_), flags_, part_);
-    }
-
-    int send_no_wait_result (send_result_t &result_,
-                  const routing_id_t &target_rid_,
-                  message_t &part_)
-    {
-        return base_socket_t::send_no_wait_result (result_, target_rid_, part_);
-    }
-
-    int send_no_wait_result (send_result_t &result_,
-                  const routing_id_t &target_rid_,
-                  std::vector<message_t> &parts_)
-    {
-        return base_socket_t::send_no_wait_result (result_, target_rid_, parts_);
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, router_socket_t>::value
+                          || std::is_same<socket_type_t, stream_socket_t>::value) {
+                return recv_single_part_impl (
+                  socket_, &source_rid_out_, part_, flags_);
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
     }
 
     int recv (zlink_routing_id_t &source_rid_out_,
               message_t &part_,
               recv_flags_t flags_ = recv_flags_t::none)
     {
-        std::memset (&source_rid_out_, 0, sizeof (source_rid_out_));
-        return detail::recv_single_part (
-          handle (), &source_rid_out_, flags_, part_);
+        routing_id_t routing_id;
+        const int rc = recv (routing_id, part_, flags_);
+        if (rc != 0)
+            return rc;
+        source_rid_out_ = routing_id.native ();
+        return 0;
     }
 
-    int recv (void *data_, size_t size_,
-              recv_flags_t flags_ = recv_flags_t::none)
+    int receive (received_t &received_out_,
+                 recv_flags_t flags_ = recv_flags_t::none)
     {
-        if (!data_) {
-            errno = EINVAL;
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
+                          || std::is_same<socket_type_t, dealer_socket_t>::value
+                          || std::is_same<socket_type_t, router_socket_t>::value
+                          || std::is_same<socket_type_t, stream_socket_t>::value) {
+                return recv_received_impl (socket_, received_out_, flags_);
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int send_no_wait_result (send_result_t &result_,
+                             const routing_id_t &target_rid_,
+                             message_t &part_)
+    {
+        result_ = send_result_t::sent;
+        try {
+            const int rc = send (target_rid_, part_, send_flags_t::dontwait);
+            if (rc == 0)
+                return 0;
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT) {
+                result_ = send_result_t::backpressured;
+                return 0;
+            }
             return -1;
         }
-
-        message_t part;
-        const int rc = recv (part, flags_);
-        if (rc != 0)
+        catch (const submit_error_t &err) {
+            errno = err.internal_errno ();
+            if (err.result () == submit_result_t::not_connected
+                || err.result () == submit_result_t::not_found) {
+                result_ = send_result_t::not_ready;
+                return 0;
+            }
+            if (err.result () == submit_result_t::backpressured) {
+                result_ = send_result_t::backpressured;
+                return 0;
+            }
             return -1;
-        if (part.size () != size_) {
+        }
+    }
+
+    int on_packet (zlink_stream_packet_handler_fn handler_,
+                   void *userdata_ = NULL)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, stream_socket_t>::value) {
+                try {
+                    socket_.on_packet (handler_, userdata_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int set_subscription (const std::string &filter_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, sub_socket_t>::value) {
+                try {
+                    socket_.set_subscription (filter_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int subscribe (topic_message_t &topic_message_out_,
+                   recv_flags_t flags_ = recv_flags_t::none)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, sub_socket_t>::value) {
+                try {
+                    std::optional<topic_message_t> maybe_message =
+                      socket_.subscribe (flags_);
+                    if (!maybe_message.has_value ()) {
+                        errno = EAGAIN;
+                        return -1;
+                    }
+                    topic_message_out_ = std::move (*maybe_message);
+                    return 0;
+                }
+                catch (const recv_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+  private:
+    template<typename Fn>
+    auto visit (Fn &&fn)
+      -> decltype (std::visit (std::forward<Fn> (fn),
+                               std::declval<socket_variant_t &> ()))
+    {
+        return std::visit (std::forward<Fn> (fn), _socket);
+    }
+
+    template<typename Fn>
+    auto visit_const (Fn &&fn) const
+      -> decltype (std::visit (std::forward<Fn> (fn),
+                               std::declval<const socket_variant_t &> ()))
+    {
+        return std::visit (std::forward<Fn> (fn), _socket);
+    }
+
+    template<typename Fn> int invoke_void (Fn fn)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                errno = ENOTSOCK;
+                return -1;
+            } else {
+                try {
+                    fn (socket_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            }
+        });
+    }
+
+    template<typename T>
+    int invoke_common_set (socket_option option_, const T &value_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                errno = ENOTSOCK;
+                return -1;
+            } else {
+                try {
+                    common_socket_options_t options = socket_.options ();
+                    switch (option_) {
+                    case socket_option::linger:
+                        options.linger (static_cast<int> (value_));
+                        return 0;
+                    case socket_option::sndhwm:
+                        options.send_hwm (static_cast<int> (value_));
+                        return 0;
+                    case socket_option::rcvhwm:
+                        options.recv_hwm (static_cast<int> (value_));
+                        return 0;
+                    case socket_option::sndtimeo:
+                        options.send_timeout (static_cast<int> (value_));
+                        return 0;
+                    case socket_option::rcvtimeo:
+                        options.recv_timeout (static_cast<int> (value_));
+                        return 0;
+                    case socket_option::tcp_nodelay:
+                        options.tcp_no_delay (static_cast<int> (value_) != 0);
+                        return 0;
+                    case socket_option::connect_timeout:
+                        options.connect_timeout (static_cast<int> (value_));
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            }
+        });
+    }
+
+    int invoke_common_set (socket_option option_, const std::string &value_)
+    {
+        (void) option_;
+        (void) value_;
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+
+    template<typename T>
+    int invoke_common_get (socket_option option_, T &value_) const
+    {
+        return visit_const ([&] (const auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                errno = ENOTSOCK;
+                return -1;
+            } else {
+                try {
+                    switch (option_) {
+                    case socket_option::type:
+                        value_ = static_cast<T> (_type);
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            }
+        });
+    }
+
+    int invoke_common_get (socket_option option_, std::string &value_) const
+    {
+        return visit_const ([&] (const auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                errno = ENOTSOCK;
+                return -1;
+            } else {
+                try {
+                    switch (option_) {
+                    case socket_option::last_endpoint:
+                        value_ =
+                          const_cast<socket_type_t &> (socket_).options ().last_endpoint ();
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            }
+        });
+    }
+
+    template<typename T>
+    int invoke_router_set (router_option option_, const T &value_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, router_socket_t>::value) {
+                try {
+                    router_socket_options_t options = socket_.router_options ();
+                    switch (option_) {
+                    case router_option::mandatory:
+                        options.mandatory (static_cast<int> (value_) != 0);
+                        return 0;
+                    case router_option::handover:
+                        options.handover (static_cast<int> (value_) != 0);
+                        return 0;
+                    case router_option::probe:
+                        options.probe_router (static_cast<int> (value_) != 0);
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int invoke_router_set (router_option option_, const std::string &value_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, router_socket_t>::value) {
+                try {
+                    if (option_ != router_option::connect_routing_id) {
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                    routing_id_t routing_id;
+                    if (routing_id_from (value_, &routing_id) != 0)
+                        return -1;
+                    socket_.router_options ().connect_routing_id (routing_id);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    template<typename T>
+    int invoke_dealer_set (dealer_option option_, const T &value_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, dealer_socket_t>::value) {
+                try {
+                    switch (option_) {
+                    case dealer_option::probe:
+                        socket_.dealer_options ().probe_router (
+                          static_cast<int> (value_) != 0);
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    template<typename T>
+    int invoke_pub_set (pub_option option_, const T &value_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
+                          || std::is_same<socket_type_t, xpub_socket_t>::value) {
+                try {
+                    switch (option_) {
+                    case pub_option::nodrop:
+                        socket_.pub_options ().no_drop (static_cast<int> (value_) != 0);
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    template<typename T>
+    int invoke_sub_set (sub_option option_, const T &value_)
+    {
+        (void) option_;
+        (void) value_;
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+
+    template<typename T>
+    int invoke_stream_set (stream_option option_, const T &value_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, stream_socket_t>::value) {
+                try {
+                    switch (option_) {
+                    case stream_option::notify:
+                        socket_.stream_options ().notify (
+                          static_cast<int> (value_) != 0);
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    template<typename T>
+    int invoke_router_get (router_option option_, T &value_) const
+    {
+        return visit_const ([&] (const auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, router_socket_t>::value) {
+                try {
+                    switch (option_) {
+                    case router_option::mandatory:
+                        value_ = static_cast<T> (
+                          const_cast<socket_type_t &> (socket_)
+                              .router_options ()
+                              .mandatory ()
+                            ? 1
+                            : 0);
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    template<typename T>
+    int invoke_pub_get (pub_option option_, T &value_) const
+    {
+        return visit_const ([&] (const auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
+                          || std::is_same<socket_type_t, xpub_socket_t>::value) {
+                try {
+                    switch (option_) {
+                    case pub_option::nodrop:
+                        value_ = static_cast<T> (
+                          const_cast<socket_type_t &> (socket_)
+                              .pub_options ()
+                              .no_drop ()
+                            ? 1
+                            : 0);
+                        return 0;
+                    default:
+                        errno = EOPNOTSUPP;
+                        return -1;
+                    }
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int invoke_routing_id_set (const routing_id_t &routing_id_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, dealer_socket_t>::value
+                          || std::is_same<socket_type_t, router_socket_t>::value
+                          || std::is_same<socket_type_t, stream_socket_t>::value) {
+                try {
+                    socket_.set_routing_id (routing_id_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    int invoke_routing_id_get (routing_id_t &routing_id_) const
+    {
+        return visit_const ([&] (const auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, dealer_socket_t>::value
+                          || std::is_same<socket_type_t, router_socket_t>::value
+                          || std::is_same<socket_type_t, stream_socket_t>::value) {
+                try {
+                    const_cast<socket_type_t &> (socket_).get_routing_id (routing_id_);
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    template<typename SocketLike>
+    static int recv_received_impl (SocketLike &socket_,
+                                   received_t &received_out_,
+                                   recv_flags_t flags_)
+    {
+        try {
+            std::optional<received_t> maybe_received = socket_.recv (flags_);
+            if (!maybe_received.has_value ()) {
+                errno = EAGAIN;
+                return -1;
+            }
+            received_out_ = std::move (*maybe_received);
+            return 0;
+        }
+        catch (const recv_error_t &err) {
+            errno = err.internal_errno ();
+            return -1;
+        }
+    }
+
+    template<typename SocketLike>
+    static int recv_single_part_impl (SocketLike &socket_,
+                                      routing_id_t *source_rid_out_,
+                                      message_t &part_out_,
+                                      recv_flags_t flags_)
+    {
+        received_t received;
+        const int rc = recv_received_impl (socket_, received, flags_);
+        if (rc != 0)
+            return rc;
+        if (received.parts ().size () != 1) {
             errno = EMSGSIZE;
             return -1;
         }
-
-        if (size_ > 0)
-            std::memcpy (data_, part.data (), size_);
-        return static_cast<int> (size_);
+        if (source_rid_out_ != NULL) {
+            if (!received.routing_id ().has_value ()) {
+                errno = EPROTO;
+                return -1;
+            }
+            *source_rid_out_ = *received.routing_id ();
+        }
+        part_out_ = std::move (received.parts ()[0]);
+        return 0;
     }
+
+    static int bool_result_to_errno (bool ok_)
+    {
+        if (ok_)
+            return 0;
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_variant_t _socket;
+    socket_type _type;
 };
 
 } // namespace zlink
 
-namespace perf {
+namespace perf
+{
 
-// Lightweight RAII wrapper that creates a zlink::socket_t and
-// closes it on destruction.  Shared by single and multi benchmarks.
+using socket_t = zlink::socket_t;
+
 class socket_guard_t
 {
   public:
     socket_guard_t () : _sock () {}
+
     socket_guard_t (zlink::context_t &ctx_, zlink::socket_type type_)
         : _sock (ctx_, type_)
     {
     }
 
-    zlink::socket_t &sock () { return _sock; }
-    bool valid () const { return _sock.handle () != NULL; }
+    socket_t &sock () { return _sock; }
+    const socket_t &sock () const { return _sock; }
+    bool valid () const { return _sock.valid (); }
 
   private:
-    zlink::socket_t _sock;
+    socket_t _sock;
 };
 
 } // namespace perf

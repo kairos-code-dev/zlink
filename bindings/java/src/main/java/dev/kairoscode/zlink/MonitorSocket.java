@@ -174,7 +174,7 @@ public final class MonitorSocket implements AutoCloseable {
             MonitorEvent monitorEvent = new MonitorEvent(
               MonitorEventType.fromValue(eventValue), value,
               routingSize == 0 ? Optional.empty()
-                : Optional.of(RoutingId.fromBytes(routing)),
+                : Optional.of(RoutingId.fromTrusted(routing)),
               local, remote);
             executor.execute(() -> dispatchEvent(handler, monitorEvent));
         } catch (RuntimeException ex) {

@@ -21,12 +21,20 @@ bool perf_debug_enabled ()
 
 bool send_pubsub_payload (void *userdata_, const void *data_, size_t size_)
 {
-    zlink::socket_t *publisher = static_cast<zlink::socket_t *> (userdata_);
+    zlink::xpub_socket_t *publisher = static_cast<zlink::xpub_socket_t *> (userdata_);
     if (!publisher)
         return false;
 
     zlink::message_t part = zlink::message_t::from_bytes (data_, size_);
-    return part.valid () && publisher->publish (k_topic, part) == 0;
+    if (!part.valid ())
+        return false;
+    try {
+        publisher->publish (k_topic, part);
+        return true;
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
 }
 
 bool record_subscribed_payload (
@@ -89,12 +97,10 @@ bool run_pattern_pubsub (const std::string &transport,
         return false;
     }
 
-    zlink::socket_t publisher_socket = zlink::socket_t::wrap (publisher.handle ());
-    zlink::socket_t subscriber_socket = zlink::socket_t::wrap (subscriber.handle ());
-    (void) publisher_socket.set (zlink::pub_options::nodrop, 1);
+    publisher.pub_options ().no_drop (true);
 
-    if (!perf::single::setup_connected_pair (publisher_socket,
-                                             subscriber_socket,
+    if (!perf::single::setup_connected_pair (publisher,
+                                             subscriber,
                                              transport,
                                              lib_name + "_pubsub")) {
         if (perf_debug_enabled ())
@@ -104,8 +110,7 @@ bool run_pattern_pubsub (const std::string &transport,
     }
 
     const int recv_timeout = perf::single::resolve_single_pubsub_recv_timeout_ms ();
-    (void) subscriber_socket.set_option (
-      zlink::socket_options::rcvtimeo, recv_timeout);
+    subscriber.options ().recv_timeout (recv_timeout);
     (void) subscriber.set_subscription (std::string (k_topic));
 
     std::this_thread::sleep_for (std::chrono::milliseconds (
@@ -137,7 +142,7 @@ bool run_pattern_pubsub (const std::string &transport,
                                                     seq++,
                                                     perf_single_metric::now_ns ())
                 || !send_pubsub_payload (
-                  &publisher_socket, payload.data (), payload.size ())) {
+                  &publisher, payload.data (), payload.size ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -147,7 +152,7 @@ bool run_pattern_pubsub (const std::string &transport,
     });
 
     zlink::poller_t poller;
-    poller.add (subscriber_socket, zlink::poll_event::pollin);
+    poller.add (subscriber, zlink::poll_event::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
         zlink::poll_event_t event = {};
         const int poll_rc = poller.wait (&event, 5);

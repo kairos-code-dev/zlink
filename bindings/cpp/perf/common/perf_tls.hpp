@@ -92,7 +92,8 @@ inline bool try_resolve_tls_paths (std::string &cert_out,
     return true;
 }
 
-inline bool setup_tls_server (zlink::socket_t &socket,
+template<typename SocketLike>
+inline bool setup_tls_server (SocketLike &socket,
                               const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
@@ -104,14 +105,17 @@ inline bool setup_tls_server (zlink::socket_t &socket,
     if (!try_resolve_tls_paths (cert, key, ca, true))
         return false;
 
-    if (socket.set (zlink::socket_options::tls_cert, cert) != 0)
+    try {
+        socket.set_tls_server (cert, key, false);
+    }
+    catch (const zlink::zlink_error_t &) {
         return false;
-    if (socket.set (zlink::socket_options::tls_key, key) != 0)
-        return false;
+    }
     return true;
 }
 
-inline bool setup_tls_client (zlink::socket_t &socket,
+template<typename SocketLike>
+inline bool setup_tls_client (SocketLike &socket,
                               const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
@@ -123,15 +127,12 @@ inline bool setup_tls_client (zlink::socket_t &socket,
     if (!try_resolve_tls_paths (cert, key, ca, true))
         return false;
 
-    if (socket.set (zlink::socket_options::tls_ca, ca) != 0)
-        return false;
-    if (socket.set (zlink::socket_options::tls_hostname,
-                    std::string ("localhost"))
-        != 0) {
+    try {
+        socket.set_tls_client (ca, "localhost", false);
+    }
+    catch (const zlink::zlink_error_t &) {
         return false;
     }
-    if (socket.set (zlink::socket_options::tls_trust_system, 0) != 0)
-        return false;
     return true;
 }
 

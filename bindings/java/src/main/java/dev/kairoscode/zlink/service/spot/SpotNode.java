@@ -162,7 +162,7 @@ public final class SpotNode implements AutoCloseable {
     public void setRoutingId(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
         ensureOpen();
-        byte[] value = rid.toBytes();
+        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeValue = arena.allocate(value.length);
             if (value.length > 0) {

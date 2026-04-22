@@ -74,8 +74,14 @@ public final class InternalAccess {
         constructor(Received.class, byte[].class, byte[].class, Message.class,
             Received.PartCursor.class, long.class, boolean.class,
             BiConsumer.class, Runnable.class);
+    private static final Constructor<Received> RECEIVED_LAZY_TRUSTED_CTOR =
+        constructor(Received.class, RoutingId.class, RoutingId.class, Message.class,
+            Received.PartCursor.class, long.class, boolean.class,
+            BiConsumer.class, Runnable.class);
     private static final Method RECEIVED_FORCE_MATERIALIZE =
         method(Received.class, "forceMaterialize");
+    private static final Method RECEIVED_TAKE_PARTS =
+        method(Received.class, "takeParts");
     private static final Method SOCKET_CORE_IN_CALLBACK =
         method(classForName("dev.kairoscode.zlink.SocketCore"), "inCallback");
     private static final Method SOCKET_CORE_ENTER_CALLBACK =
@@ -222,8 +228,31 @@ public final class InternalAccess {
         }
     }
 
+    public static Received receivedLazy(RoutingId routingId,
+                                        RoutingId spotRid,
+                                        Message firstPart,
+                                        Received.PartCursor cursor,
+                                        long requestSeq,
+                                        boolean hasRequestSeq,
+                                        BiConsumer<List<Message>, SendFlags> replySender,
+                                        Runnable onTerminalState) {
+        try {
+            return RECEIVED_LAZY_TRUSTED_CTOR.newInstance(routingId, spotRid,
+                firstPart, cursor, requestSeq, hasRequestSeq, replySender,
+                onTerminalState);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(
+                "failed to create trusted lazy Received", ex);
+        }
+    }
+
     public static void receivedForceMaterialize(Received received) {
         invoke(RECEIVED_FORCE_MATERIALIZE, received);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<Message> receivedTakeParts(Received received) {
+        return (List<Message>) invoke(RECEIVED_TAKE_PARTS, received);
     }
 
     public static boolean inCallback() {

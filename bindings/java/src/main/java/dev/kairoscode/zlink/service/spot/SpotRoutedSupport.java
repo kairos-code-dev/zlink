@@ -139,9 +139,6 @@ final class SpotRoutedSupport implements AutoCloseable {
                 RoutingId source = readRoutingIdOut(sourceRidOut);
                 RoutingId sourceSpot = readRoutingIdOut(spotRidOut);
                 long requestSeq = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
-                byte[] sourceBytes = source == null ? null : source.toBytes();
-                byte[] sourceSpotBytes = sourceSpot == null
-                    ? null : sourceSpot.toBytes();
                 Received.PartCursor cursor = hasMore
                     ? new SpotReceiveCursor(flags.value()) : null;
                 Received[] ref = new Received[1];
@@ -151,8 +148,8 @@ final class SpotRoutedSupport implements AutoCloseable {
                         activeLazyReceive.remove();
                     }
                 };
-                Received received = InternalAccess.receivedLazy(sourceBytes,
-                    sourceSpotBytes, firstPart, cursor, requestSeq,
+                Received received = InternalAccess.receivedLazy(source,
+                    sourceSpot, firstPart, cursor, requestSeq,
                     requestSeq != 0L, requestSeq == 0L ? null
                     : (replyParts, sendFlags) -> {
                         if (sourceSpot != null) {
@@ -379,11 +376,7 @@ final class SpotRoutedSupport implements AutoCloseable {
             future.cancel(false);
             throw ex;
         }
-        return future.thenApply(reply -> {
-            try (reply) {
-                return cloneReceivedParts(reply);
-            }
-        });
+        return future.thenApply(InternalAccess::receivedTakeParts);
     }
 
     private void requestViaNativeCallback(List<Message> parts,
@@ -682,15 +675,6 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
         Message[] copies = new Message[parts.size()];
         for (int i = 0; i < copies.length; i++) {
-            copies[i] = Message.copyOf(parts.get(i).toByteArray());
-        }
-        return List.of(copies);
-    }
-
-    private static List<Message> cloneReceivedParts(Received received) {
-        List<Message> parts = received.parts();
-        Message[] copies = new Message[parts.size()];
-        for (int i = 0; i < copies.length; i++) {
             copies[i] = InternalAccess.messageSharedCopyOf(parts.get(i));
         }
         return List.of(copies);
@@ -705,51 +689,8 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    private static MemorySegment movePayloadToNative(Arena arena,
-                                                     List<Message> payload) {
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        MemorySegment nativeParts = arena.allocate(msgSize * payload.size(),
-          NativeLayouts.MSG_LAYOUT.byteAlignment());
-        int built = 0;
-        try {
-            for (int i = 0; i < payload.size(); i++) {
-                MemorySegment dest = nativeParts.asSlice((long) i * msgSize, msgSize);
-                byte[] bytes = payload.get(i).toByteArray();
-                int rc = NativeMsg.msgInitSize(dest, bytes.length);
-                if (rc != 0) {
-                    throw ZlinkException.fromLastError("zlink_msg_init_size");
-                }
-                if (bytes.length > 0) {
-                    MemorySegment.copy(
-                      MemorySegment.ofArray(bytes),
-                      0,
-                      NativeMsg.msgData(dest).reinterpret(bytes.length),
-                      0,
-                      bytes.length);
-                }
-                built++;
-            }
-            return nativeParts;
-        } catch (RuntimeException ex) {
-            for (int i = 0; i < built; i++) {
-                try {
-                    NativeMsg.msgClose(
-                      nativeParts.asSlice((long) i * msgSize, msgSize));
-                } catch (RuntimeException ignored) {
-                }
-            }
-            for (int i = built; i < payload.size(); i++) {
-                try {
-                    payload.get(i).close();
-                } catch (RuntimeException ignored) {
-                }
-            }
-            throw ex;
-        }
-    }
-
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {
-        byte[] value = routingId.toBytes();
+        byte[] value = InternalAccess.routingIdTrustedBytes(routingId);
         MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
         nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
           (byte) value.length);

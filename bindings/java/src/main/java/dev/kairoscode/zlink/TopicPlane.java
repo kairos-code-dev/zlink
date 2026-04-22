@@ -225,7 +225,7 @@ final class TopicPlane {
 
     void setRoutingId(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
-        byte[] value = rid.toBytes();
+        byte[] value = rid.trustedBytes();
         socket.setRoutingIdBytes(value, 0, value.length);
     }
 

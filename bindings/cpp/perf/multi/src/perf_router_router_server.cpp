@@ -72,7 +72,7 @@ long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline)
     return wait_ms;
 }
 
-bool try_send_reply (zlink::socket_t &sock,
+bool try_send_reply (::perf::socket_t &sock,
                      zlink::poller_t &poller,
                      reply_state_t &reply)
 {
@@ -180,8 +180,8 @@ bool perf_router_router_server (const std::string &lib_name,
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            zlink::socket_t *sock =
-              static_cast<zlink::socket_t *> (events[i].user);
+            ::perf::socket_t *sock =
+              static_cast<::perf::socket_t *> (events[i].user);
             if (!sock)
                 continue;
 

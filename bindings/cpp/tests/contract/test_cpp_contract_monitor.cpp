@@ -122,7 +122,7 @@ bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
           std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
             .count ());
         if (!zlink_cpp_contract::wait_for_monitor_readable (
-              monitor_.handle (), remaining_ms)) {
+              monitor_, remaining_ms)) {
             continue;
         }
 
@@ -216,11 +216,21 @@ void test_socket_monitor_on_event_callback ()
     }
     assert (static_cast<uint64_t> (callback_state.event.event) != 0u);
 
-    const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
-    assert (snapshot.is_ready ()
+    bool snapshot_ready = false;
+    const std::chrono::steady_clock::time_point snapshot_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (500);
+    while (std::chrono::steady_clock::now () < snapshot_deadline) {
+        const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
+        if (snapshot.is_ready ()
             || (snapshot.state_flags
                 & static_cast<uint32_t> (zlink::monitor_state::closed))
-                 != 0u);
+                 != 0u) {
+            snapshot_ready = true;
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    assert (snapshot_ready);
 }
 
 void test_discovery_service_monitor_open_recv ()

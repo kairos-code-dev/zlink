@@ -85,8 +85,8 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            zlink::socket_t *sock =
-              static_cast<zlink::socket_t *> (events[i].user);
+            ::perf::socket_t *sock =
+              static_cast<::perf::socket_t *> (events[i].user);
             if (!sock)
                 continue;
 

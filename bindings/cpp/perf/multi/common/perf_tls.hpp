@@ -8,7 +8,7 @@
 namespace perf {
 namespace multi {
 
-typedef zlink::socket_t perf_socket_t;
+typedef ::perf::socket_t perf_socket_t;
 
 using ::perf::perf_tls_file_exists;
 using ::perf::resolve_perf_tls_dir_from;

@@ -51,7 +51,8 @@ public final class ServiceDecoders {
         long value = segment.get(ValueLayout.JAVA_LONG_UNALIGNED,
           NativeLayouts.MEMBER_PEER_VALUE_OFFSET);
         return new MemberPeerEntry(serviceType, serviceRole, serviceName,
-          endpoint, RoutingId.fromBytes(routingBytes), value, admissionState);
+          endpoint, InternalAccess.routingIdFromTrusted(routingBytes), value,
+          admissionState);
     }
 
     public static ServiceEvent serviceEvent(MemorySegment event) {
@@ -83,7 +84,7 @@ public final class ServiceDecoders {
           NativeHelpers.fromCString(event.asSlice(
             NativeLayouts.SERVICE_EVENT_ENDPOINT_OFFSET, 256), 256),
           routingSize == 0 ? Optional.empty()
-            : Optional.of(RoutingId.fromBytes(routing)),
+            : Optional.of(InternalAccess.routingIdFromTrusted(routing)),
           NativeHelpers.fromCString(event.asSlice(
             NativeLayouts.SERVICE_EVENT_SUBJECT_OFFSET, 256), 256),
           ServiceEventSubjectKind.fromValue(event.get(ValueLayout.JAVA_INT,

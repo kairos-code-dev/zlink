@@ -34,7 +34,7 @@ struct router_router_recv_state_t
     perf::single::latency_stats_builder_t latency;
 };
 
-bool complete_handshake (zlink::socket_t &receiver, zlink::socket_t &sender)
+bool complete_handshake (::perf::socket_t &receiver, ::perf::socket_t &sender)
 {
     zlink_routing_id_t receiver_rid = zlink::empty_routing_id ();
     zlink_routing_id_t sender_rid = zlink::empty_routing_id ();
@@ -121,7 +121,7 @@ bool record_router_router_sample (uint32_t run_id_,
     return true;
 }
 
-bool send_router_samples (zlink::socket_t *sender_,
+bool send_router_samples (::perf::socket_t *sender_,
                           std::vector<char> *payload_,
                           router_router_recv_state_t *state_,
                           int duration_s_,

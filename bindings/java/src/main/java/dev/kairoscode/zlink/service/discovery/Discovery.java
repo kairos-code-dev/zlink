@@ -269,7 +269,7 @@ public final class Discovery implements AutoCloseable {
     }
 
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId rid) {
-        byte[] value = rid.toBytes();
+        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
         MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
         nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
           (byte) value.length);

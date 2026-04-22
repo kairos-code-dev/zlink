@@ -74,11 +74,8 @@ public final class RouterSocket extends Socket {
     private CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
                                                      SendFlags flags,
                                                      Duration timeout) {
-        return routedRequests.request(rid, parts, flags, timeout).thenApply(reply -> {
-            try (reply) {
-                return RequestReplySupport.cloneReceived(reply).parts();
-            }
-        });
+        return routedRequests.request(rid, parts, flags, timeout).thenApply(reply ->
+            RequestReplySupport.takeReceivedParts(reply));
     }
     public boolean request(RoutingId rid, Message part,
                         BiConsumer<RequestResult, List<Message>> callback) {
@@ -122,9 +119,7 @@ public final class RouterSocket extends Socket {
             routedRequests.request(rid, parts, (result, reply) -> {
                 List<Message> payload = List.of();
                 if (reply != null) {
-                    Received copy = RequestReplySupport.cloneReceived(reply);
-                    reply.close();
-                    payload = copy.parts();
+                    payload = RequestReplySupport.takeReceivedParts(reply);
                 }
                 callback.accept(result, payload);
             }, flags, timeout);

@@ -49,62 +49,24 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-std::optional<zlink::topic_message_t> try_subscribe_from_raw_spot (void *spot_)
+std::optional<zlink::topic_message_t>
+try_subscribe_from_spot (zlink::service::spot_t &spot_)
 {
-    char service_name_buffer[256];
-    char topic_buffer[256];
-    size_t service_name_length = sizeof (service_name_buffer);
-    size_t topic_length = sizeof (topic_buffer);
-    zlink_routing_id_t source_rid = zlink::empty_routing_id ();
-    zlink_msg_t *parts_native = NULL;
-    size_t part_count = 0;
-
-    const zlink::recv_result_t rc = static_cast<zlink::recv_result_t> (
-      spot_subscribe_impl (
-        spot_, &source_rid, &parts_native, &part_count, service_name_buffer,
-        &service_name_length, topic_buffer, &topic_length,
-        static_cast<zlink_recv_flags_t> (zlink::recv_flags_t::dontwait)));
-    if (rc == zlink::recv_result_t::no_data)
-        return std::nullopt;
-    if (rc != zlink::recv_result_t::ok)
-        throw zlink::recv_error_t (rc, zlink_errno ());
-
-    std::vector<zlink::message_t> parts;
-    if (zlink::service::detail::assign_parts_from_native (
-          parts_native, part_count, parts)
-        != 0) {
-        throw zlink::last_error ();
-    }
-
-    const size_t service_name_size =
-      service_name_length < sizeof (service_name_buffer)
-        ? service_name_length
-        : sizeof (service_name_buffer) - 1u;
-    const size_t topic_size =
-      topic_length < sizeof (topic_buffer) ? topic_length
-                                           : sizeof (topic_buffer) - 1u;
-    const std::string service_name (service_name_buffer, service_name_size);
-    const std::string topic (topic_buffer, topic_size);
-    return zlink::topic_message_t (
-      source_rid.size > 0 ? std::optional<zlink::routing_id_t> (
-                              zlink::routing_id_t (source_rid))
-                          : std::nullopt,
-      service_name.empty () ? std::nullopt
-                            : std::optional<std::string> (service_name),
-      topic,
-      std::move (parts));
+    return spot_.subscribe (zlink::recv_flags_t::dontwait);
 }
 
 struct spot_dispatch_state_t
 {
     explicit spot_dispatch_state_t (size_t latency_cap_)
         : service_name (),
+          subscriber (NULL),
           msg_size (0),
           payload_size (0),
           run_id (1U),
           ready_seen (false),
           collect_active (false),
           fatal (false),
+          send_ready_epoch (0),
           active_deadline_ns (0),
           active_received (0),
           latency (latency_cap_),
@@ -113,12 +75,14 @@ struct spot_dispatch_state_t
     }
 
     std::string service_name;
+    zlink::service::spot_t *subscriber;
     size_t msg_size;
     size_t payload_size;
     uint32_t run_id;
     bool ready_seen;
     bool collect_active;
     bool fatal;
+    uint64_t send_ready_epoch;
     uint64_t active_deadline_ns;
     unsigned long long active_received;
     perf::single::latency_stats_builder_t latency;
@@ -217,25 +181,76 @@ void record_spot_message (spot_dispatch_state_t *state_,
 }
 
 void on_spot_dispatch_event (void *spot_,
-                             zlink_spot_dispatch_event_t event_,
+                             const zlink_spot_dispatch_info_t *info_,
                              void *userdata_)
 {
-    if (!spot_ || !userdata_
-        || event_ != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE) {
+    if (!spot_ || !userdata_ || !info_
+        || info_->event != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE) {
         return;
     }
 
     spot_dispatch_state_t *state =
       static_cast<spot_dispatch_state_t *> (userdata_);
+    if (!state->subscriber)
+        return;
 
-    for (;;) {
-        std::optional<zlink::topic_message_t> message =
-          try_subscribe_from_raw_spot (spot_);
-        if (!message.has_value ())
-            return;
+    try {
+        for (;;) {
+            std::optional<zlink::topic_message_t> message =
+              try_subscribe_from_spot (*state->subscriber);
+            if (!message.has_value ())
+                return;
 
-        record_spot_message (state, *message);
+            record_spot_message (state, *message);
+        }
     }
+    catch (const std::exception &) {
+        {
+            std::lock_guard<std::mutex> lock (state->mutex);
+            state->fatal = true;
+        }
+        state->cv.notify_all ();
+    }
+}
+
+void on_spot_send_ready (void *, void *userdata_)
+{
+    spot_dispatch_state_t *state =
+      static_cast<spot_dispatch_state_t *> (userdata_);
+    if (!state)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        ++state->send_ready_epoch;
+    }
+    state->cv.notify_all ();
+}
+
+uint64_t current_send_ready_epoch (spot_dispatch_state_t *state_)
+{
+    if (!state_)
+        return 0;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    return state_->send_ready_epoch;
+}
+
+bool wait_for_send_ready (spot_dispatch_state_t *state_,
+                          uint64_t observed_epoch_,
+                          std::chrono::milliseconds timeout_)
+{
+    if (!state_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (state_->mutex);
+    return state_->cv.wait_for (
+      lock,
+      timeout_ > std::chrono::milliseconds (0) ? timeout_
+                                               : std::chrono::milliseconds (1),
+      [state_, observed_epoch_]() {
+          return state_->fatal || state_->send_ready_epoch != observed_epoch_;
+      });
 }
 
 [[noreturn]] void fast_exit_process (int exit_code_)
@@ -258,6 +273,7 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
     uint64_t seq = 0;
     while (std::chrono::steady_clock::now () < deadline) {
+        const uint64_t send_ready_epoch = current_send_ready_epoch (state_);
         bool sent = false;
         if (!stamp_and_publish (publisher_,
                                 state_->service_name,
@@ -270,7 +286,15 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
             return false;
         }
         if (!sent) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            const auto remaining =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - std::chrono::steady_clock::now ());
+            (void) wait_for_send_ready (
+              state_,
+              send_ready_epoch,
+              remaining < std::chrono::milliseconds (50)
+                ? remaining
+                : std::chrono::milliseconds (50));
             continue;
         }
 
@@ -404,11 +428,13 @@ bool run_pattern_spot (const std::string &transport,
     spot_dispatch_state_t dispatch_state (
       perf::single::resolve_single_latency_sample_cap ());
     dispatch_state.service_name = pub_service_name;
+    dispatch_state.subscriber = &sub_spot;
     dispatch_state.msg_size = msg_size;
     dispatch_state.payload_size = payload_size;
 
     try {
         sub_spot.on_dispatch_event (&on_spot_dispatch_event, &dispatch_state);
+        pub_spot.on_send_ready (&on_spot_send_ready, &dispatch_state);
     }
     catch (const std::exception &) {
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
@@ -449,6 +475,8 @@ bool run_pattern_spot (const std::string &transport,
         const auto deadline =
           std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
         while (std::chrono::steady_clock::now () < deadline) {
+            const uint64_t send_ready_epoch =
+              current_send_ready_epoch (&dispatch_state);
             bool sent = false;
             if (!stamp_and_publish (pub_spot,
                                     pub_service_name,
@@ -462,7 +490,15 @@ bool run_pattern_spot (const std::string &transport,
                 break;
             }
             if (!sent) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                const auto remaining =
+                  std::chrono::duration_cast<std::chrono::milliseconds> (
+                    deadline - std::chrono::steady_clock::now ());
+                (void) wait_for_send_ready (
+                  &dispatch_state,
+                  send_ready_epoch,
+                  remaining < std::chrono::milliseconds (50)
+                    ? remaining
+                    : std::chrono::milliseconds (50));
                 continue;
             }
         }

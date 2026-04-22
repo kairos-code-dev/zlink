@@ -68,16 +68,6 @@ bool wait_for_spot_control_progress ()
     return perf_idle_wait_ms (1) >= 0;
 }
 
-bool control_topic_matches (const char *topic_, size_t topic_len_)
-{
-    if (!topic_)
-        return false;
-    if (topic_len_ > 0 && topic_[topic_len_ - 1] == '\0')
-        --topic_len_;
-    return topic_len_ == std::strlen (k_control_topic)
-           && std::memcmp (topic_, k_control_topic, topic_len_) == 0;
-}
-
 bool recv_raw_control_payload (zlink::service::spot_t &spot_,
                                const char *service_name_,
                                std::string *payload_out_,
@@ -88,47 +78,27 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
     if (payload_out_)
         payload_out_->clear ();
 
-    char service_name[256];
-    size_t service_name_len = sizeof (service_name);
-    char topic[256];
-    size_t topic_len = sizeof (topic);
-    zlink_msg_t part;
-    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    if (zlink_msg_init (&part) != 0)
-        return false;
-    const int rc =
-      zlink_spot_subscribe_part (spot_.handle (),
-                                 NULL,
-                                 service_name,
-                                 sizeof (service_name),
-                                 &service_name_len,
-                                 topic,
-                                 sizeof (topic),
-                                 &topic_len,
-                                 &part,
-                                 &has_more,
-                                 static_cast<zlink_recv_flags_t> (
-                                   ZLINK_DONTWAIT));
-    if (rc != 0) {
-        const int err = zlink_errno ();
-        (void) zlink_msg_close (&part);
-        if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
-            || err == ETIMEDOUT) {
-            return true;
-        }
+    zlink::maybe_t<zlink::topic_message_t> message;
+    try {
+        message = perf::multi::try_subscribe_nowait (spot_);
+    }
+    catch (const zlink::recv_error_t &err) {
+        errno = err.internal_errno ();
         return false;
     }
+    if (!message)
+        return true;
 
     if (received_out_)
         *received_out_ = true;
-    if (payload_out_ && control_topic_matches (topic, topic_len)
-        && service_name_
-        && service_name_len == std::strlen (service_name_)
-        && std::memcmp (service_name, service_name_, service_name_len) == 0) {
-        payload_out_->assign (static_cast<const char *> (zlink_msg_data (&part)),
-                              zlink_msg_size (&part));
+    if (payload_out_ && message->service_name () && service_name_
+        && *message->service_name () == service_name_
+        && message->topic () == k_control_topic
+        && message->parts ().size () == 1) {
+        payload_out_->assign (
+          static_cast<const char *> (message->parts ()[0].data ()),
+          message->parts ()[0].size ());
     }
-    (void) zlink_msg_close (&part);
     return true;
 }
 
@@ -141,26 +111,15 @@ bool publish_raw_control_payload (zlink::service::spot_t &spot_,
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_msg_t part;
-        if (zlink_msg_init_size (&part, payload_.size ()) != 0)
+        zlink::message_t part = zlink::message_t::from_bytes (
+          payload_.data (), payload_.size ());
+        if (!part.valid ())
             return false;
-        std::memcpy (zlink_msg_data (&part), payload_.data (), payload_.size ());
 
-        const int rc = zlink_spot_publish_part (
-          spot_.handle (),
-          service_name_,
-          k_control_topic,
-          &part,
-          static_cast<zlink_send_flags_t> (0),
-          ZLINK_PART_FINAL);
-        const int saved_errno = rc == 0 ? 0 : zlink_errno ();
-        if (rc == 0)
+        const zlink::send_result_t result = perf::multi::try_publish_nowait (
+          spot_, service_name_, k_control_topic, part);
+        if (result == zlink::send_result_t::sent)
             return true;
-        if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK
-            && saved_errno != ETIMEDOUT) {
-            errno = saved_errno;
-            return false;
-        }
         if (!wait_for_spot_control_progress ())
             return false;
     }

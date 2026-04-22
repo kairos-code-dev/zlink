@@ -29,7 +29,7 @@
 namespace perf {
 namespace multi {
 
-typedef zlink::socket_t perf_socket_t;
+typedef ::perf::socket_t perf_socket_t;
 
 static const char *k_stop_token = "__zlink_perf_stop__";
 
@@ -165,24 +165,6 @@ inline void apply_benchmark_socket_options (perf_socket_t &socket,
     apply_debug_timeouts (socket, transport);
 }
 
-inline void configure_perf_monitor_socket (void *monitor_handle)
-{
-    if (!monitor_handle)
-        return;
-
-    zlink::socket_t monitor = zlink::socket_t::wrap (monitor_handle);
-    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    const int linger = 0;
-    (void) monitor.set_option (zlink::socket_options::linger, linger);
-
-    if (settings.monitor_hwm > 0) {
-        (void) monitor.set_option (zlink::socket_options::sndhwm,
-                                   settings.monitor_hwm);
-        (void) monitor.set_option (zlink::socket_options::rcvhwm,
-                                   settings.monitor_hwm);
-    }
-}
-
 inline bool open_socket_monitor (perf_socket_t &socket,
                                  zlink::monitor_event events,
                                  connect_monitor_t &out)
@@ -191,8 +173,6 @@ inline bool open_socket_monitor (perf_socket_t &socket,
       zlink::monitor_handle_t::open (socket, events));
     if (!monitor.valid ())
         return false;
-
-    configure_perf_monitor_socket (monitor.handle ());
 
     out.monitor.reset (new zlink::monitor_handle_t (std::move (monitor)));
     return true;

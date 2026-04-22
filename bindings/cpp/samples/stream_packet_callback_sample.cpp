@@ -10,25 +10,49 @@ struct callback_result_t
     std::string payload;
 };
 
-void stream_callback (const zlink_routing_id_t *source_rid_,
-                      zlink_msg_t *parts_,
-                      size_t part_count_,
-                      void *userdata_)
+std::string packet_payload (zlink_msg_t *header_, zlink_msg_t *body_)
+{
+    assert (header_ != NULL);
+    assert (body_ != NULL);
+    assert (zlink_msg_size (header_) == 0);
+    return std::string (static_cast<const char *> (zlink_msg_data (body_)),
+                        zlink_msg_size (body_));
+}
+
+std::vector<unsigned char> encode_packet_frame (const std::string &payload_)
+{
+    std::vector<unsigned char> frame (6u + payload_.size (), 0u);
+    const uint32_t body_size = static_cast<uint32_t> (payload_.size ());
+    frame[2] = static_cast<unsigned char> ((body_size >> 24) & 0xFFu);
+    frame[3] = static_cast<unsigned char> ((body_size >> 16) & 0xFFu);
+    frame[4] = static_cast<unsigned char> ((body_size >> 8) & 0xFFu);
+    frame[5] = static_cast<unsigned char> (body_size & 0xFFu);
+    if (!payload_.empty ()) {
+        std::memcpy (frame.data () + 6u, payload_.data (), payload_.size ());
+    }
+    return frame;
+}
+
+void stream_packet_callback (void *,
+                             const zlink_routing_id_t *source_rid_,
+                             zlink_msg_t *header_,
+                             zlink_msg_t *body_,
+                             void *userdata_)
 {
     std::promise<callback_result_t> *result_promise =
       static_cast<std::promise<callback_result_t> *> (userdata_);
     assert (result_promise != NULL);
     assert (source_rid_ != NULL);
-    assert (part_count_ == 1);
+    assert (header_ != NULL);
+    assert (body_ != NULL);
 
     callback_result_t result;
     result.routing_id = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> (source_rid_->data), source_rid_->size);
-    result.payload.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[0])),
-      zlink_msg_size (&parts_[0]));
+    result.payload = packet_payload (header_, body_);
 
-    zlink_multipart_close (parts_, part_count_);
+    (void) zlink_msg_close (header_);
+    (void) zlink_msg_close (body_);
     result_promise->set_value (result);
 }
 
@@ -47,14 +71,15 @@ int main ()
 
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    server.on_receive (&stream_callback, &result_promise);
+    server.on_packet (&stream_packet_callback, &result_promise);
 
     detail::raw_tcp_client_t client (endpoint);
     assert (detail::wait_stream_connected (server_monitor));
 
-    const char *request = detail::k_stream_payload;
-    const size_t request_size = std::strlen (request);
-    client.send_all (request, request_size);
+    const std::string request = detail::k_stream_payload;
+    const std::vector<unsigned char> request_frame = encode_packet_frame (request);
+    client.send_all (reinterpret_cast<const char *> (request_frame.data ()),
+                     request_frame.size ());
 
     const callback_result_t result = detail::wait_future (result_future, 2000);
     assert (result.payload == detail::k_stream_payload);
@@ -63,11 +88,11 @@ int main ()
     server.send (result.routing_id, reply);
 
     char response[64];
-    const int received = client.recv_exact (response, request_size);
+    const int received = client.recv_exact (response, request.size ());
     assert (received == static_cast<int> (std::strlen (detail::k_stream_payload)));
     assert (std::memcmp (response, detail::k_stream_payload, received) == 0);
     std::printf ("[stream/packet-callback] send: \"%s\" → recv: \"%.*s\"\n",
-                 request, received, response);
+                 request.c_str (), received, response);
 
     client.close ();
     return 0;

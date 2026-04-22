@@ -2,9 +2,9 @@
 
 # Java Binding Specification
 
-This document defines the complete public API surface of the Java binding.
-Every class, its purpose, and all public method signatures are listed.
-Internal helpers and implementation details are omitted.
+This document defines the public contract surface of the Java binding.
+Every exported API class, its purpose, and all public method signatures are
+listed. Internal helpers and implementation details are omitted.
 
 All types live in the `dev.kairoscode.zlink` package.
 Service types live in `dev.kairoscode.zlink.service.registry`,
@@ -13,10 +13,13 @@ Service types live in `dev.kairoscode.zlink.service.registry`,
 Netty buffer extension types live in `dev.kairoscode.zlink.netty`.
 
 Only the packages and types listed in this document are public contract.
-`dev.kairoscode.zlink.internal` and other implementation packages are internal.
-If the binding uses JPMS/module export control, only documented public packages
-may be exported. Perf, samples, and tests must use the public Java entrypoint
-only and must not import internal packages or helper classes.
+`dev.kairoscode.zlink.internal` and other implementation packages are internal
+implementation detail. Public classes may exist in those packages for local
+implementation use, but they are not contract and must not be exported as
+public API packages. If the binding uses JPMS/module export control, only
+documented public packages may be exported. Perf, samples, and tests must use
+the public Java entrypoint only and must not import internal packages or helper
+classes.
 
 Implementation follow-up:
 - internal 성격 타입이 public package에 남아 있지 않도록 정리해야 한다.
@@ -117,8 +120,8 @@ All socket types inherit from `Socket` and expose these common operations.
 ```java
 // Available on all socket types
 void close();                                                    // @throws CloseException
-SocketMonitor monitorOpen();                                     // @throws ConfigException
-SocketMonitor monitorOpen(SocketEventMask events);               // @throws ConfigException
+MonitorSocket monitorOpen();                                    // @throws ConfigException
+MonitorSocket monitorOpen(MonitorEventType... events);          // @throws ConfigException
 AdmissionState getAdmissionState();                              // @throws ConfigException
 void setAdmissionState(AdmissionState state);                    // @throws ConfigException
 

@@ -25,6 +25,7 @@ import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
+import dev.kairoscode.zlink.internal.RequestProgressPump;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -161,7 +162,7 @@ public final class Spot implements AutoCloseable {
     public void setRoutingId(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
         ensureOpen();
-        byte[] value = rid.toBytes();
+        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeValue = arena.allocate(value.length);
             if (value.length > 0) {
@@ -488,30 +489,12 @@ public final class Spot implements AutoCloseable {
             future.cancel(false);
             throw ex;
         }
-        return future.thenApply(reply -> {
-            try (reply) {
-                return cloneReceivedParts(reply);
-            }
-        });
+        return future.thenApply(InternalAccess::receivedTakeParts);
     }
 
     private void startRequestProgress(CompletableFuture<?> future) {
-        Thread thread = new Thread(() -> {
-            while (!future.isDone()) {
-                Native.spotRequestProgressInternal(handle);
-                if (future.isDone()) {
-                    break;
-                }
-                try {
-                    Thread.sleep(1L);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-        }, "zlink-spot-request-progress");
-        thread.setDaemon(true);
-        thread.start();
+        RequestProgressPump.trackSpotRequest(future, handle,
+            "zlink-spot-request-progress");
     }
 
     public void drainChannelReplyFrom(MemorySegment dealerSubject) {
@@ -1075,15 +1058,6 @@ public final class Spot implements AutoCloseable {
             throw new IllegalArgumentException("parts must not be empty");
         Message[] copies = new Message[parts.size()];
         for (int i = 0; i < copies.length; i++) {
-            copies[i] = Message.copyOf(parts.get(i).toByteArray());
-        }
-        return List.of(copies);
-    }
-
-    private static List<Message> cloneReceivedParts(Received received) {
-        List<Message> parts = received.parts();
-        Message[] copies = new Message[parts.size()];
-        for (int i = 0; i < copies.length; i++) {
             copies[i] = InternalAccess.messageSharedCopyOf(parts.get(i));
         }
         return List.of(copies);
@@ -1201,49 +1175,6 @@ public final class Spot implements AutoCloseable {
             return null;
         return readRoutingId(nativeRidPtr.reinterpret(
           NativeLayouts.ROUTING_ID_LAYOUT.byteSize()));
-    }
-
-    private static MemorySegment movePayloadToNative(Arena arena,
-                                                     List<Message> payload) {
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        MemorySegment nativeParts = arena.allocate(msgSize * payload.size(),
-          NativeLayouts.MSG_LAYOUT.byteAlignment());
-        int built = 0;
-        try {
-            for (int i = 0; i < payload.size(); i++) {
-                MemorySegment dest = nativeParts.asSlice((long) i * msgSize, msgSize);
-                byte[] bytes = payload.get(i).toByteArray();
-                int rc = NativeMsg.msgInitSize(dest, bytes.length);
-                if (rc != 0) {
-                    throw ZlinkException.fromLastError("zlink_msg_init_size");
-                }
-                if (bytes.length > 0) {
-                    MemorySegment.copy(
-                      MemorySegment.ofArray(bytes),
-                      0,
-                      NativeMsg.msgData(dest).reinterpret(bytes.length),
-                      0,
-                      bytes.length);
-                }
-                built++;
-            }
-            return nativeParts;
-        } catch (RuntimeException ex) {
-            for (int i = 0; i < built; i++) {
-                try {
-                    NativeMsg.msgClose(
-                      nativeParts.asSlice((long) i * msgSize, msgSize));
-                } catch (RuntimeException ignored) {
-                }
-            }
-            for (int i = built; i < payload.size(); i++) {
-                try {
-                    payload.get(i).close();
-                } catch (RuntimeException ignored) {
-                }
-            }
-            throw ex;
-        }
     }
 
     private static long timeoutMillis(Duration timeout) {

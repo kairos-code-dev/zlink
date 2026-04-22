@@ -25,7 +25,7 @@ enum send_status_t
     send_status_failed = 2
 };
 
-send_status_t try_send_reply (zlink::socket_t &sock, pending_reply_t &reply)
+send_status_t try_send_reply (::perf::socket_t &sock, pending_reply_t &reply)
 {
     zlink::send_result_t send_result = zlink::send_result_t::sent;
     const int rc =
@@ -42,7 +42,7 @@ send_status_t try_send_reply (zlink::socket_t &sock, pending_reply_t &reply)
     return send_status_failed;
 }
 
-bool flush_pending_replies (zlink::socket_t &sock,
+bool flush_pending_replies (::perf::socket_t &sock,
                             std::deque<pending_reply_t> &pending_replies)
 {
     while (!pending_replies.empty ()) {

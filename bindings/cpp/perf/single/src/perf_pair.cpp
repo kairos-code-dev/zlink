@@ -17,7 +17,7 @@ bool perf_debug_enabled ()
 
 bool send_single_part (void *userdata_, const void *data_, size_t size_)
 {
-    zlink::socket_t *socket = static_cast<zlink::socket_t *> (userdata_);
+    ::perf::socket_t *socket = static_cast<::perf::socket_t *> (userdata_);
     if (!socket)
         return false;
 

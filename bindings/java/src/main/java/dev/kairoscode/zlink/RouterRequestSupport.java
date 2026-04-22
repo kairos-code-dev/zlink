@@ -447,7 +447,7 @@ final class RouterRequestSupport implements AutoCloseable {
     }
 
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {
-        byte[] value = routingId.toBytes();
+        byte[] value = routingId.trustedBytes();
         MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
         nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
             (byte) value.length);
@@ -495,10 +495,8 @@ final class RouterRequestSupport implements AutoCloseable {
             RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
             RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
             long requestSequence = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
-            byte[] nodeRidBytes = nodeRid == null ? null : nodeRid.toBytes();
-            byte[] spotRidBytes = spotRid == null ? null : spotRid.toBytes();
             Received.PartCursor remainingCursor = hasMore ? cursor : null;
-            return registerLazyReceive(new Received(nodeRidBytes, spotRidBytes,
+            return registerLazyReceive(new Received(nodeRid, spotRid,
                 firstPart, remainingCursor, requestSequence,
                 requestSequence != 0L, requestSequence == 0L ? null
                 : (replyParts, sendFlags) -> {

@@ -39,7 +39,7 @@ struct bench_result_t
 
 struct socket_state_t
 {
-    zlink::socket_t *sock;
+    ::perf::socket_t *sock;
     std::vector<char> request_buffer;
     bool awaiting_reply;
     bool send_pending;
@@ -113,7 +113,7 @@ class dealer_router_client_bench_t
         for (size_t i = 0; i < _settings.clients; ++i) {
             _holders.emplace_back (
               new perf::multi::socket_guard_t (_ctx, zlink::socket_type::dealer));
-            zlink::socket_t &sock = _holders.back ()->sock ();
+            ::perf::socket_t &sock = _holders.back ()->sock ();
 
             const std::string routing_id = std::string ("dr_") + std::to_string (i);
             (void) sock.set_routing_id (routing_id);

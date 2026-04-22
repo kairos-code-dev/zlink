@@ -74,11 +74,7 @@ final class RouterSpotSupport {
             future.cancel(false);
             throw ex;
         }
-        return future.thenApply(reply -> {
-            try (reply) {
-                return RequestReplySupport.cloneReceived(reply).parts();
-            }
-        });
+        return future.thenApply(RequestReplySupport::takeReceivedParts);
     }
 
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -114,9 +110,7 @@ final class RouterSpotSupport {
         future.whenComplete((reply, error) -> {
             List<Message> response = List.of();
             if (reply != null) {
-                Received copy = RequestReplySupport.cloneReceived(reply);
-                reply.close();
-                response = copy.parts();
+                response = RequestReplySupport.takeReceivedParts(reply);
             }
             callback.accept(error == null ? RequestResult.OK
                 : RequestReplySupport.requestResult(error), response);
@@ -296,7 +290,7 @@ final class RouterSpotSupport {
 
     private static MemorySegment nativeRoutingId(Arena arena,
                                                  RoutingId routingId) {
-        byte[] value = routingId.toBytes();
+        byte[] value = routingId.trustedBytes();
         MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
         nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
           (byte) value.length);

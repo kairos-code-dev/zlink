@@ -126,9 +126,9 @@ internal static partial class PerfRunner
     }
 
     internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
-        PerfSendFlags flags = PerfSendFlags.None)
+        SendFlags flags = SendFlags.None)
     {
-        return socket.Send(buffer, flags);
+        return PerfSocketIo.Send(socket, buffer, flags);
     }
 
     internal static bool IsEchoPattern(string pattern)
@@ -175,11 +175,7 @@ internal static partial class PerfRunner
 
     internal static bool IsTransientNetworkError(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EHostUnreach
-               || code == ErrorCode.ENetUnreach
-               || code == ErrorCode.ENotConn
-               || code == ErrorCode.EConnRefused;
+        return PerfShared.IsTransientNetworkError(errno);
     }
 
 }

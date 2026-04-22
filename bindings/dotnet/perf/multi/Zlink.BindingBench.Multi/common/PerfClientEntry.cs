@@ -7,7 +7,6 @@ internal static partial class PerfRunner
     {
         string outputPattern = NormalizePerfPattern(pattern);
         size = Math.Max(1, size);
-        PerfOptions preset = PerfOptions.FromMultiPattern(outputPattern);
 
         if (!ParseEndpointArg(endpoint, out string normalizedEndpoint))
             return 1;
@@ -15,8 +14,7 @@ internal static partial class PerfRunner
         try
         {
             var options = PerfOptions.CreateMulti(PerfExecutionKind.MultiClient,
-                outputPattern, transport, size, normalizedEndpoint,
-                preset.RecvMode);
+                outputPattern, transport, size, normalizedEndpoint, "recv");
             if (!MultiPerfPatternRegistry.TryGet(outputPattern,
                     out IPerfPattern perfPattern))
             {

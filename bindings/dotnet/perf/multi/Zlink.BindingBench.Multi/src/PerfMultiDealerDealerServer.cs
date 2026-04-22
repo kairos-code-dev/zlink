@@ -27,7 +27,7 @@ internal static class PerfMultiDealerDealerServer
         ConfigureTlsServerIfNeeded(server, options.Transport);
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
-        server.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
+        server.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
         server.Bind(endpoint);
         WriteStdoutLine($"READY,{endpoint}");
 
@@ -87,8 +87,8 @@ internal static class PerfMultiDealerDealerServer
                     : PerfPhase.Cooldown;
                 StampMetricHeader(payload.AsSpan(), runId, phase, msgSize, seq,
                     EpochNs());
-                SendResult sendResult = server.SendBorrowedSingleNoWaitResult(payload);
-                if (sendResult == SendResult.Sent)
+                using Message message = Message.FromBytes(payload);
+                if (server.Send(message, SendFlags.DontWait))
                 {
                     seq++;
                     sendPending = false;
@@ -96,9 +96,6 @@ internal static class PerfMultiDealerDealerServer
                         cooldownSent = true;
                     continue;
                 }
-
-                if (sendResult != SendResult.Backpressured)
-                    return false;
 
                 sendPending = true;
             }

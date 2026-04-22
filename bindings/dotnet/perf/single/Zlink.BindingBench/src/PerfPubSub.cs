@@ -35,7 +35,7 @@ internal static class PerfPubSub
             string endpoint = EndpointFor(transport, "pubsub");
             int xpubNoDrop = PerfEnv.ReadPositive(
                 "PERF_SINGLE_PUBSUB_XPUB_NODROP", 1) > 0 ? 1 : 0;
-            pub.SetOption(SocketOptions.XPubNoDrop, xpubNoDrop);
+            pub.PubOptions.NoDrop = xpubNoDrop != 0;
             pub.Bind(endpoint);
             sub.SetSubscription(Topic);
             sub.Connect(endpoint);
@@ -169,7 +169,7 @@ internal static class PerfPubSub
             seq++;
             try
             {
-                sender.PublishBorrowedSingle(Topic, payload, 0);
+                PerfSocketIo.Publish(sender, Topic, payload, SendFlags.None);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
@@ -195,7 +195,6 @@ internal static class PerfPubSub
 
     private static bool IsInterrupted(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EIntr || errno == 4;
+        return PerfShared.IsInterrupted(errno);
     }
 }

@@ -143,6 +143,16 @@ SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All);
 /// <exception cref="ZlinkConfigException"/>
 AdmissionState GetAdmissionState();
 /// <exception cref="ZlinkConfigException"/>
+void SetTlsServer(string certPath, string keyPath,
+                  bool requireClientCert = false);
+/// <exception cref="ZlinkConfigException"/>
+void SetTlsClient(string caCertPath, string hostname,
+                  bool trustSystem = false);
+/// <exception cref="ZlinkConfigException"/>
+void SetChannelName(string channelName);
+/// <exception cref="ZlinkConfigException"/>
+string GetChannelName();
+/// <exception cref="ZlinkConfigException"/>
 void SetAdmissionState(AdmissionState state);
 /// <exception cref="ZlinkCloseException"/>
 void Close();
@@ -372,15 +382,6 @@ public sealed class DealerSocket : MessageSocketBase
 
     /// <exception cref="ZlinkConfigException"/>
     void AttachDiscovery(Discovery discovery);
-
-    // --- channel name metadata ---
-    // Fixed logical channel name for this dealer when attached via AttachChannelDealerManual.
-    // Maps to zlink_socket_set_channel_name / zlink_socket_get_channel_name.
-    // Must be set before AttachChannelDealerManual; read-only after attach.
-    /// <exception cref="ZlinkConfigException"/>
-    void SetChannelName(string channelName);
-    /// <exception cref="ZlinkConfigException"/>
-    string GetChannelName();
 
     // inherited from MessageSocketBase
     /// <exception cref="ZlinkSubmitException"/>
@@ -1229,12 +1230,13 @@ the C API `zlink_spot_dispatch_info_t`. Pure value object.
 public sealed record SpotDispatchInfo(
     SpotDispatchEvent        Event,
     SpotDispatchSubjectKind  SubjectKind,
-    object?                  Subject);   // Spot | Timer | DealerSocket depending on SubjectKind
+    IntPtr                   Subject);   // source native handle; IntPtr.Zero when none
 ```
 
-`Subject` is `null` only for `SubscribeReadable` and `RoutedReadable` (where
-`SubjectKind == Spot`); cast to `Timer` for `TimerReadable`, to `DealerSocket`
-for `ChannelReplyReadable`.
+`Subject` is the source native handle. It is `IntPtr.Zero` only for
+`SubscribeReadable` and `RoutedReadable` (where `SubjectKind == Spot`).
+Pass the handle back to APIs that consume it, such as
+`DrainChannelReplyFrom(IntPtr dealerSubject)`.
 
 ### SendFlags
 
@@ -1764,7 +1766,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     void OnRoutedReceive(Action<Received> handler);
     /// <summary>
     /// Register the unified dispatch event handler. info.Subject is the source
-    /// handle (Spot, Timer, or DealerSocket) for the event.
+    /// native handle for the event.
     /// Maps to zlink_spot_set_dispatch_event_handler with zlink_spot_dispatch_info_t.
     /// </summary>
     /// <exception cref="ZlinkHandlerException"/>
@@ -1774,7 +1776,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <summary>
     /// Drain pending channel reply completions from the given attached dealer.
     /// Call only from within an OnDispatchEvent callback when event is
-    /// SpotDispatchEvent.ChannelReplyReadable. info.Subject is the DealerSocket.
+    /// SpotDispatchEvent.ChannelReplyReadable. info.Subject is the dealer handle.
     /// Maps to zlink_spot_channel_reply_progress_from(spot, dealer).
     /// </summary>
     /// <exception cref="ZlinkConfigException"/>
@@ -2010,7 +2012,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     int Wait(List<PollEvent> events, int timeoutMs);
     /// <exception cref="ZlinkRecvException"/>
     int Wait(Span<PollEvent> destination, int timeoutMs,
-             out int eventsWritten);
+             out int totalReady);
 
     /// <exception cref="ZlinkConfigException"/>
     void Clear();

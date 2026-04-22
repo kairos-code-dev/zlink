@@ -71,4 +71,38 @@ public sealed class test_monitor_contract
 
         Assert.Null(monitor.Recv(true));
     }
+
+    [Fact]
+    public void socket_monitor_ignore_handler_switches_to_callback_only_model()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var server = new PairSocket(ctx);
+        using var client = new PairSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("tcp", "monitor-ignore");
+        server.Bind(endpoint);
+
+        using SocketMonitor monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
+        monitor.OnEvent(SocketMonitor.IgnoreHandler);
+
+        client.Connect(endpoint);
+
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+        {
+            try
+            {
+                _ = monitor.Snapshot();
+                return true;
+            }
+            catch (ZlinkConfigException)
+            {
+                return false;
+            }
+        }, 3000));
+
+        ZlinkRecvException error = Assert.Throws<ZlinkRecvException>(() => monitor.Recv());
+        Assert.Equal(RecvResult.Busy, error.Result);
+    }
 }

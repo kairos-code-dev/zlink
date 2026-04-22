@@ -30,8 +30,8 @@ internal static class PerfMultiDealerRouterClient
                 var client = new DealerSocket(ctx);
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
-                client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
-                client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
+                client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
+                client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
                 client.SetRoutingId(RoutingId.FromBytes(
                     System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}")));
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
@@ -285,17 +285,12 @@ internal static class PerfMultiDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        return ((DealerSocket)slot.Socket)
-            .SendBorrowedSingleNoWaitResult(slot.Payload) == SendResult.Sent;
+        using Message message = Message.FromBytes(slot.Payload);
+        return ((DealerSocket)slot.Socket).Send(message, SendFlags.DontWait);
     }
 
     private static void DisposeReceived(Received? received)
     {
-        if (received == null)
-            return;
-
-        for (int i = 0; i < received.Parts.Count; i++)
-            TryDisposeQuietly(received.Parts[i]);
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

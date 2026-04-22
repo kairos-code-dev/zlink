@@ -31,8 +31,8 @@ internal static class PerfMultiRouterRouterClient
                 var client = new RouterSocket(ctx);
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
-                client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
-                client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
+                client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
+                client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
                 client.RouterOptions.RoutingId = RoutingId.FromBytes(
                     System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}"));
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
@@ -283,8 +283,9 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        return ((RouterSocket)slot.Socket).SendBorrowedSingleNoWaitResult(
-            slot.ServerRoutingId, slot.Payload) == SendResult.Sent;
+        using Message message = Message.FromBytes(slot.Payload);
+        return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
+            SendFlags.DontWait);
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)
@@ -311,13 +312,14 @@ internal static class PerfMultiRouterRouterClient
         {
             try
             {
-                ((RouterSocket)activeClients[i]).SendBorrowedSingle(
-                    RoutingId.FromBytes(serverRoutingId), MultiStopToken,
-                    (int)SendFlags.DontWait);
+                using Message message = Message.FromBytes(MultiStopToken);
+                ((RouterSocket)activeClients[i]).Send(
+                    RoutingId.FromBytes(serverRoutingId), message,
+                    SendFlags.DontWait);
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno)
-                                            || IsTransientNetworkError(ex.InternalErrno))
+                                            || PerfRunner.IsTransientNetworkError(ex.InternalErrno))
             {
             }
             catch (ObjectDisposedException)

@@ -34,8 +34,8 @@ internal static class PerfSpot
         using var discovery = new Discovery(ctx, ServiceType.Spot, ServiceName);
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
-        using var spotPub = new Spot(pubNode);
-        using var spotSub = new Spot(subNode);
+        using var spotPub = pubNode.CreateSpot();
+        using var spotSub = subNode.CreateSpot();
 
         try
         {
@@ -46,16 +46,13 @@ internal static class PerfSpot
             int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
             int rcvTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
 
-            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndHwm,
-                sndHwm);
-            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndTimeo,
-                sndTimeo);
-            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.XPubNoDrop,
-                1);
-            subNode.SetOption(SpotNodeSocketRole.Sub, SocketOptions.RcvHwm,
-                rcvHwm);
-            subNode.SetOption(SpotNodeSocketRole.Sub, SocketOptions.RcvTimeo,
-                rcvTimeo);
+            pubNode.PublisherOptions.SendHighWaterMark = sndHwm;
+            pubNode.PublisherOptions.SendTimeout =
+                TimeSpan.FromMilliseconds(sndTimeo);
+            pubNode.PublisherOptions.NoDrop = true;
+            subNode.SubscriberOptions.ReceiveHighWaterMark = rcvHwm;
+            subNode.SubscriberOptions.ReceiveTimeout =
+                TimeSpan.FromMilliseconds(rcvTimeo);
 
             ConfigureSpotTlsPublisherIfNeeded(pubNode, transport);
             ConfigureSpotTlsSubscriberIfNeeded(subNode, transport);
@@ -185,8 +182,8 @@ internal static class PerfSpot
                     seq++;
                     try
                     {
-                        spotPub.PublishBorrowedSingle(ServiceName, Topic,
-                            activePayload, 0);
+                        PerfSocketIo.Publish(spotPub, ServiceName, Topic,
+                            activePayload, SendFlags.None);
                     }
                     catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
                     {
@@ -242,8 +239,8 @@ internal static class PerfSpot
             seq++;
             try
             {
-                publisher.PublishBorrowedSingle(ServiceName, Topic,
-                    probePayload, 0);
+                PerfSocketIo.Publish(publisher, ServiceName, Topic,
+                    probePayload, SendFlags.None);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno))
@@ -284,11 +281,11 @@ internal static class PerfSpot
 
     private static bool IsWouldBlock(int errno)
     {
-        return ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain;
+        return PerfShared.IsWouldBlock(errno);
     }
 
     private static bool IsInterrupted(int errno)
     {
-        return ZlinkException.MapErrorCode(errno) == ErrorCode.EIntr;
+        return PerfShared.IsInterrupted(errno);
     }
 }

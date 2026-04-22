@@ -30,8 +30,8 @@ internal static class PerfMultiDealerDealerClient
                 var client = new DealerSocket(ctx);
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
-                client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
-                client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
+                client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
+                client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
                 clients.Add(client);

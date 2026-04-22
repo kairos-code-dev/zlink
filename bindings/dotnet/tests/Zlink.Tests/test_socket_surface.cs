@@ -193,6 +193,12 @@ public sealed class test_socket_surface
         Assert.Equal(SocketEvent.All,
             typeof(SocketBase).GetMethod(nameof(SocketBase.MonitorOpen))!
                 .GetParameters()[0].DefaultValue);
+        Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
+            nameof(SocketBase.SetTlsServer), typeof(string), typeof(string),
+            typeof(bool)));
+        Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
+            nameof(SocketBase.SetTlsClient), typeof(string), typeof(string),
+            typeof(bool)));
         MethodInfo discoveryMonitorOpen = typeof(Discovery).GetMethods(
             BindingFlags.Instance | BindingFlags.Public)
             .Single(method =>
@@ -331,6 +337,9 @@ public sealed class test_socket_surface
             nameof(Spot.OnDispatchEvent), typeof(Action<Spot, SpotDispatchInfo>)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.DrainChannelReplyFrom), typeof(IntPtr)));
+        Assert.Equal(typeof(IntPtr),
+            typeof(SpotDispatchInfo).GetProperty(nameof(SpotDispatchInfo.Subject))!
+                .PropertyType);
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
             nameof(SocketBase.SetChannelName), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
@@ -426,6 +435,11 @@ public sealed class test_socket_surface
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(int),
             typeof(Poller).GetProperty(nameof(Poller.Size))!.PropertyType);
+        ParameterInfo pollerSpanWaitOut =
+            typeof(Poller).GetMethod(nameof(Poller.Wait),
+                new[] { typeof(Span<PollEvent>), typeof(int), typeof(int).MakeByRefType() })!
+                .GetParameters()[2];
+        Assert.Equal("totalReady", pollerSpanWaitOut.Name);
         Assert.Equal(typeof(IZlinkSocket),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
         Assert.NotNull(typeof(ZlinkPoll).GetMethod(nameof(ZlinkPoll.Poll),

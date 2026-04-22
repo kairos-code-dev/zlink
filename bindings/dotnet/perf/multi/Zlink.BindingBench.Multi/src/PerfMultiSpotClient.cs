@@ -69,7 +69,7 @@ internal static class PerfMultiSpotClient
     {
         var control = new DealerSocket(ctx);
         var node = new SpotNode(ctx);
-        var subscriber = new Spot(node);
+        var subscriber = node.CreateSpot();
         var state = new SpotClientSlotState(config.LatencySampleCap);
 
         try
@@ -293,46 +293,26 @@ internal static class PerfMultiSpotClient
         int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
         int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
         int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
-        int xpubNoDrop = options.SpotXpubNoDrop > 0 ? 1 : 0;
+        bool xpubNoDrop = options.SpotXpubNoDrop > 0;
 
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
-            SocketOptions.Linger, 0);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
-            SocketOptions.RcvHwm, rcvHwm);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
-            SocketOptions.RcvTimeo, rcvTimeo);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
-            SocketOptions.Linger, 0);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
-            SocketOptions.SndHwm, sndHwm);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
-            SocketOptions.XPubNoDrop, xpubNoDrop);
-    }
-
-    private static void TrySetSpotNodeSocketOption(SpotNode node,
-        SpotNodeSocketRole role, SocketOptionKey<int> option, int value)
-    {
-        try
-        {
-            node.SetOption(role, option, value);
-        }
-        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.InternalErrno))
-        {
-        }
+        TrySetSpotOption(() => node.SubscriberOptions.Linger = TimeSpan.Zero);
+        TrySetSpotOption(() => node.SubscriberOptions.ReceiveHighWaterMark = rcvHwm);
+        TrySetSpotOption(() => node.SubscriberOptions.ReceiveTimeout =
+            TimeSpan.FromMilliseconds(rcvTimeo));
+        TrySetSpotOption(() => node.PublisherOptions.Linger = TimeSpan.Zero);
+        TrySetSpotOption(() => node.PublisherOptions.SendHighWaterMark = sndHwm);
+        TrySetSpotOption(() => node.PublisherOptions.NoDrop = xpubNoDrop);
     }
 
     private static bool ShouldIgnoreSpotOptionError(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.ENotSup
-               || code == ErrorCode.EInval
-               || code == ErrorCode.EProtoNoSupport;
+        return errno == 22 || errno == 93 || errno == 95 || errno == 97;
     }
 
     private static void SendControlLine(DealerSocket control, string line)
     {
         byte[] payload = Encoding.ASCII.GetBytes(line);
-        control.SendBorrowedSingle(payload, 0);
+        PerfSocketIo.Send(control, payload, SendFlags.None);
     }
 
     private static bool TryRecvControl(DealerSocket control,
@@ -376,6 +356,17 @@ internal static class PerfMultiSpotClient
             return false;
         return int.TryParse(line.AsSpan(prefix.Length), out int parsed)
                && parsed == msgSize;
+    }
+
+    private static void TrySetSpotOption(Action configure)
+    {
+        try
+        {
+            configure();
+        }
+        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.InternalErrno))
+        {
+        }
     }
 
     private static void DisposeSlots(List<SpotClientSlot> slots)

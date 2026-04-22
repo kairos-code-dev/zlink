@@ -3,17 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Zlink;
 
-public sealed class PollManager : IDisposable
+public sealed class MonitorReadyPoller : IDisposable
 {
-    private PollEvents[] _monitorPollEvents = Array.Empty<PollEvents>();
-    private PollEvents[] _monitorRevents = Array.Empty<PollEvents>();
-    private PollEvents[] _socketRevents = Array.Empty<PollEvents>();
-    private Poller? _socketPoller;
-    private SocketBase[] _registeredSockets = Array.Empty<SocketBase>();
-    private PollEvents[] _registeredMasks = Array.Empty<PollEvents>();
-    private PollEvent[] _socketEvents = Array.Empty<PollEvent>();
+    private PollEvents[] _pollEvents = Array.Empty<PollEvents>();
+    private PollEvents[] _revents = Array.Empty<PollEvents>();
 
-    public int PollMonitors(List<Zlink.SocketMonitor> monitors, int[] activeIndices,
+    public int Poll(List<SocketMonitor> monitors, int[] activeIndices,
         int activeCount, long deadlineTicks, long nowTicks)
     {
         if (activeCount <= 0)
@@ -21,20 +16,20 @@ public sealed class PollManager : IDisposable
 
         long remainingMs = (deadlineTicks - nowTicks) * 1000L
             / Stopwatch.Frequency;
-        EnsureMonitorPollCapacity(activeCount);
+        EnsureCapacity(activeCount);
 
-        var pollMonitors = new List<Zlink.SocketMonitor>(activeCount);
+        var pollMonitors = new List<SocketMonitor>(activeCount);
         for (int i = 0; i < activeCount; i++)
         {
             pollMonitors.Add(monitors[activeIndices[i]]);
-            _monitorPollEvents[i] = PollEvents.PollIn;
-            _monitorRevents[i] = PollEvents.None;
+            _pollEvents[i] = PollEvents.PollIn;
+            _revents[i] = PollEvents.None;
         }
 
         try
         {
-            return ZlinkPoll.Poll(pollMonitors, _monitorPollEvents,
-                _monitorRevents.AsSpan(0, activeCount),
+            return ZlinkPoll.Poll(pollMonitors, _pollEvents,
+                _revents.AsSpan(0, activeCount),
                 (int)Math.Max(0, remainingMs));
         }
         catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
@@ -45,41 +40,61 @@ public sealed class PollManager : IDisposable
         }
     }
 
-    public int PollSockets(IReadOnlyList<SocketBase> sockets,
+    public void Dispose()
+    {
+    }
+
+    private void EnsureCapacity(int count)
+    {
+        if (_pollEvents.Length < count)
+            _pollEvents = new PollEvents[count];
+        if (_revents.Length < count)
+            _revents = new PollEvents[count];
+    }
+}
+
+public sealed class SocketReadyPoller : IDisposable
+{
+    private PollEvents[] _revents = Array.Empty<PollEvents>();
+    private Poller? _poller;
+    private SocketBase[] _registeredSockets = Array.Empty<SocketBase>();
+    private PollEvents[] _registeredMasks = Array.Empty<PollEvents>();
+    private PollEvent[] _events = Array.Empty<PollEvent>();
+
+    public int Poll(IReadOnlyList<SocketBase> sockets,
         IReadOnlyList<PollEvents> eventMasks, int timeoutMs)
     {
         int count = sockets.Count;
         if (count <= 0 || eventMasks.Count < count)
             return 0;
 
-        EnsureSocketPollCapacity(count);
-        Array.Clear(_socketRevents, 0, count);
-        EnsureSocketPollerState(sockets, eventMasks, count);
+        EnsureCapacity(count);
+        Array.Clear(_revents, 0, count);
+        EnsurePollerState(sockets, eventMasks, count);
 
         try
         {
-            if (_socketPoller == null || _socketPoller.Count == 0)
+            if (_poller == null || _poller.Count == 0)
                 return 0;
 
-            int written = _socketPoller.Wait(_socketEvents, timeoutMs,
-                out int totalReady);
+            int written = _poller.Wait(_events, timeoutMs, out int totalReady);
             if (written == 0 && totalReady == 0)
                 return 0;
 
             int ready = 0;
             for (int i = 0; i < written; i++)
             {
-                IZlinkSocket? socket = _socketEvents[i].Socket;
-                if (socket is not SocketBase socketBase)
+                if (_events[i].Socket is not SocketBase socket)
                     continue;
 
-                int index = FindRegisteredSocketIndex(socketBase, count);
+                int index = FindSocketIndex(socket, count);
                 if (index < 0)
                     continue;
 
-                _socketRevents[index] = _socketEvents[i].Revents;
+                _revents[index] = _events[i].Revents;
                 ready++;
             }
+
             return ready;
         }
         catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
@@ -90,69 +105,61 @@ public sealed class PollManager : IDisposable
         }
     }
 
-    public int PollSockets(IReadOnlyList<SocketBase> sockets,
-        PollEvents events, int timeoutMs)
+    public int Poll(IReadOnlyList<SocketBase> sockets, PollEvents events,
+        int timeoutMs)
     {
         int count = sockets.Count;
         if (count <= 0)
             return 0;
 
-        EnsureSocketPollCapacity(count);
+        EnsureCapacity(count);
         for (int i = 0; i < count; i++)
             _registeredMasks[i] = events;
-        return PollSockets(sockets, _registeredMasks.AsSpan(0, count).ToArray(),
+        return Poll(sockets, _registeredMasks.AsSpan(0, count).ToArray(),
             timeoutMs);
     }
 
-    public bool IsSocketReadReady(int index)
+    public bool IsReadReady(int index)
     {
-        return IsSocketReady(index, PollEvents.PollIn);
+        return IsReady(index, PollEvents.PollIn);
     }
 
-    public bool IsSocketWriteReady(int index)
+    public bool IsWriteReady(int index)
     {
-        return IsSocketReady(index, PollEvents.PollOut);
+        return IsReady(index, PollEvents.PollOut);
     }
 
     public void Dispose()
     {
-        _socketPoller?.Dispose();
-        _socketPoller = null;
+        _poller?.Dispose();
+        _poller = null;
     }
 
-    private bool IsSocketReady(int index, PollEvents events)
+    private bool IsReady(int index, PollEvents events)
     {
         return index >= 0
-            && index < _socketRevents.Length
-            && (_socketRevents[index] & events) != 0;
+            && index < _revents.Length
+            && (_revents[index] & events) != 0;
     }
 
-    private void EnsureMonitorPollCapacity(int count)
+    private void EnsureCapacity(int count)
     {
-        if (_monitorPollEvents.Length < count)
-            _monitorPollEvents = new PollEvents[count];
-        if (_monitorRevents.Length < count)
-            _monitorRevents = new PollEvents[count];
-    }
-
-    private void EnsureSocketPollCapacity(int count)
-    {
-        if (_socketRevents.Length < count)
-            _socketRevents = new PollEvents[count];
+        if (_revents.Length < count)
+            _revents = new PollEvents[count];
         if (_registeredSockets.Length < count)
             _registeredSockets = new SocketBase[count];
         if (_registeredMasks.Length < count)
             _registeredMasks = new PollEvents[count];
-        if (_socketEvents.Length < count)
-            _socketEvents = new PollEvent[count];
+        if (_events.Length < count)
+            _events = new PollEvent[count];
     }
 
-    private void EnsureSocketPollerState(IReadOnlyList<SocketBase> sockets,
+    private void EnsurePollerState(IReadOnlyList<SocketBase> sockets,
         IReadOnlyList<PollEvents> eventMasks, int count)
     {
-        if (_socketPoller == null || !HasSameSocketLayout(sockets, count))
+        if (_poller == null || !HasSameLayout(sockets, count))
         {
-            RebuildSocketPoller(sockets, eventMasks, count);
+            RebuildPoller(sockets, eventMasks, count);
             return;
         }
 
@@ -166,36 +173,37 @@ public sealed class PollManager : IDisposable
             if (previous == PollEvents.None)
             {
                 if (current != PollEvents.None)
-                    _socketPoller.Add(sockets[i], current);
+                    _poller.Add(sockets[i], current);
             }
             else if (current == PollEvents.None)
             {
-                _socketPoller.Remove(sockets[i]);
+                _poller.Remove(sockets[i]);
             }
             else
             {
-                _socketPoller.Modify(sockets[i], current);
+                _poller.Modify(sockets[i], current);
             }
 
             _registeredMasks[i] = current;
         }
     }
 
-    private bool HasSameSocketLayout(IReadOnlyList<SocketBase> sockets, int count)
+    private bool HasSameLayout(IReadOnlyList<SocketBase> sockets, int count)
     {
         for (int i = 0; i < count; i++)
         {
             if (!ReferenceEquals(_registeredSockets[i], sockets[i]))
                 return false;
         }
+
         return true;
     }
 
-    private void RebuildSocketPoller(IReadOnlyList<SocketBase> sockets,
+    private void RebuildPoller(IReadOnlyList<SocketBase> sockets,
         IReadOnlyList<PollEvents> eventMasks, int count)
     {
-        _socketPoller?.Dispose();
-        _socketPoller = new Poller();
+        _poller?.Dispose();
+        _poller = new Poller();
 
         for (int i = 0; i < count; i++)
         {
@@ -203,17 +211,59 @@ public sealed class PollManager : IDisposable
             PollEvents mask = eventMasks[i];
             _registeredMasks[i] = mask;
             if (mask != PollEvents.None)
-                _socketPoller.Add(sockets[i], mask);
+                _poller.Add(sockets[i], mask);
         }
     }
 
-    private int FindRegisteredSocketIndex(SocketBase socket, int count)
+    private int FindSocketIndex(SocketBase socket, int count)
     {
         for (int i = 0; i < count; i++)
         {
             if (ReferenceEquals(_registeredSockets[i], socket))
                 return i;
         }
+
         return -1;
+    }
+}
+
+public sealed class PollManager : IDisposable
+{
+    private readonly MonitorReadyPoller _monitorPoller = new();
+    private readonly SocketReadyPoller _socketPoller = new();
+
+    public int PollMonitors(List<SocketMonitor> monitors, int[] activeIndices,
+        int activeCount, long deadlineTicks, long nowTicks)
+    {
+        return _monitorPoller.Poll(monitors, activeIndices, activeCount,
+            deadlineTicks, nowTicks);
+    }
+
+    public int PollSockets(IReadOnlyList<SocketBase> sockets,
+        IReadOnlyList<PollEvents> eventMasks, int timeoutMs)
+    {
+        return _socketPoller.Poll(sockets, eventMasks, timeoutMs);
+    }
+
+    public int PollSockets(IReadOnlyList<SocketBase> sockets, PollEvents events,
+        int timeoutMs)
+    {
+        return _socketPoller.Poll(sockets, events, timeoutMs);
+    }
+
+    public bool IsSocketReadReady(int index)
+    {
+        return _socketPoller.IsReadReady(index);
+    }
+
+    public bool IsSocketWriteReady(int index)
+    {
+        return _socketPoller.IsWriteReady(index);
+    }
+
+    public void Dispose()
+    {
+        _socketPoller.Dispose();
+        _monitorPoller.Dispose();
     }
 }

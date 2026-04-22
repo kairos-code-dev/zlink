@@ -24,8 +24,7 @@ public static class PerfTls
                 : "TLS certificate files not found.");
         }
 
-        socket.SetOption(SocketOptions.TlsCert, certPath);
-        socket.SetOption(SocketOptions.TlsKey, keyPath);
+        socket.SetTlsServer(certPath, keyPath);
     }
 
     public static void ConfigureTlsClientIfNeeded(SocketBase socket,
@@ -41,9 +40,7 @@ public static class PerfTls
                 : "TLS CA file not found.");
         }
 
-        socket.SetOption(SocketOptions.TlsCa, caPath);
-        socket.SetOption(SocketOptions.TlsTrustSystem, 0);
-        socket.SetOption(SocketOptions.TlsHostname, "localhost");
+        socket.SetTlsClient(caPath, "localhost");
     }
 
     public static void ConfigureReceiverTlsServerIfNeeded(SocketBase receiver,

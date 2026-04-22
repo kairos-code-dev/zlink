@@ -123,6 +123,32 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
+    public void poller_clear_removes_registered_items()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        using var poller = new Poller();
+        string endpoint = CoreTestSupport.NewEndpoint("inproc", "pair-poller-clear");
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        poller.Add(receiver, PollEvents.PollIn);
+        Assert.Equal(1, poller.Count);
+
+        poller.Clear();
+
+        Assert.Equal(0, poller.Count);
+        var events = new List<PollEvent>();
+        Assert.Equal(0, poller.Wait(events, 0));
+        Assert.Empty(events);
+    }
+
+    [Fact]
     public void poller_modify_switches_socket_event_mask()
     {
         if (!CoreTestSupport.IsNativeAvailable())

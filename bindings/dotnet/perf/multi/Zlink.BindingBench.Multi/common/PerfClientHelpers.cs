@@ -144,7 +144,9 @@ internal static partial class PerfRunner
         {
             try
             {
-                MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
+                MonitorEvent? evt = monitor.Recv(true);
+                if (evt == null)
+                    return readyCount;
                 if (IsMonitorReady(evt.Event))
                     readyCount++;
             }
@@ -170,7 +172,7 @@ internal static partial class PerfRunner
             try
             {
                 _ = SendBlocking(activeClients[i], MultiStopToken.AsSpan(),
-                    PerfSendFlags.None);
+                    SendFlags.None);
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))

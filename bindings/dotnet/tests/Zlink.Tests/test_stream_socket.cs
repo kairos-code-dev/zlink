@@ -1032,8 +1032,7 @@ public sealed class test_stream_socket
 
         using var ctx = new Context();
         using var stream = new StreamSocket(ctx);
-        stream.SetOption(SocketOptions.TlsCert, cert);
-        stream.SetOption(SocketOptions.TlsKey, key);
+        stream.SetTlsServer(cert, key);
         string endpoint = CoreTestSupport.NewEndpoint("wss", "stream-wss");
         stream.Bind(endpoint);
     }

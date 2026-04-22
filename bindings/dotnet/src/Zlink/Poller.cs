@@ -171,6 +171,10 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         _handle = NativeMethods.zlink_poller_new();
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        _items.Clear();
+        _itemsByUserData.Clear();
+        _nativeEvents = Array.Empty<ZlinkPollerEvent>();
+        _nextUserData = 1;
     }
 
     public void Close()

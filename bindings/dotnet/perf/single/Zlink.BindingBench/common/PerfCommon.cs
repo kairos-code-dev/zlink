@@ -16,7 +16,7 @@ internal static partial class PerfRunner
     internal static bool WaitForConnectionReady(MonitorSocket monitor,
         int timeoutMs)
     {
-        using var pollManager = new PollManager();
+        using var readyPoller = new MonitorReadyPoller();
         var monitors = new System.Collections.Generic.List<MonitorSocket>
         {
             monitor,
@@ -33,7 +33,9 @@ internal static partial class PerfRunner
             {
                 while (true)
                 {
-                    MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
+                    MonitorEvent? evt = monitor.Recv(true);
+                    if (evt == null)
+                        break;
                     if (evt.Event == MonitorEventType.ConnectionReady)
                         return true;
                 }
@@ -43,7 +45,7 @@ internal static partial class PerfRunner
             {
             }
 
-            int ready = pollManager.PollMonitors(monitors, activeIndices, 1,
+            int ready = readyPoller.Poll(monitors, activeIndices, 1,
                 deadlineTicks, nowTicks);
             if (ready < 0)
                 return false;
@@ -119,81 +121,18 @@ internal static partial class PerfRunner
         return ResolveSingleConnectReadyTimeoutMs();
     }
 
-    internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
-        ReceiveFlags flags = ReceiveFlags.None)
-    {
-        while (true)
-        {
-            try
-            {
-                return socket.Receive(buffer, flags);
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-            {
-                continue;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            && (flags & ReceiveFlags.DontWait) != 0)
-            {
-                return 0;
-            }
-        }
-    }
-
-    internal static int ReceiveBlocking(SocketBase socket, byte[] buffer,
-        ReceiveFlags flags = ReceiveFlags.None)
-    {
-        if (buffer == null)
-            throw new ArgumentNullException(nameof(buffer));
-        return ReceiveBlocking(socket, buffer.AsSpan(), flags);
-    }
-
-    internal static int TryReceiveNonBlocking(SocketBase socket, Span<byte> buffer)
-    {
-        while (true)
-        {
-            try
-            {
-                return socket.Receive(buffer, ReceiveFlags.DontWait);
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-            {
-                continue;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
-            {
-                return 0;
-            }
-        }
-    }
-
-    internal static int DrainRemainingFramesNonBlocking(SocketBase socket)
-    {
-        int drained = 0;
-        Span<byte> discard = stackalloc byte[256];
-        while (socket.GetOption(SocketOptions.RcvMore) != 0)
-        {
-            int n = TryReceiveNonBlocking(socket, discard);
-            if (n <= 0)
-                break;
-            drained += n;
-        }
-
-        return drained;
-    }
-
     internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
-        PerfSendFlags flags = PerfSendFlags.None)
+        SendFlags flags = SendFlags.None)
     {
-        return socket.Send(buffer, flags);
+        return PerfSocketIo.Send(socket, buffer, flags);
     }
 
     internal static int SendBlocking(SocketBase socket, byte[] buffer,
-        PerfSendFlags flags = PerfSendFlags.None)
+        SendFlags flags = SendFlags.None)
     {
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));
-        return socket.Send(buffer, flags);
+        return PerfSocketIo.Send(socket, buffer, flags);
     }
 
     internal static bool WaitForInput(Poller poller, Span<PollEvent> events,
@@ -228,11 +167,11 @@ internal static partial class PerfRunner
     {
         int ioThreads = PerfEnv.ReadNonNegative("PERF_IO_THREADS", 0);
         if (ioThreads > 0)
-            ctx.SetOption(ContextOption.IoThreads, ioThreads);
+            ctx.Options.IoThreads = ioThreads;
 
         int maxSockets = ResolveSingleMaxSockets();
         if (maxSockets > 0)
-            ctx.SetOption(ContextOption.MaxSockets, maxSockets);
+            ctx.Options.MaxSockets = maxSockets;
     }
 
     internal static void ApplySingleSocketOptions(SocketBase socket)
@@ -243,11 +182,11 @@ internal static partial class PerfRunner
         int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
         int rcvTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
 
-        socket.SetOption(SocketOptions.Linger, 0);
-        socket.SetOption(SocketOptions.SndHwm, sndHwm);
-        socket.SetOption(SocketOptions.RcvHwm, rcvHwm);
-        socket.SetOption(SocketOptions.SndTimeo, sndTimeo);
-        socket.SetOption(SocketOptions.RcvTimeo, rcvTimeo);
+        socket.Options.Linger = TimeSpan.Zero;
+        socket.Options.SendHighWaterMark = sndHwm;
+        socket.Options.ReceiveHighWaterMark = rcvHwm;
+        socket.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
+        socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
     }
 
 }

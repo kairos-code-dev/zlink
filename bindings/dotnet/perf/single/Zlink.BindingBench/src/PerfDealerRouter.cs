@@ -132,7 +132,7 @@ internal static class PerfDealerRouter
 
         try
         {
-            sender.SendBorrowedSingle(probe, 0);
+            PerfSocketIo.Send(sender, probe, SendFlags.None);
         }
         catch (ZlinkRecvException ex)
         {
@@ -267,7 +267,7 @@ internal static class PerfDealerRouter
             seq++;
             try
             {
-                sender.SendBorrowedSingle(payload, 0);
+                PerfSocketIo.Send(sender, payload, SendFlags.None);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
@@ -337,22 +337,16 @@ internal static class PerfDealerRouter
 
     private static bool IsInterrupted(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EIntr || errno == 4;
+        return PerfShared.IsInterrupted(errno);
     }
 
     private static bool IsWouldBlock(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EAgain || errno == 11;
+        return PerfShared.IsWouldBlock(errno);
     }
 
     private static bool IsTransientNetworkError(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EHostUnreach
-            || code == ErrorCode.ENetUnreach
-            || code == ErrorCode.ENotConn
-            || code == ErrorCode.EConnRefused;
+        return PerfShared.IsTransientNetworkError(errno);
     }
 }

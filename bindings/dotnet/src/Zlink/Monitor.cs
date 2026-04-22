@@ -9,6 +9,8 @@ namespace Zlink;
 
 public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
+    private static readonly NativeMethods.ZlinkMonitorHandlerDelegate NativeIgnore =
+        NativeMethods.zlink_monitor_ignore_handler;
     public static readonly Action<MonitorEvent> IgnoreHandler = static _ => { };
 
     private IntPtr _handle;
@@ -31,9 +33,10 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(handler));
         EnsureNotDisposed();
 
-        _handler = handler;
-        _handlerContext = SynchronizationContext.Current;
-        _handlerDelegate = OnNativeEvent;
+        bool useNativeIgnore = ReferenceEquals(handler, IgnoreHandler);
+        _handler = useNativeIgnore ? null : handler;
+        _handlerContext = useNativeIgnore ? null : SynchronizationContext.Current;
+        _handlerDelegate = useNativeIgnore ? NativeIgnore : OnNativeEvent;
         int rc = NativeMethods.zlink_socket_monitor_handler(_handle,
             _handlerDelegate, IntPtr.Zero);
         if (rc != 0)

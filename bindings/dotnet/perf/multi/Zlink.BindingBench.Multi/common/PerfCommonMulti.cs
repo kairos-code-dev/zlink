@@ -75,7 +75,7 @@ internal static partial class PerfRunner
         if (readyCount >= expectedReady)
             return true;
 
-        using var pollManager = new PollManager();
+        using var readyPoller = new MonitorReadyPoller();
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (true)
         {
@@ -83,7 +83,7 @@ internal static partial class PerfRunner
             if (nowTicks >= deadlineTicks)
                 return false;
 
-            int rc = PollMonitorHandles(pollManager,
+            int rc = readyPoller.Poll(
                 new System.Collections.Generic.List<MonitorSocket> { monitor },
                 new[] { 0 }, 1, deadlineTicks, nowTicks);
             if (rc < 0)
@@ -118,10 +118,10 @@ internal static partial class PerfRunner
         PerfOptions options)
     {
         if (options.IoThreads > 0)
-            ctx.SetOption(ContextOption.IoThreads, options.IoThreads);
+            ctx.Options.IoThreads = options.IoThreads;
 
         if (options.MaxSockets > 0)
-            ctx.SetOption(ContextOption.MaxSockets, options.MaxSockets);
+            ctx.Options.MaxSockets = options.MaxSockets;
     }
 
     internal static void ApplyMultiClientContextOptions(Context ctx,
@@ -138,11 +138,11 @@ internal static partial class PerfRunner
         int sndTimeo = ResolveMultiSndTimeoutMs(options);
         int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
 
-        socket.SetOption(SocketOptions.Linger, 0);
-        socket.SetOption(SocketOptions.SndHwm, sndHwm);
-        socket.SetOption(SocketOptions.RcvHwm, rcvHwm);
-        socket.SetOption(SocketOptions.SndTimeo, sndTimeo);
-        socket.SetOption(SocketOptions.RcvTimeo, rcvTimeo);
+        socket.Options.Linger = TimeSpan.Zero;
+        socket.Options.SendHighWaterMark = sndHwm;
+        socket.Options.ReceiveHighWaterMark = rcvHwm;
+        socket.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
+        socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
     }
 
     internal static int ResolveMultiLatencySampleCap(PerfOptions options)

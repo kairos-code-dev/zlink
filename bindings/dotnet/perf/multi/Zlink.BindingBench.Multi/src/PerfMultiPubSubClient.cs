@@ -32,9 +32,9 @@ internal static class PerfMultiPubSubClient
                 var client = new SubSocket(ctx);
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
-                client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
-                client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
-                client.SetOption(SocketOptions.Subscribe, string.Empty);
+                client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
+                client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
+                client.SetSubscription(string.Empty);
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
                 clients.Add(client);

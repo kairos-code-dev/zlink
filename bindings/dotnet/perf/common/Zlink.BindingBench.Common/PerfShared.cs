@@ -11,6 +11,9 @@ public static class PerfShared
 {
     public const int ErrnoEintr = 4;
     public const int ErrnoEagain = 11;
+    public const int ErrnoEintrWin = 10004;
+    public const int ErrnoEagainAlt = 35;
+    public const int ErrnoEagainWin = 10035;
     public const uint PerfMetricMagic = 0x5A4C_4E4Bu;
     public const int PerfMetricHeaderSize = 29;
     private static int _nextPort = InitializePortSeed();
@@ -184,14 +187,28 @@ public static class PerfShared
 
     public static bool IsWouldBlock(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EAgain || errno == ErrnoEagain;
+        return errno == ErrnoEagain
+            || errno == ErrnoEagainAlt
+            || errno == ErrnoEagainWin;
     }
 
     public static bool IsInterrupted(int errno)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EIntr || errno == ErrnoEintr;
+        return errno == ErrnoEintr || errno == ErrnoEintrWin;
+    }
+
+    public static bool IsTransientNetworkError(int errno)
+    {
+        return errno == 51
+            || errno == 57
+            || errno == 61
+            || errno == 65
+            || errno == 111
+            || errno == 113
+            || errno == 10051
+            || errno == 10057
+            || errno == 10061
+            || errno == 10065;
     }
 
     public static void TryDisposeQuietly(IDisposable? disposable)

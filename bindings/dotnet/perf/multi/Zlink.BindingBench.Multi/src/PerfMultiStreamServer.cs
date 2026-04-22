@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using Zlink;
 using static PerfRunner;
@@ -8,7 +7,6 @@ using static PerfRunner;
 internal static class PerfMultiStreamServer
 {
     private const string Pattern = "STREAM";
-    private const int StreamRoutingIdBytes = 255;
 
     private enum SendStatus
     {
@@ -37,9 +35,9 @@ internal static class PerfMultiStreamServer
         using var server = new StreamSocket(ctx);
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
-        server.SetOption(SocketOptions.SndTimeo, ioTimeoutMs);
-        server.SetOption(SocketOptions.RcvTimeo, ioTimeoutMs);
-        server.SetOption(SocketOptions.TcpNoDelay, 1);
+        server.Options.SendTimeout = TimeSpan.FromMilliseconds(ioTimeoutMs);
+        server.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(ioTimeoutMs);
+        server.Options.TcpNoDelay = true;
         server.Bind(endpoint);
         WriteStdoutLine($"READY,{endpoint}");
 
@@ -176,30 +174,19 @@ internal static class PerfMultiStreamServer
     private static SendStatus TrySendPendingMessage(SocketBase server,
         PendingStreamMessage message)
     {
-        while (message.Stage != StreamSendStage.None)
+        while (message.Pending)
         {
             try
             {
-                if (message.Stage == StreamSendStage.RoutingId)
-                {
-                    int rc = server.Send(message.RoutingId.AsSpan(0,
-                            message.RoutingIdLength),
-                        PerfSendFlags.SendMore | PerfSendFlags.DontWait);
-                    if (rc <= 0)
-                        return SendStatus.Fatal;
-                    message.Stage = StreamSendStage.Payload;
-                    continue;
-                }
-
                 if (message.Payload == null)
                     return SendStatus.Fatal;
 
-                int sent = server.Send(message.Payload.AsReadOnlySpan(),
-                    PerfSendFlags.DontWait);
-                if (sent < 0)
-                    return SendStatus.Fatal;
-                message.Clear();
-                return SendStatus.Done;
+                if (((StreamSocket)server).Send(message.RoutingId,
+                        message.Payload, SendFlags.DontWait))
+                {
+                    message.Clear();
+                    return SendStatus.Done;
+                }
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))
@@ -211,41 +198,23 @@ internal static class PerfMultiStreamServer
         return SendStatus.Done;
     }
 
-    private enum StreamSendStage
-    {
-        None = 0,
-        RoutingId = 1,
-        Payload = 2,
-    }
-
     private sealed class PendingStreamMessage
     {
-        internal PendingStreamMessage()
-        {
-            RoutingId = new byte[StreamRoutingIdBytes];
-        }
-
-        internal byte[] RoutingId { get; }
-        internal int RoutingIdLength { get; private set; }
+        internal string RoutingId { get; private set; } = string.Empty;
         internal Message? Payload { get; private set; }
-        internal StreamSendStage Stage { get; set; }
+        internal bool Pending => Payload != null;
 
         internal void Assign(string routingId, Message payload)
         {
-            byte[] routingIdBytes = Encoding.UTF8.GetBytes(routingId);
-            int length = Math.Min(routingIdBytes.Length, RoutingId.Length);
-            routingIdBytes.AsSpan(0, length).CopyTo(RoutingId);
-            RoutingIdLength = length;
+            RoutingId = routingId;
             Payload = payload;
-            Stage = StreamSendStage.RoutingId;
         }
 
         internal void Clear()
         {
             Payload?.Dispose();
             Payload = null;
-            RoutingIdLength = 0;
-            Stage = StreamSendStage.None;
+            RoutingId = string.Empty;
         }
     }
 

@@ -24,7 +24,7 @@ internal static class PerfMultiRouterRouterServer
         server.RouterOptions.RoutingId = RoutingId.FromBytes("SERVER"u8);
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
-        server.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
+        server.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
         server.Bind(endpoint);
         WriteStdoutLine($"READY,{endpoint}");
 
@@ -91,18 +91,11 @@ internal static class PerfMultiRouterRouterServer
         var pending = new PendingReply(routingId, reply.Move());
         if (pendingReplies.Count == 0)
         {
-            SendResult sendResult = server.SendNoWaitResult(pending.RoutingId,
-                pending.Message);
-            if (sendResult == SendResult.Sent)
+            if (server.Send(pending.RoutingId, pending.Message,
+                    SendFlags.DontWait))
             {
                 pending.Dispose();
                 return true;
-            }
-
-            if (sendResult != SendResult.Backpressured)
-            {
-                pending.Dispose();
-                return false;
             }
         }
 
@@ -116,16 +109,15 @@ internal static class PerfMultiRouterRouterServer
         while (pendingReplies.Count > 0)
         {
             PendingReply pending = pendingReplies.Peek();
-            SendResult sendResult = server.SendNoWaitResult(pending.RoutingId,
-                pending.Message);
-            if (sendResult == SendResult.Sent)
+            if (server.Send(pending.RoutingId, pending.Message,
+                    SendFlags.DontWait))
             {
                 pendingReplies.Dequeue();
                 pending.Dispose();
                 continue;
             }
 
-            return sendResult == SendResult.Backpressured;
+            return true;
         }
 
         return true;

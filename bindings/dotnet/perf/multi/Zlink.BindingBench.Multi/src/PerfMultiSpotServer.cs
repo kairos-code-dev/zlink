@@ -22,7 +22,7 @@ internal static class PerfMultiSpotServer
         using var channelDealer = new DealerSocket(ctx);
         using var nodePub = new SpotNode(ctx);
         nodePub.AttachChannelDealerManual(ServiceName, channelDealer);
-        using var spotPub = new Spot(nodePub);
+        using var spotPub = nodePub.CreateSpot();
 
         ApplyMultiSocketOptions(control, options);
         ConfigureTlsServerIfNeeded(control, config.Transport);
@@ -63,22 +63,17 @@ internal static class PerfMultiSpotServer
         int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
         int sndTimeo = ResolveMultiSndTimeoutMs(options);
         int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
-        int xpubNoDrop = options.SpotXpubNoDrop > 0 ? 1 : 0;
+        bool xpubNoDrop = options.SpotXpubNoDrop > 0;
 
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
-            SocketOptions.Linger, 0);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
-            SocketOptions.SndHwm, sndHwm);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
-            SocketOptions.SndTimeo, sndTimeo);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
-            SocketOptions.XPubNoDrop, xpubNoDrop);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
-            SocketOptions.Linger, 0);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
-            SocketOptions.RcvHwm, rcvHwm);
-        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
-            SocketOptions.RcvTimeo, rcvTimeo);
+        TrySetSpotOption(() => node.PublisherOptions.Linger = TimeSpan.Zero);
+        TrySetSpotOption(() => node.PublisherOptions.SendHighWaterMark = sndHwm);
+        TrySetSpotOption(() => node.PublisherOptions.SendTimeout =
+            TimeSpan.FromMilliseconds(sndTimeo));
+        TrySetSpotOption(() => node.PublisherOptions.NoDrop = xpubNoDrop);
+        TrySetSpotOption(() => node.SubscriberOptions.Linger = TimeSpan.Zero);
+        TrySetSpotOption(() => node.SubscriberOptions.ReceiveHighWaterMark = rcvHwm);
+        TrySetSpotOption(() => node.SubscriberOptions.ReceiveTimeout =
+            TimeSpan.FromMilliseconds(rcvTimeo));
     }
 
     private static bool WaitForReadyCounts(RouterSocket control,
@@ -137,7 +132,7 @@ internal static class PerfMultiSpotServer
         byte[] payload = Encoding.ASCII.GetBytes($"START,{msgSize}");
         for (int i = 0; i < peers.Count; i++)
         {
-            control.SendBorrowedSingle(peers[i], payload, 0);
+            PerfSocketIo.Send(control, peers[i], payload, SendFlags.None);
         }
     }
 
@@ -155,8 +150,9 @@ internal static class PerfMultiSpotServer
                 config.Size, seq++, EpochNs());
             try
             {
-                if (spotPub.PublishBorrowedSingleNoWait(ServiceName, Topic,
-                        payload) != SendResult.Sent)
+                using Message message = Message.FromBytes(payload);
+                if (!spotPub.Publish(ServiceName, Topic, message,
+                        SendFlags.DontWait))
                 {
                     continue;
                 }
@@ -231,24 +227,20 @@ internal static class PerfMultiSpotServer
         return true;
     }
 
-    private static void TrySetSpotNodeSocketOption(SpotNode node,
-        SpotNodeSocketRole role, SocketOptionKey<int> option, int value)
+    private static bool ShouldIgnoreSpotOptionError(int errno)
+    {
+        return errno == 22 || errno == 93 || errno == 95 || errno == 97;
+    }
+
+    private static void TrySetSpotOption(Action configure)
     {
         try
         {
-            node.SetOption(role, option, value);
+            configure();
         }
         catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.InternalErrno))
         {
         }
-    }
-
-    private static bool ShouldIgnoreSpotOptionError(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.ENotSup
-               || code == ErrorCode.EInval
-               || code == ErrorCode.EProtoNoSupport;
     }
 
     private readonly struct SpotServerConfig

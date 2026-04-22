@@ -156,7 +156,7 @@ internal static class PerfPair
             seq++;
             try
             {
-                SendBlocking(sender, payload, PerfSendFlags.None);
+                SendBlocking(sender, payload, SendFlags.None);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {

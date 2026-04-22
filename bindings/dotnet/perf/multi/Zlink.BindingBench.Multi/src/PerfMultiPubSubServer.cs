@@ -22,9 +22,8 @@ internal static class PerfMultiPubSubServer
         using var server = new PubSocket(ctx);
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
-        server.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
-        server.SetOption(SocketOptions.XPubNoDrop,
-            options.PubSubXpubNoDrop > 0 ? 1 : 0);
+        server.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
+        server.PubOptions.NoDrop = options.PubSubXpubNoDrop > 0;
 
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
@@ -59,8 +58,8 @@ internal static class PerfMultiPubSubServer
     {
         try
         {
-            return server.PublishRawSingleNoWait(string.Empty, payload)
-                == SendResult.Sent;
+            using Message message = Message.FromBytes(payload);
+            return server.Publish(string.Empty, message, SendFlags.DontWait);
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))

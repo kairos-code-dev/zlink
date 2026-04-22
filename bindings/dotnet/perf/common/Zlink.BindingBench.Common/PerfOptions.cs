@@ -149,12 +149,6 @@ public sealed record PerfOptions(
             PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1));
     }
 
-    public static PerfOptions FromMultiPattern(string pattern)
-    {
-        return CreateMulti(PerfExecutionKind.MultiServer, pattern,
-            string.Empty, 1, string.Empty, "recv");
-    }
-
     public int ResolveSingleHwm(string specificName)
     {
         int specific = PerfEnv.ReadPositive(specificName, 0);

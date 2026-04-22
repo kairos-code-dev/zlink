@@ -100,6 +100,34 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
+    public void SetTlsServer(string certPath, string keyPath,
+        bool requireClientCert = false)
+    {
+        if (certPath == null)
+            throw new ArgumentNullException(nameof(certPath));
+        if (keyPath == null)
+            throw new ArgumentNullException(nameof(keyPath));
+
+        int rc = NativeMethods.zlink_set_tls_server(Handle, certPath, keyPath,
+            requireClientCert ? 1 : 0);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+    }
+
+    public void SetTlsClient(string caCertPath, string hostname,
+        bool trustSystem = false)
+    {
+        if (caCertPath == null)
+            throw new ArgumentNullException(nameof(caCertPath));
+        if (hostname == null)
+            throw new ArgumentNullException(nameof(hostname));
+
+        int rc = NativeMethods.zlink_set_tls_client(Handle, caCertPath, hostname,
+            trustSystem ? 1 : 0);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+    }
+
     public void Close()
     {
         Dispose();

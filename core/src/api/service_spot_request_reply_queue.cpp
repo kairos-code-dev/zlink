@@ -5,37 +5,21 @@
 #include <algorithm>
 
 #include "api/request_reply_protocol_internal.hpp"
-#include "api/service_api_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
-#include "core/ctx.hpp"
+#include "api/service_spot_request_reply_utils_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
-#include "services/spot/spot_node_access.hpp"
 
 namespace
 {
 using zlink::spot_reqrep_internal::g_spot_recv_source_rid;
 using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
+using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::maybe_dispatch_spot_info;
 using zlink::spot_reqrep_internal::queued_spot_subscribe_message_t;
+using zlink::spot_reqrep_internal::resolve_spot_ctx;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_subscribe_dispatch_queue_t;
-
-zlink::ctx_t *resolve_spot_ctx (void *spot_)
-{
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot || !spot->node) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return zlink::spot_node_access_t::ctx (spot->node);
-}
-
-bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
-{
-    return peer_rid_ && peer_rid_->size > 0
-           && peer_rid_->size <= sizeof (peer_rid_->data);
-}
 
 int copy_topic_to_output_local (const char *topic_data_,
                                 size_t topic_size_,

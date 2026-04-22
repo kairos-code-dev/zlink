@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#include "api/service_api_internal.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 extern "C" int zlink_service_publish_internal (void *subject_,
                                                const char *topic_id_,

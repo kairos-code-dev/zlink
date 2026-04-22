@@ -969,6 +969,7 @@ set(api-sources
     src/api/service_spot_dispatch_context.cpp
     src/api/request_timeout_scheduler_internal.cpp
     src/api/service_spot_request_reply_internal.cpp
+    src/api/service_spot_request_reply_utils.cpp
     src/api/service_spot_request_reply_registry.cpp
     src/api/service_spot_request_reply_pending.cpp
     src/api/service_spot_request_reply_queue.cpp

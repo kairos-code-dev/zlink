@@ -6,7 +6,7 @@
 
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/part_helper_internal.hpp"
-#include "api/service_api_internal.hpp"
+#include "api/service_mode_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "api/handler_result_internal.hpp"

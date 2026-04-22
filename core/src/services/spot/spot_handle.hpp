@@ -6,12 +6,13 @@
 #include "utils/err.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_mode_state.hpp"
-#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_defaults.hpp"
 
 #include <memory>
 
 namespace zlink
 {
+class spot_node_t;
 class spot_pub_t;
 class spot_sub_t;
 }
@@ -37,8 +38,8 @@ struct spot_handle_t
     zlink::spot_sub_t *sub;
     zlink_subscribe_handler_fn handler;
     void *handler_userdata;
-    zlink::spot_node_t::pub_defaults_t pending_pub_defaults;
-    zlink::spot_node_t::sub_defaults_t pending_sub_defaults;
+    zlink::spot_node_pub_defaults_t pending_pub_defaults;
+    zlink::spot_node_sub_defaults_t pending_sub_defaults;
     zlink::service_mode_state_t mode_state;
     std::shared_ptr<void> request_reply_state;
 };

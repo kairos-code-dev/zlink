@@ -3,9 +3,12 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
-#include "api/service_api_internal.hpp"
+#include "api/service_handle_internal.hpp"
+#include "api/service_mode_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/timer_api_internal.hpp"
+
+#include "services/spot/spot_subject_access.hpp"
 
 int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
 {

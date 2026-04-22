@@ -5,6 +5,7 @@
 #include "services/spot/spot_subject_access.hpp"
 
 #include <string.h>
+#include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
 

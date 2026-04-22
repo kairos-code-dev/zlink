@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "api/service_api_internal.hpp"
+#include "api/service_mode_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
 #include "core/msg.hpp"

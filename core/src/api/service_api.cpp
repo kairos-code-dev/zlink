@@ -9,6 +9,7 @@
 #include "services/discovery/discovery_access.hpp"
 #include "services/discovery/registry_access.hpp"
 #include "services/spot/spot_dispatch_internal.hpp"
+#include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
 

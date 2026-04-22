@@ -102,6 +102,8 @@ class socket_base_t : public own_t,
     int attach_discovery (discovery_t *discovery_);
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
+    int service_attachment_connect (const char *endpoint_uri_);
+    int service_attachment_term_endpoint (const char *endpoint_uri_);
     int send (zlink::msg_t *msg_, int flags_);
     // Internal helper for logical multipart wrappers that already hold the
     // public send scope for the whole transaction.
@@ -253,6 +255,9 @@ class socket_base_t : public own_t,
     int monitor_snapshot (zlink_monitor_snapshot_t *out_);
     bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
+    void socket_bound_endpoints (std::set<std::string> *out_) const;
+    bool socket_has_attached_pipes () const;
+    bool socket_has_manual_connect_endpoints () const;
     int set_admission_state (zlink_admission_state_t state_);
     int get_admission_state (zlink_admission_state_t *state_out_) const;
     zlink_admission_state_t local_admission_state () const;
@@ -392,7 +397,6 @@ class socket_base_t : public own_t,
     bool has_attached_pipes () const;
 
   private:
-    friend class socket_discovery_attachment_t;
     friend int logical_multipart_send (socket_base_t *socket_,
                                        zlink_msg_t *parts_,
                                        size_t part_count_,

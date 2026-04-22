@@ -2,8 +2,9 @@
 
 #include "utils/precompiled.hpp"
 
-#include "api/service_api_internal.hpp"
 #include "api/config_result_internal.hpp"
+#include "api/service_handle_internal.hpp"
+#include "api/service_surface_internal.hpp"
 #include "api/zlink_option_internal.hpp"
 
 #include "core/msg.hpp"

@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-#include "api/service_api_internal.hpp"
+#include "api/service_surface_internal.hpp"
 #include "api/timer_api_internal.hpp"
 
 timer_handle_t::timer_handle_t (backend_kind_t backend_,

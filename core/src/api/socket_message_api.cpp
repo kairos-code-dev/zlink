@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#include "api/service_api_internal.hpp"
+#include "api/service_mode_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
 #include "api/part_helper_internal.hpp"

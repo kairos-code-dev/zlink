@@ -5,7 +5,7 @@
 #include "utils/err.hpp"
 #include "api/handler_result_internal.hpp"
 #include "api/monitor_api_internal.hpp"
-#include "api/service_api_internal.hpp"
+#include "api/service_handle_internal.hpp"
 
 #include "api/socket_api_internal.hpp"
 #include "services/discovery/discovery_access.hpp"

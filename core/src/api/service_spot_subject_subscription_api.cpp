@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#include "api/service_api_internal.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 int zlink_spot_subject_get_sub_option_internal (void *handle_,
                                                 zlink_sub_option_t option_,

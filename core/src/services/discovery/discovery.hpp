@@ -7,6 +7,7 @@
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
 #include "services/common/service_monitor.hpp"
+#include "services/discovery/discovery_observer.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
@@ -27,21 +28,6 @@ struct discovery_access_t;
 enum discovery_socket_role_t
 {
     discovery_socket_sub = 1
-};
-
-class discovery_observer_t
-{
-  public:
-    virtual ~discovery_observer_t () {}
-    virtual void on_service_update (const std::string &service_name_) = 0;
-    virtual void on_discovery_shutdown_requested (discovery_t *discovery_)
-    {
-        (void) discovery_;
-    }
-    virtual void on_discovery_destroyed (discovery_t *discovery_)
-    {
-        (void) discovery_;
-    }
 };
 
 class discovery_t

@@ -9,6 +9,7 @@
 
 #include "services/spot/spot_dispatch_internal.hpp"
 #include "services/spot/spot_internal_receiver.hpp"
+#include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"

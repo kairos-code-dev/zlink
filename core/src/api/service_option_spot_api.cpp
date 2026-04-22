@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
-#include "api/service_api_internal.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 int zlink_service_spot_set_common_option_internal (void *handle_,
                                                    zlink_option_t option_,

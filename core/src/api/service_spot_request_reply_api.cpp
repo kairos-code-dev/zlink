@@ -15,6 +15,7 @@
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_dispatch_context_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
+#include "api/service_spot_request_reply_utils_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
@@ -23,14 +24,13 @@
 #include "api/handler_result_internal.hpp"
 #include "api/recv_result_internal.hpp"
 #include "core/multipart_send_txn.hpp"
-#include "core/ctx.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
-#include "services/spot/spot_pub.hpp"
 #include "utils/random.hpp"
 
 namespace
@@ -42,6 +42,7 @@ using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
 using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
 using zlink::spot_reqrep_internal::g_spot_state_identity_index;
 using zlink::spot_reqrep_internal::g_router_state_identity_index;
+using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::init_buffer_frame;
 using zlink::spot_reqrep_internal::make_spot_identity_key;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
@@ -49,6 +50,10 @@ using zlink::spot_reqrep_internal::pending_reply_t;
 using zlink::spot_reqrep_internal::pending_spot_key_t;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::router_state_identity_index_t;
+using zlink::spot_reqrep_internal::resolve_spot_ctx;
+using zlink::spot_reqrep_internal::resolve_spot_identity;
+using zlink::spot_reqrep_internal::routing_id_key;
+using zlink::spot_reqrep_internal::routing_pair_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_state_identity_index_t;
 using zlink::spot_reqrep_internal::bind_router_state_rid;
@@ -91,12 +96,6 @@ enum : uint8_t
 
 const size_t spot_routed_control_part_count = 8;
 
-struct routing_pair_t
-{
-    std::string node_rid;
-    std::string spot_rid;
-};
-
 struct channel_reply_bridge_ctx_t
 {
     std::weak_ptr<spot_request_reply_state_t> state;
@@ -129,32 +128,6 @@ int validate_request_send_flags (zlink_send_flags_t flags_)
         return -1;
     }
     return 0;
-}
-
-zlink::ctx_t *resolve_spot_ctx (void *spot_)
-{
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot || !spot->node) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return zlink::spot_node_access_t::ctx (spot->node);
-}
-
-zlink::spot_runtime_t *resolve_spot_runtime (void *spot_)
-{
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot || !spot->node) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return zlink::spot_node_access_t::runtime (spot->node);
-}
-
-bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
-{
-    return peer_rid_ && peer_rid_->size > 0
-           && peer_rid_->size <= sizeof (peer_rid_->data);
 }
 
 int request_result_to_errno (zlink_request_result_t result_)
@@ -301,15 +274,6 @@ int dispatch_router_spot_message (router_spot_request_reply_state_t *state_,
     return 0;
 }
 
-std::string routing_id_key (const zlink_routing_id_t *peer_rid_)
-{
-    if (!has_valid_routing_id (peer_rid_))
-        return std::string ();
-
-    return std::string (reinterpret_cast<const char *> (peer_rid_->data),
-                        peer_rid_->size);
-}
-
 void routing_id_from_string (const std::string &value_, zlink_routing_id_t *out_)
 {
     if (!out_)
@@ -410,42 +374,6 @@ int dispatch_router_spot_delivery (
     if (rc != 0 && !local_target)
         rc = dispatch_local_router_spot_delivery (kind_, combined_);
     return rc;
-}
-
-bool resolve_spot_identity (void *spot_, routing_pair_t *out_)
-{
-    if (!out_) {
-        errno = EFAULT;
-        return false;
-    }
-
-    if (spot_handle_t *spot = as_spot_handle (spot_)) {
-        zlink::service_public_api_scope_t admission (spot->public_api);
-        if (!admission.acquired ())
-            return false;
-
-        zlink::spot_pub_t *spot_pub = ensure_spot_pub (spot);
-        zlink::spot_pub_t *node_pub =
-          spot->node ? spot->node->ensure_default_pub () : NULL;
-        if (!spot_pub || !node_pub)
-            return false;
-
-        zlink_routing_id_t node_rid;
-        zlink_routing_id_t spot_rid;
-        memset (&node_rid, 0, sizeof (node_rid));
-        memset (&spot_rid, 0, sizeof (spot_rid));
-        if (node_pub->routing_id (&node_rid) != 0
-            || spot_pub->routing_id (&spot_rid) != 0) {
-            return false;
-        }
-
-        out_->node_rid = routing_id_key (&node_rid);
-        out_->spot_rid = routing_id_key (&spot_rid);
-        return !out_->node_rid.empty () && !out_->spot_rid.empty ();
-    }
-
-    errno = EFAULT;
-    return false;
 }
 
 int send_combined_parts_locked (zlink::socket_base_t *socket_,

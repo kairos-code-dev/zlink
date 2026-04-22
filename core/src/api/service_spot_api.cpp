@@ -4,12 +4,14 @@
 
 #include "utils/err.hpp"
 #include "api/part_helper_internal.hpp"
-#include "api/service_api_internal.hpp"
+#include "api/service_mode_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
 #include "api/recv_result_internal.hpp"
 #include "api/submit_result_internal.hpp"
 #include "core/recv_tls_view.hpp"
+#include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 #include <string>
 

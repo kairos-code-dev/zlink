@@ -149,6 +149,11 @@ int zlink::socket_base_t::connect (const char *endpoint_uri_)
     return connect_internal (endpoint_uri_);
 }
 
+int zlink::socket_base_t::service_attachment_connect (const char *endpoint_uri_)
+{
+    return connect_internal (endpoint_uri_);
+}
+
 int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
 {
     if (unlikely (_ctx_terminated)) {
@@ -302,6 +307,37 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
     return 0;
 }
 
+void zlink::socket_base_t::socket_bound_endpoints (
+  std::set<std::string> *out_) const
+{
+    if (!out_)
+        return;
+
+    out_->clear ();
+    for (endpoints_t::const_iterator it = endpoint_runtime ().endpoints.begin (),
+                                     end = endpoint_runtime ().endpoints.end ();
+         it != end; ++it) {
+        if (it->second.local_type == endpoint_type_bind)
+            out_->insert (it->first);
+    }
+}
+
+bool zlink::socket_base_t::socket_has_manual_connect_endpoints () const
+{
+    for (endpoints_t::const_iterator it = endpoint_runtime ().endpoints.begin (),
+                                     end = endpoint_runtime ().endpoints.end ();
+         it != end; ++it) {
+        if (it->second.local_type == endpoint_type_connect)
+            return true;
+    }
+    return false;
+}
+
+bool zlink::socket_base_t::socket_has_attached_pipes () const
+{
+    return has_attached_pipes ();
+}
+
 std::string zlink::socket_base_t::resolve_tcp_addr (
   std::string endpoint_uri_pair_,
   const char *tcp_address_)
@@ -415,5 +451,11 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
     socket_public_api_scope_t admission (lifecycle_coordinator ());
     if (!admission.acquired ())
         return -1;
+    return term_endpoint_internal (endpoint_uri_);
+}
+
+int zlink::socket_base_t::service_attachment_term_endpoint (
+  const char *endpoint_uri_)
+{
     return term_endpoint_internal (endpoint_uri_);
 }

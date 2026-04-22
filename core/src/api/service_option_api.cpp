@@ -3,7 +3,8 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
-#include "api/service_api_internal.hpp"
+#include "api/service_handle_internal.hpp"
+#include "api/service_surface_internal.hpp"
 
 #include "services/discovery/discovery_access.hpp"
 #include "services/discovery/registry_access.hpp"

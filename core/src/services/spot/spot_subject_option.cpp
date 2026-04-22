@@ -9,7 +9,7 @@
 #include "services/spot/spot_sub.hpp"
 #include "services/spot/spot_subject_subscription_internal.hpp"
 
-#include "api/service_api_internal.hpp"
+#include "api/service_handle_internal.hpp"
 
 namespace
 {

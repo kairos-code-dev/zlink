@@ -3,7 +3,9 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
-#include "api/service_api_internal.hpp"
+#include "api/service_handle_internal.hpp"
+
+#include "services/spot/spot_subject_access.hpp"
 
 int validate_recv_flags (int flags_)
 {

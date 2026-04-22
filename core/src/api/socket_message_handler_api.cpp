@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/poller_api_internal.hpp"
-#include "api/service_api_internal.hpp"
+#include "api/service_surface_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/handler_result_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"

@@ -73,34 +73,7 @@ socket_discovery_attachment_t::socket_discovery_attachment_t (
 {
 }
 
-socket_discovery_attachment_t::~socket_discovery_attachment_t ()
-{
-}
-
-void socket_discovery_attachment_t::collect_bound_endpoints (
-  std::set<std::string> *out_) const
-{
-    if (!out_)
-        return;
-    out_->clear ();
-    const socket_base_t::endpoints_t &endpoints = _socket->endpoint_runtime ().endpoints;
-    for (socket_base_t::endpoints_t::const_iterator it = endpoints.begin ();
-         it != endpoints.end (); ++it) {
-        if (it->second.local_type == endpoint_type_bind)
-            out_->insert (it->first);
-    }
-}
-
-bool socket_discovery_attachment_t::has_manual_connect_endpoints () const
-{
-    const socket_base_t::endpoints_t &endpoints = _socket->endpoint_runtime ().endpoints;
-    for (socket_base_t::endpoints_t::const_iterator it = endpoints.begin ();
-         it != endpoints.end (); ++it) {
-        if (it->second.local_type == endpoint_type_connect)
-            return true;
-    }
-    return false;
-}
+socket_discovery_attachment_t::~socket_discovery_attachment_t () {}
 
 bool socket_discovery_attachment_t::public_api_forbidden (int *errno_out_) const
 {
@@ -132,12 +105,13 @@ int socket_discovery_attachment_t::attach_validation (
     }
 
     std::set<std::string> bound_endpoints;
-    collect_bound_endpoints (&bound_endpoints);
+    _socket->socket_bound_endpoints (&bound_endpoints);
     if (bound_endpoints.size () > 1) {
         errno = EBUSY;
         return -1;
     }
-    if (has_manual_connect_endpoints () || _socket->has_attached_pipes ()) {
+    if (_socket->socket_has_manual_connect_endpoints ()
+        || _socket->socket_has_attached_pipes ()) {
         errno = EBUSY;
         return -1;
     }
@@ -284,7 +258,7 @@ void socket_discovery_attachment_t::refresh_peers (
          it != target_endpoints.end (); ++it) {
         if (active_endpoints.find (*it) != active_endpoints.end ())
             continue;
-        if (_socket->connect_internal (it->c_str ()) == 0) {
+        if (_socket->service_attachment_connect (it->c_str ()) == 0) {
             scoped_lock_t lock (_sync);
             if (_discovery == discovery_ && !_shutdown_requested)
                 _active_peer_endpoints.insert (*it);
@@ -295,7 +269,7 @@ void socket_discovery_attachment_t::refresh_peers (
          it != active_endpoints.end (); ++it) {
         if (target_endpoints.find (*it) != target_endpoints.end ())
             continue;
-        if (_socket->term_endpoint_internal (it->c_str ()) == 0) {
+        if (_socket->service_attachment_term_endpoint (it->c_str ()) == 0) {
             scoped_lock_t lock (_sync);
             _active_peer_endpoints.erase (*it);
         }
@@ -420,7 +394,7 @@ int socket_discovery_attachment_t::on_public_bind_begin (const char *endpoint_)
     }
 
     std::set<std::string> bound_endpoints;
-    collect_bound_endpoints (&bound_endpoints);
+    _socket->socket_bound_endpoints (&bound_endpoints);
     if (bound_endpoints.size () > 1) {
         errno = EBUSY;
         return -1;
@@ -559,7 +533,7 @@ void socket_discovery_attachment_t::on_discovery_shutdown_requested (
 
     for (std::set<std::string>::const_iterator it = active_endpoints.begin ();
          it != active_endpoints.end (); ++it)
-        (void) _socket->term_endpoint_internal (it->c_str ());
+        (void) _socket->service_attachment_term_endpoint (it->c_str ());
 }
 
 void socket_discovery_attachment_t::on_discovery_destroyed (

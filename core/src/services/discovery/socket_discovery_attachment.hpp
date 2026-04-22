@@ -3,7 +3,10 @@
 #ifndef __ZLINK_DISCOVERY_SOCKET_DISCOVERY_ATTACHMENT_HPP_INCLUDED__
 #define __ZLINK_DISCOVERY_SOCKET_DISCOVERY_ATTACHMENT_HPP_INCLUDED__
 
-#include "services/discovery/discovery.hpp"
+#include <zlink.h>
+
+#include "services/discovery/discovery_observer.hpp"
+#include "utils/mutex.hpp"
 
 #include <set>
 #include <string>
@@ -52,8 +55,6 @@ class socket_discovery_attachment_t : public discovery_observer_t
                         uint16_t local_role_,
                         const std::string &advertise_endpoint_,
                         bool shutdown_requested_);
-    void collect_bound_endpoints (std::set<std::string> *out_) const;
-    bool has_manual_connect_endpoints () const;
     bool public_api_forbidden (int *errno_out_) const;
 
     socket_base_t *_socket;

@@ -115,6 +115,20 @@ bool ready_barrier_satisfied(spot_reqrep_server_state_t *state,
                 >= state->expected_ready_count;
 }
 
+bool wait_for_data_peers_ready(spot_reqrep_server_state_t *state,
+                               int timeout_ms)
+{
+    if (!state || !state->node) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const size_t expected_connected =
+      std::max<size_t>(1, state->data_peers.endpoints.size());
+    return perf_multi_spot_control::wait_for_connected_peer_count(
+      state->node, expected_connected, timeout_ms, &state->fatal_errno);
+}
+
 spot_reqrep_server_state_t *g_server_state = NULL;
 
 void fast_exit_process(int exit_code)
@@ -157,6 +171,7 @@ bool initialize_reqrep_server_session(
     session->control_node = zlink_spot_node_new(ctx.get());
     if (!session->node || !session->control_node
         || !setup_tls_server(session->node, transport)
+        || !setup_tls_client(session->node, transport)
         || !setup_tls_server(session->control_node, transport)
         || !setup_tls_client(session->control_node, transport)) {
         perf_multi_spot_control::destroy_server_session(session);
@@ -387,6 +402,15 @@ bool run_server_loop(spot_reqrep_server_state_t *state,
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-reqrep-server] ready barrier failed size="
                           << msg_size << " err=" << zlink_errno() << std::endl;
+            return false;
+        }
+        if (!wait_for_data_peers_ready(state, start_timeout_ms)) {
+            if (bench_debug_enabled())
+                std::cerr
+                  << "[multi-spot-reqrep-server] data peer ready timeout size="
+                  << msg_size << " expected="
+                  << std::max<size_t>(1, state->data_peers.endpoints.size())
+                  << " err=" << zlink_errno() << std::endl;
             return false;
         }
         if (!perf_multi_spot_control::publish_start(

@@ -698,6 +698,15 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
   uint32_t timeout_ms_);
 
 /* ========== Helper substrate layer (*_part) ========== */
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+/* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_spot_part (
   void *spot_,
   const zlink_routing_id_t *dest_node_rid_,

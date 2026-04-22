@@ -3,14 +3,16 @@ import socket
 import sys
 import threading
 import time
+from functools import partial
 
 import zlink
 
 from perf_multi_common import (
     TOPIC,
-    apply_multi_socket_options,
-    attach_spot_service_pair,
+    benchmark_endpoint,
     benchmark_run_id,
+    configure_multi_tls_client,
+    decode_header,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
@@ -24,6 +26,12 @@ from perf_multi_common import (
 
 SERVICE_NAME = "spot-svc"
 WAIT_SLICE_S = 0.01
+IDLE_DRAIN_S = 2.0
+
+
+def _trace(message):
+    if os.environ.get("PERF_MULTI_SPOT_TRACE") == "1":
+        print(f"[multi-spot-client] {message}", file=sys.stderr, flush=True)
 
 
 def _parse_tcp_endpoint(endpoint):
@@ -43,8 +51,8 @@ def _listen_tcp():
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="spot")
     if len(args.endpoint.split(",")) != 2:
-        raise SystemExit("spot client expects --endpoint data_ep,control_ep")
-    data_endpoint, control_endpoint = args.endpoint.split(",", 1)
+        raise SystemExit("spot client expects --endpoint registry_router_ep,control_ep")
+    registry_router_endpoint, control_endpoint = args.endpoint.split(",", 1)
 
     latencies = []
     received_count = 0
@@ -57,6 +65,11 @@ def main(argv=None):
     control_connected = threading.Event()
     started_event = threading.Event()
     started_size = [0]
+    warmup_ready = threading.Event()
+    cooldown_ready = threading.Event()
+    ready_seen = set()
+    cooldown_seen = set()
+    collect_active = [False]
     active_deadline = [0.0]
 
     ready_listener = _listen_tcp()
@@ -75,6 +88,7 @@ def main(argv=None):
     start_reader = socket.create_connection(
         _parse_tcp_endpoint(control_endpoint), timeout=ready_timeout_s
     )
+    start_reader.settimeout(None)
     start_file = start_reader.makefile("r", encoding="utf-8", newline="\n")
     print(f"CONTROL_CONNECTED,{control_endpoint}", flush=True)
 
@@ -106,48 +120,74 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         clients = []
-        service_pairs = []
-        for index in range(args.clients):
-            node = zlink.SpotNode(ctx)
-            node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
-            service_pair = attach_spot_service_pair(ctx, node, SERVICE_NAME)
-            apply_multi_socket_options(service_pair[0])
-            service_pairs.append(service_pair)
-            node.connect_peer(data_endpoint)
-            spot = node.create_spot()
-            spot.set_subscription(TOPIC)
-            clients.append((node, spot))
-
-        def on_dispatch(spot, info):
-            nonlocal received_count
+        discoveries = []
+        def on_dispatch(index, current_spot, info):
             if info.event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
                 return
             while True:
+                received = None
                 try:
-                    received = spot.subscribe(flags=zlink.RecvFlags.DONT_WAIT)
+                    received = current_spot.subscribe(flags=zlink.RecvFlags.DONT_WAIT)
                 except zlink.RecvError as exc:
                     if exc.result == zlink.RecvResult.NO_DATA:
                         return
                     raise
+                if received is None:
+                    return
                 with received:
                     parts = received.to_bytes_list()
                 if not parts:
                     continue
                 data = parts[0]
+                if not data:
+                    continue
+                header = decode_header(data)
+                if header is None:
+                    continue
+                if header["run_id"] != run_id or header["msg_size"] != args.msg_size:
+                    continue
+                if header["phase"] == 0:
+                    with recv_lock:
+                        ready_seen.add(index)
+                        if len(ready_seen) >= len(clients):
+                            warmup_ready.set()
+                    continue
+                if header["phase"] == 2:
+                    with recv_lock:
+                        cooldown_seen.add(index)
+                        if len(cooldown_seen) >= len(clients):
+                            cooldown_ready.set()
+                    continue
+                if not collect_active[0]:
+                    continue
+                now = time.perf_counter()
+                if now > active_deadline[0]:
+                    continue
                 if not is_active_message(
                     data,
                     expected_msg_size=args.msg_size,
                     run_id=run_id,
                 ):
                     continue
-                if time.perf_counter() > active_deadline[0]:
-                    continue
                 with recv_lock:
                     latencies.append(latency_ns_from_message(data))
-                    received_count += 1
+                    nonlocal_received[0] += 1
 
-        for _, spot in clients:
-            spot.on_dispatch_event(on_dispatch)
+        nonlocal_received = [0]
+        for index in range(args.clients):
+            _trace(f"create-slot-start index={index}")
+            node = zlink.SpotNode(ctx)
+            configure_multi_tls_client(node, args.transport)
+            discovery = zlink.Discovery(ctx, zlink.ServiceType.SPOT, SERVICE_NAME)
+            discovery.connect_registry(registry_router_endpoint)
+            node.attach_discovery(discovery)
+            node.bind(benchmark_endpoint(args.transport, f"multi-spot-client-{index}"))
+            spot = node.create_spot()
+            spot.set_subscription(TOPIC)
+            spot.on_dispatch_event(partial(on_dispatch, index))
+            discoveries.append(discovery)
+            clients.append((node, spot))
+            _trace(f"create-slot-done index={index}")
 
         deadline = time.perf_counter() + ready_timeout_s
         while time.perf_counter() < deadline:
@@ -156,24 +196,42 @@ def main(argv=None):
             control_connected.wait(WAIT_SLICE_S)
         if not control_connected.is_set():
             raise RuntimeError("control connection handshake timeout")
+        _trace("control-connected")
 
         time.sleep(ready_settle_s)
         time.sleep(control_settle_s)
+        _trace("warmup-loop-start")
+        if not warmup_ready.wait(ready_timeout_s):
+            raise RuntimeError(
+                f"spot warmup readiness timeout {len(ready_seen)}/{len(clients)}"
+            )
+        _trace(f"warmup-ready count={len(ready_seen)}")
         ready_sender[0].sendall(b"CONNECTED\n")
         ready_sender[0].sendall(f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8"))
         print(f"CLIENT_READY,{args.msg_size}", flush=True)
+        _trace("client-ready")
 
         start_deadline = time.perf_counter() + ready_timeout_s
         while time.perf_counter() < start_deadline:
-            if runner_start.is_set() and started_event.is_set() and started_size[0] == args.msg_size:
+            if runner_start.is_set():
                 break
             runner_start.wait(WAIT_SLICE_S)
-        if not (runner_start.is_set() and started_event.is_set() and started_size[0] == args.msg_size):
+        if not runner_start.is_set():
             raise RuntimeError("spot start handshake timeout")
+        _trace(f"start-handshake-done runner={runner_start.is_set()} broadcast={started_event.is_set()} size={started_size[0]}")
 
         active_deadline[0] = time.perf_counter() + args.duration
-        while time.perf_counter() < active_deadline[0]:
-            runner_start.wait(WAIT_SLICE_S)
+        collect_active[0] = True
+        idle_deadline = active_deadline[0] + IDLE_DRAIN_S
+        _trace("dispatch-ready")
+        while time.perf_counter() < idle_deadline:
+            if cooldown_ready.is_set() and time.perf_counter() >= active_deadline[0]:
+                break
+            time.sleep(WAIT_SLICE_S)
+        collect_active[0] = False
+        with recv_lock:
+            received_count = nonlocal_received[0]
+        _trace(f"drain-complete count={received_count} cooldown={len(cooldown_seen)}")
 
         with recv_lock:
             if received_count <= 0:
@@ -188,26 +246,8 @@ def main(argv=None):
             )
         print_result_lines("MULTI_SPOT", args.transport, args.msg_size, metrics)
         sys.stdout.flush()
-
-        for node, spot in reversed(clients):
-            try:
-                spot.close()
-            except Exception:
-                pass
-            try:
-                node.close()
-            except Exception:
-                pass
-        for pub_sock, sub_sock in reversed(service_pairs):
-            try:
-                sub_sock.close()
-            except Exception:
-                pass
-            try:
-                pub_sock.close()
-            except Exception:
-                pass
-        return
+        _trace("result-flushed")
+        os._exit(0)
 
 
 if __name__ == "__main__":

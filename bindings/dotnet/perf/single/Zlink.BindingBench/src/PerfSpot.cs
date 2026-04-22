@@ -12,6 +12,7 @@ internal static class PerfSpot
     private const uint RunId = 1;
     private const uint ReadyPhase = 0;
     private const uint ActivePhase = 1;
+    private const uint CooldownPhase = 2;
 
     internal static int RunSpot(string transport, int size)
     {
@@ -24,7 +25,6 @@ internal static class PerfSpot
 
         int durationSeconds = ResolveSingleDurationSeconds();
         int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
-        int readyTimeoutMs = ResolveSpotReadyTimeoutMs();
         int readySettleMs = ResolveSingleSpotReadySettleMs();
         int latencySampleCap = ResolveSingleLatencyCount("SPOT");
 
@@ -79,132 +79,56 @@ internal static class PerfSpot
 
             long received = 0;
             long sampleSeen = 0;
-            long lastRecvTicks = Stopwatch.GetTimestamp();
-            long activeDeadlineTicks = 0;
             uint rng = 0xA341316Cu;
-            int readySeen = 0;
-            int activeOpen = 0;
-            Exception? recvError = null;
             var latencySamples = new List<double>(Math.Max(0, latencySampleCap));
 
-            void DrainSubscriber()
-            {
-                while (true)
-                {
-                    TopicMessage? subscribed = null;
-                    try
-                    {
-                        subscribed = spotSub.Subscribe(RecvFlags.DontWait);
-                    }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                                    || IsWouldBlock(ex.InternalErrno))
-                    {
-                        return;
-                    }
-
-                    using (subscribed)
-                    {
-                        Message body = subscribed.FirstPart();
-                        ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
-                        long recvTicks = Stopwatch.GetTimestamp();
-                        Volatile.Write(ref lastRecvTicks, recvTicks);
-
-                        if (TryDecodeExpectedSingleHeader(payload, size,
-                                ReadyPhase, out _, RunId))
-                        {
-                            Volatile.Write(ref readySeen, 1);
-                            continue;
-                        }
-
-                        if (Volatile.Read(ref activeOpen) == 0
-                            || recvTicks > Volatile.Read(ref activeDeadlineTicks))
-                        {
-                            continue;
-                        }
-
-                        if (!TryDecodeExpectedSingleHeader(payload, size,
-                                ActivePhase, out var header, RunId))
-                        {
-                            continue;
-                        }
-
-                        Interlocked.Increment(ref received);
-                        ulong nowNs = EpochNs();
-                        if (nowNs >= header.SentTsNs)
-                        {
-                            double latencyNs = nowNs - header.SentTsNs;
-                            ReservoirSample(latencySamples, latencyNs,
-                                ref sampleSeen, latencySampleCap, ref rng);
-                        }
-                    }
-                }
-            }
-
-            spotSub.OnDispatchEvent((_, info) =>
-            {
-                if (info.Event != SpotDispatchEvent.SubscribeReadable)
-                    return;
-
-                try
-                {
-                    DrainSubscriber();
-                }
-                catch (Exception ex)
-                {
-                    Interlocked.CompareExchange(ref recvError, ex, null);
-                }
-            });
-
-            if (!WaitForSubscriptionReady(spotPub, probePayload, size,
-                    readyTimeoutMs, ref readySeen))
+            if (!WaitForSubscriptionReady(spotPub, spotSub, probePayload, size))
             {
                 Console.Error.WriteLine("single_spot_error:subscription_not_ready");
                 return 2;
             }
 
-            if (recvError != null)
-                return 2;
-
             Thread.Sleep(Math.Max(1, readySettleMs));
 
             long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
-            Volatile.Write(ref activeDeadlineTicks, deadlineTicks);
-            Volatile.Write(ref activeOpen, 1);
-
-            bool sendFailed = false;
             ulong seq = 1;
-            var senderThread = new Thread(() =>
+            while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
-                while (Stopwatch.GetTimestamp() < deadlineTicks)
+                StampMetricHeader(activePayload.AsSpan(), RunId, ActivePhase,
+                    size, seq, EpochNs());
+                seq++;
+                try
                 {
-                    StampMetricHeader(activePayload.AsSpan(), RunId, ActivePhase,
-                        size, seq, EpochNs());
-                    seq++;
-                    try
-                    {
-                        PerfSocketIo.Publish(spotPub, ServiceName, Topic,
-                            activePayload, SendFlags.None);
-                    }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-                    {
-                        continue;
-                    }
-                    catch
-                    {
-                        sendFailed = true;
-                        break;
-                    }
+                    PerfSocketIo.Publish(spotPub, ServiceName, Topic,
+                        activePayload, SendFlags.None);
                 }
-            });
-            senderThread.IsBackground = true;
-            senderThread.Start();
-            senderThread.Join();
+                catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                                || IsWouldBlock(ex.InternalErrno))
+                {
+                    continue;
+                }
 
-            Volatile.Write(ref activeOpen, 0);
-            WaitForIdleDrain(ref lastRecvTicks, recvTimeoutMs, ref recvError);
+                DrainSubscriber(spotSub, size, deadlineTicks, ref received,
+                    latencySamples, ref sampleSeen, latencySampleCap, ref rng, true);
+            }
 
-            if (recvError != null || sendFailed)
-                return 2;
+            StampMetricHeader(activePayload.AsSpan(), RunId, CooldownPhase,
+                size, seq, EpochNs());
+            PerfSocketIo.Publish(spotPub, ServiceName, Topic, activePayload,
+                SendFlags.None);
+
+            long idleDeadline = DeadlineTicksFromMilliseconds(Math.Max(1,
+                recvTimeoutMs));
+            while (Stopwatch.GetTimestamp() < idleDeadline)
+            {
+                if (!DrainSubscriber(spotSub, size, long.MaxValue, ref received,
+                        latencySamples, ref sampleSeen, latencySampleCap,
+                        ref rng, false))
+                {
+                    Thread.Sleep(1);
+                }
+            }
+
             if (received <= 0 || latencySamples.Count == 0)
                 return 2;
 
@@ -212,7 +136,6 @@ internal static class PerfSpot
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("SPOT", transport, size, throughput, latency.mean,
                 latency.p95, latency.p99);
-            ctx.Shutdown();
             return 0;
         }
         catch (Exception ex)
@@ -223,17 +146,14 @@ internal static class PerfSpot
         }
     }
 
-    private static bool WaitForSubscriptionReady(Spot publisher, byte[] probePayload,
-        int msgSize, int timeoutMs, ref int readySeen)
+    private static bool WaitForSubscriptionReady(Spot publisher, Spot subscriber,
+        byte[] probePayload, int msgSize)
     {
         ulong seq = 1;
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        var spin = new SpinWait();
+        long deadlineTicks = DeadlineTicksFromMilliseconds(
+            ResolveSpotReadyTimeoutMs());
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            if (Volatile.Read(ref readySeen) != 0)
-                return true;
-
             StampMetricHeader(probePayload.AsSpan(), RunId, ReadyPhase, msgSize,
                 seq, EpochNs());
             seq++;
@@ -247,27 +167,98 @@ internal static class PerfSpot
             {
             }
 
-            if (Volatile.Read(ref readySeen) != 0)
+            if (ProbeSubscriber(subscriber, msgSize))
+            {
                 return true;
+            }
 
-            spin.SpinOnce();
+            Thread.Sleep(10);
         }
 
-        return Volatile.Read(ref readySeen) != 0;
+        return false;
     }
 
-    private static void WaitForIdleDrain(ref long lastRecvTicks,
-        int recvTimeoutMs, ref Exception? recvError)
+    private static bool DrainSubscriber(Spot subscriber, int msgSize,
+        long activeDeadlineTicks, ref long received, List<double> latencySamples,
+        ref long sampleSeen, int latencySampleCap, ref uint rng,
+        bool countActive)
     {
-        long recvFlushTicks = Math.Max(1,
-            (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
-        var spin = new SpinWait();
-        while (Stopwatch.GetTimestamp() - Volatile.Read(ref lastRecvTicks)
-               < recvFlushTicks)
+        bool processed = false;
+        while (true)
         {
-            if (recvError != null)
-                return;
-            spin.SpinOnce();
+            TopicMessage? subscribed = null;
+            try
+            {
+                subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+                return processed;
+            }
+
+            if (subscribed == null)
+                return processed;
+
+            using (subscribed)
+            {
+                Message body = subscribed.FirstPart();
+                ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
+                if (TryDecodeExpectedSingleHeader(payload, msgSize, ReadyPhase,
+                        out _, RunId))
+                {
+                    return true;
+                }
+
+                if (!countActive
+                    || Stopwatch.GetTimestamp() > activeDeadlineTicks
+                    || !TryDecodeExpectedSingleHeader(payload, msgSize,
+                        ActivePhase, out var header, RunId))
+                {
+                    processed = true;
+                    continue;
+                }
+
+                received++;
+                ulong nowNs = EpochNs();
+                if (nowNs >= header.SentTsNs)
+                {
+                    double latencyNs = nowNs - header.SentTsNs;
+                    ReservoirSample(latencySamples, latencyNs,
+                        ref sampleSeen, latencySampleCap, ref rng);
+                }
+                processed = true;
+            }
+        }
+    }
+
+    private static bool ProbeSubscriber(Spot subscriber, int msgSize)
+    {
+        while (true)
+        {
+            TopicMessage? subscribed = null;
+            try
+            {
+                subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+                return false;
+            }
+
+            if (subscribed == null)
+                return false;
+
+            using (subscribed)
+            {
+                Message body = subscribed.FirstPart();
+                if (TryDecodeExpectedSingleHeader(body.AsReadOnlySpan(), msgSize,
+                        ReadyPhase, out _, RunId))
+                {
+                    return true;
+                }
+            }
         }
     }
 
@@ -288,4 +279,5 @@ internal static class PerfSpot
     {
         return PerfShared.IsInterrupted(errno);
     }
+
 }

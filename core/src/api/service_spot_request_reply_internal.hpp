@@ -24,6 +24,7 @@
 namespace zlink
 {
 class service_control_runtime_t;
+class socket_base_t;
 class spot_node_t;
 struct spot_runtime_t;
 
@@ -138,7 +139,8 @@ struct spot_request_reply_state_t
                        pending_spot_key_hash_t>
       pending_replies;
     spot_subscribe_dispatch_queue_t subscribe_queue;
-    zlink::internal_pair_queue::queue_t recv_queue;
+    zlink::internal_pair_queue::queue_t routed_recv_queue;
+    zlink::socket_base_t *routed_recv_socket;
     zlink::request_completion::queue_state_t completion;
     std::map<void *, std::shared_ptr<spot_channel_reply_source_t> >
       channel_reply_sources;
@@ -200,7 +202,7 @@ int queue_spot_subscribe_message (spot_request_reply_state_t *state_,
                                   size_t part_count_);
 void close_spot_subscribe_dispatch_queue (
   spot_subscribe_dispatch_queue_t *queue_);
-int recv_internal_spot_queue (zlink::internal_pair_queue::queue_t *queue_,
+int recv_internal_spot_queue (zlink::socket_base_t *socket_,
                               const zlink_routing_id_t **source_rid_out_,
                               const zlink_routing_id_t **spot_rid_out_,
                               uint64_t *request_seq_out_,
@@ -294,6 +296,8 @@ std::shared_ptr<spot_request_reply_state_t> find_spot_state_by_identity (
   const std::string &spot_rid_);
 std::shared_ptr<router_spot_request_reply_state_t> find_router_state_by_rid (
   const std::string &router_rid_);
+void unregister_spot_identity (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
 zlink::spot_runtime_t *resolve_runtime_for_spot_destination (
   const std::string &node_rid_,
   const std::string &spot_rid_);
@@ -301,6 +305,8 @@ int ensure_spot_completion_queue_ready (
   const std::shared_ptr<spot_request_reply_state_t> &state_);
 int ensure_router_completion_queue_ready (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+int ensure_spot_recv_ready (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
 int queue_spot_reply_completion (
   const std::shared_ptr<spot_request_reply_state_t> &state_,
   zlink_reply_handler_fn handler_,

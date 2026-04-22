@@ -5,10 +5,15 @@
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
 #include "core/multipart_send_txn.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
+
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
 
 namespace zlink
 {
@@ -120,6 +125,7 @@ spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) :
     owner (owner_),
     default_timeout_ms (zlink::request_reply::default_timeout_ms),
     next_request_seq (1),
+    routed_recv_socket (NULL),
     pending_channel_requests (0),
     request_handler (NULL),
     request_handler_userdata (NULL)
@@ -171,7 +177,6 @@ bool parse_spot_routed_envelope (zlink_msg_t *parts_,
           &parts_[1], zmp_protocol_version)) {
         return false;
     }
-
     if (!zlink::request_reply::frame_is_single_byte_value (&parts_[2],
                                                            zmp_spot_class)
         && !zlink::request_reply::frame_is_single_byte_value (&parts_[2],
@@ -253,6 +258,11 @@ int publish_spot_routed_to_mesh (spot_node_t *node_,
     spot_runtime_t *runtime = spot_node_access_t::runtime (node_);
     if (!runtime || !runtime->mesh_pub) {
         errno = EFAULT;
+        return -1;
+    }
+
+    if (connected_ready_peer_count (&runtime->execution.mesh_peer_state) == 0) {
+        errno = ENOTCONN;
         return -1;
     }
 

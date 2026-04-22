@@ -484,12 +484,21 @@ func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dis
 		SubjectKind: SpotDispatchSubjectKind(info.subject_kind),
 		Subject:     info.subject,
 	}
-	state.dispatcher.enqueue(&callbackTask{
-		label: "spot-dispatch",
-		invoke: func() {
-			state.handler(state.spot, dispatchInfo)
-		},
-	})
+	// Spot dispatch callbacks must run in the native dispatch callback context.
+	// Core only permits spot recv/subscribe drains while the dispatch callback
+	// is active, so bouncing through an async Go worker breaks the contract and
+	// surfaces EBUSY from Spot.Subscribe/RecvRouted inside the callback.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf(
+				"zlink: recovered panic in %s callback: %v\n%s",
+				"spot-dispatch",
+				recovered,
+				debug.Stack(),
+			)
+		}
+	}()
+	state.handler(state.spot, dispatchInfo)
 }
 
 //export goZlinkTimerTrampoline

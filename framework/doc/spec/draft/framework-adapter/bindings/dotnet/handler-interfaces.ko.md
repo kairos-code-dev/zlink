@@ -45,9 +45,11 @@
 | handler | `IZLinkSpotTimerHandler<TSpot>` | SPOT lifecycle timer handler | 4.3.1 |
 | handler | `IZLinkPacketStreamSession` | packet stream session lifecycle + packet callback | 4.4 |
 | handler | `IZLinkRawStreamSession` | raw stream session lifecycle + raw callback | 4.4 |
+| handler | `IZLinkActor` | spot-attached actor lifecycle + packet dispatch | 4.4.1 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `ZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
+| stream | `IZLinkSession` | actor가 보는 session bind/rebind handle | 4.4.1 |
 | value | `ZLinkStreamSessionError` | stream session error category enum | 4.4 |
 | value | `ZLinkStreamError` | stream error detail + errno helper | 4.4 |
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event | 10.3 |
@@ -399,6 +401,46 @@ native timer가 전달하는 `fireCount`다. framework의 `IZLinkTimer.CancelAsy
 low-level binding의 `Timer.Stop()`와 dispose lifecycle을 framework 쪽에서 감싼
 표면으로 보는 편이 자연스럽다.
 
+#### 4.3.2 SPOT 실행 문맥 정책
+
+이 절에서 중요한 것은 **내부 구현 방식**이 아니라 **사용자에게 보이는 실행 계약**이다.
+
+framework 초안은 `Spot`을 단순 recv helper가 아니라, 같은 `Spot`에 귀속된 handler와
+join이 끝난 session/actor가 **같은 spot execution context**에서 처리되는 표면으로
+본다.
+
+사용자 기준 공개 계약은 아래와 같다.
+
+- 사용자는 `Recv(...)`나 `Drain(...)` loop를 직접 작성하지 않는다.
+- 사용자는 `AddPacket<THandler>(...)`, `AddSubscribe<THandler>(...)`,
+  `AddTimer<THandler>(...)`, session join 같은 고수준 표면만 사용한다.
+- 같은 `Spot`에 귀속된 handler, timer handler, channel reply continuation,
+  stream session callback은 framework가 정한 같은 실행 문맥 규칙을 따른다.
+- 이 계약이 유지되는 한, 사용자는 `SampleSpot.ActorCount` 같은 spot state를
+  handler 안에서 직접 다룰 수 있다.
+
+즉 사용자에게 보여야 하는 것은 아래뿐이다.
+
+- handler 등록
+- timer 등록
+- session/actor join
+- spot state 접근 규칙
+
+반대로 아래 내용은 framework 내부 구현이다.
+
+- mailbox를 쓰는지
+- queue를 몇 개 두는지
+- single consumer task를 어떻게 돌리는지
+- low-level callback을 어떤 internal work item으로 바꾸는지
+
+문서가 전달해야 하는 핵심은 "framework가 같은 `Spot` 상태를 같은 실행 규칙으로
+처리해 준다"는 점이지, 사용자가 mailbox runtime을 직접 소유하거나 관리한다는 뜻이
+아니다.
+
+내부 구현 예로 mailbox + single consumer 모델이 유력할 수는 있다.
+하지만 그것은 구현 메모 또는 internals 성격의 설명으로 남기고, binding spec의
+공개 표면에서는 handler 등록과 session/actor 조합 모델만 드러내는 편이 맞다.
+
 ### 4.4 stream session
 
 stream은 packet path와 raw path를 나눌 수 있지만, 둘 다 session lifecycle 위에서
@@ -517,6 +559,13 @@ session에 raw payload 또는 framed packet을 submit하는 동작으로 본다.
   - `OnDisconnectedAsync(...)`
   - `OnErrorAsync(...)`
 
+이 인터페이스가 곧바로 "`Spot`이 session 타입을 정적으로 등록한다"는 뜻은 아니다.
+게임 room 같은 상위 모델에서는 session이 먼저 독립 transport 객체로 만들어지고,
+인증과 입장 절차가 끝난 뒤 특정 `Spot` 또는 actor에 귀속되는 구조가 더 자연스럽다.
+즉 binding/framework가 보여 줘야 하는 것은 "`session`을 어느 `Spot`에 join시키는가"
+라는 상위 조합 표면이지, `Spot` 자체가 session 타입을 직접 소유한다는 고정 모델이
+아니다.
+
 이 초안에서도 recv loop를 application 표면으로 직접 노출하지 않는다.
 즉 사용자가 `Recv(...)`로 직접 drain loop를 돌리는 모델보다, framework가 dispatch를
 맡고 application은 packet session 또는 raw session을 구현하는 모델을 기본으로 본다.
@@ -525,6 +574,83 @@ session에 raw payload 또는 framed packet을 submit하는 동작으로 본다.
 안 된다. `Message.AsReadOnlySpan()` 같은 현재 표면이나, 그 위에 얹는
 protobuf/json decode helper가 가능한 한 추가 메모리 할당 없이 동작하도록
 설계하는 쪽을 기본 원칙으로 본다.
+
+#### 4.4.1 actor contract
+
+stream session은 네트워크 연결 수명에 가깝고, actor는 `Spot`에 붙는 논리 객체에
+가깝다. 게임 room 같은 상위 모델에서는 이 둘을 분리해야 reconnect를 자연스럽게
+설명할 수 있다.
+
+이 초안에서 framework가 먼저 보여 주는 actor 관련 표면은 아래 두 가지다.
+
+```csharp
+public interface IZLinkSession
+{
+    string SessionId { get; }
+
+    RoutingId? RoutingId { get; }
+
+    IZLinkStream Stream { get; }
+
+    bool Send(
+        string msgId,
+        Message payload,
+        SendFlags flags = SendFlags.None);
+
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActor
+{
+    string ActorKey { get; }
+
+    IZLinkSession? Session { get; }
+
+    ZLinkSpot? Spot { get; }
+
+    ValueTask OnAttachedAsync(
+        ZLinkSpot spot,
+        CancellationToken cancellationToken);
+
+    ValueTask OnDetachedAsync(
+        ZLinkSpot spot,
+        CancellationToken cancellationToken);
+
+    ValueTask OnSessionBoundAsync(
+        IZLinkSession session,
+        CancellationToken cancellationToken);
+
+    ValueTask OnSessionUnboundAsync(
+        string sessionId,
+        CancellationToken cancellationToken);
+
+    ValueTask DispatchAsync(
+        Message header,
+        Message body,
+        CancellationToken cancellationToken);
+}
+```
+
+핵심 규칙은 아래와 같다.
+
+- `IZLinkPacketStreamSession`은 transport connection 수명을 받는다.
+- `IZLinkActor`는 `Spot`에 attach되는 논리 객체 수명을 받는다.
+- `IZLinkActor`는 현재 bind된 `IZLinkSession?`를 직접 가진다.
+- `IZLinkActor`는 현재 attach된 `ZLinkSpot?`도 직접 가진다.
+- actor attach/detach와 session bind/unbind는 다른 이벤트다.
+- 같은 actor는 session이 끊겨도 `Spot`에 남아 있을 수 있다.
+- 새 session이 같은 `ActorKey`로 다시 들어오면 기존 actor에 rebind할 수 있다.
+
+즉 인증이 먼저 끝나고 session bind가 먼저 일어난 뒤, 그 actor가 나중에 특정
+`Spot`에 attach되는 흐름도 자연스럽게 표현할 수 있어야 한다. 게임 room에서는
+`accountId` 기준 actor를 먼저 찾고, `JoinRoom` 같은 다음 패킷에서 room attach를
+완료하는 모델이 흔하기 때문이다.
+
+즉 framework가 보장해야 하는 최소 의미는 "`Actor`는 `Session`과 `Spot`을 각각
+독립적으로 참조하고, session bind/unbind와 spot attach/detach는 서로 다른
+수명"이라는 것이다. 이 모델 위에서 응용은
+즉시 제거, reconnect 유예, spectator 전환 같은 상위 정책을 올릴 수 있다.
 
 ### 4.5 message serializer
 

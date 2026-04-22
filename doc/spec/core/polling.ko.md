@@ -96,6 +96,12 @@ typedef struct zlink_poller_event_t
 | `user_data` | 소스 등록 시 제공된 불투명 포인터 |
 | `events` | 발생한 이벤트의 비트마스크 |
 
+현재 public poller는 `Spot` 전용 결과 타입을 따로 두지 않는다. 즉 이 구조체만으로는
+owner `Spot`, dispatch event kind, drain 대상 subject를 함께 표현할 수 없다.
+SPOT의 subscribe / routed / channel reply / timer readiness를 한 owner 기준으로
+직렬 처리하려면 현재 공개 계약에서는 `zlink_spot_dispatch_event_handler()`를
+사용해야 한다.
+
 ## 상수
 
 ```c

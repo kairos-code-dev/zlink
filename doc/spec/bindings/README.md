@@ -3,7 +3,7 @@
 # Bindings API Policy
 
 > request-reply 와 SPOT routed 구현 기준은
-> [`doc/plan/spot-refactor`](../../plan/spot-refactor) 아래 문서를 따른다.
+> `doc/draft/spot-socket-backed-runtime.ko.md` 와 정식 core spec 문서를 따른다.
 > 언어별 인터페이스 시그니처와 사용 예는
 > `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 
@@ -212,13 +212,20 @@ public shape를 기준으로 고정한다.
   `attach_channel_dealer(...)`,
   `attach_channel_dealer_manual(...)`,
   `attach_pub_ingress(...)`,
-  `send_channel`, `request_channel`,
+  `send_channel`, `send_to_spot`, `request_channel`,
   channel-aware publish / subscribe 표면을 제공해야 한다.
 - service-aware SPOT subscribe 결과는 topic / parts 와 함께 반드시
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer plane 의
   canonical readable notification surface 이다.
   `zlink_spot_handler()` 와 routed 축에서 mutually exclusive 다.
+- `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` 와
+  `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` 은 메시지 개수 알림이 아니라
+  readiness 알림이다. 바인딩은 edge-trigger one-shot 처럼 설명하거나 구현하면 안 된다.
+- SPOT dispatch consumer 는 `subscribe` / `recv_routed` 를 `EAGAIN` 까지 drain 하는
+  규칙을 문서와 sample 에 같이 반영해야 한다.
+- 첫 SPOT routed recv 는 hidden activation, hidden queue open, hidden target registration 을
+  수행하면 안 된다. 바인딩도 같은 전제를 두고 lazy bootstrap 로직을 올리지 않는다.
 - `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
   send-recovery readiness 축을 가리킨다. 바인딩 문서도 같은 의미로 설명해야
   한다. `ZLINK_POLLOUT` 은 "transport writable" 이 아니라
@@ -1811,8 +1818,8 @@ callback 안에서 event 종류를 확인하고 recv 를 호출하면서 Spot �
 
 ```c
 typedef enum zlink_spot_dispatch_event_t {
-    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,  /* pub/sub 메시지 도착 */
-    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,  /* routed/request 메시지 도착 */
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,  /* pub/sub readable work */
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,  /* routed/request readable work */
     ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3,  /* timer fire */
     ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4 /* channel reply completion */
 } zlink_spot_dispatch_event_t;
@@ -1848,6 +1855,7 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
   `zlink_spot_channel_reply_progress_from()` 로 channel reply completion 을 drain 한다.
 - dispatch event 는 readable 알림이다. callback 1회가 메시지 1개를 뜻하지는 않는다.
 - callback 안에서는 해당 plane 을 더 이상 읽을 것이 없을 때까지 drain 할 수 있어야 한다.
+- `zlink_spot_recv()` 의 첫 호출은 hidden activation, hidden queue open, hidden registration 을 수행하면 안 된다.
 - 같은 `spot` 의 dispatch callback 은 직렬화되므로 Spot 메시징을 순차적으로 처리할 수 있다.
 - 서로 다른 `spot` 은 병렬 처리될 수 있으므로 고성능 room 실행 모델을 구성할 수 있다.
 

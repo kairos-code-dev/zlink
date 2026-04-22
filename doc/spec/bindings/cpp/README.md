@@ -33,7 +33,7 @@ conflicts with the rules here, this section wins.
   `attach_channel_dealer_manual(...)`,
   `attach_pub_ingress(...)`, and `attach_discovery(...)`.
 - `service::spot_t` must expose channel-aware data-plane methods:
-  `send_channel(...)`, `request_channel(...)`, and
+  `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(const std::string& service_name, const std::string& topic, ...)`.
 - `service::spot_t::subscribe(...)` returns a service-aware `topic_message_t`.
   `topic_message_t` therefore needs `std::optional<std::string> service_name()`
@@ -41,6 +41,9 @@ conflicts with the rules here, this section wins.
 - `service::spot_t` must not expose `on_subscribe(...)`. SPOT topic readable
   notifications come from `on_dispatch_event(...)`, then callers drain with
   `subscribe(...)` / `recv_routed(...)` / timer recv.
+- `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
+  one-event-per-message delivery counters. Binding docs and samples must use
+  drain-until-`EAGAIN` loops.
 - `service::spot_t::on_routed_receive(...)` and
   `service::spot_t::on_dispatch_event(...)` are mutually exclusive on the
   routed axis.
@@ -1933,6 +1936,11 @@ class spot_t {
 } // namespace service
 ```
 
+`on_dispatch_event(...)` is the canonical SPOT readable-notification surface.
+For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining with
+`subscribe(...)` / `recv_routed(...)` until the underlying recv reports
+`no_data` / `EAGAIN`.
+
 ### service::registry_query_client_t
 
 Remote registry query client. Connects to a registry and fetches topology snapshots.
@@ -1970,6 +1978,10 @@ class registry_query_client_t {
 ### poller_t
 
 Event poller for multiplexing socket and file descriptor readiness.
+
+The current public poller contract is still generic. It does not yet expose a
+Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
+subject together.
 
 ```cpp
 class poller_t {

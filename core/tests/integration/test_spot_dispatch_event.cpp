@@ -428,6 +428,138 @@ void test_spot_dispatch_subscribe_recv_inside_callback ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx);
+    void *sub_spot = zlink_spot_new (node);
+    void *idle_spot = zlink_spot_new (node);
+    void *pub_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (sub_spot);
+    TEST_ASSERT_NOT_NULL (idle_spot);
+    TEST_ASSERT_NOT_NULL (pub_spot);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub_spot, "dispatch.topic.one"));
+
+    spot_dispatch_recv_probe_t sub_probe;
+    spot_dispatch_recv_probe_t idle_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      sub_spot, &on_spot_dispatch_recv_event, &sub_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      idle_spot, &on_spot_dispatch_recv_event, &idle_probe));
+
+    zlink_msg_t part;
+    init_string_part (&part, "isolated-payload");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "dispatch.topic.one", &part, 1, 0));
+
+    {
+        std::unique_lock<std::mutex> lock (sub_probe.mutex);
+        const bool received = sub_probe.cv.wait_for (
+          lock, std::chrono::milliseconds (500), [&sub_probe]() {
+              return sub_probe.failed || sub_probe.subscribe_payloads.size () >= 1;
+          });
+        TEST_ASSERT_TRUE (received);
+        TEST_ASSERT_FALSE (sub_probe.failed);
+        TEST_ASSERT_EQUAL_UINT (1, sub_probe.subscribe_payloads.size ());
+        TEST_ASSERT_EQUAL_STRING ("isolated-payload",
+                                  sub_probe.subscribe_payloads[0].c_str ());
+    }
+
+    std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    {
+        std::lock_guard<std::mutex> lock (idle_probe.mutex);
+        TEST_ASSERT_FALSE (idle_probe.failed);
+        TEST_ASSERT_EQUAL_UINT (0, idle_probe.callback_count);
+        TEST_ASSERT_TRUE (idle_probe.events.empty ());
+        TEST_ASSERT_TRUE (idle_probe.subscribe_payloads.empty ());
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&idle_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_dispatch_subscribe_drain_until_eagain ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx);
+    void *sub_spot = zlink_spot_new (node);
+    void *pub_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (sub_spot);
+    TEST_ASSERT_NOT_NULL (pub_spot);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub_spot, "dispatch.topic.drain"));
+
+    spot_dispatch_recv_probe_t probe;
+    probe.block_first_callback = true;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      sub_spot, &on_spot_dispatch_recv_event, &probe));
+
+    zlink_msg_t part1;
+    zlink_msg_t part2;
+    zlink_msg_t part3;
+    init_string_part (&part1, "payload-1");
+    init_string_part (&part2, "payload-2");
+    init_string_part (&part3, "payload-3");
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "dispatch.topic.drain", &part1, 1, 0));
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        const bool entered = probe.cv.wait_for (
+          lock, std::chrono::milliseconds (500),
+          [&probe]() { return probe.first_callback_entered; });
+        TEST_ASSERT_TRUE (entered);
+        TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "dispatch.topic.drain", &part2, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "dispatch.topic.drain", &part3, 1, 0));
+
+    {
+        std::lock_guard<std::mutex> lock (probe.mutex);
+        probe.release_first_callback = true;
+    }
+    probe.cv.notify_all ();
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        const bool drained = probe.cv.wait_for (
+          lock, std::chrono::milliseconds (1000), [&probe]() {
+              return probe.failed
+                     || (probe.subscribe_payloads.size () >= 3
+                         && probe.inflight == 0);
+          });
+        TEST_ASSERT_TRUE (drained);
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
+        TEST_ASSERT_EQUAL_UINT (3, probe.subscribe_payloads.size ());
+        TEST_ASSERT_EQUAL_STRING ("payload-1",
+                                  probe.subscribe_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("payload-2",
+                                  probe.subscribe_payloads[1].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("payload-3",
+                                  probe.subscribe_payloads[2].c_str ());
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_dispatch_routed_recv_inside_callback ()
 {
     void *ctx = zlink_ctx_new ();
@@ -473,6 +605,84 @@ void test_spot_dispatch_routed_recv_inside_callback ()
         TEST_ASSERT_EQUAL_UINT64 (0, probe.routed_request_seq);
         TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
                                probe.events[0]);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&receiver));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_dispatch_routed_drain_until_eagain ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx);
+    void *receiver = zlink_spot_new (node);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (receiver);
+    TEST_ASSERT_NOT_NULL (router);
+
+    set_routing_id_text (node, "node-routed-drain");
+    set_routing_id_text (receiver, "spot-routed-drain");
+    set_routing_id_text (router, "router-routed-drain");
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t receiver_rid = get_routing_id_value (receiver);
+
+    spot_dispatch_recv_probe_t probe;
+    probe.block_first_callback = true;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      receiver, &on_spot_dispatch_recv_event, &probe));
+
+    zlink_msg_t part1;
+    zlink_msg_t part2;
+    zlink_msg_t part3;
+    init_string_part (&part1, "routed-1");
+    init_string_part (&part2, "routed-2");
+    init_string_part (&part3, "routed-3");
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
+      router, &node_rid, &receiver_rid, &part1, 1, 0));
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        const bool entered = probe.cv.wait_for (
+          lock, std::chrono::milliseconds (500),
+          [&probe]() { return probe.first_callback_entered; });
+        TEST_ASSERT_TRUE (entered);
+        TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
+      router, &node_rid, &receiver_rid, &part2, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
+      router, &node_rid, &receiver_rid, &part3, 1, 0));
+
+    {
+        std::lock_guard<std::mutex> lock (probe.mutex);
+        probe.release_first_callback = true;
+    }
+    probe.cv.notify_all ();
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        const bool drained = probe.cv.wait_for (
+          lock, std::chrono::milliseconds (1000), [&probe]() {
+              return probe.failed
+                     || (probe.routed_payloads.size () >= 3
+                         && probe.inflight == 0);
+          });
+        TEST_ASSERT_TRUE (drained);
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
+        TEST_ASSERT_EQUAL_UINT (3, probe.routed_payloads.size ());
+        TEST_ASSERT_EQUAL_STRING ("routed-1", probe.routed_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("routed-2", probe.routed_payloads[1].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("routed-3", probe.routed_payloads[2].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("router-routed-drain",
+                                  probe.routed_source_rid.c_str ());
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&receiver));
@@ -965,7 +1175,10 @@ int main (void)
     UNITY_BEGIN ();
     RUN_TEST (test_spot_timer_dispatch_event_and_recv);
     RUN_TEST (test_spot_dispatch_subscribe_recv_inside_callback);
+    RUN_TEST (test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot);
+    RUN_TEST (test_spot_dispatch_subscribe_drain_until_eagain);
     RUN_TEST (test_spot_dispatch_routed_recv_inside_callback);
+    RUN_TEST (test_spot_dispatch_routed_drain_until_eagain);
     RUN_TEST (test_spot_dispatch_channel_reply_inside_callback);
     RUN_TEST (test_spot_dispatch_channel_reply_multiple_dealers_exactly_once);
     RUN_TEST (test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion);

@@ -11,7 +11,7 @@ if [[ ! -d "${BUILD_DIR}" ]]; then
   exit 0
 fi
 
-STAMP_FILE="$(mktemp)"
+STAMP_FILE="$(mktemp /tmp/zlink-normalize-build-timestamps.XXXXXX)"
 trap 'rm -f "${STAMP_FILE}"' EXIT
 touch "${STAMP_FILE}"
 

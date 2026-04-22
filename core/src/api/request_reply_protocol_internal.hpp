@@ -68,7 +68,8 @@ inline uint32_t decode_u32_be (const unsigned char *in_)
 }
 
 inline uint32_t resolve_timeout_ms (uint32_t per_call_timeout_ms_,
-                                    uint32_t socket_timeout_ms_)
+                                    uint32_t default_timeout_ms,
+                                    uint32_t socket_timeout_ms_ = 0)
 {
     if (per_call_timeout_ms_ != 0)
         return per_call_timeout_ms_;
@@ -193,6 +194,7 @@ inline int init_control_part (zlink_msg_t *part_,
         memcpy (msg->data (), data_, size_);
     return 0;
 }
+
 
 inline void consume_send_frame (zlink_msg_t *part_)
 {

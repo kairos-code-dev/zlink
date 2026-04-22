@@ -119,10 +119,14 @@ int fill_public_poller_event (poller_handle_t *poller_,
         const poller_registration_t &registration = poller_->registrations[i];
         if (registration.socket && registration.socket == native_.socket) {
             event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
-            event_out_->socket = native_.socket;
+            event_out_->socket =
+              (registration.subject_kind == poller_subject_spot_sub
+               || registration.subject_kind == poller_subject_spot_routed)
+                ? registration.subject
+                : native_.socket;
             event_out_->fd = native_.fd;
             event_out_->timer = NULL;
-            event_out_->user_data = native_.user_data;
+            event_out_->user_data = registration.user_data;
             event_out_->events = native_.events;
             return 0;
         }

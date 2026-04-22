@@ -90,6 +90,14 @@ poller_subject_kind_t poller_spot_sub_kind_for_subject (void *spot_or_node_)
     return poller_subject_none;
 }
 
+poller_subject_kind_t poller_spot_routed_kind_for_subject (void *spot_or_node_)
+{
+    if (zlink::resolve_service_handle (spot_or_node_).kind
+        == zlink::service_handle_spot)
+        return poller_subject_spot_routed;
+    return poller_subject_none;
+}
+
 int zlink_service_poller_add_internal (poller_handle_t *poller_,
                                        void *socket_,
                                        void *user_data_,
@@ -165,22 +173,43 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
         if (!is_pub) {
             std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
               state = zlink::spot_reqrep_internal::try_find_spot_state (socket_);
-            if (state
-                && (zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
-                      state)
-                      != 0
-                    || poller_add_registration (
-                         poller_,
-                         zlink::spot_reqrep_internal::spot_completion_signal_socket (
-                           state),
-                         NULL, ZLINK_POLLIN, socket_,
-                         poller_subject_spot_request_completion)
-                         != 0)) {
-                const int err = errno;
-                (void) poller_remove_all_registrations_for_subject (poller_,
-                                                                    socket_);
-                errno = err;
-                return -1;
+            if (state) {
+                if (zlink::spot_reqrep_internal::ensure_spot_recv_ready (state)
+                    != 0) {
+                    const int err = errno;
+                    (void) poller_remove_all_registrations_for_subject (
+                      poller_, socket_);
+                    errno = err;
+                    return -1;
+                }
+                zlink::socket_base_t *routed_socket = NULL;
+                zlink::socket_base_t *completion_socket = NULL;
+                {
+                    std::lock_guard<std::mutex> lock (state->mutex);
+                    routed_socket = state->routed_recv_socket;
+                }
+                completion_socket =
+                  zlink::spot_reqrep_internal::spot_completion_signal_socket (
+                    state);
+
+                if ((routed_socket
+                     && poller_add_registration (poller_, routed_socket,
+                                                 user_data_, ZLINK_POLLIN,
+                                                 socket_,
+                                                 poller_spot_routed_kind_for_subject (
+                                                   socket_))
+                          != 0)
+                    || (completion_socket
+                        && poller_add_registration (
+                             poller_, completion_socket, NULL, ZLINK_POLLIN,
+                             socket_, poller_subject_spot_request_completion)
+                             != 0)) {
+                    const int err = errno;
+                    (void) poller_remove_all_registrations_for_subject (
+                      poller_, socket_);
+                    errno = err;
+                    return -1;
+                }
             }
         }
         return 0;

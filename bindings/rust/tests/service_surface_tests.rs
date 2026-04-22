@@ -77,6 +77,19 @@ fn spot_callback_surfaces_exist() {
         Message::copy_from(b"payload").unwrap(),
         SendFlags::DONT_WAIT,
     );
+    let rid = RoutingId::from_bytes(b"rid-surface");
+    let spot_rid = RoutingId::from_bytes(b"spot-surface");
+    let _ = spot.send_to_spot(
+        rid.clone(),
+        spot_rid.clone(),
+        Message::copy_from(b"payload").unwrap(),
+    );
+    let _ = spot.send_to_spot_with_flags(
+        rid,
+        spot_rid,
+        Message::copy_from(b"payload").unwrap(),
+        SendFlags::DONT_WAIT,
+    );
     let _ = block_on_ready(spot.request_channel(
         "svc-surface",
         Message::copy_from(b"payload").unwrap(),

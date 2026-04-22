@@ -88,6 +88,7 @@
 - timer handler도 같은 실행 문맥으로 들어오는가
 - publish subscription callback도 같은 문맥으로 들어오는가
 - **channel reply callback도 같은 문맥으로 들어오는가**
+- stream session callback도 같은 문맥으로 들어오는가
 - 응용이 별도 lock 없이 stage state를 다뤄도 되는가
 
 이 계약이 없으면 `Stage` wrapper는 단순 DTO 라우팅 레이어만 되고, 실제 room/stage
@@ -107,13 +108,28 @@
 따라서 framework 문서에서 해야 할 일은 새 의미를 만드는 것이 아니라, 그 계약을
 상위 표면으로 분명하게 옮기는 일이다.
 
+여기서 중요한 점은 사용자에게 내부 실행기를 직접 노출하지 않는다는 것이다.
+`Stage wrapper` 사용자는 mailbox, queue, dispatch drain loop를 직접 다루지 않고,
+등록 표면만 본다.
+
+- packet handler 등록
+- subscription handler 등록
+- timer handler 등록
+- session/actor 입장
+- spot state 접근 규칙
+
+즉 wrapper 문서가 말해야 하는 것은 "같은 `Spot` 상태는 같은 실행 계약으로 처리된다"는
+점이지, 사용자가 내부 runtime 구현을 직접 소유한다는 뜻이 아니다.
+
 `Stage` wrapper 관점에서는 아래처럼 정리할 수 있다.
 
-- `StageSpot.UserCount` 같은 mutable state 는 단일 spot executor 만 접근한다.
+- `StageSpot.UserCount` 같은 mutable state 는 같은 `Spot` 실행 계약 안에서만
+  접근된다고 본다.
 - routed packet handler, subscription handler, timer handler, channel reply
-  continuation 에서 `StageSpot` state 를 읽고 쓸 때 별도 lock 이 필요 없다.
+  continuation, stream session callback에서 `StageSpot` state 를 읽고 쓸 때 별도
+  lock 이 필요 없다.
 - 단, `Stage` wrapper 외부에서 `SpotRid` 를 받아 직접 state 를 건드리려 하면
-  executor 외부 접근이 되므로 그 경우는 별도 동기화가 필요하다.
+  그 접근은 같은 실행 계약 바깥이므로 별도 동기화가 필요하다.
 
 ### 4.2 timer 등록
 
@@ -171,6 +187,11 @@ low-level `Timer.Stop()`와 dispose lifecycle을 감싼 고수준 timer handle�
 여기서 더 중요한 것은 timer handler가 어느 실행 문맥에서 도는가다.
 `AddTimer<THandler>(...)`로 등록한 timer handler는 가능하면 같은 spot 실행
 문맥에서 도는 쪽이 `Stage wrapper`에 더 자연스럽다.
+
+다만 이 사실이 사용자에게 low-level `Timer.FromSpot(spot)`나 `Timer.Recv()`를 직접
+다루게 해야 한다는 뜻은 아니다. wrapper 사용자는 `AddTimer<THandler>(...)`만 보고,
+framework가 같은 `Spot` 실행 계약 안에서 timer handler를 호출한다고 이해하는 편이
+맞다.
 
 ### 4.3 spot 생성 시 초기값 전달
 

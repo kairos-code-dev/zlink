@@ -226,6 +226,12 @@ internal static partial class NativeMethods
         ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_send_spot_part(IntPtr spot,
+        ref ZlinkRoutingId destNodeRoutingId,
+        ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part, int flags,
+        ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_reply_spot_part(IntPtr spot,
         ref ZlinkRoutingId destNodeRoutingId,
         ref ZlinkRoutingId destSpotRoutingId, ulong requestSequence,

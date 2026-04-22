@@ -484,6 +484,11 @@ public final class Native {
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
         ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_SEND_SPOT_PART = downcall(
+      "zlink_spot_send_spot_part",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_REPLY_SPOT_PART = downcall(
       "zlink_spot_reply_spot_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -2151,6 +2156,20 @@ public final class Native {
                 destNodeRid, destSpotRid, requestSeq, part, partFlag);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_reply_spot_part failed", t);
+        }
+    }
+
+    public static int spotSendSpotPart(MemorySegment spot,
+                                       MemorySegment destNodeRid,
+                                       MemorySegment destSpotRid,
+                                       MemorySegment part,
+                                       int flags,
+                                       int partFlag) {
+        try {
+            return (int) MH_SPOT_SEND_SPOT_PART.invokeExact(spot, destNodeRid,
+                destSpotRid, part, flags, partFlag);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_send_spot_part failed", t);
         }
     }
 

@@ -224,7 +224,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(hasattr(spot, "drain_channel_reply_from"))
                     spot.set_routing_id(b"spot-1")
                     self.assertEqual(spot.routing_id, zlink.RoutingId.from_bytes(b"spot-1"))
-                    self.assertFalse(hasattr(spot, "send_to_spot"))
+                    self.assertTrue(hasattr(spot, "send_to_spot"))
                     self.assertFalse(hasattr(spot, "request_to_spot"))
                     self.assertTrue(hasattr(spot, "reply_to_spot"))
                     self.assertTrue(hasattr(spot, "reply_to_router"))

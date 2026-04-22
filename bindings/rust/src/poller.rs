@@ -381,3 +381,12 @@ impl_poll_target_from_ref!(RouterSocket);
 impl_poll_target_from_ref!(XPubSocket);
 impl_poll_target_from_ref!(XSubSocket);
 impl_poll_target_from_ref!(StreamSocket);
+
+impl<'a> From<&'a crate::service::Spot> for PollTarget<'a> {
+    fn from(spot: &'a crate::service::Spot) -> Self {
+        Self {
+            handle: spot.raw(),
+            _marker: PhantomData,
+        }
+    }
+}

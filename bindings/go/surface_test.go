@@ -472,6 +472,9 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("Spot should expose ReceiveSubscriptionEvent")
 	}
+	if !hasMethod((*zlink.Spot)(nil), "SendToSpot") {
+		t.Fatalf("Spot should expose SendToSpot")
+	}
 	if !hasMethod((*zlink.Spot)(nil), "ReplyToSpot") {
 		t.Fatalf("Spot should expose ReplyToSpot")
 	}

@@ -2,9 +2,8 @@
 
 package dev.kairoscode.zlink.perf.single;
 
-import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.SpotDispatchEvent;
+import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
@@ -12,12 +11,6 @@ import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpot {
     private static final String SERVICE_NAME = "perf.spot.service";
@@ -27,13 +20,6 @@ final class PerfSpot {
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         String topic = "perf.topic." + System.nanoTime();
-        CountDownLatch finished = new CountDownLatch(1);
-        CountDownLatch ready = new CountDownLatch(1);
-        AtomicBoolean idleDrain = new AtomicBoolean(false);
-        AtomicLong lastRecvNs = new AtomicLong(System.nanoTime());
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        Object drainSignal = new Object();
-        PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         String registryPub = PerfUtil.endpoint(config.transport(),
             "single-spot-registry-pub");
         String registryRouter = PerfUtil.endpoint(config.transport(),
@@ -44,120 +30,109 @@ final class PerfSpot {
         String subscriberEndpoint = normalizeSpotEndpoint(
             PerfUtil.endpoint(config.transport(), "single-spot-sub"),
             config.transport());
-        try (Context ctx = PerfUtil.newContext(config);
+
+        try (var ctx = PerfUtil.newContext(config);
              Registry registry = new Registry(ctx);
              Discovery discovery = new Discovery(ctx, ServiceType.SPOT,
                  SERVICE_NAME);
-             SpotNode pubNode = new SpotNode(ctx);
-             SpotNode subNode = new SpotNode(ctx);
-             Spot publisher = pubNode.createSpot();
-             Spot subscriber = subNode.createSpot()) {
+             SpotNode publisherNode = new SpotNode(ctx);
+             SpotNode subscriberNode = new SpotNode(ctx);
+             Spot publisher = publisherNode.createSpot();
+             Spot subscriber = subscriberNode.createSpot()) {
+            PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
             registry.bind(registryPub, registryRouter);
             discovery.connectRegistry(registryRouter);
-            pubNode.attachDiscovery(discovery);
-            subNode.attachDiscovery(discovery);
-            PerfUtil.applySpotOptions(pubNode, config);
-            PerfUtil.applySpotOptions(subNode, config);
-            PerfUtil.configureServerTls(pubNode, config.transport());
-            PerfUtil.configureClientTls(subNode, config.transport());
-            pubNode.bind(publisherEndpoint);
-            subNode.bind(subscriberEndpoint);
+            publisherNode.attachDiscovery(discovery);
+            subscriberNode.attachDiscovery(discovery);
+            PerfUtil.applySpotOptions(publisherNode, config);
+            PerfUtil.applySpotOptions(subscriberNode, config);
+            PerfUtil.configureServerTls(publisherNode, config.transport());
+            PerfUtil.configureClientTls(subscriberNode, config.transport());
+            publisherNode.bind(publisherEndpoint);
+            subscriberNode.bind(subscriberEndpoint);
             subscriber.setSubscription(topic);
-            subscriber.onDispatchEvent(info -> {
-                if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
-                    return;
-                }
-                try {
-                    while (true) {
-                        var maybe = PerfUtil.subscribeNoWait(subscriber);
-                        if (maybe.isEmpty()) {
-                            return;
-                        }
-                        try (var received = maybe.orElseThrow()) {
-                            PerfUtil.Header header = PerfUtil.decodeHeader(
-                                received.firstPart(), config.size());
-                            if (header == null) {
-                                continue;
-                            }
-                            if (header.phase() == PerfUtil.PHASE_WARMUP
-                                && ready.getCount() > 0L) {
-                                ready.countDown();
-                                continue;
-                            }
-                            if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                idleDrain.set(true);
-                                lastRecvNs.set(System.nanoTime());
-                                signalDrainProgress(drainSignal);
-                                continue;
-                            }
-                            if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                metrics.recordNanos(header.latencyNanos());
-                                lastRecvNs.set(System.nanoTime());
-                                signalDrainProgress(drainSignal);
-                            }
-                        }
-                    }
-                } catch (Throwable ex) {
-                    failure.compareAndSet(null, ex);
-                    finished.countDown();
-                }
-            });
 
-            Duration probeWait = Duration.ofMillis(Math.max(1, config.recvTimeoutMs()));
-            long readyDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-            while (ready.getCount() > 0L && System.nanoTime() < readyDeadline) {
-                try (Message probe = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, topic, probe);
-                    try {
-                        ready.await(probeWait.toMillis(), TimeUnit.MILLISECONDS);
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("spot local probe interrupted", ex);
-                    }
-                }
-            }
-            PerfUtil.await(ready, "spot local probe ready", Duration.ofSeconds(10));
+            waitForReadyProbe(publisher, subscriber, config, topic, metrics);
             settleAfterReady();
 
-            Thread traffic = new Thread(() -> {
-                try {
-                    metrics.startActiveWindow();
-                    long activeEnd = System.nanoTime()
-                        + config.durationSeconds() * 1_000_000_000L;
-                    while (System.nanoTime() < activeEnd) {
-                        try (Message active = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            publisher.publish(SERVICE_NAME, topic, active);
-                        }
-                    }
-                    try (Message cooldown = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        publisher.publish(SERVICE_NAME, topic, cooldown);
-                    }
-                } catch (Throwable ex) {
-                    failure.compareAndSet(null, ex);
-                    finished.countDown();
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
+            metrics.startActiveWindow();
+            while (System.nanoTime() < activeEnd) {
+                try (Message active = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                    publisher.publish(SERVICE_NAME, topic, active);
                 }
-            }, "single-spot-sender");
-            traffic.start();
-            PerfUtil.join(traffic, "spot sender", Duration.ofSeconds(10));
-            awaitIdleDrain(finished, idleDrain, lastRecvNs, drainSignal,
-                Duration.ofMillis(Math.max(1, config.recvTimeoutMs())),
-                Duration.ofSeconds(config.durationSeconds() + 10L));
-            if (failure.get() != null) {
-                throw new IllegalStateException("spot receiver failed", failure.get());
+                drainSubscriber(subscriber, config, metrics, activeEnd, true);
             }
+
+            try (Message cooldown = PerfUtil.payload(config.size(),
+                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                publisher.publish(SERVICE_NAME, topic, cooldown);
+            }
+
+            long idleDeadline = System.nanoTime()
+                + Math.max(1, config.recvTimeoutMs()) * 1_000_000L;
+            while (System.nanoTime() < idleDeadline) {
+                if (!drainSubscriber(subscriber, config, metrics, activeEnd,
+                        false)) {
+                    sleepQuietly(Duration.ofMillis(1), "spot idle drain interrupted");
+                }
+            }
+
             return metrics.finishSingle(config);
         }
     }
 
-    private static void sleepQuietly(Duration duration, String label) {
-        try {
-            Thread.sleep(duration.toMillis());
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(label, ex);
+    private static void waitForReadyProbe(Spot publisher, Spot subscriber,
+                                          PerfUtil.Config config, String topic,
+                                          PerfUtil.Metrics metrics) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            try (Message probe = PerfUtil.payload(config.size(),
+                     (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                publisher.publish(SERVICE_NAME, topic, probe);
+            }
+            if (drainSubscriber(subscriber, config, metrics, Long.MAX_VALUE,
+                    false)) {
+                return;
+            }
+            sleepQuietly(Duration.ofMillis(10), "spot local probe interrupted");
+        }
+        throw new IllegalStateException("spot local probe ready timeout");
+    }
+
+    private static boolean drainSubscriber(Spot subscriber,
+                                           PerfUtil.Config config,
+                                           PerfUtil.Metrics metrics,
+                                           long activeEnd,
+                                           boolean countActive) {
+        boolean processed = false;
+        while (true) {
+            var maybe = PerfUtil.subscribeNoWait(subscriber);
+            if (maybe.isEmpty()) {
+                return processed;
+            }
+            try (TopicMessage subscribed = maybe.orElseThrow()) {
+                PerfUtil.Header header = PerfUtil.decodeHeader(
+                    subscribed.firstPart(), config.size());
+                if (header == null) {
+                    processed = true;
+                    continue;
+                }
+                if (header.phase() == PerfUtil.PHASE_WARMUP) {
+                    processed = true;
+                    return true;
+                }
+                if (!countActive
+                    || header.phase() != PerfUtil.PHASE_ACTIVE
+                    || System.nanoTime() > activeEnd) {
+                    processed = true;
+                    continue;
+                }
+                metrics.recordNanos(header.latencyNanos());
+                processed = true;
+            }
         }
     }
 
@@ -169,42 +144,13 @@ final class PerfSpot {
         sleepQuietly(Duration.ofMillis(settleMs), "spot settle interrupted");
     }
 
-    private static void signalDrainProgress(Object drainSignal) {
-        synchronized (drainSignal) {
-            drainSignal.notifyAll();
+    private static void sleepQuietly(Duration duration, String label) {
+        try {
+            Thread.sleep(duration.toMillis());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(label, ex);
         }
-    }
-
-    private static void awaitIdleDrain(CountDownLatch finished,
-                                       AtomicBoolean idleDrain,
-                                       AtomicLong lastRecvNs,
-                                       Object drainSignal,
-                                       Duration idleWindow,
-                                       Duration timeout) {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        long idleWindowNs = idleWindow.toNanos();
-        synchronized (drainSignal) {
-            while (System.nanoTime() < deadline) {
-                if (idleDrain.get()
-                    && System.nanoTime() - lastRecvNs.get() >= idleWindowNs) {
-                    finished.countDown();
-                    return;
-                }
-                long remainingNs = Math.max(1L, deadline - System.nanoTime());
-                long idleRemainingNs = idleDrain.get()
-                    ? Math.max(1L, idleWindowNs - (System.nanoTime() - lastRecvNs.get()))
-                    : remainingNs;
-                long waitNs = Math.min(remainingNs, idleRemainingNs);
-                long waitMs = Math.max(1L, waitNs / 1_000_000L);
-                try {
-                    drainSignal.wait(waitMs);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("spot idle drain interrupted", ex);
-                }
-            }
-        }
-        throw new IllegalStateException("spot idle drain timed out");
     }
 
     private static String normalizeSpotEndpoint(String endpoint, String transport) {

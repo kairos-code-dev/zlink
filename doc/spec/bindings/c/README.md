@@ -204,11 +204,19 @@ not on the dealer's own event.
 
 ## SPOT Routed Request Surface
 
-Routed request initiation from a Spot handle to another Spot or to a Router.
-These wrappers accept `parts_` / `part_count_` arrays and delegate internally
-to the `*_part` substrate.
+Direct routed one-way send and routed request initiation from a Spot handle to
+another Spot or to a Router. These wrappers accept `parts_` / `part_count_`
+arrays and delegate internally to the `*_part` substrate.
 
 ```c
+zlink_submit_result_t zlink_spot_send_spot(
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+
 zlink_submit_result_t zlink_spot_request_spot(
   void *spot_,
   const zlink_routing_id_t *dest_node_rid_,
@@ -231,6 +239,7 @@ zlink_submit_result_t zlink_spot_request_router(
   uint32_t timeout_ms_);
 ```
 
+`zlink_spot_send_spot` is the direct one-way routed send surface.
 `zlink_spot_request_spot` pairs with `zlink_spot_reply_spot` on the replier
 side. `zlink_spot_request_router` pairs with `zlink_router_reply_spot`.
 
@@ -351,6 +360,12 @@ corresponding `*_len_out_` parameters carry the buffer capacity on input and
 the written byte count on output. `subscribed_out_` is 1 for subscribe events
 and 0 for unsubscribe.
 
+When SPOT dispatch is used, `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE`
+means the Spot has readable subscribe work. It is not a one-event-per-message
+ contract. The caller must keep pulling with `zlink_spot_subscribe(...)` or
+`zlink_spot_subscription_event(...)` until the API returns
+`ZLINK_RECV_NO_DATA` with `EAGAIN`.
+
 ## SPOT Recv Surface
 
 SPOT-side routed recv. Receives both one-way sends and request-reply packets
@@ -374,6 +389,13 @@ destination spot rid (this Spot's own rid as carried in the packet).
 `zlink_spot_reply_spot` or `zlink_spot_reply_router` to reply. The lifetime
 of the routing id pointers is tied to the received message frame — copy before
 freeing `parts_out_`.
+
+The first `zlink_spot_recv(...)` call must not perform hidden activation or
+hidden target registration. With `ZLINK_DONTWAIT`, `EAGAIN` means that Spot's
+owned routed ingress currently has no readable data. Under dispatch,
+`ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` is also a readiness signal, so the
+caller must drain with repeated `zlink_spot_recv(...)` calls until
+`ZLINK_RECV_NO_DATA` / `EAGAIN`.
 
 ## Relationship to Helper Substrate
 

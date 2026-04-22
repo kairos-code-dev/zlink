@@ -21,6 +21,7 @@
 
 extern "C" int zlink_router_enable_spot_receive (void *router_);
 extern "C" int zlink_socket_request_progress_internal (void *socket_);
+extern "C" int zlink_spot_request_progress_internal (void *spot_);
 
 SETUP_TEARDOWN_TESTCONTEXT
 
@@ -126,6 +127,8 @@ struct spot_case_t
     zlink_routing_id_t node_b_rid;
     zlink_routing_id_t spot_a_rid;
     zlink_routing_id_t spot_b_rid;
+    bool tls_enabled;
+    tls_test_files_t tls_files;
 };
 
 void capture_reply (zlink_request_result_t result_,
@@ -174,9 +177,12 @@ bool wait_for_reply (reply_probe_t *probe_)
                   [probe_]() { return probe_->done; }))
                 return true;
         }
-        if (probe_->progress_handle)
-            (void) zlink_socket_request_progress_internal (
-              probe_->progress_handle);
+        if (probe_->progress_handle) {
+            if (zlink_socket_request_progress_internal (probe_->progress_handle)
+                < 0)
+                (void) zlink_spot_request_progress_internal (
+                  probe_->progress_handle);
+        }
     }
 
     return false;
@@ -197,9 +203,12 @@ bool wait_for_reply_count (reply_probe_t *probe_, size_t expected_count_)
                   }))
                 return true;
         }
-        if (probe_->progress_handle)
-            (void) zlink_socket_request_progress_internal (
-              probe_->progress_handle);
+        if (probe_->progress_handle) {
+            if (zlink_socket_request_progress_internal (probe_->progress_handle)
+                < 0)
+                (void) zlink_spot_request_progress_internal (
+                  probe_->progress_handle);
+        }
     }
 
     return false;
@@ -673,6 +682,23 @@ void setup_connected_spot_case (spot_case_t *out_)
     out_->spot_b_rid = get_routing_id_value (out_->spot_b);
 }
 
+void setup_connected_spot_case_tls (spot_case_t *out_)
+{
+    setup_connected_spot_case (out_);
+    out_->tls_enabled = true;
+    out_->tls_files = make_tls_test_files ();
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (
+      out_->node_a, out_->tls_files.server_cert.c_str (),
+      out_->tls_files.server_key.c_str (), 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (
+      out_->node_b, out_->tls_files.server_cert.c_str (),
+      out_->tls_files.server_key.c_str (), 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_client (
+      out_->node_a, out_->tls_files.ca_cert.c_str (), "localhost", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_client (
+      out_->node_b, out_->tls_files.ca_cert.c_str (), "localhost", 0));
+}
+
 void teardown_connected_spot_case (spot_case_t *case_)
 {
     if (case_->spot_b) {
@@ -690,6 +716,8 @@ void teardown_connected_spot_case (spot_case_t *case_)
     if (case_->ctx) {
         TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (case_->ctx));
     }
+    if (case_->tls_enabled)
+        cleanup_tls_test_files (case_->tls_files);
 }
 
 void test_dealer_to_router_request_reply_basic ()
@@ -1292,6 +1320,141 @@ void test_router_to_spot_request_reply_basic ()
     teardown_connected_spot_case (&spot_case);
 }
 
+void test_spot_to_spot_request_preserves_source_identity ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    void *spot_a = zlink_spot_new (node);
+    void *spot_b = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (spot_a);
+    TEST_ASSERT_NOT_NULL (spot_b);
+
+    set_routing_id_text (node, "spot-local-node");
+    set_routing_id_text (spot_a, "spot-local-a");
+    set_routing_id_text (spot_b, "spot-local-b");
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t spot_a_rid = get_routing_id_value (spot_a);
+    const zlink_routing_id_t spot_b_rid = get_routing_id_value (spot_b);
+
+    spot_request_handler_probe_t handler_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_handler (spot_b, &capture_spot_request, &handler_probe));
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "spot-to-spot");
+
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = spot_a;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
+      spot_a, &node_rid, &spot_b_rid, &request_part, &capture_reply,
+      &reply_probe, static_cast<zlink_send_flags_t> (0), ZLINK_PART_FINAL,
+      3000));
+
+    TEST_ASSERT_TRUE (wait_for_spot_request_handler (&handler_probe));
+    {
+        std::lock_guard<std::mutex> lock (handler_probe.mutex);
+        TEST_ASSERT_TRUE (handler_probe.request_seq != 0);
+        TEST_ASSERT_EQUAL_STRING_LEN ("spot-local-node",
+                                      handler_probe.source_rid.c_str (),
+                                      handler_probe.source_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN ("spot-local-a",
+                                      handler_probe.spot_rid.c_str (),
+                                      handler_probe.spot_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN ("spot-to-spot",
+                                      handler_probe.request_payload.c_str (),
+                                      handler_probe.request_payload.size ());
+    }
+
+    zlink_msg_t reply_part;
+    zlink_msg_init (&reply_part);
+    init_string_part (&reply_part, "spot-reply");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
+      spot_b, &node_rid, &spot_a_rid, handler_probe.request_seq, &reply_part,
+      ZLINK_PART_FINAL));
+
+    for (int i = 0; i < 10; ++i) {
+        (void) zlink_spot_request_progress_internal (spot_a);
+        {
+            std::lock_guard<std::mutex> lock (reply_probe.mutex);
+            if (reply_probe.done)
+                break;
+        }
+        msleep (SETTLE_TIME);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_to_spot_request_reply_over_tls ()
+{
+    spot_case_t spot_case;
+    setup_connected_spot_case_tls (&spot_case);
+
+    char endpoint_a[MAX_SOCKET_STRING];
+    char endpoint_b[MAX_SOCKET_STRING];
+    bind_spot_node (spot_case.node_a, endpoint_a, sizeof (endpoint_a));
+    bind_spot_node (spot_case.node_b, endpoint_b, sizeof (endpoint_b));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (spot_case.node_a, endpoint_b));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (spot_case.node_b, endpoint_a));
+
+    spot_request_handler_probe_t handler_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_handler (spot_case.spot_b, &capture_spot_request, &handler_probe));
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "spot-to-spot-tls");
+
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = spot_case.spot_a;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
+      spot_case.spot_a, &spot_case.node_b_rid, &spot_case.spot_b_rid,
+      &request_part, &capture_reply, &reply_probe,
+      static_cast<zlink_send_flags_t> (0), ZLINK_PART_FINAL, 3000));
+
+    TEST_ASSERT_TRUE (wait_for_spot_request_handler (&handler_probe));
+    {
+        std::lock_guard<std::mutex> lock (handler_probe.mutex);
+        TEST_ASSERT_TRUE (handler_probe.request_seq != 0);
+        TEST_ASSERT_EQUAL_STRING_LEN ("spot-node-a",
+                                      handler_probe.source_rid.c_str (),
+                                      handler_probe.source_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN ("spot-a",
+                                      handler_probe.spot_rid.c_str (),
+                                      handler_probe.spot_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN ("spot-to-spot-tls",
+                                      handler_probe.request_payload.c_str (),
+                                      handler_probe.request_payload.size ());
+    }
+
+    zlink_msg_t reply_part;
+    zlink_msg_init (&reply_part);
+    init_string_part (&reply_part, "spot-reply-tls");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
+      spot_case.spot_b, &spot_case.node_a_rid, &spot_case.spot_a_rid,
+      handler_probe.request_seq, &reply_part, ZLINK_PART_FINAL));
+
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_STRING_LEN ("spot-reply-tls", reply_probe.payload.c_str (),
+                                      reply_probe.payload.size ());
+    }
+
+    teardown_connected_spot_case (&spot_case);
+}
+
 void test_router_to_missing_spot_completes_with_enoent ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1351,6 +1514,8 @@ int main ()
     RUN_TEST (test_router_request_rejects_non_router_target);
     RUN_TEST (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);
     RUN_TEST (test_router_to_spot_request_reply_basic);
+    RUN_TEST (test_spot_to_spot_request_preserves_source_identity);
+    RUN_TEST (test_spot_to_spot_request_reply_over_tls);
     RUN_TEST (test_router_to_missing_spot_completes_with_enoent);
     RUN_TEST (test_request_reply_process_exits_cleanly_after_round_trip);
     const int rc = UNITY_END ();

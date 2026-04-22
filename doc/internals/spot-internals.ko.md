@@ -223,6 +223,13 @@ sequenceDiagram
 
 ## 5. Routed 메시지 흐름 (상세)
 
+Routed 평면에서 중요한 변화는 하나다. target `Spot`은 더 이상 node가 대신 채워 준
+hidden recv queue를 읽지 않는다. 각 `Spot`은 create 시점에 자기 own routed ingress
+`ROUTER`를 준비하고, `zlink_spot_recv()`는 그 ingress를 직접 읽는다.
+
+즉 routed delivery owner는 항상 target `Spot`이다. `SpotNode`는 routed broker와
+local inproc wiring을 맡지만, 최종 recv owner를 대신하지 않는다.
+
 ### 5.1 로컬 spot → 로컬 spot (같은 노드)
 
 ```mermaid
@@ -231,7 +238,8 @@ sequenceDiagram
     participant RouteIn as route_ingress (ROUTER)
     participant DP as data_plane_loop
     participant NodeRouter as node_router (ROUTER)
-    participant Receiver as spot_handler / spot_recv
+    participant SpotRouter as target Spot ROUTER
+    participant Receiver as zlink_spot_recv()
 
     Sender->>RouteIn: [SPOT envelope 8 parts] + [payload]
     Note over RouteIn: ROUTER가 sender routing_id 추가
@@ -239,8 +247,9 @@ sequenceDiagram
     DP->>DP: SPOT envelope 파싱
     DP->>DP: destination = 로컬 spot
     DP->>NodeRouter: [SPOT envelope] + [payload] 포워딩
-    Note over NodeRouter: ROUTER가 대상 spot_rid로 라우팅
-    NodeRouter->>Receiver: handler 또는 recv 큐로 전달
+    Note over NodeRouter: ROUTER가 target Spot ingress rid로 라우팅
+    NodeRouter->>SpotRouter: local inproc routed delivery
+    SpotRouter->>Receiver: target Spot owned ingress에서 recv
 ```
 
 ### 5.2 로컬 spot → 원격 spot (노드 간)
@@ -253,7 +262,8 @@ sequenceDiagram
     participant Net as ROUTER-ROUTER Transport
     participant DP2 as Data Plane (Node 2)
     participant NodeRouter2 as node_router (Node 2)
-    participant Receiver as spot_handler (Node 2)
+    participant SpotRouter2 as target Spot ROUTER
+    participant Receiver as zlink_spot_recv() (Node 2)
 
     Sender->>RouteIn: [SPOT envelope] + [payload]
     DP1->>DP1: envelope 파싱 → dest_node = Node 2
@@ -261,7 +271,8 @@ sequenceDiagram
     Net->>DP2: Node 2 data plane에 전달
     DP2->>DP2: envelope 파싱 → 로컬 spot 대상
     DP2->>NodeRouter2: 로컬 node_router로 포워딩
-    NodeRouter2->>Receiver: 대상 spot에 전달
+    NodeRouter2->>SpotRouter2: local inproc routed delivery
+    SpotRouter2->>Receiver: target Spot owned ingress에서 recv
 ```
 
 ### 5.3 spot → router / router → spot (one-way send)
@@ -382,6 +393,9 @@ struct spot_handle_t {
 
 Unified handle은 SpotNode를 빌린다. 여러 handle이 하나의 node를 공유할 수 있다.
 각 handle은 자신만의 pub/sub 쌍, mode state, request-reply state를 갖는다.
+request-reply state 안에는 per-spot routed ingress `ROUTER`, completion signal,
+identity lookup 정보가 함께 묶여 있다. 이 routed ingress는 `zlink_spot_new()`
+성공 시점에 준비되며, 첫 `zlink_spot_recv()`가 뒤늦게 만들지 않는다.
 
 ## 9. HWM 경계
 
@@ -424,7 +438,7 @@ Topic과 routed HWM은 `zlink_set_spot_node_option()`으로 독립 설정 가능
 flowchart LR
     subgraph DataPlane["SpotNode data-plane thread"]
         ingress["sub plane<br/>spot_sub readable"]
-        routed["routed dispatch<br/>(node_router -> queue)"]
+        routed["routed dispatch<br/>(node_router -> spot router)"]
         bridge["channel reply bridge<br/>(attached dealer completion)"]
     end
 
@@ -445,7 +459,7 @@ flowchart LR
 | 이벤트 | 발원 producer | `subject_kind` | 콜백을 호출하는 스레드 |
 |-------|---------------|---------------|----------------------|
 | `SUBSCRIBE_READABLE` | `spot_sub_handler_adapter` — `spot_sub_t` 의 direct handler | `SUBJECT_SPOT` | SpotNode data-plane polling 스레드 |
-| `ROUTED_READABLE` | `queue_spot_message()` — routed 전달을 내부 PAIR 큐에 enqueue 한 뒤 호출 | `SUBJECT_SPOT` | SpotNode data-plane polling 스레드 |
+| `ROUTED_READABLE` | `queue_spot_message()` — routed 전달을 target Spot owned `ROUTER`로 보낸 뒤 호출 | `SUBJECT_SPOT` | SpotNode data-plane polling 스레드 |
 | `CHANNEL_REPLY_READABLE` | attached dealer completion bridge — dealer completion을 spot dealer source queue에 적재한 뒤 호출 | `SUBJECT_CHANNEL_DEALER` | dealer completion을 처리하는 스레드 (data-plane 또는 별도 completion 스레드) |
 | `TIMER_READABLE` | `scheduler_fire_timer()` — fire count 를 deque 에 넣고 signaler 를 raise 한 뒤, direct timer handler 가 없을 때만 호출 | `SUBJECT_TIMER` | SpotNode-local 타이머 스케줄러 스레드 |
 
@@ -509,28 +523,29 @@ direct subscribe callback 을 설치하는 공개 함수는 없다.
 ### 10.3 이벤트별 발생 조건
 
 **`SUBSCRIBE_READABLE`** — data-plane 스레드에서 `spot_sub_t` 의 direct
-handler (즉 `spot_sub_handler_adapter`) 가 호출될 때마다 발행된다.
-adapter 는 user subscribe 콜백을 실행하기 *전에*
-`zlink_spot_notify_dispatch_event()` 를 호출한다. user subscribe handler
-가 설치되지 않은 경우에도 subscribe 메시지는 `spot_sub_t` recv buffer 에
-쌓이고, notifier 는 `zlink_subscribe()` pull 소비자에게 wake-up 신호
-역할을 한다.
+handler (즉 `spot_sub_handler_adapter`) 가 호출될 때 발행된다. 중요한 점은
+node-wide service attachment readable을 모든 facade spot에 fan-out하지 않는다는
+것이다. 이제 `SUBSCRIBE_READABLE`은 해당 `Spot`이 실제로 subscribe recv를 할 수
+있을 때만 올라와야 한다.
 
-**`ROUTED_READABLE`** — `queue_spot_message()` 에서 routed payload (node
-rid, spot rid, request_seq, parts) 를 per-Spot 내부 PAIR 큐
-(`inproc://zlink.spot.routed.recv.*`) 에 enqueue 한 뒤 발행된다. 큐 write
-가 성공한 다음 발행되므로, 알림을 관측한 워커는 다음 `zlink_spot_recv()`
-호출에서 최소 한 건의 payload 를 얻는 것이 보장된다. `request_handler`
-가 설치되어 있을 때는 queue write 대신 routed direct callback 이 호출되며
-알림은 발행되지 않는다.
+**`ROUTED_READABLE`** — `queue_spot_message()` 가 routed payload (node
+rid, spot rid, request_seq, parts) 를 target `Spot`의 owned ingress
+`ROUTER`로 local 전달한 뒤 발행된다. 즉 routed dispatch는 "어딘가에 routed
+work가 생겼다"가 아니라 "이 Spot의 routed ingress에서 실제 recv가 가능하다"는
+의미를 가져야 한다.
 
-**`CHANNEL_REPLY_READABLE`** — attached dealer completion bridge 에서,
-dealer completion (정상 reply, timeout, terminate, local failure, protocol
-error) 이 확정된 뒤 originating `Spot` 의 dealer source queue 에 적재될 때
-발행된다. `subject_kind` 는 `SUBJECT_CHANNEL_DEALER` 이고 `subject` 는 해당
-attached dealer handle 이다. 애플리케이션 워커는 이 dealer handle 을 인자로
-`zlink_spot_channel_reply_progress_from(spot, subject)` 를 호출해 completion
-을 drain 한다. late reply, double completion 은 발행되지 않는다.
+두 readable 이벤트는 모두 edge가 아니라 level-like readiness로 취급한다.
+
+- callback 1회가 메시지 1개를 뜻하지 않는다.
+- 이미 readable인 동안 메시지가 더 들어오더라도 callback 개수와 메시지 개수는
+  1:1이 아닐 수 있다.
+- callback consumer는 `zlink_spot_subscribe()` 또는 `zlink_spot_recv()`를
+  `EAGAIN`이 나올 때까지 반복해서 drain해야 한다.
+
+**`CHANNEL_REPLY_READABLE`** — attached dealer completion bridge가 해당 `Spot`
+소유 dealer source completion queue를 채운 뒤 발행한다. 이 이벤트는 raw dealer recv
+신호가 아니라 `zlink_spot_channel_reply_progress_from()`로 progress할 completion이
+있다는 뜻이다.
 
 **`TIMER_READABLE`** — `scheduler_fire_timer()` 에서, 타이머가 소유하는
 Spot (`zlink_spot_timer_new(spot)` 로 만든 경우) 이고 **direct timer
@@ -552,13 +567,13 @@ sequenceDiagram
     participant Notify as notify_dispatch_event
     participant UH as User event handler
     participant App as App worker thread
-    participant Q as 내부 큐<br/>(sub buffer / routed PAIR /<br/>dealer source queue / timer deque)
+    participant Q as owned receive surface<br/>(sub buffer / spot router /<br/>dealer source queue / timer deque)
 
     alt topic 메시지 도착
         DP->>Q: sub buffer 에 push
         DP->>Notify: SUBSCRIBE_READABLE (subject=spot)
     else routed 메시지 도착
-        DP->>Q: routed PAIR 에 push
+        DP->>Q: target Spot router 로 전달
         DP->>Notify: ROUTED_READABLE (subject=spot)
     else channel reply completion
         DP->>Q: dealer source queue 에 completion 적재
@@ -584,7 +599,7 @@ sequenceDiagram
 producer 들은 `notify_dispatch_event` 이후 애플리케이션 로직에 더 이상
 들어가지 않는다. 메시지 디코딩, 토픽 매칭, 타이머 재스케줄링, dealer
 completion decode 는 모두 내부 스레드에서 처리되고, 워커 스레드는 이미
-drain 되었거나 원자적으로 append 된 큐만 접근한다.
+ready 상태가 확정된 owned receive surface만 접근한다.
 
 ### 10.5 Channel Reply Delivery Bridge
 

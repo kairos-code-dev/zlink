@@ -147,6 +147,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotPublish", 0, spot_publish, 0, 0, 0, napi_default, 0},
         {"spotTryPublish", 0, spot_try_publish, 0, 0, 0, napi_default, 0},
         {"spotSendChannel", 0, spot_send_channel, 0, 0, 0, napi_default, 0},
+        {"spotSendToSpot", 0, spot_send_spot, 0, 0, 0, napi_default, 0},
         {"spotRequestChannel", 0, spot_request_channel, 0, 0, 0, napi_default, 0},
         {"spotRequestProgress", 0, spot_request_progress, 0, 0, 0,
          napi_default, 0},

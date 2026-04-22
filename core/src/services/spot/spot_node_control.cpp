@@ -229,23 +229,9 @@ void spot_node_t::control_tick ()
 
 void spot_node_t::notify_service_subscribe_readable ()
 {
-    std::shared_ptr<socket_poller_t> poller;
-    std::vector<spot_handle_t *> facades;
-    {
-        scoped_lock_t lock (_sync);
-        poller = _service_attachment_state.readable_sub_poller;
-        facades.reserve (_facades.size ());
-        facades.assign (_facades.begin (), _facades.end ());
-    }
-
-    socket_poller_t::event_t event;
-    if (!poller || poller->wait (&event, 1, 0) <= 0)
-        return;
-
-    for (size_t i = 0; i < facades.size (); ++i) {
-        zlink_spot_notify_dispatch_event (
-          facades[i], ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
-    }
+    // SUBSCRIBE_READABLE must reflect actual per-spot readable work.
+    // Node-wide service attachment readability is too coarse and can wake
+    // unrelated spots, so dispatch is now driven only by spot-owned paths.
 }
 
 void spot_node_t::emit_pending_subscription_replays ()

@@ -278,6 +278,38 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              Message part) {
+        return sendToSpot(destNodeRid, destSpotRid, List.of(part),
+          SendFlags.NONE);
+    }
+
+    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              Message part, SendFlags flags) {
+        Objects.requireNonNull(part, "part");
+        return sendToSpot(destNodeRid, destSpotRid, List.of(part), flags);
+    }
+
+    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              List<Message> parts) {
+        return sendToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE);
+    }
+
+    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                              List<Message> parts, SendFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        try {
+            return routedSupport.sendToSpot(destNodeRid, destSpotRid, parts,
+              flags);
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
     public CompletableFuture<List<Message>> requestChannel(String channelName,
                                                            Message part) {
         return requestChannel(channelName, List.of(part));

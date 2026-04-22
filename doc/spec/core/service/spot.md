@@ -33,7 +33,14 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 - `zlink_spot_node_new()` creates a SPOT node runtime.
 - `zlink_spot_new()` borrows an existing `SpotNode` and returns a unified
   facade.
+- A successful `zlink_spot_new()` means the Spot's routed receive plane is
+  already prepared. The first `zlink_spot_recv()` must not perform hidden
+  activation or hidden socket creation.
 - `zlink_spot_destroy()` closes only the facade.
+- `zlink_spot_destroy()` unregisters routed target lookup before closing owned
+  subjects. Unread routed messages that were already queued for that Spot may
+  be dropped during teardown; callers are not required to drain everything
+  before destroy.
 - `zlink_spot_node_destroy()` tears down the node runtime.
 
 ## SpotNode contract
@@ -162,6 +169,8 @@ zlink_recv_result_t zlink_spot_subscription_event(
 The topic plane still uses the public parameter name `service_name`.
 That is the current contract name for the topic namespace.
 
+- `zlink_spot_node_attach_pub_ingress()` joins this same topic ingress path.
+
 ### Routed recv/reply
 
 ```c
@@ -191,8 +200,15 @@ zlink_submit_result_t zlink_spot_reply_router(
 ```
 
 - `zlink_spot_recv()` reads the routed receive plane.
+- `zlink_spot_recv()` reads only the routed ingress owned by that Spot.
+- The first `zlink_spot_recv()` must not bootstrap registration or open a
+  hidden queue.
+- `ZLINK_DONTWAIT` with `EAGAIN` means that Spot-owned routed ingress has no
+  readable data at that moment.
 - Reply with `zlink_spot_reply_spot()` when the origin is another SPOT.
 - Reply with `zlink_spot_reply_router()` when the origin is a ROUTER.
+- Routed receive metadata (`source_rid`, `spot_rid`, `request_seq`) must stay
+  intact across local forward as well as remote delivery.
 
 ### Handlers
 
@@ -229,6 +245,8 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
 - `subject` is the concrete drain target instance.
 - `CHANNEL_REPLY_READABLE` means a channel request completion is ready for the
   originating `Spot`. It does not expose raw dealer receive.
+- `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
+  one-event-per-message delivery counters.
 
 Drain rules by dispatch subject:
 
@@ -274,6 +292,9 @@ zlink_config_result_t zlink_socket_get_channel_name(
 
 - `zlink_spot_dispatch_event_handler()` serializes all dispatch callbacks for
   the same `Spot`.
+- After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
+  corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
+- Node-wide broad subscribe fan-out is not part of the public contract.
 - `zlink_spot_channel_reply_progress_from()` drains channel reply completions
   for the attached dealer identified by the dispatch `subject`.
 - `zlink_socket_set_channel_name()` stores fixed logical channel metadata on a
@@ -417,6 +438,17 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
 
 There is no dedicated public SPOT-node monitor recv API. Use the generic
 service monitor plus snapshot/query functions.
+
+## Relationship to Poller
+
+The current public poller API is unchanged by this SPOT runtime work.
+
+- `zlink_poller_event_t` does not currently carry owner Spot, dispatch event
+  kind, or drain subject together.
+- A future Spot-aware poller extension may add that richer result surface, but
+  it is not part of the current public contract.
+- Today, the canonical unified readable-notification surface for SPOT is
+  `zlink_spot_dispatch_event_handler()`.
 
 ## Constraint summary
 

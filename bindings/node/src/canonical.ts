@@ -1868,6 +1868,26 @@ export class Spot extends NativeHandle {
       throw submitError;
     }
   }
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+    try {
+      requireNative().spotSendToSpot(
+        this._native,
+        normalizeRoutingId(destNodeRid),
+        normalizeRoutingId(destSpotRid),
+        Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
+        flags | 0
+      );
+      return true;
+    } catch (error) {
+      const submitError = submitNativeError(error, flags, 'spot sendToSpot failed');
+      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
+  }
   requestChannel(channelName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
   requestChannel(channelName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
   requestChannel(channelName: string, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;

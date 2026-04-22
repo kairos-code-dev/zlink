@@ -191,6 +191,14 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
 
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+
 ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_reply_spot (
   void *spot_,
   const zlink_routing_id_t *dest_node_rid_,

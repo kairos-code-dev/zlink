@@ -483,6 +483,14 @@ func (s *Spot) SendChannel(channelName string, flags SendFlags, parts ...*Messag
 	})
 }
 
+func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) error {
+	node := destNodeRid.toC()
+	spot := destSpotRid.toC()
+	return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_spot_send_spot_part(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
+	})
+}
+
 func (s *Spot) RequestChannel(channelName string, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
 	if callback == nil {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}

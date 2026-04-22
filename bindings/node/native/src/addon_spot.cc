@@ -58,9 +58,9 @@ static bool parse_routing_id_value(napi_env env,
     return true;
 }
 
-static const size_t k_spot_routed_slot_count = 8;
-static const size_t k_router_spot_slot_count = 8;
-static const size_t k_spot_dispatch_event_slot_count = 8;
+static const size_t k_spot_routed_slot_count = 256;
+static const size_t k_router_spot_slot_count = 256;
+static const size_t k_spot_dispatch_event_slot_count = 256;
 
 struct spot_routed_js_payload_t
 {
@@ -281,6 +281,33 @@ static int spot_reply_spot_parts(void *spot,
           (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
         int rc = zlink_spot_reply_spot_part(
           spot, dest_node_rid, dest_spot_rid, request_seq, &parts[i], part_flag);
+        if (rc != ZLINK_SUBMIT_OK) {
+            for (size_t j = i + 1u; j < part_count; ++j)
+                zlink_msg_close(&parts[j]);
+            return rc;
+        }
+    }
+
+    return ZLINK_SUBMIT_OK;
+}
+
+static int spot_send_spot_parts(void *spot,
+                                const zlink_routing_id_t *dest_node_rid,
+                                const zlink_routing_id_t *dest_spot_rid,
+                                zlink_msg_t *parts,
+                                size_t part_count,
+                                zlink_send_flags_t flags)
+{
+    if (!parts || part_count == 0) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        zlink_part_flag_t part_flag =
+          (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        int rc = zlink_spot_send_spot_part(
+          spot, dest_node_rid, dest_spot_rid, &parts[i], flags, part_flag);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
                 zlink_msg_close(&parts[j]);
@@ -1581,6 +1608,38 @@ napi_value spot_reply_spot(napi_env env, napi_callback_info info)
     if (rc != ZLINK_SUBMIT_OK) {
         return throw_last_error(env, "spotReplySpot failed");
     }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_send_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_routing_id_t dest_node_rid;
+    zlink_routing_id_t dest_spot_rid;
+    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    int32_t flags = 0;
+    if (argc >= 5)
+        napi_get_value_int32(env, argv[4], &flags);
+    int rc = spot_send_spot_parts(spot,
+                                  &dest_node_rid,
+                                  &dest_spot_rid,
+                                  parts.data(),
+                                  parts.size(),
+                                  static_cast<zlink_send_flags_t>(flags));
+    if (rc != ZLINK_SUBMIT_OK)
+        return throw_last_error(env, "spotSendToSpot failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;

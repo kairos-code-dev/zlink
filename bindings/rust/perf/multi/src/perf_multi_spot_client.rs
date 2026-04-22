@@ -112,6 +112,7 @@ fn main() {
     let ctx = common::perf_client_context();
     let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
     let mut nodes: Vec<SpotNode> = Vec::with_capacity(settings.clients);
+    let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let node = SpotNode::new(&ctx).expect("spot node");
@@ -121,38 +122,14 @@ fn main() {
             node.set_tls_client(&pem.ca, "localhost", false)
                 .expect("spot tls");
         }
-        node.connect_peer(data_endpoint).expect("connect peer");
         let mut spot = Box::new(node.create_spot().expect("spot"));
+        node.connect_peer(data_endpoint).expect("connect peer");
         spot.set_subscription(TOPIC).expect("subscription");
-        let spot_ptr = (&*spot as *const Spot) as usize;
-        let active_collect = Arc::clone(&active_collect);
-        let latency = Arc::clone(&latency);
-        spot.on_dispatch_event(move |info| {
-            if info.event != SpotDispatchEvent::SubscribeReadable {
-                return;
-            }
-            let spot = unsafe { &*(spot_ptr as *const Spot) };
-            loop {
-                match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(received) => {
-                        let data = common::message_payload(received.parts());
-                        if active_collect.load(Ordering::Acquire)
-                            && common::is_valid_active_message(data, args.msg_size)
-                        {
-                            let sent_ts_ns = common::decode_sent_ts_ns(data);
-                            latency.lock().expect("latency lock").record_ns(
-                                common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
-                            );
-                        }
-                    }
-                    Err(err) if err.code() == RecvResult::NoData => break,
-                    Err(err) => panic!("spot client subscribe drain failed: {err}"),
-                }
-            }
-        })
-        .expect("dispatch handler");
+        let poller = Poller::new().expect("poller");
+        poller.add_socket(&*spot, POLLIN).expect("poller add");
         nodes.push(node);
         spots.push(spot);
+        pollers.push(poller);
     }
 
     let mut ready_sender = None::<TcpStream>;
@@ -177,6 +154,51 @@ fn main() {
     thread::sleep(ready_settle);
     thread::sleep(control_settle);
 
+    let mut ready_seen = vec![false; spots.len()];
+    let warmup_deadline = Instant::now() + ready_timeout;
+    while Instant::now() < warmup_deadline {
+        let mut progressed = false;
+        for (index, spot) in spots.iter().enumerate() {
+            let Some(event) = pollers[index].wait(0).expect("poller wait") else {
+                continue;
+            };
+            if !event.is_readable() {
+                continue;
+            }
+            loop {
+                match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+                    Ok(received) => {
+                        progressed = true;
+                        let data = common::message_payload(received.parts());
+                        if common::decode_run_id(data) != common::BENCHMARK_RUN_ID
+                            || common::decode_msg_size(data) as usize != args.msg_size
+                        {
+                            continue;
+                        }
+                        if common::decode_phase(data) == common::PHASE_WARMUP {
+                            ready_seen[index] = true;
+                        }
+                    }
+                    Err(err) if err.code() == RecvResult::NoData => break,
+                    Err(err) => panic!("spot warmup subscribe failed: {err}"),
+                }
+            }
+        }
+        if ready_seen.iter().all(|seen| *seen) {
+            break;
+        }
+        if !progressed {
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    if !ready_seen.iter().all(|seen| *seen) {
+        panic!(
+            "spot warmup readiness timeout {}/{}",
+            ready_seen.iter().filter(|seen| **seen).count(),
+            ready_seen.len()
+        );
+    }
+
     {
         let stream = ready_sender.as_mut().expect("ready sender");
         writeln!(stream, "CONNECTED").expect("write connected");
@@ -189,28 +211,74 @@ fn main() {
     io::stdout().flush().ok();
 
     let mut runner_start = false;
-    let mut started = false;
     let start_deadline = Instant::now() + ready_timeout;
     while Instant::now() < start_deadline {
         let remaining = start_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {
             Ok(ClientEvent::RunnerStart) => runner_start = true,
-            Ok(ClientEvent::Started) => started = true,
+            Ok(ClientEvent::Started) => {}
             Ok(ClientEvent::Stop) => return,
             Ok(ClientEvent::ReadySender(_)) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => break,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        if runner_start && started {
+        if runner_start {
             break;
         }
     }
-    if !runner_start || !started {
+    if !runner_start {
         panic!("spot client start handshake timeout");
     }
 
     active_collect.store(true, Ordering::Release);
-    thread::sleep(Duration::from_secs(settings.duration_seconds));
+    let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    let idle_deadline = active_deadline + Duration::from_secs(2);
+    let mut cooldown_seen = vec![false; spots.len()];
+    while Instant::now() < idle_deadline {
+        let mut progressed = false;
+        for (index, spot) in spots.iter().enumerate() {
+            let Some(event) = pollers[index].wait(0).expect("poller wait") else {
+                continue;
+            };
+            if !event.is_readable() {
+                continue;
+            }
+            loop {
+                match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+                    Ok(received) => {
+                        progressed = true;
+                        let data = common::message_payload(received.parts());
+                        if common::decode_run_id(data) != common::BENCHMARK_RUN_ID
+                            || common::decode_msg_size(data) as usize != args.msg_size
+                        {
+                            continue;
+                        }
+                        if common::decode_phase(data) == common::PHASE_COOLDOWN {
+                            cooldown_seen[index] = true;
+                            continue;
+                        }
+                        if active_collect.load(Ordering::Acquire)
+                            && Instant::now() <= active_deadline
+                            && common::is_valid_active_message(data, args.msg_size)
+                        {
+                            let sent_ts_ns = common::decode_sent_ts_ns(data);
+                            latency.lock().expect("latency lock").record_ns(
+                                common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
+                            );
+                        }
+                    }
+                    Err(err) if err.code() == RecvResult::NoData => break,
+                    Err(err) => panic!("spot client subscribe drain failed: {err}"),
+                }
+            }
+        }
+        if Instant::now() >= active_deadline && cooldown_seen.iter().all(|seen| *seen) {
+            break;
+        }
+        if !progressed {
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
     active_collect.store(false, Ordering::Release);
 
     let stats = latency.lock().expect("latency lock").finish();

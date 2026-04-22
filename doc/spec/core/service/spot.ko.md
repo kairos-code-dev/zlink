@@ -33,7 +33,14 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 - `zlink_spot_node_new()`는 새 SPOT node runtime을 만든다.
 - `zlink_spot_new()`는 기존 `SpotNode`를 빌려 unified `Spot` facade를 만든다.
+- `zlink_spot_new()`가 성공하면 해당 `Spot`의 routed recv 평면은 이미 준비된
+  상태여야 한다. 첫 `zlink_spot_recv()`가 숨은 activation이나 숨은 socket 생성을
+  수행하지는 않는다.
 - `zlink_spot_destroy()`는 facade만 닫는다.
+- `zlink_spot_destroy()`는 routed target lookup을 먼저 제거한 뒤 owned subject를
+  닫는다. destroy 시점에 남아 있던 unread routed 메시지는 close 과정에서 버려질
+  수 있으며, 호출자는 destroy 전에 unread를 끝까지 drain해야 할 의무를 지지
+  않는다.
 - `zlink_spot_node_destroy()`는 node와 내부 runtime 자원을 정리한다.
 - discovery에 attach된 node는 보통 `zlink_discovery_destroy()` 흐름에서 함께 정리된다.
 
@@ -235,9 +242,16 @@ zlink_submit_result_t zlink_spot_reply_router(
 ```
 
 - `zlink_spot_recv()`는 routed receive plane을 읽는다.
+- `zlink_spot_recv()`는 현재 `Spot`에 귀속된 routed ingress만 읽는다.
+- 첫 `zlink_spot_recv()`가 routed target registration이나 hidden queue open을
+  수행하지 않는다.
+- `ZLINK_DONTWAIT`에서 `EAGAIN`이 나오면, 그 시점에는 해당 `Spot`의 routed ingress에
+  읽을 데이터가 없다는 뜻이다.
 - 수신한 요청이 SPOT origin이면 `zlink_spot_reply_spot()`으로 reply한다.
 - 수신한 요청이 ROUTER origin이면 `zlink_spot_reply_router()`로 reply한다.
 - reply 경로는 수신 이벤트가 알려준 concrete source address를 그대로 사용해야 한다.
+- routed recv metadata인 `source_rid`, `spot_rid`, `request_seq`는 local forward가
+  끼어도 application recv 표면까지 그대로 유지되어야 한다.
 
 ### Handler
 
@@ -293,6 +307,16 @@ dispatch 우선순위는 아래 순서로 고정한다.
 channel request 중 user callback을 실행할 준비가 끝난 completion이 하나 이상 있다"는
 것이다. raw dealer frame 수신 여부가 아니라, request completion 준비 상태를 알린다.
 
+`SUBSCRIBE_READABLE`과 `ROUTED_READABLE`은 메시지 개수 이벤트가 아니라
+readiness 이벤트다.
+
+- callback 1회가 메시지 1개를 뜻하지 않는다.
+- 이미 readable인 동안 같은 plane으로 메시지가 더 들어오더라도, dispatch callback
+  개수와 메시지 개수는 1:1로 대응하지 않을 수 있다.
+- 호출자는 해당 plane에서 `EAGAIN`이 나올 때까지 drain하는 방식으로 처리해야 한다.
+- `SUBSCRIBE_READABLE`은 node-wide broad fan-out이 아니라, 해당 `Spot`이 실제로
+  subscribe recv를 할 수 있을 때만 올라와야 한다.
+
 #### Channel reply progress
 
 ```c
@@ -327,6 +351,16 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
   dispatch callback이다.
 - 두 handler는 상호 배타적이다. 하나가 등록된 상태에서 다른 쪽을 등록하면
   `ZLINK_HANDLER_BUSY`로 실패한다.
+
+### Poller와의 관계
+
+현재 public poller 계약은 바뀌지 않았다.
+
+- `zlink_poller_event_t`는 owner spot / event kind / subject를 함께 표현하지 않는다.
+- 따라서 현재 공개 계약에서 `Spot` 직접 등록으로 dispatch와 같은 의미를 받는
+  poller 표면은 아직 없다.
+- `Spot`의 subscribe/routed/timer/channel-reply readiness를 한 callback으로 다루려면
+  `zlink_spot_dispatch_event_handler()`를 사용해야 한다.
 
 ## Spot routed request 시작
 

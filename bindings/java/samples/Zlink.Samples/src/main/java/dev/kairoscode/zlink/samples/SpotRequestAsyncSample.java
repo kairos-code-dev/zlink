@@ -1,13 +1,11 @@
 package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RequestResult;
-import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RouterSocket;
-import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.List;
@@ -18,23 +16,19 @@ public final class SpotRequestAsyncSample {
     public static void main(String[] args) throws Exception {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
-        String serviceName = "sample";
+        String channelName = "orders";
 
         try (Context ctx = new Context();
              SpotNode requesterNode = new SpotNode(ctx);
-             SpotNode responderNode = new SpotNode(ctx);
+             DealerSocket requesterDealer = new DealerSocket(ctx);
              RouterSocket requesterRouter = new RouterSocket(ctx);
-             Spot requester = requesterNode.createSpot();
-             Spot responderSpot = responderNode.createSpot()) {
-            requesterNode.setRoutingId(RoutingId.fromBytes("spot-requester-node".getBytes()));
-            responderNode.setRoutingId(RoutingId.fromBytes("spot-responder-node".getBytes()));
-            requester.setRoutingId(RoutingId.fromBytes("spot-requester".getBytes()));
-            responderSpot.setRoutingId(RoutingId.fromBytes("spot-responder".getBytes()));
-            responderNode.bind(endpoint);
-            requesterRouter.connect(endpoint);
+             var requester = requesterNode.createSpot()) {
+            requesterRouter.bind(endpoint);
+            requesterDealer.connect(endpoint);
+            requesterNode.attachChannelDealerManual(channelName, requesterDealer);
 
             Thread responder = new Thread(() -> {
-                try (var received = responderSpot.recvRouted(RecvFlags.NONE)) {
+                try (var received = requesterRouter.recv()) {
                     if (!"spot-ping".equals(SampleSupport.singleUtf8(received))) {
                         throw new IllegalStateException("unexpected spot request");
                     }
@@ -49,9 +43,8 @@ public final class SpotRequestAsyncSample {
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
             try (Message request = Message.copyOfUtf8("spot-ping")) {
-                requesterRouter.requestToSpot(
-                    responderNode.routingId(),
-                    responderSpot.routingId(),
+                requester.requestChannel(
+                    channelName,
                     List.of(request),
                     (requestResult, replyParts) -> {
                         resultHolder[0] = requestResult;

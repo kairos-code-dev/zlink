@@ -32,14 +32,15 @@ with the rules here, this section wins.
   `attachChannelDealerManual(channelName, dealer)`, and
   `attachPubIngress(pub)`.
 - `Spot` must expose channel-aware data-plane methods:
-  `sendChannel(...)`, `requestChannel(...)`, and
+  `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
   `publish(serviceName, topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `serviceName: string | null`, populated for
   SPOT subscribe results and `null` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `onSubscribe(...)`.
-- `Spot` direct RID one-way send APIs are not part of the public contract.
-  Routed request initiation (`requestToSpot` / `requestToRouter`) is supported.
+- `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
+  one-event-per-message delivery counters. Binding docs and samples must drain
+  until the recv path reports no data / `EAGAIN`.
 - Every socket and `Spot` exposes `setAdmissionState(state)` /
   `getAdmissionState()` using the typed enum-like object
   `AdmissionState.Serving` (1) and `AdmissionState.Draining` (2). Submit
@@ -1435,6 +1436,11 @@ class Spot {
 }
 ```
 
+`onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
+For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
+`subscribe(...)` / `recvRouted(...)` until the binding reports no data /
+`EAGAIN`.
+
 ### RegistryQueryClient
 
 ```typescript
@@ -1648,6 +1654,10 @@ interface PollerEvent {
 }
 ```
 
+The current public poller contract is still generic. It does not yet expose a
+Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
+subject together.
+
 ---
 
 ## Timer
@@ -1703,6 +1713,11 @@ type ServiceMonitorEventMask = number;
 /** Monitor event type enum (CONNECTION_READY, CONNECTED, DISCONNECTED, ...). */
 type MonitorEventType = number;
 ```
+
+`onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
+For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
+`subscribe(...)` / `recvRouted(...)` until the binding reports no data /
+`EAGAIN`.
 
 ---
 

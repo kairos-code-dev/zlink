@@ -434,7 +434,7 @@ the thread-safety boundaries the callback has to respect.
 flowchart LR
     subgraph DataPlane["SpotNode data-plane thread"]
         ingress["sub plane<br/>spot_sub readable"]
-        routed["routed dispatch<br/>(node_router → queue)"]
+        routed["routed dispatch<br/>(node_router → spot router)"]
         bridge["channel reply bridge<br/>(attached dealer completion)"]
     end
 
@@ -455,7 +455,7 @@ flowchart LR
 | Event | Source producer | `subject_kind` | Thread that fires the callback |
 |-------|----------------|----------------|-------------------------------|
 | `SUBSCRIBE_READABLE` | `spot_sub_handler_adapter` — direct handler on `spot_sub_t` | `SUBJECT_SPOT` | SpotNode data-plane polling thread |
-| `ROUTED_READABLE` | `queue_spot_message()` — after enqueuing a routed delivery into the internal PAIR queue | `SUBJECT_SPOT` | SpotNode data-plane polling thread |
+| `ROUTED_READABLE` | `queue_spot_message()` — after forwarding a routed delivery into the target Spot-owned routed ingress `ROUTER` | `SUBJECT_SPOT` | SpotNode data-plane polling thread |
 | `CHANNEL_REPLY_READABLE` | attached dealer completion bridge — after enqueuing dealer completion into the Spot dealer-source queue | `SUBJECT_CHANNEL_DEALER` | dealer completion thread (data-plane or dedicated completion thread) |
 | `TIMER_READABLE` | `scheduler_fire_timer()` — after pushing the fire count and raising the timer signaler, and only when no direct timer handler is attached | `SUBJECT_TIMER` | SpotNode-local timer scheduler thread |
 
@@ -529,12 +529,12 @@ recv buffer and the notifier is still the wake-up signal for
 
 **`ROUTED_READABLE`** — fired from `queue_spot_message()` once the
 routed payload (node rid, spot rid, request_seq, parts) has been
-enqueued onto the per-Spot internal PAIR queue (`inproc://zlink.spot.
-routed.recv.*`). The event is fired *after* the queue write succeeds,
-so a worker observing the notification is guaranteed to see at least
-one payload on the next `zlink_spot_recv()`. When `request_handler` is
-installed instead, the routed direct callback is invoked in place of
-the queue write and the notification is not fired.
+forwarded into the target Spot-owned routed ingress `ROUTER`. The event
+is fired *after* that local delivery succeeds, so a worker observing the
+notification is guaranteed to see at least one payload on the next
+`zlink_spot_recv()`. When `request_handler` is installed instead, the
+routed direct callback is invoked in place of the recv path and the
+notification is not fired.
 
 **`CHANNEL_REPLY_READABLE`** — fired by the attached dealer completion
 bridge once a dealer completion (normal reply, timeout, terminate,
@@ -566,13 +566,13 @@ sequenceDiagram
     participant Notify as notify_dispatch_info
     participant UH as User event handler
     participant App as App worker thread
-    participant Q as Internal queues<br/>(sub buffer / routed PAIR /<br/>dealer source queue / timer deque)
+    participant Q as Internal queues<br/>(sub buffer / spot router /<br/>dealer source queue / timer deque)
 
     alt topic message arrives
         DP->>Q: push to sub buffer
         DP->>Notify: SUBSCRIBE_READABLE (subject=spot)
     else routed message arrives
-        DP->>Q: push to routed PAIR
+        DP->>Q: forward to spot router
         DP->>Notify: ROUTED_READABLE (subject=spot)
     else channel reply completion
         DP->>Q: enqueue dealer completion into source queue

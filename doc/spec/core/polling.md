@@ -96,6 +96,12 @@ typedef struct zlink_poller_event_t
 | `user_data` | Opaque pointer supplied when the source was registered |
 | `events` | Bitmask of events that occurred |
 
+The current public poller does not expose a Spot-specific result shape. In
+other words, `zlink_poller_event_t` alone cannot carry owner `Spot`, dispatch
+event kind, and drain subject together. For unified SPOT subscribe / routed /
+channel-reply / timer readiness, the current public contract still uses
+`zlink_spot_dispatch_event_handler()`.
+
 ## Constants
 
 ```c

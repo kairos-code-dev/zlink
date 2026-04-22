@@ -170,6 +170,7 @@ napi_value spot_destroy(napi_env env, napi_callback_info info);
 napi_value spot_publish(napi_env env, napi_callback_info info);
 napi_value spot_try_publish(napi_env env, napi_callback_info info);
 napi_value spot_send_channel(napi_env env, napi_callback_info info);
+napi_value spot_send_spot(napi_env env, napi_callback_info info);
 napi_value spot_request_channel(napi_env env, napi_callback_info info);
 napi_value spot_request_progress(napi_env env, napi_callback_info info);
 napi_value spot_channel_reply_progress(napi_env env, napi_callback_info info);

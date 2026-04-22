@@ -927,6 +927,59 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         => ReplyToSpot(destNodeRid, destSpotRid, requestSequence, new[] { message },
             flags);
 
+    public bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+        Message message, SendFlags flags = SendFlags.None)
+        => SendToSpot(destNodeRid, destSpotRid, new[] { message }, flags);
+
+    public unsafe bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    {
+        EnsureParts(parts, nameof(parts));
+        byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
+        byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
+        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
+        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        try
+        {
+            for (int i = 0; i < cloned.Length; i++)
+            {
+                ZlinkMsg nativePart = default;
+                cloned[i].MoveTo(ref nativePart);
+                bool submitted = false;
+                try
+                {
+                    int rc = NativeMethods.zlink_spot_send_spot_part(_handle,
+                        ref nodeRid, ref spotRid, ref nativePart, (int)flags,
+                        i + 1 < cloned.Length
+                            ? NativeMethods.ZlinkPartFlag.More
+                            : NativeMethods.ZlinkPartFlag.Final);
+                    submitted = true;
+                    if (rc != 0)
+                        throw ZlinkException.CreateSubmitException(
+                            NativeMethods.zlink_errno());
+                }
+                finally
+                {
+                    if (!submitted)
+                        NativeMethods.zlink_msg_close(ref nativePart);
+                }
+            }
+            return true;
+        }
+        catch (ZlinkException ex) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(ex)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
+        catch
+        {
+            RequestReplySupport.DisposeParts(cloned);
+            throw;
+        }
+    }
+
     public unsafe void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         ulong requestSequence, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)

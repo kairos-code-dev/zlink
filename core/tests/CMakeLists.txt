@@ -26,6 +26,21 @@ option(
   "Build core tests that depend on bindings/c perf or bench sources"
   OFF)
 
+if(ZLINK_CORE_BUILD_BINDING_INTEGRATION_TESTS
+   AND EXISTS "${ZLINK_REPO_ROOT}/bindings/c/CMakeLists.txt"
+   AND NOT TARGET perf_spot)
+  set(ZLINK_C_REGISTER_CTEST OFF CACHE BOOL
+      "Do not let bindings/c register duplicate CTest entries from core/tests"
+      FORCE)
+  set(ZLINK_C_BUILD_BENCHMARKS ON CACHE BOOL
+      "Build bindings/c perf helpers needed by core integration smoke tests"
+      FORCE)
+  set(ZLINK_C_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+  set(ZLINK_C_BUILD_BENCHES OFF CACHE BOOL "" FORCE)
+  add_subdirectory("${ZLINK_REPO_ROOT}/bindings/c"
+                   "${CMAKE_BINARY_DIR}/bindings-c")
+endif()
+
 set(tests
   ${INTEGRATION_TEST_ROOT}/test_ancillaries
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
@@ -54,6 +69,8 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
+  ${INTEGRATION_TEST_ROOT}/test_spot_poller
+  ${INTEGRATION_TEST_ROOT}/test_spot_runtime_activation
   ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot
   ${INTEGRATION_TEST_ROOT}/test_peer_admission
   ${INTEGRATION_TEST_ROOT}/test_discovery_socket_auto_connect_policy
@@ -329,6 +346,12 @@ foreach(test_source ${tests})
         PROPERTIES
           TIMEOUT 180)
     endif()
+    if(${test} STREQUAL "test_helper_request_sequence_failure")
+      set_tests_properties(
+        ${test}
+        PROPERTIES
+          TIMEOUT 120)
+    endif()
     if(${test} STREQUAL "test_zmp_request_reply_router_recv_surface")
       set_tests_properties(
         ${test}
@@ -371,10 +394,10 @@ endif()
 
 if(TARGET zlink_c)
   if(TARGET test_scenario_stream_zlink)
-    target_link_libraries(test_scenario_stream_zlink PRIVATE zlink_c)
+    target_link_libraries(test_scenario_stream_zlink zlink_c)
   endif()
   if(TARGET test_scenario_stream_zlink_packet)
-    target_link_libraries(test_scenario_stream_zlink_packet PRIVATE zlink_c)
+    target_link_libraries(test_scenario_stream_zlink_packet zlink_c)
   endif()
 endif()
 

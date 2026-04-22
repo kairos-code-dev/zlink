@@ -770,6 +770,44 @@ class spot_t
         return true;
     }
 
+    bool send_to_spot (const routing_id_t &dest_node_rid_,
+                       const routing_id_t &dest_spot_rid_,
+                       message_t message_,
+                       send_flags_t flags_ = send_flags_t::none)
+    {
+        std::vector<message_t> parts;
+        parts.push_back (std::move (message_));
+        return send_to_spot (dest_node_rid_, dest_spot_rid_, parts, flags_);
+    }
+
+    bool send_to_spot (const routing_id_t &dest_node_rid_,
+                       const routing_id_t &dest_spot_rid_,
+                       std::vector<message_t> &parts_,
+                       send_flags_t flags_ = send_flags_t::none)
+    {
+        std::vector<zlink_msg_t> native;
+        if (detail::move_parts_to_native (parts_, native) != 0)
+            throw last_error ();
+        size_t failed_index = 0;
+        const submit_result_t rc = static_cast<submit_result_t> (
+          detail::submit_native_parts (
+            native, failed_index,
+            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+                return zlink_spot_send_spot_part (
+                  _spot, routing_id_native (dest_node_rid_),
+                  routing_id_native (dest_spot_rid_), part_out_,
+                  static_cast<zlink_send_flags_t> (flags_), part_flag_);
+            }));
+        if (rc != submit_result_t::ok) {
+            detail::close_native_parts (native, failed_index);
+            if (flags_ == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return true;
+    }
+
     async_result_t<std::vector<message_t>>
     request_channel (const std::string &channel_name_,
                      message_t &part_,

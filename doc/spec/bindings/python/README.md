@@ -31,7 +31,7 @@ with the rules here, this section wins.
   `attach_channel_dealer_manual(...)`, and
   `attach_pub_ingress(...)`.
 - `Spot` must expose channel-aware data-plane methods:
-  `send_channel(...)`, `request_channel(...)`, and
+  `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(service_name, topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`. `TopicMessage`
   therefore needs `service_name: str | None`, populated for SPOT subscribe
@@ -39,6 +39,9 @@ with the rules here, this section wins.
 - `Spot` must not expose `on_subscribe(...)`. Use
   `on_dispatch_event(...)` plus `subscribe(...)` / `recv_routed(...)` /
   timer recv.
+- `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
+  notifications, not one-event-per-message delivery counters. Binding docs and
+  samples must drain until the recv path reports `EAGAIN`.
 - `Spot.on_routed_receive(...)` and `on_dispatch_event(...)` are mutually
   exclusive on the routed axis.
 - Every socket and `Spot` exposes `set_admission_state(state)` and
@@ -1217,6 +1220,10 @@ class SpotDispatchInfo:
     subject: object
 ```
 
+For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
+`subscribe(...)` / `recv_routed(...)` until the binding raises no-data /
+`EAGAIN`.
+
 ### RegistryQueryClient
 
 ```python
@@ -1376,6 +1383,10 @@ class Poller:
     def close(self) -> None: ...                                                 # Raises: CloseError
     # supports `with` and `async with` — __exit__ raises CloseError
 ```
+
+The current public poller contract is still generic. It does not yet expose a
+Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
+subject together.
 
 ---
 

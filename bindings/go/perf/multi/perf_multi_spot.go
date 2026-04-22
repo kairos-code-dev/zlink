@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sync/atomic"
 	"time"
 
 	"zlink"
@@ -12,6 +11,9 @@ type multiSpotSubscriber struct {
 	node *zlink.SpotNode
 	spot *zlink.Spot
 }
+
+const multiSpotServiceName = "perf-spot-svc"
+const multiSpotTopic = "bench.topic"
 
 func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	ctx, err := zlink.NewContext()
@@ -27,9 +29,8 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(publisher.SetNoDrop(true))
 	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(publisher, cfg.transport)
-	serviceName := "bench"
 
-	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot")
+	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-pub")
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisherNode, cfg.transport))
 	perfcommon.Must(publisherNode.Bind(endpoint))
 
@@ -37,8 +38,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	var window perfcommon.BenchmarkWindow
 
 	subs := make([]multiSpotSubscriber, 0, cfg.clients)
-	tracker := newMultiSpotReadyTracker(cfg.clients)
-	var activeCollect atomic.Bool
+	pollers := make([]*zlink.Poller, 0, cfg.clients)
 
 	for i := 0; i < cfg.clients; i++ {
 		node, err := ctx.SpotNode()
@@ -50,38 +50,50 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		perfcommon.ApplyMultiHWM(spot, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(spot, cfg.transport)
 		perfcommon.Must(spot.SetSubscription("bench."))
-		index := i
-		perfcommon.Must(spot.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
-			if info.Event != zlink.SpotDispatchEventSubscribeReadable {
-				return
-			}
-			_ = drainMultiSpotSubscriber(
-				index,
-				multiSpotSubscriber{node: node, spot: spot},
-				stats,
-				window.ActiveAt,
-				cfg.msgSize,
-				tracker,
-				&activeCollect,
-			)
-		}))
+		poller := perfcommon.NewSocketPoller(spot, perfcommon.ZLinkPollIn)
 		subs = append(subs, multiSpotSubscriber{node: node, spot: spot})
+		pollers = append(pollers, poller)
 	}
 	defer func() {
+		for _, poller := range pollers {
+			_ = poller.Close()
+		}
 		for _, sub := range subs {
 			_ = sub.spot.Close()
 			_ = sub.node.Close()
 		}
 	}()
 
-	waitForMultiSpotReady(publisher, tracker)
+	waitForMultiSpotReady(publisher, subs, pollers, cfg.msgSize)
 	window = perfcommon.NewBenchmarkWindow(cfg.duration)
-	activeCollect.Store(true)
+	recvDone := make(chan struct{})
+	go func() {
+		defer close(recvDone)
+		idleDeadline := window.StopAt.Add(2 * time.Second)
+		cooldownSeen := make([]bool, len(subs))
+		for time.Now().Before(idleDeadline) {
+			progressed := drainMultiSpotAvailable(
+				subs,
+				pollers,
+				stats,
+				cfg.msgSize,
+				window.ActiveAt,
+				window.StopAt,
+				cooldownSeen,
+			)
+			if allMultiSpotCooldownSeen(cooldownSeen) && time.Now().After(window.StopAt) {
+				return
+			}
+			if !progressed {
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		err := publisher.Publish(serviceName, "bench.topic", zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+		err := publisher.Publish(multiSpotServiceName, multiSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -89,7 +101,81 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 			perfcommon.Must(err)
 		}
 	}
-	activeCollect.Store(false)
+	perfcommon.StampCooldownPayload(payload)
+	for {
+		err := publisher.Publish(multiSpotServiceName, multiSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+		if err == nil {
+			break
+		}
+		if perfcommon.IsTransient(err) {
+			continue
+		}
+		perfcommon.Must(err)
+	}
+	<-recvDone
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func allMultiSpotCooldownSeen(cooldownSeen []bool) bool {
+	for _, seen := range cooldownSeen {
+		if !seen {
+			return false
+		}
+	}
+	return len(cooldownSeen) > 0
+}
+
+func drainMultiSpotAvailable(
+	subs []multiSpotSubscriber,
+	pollers []*zlink.Poller,
+	stats *perfcommon.Stats,
+	msgSize int,
+	activeAt time.Time,
+	stopAt time.Time,
+	cooldownSeen []bool,
+) bool {
+	processed := false
+	for index, sub := range subs {
+		event, err := pollers[index].Wait(0)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(err)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		for {
+			message, err := sub.spot.Subscribe(zlink.RecvFlagsDontWait)
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					break
+				}
+				perfcommon.Must(err)
+			}
+			if message == nil {
+				break
+			}
+			processed = true
+			part, err := message.SinglePartOrError()
+			if err == nil && part != nil {
+				data := part.Data()
+				header, ok := perfcommon.DecodeMetricHeader(data)
+				if ok && header.RunID == perfcommon.MetricRunID && int(header.MsgSize) == msgSize {
+					if header.Phase == perfcommon.PhaseCooldown {
+						cooldownSeen[index] = true
+					} else if header.Phase == perfcommon.PhaseActive {
+						now := time.Now()
+						if now.After(activeAt) && now.Before(stopAt) {
+							stats.AddLatencyNs(float64(now.UnixNano() - header.SentTsNs))
+						}
+					}
+				}
+			}
+			_ = message.Close()
+		}
+	}
+	return processed
 }

@@ -60,12 +60,14 @@ def parse_client_args(argv, *, pattern):
 
 def parse_server_args(argv):
     parser = argparse.ArgumentParser()
+    parser.add_argument("--endpoint")
     parser.add_argument("--transport", default="tcp")
+    parser.add_argument("--duration", type=float, default=5.0)
     parser.add_argument("--clients", type=int, default=100)
     parser.add_argument("--msg-size", type=int, default=64)
     args = parser.parse_args(argv)
     args.transport = args.transport.lower()
-    if args.msg_size < HEADER_SIZE or args.clients <= 0:
+    if args.duration <= 0 or args.msg_size < HEADER_SIZE or args.clients <= 0:
         raise SystemExit("invalid perf arguments")
     return args
 

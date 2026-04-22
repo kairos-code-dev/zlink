@@ -553,6 +553,9 @@ fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>,
 
     loop {
         let mut part = std::mem::MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        unsafe {
+            ffi::zlink_msg_init(part.as_mut_ptr());
+        }
         let mut has_more = 0;
         let mut current_source_node_rid = ptr::null();
         let mut current_source_spot_rid = ptr::null();

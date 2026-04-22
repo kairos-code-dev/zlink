@@ -1358,6 +1358,38 @@ impl Spot {
         check_submit_rc(rc)
     }
 
+    pub fn send_to_spot(
+        &self,
+        dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId,
+        parts: impl IntoMultipart,
+    ) -> Result<(), SubmitError> {
+        self.send_to_spot_with_flags(dest_node_rid, dest_spot_rid, parts, SendFlags::NONE)
+    }
+
+    pub fn send_to_spot_with_flags(
+        &self,
+        dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), SubmitError> {
+        let mut parts = parts.into_parts();
+        let mut native = prepare_send_parts(&mut parts)?;
+        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_spot_send_spot_part(
+                self.handle,
+                dest_node_rid.as_raw(),
+                dest_spot_rid.as_raw(),
+                part,
+                flags.bits(),
+                part_flag,
+            )
+        })?;
+        drop(parts);
+        check_submit_rc(rc)
+    }
+
     pub fn reply_to_router(
         &self,
         peer_rid: RoutingId,
@@ -1567,6 +1599,9 @@ fn recv_spot_subscribed_parts(
         let mut service_name_len = service_buf.len();
         let mut topic_len = topic_buf.len();
         let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        unsafe {
+            ffi::zlink_msg_init(part.as_mut_ptr());
+        }
         let mut has_more = 0;
         let rc = unsafe {
             ffi::zlink_spot_subscribe_part(
@@ -1643,6 +1678,9 @@ fn recv_spot_routed_parts(
         let mut current_source_spot_rid = ptr::null();
         let mut current_request_seq = 0;
         let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        unsafe {
+            ffi::zlink_msg_init(part.as_mut_ptr());
+        }
         let mut has_more = 0;
         let rc = unsafe {
             ffi::zlink_spot_recv_part(

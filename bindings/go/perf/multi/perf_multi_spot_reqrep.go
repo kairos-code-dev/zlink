@@ -37,27 +37,19 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 	replierSpotRID, err := replier.RoutingID()
 	perfcommon.Must(err)
 
-	perfcommon.Must(replier.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
-		if info.Event != zlink.SpotDispatchEventRoutedReadable {
+	perfcommon.Must(replier.OnRoutedReceive(func(sourceRID, spotRID zlink.RoutingID, requestSeq uint64, parts []*zlink.Message) {
+		defer func() {
+			for _, part := range parts {
+				_ = part.Close()
+			}
+		}()
+		if len(parts) == 0 {
 			return
 		}
-		for {
-			received, recvErr := replier.RecvRouted(zlink.RecvFlagsDontWait)
-			if recvErr != nil {
-				if perfcommon.IsTransient(recvErr) {
-					return
-				}
-				perfcommon.Must(fmt.Errorf("multi spot reqrep replier recv: %w", recvErr))
-			}
-			if received == nil {
-				return
-			}
-			part, partErr := received.SinglePartOrError()
-			if partErr == nil {
-				perfcommon.Must(received.Reply([]*zlink.Message{part}))
-			}
-			perfcommon.Must(received.Close())
-		}
+		reply, err := zlink.NewMessage(parts[0].Data())
+		perfcommon.Must(err)
+		defer reply.Close()
+		perfcommon.Must(replier.ReplyToSpot(sourceRID, spotRID, requestSeq, zlink.SendFlagsNone, reply))
 	}))
 
 	clients := make([]multiSpotReqRepClient, 0, cfg.clients)

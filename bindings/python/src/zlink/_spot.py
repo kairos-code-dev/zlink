@@ -915,6 +915,31 @@ class Spot:
                 return False
             raise
 
+    def send_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
+        try:
+            _ensure_not_in_callback("blocking send")
+            native_parts = self._native_parts_from_payload(payload)
+            native_node = _copy_routing_id(dest_node_rid)
+            native_spot = _copy_routing_id(dest_spot_rid)
+            rc, err = _submit_parts(
+                native_parts,
+                lambda part_ptr, part_flag: lib().zlink_spot_send_spot_part(
+                    self._handle,
+                    ctypes.byref(native_node),
+                    ctypes.byref(native_spot),
+                    part_ptr,
+                    int(flags),
+                    part_flag,
+                ),
+            )
+            if rc != 0:
+                _raise_result_error(SubmitError, SubmitResult, rc, err)
+            return True
+        except SubmitError as ex:
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+
     def request_channel(self, channel_name, payload, *args, timeout=0, flags=_UNSET):
         if len(args) > 1:
             raise TypeError(

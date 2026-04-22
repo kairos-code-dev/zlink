@@ -13,6 +13,7 @@
 #include <vector>
 
 #if !defined(_WIN32)
+#include <sys/resource.h>
 #include <unistd.h>
 #endif
 
@@ -78,9 +79,35 @@ bool set_zero_linger (void *handle_)
 bool set_ctx_socket_limit (void *ctx_, int total_spots_)
 {
     const int desired_limit =
-      total_spots_ > 12000 ? total_spots_ * 4 : 50000;
+      total_spots_ > 12000 ? total_spots_ * 8 : 100000;
     return zlink_ctx_set (ctx_, ZLINK_MAX_SOCKETS, desired_limit)
            == ZLINK_CONFIG_OK;
+}
+
+bool raise_nofile_limit_for_bench (int total_spots_)
+{
+#if defined(_WIN32)
+    (void) total_spots_;
+    return true;
+#else
+    const rlim_t desired =
+      static_cast<rlim_t> (total_spots_ > 12000 ? total_spots_ * 16 : 100000);
+
+    struct rlimit current;
+    if (getrlimit (RLIMIT_NOFILE, &current) != 0)
+        return false;
+
+    struct rlimit updated = current;
+    if (updated.rlim_cur < desired)
+        updated.rlim_cur = desired;
+    if (updated.rlim_max < updated.rlim_cur)
+        updated.rlim_cur = updated.rlim_max;
+
+    if (updated.rlim_cur == current.rlim_cur)
+        return true;
+
+    return setrlimit (RLIMIT_NOFILE, &updated) == 0;
+#endif
 }
 
 bool publish_one_part (void *spot_, const char *payload_)
@@ -224,6 +251,8 @@ int main (int, char **)
                  zlink_strerror (errno));
         return 1;
     }
+
+    (void) raise_nofile_limit_for_bench (total_spots);
 
     if (!set_ctx_socket_limit (ctx, total_spots)) {
         fprintf (stderr, "zlink_ctx_set(ZLINK_MAX_SOCKETS) failed errno=%d (%s)\n",

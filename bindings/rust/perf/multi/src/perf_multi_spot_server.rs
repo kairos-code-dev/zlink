@@ -118,19 +118,13 @@ fn main() {
             .expect("spot tls");
     }
     let spot = node.create_spot().expect("spot");
-    let Some(data_bind_endpoint) =
-        common::resolve_server_bind_endpoint("MULTI_SPOT", &args.transport)
-    else {
-        return;
-    };
-    if let Err(err) = node.bind(&data_bind_endpoint) {
+    if let Err(err) = node.bind(&args.endpoint) {
         if common::handle_transport_setup_error("MULTI_SPOT", &args.transport, "bind", err) {
             return;
         }
         panic!("bind: {err}");
     }
-    let endpoint = node.last_endpoint().expect("endpoint");
-    common::print_ready(&endpoint);
+    common::print_ready(&args.endpoint);
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();
 
@@ -141,32 +135,78 @@ fn main() {
     let mut client_connected = false;
     let mut ready_count = 0usize;
     let mut start_sender = None::<TcpStream>;
-    let handshake_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
+    let control_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
+    while Instant::now() < control_deadline {
+        let remaining = control_deadline.saturating_duration_since(Instant::now());
+        match event_rx.recv_timeout(remaining) {
+            Ok(ServerEvent::Stop) => return,
+            Ok(ServerEvent::RunnerStart) => runner_start = true,
+            Ok(ServerEvent::ClientConnected) => client_connected = true,
+            Ok(ServerEvent::ReadyCount(count)) => ready_count = count,
+            Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
+            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        if client_connected && start_sender.is_some() {
+            break;
+        }
+    }
+    if !client_connected || start_sender.is_none() {
+        panic!("spot server control handshake timeout");
+    }
+
+    let mut warmup = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
+    common::encode_header(&mut warmup, common::PHASE_WARMUP, args.msg_size as u32, 0);
+    let ready_deadline = Instant::now() + ready_timeout;
+    while Instant::now() < ready_deadline && ready_count < settings.clients {
+        match spot.publish_with_flags(
+            SERVICE_NAME,
+            TOPIC,
+            Message::copy_from(&warmup).expect("warmup message"),
+            SendFlags::DONT_WAIT,
+        ) {
+            Ok(()) => {}
+            Err(err)
+                if matches!(
+                    err.code(),
+                    SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
+                ) => {}
+            Err(err) => panic!("warmup publish: {err}"),
+        }
+        let remaining = ready_deadline.saturating_duration_since(Instant::now());
+        let wait_slice = remaining.min(Duration::from_millis(10));
+        match event_rx.recv_timeout(wait_slice) {
+            Ok(ServerEvent::Stop) => return,
+            Ok(ServerEvent::RunnerStart) => runner_start = true,
+            Ok(ServerEvent::ClientConnected) => client_connected = true,
+            Ok(ServerEvent::ReadyCount(count)) => ready_count = count,
+            Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    if ready_count < settings.clients {
+        panic!("spot warmup readiness timeout");
+    }
+
+    let handshake_deadline = Instant::now() + ready_timeout;
     while Instant::now() < handshake_deadline {
         let remaining = handshake_deadline.saturating_duration_since(Instant::now());
         match event_rx.recv_timeout(remaining) {
             Ok(ServerEvent::Stop) => return,
             Ok(ServerEvent::RunnerStart) => runner_start = true,
             Ok(ServerEvent::ClientConnected) => client_connected = true,
-            Ok(ServerEvent::ReadyCount(count)) => ready_count += count,
+            Ok(ServerEvent::ReadyCount(count)) => ready_count = count,
             Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
             Err(mpsc::RecvTimeoutError::Timeout) => break,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        if runner_start
-            && client_connected
-            && ready_count >= settings.clients
-            && start_sender.is_some()
-        {
+        if runner_start {
             break;
         }
     }
-    if !runner_start
-        || !client_connected
-        || ready_count < settings.clients
-        || start_sender.is_none()
-    {
-        panic!("spot server handshake timeout");
+    if !runner_start || start_sender.is_none() {
+        panic!("spot server start handshake timeout");
     }
 
     {
@@ -188,4 +228,10 @@ fn main() {
         )
         .expect("spot publish");
     }
+    common::encode_header(&mut buf, common::PHASE_COOLDOWN, args.msg_size as u32, seq);
+    let _ = spot.publish(
+        SERVICE_NAME,
+        TOPIC,
+        Message::copy_from(&buf).expect("cooldown msg"),
+    );
 }

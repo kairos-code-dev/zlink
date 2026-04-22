@@ -422,6 +422,29 @@ zlink::spot_reqrep_internal::find_router_state_by_rid (
     return state;
 }
 
+void zlink::spot_reqrep_internal::unregister_spot_identity (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    if (!state_ || !state_->owner)
+        return;
+
+    routing_pair_t identity;
+    if (!resolve_spot_identity (state_->owner, &identity))
+        return;
+
+    const std::string key =
+      make_spot_identity_key (identity.node_rid, identity.spot_rid);
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    spot_state_identity_index_t::iterator it =
+      g_spot_state_identity_index.find (key);
+    if (it == g_spot_state_identity_index.end ())
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> indexed = it->second.lock ();
+    if (!indexed || indexed == state_)
+        g_spot_state_identity_index.erase (it);
+}
+
 zlink::spot_runtime_t *
 zlink::spot_reqrep_internal::resolve_runtime_for_spot_destination (
   const std::string &node_rid_,

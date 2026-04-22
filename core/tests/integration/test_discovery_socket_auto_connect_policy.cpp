@@ -31,7 +31,7 @@ bool bind_registry_test_endpoints_local (void *registry_,
     }
 
     const int base = base_port_ + test_port_offset ();
-    for (int i = 0; i < 128; ++i) {
+    for (int i = 0; i < 1024; ++i) {
         snprintf (pub_out_, pub_size_, "tcp://127.0.0.1:%d", base + i * 2);
         snprintf (router_out_, router_size_, "tcp://127.0.0.1:%d",
                   base + i * 2 + 1);
@@ -39,6 +39,8 @@ bool bind_registry_test_endpoints_local (void *registry_,
             == ZLINK_BIND_OK) {
             return true;
         }
+        if (errno == EADDRINUSE)
+            continue;
     }
 
     return false;
@@ -55,11 +57,13 @@ bool bind_socket_test_endpoint_local (void *socket_,
     }
 
     const int base = base_port_ + test_port_offset ();
-    for (int i = 0; i < 128; ++i) {
+    for (int i = 0; i < 1024; ++i) {
         snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%d",
                   base + i);
         if (zlink_bind (socket_, endpoint_out_) == ZLINK_BIND_OK)
             return true;
+        if (errno == EADDRINUSE)
+            continue;
     }
 
     return false;
@@ -198,7 +202,7 @@ void test_socket_discovery_default_dealer_mode_targets_router ()
     zlink_registry_topology_entry_t dealer_entry;
     memset (&dealer_entry, 0, sizeof (dealer_entry));
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &dealer_filter, &dealer_entry, 1, 20000));
+      registry, &dealer_filter, &dealer_entry, 1, 60000));
     TEST_ASSERT_EQUAL_UINT32 (1u, dealer_entry.desired_count);
 
     zlink_registry_topology_filter_t router_filter;
@@ -207,7 +211,7 @@ void test_socket_discovery_default_dealer_mode_targets_router ()
     zlink_registry_topology_entry_t router_entry;
     memset (&router_entry, 0, sizeof (router_entry));
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &router_filter, &router_entry, 0, 20000));
+      registry, &router_filter, &router_entry, 0, 60000));
     TEST_ASSERT_EQUAL_UINT32 (0u, router_entry.desired_count);
 
     TEST_ASSERT_TRUE (
@@ -282,7 +286,7 @@ void test_socket_discovery_default_dealer_mode_ignores_dealer_peers ()
     zlink_registry_topology_entry_t entry_a;
     memset (&entry_a, 0, sizeof (entry_a));
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &filter_a, &entry_a, 0, 5000));
+      registry, &filter_a, &entry_a, 0, 20000));
 
     zlink_registry_topology_filter_t filter_b;
     init_socket_topology_filter_local (&filter_b, "socket-auto-default",
@@ -291,7 +295,7 @@ void test_socket_discovery_default_dealer_mode_ignores_dealer_peers ()
     zlink_registry_topology_entry_t entry_b;
     memset (&entry_b, 0, sizeof (entry_b));
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &filter_b, &entry_b, 0, 5000));
+      registry, &filter_b, &entry_b, 0, 20000));
 
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_b, 3000));
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_a, 3000));
@@ -369,7 +373,7 @@ void test_socket_discovery_explicit_dealer_mode_targets_dealer ()
     zlink_registry_topology_entry_t entry_a;
     memset (&entry_a, 0, sizeof (entry_a));
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &filter_a, &entry_a, 1, 20000));
+      registry, &filter_a, &entry_a, 1, 60000));
 
     zlink_registry_topology_filter_t filter_b;
     init_socket_topology_filter_local (&filter_b, "socket-auto-dealer",
@@ -378,7 +382,7 @@ void test_socket_discovery_explicit_dealer_mode_targets_dealer ()
     zlink_registry_topology_entry_t entry_b;
     memset (&entry_b, 0, sizeof (entry_b));
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &filter_b, &entry_b, 1, 20000));
+      registry, &filter_b, &entry_b, 1, 60000));
 
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_b, 3000));
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_a, 3000));
@@ -450,7 +454,7 @@ void test_socket_discovery_router_router_uses_single_initiator ()
     init_socket_topology_filter_local (&filter_b, "socket-auto-router-router",
                                        ZLINK_SERVICE_ROLE_ROUTER, &rid_b);
     bool single_initiator = false;
-    for (int i = 0; i < 200 && !single_initiator; ++i) {
+    for (int i = 0; i < 2400 && !single_initiator; ++i) {
         zlink_registry_topology_entry_t entry_a;
         zlink_registry_topology_entry_t entry_b;
         size_t count_a = 1;

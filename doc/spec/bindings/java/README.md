@@ -47,14 +47,15 @@ with the rules here, this section wins.
   `attachChannelDealerManual(String channelName, DealerSocket dealer)`, and
   `attachPubIngress(PubSocket pub)`.
 - `Spot` must expose channel-aware data-plane methods:
-  `sendChannel(...)`, `requestChannel(...)`, and
+  `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
   `publish(String serviceName, String topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `serviceName()` populated for SPOT subscribe
   results and empty for raw `SUB` / `XSUB`.
 - `Spot` must not expose `onSubscribe(...)`.
-- `Spot` direct RID one-way send APIs are not part of the public contract.
-  Routed request initiation (`requestToSpot` / `requestToRouter`) is supported.
+- `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
+  notifications, not one-event-per-message delivery counters. Binding docs and
+  samples must drain until the recv path reports `EAGAIN`.
 - Every socket and `Spot` exposes `setAdmissionState(state)` /
   `getAdmissionState()` using the typed enum
   `AdmissionState { SERVING, DRAINING }`. Submit attempts to a drained peer
@@ -1455,6 +1456,9 @@ public final class Spot implements AutoCloseable {
 dispatches identify the attached DEALER source through
 `SpotDispatchInfo.subjectKind()` and `SpotDispatchInfo.subject()`. Read the
 logical channel name from the attached DEALER with `getChannelName()`.
+For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
+`subscribe(...)` / `recvRouted(...)` until the binding surfaces no data /
+`EAGAIN`.
 
 ### RegistryQueryClient
 
@@ -1677,6 +1681,10 @@ public record RegistryTopologyFilter(ServiceKind serviceKind,
 ### Poller
 
 Event poller for multiplexing socket and file descriptor readiness.
+
+The current public poller contract is still generic. It does not yet expose a
+Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
+subject together.
 Implements `AutoCloseable`.
 
 ```java

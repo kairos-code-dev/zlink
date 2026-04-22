@@ -1259,6 +1259,21 @@ ASCII 다이어그램도 이 단계에서 함께 승격한다.
 5. 회귀 테스트와 bench 재실행
 6. 다시 POSD 관점 구조 리뷰
 
+그리고 위 순서를 한 번 마쳤다고 바로 종료하지 않는다.
+현재 진행 중인 작업이 마무리되면, 같은 순서를 **같은 순서대로 다시 처음부터
+반복**하는 것을 기본 원칙으로 둔다.
+
+즉 아래처럼 본다.
+
+1. 1차 반복 완료
+2. 남은 구조 문제와 불일치를 다시 수집
+3. 같은 6단계 순서를 다시 수행
+4. 더 이상 독립적으로 줄일 수 있는 항목이 없을 때까지 반복
+
+이 문서에서 말하는 "완료"는 한 번의 구현 라운드를 뜻하지 않는다.
+같은 작업 순서를 다시 돌렸을 때도 새로 드러나는 구조 문제를 거의 남기지 않는
+상태를 뜻한다.
+
 종료 조건도 문서에 명시한다.
 
 - 새로 발견되는 리팩토링 항목이 더 이상
@@ -1342,33 +1357,107 @@ ASCII 다이어그램도 이 단계에서 함께 승격한다.
 
 ### 16.8 완료 판정 후 실제 승격 순서
 
-구현이 끝난 뒤 문서와 바인딩 반영은 아래 순서를 권장한다.
+현재 초안 기준으로는 core 코드 수정과 회귀 테스트 보강이 대부분 진행된 상태를
+기준으로, 남은 승격 순서를 아래처럼 잡는다.
 
-1. core code와 core regression test를 먼저 확정한다.
-2. POSD 기준 구조 리뷰와 리팩토링을 반복해 더 진행할 항목이 없을 때까지 정리한다.
-3. `doc/internals/`를 갱신해 유지보수자 기준 구조를 고정한다.
-4. `doc/spec/core/`를 갱신해 공개 계약을 확정한다.
-5. `doc/guide/`를 갱신해 사용자 사용법을 맞춘다.
-6. core release candidate를 만들고 배포 준비를 끝낸다.
-7. `doc/spec/bindings/`를 갱신해 언어별 계약을 맞춘다.
-8. `bindings/*` 라이브러리 구현과 테스트를 순차 갱신한다.
-9. 언어별 bindings 배포를 진행한다.
-10. 마지막으로 draft 문서를 축소하거나, 정식 문서 링크만 남기고 종료한다.
+1. 현재 core diff와 회귀 테스트, bench 결과를 한 번 더 정리해 기준선을 잠근다.
+2. POSD 기준 구조 리뷰와 리팩토링 후보 재수집을 한 번 수행한다.
+3. 바로 이어서 `doc/internals/`를 갱신해 유지보수자 기준 구조를 고정한다.
+4. 그 다음 `doc/spec/core/`를 갱신해 공개 계약을 확정한다.
+5. 이어서 `doc/guide/`를 갱신해 사용자 사용법과 drain 모델을 맞춘다.
+6. core 문서가 고정된 뒤 `doc/spec/bindings/`를 갱신해 언어별 계약을 맞춘다.
+7. 언어별 바인딩 구현과 테스트에서 새 의미와 문서가 어긋나는 부분을 순차 정리한다.
+8. 필요하면 POSD 기준 구조 리뷰를 같은 순서로 다시 반복한다.
+9. core release candidate를 만들고 배포 준비를 끝낸다.
+10. 언어별 bindings 배포를 진행한다.
+11. 마지막으로 draft 문서를 축소하거나, 정식 문서 링크만 남기고 종료한다.
+
+즉 현재 상태에서는 다음 실질 작업이 `doc/internals/`, `doc/spec/core/`,
+`doc/guide/`, `doc/spec/bindings/` 반영으로 이어지는 순서라고 본다.
 
 ## 17. 비규범 작업 메모
 
 이 절은 구현 전 초안의 **비규범 작업 메모**다.
 
-구현 순서는 아래처럼 잡는 것이 현실적이다.
+현재까지 확인된 진행 상태를 기준으로 작업 메모를 아래처럼 둔다.
 
-1. routed target registration을 create 시점으로 이동
-2. routed recv prepare benchmark를 다시 측정
-3. per-spot internal `ROUTER` 도입
-4. local `SpotNode.ROUTER -> Spot.ROUTER` 전달 경로 전환
-5. dispatch event 의미 정렬
-6. poller 의미 정렬
-7. hidden queue 제거
-8. bench와 integration test 재측정
+### 17.1 이미 반영된 항목
+
+아래 항목은 현재 작업에서 실제로 반영된 상태를 뜻한다.
+
+1. `zlink_spot_new()`가 spot마다 routed recv socket을 즉시 열지 않도록 정리했다.
+   지금은 lightweight state와 identity만 먼저 만든다.
+2. `zlink_spot_destroy()`는 routed cleanup 전에 identity lookup을 먼저 제거한다.
+   close 중 잘못된 재전달이나 late lookup이 남지 않게 하려는 순서다.
+3. coarse `SUBSCRIBE_READABLE` fan-out은 제거했다.
+   node 전체 readable을 facade spot 전체에 뿌리는 이전 동작은 더 이상 쓰지 않는다.
+4. routed delivery hot path의 retry / rollback / sleep 루프를 제거했다.
+   target spot ingress queue로 한 번만 enqueue하고, 실패는 바로 실패로 드러낸다.
+5. `test_spot_runtime_activation`을 추가하고,
+   `test_spot_dispatch_event`, `test_zmp_request_reply`를 보강했다.
+6. `10k` bench와 C perf spot 패턴을 다시 돌릴 수 있게 bench 경로를 정리했다.
+7. C `MULTI_SPOT` perf client는 `zlink_poller_add(spot)`로 recv worker를 준비하지
+   않는다.
+   worker는 각 assigned spot을 nonblocking recv drain으로 순회한다.
+   이 변경으로 `clients=100`에서 create 단계에서 조기 실패하던 regression을 없앴다.
+8. C `MULTI_SPOT` perf client는 direct peer topology를 유지한다.
+   recv-only client spot slot에 local bind를 강제로 추가하지 않는다.
+   TLS transport에서 bind를 요구하면 성능 harness가 불필요한 server-side TLS 준비
+   조건을 끌어들이기 때문이다.
+
+### 17.2 이번 라운드에서 확인된 구현 경계
+
+아래 항목은 이번 라운드에서 의도적으로 남겨 둔 구현 경계다.
+
+1. 현재 landed 상태의 routed ingress는 "per-spot internal `ROUTER`"까지는 아직 아니다.
+   우선은 per-spot pair-backed ingress queue로 hot path와 activation race를 정리했다.
+2. public poller의 `Spot` 직접 등록 계약은 이번 라운드에 포함하지 않았다.
+   기존 poller surface는 유지한다.
+3. `SUBSCRIBE_READABLE`은 false fan-out은 제거됐지만,
+   strict per-spot readable 신호를 poller까지 통합하는 단계는 후속 작업으로 둔다.
+4. 즉 이번 라운드는 "비용과 실패 지점을 드러내고, secure reqrep와 perf를 다시 통과시키는
+   단계"로 본다.
+
+### 17.3 이번 라운드 이후 이어서 볼 순서
+
+위 항목을 기준으로, 바로 이어서 진행할 순서는 아래처럼 잡는다.
+
+1. 현재 diff와 테스트/bench 결과를 짧게 정리해 기준선을 고정한다.
+2. POSD 관점 구조 리뷰를 한 번 수행한다.
+3. `doc/internals/`를 먼저 갱신한다.
+4. `doc/spec/core/`를 갱신한다.
+5. `doc/guide/`를 갱신한다.
+6. `doc/spec/bindings/`를 갱신한다.
+7. 바인딩 구현과 테스트에 실제 불일치가 남아 있으면 순차 반영한다.
+8. 필요하면 같은 순서를 다시 반복한다.
+
+### 17.4 2026-04-22 검증 메모
+
+이번 라운드에서 다시 확인한 핵심 검증 결과는 아래와 같다.
+
+1. `test_zmp_request_reply` 전체 통과
+   특히 `test_spot_to_spot_request_reply_over_tls`가 다시 통과한다.
+2. C perf single full
+   `perf_c_single_linux_20260422_215253.txt`
+   결과가 `status=complete`로 끝났다.
+3. C perf multi full
+   `perf_c_multi_linux_20260422_214236.txt`
+   결과가 `success: 48`, `fail: 0`, `status=complete`로 끝났다.
+4. 이전에 흔들리던
+   `MULTI_SPOT_REQREP ws 262144B`는 focused rerun에서도 다시 통과했다.
+5. C perf multi smoke
+   `perf_c_multi_linux_20260422_214029.txt`
+   결과가 `success: 8`, `fail: 0`, `status=complete`로 끝났다.
+6. C perf `MULTI_SPOT tls clients=100`
+   `perf_c_multi_linux_20260422_214007.txt`
+   결과가 `status=complete`로 끝났다.
+
+이번 결과는 최소한 아래 두 가지를 확인해 준다.
+
+- secure `Spot req/rep` 경로에서 control plane과 data plane ready ordering이 다시 맞는다.
+- `Spot req/rep` multi perf full에서 transport별 timeout 누락 없이 결과 행이 모두 채워진다.
+- `MULTI_SPOT` one-way recv 준비는 perf harness에서 `spot` public poller add에 의존하지
+  않아도 안정적으로 동작한다.
 
 ## 18. 비규범 검증 메모
 
@@ -1406,3 +1495,153 @@ perf / smoke 검증은 아래 범주를 반드시 포함한다.
 - `9999`, `10000` routed prepare에서 `EMFILE`이 사라졌는가
 - `ROUTED_READABLE`과 실제 `recv` 가능 상태가 맞는가
 - destroy 시간이 create 대비 비정상적으로 커지지 않는가
+
+그리고 이번 라운드에서 실제로 추가 확인한 항목은 아래와 같다.
+
+- C perf `single` full `SPOT`
+- C perf `multi` full `SPOT`, `SPOT_REQREP`
+- secure `SPOT_REQREP` focused rerun
+- `ws 262144B` focused rerun
+
+## 19. 후속 정리 메모 -- `Spot` timer surface 제거
+
+이 절은 구현 전 초안의 **비규범 후속 정리 메모**다.
+현재 공개 계약을 즉시 바꾼다는 뜻은 아니며, 이번 socket-backed 정렬이 끝난 뒤
+추가로 정리할 방향을 적는다.
+
+### 19.1 왜 timer를 `Spot`에서 빼려 하는가
+
+이번 초안은 `Spot`의 의미를 가능한 한 좁히려는 문서다.
+핵심은 "`Spot`은 객체 단위 메시징 endpoint"라는 점을 분명히 하는 것이다.
+
+그 기준에서 보면 timer는 routed recv, topic subscribe, channel reply처럼
+`Spot`이 직접 소유해야만 하는 메시징 subject와 성격이 다르다.
+
+timer를 `Spot` 공개 표면에 계속 두면 아래 문제가 생긴다.
+
+- `Spot`이 메시징 endpoint이면서 동시에 일반 workflow scheduler 역할도 맡게 된다.
+- dispatch event가 "메시지를 읽을 준비"와 "사용자 timer 작업"을 한 표면에서 함께
+  알리게 된다.
+- 사용자가 객체 단위 직렬화를 원할 때, 결국 상위 레이어에서 queue와 single consumer를
+  다시 만들게 되는데 `Spot` timer가 그 모델과 책임 경계를 흐린다.
+
+즉 timer까지 `Spot`이 품으면 "객체의 통신 포트"와 "객체의 실행기"가 다시 섞인다.
+이번 초안은 그 혼합을 줄이는 방향을 더 일관된 설계로 본다.
+
+### 19.2 목표 책임 경계
+
+후속 정리 이후의 목표 책임 경계는 아래처럼 둔다.
+
+- `Spot`
+  객체의 메시지 ingress/egress, routed reply correlation, readiness 알림
+- 상위 runtime 또는 application layer
+  timer, retry, timeout policy, session orchestration, 객체 상태 직렬화
+
+즉 `Spot`은 메시징 관련 처리만 맡고, "이 객체가 언제 어떤 순서로 코드를 실행할까"는
+`Spot` 바깥의 mailbox runtime이 맡는 편이 더 단순하다.
+
+### 19.3 권장 사용 모델
+
+전체 직렬화가 필요한 사용자는 `Spot` 위에 application-owned queue를 두고,
+single consumer가 아래 항목을 함께 처리하는 모델을 권장한다.
+
+- `Spot` dispatch event enqueue
+- stream callback enqueue
+- application timer enqueue
+- 이후 single consumer가 순서대로 consume
+
+이 모델에서는 callback이 직접 사용자 코드를 실행하지 않는다.
+callback은 queue에 work item만 넣고, 실제 상태 변경과 session 호출은 consumer가
+직렬로 처리한다.
+
+이 방식의 장점은 아래와 같다.
+
+- C / C++ / .NET / Java 등 언어와 무관하게 같은 구조를 설명할 수 있다.
+- `Spot`은 메시징 의미만 유지하고, 실행 순서 제어는 상위 레이어가 맡는다.
+- timer도 다른 입력원과 같은 mailbox 뒤에서 처리할 수 있어 객체 단위 직렬화가
+  더 분명해진다.
+
+### 19.4 제거 대상과 유지 대상
+
+후속 정리에서 제거 대상으로 보는 것은 **사용자 facing `Spot` timer surface**다.
+
+예를 들면 아래 항목이 정리 대상이다.
+
+- public API `zlink_spot_timer_new(void *spot_)`
+- `zlink_spot_dispatch_event_t`의
+  `ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3`
+- `zlink_spot_dispatch_subject_kind_t`의
+  `ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2`
+- `Spot` dispatch 표와 guide 예제에서 `zlink_timer_recv()`를 `Spot` drain 경로로
+  설명하는 부분
+- `Spot` direct poller 확장 논의에서 timer를 `Spot` owned subject로 다루는 부분
+
+즉 후속 정리 후 `Spot` 공개 계약에는 아래 event만 남는 방향을 목표로 둔다.
+
+- `SUBSCRIBE_READABLE`
+- `ROUTED_READABLE`
+- `CHANNEL_REPLY_READABLE`
+
+이때 enum 숫자 정책도 함께 고정해야 한다.
+이 초안은 후속 정리 1차 단계에서는 **남는 event와 subject의 숫자를 다시 매기지 않는
+방향**을 우선값으로 둔다.
+
+즉 아래처럼 본다.
+
+- `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1` 유지
+- `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2` 유지
+- `ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4` 유지
+- `ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1` 유지
+- `ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3` 유지
+
+즉 1차 정리에서는 `TIMER_READABLE`과 `SUBJECT_TIMER` symbol을 public contract에서
+제거하되, 남는 값의 번호까지 다시 조정하지는 않는다.
+
+숫자 재정렬이 정말 필요하면, 그것은 별도 breaking change 검토와 언어별 바인딩
+영향 점검을 포함한 후속 작업으로 다룬다.
+
+반대로 아래 항목은 삭제 대상으로 보지 않는다.
+
+- 일반 timer public API
+  `zlink_timer_new()`
+  `zlink_timer_destroy()`
+  `zlink_timer_start()`
+  `zlink_timer_stop()`
+  `zlink_timer_recv()`
+  `zlink_timer_handler()`
+
+즉 timer 기능 자체를 없애는 것이 아니라, 그 기능을 `Spot` 공개 표면에서
+분리하는 것이다.
+
+반대로 아래는 같은 뜻이 아니다.
+
+- core 내부 request timeout substrate까지 없앤다는 뜻
+- protocol 유지에 필요한 내부 scheduler까지 제거한다는 뜻
+- 일반 timer 기능이 라이브러리 전체에서 사라진다는 뜻
+
+즉 줄이려는 것은 "`Spot` 공개 의미에 timer를 넣는 것"이지,
+core 내부 유지에 필요한 모든 시간 기반 동작을 없애자는 뜻은 아니다.
+
+### 19.5 문서 반영 순서
+
+실제 구현과 계약 반영은 아래 순서를 권장한다.
+
+1. 이번 draft의 socket-backed `Spot` delivery owner 정렬을 먼저 끝낸다.
+2. `Spot` timer 공개 표면이 정말 메시징 의미를 흐리는지 구현 기준으로 다시 점검한다.
+3. 제거를 확정하면 먼저 enum 값 정책을 고정한다.
+   1차 단계에서는 남는 event / subject의 숫자를 다시 매기지 않는다는 점을
+   문서와 header 계획에 함께 적는다.
+4. 그 다음 `doc/spec/core/service/spot.*`에서 아래 항목을 함께 줄인다.
+   `zlink_spot_timer_new()`
+   `ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE`
+   `ZLINK_SPOT_DISPATCH_SUBJECT_TIMER`
+5. `doc/spec/core/service/spot.*`의 dispatch table, 우선순위, drain 설명에서
+   timer row를 제거하고, 남는 event 값이 `1, 2, 4`라는 점을 함께 명시한다.
+6. public header와 각 바인딩 enum wrapper가 같은 숫자 정책을 따르도록 맞춘다.
+7. `doc/guide/`에는 "timer는 application-owned mailbox/runtime에서 처리"하는
+   권장 패턴을 예제로 적는다.
+8. 각 바인딩은 `Spot` wrapper가 timer orchestration owner인 것처럼 보이는 helper를
+   남기지 않는다.
+
+즉 timer 제거는 이번 1차 정렬의 핵심 목표는 아니지만, 책임 경계를 더 단순하게
+만드는 유력한 후속 정리 항목으로 본다.

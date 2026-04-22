@@ -41,13 +41,16 @@ with the rules here, this section wins.
   `attach_channel_dealer_manual(...)`, and
   `attach_pub_ingress(...)`.
 - `Spot` must expose channel-aware data-plane methods:
-  `send_channel(...)`, `request_channel(...)`, and
+  `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(service_name, topic, ...)`.
 - `Spot::subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `service_name: Option<String>`, populated for
   SPOT subscribe results and `None` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `on_subscribe(...)`. Use `on_dispatch_event(...)`
   plus `subscribe(...)` / routed recv / timer recv.
+- `SpotDispatchEvent::SubscribeReadable` and `::RoutedReadable` are readiness
+  notifications, not one-event-per-message delivery counters. Binding docs and
+  samples must drain until the recv path reports `EAGAIN`.
 - `Spot::on_routed_receive(...)` and `Spot::on_dispatch_event(...)` are
   mutually exclusive on the routed axis.
 
@@ -1592,6 +1595,10 @@ pub struct SpotDispatchInfo {
 logical channel name from that attached DEALER with
 `DealerSocket::channel_name()`.
 
+For `SubscribeReadable` and `RoutedReadable`, callers must keep draining
+`subscribe(...)` / `recv_routed(...)` until the binding reports no data /
+`EAGAIN`.
+
 ### RegistryQueryClient
 
 ```rust
@@ -1805,6 +1812,10 @@ impl Poller {
 /// Legacy poll function for simple use cases.
 /// # Errors: RecvError
 pub fn poll(items: &mut [PollItem], timeout_ms: i64) -> Result<i32, RecvError>;
+
+// The current public poller contract is still generic. It does not yet expose
+// a Spot-aware result carrying owner Spot, dispatch event kind, and drain
+// subject together.
 
 pub struct PollEvent {
     // ...

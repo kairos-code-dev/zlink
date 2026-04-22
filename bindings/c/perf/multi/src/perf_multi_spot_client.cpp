@@ -35,6 +35,7 @@ static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 static const size_t k_topic_len = sizeof("bench") - 1;
 static const char *k_control_ready_prefix = "CLIENT_CONTROL_ENDPOINT,";
+static std::string g_last_spot_slot_failure;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::resolve_case_msg_sizes;
@@ -768,44 +769,20 @@ bool drain_spot_client_slot(spot_client_slot_t *slot,
 
 void spot_client_recv_worker_loop(spot_recv_worker_t *worker)
 {
-    if (!worker || !worker->state || !worker->poller)
+    if (!worker || !worker->state)
         return;
 
     while (!worker->state->recv_workers_stop.load(std::memory_order_acquire)) {
-        const int poll_rc =
-          zlink_poller_wait_all(worker->poller,
-                                worker->events.empty() ? NULL : &worker->events[0],
-                                static_cast<int>(worker->events.size()),
-                                5, NULL);
-        if (poll_rc < 0) {
-            const int err = zlink_errno();
-            if (worker->state->recv_workers_stop.load(std::memory_order_acquire))
-                break;
-            if (err == EINTR || err == EAGAIN)
-                continue;
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-client] poller fatal err=" << err
-                          << std::endl;
-            }
-            mark_fatal();
-            return;
-        }
-
-        for (int i = 0; i < poll_rc; ++i) {
-            if ((worker->events[i].events & ZLINK_POLLIN) == 0)
-                continue;
-
-            spot_client_slot_t *slot =
-              static_cast<spot_client_slot_t *>(worker->events[i].user_data);
+        bool progressed = false;
+        for (size_t i = 0; i < worker->slots.size(); ++i) {
+            spot_client_slot_t *slot = worker->slots[i];
             if (!slot || slot->stop.load(std::memory_order_acquire))
                 continue;
-            // Large TLS/WSS payloads can arrive over multiple transport reads.
-            // After POLLIN, block for the first recv so the decoder can finish
-            // assembling the current message, then switch back to DONTWAIT
-            // draining for the steady-state hot path.
-            if (!drain_spot_client_slot(slot, 0, NULL))
+            if (!drain_spot_client_slot(slot, ZLINK_DONTWAIT, &progressed))
                 return;
         }
+        if (!progressed)
+            (void) perf_socket_poll(NULL, 0, 1);
     }
 }
 
@@ -826,20 +803,13 @@ bool start_spot_recv_workers(spot_client_state_t *state)
         if (!worker)
             return false;
         worker->state = state;
-        worker->poller = zlink_poller_new();
-        if (!worker->poller) {
-            delete worker;
-            return false;
-        }
         state->recv_workers.push_back(worker);
     }
 
     for (size_t i = 0; i < state->slots.size(); ++i) {
         spot_client_slot_t *slot = state->slots[i];
         spot_recv_worker_t *worker = state->recv_workers[i % worker_count];
-        if (!slot || !worker || !worker->poller || !slot->handle
-            || zlink_poller_add(worker->poller, slot->handle, slot, ZLINK_POLLIN)
-                 != 0) {
+        if (!slot || !worker || !slot->handle) {
             return false;
         }
         worker->slots.push_back(slot);
@@ -849,7 +819,6 @@ bool start_spot_recv_workers(spot_client_state_t *state)
         spot_recv_worker_t *worker = state->recv_workers[i];
         if (!worker || worker->slots.empty())
             continue;
-        worker->events.resize(worker->slots.size());
         worker->thread = std::thread(spot_client_recv_worker_loop, worker);
     }
 
@@ -1012,6 +981,9 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
         slot->node = zlink_spot_node_new(ctx.get());
         if (!slot->node || !setup_tls_client(slot->node, transport)) {
+            g_last_spot_slot_failure =
+              "node create/tls failed slot=" + std::to_string (i)
+              + " err=" + std::to_string (zlink_errno ());
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] node create/tls failed slot="
                           << i << " err=" << zlink_errno() << std::endl;
@@ -1023,21 +995,50 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
         slot->handle = perf_create_default_spot_handle(slot->node);
         if (!slot->handle) {
+            g_last_spot_slot_failure =
+              "slot handle create failed slot=" + std::to_string (i)
+              + " err=" + std::to_string (zlink_errno ());
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] slot handle create failed slot="
+                          << i << " err=" << zlink_errno() << std::endl;
+                std::cout << "[multi-spot-client] slot handle create failed slot="
+                          << i << " err=" << zlink_errno() << std::endl;
+            }
             if (slot->node)
                 zlink_spot_node_destroy(&slot->node);
             delete slot;
             return false;
         }
 
-        if (!apply_spot_sub_options(slot->handle, settings)
-            || zlink_spot_node_connect_peer(slot->node, endpoint.c_str())
-                 != ZLINK_CONNECT_OK
-            || zlink_set_subscription (slot->handle, k_topic)
-                 != ZLINK_CONFIG_OK) {
-            if (bench_debug_enabled())
+        const bool sub_options_ok =
+          apply_spot_sub_options(slot->handle, settings);
+        const zlink_connect_result_t connect_rc =
+          zlink_spot_node_connect_peer(slot->node, endpoint.c_str());
+        const zlink_config_result_t sub_rc =
+          zlink_set_subscription (slot->handle, k_topic);
+        if (!sub_options_ok
+            || connect_rc != ZLINK_CONNECT_OK
+            || sub_rc != ZLINK_CONFIG_OK) {
+            g_last_spot_slot_failure =
+              "slot create failed slot=" + std::to_string (i)
+              + " sub_options=" + std::to_string (sub_options_ok ? 1 : 0)
+              + " connect_rc=" + std::to_string (static_cast<int> (connect_rc))
+              + " sub_rc=" + std::to_string (static_cast<int> (sub_rc))
+              + " err=" + std::to_string (zlink_errno ());
+            if (bench_debug_enabled()) {
                 std::cerr << "[multi-spot-client] slot create failed slot=" << i
                           << " node=" << (slot->node != NULL)
+                          << " sub_options=" << (sub_options_ok ? 1 : 0)
+                          << " connect_rc=" << static_cast<int> (connect_rc)
+                          << " sub_rc=" << static_cast<int> (sub_rc)
                           << " err=" << zlink_errno() << std::endl;
+                std::cout << "[multi-spot-client] slot create failed slot=" << i
+                          << " node=" << (slot->node != NULL)
+                          << " sub_options=" << (sub_options_ok ? 1 : 0)
+                          << " connect_rc=" << static_cast<int> (connect_rc)
+                          << " sub_rc=" << static_cast<int> (sub_rc)
+                          << " err=" << zlink_errno() << std::endl;
+            }
             if (slot->handle)
                 perf_destroy_default_spot_handle(&slot->handle);
             if (slot->node)
@@ -1498,6 +1499,7 @@ int run_client_benchmark(const std::string &lib_name,
                            &state.slots)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] create_spot_slots failed"
+                      << " detail=" << g_last_spot_slot_failure
                       << " mode=recv"
                       << std::endl;
         }

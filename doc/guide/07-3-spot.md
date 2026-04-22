@@ -24,6 +24,10 @@ The usual flow is:
 4. Create a `Spot` facade.
 5. Use the `Spot` for topic traffic or channel calls.
 
+Once `zlink_spot_new()` succeeds, that Spot already has its routed receive
+plane prepared. Do not assume the first `zlink_spot_recv()` performs hidden
+activation or hidden resource allocation.
+
 ## 2. Smallest working flow
 
 ```c
@@ -191,6 +195,15 @@ zlink_spot_request_channel(
 You cannot register two dealers for the same channel name. Automatic and manual
 attach collide in the same namespace.
 
+### 5.4 Poller note
+
+The current public poller does not yet return a Spot-aware result that says
+"which Spot, which event kind, and which drain target became ready".
+
+So if you want one unified readiness surface for SPOT today, use
+`zlink_spot_dispatch_event_handler()` rather than trying to infer it from the
+generic poller alone.
+
 ## 6. Routed recv and reply
 
 ```c
@@ -214,6 +227,40 @@ Reply with:
 
 - `zlink_spot_reply_spot()` when the origin is another SPOT
 - `zlink_spot_reply_router()` when the origin is a ROUTER
+
+### 6.1 Dispatch events are readiness, not message counts
+
+`SUBSCRIBE_READABLE` and `ROUTED_READABLE` mean "there is readable work on this
+Spot" rather than "exactly one message arrived for this Spot".
+
+That matters because one callback may correspond to multiple queued items, and
+multiple incoming items do not guarantee one callback each.
+
+When you receive either event, treat it as a drain signal:
+
+```c
+for (;;) {
+  int rc = zlink_spot_recv(
+    spot,
+    &source_node_rid,
+    &source_spot_rid,
+    &request_seq,
+    &parts,
+    &part_count,
+    ZLINK_DONTWAIT);
+
+  if (rc == ZLINK_RECV_NO_DATA && zlink_errno() == EAGAIN)
+    break;
+
+  if (rc != ZLINK_RECV_OK)
+    break;
+
+  /* handle one routed message */
+}
+```
+
+Use the same pattern for `zlink_spot_subscribe()`: keep pulling until the API
+returns `ZLINK_RECV_NO_DATA` with `EAGAIN`.
 
 ## 7. Initiating routed requests from Spot
 

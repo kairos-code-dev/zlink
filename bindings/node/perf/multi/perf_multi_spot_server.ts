@@ -4,13 +4,14 @@
 
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
+const { configureTlsServer } = require('../common/perf_tls');
 const {
   createPayload,
   createRunId,
   sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
-const { parseMultiArgs } = require('./perf_multi_common');
+const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
@@ -25,6 +26,7 @@ const {
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
+const SERVICE_TYPE_SPOT = 0x3002;
 
 function trySpotPublish(spot, serviceName, topic, payload) {
   return trySocketPublish({
@@ -38,14 +40,14 @@ async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   applyContextPolicy(ctx, 'server', 'MULTI_SPOT');
+  const registry = new zlink.Registry(ctx);
+  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
   const node = new zlink.SpotNode(ctx);
-  const dealer = new zlink.DealerSocket(ctx);
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
   const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
   const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
   let spot = null;
-  let spotWaiter = null;
   const payload = createPayload(options.msgSize);
   let readyCount = 0;
   let connected = false;
@@ -55,14 +57,18 @@ async function main() {
   let rl = null;
 
   try {
-    node.attachChannelDealerManual(SERVICE_NAME, dealer);
-    applySocketPolicy(dealer);
-    node.bind(options.peerEndpoint);
+    configureTlsServer(node, options.transport);
+    const registryPubEndpoint = await benchmarkEndpoint(options.transport, 'multi-spot-registry-pub');
+    const registryRouterEndpoint = options.endpoint;
+    const dataBindEndpoint = await benchmarkEndpoint(options.transport, 'multi-spot-data');
+    registry.bind(registryPubEndpoint, registryRouterEndpoint);
+    discovery.connectRegistry(registryRouterEndpoint);
+    node.attachDiscovery(discovery);
+    node.bind(dataBindEndpoint);
     spot = node.createSpot();
     applySocketPolicy(spot, {
       noDrop: Number(process.env.PERF_MULTI_SPOT_XPUB_NODROP ?? 1) !== 0
     });
-    spotWaiter = createSocketEventWaiter(spot, POLLOUT);
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
     controlPub.bind(options.controlEndpoint);
@@ -90,7 +96,8 @@ async function main() {
       }
     })();
 
-    while (!stopRequested && !(connected && readyCount >= options.clients && startRequested)) {
+    const readyDeadlineMs = Date.now() + 20_000;
+    while (!stopRequested && readyCount < options.clients && Date.now() < readyDeadlineMs) {
       let drained = false;
       while (true) {
         const received = subscribeNoWait(controlSub);
@@ -107,8 +114,35 @@ async function main() {
           readyCount = Number(payloadText.split(',')[2]);
         }
       }
-      if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
-        await controlSubWaiter.wait(POLLIN);
+      stampPayload(payload, { phase: 0, runId: createRunId(1), msgSize: options.msgSize, seq: 0n });
+      trySpotPublish(spot, SERVICE_NAME, TOPIC, payload);
+      if (readyCount < options.clients && !drained) {
+        await sleepImmediate();
+      }
+    }
+    if (readyCount < options.clients) {
+      throw new Error(`spot warmup readiness timeout ${readyCount}/${options.clients}`);
+    }
+
+    while (!stopRequested && !startRequested) {
+      let drained = false;
+      while (true) {
+        const received = subscribeNoWait(controlSub);
+        if (!received) {
+          break;
+        }
+        drained = true;
+        const payloadText = received.parts[0].data().toString('utf8');
+        if (payloadText === 'CONNECTED') {
+          connected = true;
+          continue;
+        }
+        if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
+          readyCount = Number(payloadText.split(',')[2]);
+        }
+      }
+      if (!startRequested && !drained) {
+        await sleepImmediate();
       }
     }
 
@@ -132,20 +166,17 @@ async function main() {
         seq += 1n;
         continue;
       }
-      await spotWaiter.wait(POLLOUT);
+      await sleepImmediate();
     }
     stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
     for (;;) {
       if (trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
         break;
       }
-      await spotWaiter.wait(POLLOUT);
+      await sleepImmediate();
     }
   } finally {
     rl?.close();
-    if (spotWaiter) {
-      spotWaiter.close();
-    }
     controlSubWaiter.close();
     controlPubWaiter.close();
     if (spot) {
@@ -153,7 +184,8 @@ async function main() {
     }
     controlPub.close();
     controlSub.close();
-    dealer.close();
+    discovery.close();
+    registry.close();
     node.close();
     ctx.close();
   }

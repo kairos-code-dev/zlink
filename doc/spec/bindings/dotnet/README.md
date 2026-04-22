@@ -40,7 +40,7 @@ with the rules here, this section wins.
   `AttachChannelDealerManual(string channelName, DealerSocket dealer)`, and
   `AttachPubIngress(PubSocket pub)`.
 - `Spot` must expose channel-aware data-plane methods:
-  `SendChannel(...)`, `RequestChannelAsync(...)`, and
+  `SendChannel(...)`, `SendToSpot(...)`, `RequestChannelAsync(...)`, and
   `Publish(string serviceName, string topic, ...)`.
 - `Spot.OnDispatchEvent(...)` takes `Action<Spot, SpotDispatchInfo>`.
   `SpotDispatchInfo` carries `Event`, `SubjectKind`, and `Subject`
@@ -54,8 +54,9 @@ with the rules here, this section wins.
   `TopicMessage` therefore needs `ServiceName` populated for SPOT subscribe
   results and `null` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `OnSubscribe(...)`.
-- `Spot` direct RID one-way send APIs are not part of the public contract.
-  Routed request initiation (`RequestToSpot` / `RequestToRouter`) is supported.
+- `SpotDispatchEvent.SubscribeReadable` and `.RoutedReadable` are readiness
+  notifications, not one-event-per-message delivery counters. Binding docs and
+  samples must drain until the recv API reports `EAGAIN`.
 - Every socket and `Spot` exposes `SetAdmissionState(state)` and
   `GetAdmissionState()` backed by the typed enum
   `AdmissionState { Serving = 1, Draining = 2 }`. Submit attempts to a
@@ -1238,6 +1239,10 @@ public sealed record SpotDispatchInfo(
 Pass the handle back to APIs that consume it, such as
 `DrainChannelReplyFrom(IntPtr dealerSubject)`.
 
+`SubscribeReadable` and `RoutedReadable` are readiness events. Callers must
+drain `Spot.Subscribe(...)` or `Spot.RecvRouted(...)` until the binding
+surfaces `EAGAIN` / no-data.
+
 ### SendFlags
 
 ```csharp
@@ -1979,6 +1984,10 @@ public sealed record SpotNodeSubjectFilter(
 
 Event poller for multiplexing socket and file descriptor readiness.
 Implements `IDisposable` and `IAsyncDisposable`.
+
+The current public poller contract is still generic. It does not yet expose a
+Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
+subject together.
 
 ```csharp
 public sealed class Poller : IDisposable, IAsyncDisposable

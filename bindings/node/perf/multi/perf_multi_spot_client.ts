@@ -4,15 +4,17 @@
 
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
+const { configureTlsClient } = require('../common/perf_tls');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeader,
+  decodeMetricHeaderFromParts,
   currentEpochNs,
   sleepImmediate,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const {
+  benchmarkEndpoint,
   parseMultiArgs,
   resolveMultiSpotControlSettleMs,
   resolveMultiSpotReadySettleMs
@@ -32,15 +34,40 @@ const {
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
+const SERVICE_TYPE_SPOT = 0x3002;
+const TRACE = process.env.PERF_MULTI_SPOT_TRACE === '1';
+
+function trace(message) {
+  if (TRACE) {
+    console.error(`[multi-spot-client] ${message}`);
+  }
+}
 
 function trySpotSubscribe(spot) {
   try {
     return spot.subscribe(zlink.RecvFlags.DontWait);
   } catch (error) {
-    if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+    if (error instanceof zlink.RecvError &&
+        (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
       return null;
     }
     throw error;
+  }
+}
+
+function drainSpot(spot, onMessage) {
+  let processed = false;
+  while (true) {
+    const received = trySpotSubscribe(spot);
+    if (!received) {
+      return processed;
+    }
+    try {
+      onMessage(received);
+      processed = true;
+    } finally {
+      received.close();
+    }
   }
 }
 
@@ -59,6 +86,10 @@ async function main() {
   const slots = [];
   let rl = null;
   let collector = null;
+  let activeStopNs = 0n;
+  let collectActive = false;
+  const readySeen = new Set();
+  const cooldownSeen = new Set();
 
   try {
     applySocketPolicy(controlPub);
@@ -68,44 +99,66 @@ async function main() {
     controlSub.setSubscription(CONTROL_TOPIC);
     await waitForConnectionReady(controlSub, () => controlSub.connect(options.serverControlEndpoint));
     console.log(`CONTROL_CONNECTED,${options.serverControlEndpoint}`);
+    trace('control-connected');
     for (let i = 0; i < options.clients; i += 1) {
       const node = new zlink.SpotNode(ctx);
-      const dealer = new zlink.DealerSocket(ctx);
-      applySocketPolicy(dealer);
-      node.attachChannelDealerManual(SERVICE_NAME, dealer);
+      const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+      configureTlsClient(node, options.transport);
+      discovery.connectRegistry(options.endpoint);
+      node.attachDiscovery(discovery);
+      node.bind(await benchmarkEndpoint(options.transport, `multi-spot-client-${i}`));
       const spot = node.createSpot();
       applySocketPolicy(spot);
       spot.setSubscription(TOPIC);
-      node.connectPeer(options.peerEndpoint);
-      slots.push({ node, dealer, spot });
+      slots.push({ node, spot, discovery });
     }
 
-    for (const slot of slots) {
-      slot.spot.onDispatchEvent(() => {
-        while (true) {
-          const received = trySpotSubscribe(slot.spot);
-          if (!received) {
+    const drainSlots = () => {
+      let processed = false;
+      for (let i = 0; i < slots.length; i += 1) {
+        const { spot } = slots[i];
+        if (drainSpot(spot, (received) => {
+          const header = decodeMetricHeaderFromParts(received.parts);
+          if (!header) {
             return;
           }
-          if (!collector) {
-            continue;
+          if ((header.runId >>> 0) !== createRunId(1) || (header.msgSize >>> 0) !== options.msgSize) {
+            return;
           }
-          const firstPart = received.parts[0];
-          if (!firstPart) {
-            continue;
+          if (header.phase === 0) {
+            readySeen.add(i);
+            return;
           }
-          collector.record(
-            decodeMetricHeader(firstPart.data()),
-            currentEpochNs()
-          );
+          if (header.phase === 2) {
+            cooldownSeen.add(i);
+            return;
+          }
+          if (!collectActive || currentEpochNs() > activeStopNs) {
+            return;
+          }
+          collector?.record(header, currentEpochNs());
+        })) {
+          processed = true;
         }
-      });
-    }
+      }
+      return processed;
+    };
 
     const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
     while (Date.now() < stabilizationDeadline) {
+      drainSlots();
       await sleepImmediate();
     }
+    const readyDeadline = Date.now() + 20_000;
+    while (Date.now() < readyDeadline && readySeen.size < slots.length) {
+      if (!drainSlots()) {
+        await sleepImmediate();
+      }
+    }
+    if (readySeen.size < slots.length) {
+      throw new Error(`spot warmup readiness timeout ${readySeen.size}/${slots.length}`);
+    }
+    trace(`warmup-ready count=${readySeen.size}`);
     for (;;) {
       if (tryControlPublish(controlPub, 'CONNECTED')) {
         break;
@@ -123,6 +176,7 @@ async function main() {
       await controlPubWaiter.wait(POLLOUT);
     }
     console.log(`CLIENT_READY,${options.msgSize}`);
+    trace('client-ready');
 
     rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     let startRequested = false;
@@ -135,7 +189,7 @@ async function main() {
       }
     })();
 
-    while (!(startRequested && startBroadcast)) {
+    while (!startRequested) {
       let drained = false;
       while (true) {
         const received = subscribeNoWait(controlSub);
@@ -148,13 +202,16 @@ async function main() {
           startBroadcast = true;
         }
       }
-      if (!(startRequested && startBroadcast) && !drained) {
-        await controlSubWaiter.wait(POLLIN);
+      if (!startRequested && !drained) {
+        drainSlots();
+        await sleepImmediate();
       }
     }
+    trace(`start-handshake-done runner=${startRequested} broadcast=${startBroadcast}`);
 
     const activeStartNs = currentEpochNs();
-    const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+    activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+    const idleStopNs = activeStopNs + 2_000_000_000n;
     collector = createMetricCollector({
       runId: createRunId(1),
       msgSize: options.msgSize,
@@ -162,9 +219,18 @@ async function main() {
       activeStopNs,
       sampleCap: resolveMultiLatencySampleCap()
     });
-    while (currentEpochNs() < activeStopNs) {
-      await sleepImmediate();
+    collectActive = true;
+    trace('dispatch-ready');
+    while (currentEpochNs() < idleStopNs) {
+      if (currentEpochNs() >= activeStopNs && cooldownSeen.size >= slots.length) {
+        break;
+      }
+      if (!drainSlots()) {
+        await sleepImmediate();
+      }
     }
+    collectActive = false;
+    trace(`drain-complete cooldown=${cooldownSeen.size}`);
     const result = collector ? await collector.finish() : { latenciesNs: [] };
     for (const metricLine of summarizeMetrics(
       'MULTI_SPOT',
@@ -177,6 +243,9 @@ async function main() {
     )) {
       console.log(metricLine);
     }
+    trace('result-flushed');
+    await new Promise((resolve) => process.stdout.write('', resolve));
+    process.exit(0);
   } finally {
     rl?.close();
     controlSubWaiter.close();
@@ -185,7 +254,7 @@ async function main() {
     controlPub.close();
     for (const slot of slots) {
       slot.spot.close();
-      slot.dealer.close();
+      slot.discovery.close();
       slot.node.close();
     }
     ctx.close();

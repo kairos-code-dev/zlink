@@ -858,6 +858,9 @@ pub(crate) fn recv_basic_parts(
     loop {
         let mut source_rid_ptr = ptr::null();
         let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        unsafe {
+            ffi::zlink_msg_init(part.as_mut_ptr());
+        }
         let mut has_more = 0;
         let rc = unsafe {
             ffi::zlink_recv_part(
@@ -907,6 +910,9 @@ pub(crate) fn recv_subscribed_parts(
         let mut source_rid_ptr = ptr::null();
         let mut topic_len = topic_buf.len();
         let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        unsafe {
+            ffi::zlink_msg_init(part.as_mut_ptr());
+        }
         let mut has_more = 0;
         let rc = unsafe {
             ffi::zlink_subscribe_part(

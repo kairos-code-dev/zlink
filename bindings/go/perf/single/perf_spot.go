@@ -1,7 +1,7 @@
 package main
 
 import (
-	"sync/atomic"
+	"fmt"
 	"time"
 
 	"zlink"
@@ -16,12 +16,21 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(err)
 	defer ctx.Close()
 
+	registry, err := ctx.Registry()
+	perfcommon.Must(err)
+	defer registry.Close()
 	publisherNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer publisherNode.Close()
 	subscriberNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer subscriberNode.Close()
+	publisherDiscovery, err := ctx.Discovery(zlink.ServiceTypeSpot, singleSpotServiceName)
+	perfcommon.Must(err)
+	defer publisherDiscovery.Close()
+	subscriberDiscovery, err := ctx.Discovery(zlink.ServiceTypeSpot, singleSpotServiceName)
+	perfcommon.Must(err)
+	defer subscriberDiscovery.Close()
 
 	publisher, err := publisherNode.Spot()
 	perfcommon.Must(err)
@@ -34,71 +43,83 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriberNode, cfg.transport))
 	perfcommon.ApplySingleHWM(publisher)
 	perfcommon.ApplySingleHWM(subscriber)
-	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot")
-	perfcommon.Must(publisherNode.Bind(endpoint))
-	perfcommon.Must(subscriberNode.ConnectPeer(endpoint))
+	registryPubEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-registry-pub")
+	registryRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-registry-router")
+	publisherEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-pub")
+	subscriberEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-sub")
+	perfcommon.Must(registry.Bind(registryPubEndpoint, registryRouterEndpoint))
+	perfcommon.Must(publisherDiscovery.ConnectRegistry(registryRouterEndpoint))
+	perfcommon.Must(subscriberDiscovery.ConnectRegistry(registryRouterEndpoint))
+	perfcommon.Must(publisherNode.AttachDiscovery(publisherDiscovery))
+	perfcommon.Must(subscriberNode.AttachDiscovery(subscriberDiscovery))
+	perfcommon.Must(publisherNode.Bind(publisherEndpoint))
+	perfcommon.Must(subscriberNode.Bind(subscriberEndpoint))
 	perfcommon.Must(publisher.SetNoDrop(true))
 	perfcommon.Must(subscriber.SetSubscription("bench."))
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SingleRecvTimeout()))
+	poller := perfcommon.NewSocketPoller(subscriber, perfcommon.ZLinkPollIn)
+	defer poller.Close()
 
 	stats := perfcommon.NewStats()
-	var window perfcommon.BenchmarkWindow
-	var readySeen atomic.Bool
-	var activeCollect atomic.Bool
-	readySignal := make(chan struct{}, 1)
-
-	perfcommon.Must(subscriber.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
-		if info.Event != zlink.SpotDispatchEventSubscribeReadable {
-			return
-		}
-		_ = drainSingleSpotReadable(
-			subscriber,
-			stats,
-			window.ActiveAt,
-			cfg.msgSize,
-			&activeCollect,
-			&readySeen,
-			readySignal,
-		)
-	}))
-
-	waitForSpotReady(publisher, cfg.msgSize, readySignal)
+	waitForSpotReady(publisher, subscriber, poller, cfg.msgSize)
 	perfcommon.PostReadySettle(cfg.pattern)
-	window = perfcommon.NewBenchmarkWindow(cfg.duration)
-	activeCollect.Store(true)
-
-	payload := perfcommon.PreparePayload(cfg.msgSize)
-	for time.Now().Before(window.StopAt) {
-		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
+	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+	sendDone := make(chan struct{})
+	go func() {
+		defer close(sendDone)
+		payload := perfcommon.PreparePayload(cfg.msgSize)
+		for time.Now().Before(window.StopAt) {
+			perfcommon.StampWindowPayload(payload, window.ActiveAt)
+			err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				perfcommon.Must(err)
 			}
+		}
+
+		perfcommon.StampCooldownPayload(payload)
+		err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
+		if err != nil && !perfcommon.IsTransient(err) {
 			perfcommon.Must(err)
 		}
+	}()
+
+	for time.Now().Before(window.StopAt) {
+		timeout := time.Until(window.StopAt)
+		if timeout <= 0 {
+			break
+		}
+		event, err := poller.Wait(timeout)
+		if err != nil {
+			perfcommon.Must(err)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		for drainSingleSpotReadable(subscriber, stats, window.ActiveAt, cfg.msgSize, true) {
+		}
 	}
 
-	activeCollect.Store(false)
-	perfcommon.StampCooldownPayload(payload)
-	err = publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
-	if err != nil && !perfcommon.IsTransient(err) {
-		perfcommon.Must(err)
-	}
+	<-sendDone
+
 	idleDrainDeadline := time.Now().Add(perfcommon.SingleIdleDrainDuration())
 	for time.Now().Before(idleDrainDeadline) {
-		if !drainSingleSpotReadable(
-			subscriber,
-			nil,
-			window.ActiveAt,
-			cfg.msgSize,
-			&activeCollect,
-			&readySeen,
-			readySignal,
-		) {
+		timeout := time.Until(idleDrainDeadline)
+		if timeout <= 0 {
+			break
+		}
+		event, err := poller.Wait(timeout)
+		if err != nil {
+			perfcommon.Must(err)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
 			continue
+		}
+		for drainSingleSpotReadable(subscriber, nil, window.ActiveAt, cfg.msgSize, false) {
 		}
 	}
 
@@ -110,9 +131,7 @@ func drainSingleSpotReadable(
 	stats *perfcommon.Stats,
 	activeAt time.Time,
 	msgSize int,
-	activeCollect *atomic.Bool,
-	readySeen *atomic.Bool,
-	readySignal chan<- struct{},
+	countActive bool,
 ) bool {
 	processed := false
 	for {
@@ -128,36 +147,44 @@ func drainSingleSpotReadable(
 		}
 		processed = true
 		part, err := message.SinglePartOrError()
-		if err == nil {
-			if activeCollect.Load() {
-				if stats != nil {
-					perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
-				}
-			} else if _, ok := perfcommon.SentAtFromMessagePhase(part, msgSize, perfcommon.PhaseWarmup); ok {
-				if readySeen.CompareAndSwap(false, true) {
-					select {
-					case readySignal <- struct{}{}:
-					default:
-					}
-				}
-			}
+		if err == nil && countActive && stats != nil {
+			perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
 		}
 		_ = message.Close()
 	}
 }
 
-func waitForSpotReady(publisher *zlink.Spot, msgSize int, ready <-chan struct{}) {
+func waitForSpotReady(
+	publisher *zlink.Spot,
+	subscriber *zlink.Spot,
+	poller *zlink.Poller,
+	msgSize int,
+) {
 	payload := perfcommon.PreparePayload(msgSize)
-	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
-		Name: "spot perf endpoint",
-		Start: func() error {
-			perfcommon.StampProbePayload(payload)
-			err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsNone, perfcommon.NewMessage(payload))
-			if err != nil {
-				return err
+	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
+	for time.Now().Before(deadline) {
+		perfcommon.StampProbePayload(payload)
+		err := publisher.Publish(singleSpotServiceName, singleSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+		if err != nil && !perfcommon.IsTransient(err) {
+			perfcommon.Must(err)
+		}
+		timeout := time.Until(deadline)
+		if timeout <= 0 {
+			break
+		}
+		event, waitErr := poller.Wait(timeout)
+		if waitErr != nil {
+			if perfcommon.IsTransient(waitErr) {
+				continue
 			}
-			return nil
-		},
-		Ready: ready,
-	}))
+			perfcommon.Must(waitErr)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		if drainSingleSpotReadable(subscriber, nil, time.Time{}, msgSize, false) {
+			return
+		}
+	}
+	perfcommon.Must(fmt.Errorf("spot perf endpoint ready probe timed out"))
 }

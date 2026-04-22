@@ -24,6 +24,10 @@ SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 4. `Spot` facade를 만든다.
 5. `Spot`으로 publish/subscribe 또는 channel 호출을 사용한다.
 
+`zlink_spot_new()`가 성공하면 그 `Spot`의 routed recv 평면은 이미 준비된 상태다.
+따라서 첫 `zlink_spot_recv()`가 숨은 activation이나 숨은 자원 생성을 수행한다고
+가정하면 안 된다.
+
 ## 2. 가장 단순한 흐름
 
 ```c
@@ -247,6 +251,50 @@ dispatch 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
 모든 event를 처리하므로, 한 spot의 routed handler, subscription handler, timer
 handler, channel reply callback은 같은 실행 문맥에서 순차 실행된다.
 
+### 6.1 dispatch event는 readiness다
+
+`SUBSCRIBE_READABLE`과 `ROUTED_READABLE`은 "메시지 1개가 도착했다"는 뜻이 아니라
+"지금 읽을 것이 있다"는 뜻이다.
+
+즉 아래처럼 이해해야 한다.
+
+- callback 1회가 메시지 1개를 뜻하지 않는다.
+- 같은 plane이 이미 readable인 동안 메시지가 더 들어와도 callback 개수는 메시지
+  개수와 1:1로 맞지 않을 수 있다.
+- callback 안에서는 해당 plane을 `EAGAIN`이 나올 때까지 반복해서 drain하는 편이
+  맞다.
+
+예를 들면 routed plane은 아래처럼 처리한다.
+
+```c
+for (;;) {
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+
+    int rc = zlink_spot_recv(
+      spot_,
+      &source_rid,
+      &spot_rid,
+      &request_seq,
+      &parts,
+      &part_count,
+      ZLINK_DONTWAIT);
+
+    if (rc == ZLINK_RECV_NO_DATA && zlink_errno() == EAGAIN)
+        break;
+    if (rc != ZLINK_RECV_OK)
+        break;
+
+    /* parts 처리 */
+    zlink_multipart_close(parts, part_count);
+}
+```
+
+subscribe plane도 같은 방식으로 drain한다.
+
 ### 6.1 channel request reply가 dispatch stream에 포함되는 이유
 
 `zlink_spot_request_channel()`로 시작한 request의 reply는 transport 경로상으로는
@@ -258,6 +306,15 @@ stream에서 처리된다**.
   → user reply callback
 
 이 때문에 binding이 attached dealer별 별도 progress pump를 돌릴 필요가 없다.
+
+## 7. 지금 공개된 poller와의 관계
+
+현재 public poller는 `Spot` 전용 event kind와 subject를 함께 돌려주지 않는다.
+즉 지금 공개 계약에서는 `Spot`을 poller에 등록해서 dispatch callback과 같은 의미를
+그대로 받는 표면이 아직 없다.
+
+따라서 SPOT의 subscribe, routed recv, channel reply, timer를 한 owner 기준으로
+순차 처리하려면 현재는 `zlink_spot_dispatch_event_handler()`를 사용하는 쪽이 맞다.
 `Spot` progress 하나만으로 channel reply completion을 포함한 모든 work가 진전된다.
 
 ## 7. Routed receive와 reply

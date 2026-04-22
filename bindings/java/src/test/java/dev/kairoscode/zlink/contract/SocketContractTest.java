@@ -308,6 +308,8 @@ public class SocketContractTest {
             RecvFlags.class));
         assertFalse(hasPublicMethod(RouterSocket.class, "onSpotReceive"));
 
+        assertTrue(hasPublicMethod(Spot.class, "sendToSpot",
+            RoutingId.class, RoutingId.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "replyToSpot",
             RoutingId.class, RoutingId.class, long.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "replyToRouter",

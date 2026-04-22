@@ -20,6 +20,7 @@ enum poller_subject_kind_t
     poller_subject_spot_request_completion,
     poller_subject_spot_pub,
     poller_subject_spot_sub,
+    poller_subject_spot_routed,
     poller_subject_spot_node_pub,
     poller_subject_spot_node_sub
 };

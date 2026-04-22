@@ -125,6 +125,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
   const spot = spotNode.createSpot();
   assert.equal(typeof spot.publish, 'function');
   assert.equal(typeof spot.sendChannel, 'function');
+  assert.equal(typeof spot.sendToSpot, 'function');
   assert.equal(typeof spot.requestChannel, 'function');
   assert.equal(typeof spot.subscribe, 'function');
   assert.equal(typeof spot.receiveSubscriptionEvent, 'function');

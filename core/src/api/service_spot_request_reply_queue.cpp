@@ -9,6 +9,8 @@
 #include "api/service_spot_request_reply_utils_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
+#include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_runtime.hpp"
 
 namespace
 {
@@ -17,7 +19,7 @@ using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::maybe_dispatch_spot_info;
 using zlink::spot_reqrep_internal::queued_spot_subscribe_message_t;
-using zlink::spot_reqrep_internal::resolve_spot_ctx;
+using zlink::spot_reqrep_internal::resolve_spot_runtime;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_subscribe_dispatch_queue_t;
 
@@ -69,6 +71,28 @@ int copy_routing_id_frame_local (const zlink_msg_t &frame_,
     }
     return 0;
 }
+
+int send_buffer_frame_local (zlink::socket_base_t *socket_,
+                                    const void *data_,
+                                    size_t size_,
+                                    int flags_)
+{
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::msg_t msg;
+    if (msg.init_size (size_) != 0)
+        return -1;
+    if (size_ > 0 && data_)
+        memcpy (msg.data (), data_, size_);
+    const int rc = socket_->send (&msg, flags_);
+    const int saved_errno = errno;
+    msg.close ();
+    errno = saved_errno;
+    return rc;
+}
 }
 
 void zlink::spot_reqrep_internal::close_spot_dispatch_parts (
@@ -94,14 +118,36 @@ int zlink::spot_reqrep_internal::queue_spot_message (
         return -1;
     }
 
-    if (zlink::internal_pair_queue::ensure (resolve_spot_ctx (state_->owner),
-                                            "zlink.spot.routed.recv",
-                                            &state_->recv_queue)
-        != 0)
+    zlink::spot_runtime_t *runtime = resolve_spot_runtime (state_->owner);
+    if (!runtime || !runtime->execution.data_plane_running) {
+        errno = ETERM;
         return -1;
+    }
 
-    unsigned char seq_buf[8];
-    zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
+    std::shared_ptr<spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (state_->owner);
+    if (!state || zlink::spot_reqrep_internal::ensure_spot_recv_ready (state) != 0) {
+        zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
+        return -1;
+    }
+
+    zlink::socket_base_t *queue_tx = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (!state->routed_recv_queue.tx || !state->routed_recv_socket) {
+            errno = ETERM;
+            zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
+            return -1;
+        }
+        queue_tx = state->routed_recv_queue.tx;
+    }
+
+    if (!queue_tx) {
+        errno = ETERM;
+        zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
+        return -1;
+    }
+
     const void *source_data =
       has_valid_routing_id (source_rid_) ? source_rid_->data : NULL;
     const size_t source_size =
@@ -110,21 +156,24 @@ int zlink::spot_reqrep_internal::queue_spot_message (
       has_valid_routing_id (spot_rid_) ? spot_rid_->data : NULL;
     const size_t spot_size =
       has_valid_routing_id (spot_rid_) ? spot_rid_->size : 0;
-    if (zlink::internal_pair_queue::send_buffer_frame (
-          state_->recv_queue.tx, source_data, source_size, ZLINK_SNDMORE)
-        != 0
+    unsigned char seq_buf[8];
+    zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
+
+    if (send_buffer_frame_local (queue_tx, source_data, source_size,
+                                 ZLINK_SNDMORE)
+          != 0
         || zlink::internal_pair_queue::send_buffer_frame (
-             state_->recv_queue.tx, spot_data, spot_size, ZLINK_SNDMORE)
+             queue_tx, spot_data, spot_size, ZLINK_SNDMORE)
              != 0
         || zlink::internal_pair_queue::send_buffer_frame (
-             state_->recv_queue.tx, seq_buf, sizeof (seq_buf), ZLINK_SNDMORE)
+             queue_tx, seq_buf, sizeof (seq_buf), ZLINK_SNDMORE)
              != 0) {
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
         return -1;
     }
     for (size_t i = 0; i < part_count_; ++i) {
         const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (state_->recv_queue.tx->send (
+        if (queue_tx->send (
               reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags)
             != 0) {
             zlink::request_reply::consume_send_frames_from (parts_, i,
@@ -133,7 +182,8 @@ int zlink::spot_reqrep_internal::queue_spot_message (
         }
     }
 
-    maybe_dispatch_spot_info (state_, ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
+    maybe_dispatch_spot_info (state.get (),
+                              ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
                               ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
                               state_->owner);
     return 0;
@@ -202,7 +252,7 @@ void zlink::spot_reqrep_internal::close_spot_subscribe_dispatch_queue (
 }
 
 int zlink::spot_reqrep_internal::recv_internal_spot_queue (
-  zlink::internal_pair_queue::queue_t *queue_,
+  zlink::socket_base_t *socket_,
   const zlink_routing_id_t **source_rid_out_,
   const zlink_routing_id_t **spot_rid_out_,
   uint64_t *request_seq_out_,
@@ -210,7 +260,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
   size_t *part_count_out_,
   int flags_)
 {
-    if (!queue_ || !queue_->rx || !source_rid_out_ || !spot_rid_out_
+    if (!socket_ || !source_rid_out_ || !spot_rid_out_
         || !request_seq_out_ || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
         return -1;
@@ -229,8 +279,8 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         != 0)
         return -1;
 
-    while (queue_->rx->recv (reinterpret_cast<zlink::msg_t *> (&source_frame),
-                             flags_)
+    while (socket_->recv (reinterpret_cast<zlink::msg_t *> (&source_frame),
+                          flags_)
            != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&source_frame);
@@ -239,7 +289,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
             errno = saved_errno;
             return -1;
         }
-        if (zlink::wait_socket_events_internal (queue_->rx, ZLINK_POLLIN, -1)
+        if (zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, -1)
             <= 0) {
             zlink::recv_tls_view::abort ();
             errno = saved_errno;
@@ -248,7 +298,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         zlink_msg_init (&source_frame);
     }
     if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, &spot_frame, flags_)
+          socket_, &spot_frame, flags_)
         != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&source_frame);
@@ -259,7 +309,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         return -1;
     }
     if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, &seq_frame, flags_)
+          socket_, &seq_frame, flags_)
         != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&source_frame);
@@ -278,7 +328,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         return -1;
     }
     if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, first_payload, flags_)
+          socket_, first_payload, flags_)
         != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&source_frame);
@@ -316,7 +366,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         return zlink::recv_tls_view::commit_reserved_single (parts_out_,
                                                              part_count_out_);
     return zlink::internal_pair_queue::export_followup_sequence_from_reserved_first (
-      queue_->rx, parts_out_, part_count_out_);
+      socket_, parts_out_, part_count_out_);
 }
 
 int zlink::spot_reqrep_internal::recv_internal_spot_subscribe_queue (

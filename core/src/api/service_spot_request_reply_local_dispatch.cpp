@@ -318,9 +318,10 @@ int dispatch_spot_request_to_spot (
         : std::string (),
       &source_spot_rid);
 
-    return dispatch_spot_message_local (
+    const int rc = dispatch_spot_message_local (
       state.get (), &source_rid, &source_spot_rid, rr_envelope_.request_seq,
       rr_envelope_.payload_parts, rr_envelope_.payload_part_count);
+    return rc;
 }
 
 int dispatch_spot_request_to_router (

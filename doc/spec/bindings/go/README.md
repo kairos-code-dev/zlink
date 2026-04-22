@@ -31,13 +31,17 @@ with the rules here, this section wins.
   `AttachChannelDealerManual(...)`, and
   `AttachPubIngress(...)`.
 - `Spot` must expose channel-aware data-plane methods:
-  `SendChannel(...)`, `RequestChannel(...)`, and
+  `SendChannel(...)`, `SendToSpot(...)`, `RequestChannel(...)`, and
   `Publish(serviceName, topic, ...)`.
 - `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `ServiceName *string` or equivalent optional
   field, populated for SPOT subscribe results and empty for raw `SUB` / `XSUB`.
 - `Spot` must not expose `OnSubscribe(...)`. Use `OnDispatchEvent(...)` plus
   `Subscribe(...)` / routed recv / timer recv.
+- `SpotDispatchEventSubscribeReadable` and
+  `SpotDispatchEventRoutedReadable` are readiness notifications, not
+  one-event-per-message delivery counters. Binding docs and samples must drain
+  until `EAGAIN`.
 - `Spot.OnRoutedReceive(...)` and `OnDispatchEvent(...)` are mutually exclusive
   on the routed axis.
 - Every socket and `Spot` exposes `SetAdmissionState(state)` and
@@ -1302,6 +1306,10 @@ type SpotDispatchInfo struct {
 }
 ```
 
+For `SpotDispatchEventSubscribeReadable` and
+`SpotDispatchEventRoutedReadable`, callers must keep draining with
+`Subscribe(...)` / routed recv until the binding reports no data / `EAGAIN`.
+
 Advanced / Diagnostic entry types and filters:
 
 ```go
@@ -1438,6 +1446,10 @@ func (t *Timer) Close() error
 ### Poller
 
 Event poller for multiplexing socket, file descriptor, and timer readiness.
+
+The current public poller contract is still generic. It does not yet return a
+Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
+subject together.
 
 ```go
 // NewPoller allocates a poller. Returns *ConfigError on failure.

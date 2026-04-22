@@ -793,6 +793,18 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
       is_final_ ? timeout_ms_ : 0u));
 }
 
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_)
+{
+    ZLINK_C_SEND_LOOP (zlink_spot_send_spot_part (
+      spot_, dest_node_rid_, dest_spot_rid_, &parts_[i], flags_, part_flag_));
+}
+
 ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_reply_spot (
   void *spot_,
   const zlink_routing_id_t *dest_node_rid_,

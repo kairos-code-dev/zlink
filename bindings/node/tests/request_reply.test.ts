@@ -67,6 +67,7 @@ test('reply helpers reject non-none flags when the core lacks reply flag support
     () => routerSocket.replyToSpot(routingId, spotRoutingId, 1n, 'pong', zlink.SendFlags.DontWait),
     (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
   );
+  assert.equal(typeof spot.sendToSpot, 'function');
   assert.equal(spot.replyToSpot, undefined);
   assert.equal(spot.replyToRouter, undefined);
 

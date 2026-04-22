@@ -9,8 +9,10 @@
 #include "api/socket_request_reply_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_api_internal.hpp"
+#include "core/internal_defs.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_subject_access.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 
@@ -166,6 +168,7 @@ std::shared_ptr<spot_channel_reply_source_t> find_or_create_channel_reply_source
     state_->channel_reply_sources[dealer_] = source;
     return source;
 }
+
 }
 
 int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
@@ -176,6 +179,46 @@ int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
         return -1;
     return zlink::request_completion::ensure_signal_ready (
       &state_->completion, ctx, "zlink.spot.reqrep.completion");
+}
+
+int zlink::spot_reqrep_internal::ensure_spot_recv_ready (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    spot_handle_t *spot = as_spot_handle (state_->owner);
+    if (!spot || !spot->node) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::ctx_t *ctx = zlink::spot_node_access_t::ctx (spot->node);
+    zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (spot->node);
+    if (!ctx || !runtime || !runtime->execution.data_plane_running) {
+        errno = ETERM;
+        return -1;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        if (!state_->routed_recv_socket) {
+            if (zlink::internal_pair_queue::ensure (
+                  ctx, "zlink.spot.route", &state_->routed_recv_queue)
+                != 0) {
+                return -1;
+            }
+            zlink::spot_node_access_t::track_owned_socket (
+              spot->node, state_->routed_recv_queue.rx);
+            zlink::spot_node_access_t::track_owned_socket (
+              spot->node, state_->routed_recv_queue.tx);
+            state_->routed_recv_socket = state_->routed_recv_queue.rx;
+        }
+    }
+
+    return ensure_spot_completion_queue_ready (state_);
 }
 
 int zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (

@@ -1138,6 +1138,14 @@ unsafe extern "C" {
         dealer: *mut c_void,
     ) -> c_int;
     pub fn zlink_spot_node_attach_pub_ingress(node: *mut c_void, pub_socket: *mut c_void) -> c_int;
+    pub fn zlink_spot_send_spot_part(
+        spot: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        part: *mut zlink_msg_t,
+        flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
+    ) -> c_int;
     pub fn zlink_spot_reply_spot_part(
         spot: *mut c_void,
         dest_node_rid: *const zlink_routing_id_t,

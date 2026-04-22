@@ -258,6 +258,14 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}")
 # Add Boost include directory for ASIO tests (ASIO is mandatory)
 include_directories("${BUNDLED_BOOST_INCLUDE_DIR}")
 
+add_executable(spot_node_10000_pubsub_bench
+               bench/spot_node_10000_pubsub_bench.cpp)
+target_link_libraries(spot_node_10000_pubsub_bench ${TESTUTIL_LIB})
+
+add_executable(spot_node_10000_router_bench
+               bench/spot_node_10000_router_bench.cpp)
+target_link_libraries(spot_node_10000_router_bench ${TESTUTIL_LIB})
+
 if(WIN32)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)
 endif()

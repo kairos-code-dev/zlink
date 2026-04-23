@@ -875,6 +875,12 @@ bool progress_request_callbacks(spot_reqrep_client_slot_t *slot)
     return true;
 }
 
+bool spot_request_completed(spot_reqrep_client_slot_t *slot)
+{
+    return slot && !slot->waiting_reply.load(std::memory_order_acquire)
+           && !slot->send_pending.load(std::memory_order_acquire);
+}
+
 bool run_active_window(spot_reqrep_client_state_t *state,
                        const multi_bench_settings_t &settings,
                        uint32_t run_id,
@@ -1040,6 +1046,8 @@ bool run_active_window(spot_reqrep_client_state_t *state,
         }
 
         for (size_t i = 0; i < readable_slots.size(); ++i) {
+            if (spot_request_completed(readable_slots[i]))
+                continue;
             if (!progress_request_callbacks(readable_slots[i])) {
                 if (bench_debug_enabled()) {
                     std::cerr
@@ -1059,6 +1067,8 @@ bool run_active_window(spot_reqrep_client_state_t *state,
                   std::memory_order_acquire)) {
                 continue;
             }
+            if (spot_request_completed(&client_state->slots[i]))
+                continue;
             if (!progress_request_callbacks(&client_state->slots[i])) {
                 if (bench_debug_enabled()) {
                     std::cerr

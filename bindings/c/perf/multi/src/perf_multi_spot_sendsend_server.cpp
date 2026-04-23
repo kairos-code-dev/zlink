@@ -230,6 +230,43 @@ void fail_server(spot_reqrep_server_state_t *state, int err)
     perf_stop_requested().store(true, std::memory_order_release);
 }
 
+bool echo_routed_payload(void *spot,
+                         spot_reqrep_server_state_t *state,
+                         const zlink_routing_id_t *source_rid,
+                         const zlink_routing_id_t *source_spot_rid,
+                         zlink_msg_t *parts,
+                         size_t part_count)
+{
+    if (!spot || !state || !source_rid || !source_spot_rid || !parts
+        || part_count == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    zlink_submit_result_t submit_rc =
+      zlink_spot_send_spot(
+        spot, source_rid, source_spot_rid, parts, part_count, ZLINK_DONTWAIT);
+    if (submit_rc == ZLINK_SUBMIT_BACKPRESSURED) {
+        submit_rc = zlink_spot_send_spot(
+          spot,
+          source_rid,
+          source_spot_rid,
+          parts,
+          part_count,
+          ZLINK_SEND_FLAGS_NONE);
+    }
+    if (submit_rc == ZLINK_SUBMIT_OK)
+        return true;
+
+    if (bench_debug_enabled()) {
+        std::cerr << "[multi-spot-sendsend-server] echo send failed rc="
+                  << submit_rc << " err=" << zlink_errno() << std::endl;
+    }
+    zlink_multipart_close(parts, part_count);
+    fail_server(state, zlink_errno());
+    return false;
+}
+
 void drain_spot_routed_recv(void *spot, spot_reqrep_server_state_t *state)
 {
     if (!state || !spot)
@@ -286,31 +323,8 @@ void drain_spot_routed_recv(void *spot, spot_reqrep_server_state_t *state)
                       << request_seq << " parts=" << part_count << std::endl;
         }
 
-        zlink_submit_result_t submit_rc =
-          zlink_spot_send_spot(
-            spot,
-            source_rid,
-            source_spot_rid,
-            parts,
-            part_count,
-            ZLINK_DONTWAIT);
-        if (submit_rc == ZLINK_SUBMIT_BACKPRESSURED) {
-            submit_rc = zlink_spot_send_spot(
-              spot,
-              source_rid,
-              source_spot_rid,
-              parts,
-              part_count,
-              ZLINK_SEND_FLAGS_NONE);
-        }
-        if (submit_rc != ZLINK_SUBMIT_OK) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-sendsend-server] echo send failed rc="
-                          << submit_rc << " err=" << zlink_errno()
-                          << std::endl;
-            }
-            zlink_multipart_close(parts, part_count);
-            fail_server(state, zlink_errno());
+        if (!echo_routed_payload(
+              spot, state, source_rid, source_spot_rid, parts, part_count)) {
             return;
         }
     }

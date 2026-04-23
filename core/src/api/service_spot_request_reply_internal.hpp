@@ -157,12 +157,10 @@ struct routed_message_queue_t
     zlink::internal_pair_queue::queue_t signal;
 };
 
-struct spot_request_reply_state_t
+struct spot_request_reply_request_state_t
 {
-    explicit spot_request_reply_state_t (void *owner_);
+    spot_request_reply_request_state_t ();
 
-    void *owner;
-    std::mutex mutex;
     uint32_t default_timeout_ms;
     uint64_t next_request_seq;
     std::unordered_set<uint64_t> pending_sequences;
@@ -170,16 +168,65 @@ struct spot_request_reply_state_t
                        pending_reply_t,
                        pending_spot_key_hash_t>
       pending_replies;
+};
+
+struct spot_request_reply_recv_state_t
+{
+    spot_request_reply_recv_state_t ();
+
     spot_subscribe_dispatch_queue_t subscribe_queue;
     routed_message_queue_t routed_recv_queue;
     zlink::socket_base_t *routed_recv_socket;
-    zlink::request_completion::queue_state_t completion;
+    zlink_spot_handler_fn request_handler;
+    void *request_handler_userdata;
+};
+
+struct spot_request_reply_completion_state_t
+{
+    spot_request_reply_completion_state_t ();
+
+    zlink::request_completion::queue_state_t direct;
     std::map<void *, std::shared_ptr<spot_channel_reply_source_t> >
       channel_reply_sources;
     size_t pending_channel_requests;
-    zlink_spot_handler_fn request_handler;
-    void *request_handler_userdata;
+};
+
+struct spot_request_reply_state_t
+{
+    explicit spot_request_reply_state_t (void *owner_);
+
+    void *owner;
+    std::mutex mutex;
+    spot_request_reply_request_state_t requests;
+    spot_request_reply_recv_state_t recv;
+    spot_request_reply_completion_state_t completion_state;
+    uint32_t &default_timeout_ms;
+    uint64_t &next_request_seq;
+    std::unordered_set<uint64_t> &pending_sequences;
+    std::unordered_map<pending_spot_key_t,
+                       pending_reply_t,
+                       pending_spot_key_hash_t>
+      &pending_replies;
+    spot_subscribe_dispatch_queue_t &subscribe_queue;
+    routed_message_queue_t &routed_recv_queue;
+    zlink::socket_base_t *&routed_recv_socket;
+    zlink::request_completion::queue_state_t &completion;
+    std::map<void *, std::shared_ptr<spot_channel_reply_source_t> >
+      &channel_reply_sources;
+    size_t &pending_channel_requests;
+    zlink_spot_handler_fn &request_handler;
+    void *&request_handler_userdata;
     spot_dispatch_state_t dispatch;
+};
+
+struct router_spot_request_reply_request_state_t
+{
+    router_spot_request_reply_request_state_t ();
+
+    uint32_t default_timeout_ms;
+    uint64_t next_request_seq;
+    std::unordered_set<uint64_t> pending_sequences;
+    std::unordered_map<uint64_t, pending_reply_t> pending_replies;
 };
 
 struct router_spot_request_reply_state_t
@@ -189,11 +236,26 @@ struct router_spot_request_reply_state_t
     void *owner;
     std::string router_rid;
     std::mutex mutex;
-    uint32_t default_timeout_ms;
-    uint64_t next_request_seq;
-    std::unordered_set<uint64_t> pending_sequences;
-    std::unordered_map<uint64_t, pending_reply_t> pending_replies;
+    router_spot_request_reply_request_state_t requests;
+    uint32_t &default_timeout_ms;
+    uint64_t &next_request_seq;
+    std::unordered_set<uint64_t> &pending_sequences;
+    std::unordered_map<uint64_t, pending_reply_t> &pending_replies;
     zlink::request_completion::queue_state_t completion;
+};
+
+enum routed_spot_delivery_kind_t
+{
+    routed_spot_delivery_request,
+    routed_spot_delivery_reply,
+    routed_spot_delivery_direct
+};
+
+enum router_spot_delivery_kind_t
+{
+    router_spot_delivery_request,
+    router_spot_delivery_reply,
+    router_spot_delivery_direct
 };
 
 typedef std::unordered_map<std::string, std::weak_ptr<spot_request_reply_state_t> >
@@ -202,6 +264,8 @@ typedef std::unordered_map<std::string, spot_state_spot_index_t>
   spot_state_identity_index_t;
 typedef std::unordered_map<std::string, std::weak_ptr<router_spot_request_reply_state_t> >
   router_state_identity_index_t;
+std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
+  &spot_owner_states ();
 
 extern std::mutex g_spot_request_reply_index_mutex;
 extern spot_state_identity_index_t g_spot_state_identity_index;
@@ -297,6 +361,18 @@ bool should_process_spot_routed_locally (
   const parsed_spot_envelope_t &envelope_);
 int publish_spot_routed_to_mesh (spot_node_t *node_,
                                  std::vector<zlink_msg_t> *combined_);
+int dispatch_spot_routed_delivery (spot_node_t *origin_node_,
+                                   routed_spot_delivery_kind_t kind_,
+                                   bool local_target_,
+                                   const std::string &destination_endpoint_rid_,
+                                   zlink_send_flags_t flags_,
+                                   std::vector<zlink_msg_t> *combined_);
+int dispatch_router_spot_delivery (
+  const std::string &destination_node_rid_,
+  const std::string &destination_spot_rid_,
+  router_spot_delivery_kind_t kind_,
+  zlink_send_flags_t flags_,
+  std::vector<zlink_msg_t> *combined_);
 inline const char *spot_routed_mesh_topic ()
 {
     return "__zlink.spot.routed";
@@ -319,6 +395,9 @@ inline bool is_spot_routed_mesh_topic (const char *value_, size_t value_size_)
 int dispatch_local_reply (std::vector<zlink_msg_t> *combined_);
 int dispatch_local_request (const std::string &router_rid_,
                             std::vector<zlink_msg_t> *combined_);
+int dispatch_local_reply_impl (std::vector<zlink_msg_t> *combined_);
+int dispatch_local_request_impl (const std::string &router_rid_,
+                                 std::vector<zlink_msg_t> *combined_);
 int dispatch_local_built_message (uint8_t source_class_,
                                   const std::string &source_node_rid_,
                                   const std::string &source_endpoint_rid_,
@@ -332,6 +411,11 @@ int dispatch_local_built_message (uint8_t source_class_,
 int process_route_combined_for_local_delivery (
   std::vector<zlink_msg_t> *combined_);
 int process_parsed_route_combined_for_local_delivery (
+  std::vector<zlink_msg_t> *combined_,
+  const parsed_spot_envelope_t &spot_envelope_);
+int process_route_combined_for_local_delivery_impl (
+  std::vector<zlink_msg_t> *combined_);
+int process_parsed_route_combined_for_local_delivery_impl (
   std::vector<zlink_msg_t> *combined_,
   const parsed_spot_envelope_t &spot_envelope_);
 std::shared_ptr<spot_request_reply_state_t> find_or_create_spot_state (

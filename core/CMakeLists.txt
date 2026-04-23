@@ -969,11 +969,19 @@ set(api-sources
     src/api/service_spot_dispatch_context.cpp
     src/api/request_timeout_scheduler_internal.cpp
     src/api/service_spot_request_reply_internal.cpp
+    src/api/service_spot_routed_codec.cpp
     src/api/service_spot_request_reply_utils.cpp
     src/api/service_spot_request_reply_registry.cpp
+    src/api/service_spot_request_reply_identity_registry.cpp
     src/api/service_spot_request_reply_pending.cpp
+    src/api/service_spot_request_reply_timeout.cpp
     src/api/service_spot_request_reply_queue.cpp
     src/api/service_spot_request_reply_local_dispatch.cpp
+    src/api/service_spot_request_reply_local_reply.cpp
+    src/api/service_spot_request_reply_local_request.cpp
+    src/api/service_spot_request_reply_local_direct.cpp
+    src/api/service_spot_request_reply_routed_delivery.cpp
+    src/api/service_spot_request_reply_progress.cpp
     src/api/service_spot_request_reply_api.cpp
     src/api/service_spot_subject_option_api.cpp
     src/api/service_spot_subject_subscription_api.cpp

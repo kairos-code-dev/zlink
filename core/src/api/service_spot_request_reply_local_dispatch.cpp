@@ -686,7 +686,7 @@ int zlink::spot_reqrep_internal::build_spot_routed_message (
     return 0;
 }
 
-int zlink::spot_reqrep_internal::dispatch_local_reply (
+int zlink::spot_reqrep_internal::dispatch_local_reply_impl (
   std::vector<zlink_msg_t> *combined_)
 {
     if (!combined_) {
@@ -706,7 +706,7 @@ int zlink::spot_reqrep_internal::dispatch_local_reply (
                                     rr_envelope);
 }
 
-int zlink::spot_reqrep_internal::dispatch_local_request (
+int zlink::spot_reqrep_internal::dispatch_local_request_impl (
   const std::string &router_rid_,
   std::vector<zlink_msg_t> *combined_)
 {
@@ -749,7 +749,7 @@ int zlink::spot_reqrep_internal::dispatch_local_built_message (
     return rc;
 }
 
-int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery (
+int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery_impl (
   std::vector<zlink_msg_t> *combined_,
   const parsed_spot_envelope_t &spot_envelope_)
 {
@@ -797,7 +797,7 @@ int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_deliver
       spot_envelope_.payload_part_count);
 }
 
-int zlink::spot_reqrep_internal::process_route_combined_for_local_delivery (
+int zlink::spot_reqrep_internal::process_route_combined_for_local_delivery_impl (
   std::vector<zlink_msg_t> *combined_)
 {
     if (!combined_) {

@@ -61,12 +61,16 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddChannel("profile", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
         channel.EnableClient();
     });
 
     options.AddSpotNode("stage-node", spot =>
     {
+        spot.Bind("tcp://0.0.0.0:9000");
         spot.EnableRouter();
     });
 });

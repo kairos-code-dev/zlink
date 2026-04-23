@@ -1,3 +1,5 @@
+using Zlink.Framework;
+
 namespace Zlink.Framework.Backend;
 
 internal sealed class ZLinkDotNetBackendAdapterFactory : IZLinkBackendAdapterFactory
@@ -140,6 +142,171 @@ internal static class ZLinkBackendNativeAccess
     }
 }
 
+internal static class ZLinkDotNetBackendMappings
+{
+    public static ZLinkRegistryStatus ToFramework(this global::Zlink.RegistryStatus status)
+    {
+        return new ZLinkRegistryStatus(
+            status.RegistryId,
+            status.BindEndpoint,
+            (ZLinkRegistryState)status.State,
+            status.TopologyEntryCount,
+            status.PeerRegistryCount,
+            status.ConnectedPeerRegistryCount,
+            status.ListSeq,
+            status.LastError,
+            status.LastChangedMs);
+    }
+
+    public static ZLinkRegistryServiceSummaryEntry ToFramework(this global::Zlink.RegistryServiceSummaryEntry entry)
+    {
+        return new ZLinkRegistryServiceSummaryEntry(
+            (ZLinkServiceKind)entry.ServiceKind,
+            (ZLinkServiceRole)entry.ServiceRole,
+            entry.ServiceName,
+            entry.TotalCount,
+            entry.ConnectingCount,
+            entry.ReadyCount,
+            entry.ErrorCount,
+            entry.StoppedCount,
+            entry.LastReportedMs);
+    }
+
+    public static ZLinkRegistryTopologyEntry ToFramework(this global::Zlink.RegistryTopologyEntry entry)
+    {
+        return new ZLinkRegistryTopologyEntry(
+            entry.RoutingId,
+            (ZLinkServiceKind)entry.ServiceKind,
+            (ZLinkServiceRole)entry.ServiceRole,
+            entry.ServiceName,
+            entry.Endpoint,
+            (ZLinkTopologySource)entry.Source,
+            (ZLinkTopologyState)entry.State,
+            entry.DesiredCount,
+            entry.ReadyCount,
+            entry.ErrorCode,
+            entry.LastReportedMs);
+    }
+
+    public static ZLinkMemberPeerEntry ToFramework(this global::Zlink.MemberPeerEntry entry)
+    {
+        return new ZLinkMemberPeerEntry(
+            (ZLinkServiceType)entry.ServiceType,
+            (ZLinkServiceRole)entry.ServiceRole,
+            entry.ServiceName,
+            entry.Endpoint,
+            entry.RoutingId,
+            entry.Value,
+            (ZLinkAdmissionState)entry.AdmissionState);
+    }
+
+    public static ZLinkSpotNodeStatus ToFramework(this global::Zlink.SpotNodeStatus status)
+    {
+        return new ZLinkSpotNodeStatus(
+            status.ServiceName,
+            status.LocalEndpoint,
+            status.NodeRoutingId,
+            (ZLinkSpotNodeState)status.State,
+            status.ConfiguredPeerCount,
+            status.ActivePeerCount,
+            status.ConnectedPeerCount,
+            status.SubjectCount,
+            status.ReadySubjectCount,
+            status.LastError,
+            status.LastChangedMs);
+    }
+
+    public static ZLinkSpotNodePeerEntry ToFramework(this global::Zlink.SpotNodePeerEntry entry)
+    {
+        return new ZLinkSpotNodePeerEntry(
+            entry.ServiceName,
+            entry.LocalEndpoint,
+            entry.PeerEndpoint,
+            (ZLinkSpotPeerSource)entry.Source,
+            (ZLinkSpotPeerState)entry.State,
+            (ZLinkAdmissionState)entry.AdmissionState,
+            entry.ConnectedSinceMs,
+            entry.LastChangedMs);
+    }
+
+    public static ZLinkSpotNodeSubjectEntry ToFramework(this global::Zlink.SpotNodeSubjectEntry entry)
+    {
+        return new ZLinkSpotNodeSubjectEntry(
+            (ZLinkSpotRole)entry.Role,
+            entry.Subject,
+            (ZLinkSubjectKind)entry.SubjectKind,
+            entry.ReadyPeerCount,
+            entry.ActivePeerCount,
+            entry.LastChangedMs);
+    }
+
+    public static global::Zlink.RegistryServiceSummaryFilter? ToNative(this ZLinkRegistryServiceSummaryFilter? filter)
+    {
+        if (filter is null)
+        {
+            return null;
+        }
+
+        return new global::Zlink.RegistryServiceSummaryFilter(
+            filter.ServiceKind is null ? null : (global::Zlink.ServiceKind?)filter.ServiceKind,
+            filter.ServiceRole is null ? null : (global::Zlink.ServiceRole?)filter.ServiceRole,
+            filter.ServiceName);
+    }
+
+    public static global::Zlink.RegistryTopologyFilter? ToNative(this ZLinkRegistryTopologyFilter? filter)
+    {
+        if (filter is null)
+        {
+            return null;
+        }
+
+        return new global::Zlink.RegistryTopologyFilter(
+            filter.ServiceKind is null ? null : (global::Zlink.ServiceKind?)filter.ServiceKind,
+            filter.ServiceRole is null ? null : (global::Zlink.ServiceRole?)filter.ServiceRole,
+            filter.ServiceName,
+            filter.RoutingId,
+            filter.State is null ? null : (global::Zlink.TopologyState?)filter.State,
+            filter.Source is null ? null : (global::Zlink.TopologySource?)filter.Source);
+    }
+
+    public static ZLinkBackendSocketMonitorEvent ToFramework(this global::Zlink.MonitorEvent monitorEvent)
+    {
+        return new ZLinkBackendSocketMonitorEvent(
+            (ZLinkSocketNativeEventType)monitorEvent.Event,
+            monitorEvent.RoutingId,
+            monitorEvent.LocalAddr,
+            monitorEvent.RemoteAddr,
+            monitorEvent.Value);
+    }
+
+    public static ZLinkBackendDiscoveryMonitorEvent ToFramework(this global::Zlink.ServiceEvent serviceEvent)
+    {
+        return new ZLinkBackendDiscoveryMonitorEvent(
+            (ZLinkDiscoveryNativeEventType)serviceEvent.EventType,
+            serviceEvent.ServiceName,
+            serviceEvent.Endpoint,
+            serviceEvent.RoutingId,
+            serviceEvent.Subject,
+            (ZLinkSubjectKind)serviceEvent.SubjectKind,
+            serviceEvent.Status,
+            serviceEvent.ErrorCode,
+            serviceEvent.Value,
+            serviceEvent.DetailFlags);
+    }
+
+    public static ZLinkBackendSpotDispatchInfo ToFramework(this global::Zlink.SpotDispatchInfo info)
+    {
+        return new ZLinkBackendSpotDispatchInfo(
+            info.Event switch
+            {
+                global::Zlink.SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RoutedReadable,
+                global::Zlink.SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
+                _ => ZLinkBackendSpotDispatchEvent.Internal,
+            },
+            info.Subject);
+    }
+}
+
 internal sealed class ZLinkBackendContextWrapper(global::Zlink.Context nativeContext) : IZLinkBackendContext
 {
     public object NativeInstance => nativeContext;
@@ -188,6 +355,19 @@ internal sealed class ZLinkBackendDealerSocketWrapper(global::Zlink.DealerSocket
         nativeSocket.AttachDiscovery(discovery.RequireNative<global::Zlink.Discovery>());
     }
 
+    public bool Send(global::Zlink.Message message, global::Zlink.SendFlags flags)
+    {
+        return nativeSocket.Send(message, flags);
+    }
+
+    public async ValueTask<IReadOnlyList<global::Zlink.Message>> RequestAsync(
+        global::Zlink.Message message,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return await nativeSocket.RequestAsync(message, timeout, cancellationToken).ConfigureAwait(false);
+    }
+
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
 }
 
@@ -210,6 +390,19 @@ internal sealed class ZLinkBackendRouterSocketWrapper(global::Zlink.RouterSocket
         nativeSocket.AttachDiscovery(discovery.RequireNative<global::Zlink.Discovery>());
     }
 
+    public global::Zlink.Received? Recv()
+    {
+        return nativeSocket.Recv();
+    }
+
+    public void Reply(
+        global::Zlink.RoutingId routingId,
+        ulong requestSeq,
+        global::Zlink.Message message)
+    {
+        nativeSocket.Reply(routingId, requestSeq, message);
+    }
+
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
 }
 
@@ -230,6 +423,14 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(global::Zlink.PubSocket
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
         nativeSocket.AttachDiscovery(discovery.RequireNative<global::Zlink.Discovery>());
+    }
+
+    public bool Publish(
+        string topic,
+        global::Zlink.Message message,
+        global::Zlink.SendFlags flags)
+    {
+        return nativeSocket.Publish(topic, message, flags);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
@@ -269,6 +470,11 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(global::Zlink.SubSocke
         nativeSocket.SetSubscription(topic);
     }
 
+    public global::Zlink.TopicMessage? Subscribe()
+    {
+        return nativeSocket.Subscribe();
+    }
+
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
 }
 
@@ -286,6 +492,35 @@ internal sealed class ZLinkBackendStreamSocketWrapper(global::Zlink.StreamSocket
         nativeSocket.SetChannelName(channelName);
     }
 
+    public void OnRawPacket(Func<string, global::Zlink.Message, int> handler)
+    {
+        nativeSocket.OnPacket(handler.Invoke);
+    }
+
+    public void OnFramedPacket(Action<string, global::Zlink.Message, global::Zlink.Message> handler)
+    {
+        nativeSocket.OnFramedPacket((routingIdText, header, body) =>
+        {
+            handler(routingIdText, header, body);
+        });
+    }
+
+    public bool Send(
+        global::Zlink.RoutingId routingId,
+        global::Zlink.Message payload,
+        global::Zlink.SendFlags flags)
+    {
+        return nativeSocket.Send(routingId, payload, flags);
+    }
+
+    public bool Send(
+        global::Zlink.RoutingId routingId,
+        IReadOnlyList<global::Zlink.Message> parts,
+        global::Zlink.SendFlags flags)
+    {
+        return nativeSocket.Send(routingId, parts, flags);
+    }
+
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
 }
 
@@ -293,9 +528,66 @@ internal sealed class ZLinkBackendRegistryWrapper(global::Zlink.Registry nativeR
 {
     public object NativeInstance => nativeRegistry;
 
+    public void SetId(uint registryId)
+    {
+        nativeRegistry.SetId(registryId);
+    }
+
+    public void SetHeartbeat(uint intervalMs, uint timeoutMs)
+    {
+        nativeRegistry.SetHeartbeat(intervalMs, timeoutMs);
+    }
+
+    public void SetBroadcastInterval(uint intervalMs)
+    {
+        nativeRegistry.SetBroadcastInterval(intervalMs);
+    }
+
+    public void AddPeer(string endpoint)
+    {
+        nativeRegistry.AddPeer(endpoint);
+    }
+
     public void Bind(string pubEndpoint, string routerEndpoint)
     {
         nativeRegistry.Bind(pubEndpoint, routerEndpoint);
+    }
+
+    public ZLinkRegistryStatus StatusSnapshot()
+    {
+        return nativeRegistry.StatusSnapshot().ToFramework();
+    }
+
+    public IReadOnlyList<ZLinkRegistryServiceSummaryEntry> ServiceSummarySnapshot(
+        ZLinkRegistryServiceSummaryFilter? filter)
+    {
+        return nativeRegistry.ServiceSummarySnapshot(filter.ToNative())
+            .Select(static entry => entry.ToFramework())
+            .ToArray();
+    }
+
+    public IReadOnlyList<ZLinkRegistryTopologyEntry> TopologySnapshot()
+    {
+        return nativeRegistry.TopologySnapshot()
+            .Select(static entry => entry.ToFramework())
+            .ToArray();
+    }
+
+    public IReadOnlyList<ZLinkRegistryTopologyEntry> TopologyQuery(
+        ZLinkRegistryTopologyFilter? filter)
+    {
+        return nativeRegistry.TopologyQuery(filter.ToNative())
+            .Select(static entry => entry.ToFramework())
+            .ToArray();
+    }
+
+    public IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers(
+        ZLinkServiceType serviceType,
+        string serviceName)
+    {
+        return nativeRegistry.MemberPeers((global::Zlink.ServiceType)serviceType, serviceName)
+            .Select(static entry => entry.ToFramework())
+            .ToArray();
     }
 
     public ValueTask DisposeAsync() => nativeRegistry.DisposeAsync();
@@ -311,12 +603,22 @@ internal sealed class ZLinkBackendRegistryQueryClientWrapper(global::Zlink.Regis
         nativeClient.Connect(endpoint);
     }
 
+    public IReadOnlyList<ZLinkRegistryTopologyEntry> Snapshot(
+        ZLinkRegistryTopologyFilter? filter)
+    {
+        return nativeClient.Snapshot(filter.ToNative())
+            .Select(static entry => entry.ToFramework())
+            .ToArray();
+    }
+
     public ValueTask DisposeAsync() => nativeClient.DisposeAsync();
 }
 
 internal sealed class ZLinkBackendSpotNodeWrapper(global::Zlink.SpotNode nativeSpotNode) : IZLinkBackendSpotNode
 {
     public object NativeInstance => nativeSpotNode;
+
+    public global::Zlink.RoutingId RoutingId => nativeSpotNode.RoutingId;
 
     public void Bind(string endpoint)
     {
@@ -328,16 +630,147 @@ internal sealed class ZLinkBackendSpotNodeWrapper(global::Zlink.SpotNode nativeS
         nativeSpotNode.AttachDiscovery(discovery.RequireNative<global::Zlink.Discovery>());
     }
 
+    public void ConnectPeer(string endpoint)
+    {
+        nativeSpotNode.ConnectPeer(endpoint);
+    }
+
+    public void DisconnectPeer(string endpoint)
+    {
+        nativeSpotNode.DisconnectPeer(endpoint);
+    }
+
+    public IZLinkBackendSpot CreateSpot()
+    {
+        return new ZLinkBackendSpotWrapper(nativeSpotNode.CreateSpot());
+    }
+
+    public ZLinkSpotNodeStatus StatusSnapshot()
+    {
+        return nativeSpotNode.StatusSnapshot().ToFramework();
+    }
+
+    public IReadOnlyList<ZLinkSpotNodePeerEntry> PeersSnapshot()
+    {
+        return nativeSpotNode.PeersSnapshot()
+            .Select(static entry => entry.ToFramework())
+            .ToArray();
+    }
+
+    public IReadOnlyList<ZLinkSpotNodeSubjectEntry> SubjectsSnapshot()
+    {
+        return nativeSpotNode.SubjectsSnapshot()
+            .Select(static entry => entry.ToFramework())
+            .ToArray();
+    }
+
+    public void AttachChannelDealer(IZLinkBackendDiscovery discovery, IZLinkBackendDealerSocket dealer)
+    {
+        nativeSpotNode.AttachChannelDealer(
+            discovery.RequireNative<global::Zlink.Discovery>(),
+            dealer.RequireNative<global::Zlink.DealerSocket>());
+    }
+
+    public void AttachChannelDealerManual(string channelName, IZLinkBackendDealerSocket dealer)
+    {
+        nativeSpotNode.AttachChannelDealerManual(
+            channelName,
+            dealer.RequireNative<global::Zlink.DealerSocket>());
+    }
+
     public ValueTask DisposeAsync() => nativeSpotNode.DisposeAsync();
+}
+
+internal sealed class ZLinkBackendSpotWrapper(global::Zlink.Spot nativeSpot) : IZLinkBackendSpot
+{
+    public object NativeInstance => nativeSpot;
+
+    public global::Zlink.RoutingId RoutingId => nativeSpot.RoutingId;
+
+    public void SetRoutingId(global::Zlink.RoutingId routingId)
+    {
+        nativeSpot.SetRoutingId(routingId);
+    }
+
+    public void SetSubscription(string topic)
+    {
+        nativeSpot.SetSubscription(topic);
+    }
+
+    public global::Zlink.TopicMessage? Subscribe(global::Zlink.RecvFlags flags)
+    {
+        return nativeSpot.Subscribe(flags);
+    }
+
+    public global::Zlink.Received RecvRouted(global::Zlink.RecvFlags flags)
+    {
+        return nativeSpot.RecvRouted(flags);
+    }
+
+    public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
+    {
+        nativeSpot.OnDispatchEvent((_, info) => handler(info.ToFramework()));
+    }
+
+    public void DrainChannelReplyFrom(IntPtr dealerSubject)
+    {
+        nativeSpot.DrainChannelReplyFrom(dealerSubject);
+    }
+
+    public async ValueTask<IReadOnlyList<global::Zlink.Message>> RequestChannelAsync(
+        string channelName,
+        global::Zlink.Message message,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return await nativeSpot.RequestChannelAsync(
+            channelName,
+            message,
+            timeout,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public bool SendChannel(
+        string channelName,
+        global::Zlink.Message message,
+        global::Zlink.SendFlags flags)
+    {
+        return nativeSpot.SendChannel(channelName, message, flags);
+    }
+
+    public bool Publish(
+        string serviceName,
+        string topic,
+        global::Zlink.Message message,
+        global::Zlink.SendFlags flags)
+    {
+        return nativeSpot.Publish(serviceName, topic, message, flags);
+    }
+
+    public bool SendToSpot(
+        global::Zlink.RoutingId targetRid,
+        global::Zlink.RoutingId spotRid,
+        global::Zlink.Message message,
+        global::Zlink.SendFlags flags)
+    {
+        return nativeSpot.SendToSpot(targetRid, spotRid, message, flags);
+    }
+
+    public ValueTask DisposeAsync() => nativeSpot.DisposeAsync();
 }
 
 internal sealed class ZLinkBackendSocketMonitorWrapper(global::Zlink.SocketMonitor nativeMonitor) : IZLinkBackendSocketMonitor
 {
     public object NativeInstance => nativeMonitor;
 
-    public void OnEvent(Action<global::Zlink.MonitorEvent> handler)
+    public void OnEvent(Action<ZLinkBackendSocketMonitorEvent> handler)
     {
-        nativeMonitor.OnEvent(handler);
+        nativeMonitor.OnEvent(monitorEvent => handler(monitorEvent.ToFramework()));
+    }
+
+    public ZLinkBackendSocketMonitorEvent Recv()
+    {
+        return nativeMonitor.Recv().ToFramework();
     }
 
     public ValueTask DisposeAsync() => nativeMonitor.DisposeAsync();
@@ -347,9 +780,9 @@ internal sealed class ZLinkBackendServiceMonitorWrapper(global::Zlink.ServiceMon
 {
     public object NativeInstance => nativeMonitor;
 
-    public void OnEvent(Action<global::Zlink.ServiceEvent> handler)
+    public void OnEvent(Action<ZLinkBackendDiscoveryMonitorEvent> handler)
     {
-        nativeMonitor.OnEvent(handler);
+        nativeMonitor.OnEvent(serviceEvent => handler(serviceEvent.ToFramework()));
     }
 
     public ValueTask DisposeAsync() => nativeMonitor.DisposeAsync();

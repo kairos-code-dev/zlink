@@ -47,7 +47,7 @@ internal sealed class ZLinkMonitoringHostedService(
                 await registryRuntime.StartAsync(cancellationToken);
             }
 
-            PreflightPollingSources(frameworkRuntime, registryRuntime);
+            await PreflightPollingSourcesAsync(frameworkRuntime, registryRuntime, cancellationToken);
             AttachSocketMonitors(frameworkRuntime);
             AttachDiscoveryMonitors(frameworkRuntime);
         }
@@ -209,13 +209,15 @@ internal sealed class ZLinkMonitoringHostedService(
         }
     }
 
-    private void PreflightPollingSources(
+    private async Task PreflightPollingSourcesAsync(
         ZLinkFrameworkRuntime? frameworkRuntime,
-        ZLinkRegistryRuntime? registryRuntime)
+        ZLinkRegistryRuntime? registryRuntime,
+        CancellationToken cancellationToken)
     {
         if (registryRuntime is not null && registration.RegistrySources.Count > 0)
         {
-            _ = services.GetRequiredService<IZLinkRegistryQuery>().StatusSnapshot();
+            _ = await services.GetRequiredService<IZLinkRegistryQuery>()
+                .StatusSnapshotAsync(cancellationToken);
         }
 
         if (frameworkRuntime is null)
@@ -281,13 +283,13 @@ internal sealed class ZLinkMonitoringHostedService(
         while (!cancellationToken.IsCancellationRequested)
         {
             var timestamp = DateTimeOffset.UtcNow;
-            var status = query.StatusSnapshot();
-            var topology = query.TopologySnapshot()
+            var status = await query.StatusSnapshotAsync(cancellationToken);
+            var topology = (await query.TopologySnapshotAsync(cancellationToken))
                 .OrderBy(static entry => entry.ServiceName, StringComparer.Ordinal)
                 .ThenBy(static entry => entry.Endpoint, StringComparer.Ordinal)
                 .ThenBy(static entry => entry.RoutingId?.ToString(), StringComparer.Ordinal)
                 .ToArray();
-            var summary = query.ServiceSummarySnapshot()
+            var summary = (await query.ServiceSummarySnapshotAsync(cancellationToken: cancellationToken))
                 .OrderBy(static entry => entry.ServiceName, StringComparer.Ordinal)
                 .ThenBy(static entry => entry.ServiceKind)
                 .ThenBy(static entry => entry.ServiceRole)
@@ -412,20 +414,20 @@ internal sealed class ZLinkMonitoringHostedService(
 
     private ZLinkSocketEvent? MapSocketEvent(
         ZLinkSocketMonitoringRegistration source,
-        global::Zlink.MonitorEvent monitorEvent)
+        ZLinkBackendSocketMonitorEvent monitorEvent)
     {
-        var eventKind = monitorEvent.Event switch
+        var eventKind = monitorEvent.NativeEvent switch
         {
-            global::Zlink.MonitorEventType.Connected => ZLinkSocketEventKind.Connected,
-            global::Zlink.MonitorEventType.ConnectionReady => ZLinkSocketEventKind.ConnectionReady,
-            global::Zlink.MonitorEventType.Disconnected => ZLinkSocketEventKind.Disconnected,
-            global::Zlink.MonitorEventType.HandshakeFailedNoDetail => ZLinkSocketEventKind.HandshakeFailed,
-            global::Zlink.MonitorEventType.HandshakeFailedProtocol => ZLinkSocketEventKind.HandshakeFailed,
-            global::Zlink.MonitorEventType.HandshakeFailedAuth => ZLinkSocketEventKind.HandshakeFailed,
-            global::Zlink.MonitorEventType.PeerAdmissionChanged => ZLinkSocketEventKind.PeerAdmissionChanged,
-            global::Zlink.MonitorEventType.Closed => ZLinkSocketEventKind.Closed,
-            global::Zlink.MonitorEventType.CloseFailed => ZLinkSocketEventKind.Closed,
-            global::Zlink.MonitorEventType.MonitorStopped => ZLinkSocketEventKind.Closed,
+            ZLinkSocketNativeEventType.Connected => ZLinkSocketEventKind.Connected,
+            ZLinkSocketNativeEventType.ConnectionReady => ZLinkSocketEventKind.ConnectionReady,
+            ZLinkSocketNativeEventType.Disconnected => ZLinkSocketEventKind.Disconnected,
+            ZLinkSocketNativeEventType.HandshakeFailedNoDetail => ZLinkSocketEventKind.HandshakeFailed,
+            ZLinkSocketNativeEventType.HandshakeFailedProtocol => ZLinkSocketEventKind.HandshakeFailed,
+            ZLinkSocketNativeEventType.HandshakeFailedAuth => ZLinkSocketEventKind.HandshakeFailed,
+            ZLinkSocketNativeEventType.PeerAdmissionChanged => ZLinkSocketEventKind.PeerAdmissionChanged,
+            ZLinkSocketNativeEventType.Closed => ZLinkSocketEventKind.Closed,
+            ZLinkSocketNativeEventType.CloseFailed => ZLinkSocketEventKind.Closed,
+            ZLinkSocketNativeEventType.MonitorStopped => ZLinkSocketEventKind.Closed,
             _ => ZLinkSocketEventKind.Internal,
         };
 
@@ -442,22 +444,22 @@ internal sealed class ZLinkMonitoringHostedService(
             monitorEvent.LocalAddr,
             monitorEvent.RemoteAddr,
             new ZLinkSocketDiagnostic(
-                (ZLinkSocketNativeEventType)monitorEvent.Event,
+                monitorEvent.NativeEvent,
                 monitorEvent.Value));
     }
 
     private ZLinkDiscoveryEvent? MapDiscoveryEvent(
         ZLinkDiscoveryMonitoringRegistration source,
-        global::Zlink.ServiceEvent serviceEvent)
+        ZLinkBackendDiscoveryMonitorEvent serviceEvent)
     {
-        var eventKind = serviceEvent.EventType switch
+        var eventKind = serviceEvent.NativeEvent switch
         {
-            global::Zlink.ServiceEventType.DiscoveryServiceUp => ZLinkDiscoveryEventKind.ServiceUp,
-            global::Zlink.ServiceEventType.DiscoveryServiceDown => ZLinkDiscoveryEventKind.ServiceDown,
-            global::Zlink.ServiceEventType.DiscoveryProvidersChanged => ZLinkDiscoveryEventKind.ProvidersChanged,
-            global::Zlink.ServiceEventType.PeerAdmissionChanged => ZLinkDiscoveryEventKind.PeerAdmissionChanged,
-            global::Zlink.ServiceEventType.Error => ZLinkDiscoveryEventKind.Error,
-            global::Zlink.ServiceEventType.Closed => ZLinkDiscoveryEventKind.Closed,
+            ZLinkDiscoveryNativeEventType.DiscoveryServiceUp => ZLinkDiscoveryEventKind.ServiceUp,
+            ZLinkDiscoveryNativeEventType.DiscoveryServiceDown => ZLinkDiscoveryEventKind.ServiceDown,
+            ZLinkDiscoveryNativeEventType.DiscoveryProvidersChanged => ZLinkDiscoveryEventKind.ProvidersChanged,
+            ZLinkDiscoveryNativeEventType.PeerAdmissionChanged => ZLinkDiscoveryEventKind.PeerAdmissionChanged,
+            ZLinkDiscoveryNativeEventType.Error => ZLinkDiscoveryEventKind.Error,
+            ZLinkDiscoveryNativeEventType.Closed => ZLinkDiscoveryEventKind.Closed,
             _ => ZLinkDiscoveryEventKind.Internal,
         };
 
@@ -474,9 +476,9 @@ internal sealed class ZLinkMonitoringHostedService(
             serviceEvent.Endpoint,
             serviceEvent.RoutingId,
             serviceEvent.Subject,
-            (ZLinkSubjectKind)serviceEvent.SubjectKind,
+            serviceEvent.SubjectKind,
             new ZLinkDiscoveryDiagnostic(
-                (ZLinkDiscoveryNativeEventType)serviceEvent.EventType,
+                serviceEvent.NativeEvent,
                 serviceEvent.Status,
                 serviceEvent.ErrorCode,
                 serviceEvent.Value,

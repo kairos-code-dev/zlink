@@ -41,17 +41,16 @@ internal sealed class ZLinkRegistryRuntime
 
             try
             {
-                var nativeRegistry = registry.RequireNative<global::Zlink.Registry>();
-                nativeRegistry.SetId(_registration.RegistryId);
-                nativeRegistry.SetHeartbeat(
+                registry.SetId(_registration.RegistryId);
+                registry.SetHeartbeat(
                     checked((uint)_registration.HeartbeatInterval.TotalMilliseconds),
                     checked((uint)_registration.HeartbeatTimeout.TotalMilliseconds));
-                nativeRegistry.SetBroadcastInterval(
+                registry.SetBroadcastInterval(
                     checked((uint)_registration.BroadcastInterval.TotalMilliseconds));
 
                 foreach (var peerEndpoint in _registration.PeerPubEndpoints)
                 {
-                    nativeRegistry.AddPeer(peerEndpoint);
+                    registry.AddPeer(peerEndpoint);
                 }
 
                 registry.Bind(_registration.PubEndpoint!, _registration.RouterEndpoint!);
@@ -98,6 +97,27 @@ internal sealed class ZLinkRegistryRuntime
         if (contextToDispose is not null)
         {
             await contextToDispose.DisposeAsync();
+        }
+    }
+
+    public async ValueTask<T> ExecuteAsync<T>(
+        Func<IZLinkBackendRegistry, T> action,
+        CancellationToken cancellationToken)
+    {
+        if (_registry is null)
+        {
+            await StartAsync(cancellationToken);
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return action(_registry
+                ?? throw new InvalidOperationException("Embedded registry runtime is not started."));
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 }

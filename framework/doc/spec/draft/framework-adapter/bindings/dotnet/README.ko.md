@@ -76,9 +76,9 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 - `SPOT`을 지원하는 문서는 named spot factory 등록, `spotName` 기준 생성,
   `spotRid -> spotName` 조회, lifecycle timer, 외부 spot publish 표면을
   공통 정책과 맞춰 설명해야 한다.
-- 현재 framework core 문서에서는 `targetRid + spotRid` direct routed 호출과
-  actor join/factory 표면을 기본 공용 계약으로 두지 않는다. 이런 모델은 현재
-  구현 범위 밖의 확장 후보로만 다룬다.
+- 현재 framework core 문서에서는 `targetRid + spotRid` direct routed public 호출은
+  두지 않는다. 반면 actor join, actor factory 등록, stream-to-actor bridge는 현재
+  draft 구현 범위에 포함하므로 공용 계약과 샘플 문서에 함께 반영한다.
 
 ## 2. 문서 구조와 역할 분담
 

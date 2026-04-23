@@ -41,6 +41,7 @@ public sealed class StreamIntegrationTests
         try
         {
             using var client = ConnectRawClient(endpoint);
+            var clientLocalPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
             var network = client.GetStream();
             try
             {
@@ -71,6 +72,7 @@ public sealed class StreamIntegrationTests
             Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
             Assert.NotNull(recorder.LastSessionId);
             Assert.NotNull(recorder.LastRoutingId);
+            AssertStreamMetadata(endpoint, clientLocalPort, recorder.LastLocalAddr, recorder.LastRemoteAddr);
             Assert.Equal(1, recorder.ConnectedCount);
 
             client.Dispose();
@@ -108,6 +110,7 @@ public sealed class StreamIntegrationTests
         try
         {
             using var client = ConnectRawClient(endpoint);
+            var clientLocalPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
             var network = client.GetStream();
             try
             {
@@ -137,6 +140,7 @@ public sealed class StreamIntegrationTests
             callbackCapture.ThrowIfAny();
             Assert.NotNull(recorder.LastSessionId);
             Assert.NotNull(recorder.LastRoutingId);
+            AssertStreamMetadata(endpoint, clientLocalPort, recorder.LastLocalAddr, recorder.LastRemoteAddr);
             Assert.Equal(1, recorder.ConnectedCount);
         }
         finally
@@ -266,6 +270,22 @@ public sealed class StreamIntegrationTests
         header.CopyTo(frame.AsSpan(6, header.Length));
         body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
         return frame;
+    }
+
+    private static void AssertStreamMetadata(
+        string endpoint,
+        int clientLocalPort,
+        string? localAddr,
+        string? remoteAddr)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(localAddr));
+        Assert.False(string.IsNullOrWhiteSpace(remoteAddr));
+
+        var serverPort = new Uri(endpoint).Port;
+        Assert.StartsWith("tcp://", localAddr, StringComparison.Ordinal);
+        Assert.StartsWith("tcp://", remoteAddr, StringComparison.Ordinal);
+        Assert.Contains($":{serverPort}", localAddr!, StringComparison.Ordinal);
+        Assert.Contains($":{clientLocalPort}", remoteAddr!, StringComparison.Ordinal);
     }
 
     public sealed class RawStreamRecorder

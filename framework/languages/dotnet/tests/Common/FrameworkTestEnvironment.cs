@@ -105,6 +105,16 @@ internal static class FrameworkTestEnvironment
         return "dotnet";
     }
 
+    public static string CreateTestLogDirectory(string prefix)
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "zlink-framework-tests",
+            $"{prefix}-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
     public static ProcessStartInfo CreateTestHostStartInfo(
         string? readyFilePath = null,
         IReadOnlyList<string>? additionalArguments = null,

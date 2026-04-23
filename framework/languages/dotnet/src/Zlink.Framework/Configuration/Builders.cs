@@ -119,6 +119,9 @@ public interface IZLinkFrameworkOptions
 
     IZLinkCodecRegistryBuilder Codecs { get; }
 
+    void AddActorFactory<TFactory>(string actorType)
+        where TFactory : class;
+
     void AddChannel(
         string channelName,
         Action<IZLinkChannelBuilder> configure);

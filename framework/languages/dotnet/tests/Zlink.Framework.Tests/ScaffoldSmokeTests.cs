@@ -29,17 +29,15 @@ public sealed class ScaffoldSmokeTests
     }
 
     [Fact]
-    public void PublicSurface_DoesNotExpose_OutOfScopeActorOrDirectRouteContracts()
+    public void PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts()
     {
         AssertMissingMethod(typeof(IZLinkClient), "SendTo");
         AssertMissingMethod(typeof(IZLinkClient), "RequestTo");
         AssertMissingMethod(typeof(IZLinkSpotClient), "SendTo");
         AssertMissingMethod(typeof(IZLinkSpotClient), "RequestTo");
-        AssertMissingMethod(typeof(IZLinkFrameworkOptions), "AddActorFactory");
-
-        Assert.DoesNotContain(
-            typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes(),
-            static type => string.Equals(type.Name, "IZLinkActorFactory", StringComparison.Ordinal));
+        Assert.NotNull(typeof(IZLinkFrameworkOptions).GetMethod("AddActorFactory"));
+        Assert.Contains(typeof(IZLinkActor), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
+        Assert.Contains(typeof(IZLinkActorRuntime), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
     }
 
     private static void AssertBackendLeakageFree(Assembly assembly)

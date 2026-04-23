@@ -25,7 +25,7 @@ public sealed class RegistryIntegrationTests
 
         var query = host.Services.GetRequiredService<IZLinkRegistryQuery>();
         var status = await ExecuteWithRetryAsync(
-            () => Task.FromResult(query.StatusSnapshot()),
+            () => query.StatusSnapshotAsync().AsTask(),
             result => result.RegistryId == 7);
 
         Assert.Equal(7u, status.RegistryId);
@@ -61,7 +61,7 @@ public sealed class RegistryIntegrationTests
 
         var queryClient = queryHost.Services.GetRequiredService<IZLinkRegistryQueryClient>();
         var snapshot = await ExecuteWithRetryAsync(
-            () => Task.FromResult(queryClient.Snapshot()),
+            () => queryClient.SnapshotAsync().AsTask(),
             static result => result is not null);
 
         Assert.NotNull(snapshot);

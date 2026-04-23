@@ -72,8 +72,10 @@
 - 입장, 퇴장, 인증, 권한
 - `stageId -> address` lookup helper
 
-즉 `membership / actor model`은 기본 `zlink framework` 범위를 넘어가는 쪽이 맞다.
-이 축은 `Stage wrapper`나 응용 계층이 맡는 편이 더 자연스럽다.
+현재 draft framework는 `membership / actor model`의 최소 공용 계약까지는 포함한다.
+즉 actor join 등록, actor attach/submit/disconnect bridge, 같은 `SPOT` 실행 문맥
+직렬화는 framework가 제공하고, 그 위의 room/stage/zone 정책은 `Stage wrapper`나
+응용 계층이 맡는 구조로 읽는 편이 맞다.
 
 ## 4. 아직 부족한 부분
 
@@ -250,12 +252,13 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 }
 ```
 
-즉 framework의 `AddTimer<THandler>(...)`는 `Timer.FromSpot(spot)`와
-`Timer.OnFire(Action<Timer, ulong>)`를 spot lifecycle/DI 모델로 감싼 wrapper로
-읽는 편이 맞다. low-level callback의 실제 시그니처는 `Action<Timer, ulong>`이고,
-두 번째 인자는 누적 `fireCount`다. framework의 `IZLinkTimer.CancelAsync()`는
-low-level `Timer.Stop()`와 dispose lifecycle을 감싼 고수준 timer handle로 읽는
-편이 자연스럽다.
+즉 framework의 `AddTimer<THandler>(...)`는 native timer handle을 그대로 드러내는
+표면이 아니라, framework runtime이 만든 managed `.NET` timer를 spot
+lifecycle/DI 모델에 붙이는 wrapper로 읽는 편이 맞다. timer tick이 발생하면
+framework는 그 tick을 같은 spot execution context 안으로 enqueue해서
+`IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`를 호출한다.
+`IZLinkTimer.CancelAsync()`는 이 managed timer loop를 멈추고 정리하는 고수준
+timer handle이다.
 
 같은 맥락으로 actor join은 framework core 기본 표면보다 stage wrapper 같은 상위
 확장 계층에서 따로 정의하는 편이 더 자연스럽다. 그래야 actor를 어떤 `Spot`에
@@ -270,10 +273,9 @@ resolve하고, 사용자에게는 "무슨 타입을 등록하는가"만 보이�
 `AddTimer<THandler>(...)`로 등록한 timer handler는 가능하면 같은 spot 실행
 문맥에서 도는 쪽이 `Stage wrapper`에 더 자연스럽다.
 
-다만 이 사실이 사용자에게 low-level `Timer.FromSpot(spot)`나 `Timer.Recv()`를 직접
-다루게 해야 한다는 뜻은 아니다. wrapper 사용자는 `AddTimer<THandler>(...)`만 보고,
-framework가 같은 `Spot` 실행 계약 안에서 timer handler를 호출한다고 이해하는 편이
-맞다.
+따라서 wrapper 사용자는 low-level timer handle을 직접 알 필요가 없다.
+`AddTimer<THandler>(...)`만 보고, framework가 같은 `Spot` 실행 계약 안에서
+timer handler를 호출한다고 이해하는 편이 맞다.
 
 ### 4.3 spot 생성 시 초기값 전달
 

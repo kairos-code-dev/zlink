@@ -211,7 +211,10 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddChannel("play", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
     });
 
     options.UseSpotDiscovery("game.stage", registry =>
@@ -687,9 +690,10 @@ public sealed class SampleSpot : ZLinkSpot
 
 ### 3.2.1 room이 먼저 있고, session이 인증한 뒤 actor가 room에 들어가는 상세 샘플
 
-> 이 절은 현재 framework core 구현 범위가 아니라 stage wrapper 확장 아이디어를
-> 설명하는 메모다. 아래 actor/session membership 모델은 현행 public surface가
-> 아니다.
+> 이 절은 현재 draft framework core가 포함하는 actor/session membership 표면을
+> stage wrapper 관점에서 길게 풀어 쓴 상세 샘플이다. room 정책과 actor factory
+> 선택 규칙은 응용 계층 예시지만, `IZLinkActor`, `IZLinkSpotClient.JoinActorAsync`,
+> `IZLinkActorRuntime` 자체는 현행 public surface다.
 
 게임 서버에서는 outgame, 로비, 매치메이킹을 보통 웹 서버 쪽에서 처리하고,
 room 서버는 이미 만들어진 room에 플레이어를 들이는 역할만 맡는 경우가 많다.
@@ -820,9 +824,8 @@ builder.Services.AddZLinkFramework(options =>
 실제 샘플 코드는 아래처럼 읽는다. `SampleSpot`은 actor table만 소유하고,
 `SampleSession`은 인증과 actor 재연결, 그리고 actor로 넘길
 `header/body` 정규화와 room join 요청을 맡는다.
-여기서 `FrameworkActorRuntime.*(...)` 호출은 sample application 코드가 아니라
-framework 내부 브리지 경로를 뜻하는 표기다. 이 문서에서는 내부 구현 클래스를 따로
-보여 주지 않고, "session이 framework 내부 submit 경로를 호출한다"는 의미만 남긴다.
+여기서 `IZLinkActorRuntime`은 stream session이 actor attach, stale disconnect 필터,
+actor packet submit을 framework runtime으로 넘길 때 쓰는 공개 bridge 서비스다.
 
 ```csharp
 public sealed class SampleSpot : ZLinkSpot
@@ -1216,17 +1219,20 @@ public sealed class SampleSession
     private readonly ISampleRoomDirectory _rooms;
     private readonly ISampleAuthVerifier _authVerifier;
     private readonly ISampleActorFactoryRegistry _actors;
+    private readonly IZLinkActorRuntime _actorRuntime;
     private readonly IZLinkSpotClient _spotClient;
 
     public SampleSession(
         ISampleRoomDirectory rooms,
         ISampleAuthVerifier authVerifier,
         ISampleActorFactoryRegistry actors,
+        IZLinkActorRuntime actorRuntime,
         IZLinkSpotClient spotClient)
     {
         _rooms = rooms;
         _authVerifier = authVerifier;
         _actors = actors;
+        _actorRuntime = actorRuntime;
         _spotClient = spotClient;
     }
 
@@ -1254,7 +1260,7 @@ public sealed class SampleSession
         SampleActor actor = Actor;
         Actor = null;
 
-        await FrameworkActorRuntime.DisconnectAsync(
+        await _actorRuntime.DisconnectAsync(
             actor,
             stream,
             cancellationToken);
@@ -1307,14 +1313,14 @@ public sealed class SampleSession
             if (actor.Stream is not null &&
                 !string.Equals(actor.Stream.SessionId, stream.SessionId, StringComparison.Ordinal))
             {
-                await FrameworkActorRuntime.DisconnectAsync(
+                await _actorRuntime.DisconnectAsync(
                     actor,
                     actor.Stream,
                     cancellationToken);
             }
 
             Actor = actor;
-            await FrameworkActorRuntime.AttachAsync(
+            await _actorRuntime.AttachAsync(
                 actor,
                 stream,
                 cancellationToken);
@@ -1376,7 +1382,7 @@ public sealed class SampleSession
                 "JoinRoom is required before gameplay packets.");
         }
 
-        await FrameworkActorRuntime.SubmitAsync(
+        await _actorRuntime.SubmitAsync(
             Actor,
             header,
             body,
@@ -1595,16 +1601,16 @@ public sealed class SampleSessionTimeoutSweepHandler
 }
 ```
 
-이 high-level timer handler는 low-level `.NET` 바인딩의
-`Timer.OnFire(Action<Timer, ulong>)` 위에 얹는 wrapper로 읽어야 한다.
-framework runtime은 `Timer.FromSpot(spot)`로 timer를 만들고, `fireCount`를
-내부적으로 drain한 뒤 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`를 호출하는
-모델이 자연스럽다. 이 샘플에서는 timer가 상태 publish를 하는 것이 아니라,
+이 high-level timer handler는 framework runtime이 만든 managed `.NET` timer 위에
+얹는 wrapper로 읽어야 한다. runtime은 `PeriodicTimer` 같은 managed timer에서 tick을
+받고, 그 tick을 같은 spot execution context 안으로 넘긴 뒤
+`IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`를 호출하는 모델이 자연스럽다.
+이 샘플에서는 timer가 상태 publish를 하는 것이 아니라,
 `LastSeenAt`를 기준으로 오래 조용한 actor를 검사하는 sweep 역할을 맡는다.
 현재 stream이 있는 actor는 idle timeout을 넘기면 stream bind를 풀고, 이미 stream이
 끊긴 actor는 reconnect grace가 지나면 room에서 제거한다.
-이때 framework의 `IZLinkTimer.CancelAsync()`는 low-level `Timer.Stop()`와 dispose
-lifecycle을 감싼 고수준 handle에 가깝다.
+이때 framework의 `IZLinkTimer.CancelAsync()`는 managed timer loop 정리까지 함께
+담은 고수준 handle에 가깝다.
 
 ### 3.4 protobuf packet 타입
 
@@ -1792,7 +1798,8 @@ channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다�
 - `SPOT` 기본 모델은 `SampleSpot : ZLinkSpot` 같은 상속 기반 lifecycle로 고정한다.
 - current framework core registration 표면은 `AddPacket`, `AddSubscribe`,
   `AddTimer` 같은 명시 등록을 사용한다.
-- actor join / actor factory 예시는 3.2.1에서 따로 적은 stage wrapper 확장 메모다.
+- actor join / actor factory / stream-to-actor bridge 예시는 3.2.1에서 현재 draft
+  공용 계약이 room wrapper에 어떻게 매핑되는지 보여 주는 상세 샘플이다.
 - packet dispatch 기준은 header `msgId`다.
 - `IZLinkSpotManager`는 spot 생성과 조회를 함께 가진다.
 - attach된 channel client와 SPOT publish 설정은 capability별 builder에서 노출한다.

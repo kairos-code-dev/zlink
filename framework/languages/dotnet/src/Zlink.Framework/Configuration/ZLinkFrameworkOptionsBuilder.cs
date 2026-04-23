@@ -17,6 +17,20 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
     public IZLinkCodecRegistryBuilder Codecs => _registration.Codecs;
 
+    public void AddActorFactory<TFactory>(string actorType)
+        where TFactory : class
+    {
+        if (string.IsNullOrWhiteSpace(actorType))
+        {
+            throw new ZLinkConfigurationException("Actor factory name must not be empty.");
+        }
+
+        if (!_registration.ActorFactories.TryAdd(actorType, typeof(TFactory)))
+        {
+            throw new ZLinkConfigurationException($"Duplicate actor factory '{actorType}'.");
+        }
+    }
+
     public void AddChannel(
         string channelName,
         Action<IZLinkChannelBuilder> configure)

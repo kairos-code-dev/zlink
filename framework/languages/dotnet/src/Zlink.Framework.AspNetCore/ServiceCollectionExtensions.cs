@@ -42,11 +42,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
         services.AddSingleton<IZLinkSpotPublisherClient, ZLinkSpotPublisherClientService>();
         services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
+        services.AddSingleton<IZLinkActorRuntime, ZLinkActorRuntime>();
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, ZLinkFrameworkHostedService>();
 
         foreach (var filterType in registration.Filters)
         {
             services.AddTransient(filterType);
+        }
+
+        foreach (var actorFactoryType in registration.ActorFactories.Values)
+        {
+            services.AddScoped(actorFactoryType);
         }
 
         foreach (var streamNode in registration.StreamNodes.Values)

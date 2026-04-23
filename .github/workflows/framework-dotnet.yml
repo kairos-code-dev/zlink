@@ -26,6 +26,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   FRAMEWORK_SOLUTION: framework/languages/dotnet/Zlink.Framework.sln
   FRAMEWORK_TESTS: framework/languages/dotnet/tests/Zlink.Framework.Tests/Zlink.Framework.Tests.csproj
+  FRAMEWORK_RUNTIME_TESTS: framework/languages/dotnet/tests/Zlink.Framework.RuntimeTests/Zlink.Framework.RuntimeTests.csproj
+  FRAMEWORK_MONITORING_RUNTIME_TESTS: framework/languages/dotnet/tests/Zlink.Framework.MonitoringRuntimeTests/Zlink.Framework.MonitoringRuntimeTests.csproj
   FRAMEWORK_MULTIPROCESS_TESTS: framework/languages/dotnet/tests/Zlink.Framework.MultiProcessTests/Zlink.Framework.MultiProcessTests.csproj
 
 jobs:
@@ -81,8 +83,20 @@ jobs:
       - name: Run unit and single-process tests (Debug, net8.0)
         run: dotnet test ${{ env.FRAMEWORK_TESTS }} -c Debug -f net8.0 --no-build
 
+      - name: Run channel runtime tests (Debug, net8.0)
+        run: dotnet test ${{ env.FRAMEWORK_RUNTIME_TESTS }} -c Debug -f net8.0 --no-build
+
+      - name: Run monitoring runtime tests (Debug, net8.0)
+        run: dotnet test ${{ env.FRAMEWORK_MONITORING_RUNTIME_TESTS }} -c Debug -f net8.0 --no-build
+
       - name: Run unit and single-process tests (Release, net10.0)
         run: dotnet test ${{ env.FRAMEWORK_TESTS }} -c Release -f net10.0 --no-build
+
+      - name: Run channel runtime tests (Release, net10.0)
+        run: dotnet test ${{ env.FRAMEWORK_RUNTIME_TESTS }} -c Release -f net10.0 --no-build
+
+      - name: Run monitoring runtime tests (Release, net10.0)
+        run: dotnet test ${{ env.FRAMEWORK_MONITORING_RUNTIME_TESTS }} -c Release -f net10.0 --no-build
 
       - name: Run multi-process tests (Release, net8.0)
         run: dotnet test ${{ env.FRAMEWORK_MULTIPROCESS_TESTS }} -c Release -f net8.0 --no-build

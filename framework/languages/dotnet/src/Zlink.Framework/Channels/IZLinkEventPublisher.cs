@@ -10,7 +10,11 @@ public interface IZLinkEventPublisher
 
 public interface IZLinkChannelConnectionManager
 {
-    IChannelClientConnections GetClient(string channelName);
+    ValueTask<IZLinkEndpointConnections> GetClientAsync(
+        string channelName,
+        CancellationToken cancellationToken = default);
 
-    IChannelSubscriberConnections GetSubscriber(string channelName);
+    ValueTask<IZLinkEndpointConnections> GetSubscriberAsync(
+        string channelName,
+        CancellationToken cancellationToken = default);
 }

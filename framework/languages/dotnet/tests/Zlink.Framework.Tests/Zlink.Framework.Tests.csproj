@@ -24,5 +24,7 @@
 
   <ItemGroup>
     <Compile Include="../Common/**/*.cs" LinkBase="Common" />
+    <Compile Remove="ChannelMessagingIntegrationTests.cs" />
+    <Compile Remove="MonitoringIntegrationTests.cs" />
   </ItemGroup>
 </Project>

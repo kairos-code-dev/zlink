@@ -4,6 +4,7 @@ public abstract class ZLinkSpot
 {
     private readonly List<ZLinkSpotPacketRegistration> _packets = [];
     private readonly List<ZLinkSpotSubscriptionRegistration> _subscriptions = [];
+    private readonly List<ZLinkSpotActorJoinRegistration> _actorJoins = [];
     private ZLinkSpotRuntimeContext? _runtimeContext;
 
     protected ZLinkSpot(
@@ -21,6 +22,8 @@ public abstract class ZLinkSpot
     internal IReadOnlyList<ZLinkSpotPacketRegistration> Packets => _packets;
 
     internal IReadOnlyList<ZLinkSpotSubscriptionRegistration> Subscriptions => _subscriptions;
+
+    internal IReadOnlyList<ZLinkSpotActorJoinRegistration> ActorJoins => _actorJoins;
 
     internal void AttachRuntime(ZLinkSpotRuntimeContext runtimeContext)
     {
@@ -68,6 +71,13 @@ public abstract class ZLinkSpot
         return _runtimeContext.AddTimerAsync<THandler>(name, period, cancellationToken);
     }
 
+    protected void AddActorJoin<THandler, TRequest, TReply>()
+        where THandler : class
+        where TRequest : IZLinkRequest<TReply>
+    {
+        _actorJoins.Add(new ZLinkSpotActorJoinRegistration(typeof(THandler), typeof(TRequest), typeof(TReply)));
+    }
+
     public virtual ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
@@ -77,6 +87,8 @@ public abstract class ZLinkSpot
 internal sealed record ZLinkSpotPacketRegistration(Type HandlerType);
 
 internal sealed record ZLinkSpotSubscriptionRegistration(string Topic, Type HandlerType);
+
+internal sealed record ZLinkSpotActorJoinRegistration(Type HandlerType, Type RequestType, Type ReplyType);
 
 internal interface ZLinkSpotRuntimeContext
 {

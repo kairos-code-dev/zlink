@@ -127,6 +127,21 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<TestActorFactory>("warrior");
+                options.AddActorFactory<TestActorFactory>("warrior");
+            }));
+
+        Assert.Contains("Duplicate actor factory 'warrior'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint()
     {
         var services = new ServiceCollection();
@@ -323,4 +338,6 @@ public sealed class RegistrationValidationTests
         {
         }
     }
+
+    private sealed class TestActorFactory;
 }

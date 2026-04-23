@@ -4,52 +4,48 @@ namespace Zlink.Framework;
 
 internal sealed class ZLinkRegistryQuery(ZLinkRegistryRuntime runtime) : IZLinkRegistryQuery
 {
-    public ZLinkRegistryStatus StatusSnapshot()
+    public async ValueTask<ZLinkRegistryStatus> StatusSnapshotAsync(
+        CancellationToken cancellationToken = default)
     {
-        return RequireRegistry().StatusSnapshot().ToFramework();
+        return await runtime.ExecuteAsync(
+            static registry => registry.StatusSnapshot(),
+            cancellationToken);
     }
 
-    public ZLinkRegistryServiceSummaryEntry[] ServiceSummarySnapshot(
-        ZLinkRegistryServiceSummaryFilter? filter = null)
+    public async ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummarySnapshotAsync(
+        ZLinkRegistryServiceSummaryFilter? filter = null,
+        CancellationToken cancellationToken = default)
     {
-        return RequireRegistry().ServiceSummarySnapshot(filter.ToBackend())
-            .Select(static entry => entry.ToFramework())
-            .ToArray();
+        return await runtime.ExecuteAsync(
+            registry => registry.ServiceSummarySnapshot(filter).ToArray(),
+            cancellationToken);
     }
 
-    public ZLinkRegistryTopologyEntry[] TopologySnapshot()
+    public async ValueTask<ZLinkRegistryTopologyEntry[]> TopologySnapshotAsync(
+        CancellationToken cancellationToken = default)
     {
-        return RequireRegistry().TopologySnapshot()
-            .Select(static entry => entry.ToFramework())
-            .ToArray();
+        return await runtime.ExecuteAsync(
+            static registry => registry.TopologySnapshot().ToArray(),
+            cancellationToken);
     }
 
-    public ZLinkRegistryTopologyEntry[] TopologyQuery(
-        ZLinkRegistryTopologyFilter? filter = null)
+    public async ValueTask<ZLinkRegistryTopologyEntry[]> TopologyQueryAsync(
+        ZLinkRegistryTopologyFilter? filter = null,
+        CancellationToken cancellationToken = default)
     {
-        return RequireRegistry().TopologyQuery(filter.ToBackend())
-            .Select(static entry => entry.ToFramework())
-            .ToArray();
+        return await runtime.ExecuteAsync(
+            registry => registry.TopologyQuery(filter).ToArray(),
+            cancellationToken);
     }
 
-    public ZLinkMemberPeerEntry[] MemberPeers(
+    public async ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
         ZLinkServiceType serviceType,
-        string serviceName)
+        string serviceName,
+        CancellationToken cancellationToken = default)
     {
-        return RequireRegistry().MemberPeers((global::Zlink.ServiceType)serviceType, serviceName)
-            .Select(static entry => entry.ToFramework())
-            .ToArray();
-    }
-
-    private global::Zlink.Registry RequireRegistry()
-    {
-        if (!runtime.IsStarted)
-        {
-            runtime.StartAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
-        }
-
-        return runtime.Registry?.RequireNative<global::Zlink.Registry>()
-            ?? throw new InvalidOperationException("Embedded registry runtime is not started.");
+        return await runtime.ExecuteAsync(
+            registry => registry.MemberPeers(serviceType, serviceName).ToArray(),
+            cancellationToken);
     }
 }
 
@@ -69,12 +65,11 @@ internal sealed class ZLinkRegistryQueryClientService : IZLinkRegistryQueryClien
         _client.Connect(registration.Endpoint!);
     }
 
-    public ZLinkRegistryTopologyEntry[] Snapshot(
-        ZLinkRegistryTopologyFilter? filter = null)
+    public ValueTask<ZLinkRegistryTopologyEntry[]> SnapshotAsync(
+        ZLinkRegistryTopologyFilter? filter = null,
+        CancellationToken cancellationToken = default)
     {
-        return _client.RequireNative<global::Zlink.RegistryQueryClient>().Snapshot(filter.ToBackend())
-            .Select(static entry => entry.ToFramework())
-            .ToArray();
+        return ValueTask.FromResult(_client.Snapshot(filter).ToArray());
     }
 
     public async ValueTask DisposeAsync()

@@ -1,0 +1,13 @@
+{
+    "dotnet.defaultSolution": "Zlink.Framework.sln",
+    "files.watcherExclude": {
+        "**/bin/**": true,
+        "**/obj/**": true,
+        "**/TestResults/**": true
+    },
+    "search.exclude": {
+        "**/bin": true,
+        "**/obj": true,
+        "**/TestResults": true
+    }
+}

@@ -45,6 +45,13 @@ public interface IZLinkSpotClient
     IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);
+
+    ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
+        global::Zlink.RoutingId spotRid,
+        IZLinkActor actor,
+        TRequest request,
+        CancellationToken cancellationToken = default)
+        where TRequest : IZLinkRequest<TReply>;
 }
 
 public interface IZLinkSpotPublisherClient
@@ -57,17 +64,23 @@ public interface IZLinkSpotPublisherClient
 
 public interface IZLinkSpotConnectionManager
 {
-    ISpotRouterConnections GetRouter(string spotNodeName);
-
-    ISpotPubSubConnections GetPubSub(string spotNodeName);
-
-    IChannelClientConnections GetChannelClient(
+    ValueTask<IZLinkEndpointConnections> GetRouterAsync(
         string spotNodeName,
-        string channelName);
+        CancellationToken cancellationToken = default);
 
-    ISpotPublisherConnections GetSpotPublisherClient(
+    ValueTask<IZLinkEndpointConnections> GetPubSubAsync(
         string spotNodeName,
-        string channelName);
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetChannelClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetSpotPublisherClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
@@ -102,5 +115,16 @@ public interface IZLinkSpotTimerHandler<TSpot>
 {
     ValueTask HandleAsync(
         TSpot spot,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSpotActorJoinHandler<TSpot, in TRequest, TReply>
+    where TSpot : ZLinkSpot
+    where TRequest : IZLinkRequest<TReply>
+{
+    ValueTask<TReply> HandleAsync(
+        TSpot spot,
+        IZLinkActor actor,
+        TRequest request,
         CancellationToken cancellationToken);
 }

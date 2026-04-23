@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Tests.Common;
 
@@ -46,7 +47,7 @@ public sealed class TopologyMultiProcessTests
 
         var client = host.Services.GetRequiredService<IZLinkRegistryQueryClient>();
         var snapshot = await RetryAsync(
-            () => Task.FromResult(client.Snapshot()),
+            () => client.SnapshotAsync().AsTask(),
             entries => entries.Any(entry =>
                 entry.ServiceName == "profile"
                 && entry.Endpoint == channelEndpoint
@@ -159,12 +160,203 @@ public sealed class TopologyMultiProcessTests
         await host.StopAsync(timeout.Token);
     }
 
+    [Fact]
+    public async Task ChannelSubscriber_DiscoveryAttach_Receives_RemotePublish_From_TestHostProcesses()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var publisherEndpoint = GetFreeTcpEndpoint();
+        var eventFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"zlink-framework-channel-event-{Guid.NewGuid():N}.log");
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var registryHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "registry",
+            "--registry-pub-endpoint", registryPubEndpoint,
+            "--registry-router-endpoint", registryRouterEndpoint);
+        await using var subscriberHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "channel-subscriber",
+            "--discovery-endpoint", registryRouterEndpoint,
+            "--channel-name", "profile",
+            "--event-file", eventFilePath);
+        await using var publisherHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "channel-publisher",
+            "--discovery-endpoint", registryRouterEndpoint,
+            "--channel-name", "profile",
+            "--publisher-endpoint", publisherEndpoint,
+            "--publish-topic", "profile.cache-invalidated",
+            "--publish-value", "remote-channel");
+
+        var line = await WaitForFileLineAsync(
+            eventFilePath,
+            static value => value.Contains("profile.cache-invalidated:remote-channel", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(15));
+
+        Assert.Contains("profile.cache-invalidated:remote-channel", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OutboundOnly_SpotPublisherClient_Publishes_Across_TestHostProcesses()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var subscriberNodeEndpoint = GetFreeTcpEndpoint();
+        var publisherNodeEndpoint = GetFreeTcpEndpoint();
+        var eventFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"zlink-framework-spot-event-{Guid.NewGuid():N}.log");
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var registryHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "registry",
+            "--registry-pub-endpoint", registryPubEndpoint,
+            "--registry-router-endpoint", registryRouterEndpoint);
+        await using var subscriberHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "spot-node",
+            "--discovery-channel", "game.stage",
+            "--discovery-endpoint", registryRouterEndpoint,
+            "--spot-node-name", "subscriber-node",
+            "--spot-bind-endpoint", subscriberNodeEndpoint,
+            "--enable-pubsub",
+            "--spot-factory", "stage",
+            "--create-spot", "stage",
+            "--event-file", eventFilePath);
+        await using var publisherHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "spot-node",
+            "--discovery-channel", "game.stage",
+            "--discovery-endpoint", registryRouterEndpoint,
+            "--spot-node-name", "publisher-node",
+            "--spot-bind-endpoint", publisherNodeEndpoint,
+            "--enable-pubsub",
+            "--attach-spot-publisher-channel", "game.stage",
+            "--publish-topic", "stage.monitor",
+            "--publish-value", "remote-spot");
+
+        var line = await WaitForFileLineAsync(
+            eventFilePath,
+            static value => value.Contains("remote-spot", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(15));
+
+        Assert.Contains("remote-spot", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess()
+    {
+        var streamEndpoint = GetFreeTcpEndpoint();
+        var eventFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"zlink-framework-stream-connected-{Guid.NewGuid():N}.log");
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var streamHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "stream-raw",
+            "--stream-endpoint", streamEndpoint,
+            "--event-file", eventFilePath);
+
+        using var client = ConnectRawClient(streamEndpoint);
+        var clientLocalPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
+        var network = client.GetStream();
+        SendAll(network, "ping"u8);
+        Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
+
+        var connectedLine = await WaitForFileLineAsync(
+            eventFilePath,
+            static value => value.StartsWith("connected|", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(15));
+
+        var parts = connectedLine.Split('|');
+        Assert.Equal(5, parts.Length);
+        Assert.False(string.IsNullOrWhiteSpace(parts[1]));
+        Assert.False(string.IsNullOrWhiteSpace(parts[2]));
+        Assert.StartsWith("tcp://", parts[3], StringComparison.Ordinal);
+        Assert.StartsWith("tcp://", parts[4], StringComparison.Ordinal);
+        Assert.Contains($":{new Uri(streamEndpoint).Port}", parts[3], StringComparison.Ordinal);
+        Assert.Contains($":{clientLocalPort}", parts[4], StringComparison.Ordinal);
+
+        var connectedCount = (await File.ReadAllLinesAsync(eventFilePath))
+            .Count(static line => line.StartsWith("connected|", StringComparison.Ordinal));
+        Assert.Equal(1, connectedCount);
+    }
+
+    [Fact]
+    public async Task StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect()
+    {
+        var streamEndpoint = GetFreeTcpEndpoint();
+        var eventFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"zlink-framework-stream-error-{Guid.NewGuid():N}.log");
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var streamHost = await TestHostProcess.StartAsync(
+            timeout.Token,
+            "stream-raw",
+            "--stream-endpoint", streamEndpoint,
+            "--event-file", eventFilePath);
+
+        var client = ConnectRawClient(streamEndpoint);
+        var network = client.GetStream();
+        SendAll(network, "ping"u8);
+        Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
+        client.Dispose();
+
+        var errorLine = await WaitForFileLineAsync(
+            eventFilePath,
+            static value => string.Equals(value, "error|TransportError", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(15));
+
+        Assert.Equal("error|TransportError", errorLine);
+    }
+
     private static string GetFreeTcpEndpoint()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         return $"tcp://127.0.0.1:{endpoint.Port}";
+    }
+
+    private static TcpClient ConnectRawClient(string endpoint)
+    {
+        var uri = new Uri(endpoint);
+        var client = new TcpClient();
+        client.NoDelay = true;
+        client.ReceiveTimeout = 5000;
+        client.SendTimeout = 5000;
+        client.Connect(IPAddress.Parse(uri.Host), uri.Port);
+        return client;
+    }
+
+    private static void SendAll(NetworkStream stream, ReadOnlySpan<byte> payload)
+    {
+        stream.Write(payload);
+        stream.Flush();
+    }
+
+    private static byte[] ReceiveExact(NetworkStream stream, int size)
+    {
+        var buffer = new byte[size];
+        var read = 0;
+        while (read < size)
+        {
+            var current = stream.Read(buffer, read, size - read);
+            if (current <= 0)
+            {
+                throw new TimeoutException("STREAM receive timeout");
+            }
+
+            read += current;
+        }
+
+        return buffer;
     }
 
     private static async Task<T> RetryAsync<T>(
@@ -199,6 +391,31 @@ public sealed class TopologyMultiProcessTests
         }
 
         throw new TimeoutException("Multi-process retry timed out.");
+    }
+
+    private static async Task<string> WaitForFileLineAsync(
+        string path,
+        Func<string, bool> predicate,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (File.Exists(path))
+            {
+                var lines = await File.ReadAllLinesAsync(path);
+                var match = lines.FirstOrDefault(predicate);
+                if (match is not null)
+                {
+                    return match;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(150));
+        }
+
+        throw new TimeoutException($"Timed out waiting for event file '{path}'.");
     }
 
     public sealed class RegistryChangeProbe : IZLinkRuntimeEventHandler<ZLinkRegistryEvent>

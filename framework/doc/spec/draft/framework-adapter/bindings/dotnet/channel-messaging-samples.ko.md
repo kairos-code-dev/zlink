@@ -168,13 +168,15 @@ public sealed class WarmupService : BackgroundService
         _connections = connections;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var profileClient = _connections.GetClient("profile");
+        var profileClient = await _connections.GetClientAsync(
+            "profile",
+            stoppingToken);
 
-        profileClient.Connect("tcp://10.0.10.17:7101");
-
-        return Task.CompletedTask;
+        await profileClient.ConnectAsync(
+            "tcp://10.0.10.17:7101",
+            stoppingToken);
     }
 }
 ```

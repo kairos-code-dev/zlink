@@ -14,6 +14,20 @@ public sealed class TestHostReadinessTests
     }
 
     [Fact]
+    public async Task TestHost_Reports_Ready_OnStandardOutput_And_Writes_Logs()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var process = await Tests.Common.TestHostProcess.StartAsync(timeout.Token, "idle");
+
+        Assert.NotNull(process.ReadyPayload);
+        Assert.Equal(process.ProcessId, process.ReadyPayload!.RootElement.GetProperty("pid").GetInt32());
+        Assert.Equal("idle", process.ReadyPayload.RootElement.GetProperty("mode").GetString());
+        Assert.True(File.Exists(process.StandardOutputLogPath), $"Missing stdout log at '{process.StandardOutputLogPath}'.");
+        Assert.True(File.Exists(process.StandardErrorLogPath), $"Missing stderr log at '{process.StandardErrorLogPath}'.");
+        Assert.Contains(process.StandardOutput, static line => line.StartsWith("READY:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task TestHost_Stops_When_StandardInput_ReachesEof()
     {
         var startInfo = Tests.Common.FrameworkTestEnvironment.CreateTestHostStartInfo();

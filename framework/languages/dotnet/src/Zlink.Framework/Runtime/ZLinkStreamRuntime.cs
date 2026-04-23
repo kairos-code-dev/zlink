@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Backend;
 using System.Threading;
 
 namespace Zlink.Framework;
@@ -17,23 +18,24 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     public ZLinkStreamNodeRuntime(
         string nodeName,
         IServiceProvider services,
-        global::Zlink.StreamSocket socket,
+        IZLinkBackendStreamSocket socket,
+        IZLinkBackendSocketMonitor monitor,
         Type? packetSessionType,
         Type? rawSessionType)
     {
         NodeName = nodeName;
         _services = services;
         Socket = socket;
+        Monitor = monitor;
         _packetSessionType = packetSessionType;
         _rawSessionType = rawSessionType;
-        Monitor = socket.MonitorOpen(global::Zlink.SocketEvent.All);
     }
 
     public string NodeName { get; }
 
-    public global::Zlink.StreamSocket Socket { get; }
+    public IZLinkBackendStreamSocket Socket { get; }
 
-    public global::Zlink.SocketMonitor Monitor { get; }
+    public IZLinkBackendSocketMonitor Monitor { get; }
 
     public void Start()
     {
@@ -45,7 +47,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             }
             else
             {
-                Socket.OnPacket(OnRawPacket);
+                Socket.OnRawPacket(OnRawPacket);
             }
             return 0;
         });
@@ -88,7 +90,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         var routingId = ParsePublicRoutingId(routingIdText);
         var session = GetOrCreateSession(routingId);
         ApplyPendingConnectionMetadata(session);
-        session.DispatchRawAsync(payload).AsTask().GetAwaiter().GetResult();
+        session.EnqueueRaw(payload);
         return 0;
     }
 
@@ -100,22 +102,19 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         var routingId = ParsePublicRoutingId(routingIdText);
         var session = GetOrCreateSession(routingId);
         ApplyPendingConnectionMetadata(session);
-        session.DispatchPacketAsync(header, body).AsTask().GetAwaiter().GetResult();
+        session.EnqueuePacket(header, body);
     }
 
-    private void OnMonitorEvent(global::Zlink.MonitorEvent monitorEvent)
+    private void OnMonitorEvent(ZLinkBackendSocketMonitorEvent monitorEvent)
     {
-        switch (monitorEvent.Event)
+        switch (monitorEvent.NativeEvent)
         {
-            case global::Zlink.MonitorEventType.ConnectionReady:
-            case global::Zlink.MonitorEventType.Accepted:
+            case ZLinkSocketNativeEventType.ConnectionReady:
+            case ZLinkSocketNativeEventType.Accepted:
                 if (monitorEvent.RoutingId is global::Zlink.RoutingId readyRoutingId)
                 {
                     var session = GetOrCreateSession(readyRoutingId);
-                    session.MarkConnectedAsync(monitorEvent.LocalAddr, monitorEvent.RemoteAddr)
-                        .AsTask()
-                        .GetAwaiter()
-                        .GetResult();
+                    session.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
                 }
                 else
                 {
@@ -125,16 +124,13 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                     }
                 }
                 break;
-            case global::Zlink.MonitorEventType.Disconnected:
+            case ZLinkSocketNativeEventType.Disconnected:
                 if (TryResolveSessionForMonitorEvent(monitorEvent.RoutingId, out var disconnectedSession))
                 {
-                    disconnectedSession.MarkDisconnectedAsync(
-                            new ZLinkStreamError(
-                                ZLinkStreamSessionError.TransportError,
-                                new ZLinkStreamDiagnostic((int)monitorEvent.Value, monitorEvent.Event.ToString())))
-                        .AsTask()
-                        .GetAwaiter()
-                        .GetResult();
+                    disconnectedSession.EnqueueDisconnected(
+                        new ZLinkStreamError(
+                            ZLinkStreamSessionError.TransportError,
+                            new ZLinkStreamDiagnostic((int)monitorEvent.Value, monitorEvent.NativeEvent.ToString())));
 
                     if (monitorEvent.RoutingId is global::Zlink.RoutingId disconnectedRoutingId)
                     {
@@ -228,10 +224,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
         if (metadata is { } value)
         {
-            session.MarkConnectedAsync(value.LocalAddr, value.RemoteAddr)
-                .AsTask()
-                .GetAwaiter()
-                .GetResult();
+            session.EnqueueConnected(value.LocalAddr, value.RemoteAddr);
         }
     }
 
@@ -292,16 +285,18 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 {
     private readonly AsyncServiceScope _scope;
-    private readonly global::Zlink.StreamSocket _socket;
+    private readonly IZLinkBackendStreamSocket _socket;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _dispatchSync = new();
     private readonly object _handler;
     private readonly Type? _packetSessionType;
     private readonly Type? _rawSessionType;
     private int _connected;
+    private Task _dispatchTail = Task.CompletedTask;
 
     public ZLinkStreamSessionRuntime(
         AsyncServiceScope scope,
-        global::Zlink.StreamSocket socket,
+        IZLinkBackendStreamSocket socket,
         global::Zlink.RoutingId routingId,
         Type? packetSessionType,
         Type? rawSessionType)
@@ -315,6 +310,26 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     }
 
     public ZLinkManagedStream Stream { get; }
+
+    public void EnqueueConnected(string localAddr, string remoteAddr)
+    {
+        Enqueue(() => MarkConnectedAsync(localAddr, remoteAddr).AsTask());
+    }
+
+    public void EnqueueRaw(global::Zlink.Message payload)
+    {
+        Enqueue(() => DispatchRawAsync(payload).AsTask());
+    }
+
+    public void EnqueuePacket(global::Zlink.Message header, global::Zlink.Message body)
+    {
+        Enqueue(() => DispatchPacketAsync(header, body).AsTask());
+    }
+
+    public void EnqueueDisconnected(ZLinkStreamError error)
+    {
+        Enqueue(() => MarkDisconnectedAsync(error).AsTask());
+    }
 
     public async ValueTask MarkConnectedAsync(string localAddr, string remoteAddr)
     {
@@ -407,13 +422,49 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Task pending;
+        lock (_dispatchSync)
+        {
+            pending = _dispatchTail;
+        }
+
+        try
+        {
+            await pending;
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         await _scope.DisposeAsync();
         _gate.Dispose();
+    }
+
+    private void Enqueue(Func<Task> work)
+    {
+        lock (_dispatchSync)
+        {
+            _dispatchTail = _dispatchTail.ContinueWith(
+                static async (_, state) =>
+                {
+                    await ((Func<Task>)state!).Invoke().ConfigureAwait(false);
+                },
+                work,
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default).Unwrap();
+        }
     }
 
     private ValueTask EnsureConnectedAsync()
     {
         if (Interlocked.CompareExchange(ref _connected, 1, 1) != 0)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        if (string.IsNullOrWhiteSpace(Stream.LocalAddr)
+            || string.IsNullOrWhiteSpace(Stream.RemoteAddr))
         {
             return ValueTask.CompletedTask;
         }
@@ -428,11 +479,11 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
 internal sealed class ZLinkManagedStream : IZLinkStream
 {
-    private readonly global::Zlink.StreamSocket _socket;
+    private readonly IZLinkBackendStreamSocket _socket;
     private readonly global::Zlink.RoutingId _routingId;
 
     public ZLinkManagedStream(
-        global::Zlink.StreamSocket socket,
+        IZLinkBackendStreamSocket socket,
         global::Zlink.RoutingId routingId)
     {
         _socket = socket;

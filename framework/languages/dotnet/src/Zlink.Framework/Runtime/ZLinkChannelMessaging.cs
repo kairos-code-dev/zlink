@@ -310,6 +310,8 @@ internal sealed class ZLinkHandlerDispatcher(
 
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 {
+    private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
+
     public ZLinkChannelRuntimeBundle(IZLinkBackendSocket socket)
     {
         Socket = socket;
@@ -319,7 +321,37 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public IZLinkBackendDiscovery? Discovery { get; set; }
 
-    public List<string> ManualConnections { get; } = [];
+    public bool TryAddManualConnection(string endpoint)
+    {
+        lock (_manualConnections)
+        {
+            return _manualConnections.Add(endpoint);
+        }
+    }
+
+    public void RemoveManualConnection(string endpoint)
+    {
+        lock (_manualConnections)
+        {
+            _manualConnections.Remove(endpoint);
+        }
+    }
+
+    public bool ContainsManualConnection(string endpoint)
+    {
+        lock (_manualConnections)
+        {
+            return _manualConnections.Contains(endpoint);
+        }
+    }
+
+    public IReadOnlyList<string> ListManualConnections()
+    {
+        lock (_manualConnections)
+        {
+            return _manualConnections.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -334,37 +366,45 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
 internal sealed class ZLinkChannelConnectionManager(ZLinkFrameworkRuntime runtime) : IZLinkChannelConnectionManager
 {
-    public IChannelClientConnections GetClient(string channelName)
+    public ValueTask<IZLinkEndpointConnections> GetClientAsync(
+        string channelName,
+        CancellationToken cancellationToken = default)
     {
-        return runtime.GetClientConnections(channelName);
+        return runtime.GetClientConnectionsAsync(channelName, cancellationToken);
     }
 
-    public IChannelSubscriberConnections GetSubscriber(string channelName)
+    public ValueTask<IZLinkEndpointConnections> GetSubscriberAsync(
+        string channelName,
+        CancellationToken cancellationToken = default)
     {
-        return runtime.GetSubscriberConnections(channelName);
+        return runtime.GetSubscriberConnectionsAsync(channelName, cancellationToken);
     }
 }
 
 internal sealed class ZLinkRuntimeConnections(
-    Func<string, bool> connect,
-    Action<string> disconnect,
-    Func<IReadOnlyList<string>> list)
-    : IChannelClientConnections,
-      IChannelSubscriberConnections
+    Func<string, CancellationToken, ValueTask<bool>> connect,
+    Func<string, CancellationToken, ValueTask> disconnect,
+    Func<CancellationToken, ValueTask<IReadOnlyList<string>>> list)
+    : IZLinkEndpointConnections
 {
-    public void Connect(string endpoint)
+    public ValueTask<bool> ConnectAsync(
+        string endpoint,
+        CancellationToken cancellationToken = default)
     {
-        _ = connect(endpoint);
+        return connect(endpoint, cancellationToken);
     }
 
-    public void Disconnect(string endpoint)
+    public ValueTask DisconnectAsync(
+        string endpoint,
+        CancellationToken cancellationToken = default)
     {
-        disconnect(endpoint);
+        return disconnect(endpoint, cancellationToken);
     }
 
-    public IReadOnlyList<string> ListConnections()
+    public ValueTask<IReadOnlyList<string>> ListConnectionsAsync(
+        CancellationToken cancellationToken = default)
     {
-        return list();
+        return list(cancellationToken);
     }
 }
 
@@ -425,7 +465,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
     public bool Exec()
     {
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
-        var dealer = bundle.Socket.RequireNative<global::Zlink.DealerSocket>();
+        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Command,
             _channelName,
@@ -479,7 +519,7 @@ internal sealed class ZLinkRequestCall<TReply> : IZLinkRequestCall<TReply>
     public async ValueTask<TReply> ExecAsync(CancellationToken cancellationToken = default)
     {
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
-        var dealer = bundle.Socket.RequireNative<global::Zlink.DealerSocket>();
+        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var correlationId = Guid.NewGuid().ToString("N");
         var timeout = _timeout ?? _registration.DefaultTimeout;
         var deadline = DateTimeOffset.UtcNow.Add(timeout);
@@ -558,7 +598,7 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
     public bool Exec()
     {
         var bundle = _runtime.GetOrCreatePublisherBundle(_channelName);
-        var publisher = bundle.Socket.RequireNative<global::Zlink.PubSocket>();
+        var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Event,
             _channelName,

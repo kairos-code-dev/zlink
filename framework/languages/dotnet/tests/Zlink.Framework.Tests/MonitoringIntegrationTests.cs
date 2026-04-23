@@ -6,6 +6,7 @@ using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
 
+[Collection(nameof(FrameworkRuntimeIntegrationTestsCollection))]
 public sealed class MonitoringIntegrationTests
 {
     [Fact]
@@ -39,7 +40,7 @@ public sealed class MonitoringIntegrationTests
         Assert.NotNull(@event.Status);
         Assert.True(@event.Status?.State is ZLinkRegistryState.Idle or ZLinkRegistryState.Active);
 
-        await registryHost.StopAsync();
+        await StopHostsAsync(registryHost);
     }
 
     [Fact]
@@ -79,7 +80,7 @@ public sealed class MonitoringIntegrationTests
         Assert.NotNull(@event.Subjects);
         Assert.Contains(@event.Subjects!, subject => subject.Subject == "stage.monitor");
 
-        await host.StopAsync();
+        await StopHostsAsync(host);
     }
 
     [Fact]
@@ -127,8 +128,7 @@ public sealed class MonitoringIntegrationTests
         await probe.WaitForTopologyAsync(TimeSpan.FromSeconds(10));
         await probe.WaitForSummaryAsync(TimeSpan.FromSeconds(10));
 
-        await frameworkHost.StopAsync();
-        await registryHost.StopAsync();
+        await StopHostsAsync(frameworkHost, registryHost);
     }
 
     [Fact]
@@ -196,9 +196,79 @@ public sealed class MonitoringIntegrationTests
         Assert.NotNull(peerEvent.Peers);
         Assert.NotEmpty(peerEvent.Peers!);
 
-        await secondHost.StopAsync();
-        await firstHost.StopAsync();
-        await registryHost.StopAsync();
+        await StopHostsAsync(secondHost, firstHost, registryHost);
+    }
+
+    [Fact]
+    public async Task DiscoveryMonitoring_Emits_ProvidersChanged_When_RemoteServiceAppears()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var apiEndpoint = GetFreeTcpEndpoint();
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+
+        var clientBuilder = Host.CreateApplicationBuilder();
+        clientBuilder.Services.AddSingleton<DiscoveryProbe>();
+        clientBuilder.Services.AddSingleton<IZLinkRuntimeEventHandler<ZLinkDiscoveryEvent>>(static provider =>
+            provider.GetRequiredService<DiscoveryProbe>());
+        clientBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddChannel("profile", channel =>
+            {
+                channel.EnableClient();
+            });
+        });
+        clientBuilder.Services.AddZLinkMonitoring(monitor =>
+        {
+            monitor.AddDiscoveryEvents(
+                "profile.client.discovery",
+                ZLinkDiscoveryEventKind.ServiceUp,
+                ZLinkDiscoveryEventKind.ProvidersChanged);
+        });
+
+        var serverBuilder = Host.CreateApplicationBuilder();
+        serverBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddChannel("profile", channel =>
+            {
+                channel.EnableServer(server => server.Bind(apiEndpoint));
+            });
+        });
+
+        using var registryHost = registryBuilder.Build();
+        using var clientHost = clientBuilder.Build();
+        using var serverHost = serverBuilder.Build();
+
+        await registryHost.StartAsync();
+        await clientHost.StartAsync();
+        await serverHost.StartAsync();
+
+        var @event = await clientHost.Services.GetRequiredService<DiscoveryProbe>()
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal("profile.client.discovery", @event.SourceName);
+        Assert.Equal("profile", @event.ServiceName);
+        Assert.True(
+            @event.Event is ZLinkDiscoveryEventKind.ServiceUp or ZLinkDiscoveryEventKind.ProvidersChanged,
+            $"Unexpected discovery event '{@event.Event}'.");
+
+        await StopHostsAsync(serverHost, clientHost, registryHost);
     }
 
     private static string GetFreeTcpEndpoint()
@@ -259,6 +329,41 @@ public sealed class MonitoringIntegrationTests
             using var timeoutSource = new CancellationTokenSource(timeout);
             return await _completion.Task.WaitAsync(timeoutSource.Token);
         }
+    }
+
+    public sealed class DiscoveryProbe : IZLinkRuntimeEventHandler<ZLinkDiscoveryEvent>
+    {
+        private readonly TaskCompletionSource<ZLinkDiscoveryEvent> _completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask HandleAsync(
+            ZLinkDiscoveryEvent @event,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            if (@event.Event is ZLinkDiscoveryEventKind.ServiceUp or ZLinkDiscoveryEventKind.ProvidersChanged)
+            {
+                _completion.TrySetResult(@event);
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        public async Task<ZLinkDiscoveryEvent> WaitAsync(TimeSpan timeout)
+        {
+            using var timeoutSource = new CancellationTokenSource(timeout);
+            return await _completion.Task.WaitAsync(timeoutSource.Token);
+        }
+    }
+
+    private static async Task StopHostsAsync(params IHost[] hosts)
+    {
+        foreach (var host in hosts)
+        {
+            await host.StopAsync();
+        }
+
+        await Task.Delay(500);
     }
 
     public sealed class RegistryChangeProbe : IZLinkRuntimeEventHandler<ZLinkRegistryEvent>

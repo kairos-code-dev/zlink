@@ -2,25 +2,31 @@ namespace Zlink.Framework;
 
 public interface IZLinkRegistryQuery
 {
-    ZLinkRegistryStatus StatusSnapshot();
+    ValueTask<ZLinkRegistryStatus> StatusSnapshotAsync(
+        CancellationToken cancellationToken = default);
 
-    ZLinkRegistryServiceSummaryEntry[] ServiceSummarySnapshot(
-        ZLinkRegistryServiceSummaryFilter? filter = null);
+    ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummarySnapshotAsync(
+        ZLinkRegistryServiceSummaryFilter? filter = null,
+        CancellationToken cancellationToken = default);
 
-    ZLinkRegistryTopologyEntry[] TopologySnapshot();
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologySnapshotAsync(
+        CancellationToken cancellationToken = default);
 
-    ZLinkRegistryTopologyEntry[] TopologyQuery(
-        ZLinkRegistryTopologyFilter? filter = null);
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyQueryAsync(
+        ZLinkRegistryTopologyFilter? filter = null,
+        CancellationToken cancellationToken = default);
 
-    ZLinkMemberPeerEntry[] MemberPeers(
+    ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
         ZLinkServiceType serviceType,
-        string serviceName);
+        string serviceName,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRegistryQueryClient
 {
-    ZLinkRegistryTopologyEntry[] Snapshot(
-        ZLinkRegistryTopologyFilter? filter = null);
+    ValueTask<ZLinkRegistryTopologyEntry[]> SnapshotAsync(
+        ZLinkRegistryTopologyFilter? filter = null,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRegistryQueryClientOptions

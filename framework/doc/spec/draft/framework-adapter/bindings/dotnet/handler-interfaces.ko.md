@@ -366,22 +366,20 @@ public readonly struct SpotDispatchInfo
 {
     public SpotDispatchEvent Event { get; }
     public SpotDispatchSubjectKind SubjectKind { get; }
-    public object? Subject { get; }  // Timer handle 또는 dealer handle
+    public object? Subject { get; }  // dealer handle 등 backend subject
 }
 
 public enum SpotDispatchEvent
 {
     SubscribeReadable    = 1,
     RoutedReadable       = 2,
-    TimerReadable        = 3,
-    ChannelReplyReadable = 4
+    ChannelReplyReadable = 3
 }
 
 public enum SpotDispatchSubjectKind
 {
     Spot          = 1,
-    Timer         = 2,
-    ChannelDealer = 3
+    ChannelDealer = 2
 }
 ```
 
@@ -402,25 +400,25 @@ spot.OnDispatchEvent((s, info) =>
             /* info.Subject 가 dealer handle */
             s.DrainChannelReplyFrom(info.Subject!);
             break;
-        case SpotDispatchEvent.TimerReadable:
-            /* info.Subject 가 Timer handle */
-            ((Timer)info.Subject!).Recv();
-            break;
     }
 });
 ```
+
+framework timer는 이 dispatch enum에 직접 매달리지 않는다. runtime이 만든 managed
+`.NET` timer가 tick을 만들고, 그 tick을 같은 spot execution context 안으로 enqueue해
+timer handler를 호출한다.
 
 `RequestChannelAsync(...)` completion 은 **같은 spot execution context 안에서**
 실행된다. arbitrary thread 에서 promise 를 직접 완료하지 않는다. 이 덕분에
 continuation 도 별도 SynchronizationContext 설정 없이 spot state 와 같은 실행
 규칙을 따른다.
 
-framework의 `AddTimer<THandler>(...)`는 low-level `Timer.FromSpot(spot)`와
-`Timer.OnFire(Action<Timer, ulong>)` 위에 얹는 wrapper로 읽는 편이 맞다.
-low-level callback의 실제 시그니처는 `Action<Timer, ulong>`이며, 두 번째 인자는
-native timer가 전달하는 `fireCount`다. framework의 `IZLinkTimer.CancelAsync()`는
-low-level binding의 `Timer.Stop()`와 dispose lifecycle을 framework 쪽에서 감싼
-표면으로 보는 편이 자연스럽다.
+framework의 `AddTimer<THandler>(...)`는 low-level native timer를 직접 노출하는
+표면이 아니다. 현재 방향에서는 framework runtime이 `.NET`에서 제공하는
+`PeriodicTimer` 같은 managed timer를 만들고, 그 tick을 **같은 spot execution
+context** 안으로 enqueue해서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`를
+호출한다. `IZLinkTimer.CancelAsync()`는 이 managed timer loop를 중단하고 정리하는
+고수준 handle로 보는 편이 자연스럽다.
 
 #### 4.3.2 SPOT 실행 문맥 정책
 
@@ -595,10 +593,12 @@ protobuf/json decode helper가 가능한 한 추가 메모리 할당 없이 동�
 
 #### 4.4.1 actor/session 상위 모델 메모
 
-actor join, actor factory, stream-attached actor 모델은 현재 framework core 구현
-범위에 포함하지 않는다. 이 문서 묶음에서는 packet/session/spot/runtime 경계까지만
-현재 공용 계약으로 다루고, actor/session membership 같은 상위 모델은
-`stage-wrapper-on-spot.ko.md`에서 확장 방향 메모로만 다룬다.
+actor join, actor factory, stream-attached actor 모델은 현재 draft framework core
+구현 범위에 포함한다. 공개 계약은 `IZLinkActor`, `IZLinkSpotClient.JoinActorAsync`,
+`ZLinkSpot.AddActorJoin<THandler, TRequest, TReply>()`, 그리고 stream session에서
+actor attach/submit/disconnect를 이어 주는 `IZLinkActorRuntime`까지를 기준으로
+설명한다. `stage-wrapper-on-spot.ko.md`는 이 계약 위에서 room/stage wrapper를
+어떻게 조직하는지 보여 주는 상위 모델 문서로 읽는다.
 
 #### 4.4.3 dispatch mode
 
@@ -825,7 +825,8 @@ public interface IZLinkSpotClient
   자연스럽다.
 - timer는 callback scheduler로 따로 두지 않고, spot lifecycle 안에서
   `AddTimer<THandler>(name, period, ...)`로 등록하는 한 가지 모델로 설명하는 편이
-  더 자연스럽다. 이 부분은 하부 C API 계약(`zlink_spot_timer_new`)을 따른다.
+  더 자연스럽다. 구현은 framework runtime이 만든 managed `.NET` timer를 같은
+  spot execution context로 매핑하는 방향이 자연스럽다.
 
 현재 `.NET` 바인딩의 raw `Spot` 표면은 이 두 종류를 더 직접적으로 나눈다.
 
@@ -1098,14 +1099,35 @@ public interface IZLinkFrameworkOptions
 ### 6.2 channel 연결 관리
 
 위 규칙에 따라 manual capability를 런타임에서 제어하려면 아래와 같은 별도
-management 표면이 필요하다.
+management 표면이 필요하다. startup builder에서 쓰는 `UseManualConnections(...)`
+는 단순 등록이므로 동기 `Connect(...)`를 유지한다. 반대로 host가 올라간 뒤
+실제 runtime 상태를 바꾸는 관리 표면은 lazy startup과 I/O 경계를 숨기지 않기
+위해 비동기로 둔다.
 
 ```csharp
+public interface IZLinkEndpointConnections
+{
+    ValueTask<bool> ConnectAsync(
+        string endpoint,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DisconnectAsync(
+        string endpoint,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IReadOnlyList<string>> ListConnectionsAsync(
+        CancellationToken cancellationToken = default);
+}
+
 public interface IZLinkChannelConnectionManager
 {
-    IChannelClientConnections GetClient(string channelName);
+    ValueTask<IZLinkEndpointConnections> GetClientAsync(
+        string channelName,
+        CancellationToken cancellationToken = default);
 
-    IChannelSubscriberConnections GetSubscriber(string channelName);
+    ValueTask<IZLinkEndpointConnections> GetSubscriberAsync(
+        string channelName,
+        CancellationToken cancellationToken = default);
 }
 ```
 
@@ -1406,17 +1428,23 @@ SPOT도 수동 연결을 쓸 때는 capability별 런타임 제어 표면이 필
 ```csharp
 public interface IZLinkSpotConnectionManager
 {
-    ISpotRouterConnections GetRouter(string spotNodeName);
-
-    ISpotPubSubConnections GetPubSub(string spotNodeName);
-
-    IChannelClientConnections GetChannelClient(
+    ValueTask<IZLinkEndpointConnections> GetRouterAsync(
         string spotNodeName,
-        string channelName);
+        CancellationToken cancellationToken = default);
 
-    ISpotPublisherConnections GetSpotPublisherClient(
+    ValueTask<IZLinkEndpointConnections> GetPubSubAsync(
         string spotNodeName,
-        string channelName);
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetChannelClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetSpotPublisherClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default);
 }
 ```
 
@@ -1438,39 +1466,20 @@ public interface IZLinkTimer : IAsyncDisposable
 }
 ```
 
-framework timer abstraction이 low-level `.NET` binding과 어떻게 이어지는지도
-문서에 같이 적어 두는 편이 맞다. 현재 `bindings/dotnet/src/Zlink/Timer.cs`
-기준 실제 표면은 아래와 같다.
-
-```csharp
-public sealed class Timer : IDisposable, IAsyncDisposable
-{
-    public static Timer FromSpot(Spot spot);
-
-    public void Start(ulong intervalNs, ulong repeatCount);
-
-    public void Stop();
-
-    public ulong Recv(int flags = 0);
-
-    public void OnFire(Action<Timer, ulong> handler);
-}
-```
-
-즉 low-level callback의 실제 시그니처는 `Action<Timer, ulong>`이다. framework
-초안의 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`는 이 callback을 spot
-lifecycle와 DI handler 모델로 감싼 상위 wrapper로 읽어야 한다.
-마찬가지로 `IZLinkTimer.CancelAsync()`는 low-level `Timer.Stop()`와 dispose
-lifecycle을 framework 쪽에서 감싼 고수준 handle로 읽는 편이 맞다.
+framework timer abstraction은 low-level `.NET` binding의 native timer를 그대로
+노출하지 않는다. framework runtime이 managed timer를 만들고, 각 tick을
+`ExecuteSerializedAsync(...)` 같은 spot 직렬 실행 경로로 넘겨
+`IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`를 호출한다. 따라서
+`IZLinkTimer.CancelAsync()`는 native `Timer.Stop()` wrapper가 아니라, framework가
+만든 managed timer loop를 중단하는 표면으로 읽는 편이 맞다.
 
 timer가 어떤 실행 문맥에서 callback을 호출하는지가 중요하다.
 
 - 현재 방향에서는 timer를 별도 client scheduler로 두지 않는다.
-- spot timer는 같은 spot 실행 문맥 안에 등록되고, 해당 문맥에서 처리되는 편이
-  Stage wrapper에 더 자연스럽다.
-
-이 구분은 framework가 새 의미를 발명하기보다, 하부 C API 계약
-(`zlink_spot_timer_new`)을 `.NET` 표면으로 옮기는 성격이다.
+- spot timer는 framework가 만든 managed timer를 사용하되, 실제 handler 호출은
+  같은 spot 실행 문맥 안에서 직렬화한다.
+- packet, subscribe, channel reply callback, timer callback은 모두 같은 spot
+  execution context 규칙을 따른다.
 
 ## 8. Handler Filter
 
@@ -1564,13 +1573,15 @@ Registry 조회 인터페이스는 infrastructure 성격이므로 상세 정의�
 
 같은 프로세스의 embedded Registry를 조회한다.
 `AddZLinkRegistry(...)` 시 자동으로 DI에 등록된다.
-status, service summary, topology, member peers를 제공한다.
+status, service summary, topology, member peers를 제공한다. registry가 아직
+시작 전일 수 있고, snapshot 수집도 host lifecycle과 맞물리므로 조회 API는
+비동기로 둔다.
 
 ### 10.2 IZLinkRegistryQueryClient
 
 다른 프로세스의 Registry를 원격 조회한다.
 `AddZLinkRegistryQueryClient(...)` 로 별도 등록한다.
-topology snapshot만 제공한다.
+topology snapshot만 제공한다. 원격 요청이므로 이 인터페이스도 비동기로 둔다.
 
 ### 10.3 runtime monitoring
 
@@ -1721,8 +1732,8 @@ public readonly record struct ZLinkSpotEvent(
   - source 이름은 logical discovery registration 이름을 쓴다.
   - 예: `profile.client.discovery`, `game.stage.discovery`
 - registry event
-  - 하부 raw monitor가 아니라 `StatusSnapshot()`, `TopologySnapshot()`,
-    `ServiceSummarySnapshot()`의 polling + diff로 만든다.
+  - 하부 raw monitor가 아니라 `StatusSnapshotAsync()`, `TopologySnapshotAsync()`,
+    `ServiceSummarySnapshotAsync()`의 polling + diff로 만든다.
 - spot event
   - 하부 raw monitor가 아니라 `StatusSnapshot()`, `PeersSnapshot()`,
     `SubjectsSnapshot()`의 polling + diff로 만든다.

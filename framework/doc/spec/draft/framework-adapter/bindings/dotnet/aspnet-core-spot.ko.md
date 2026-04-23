@@ -78,9 +78,10 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 
 여기서 경계를 분명히 하면, `SPOT`이 제공하는 것은 주소 가능한 논리 인스턴스와
 그 인스턴스에 대한 메시징, publish/subscribe, timer, lifecycle까지다.
-반면 membership, actor/session, room broadcast 정책 같은 것은 기본 `zlink
-framework` 범위를 넘어가는 상위 wrapper의 책임으로 두는 편이 맞다. actor join과
-actor factory도 같은 이유로 현재 framework core 기본 범위에는 넣지 않는다.
+반면 room broadcast 정책과 도메인별 권한 모델은 여전히 응용 계층 책임으로 둔다.
+현재 draft 구현에서는 actor join, actor factory 등록, stream callback에서
+`IZLinkActorRuntime`으로 actor packet/disconnect를 같은 `SPOT` 실행 문맥에 올리는
+브리지는 framework core 범위에 포함한다.
 
 ## 4. ASP.NET Core 등록 모델 초안
 
@@ -338,19 +339,21 @@ builder.Services.AddZLinkFramework(options =>
 
 ### 4.2 spot 실행 문맥과 timer
 
-이 부분은 framework가 새로 의미를 만드는 일보다, 하부 C API 계약을 그대로
-framework 표면으로 끌어올리는 성격이 더 강하다.
+이 부분은 "timer를 어디서 만들고 어느 문맥에서 실행하느냐"를 분명히 적어 두는
+것이 핵심이다.
 
 현재 core spec 기준으로 아래는 이미 정해져 있다.
 
 - 같은 `spot`의 dispatch callback delivery는 직렬화된다.
-- subscribe, routed, **channel reply**, timer readable 알림은 같은 dispatch event
-  축으로 올라온다.
-- `zlink_spot_timer_new(spot)`로 만든 timer는 해당 `spot`에 종속된다.
-- dispatch callback 안에서는 `zlink_timer_recv()`로 pending timer fire를 drain하고,
-  `zlink_spot_channel_reply_progress_from()`으로 channel reply completion을 drain한다.
+- subscribe, routed, **channel reply** completion은 같은 spot execution context 안에서
+  처리된다.
+- timer는 native timer를 직접 노출하지 않고, framework runtime이 만든 managed
+  `.NET` timer를 사용한다.
+- managed timer tick도 routed, subscribe, channel reply와 같은 직렬 실행 경로로
+  들어온다.
 
-channel reply completion 이 이제 같은 dispatch stream 안에 포함된다는 점이 핵심이다.
+channel reply completion 과 timer callback 이 같은 spot 실행 계약 안에 포함된다는
+점이 핵심이다.
 
 - `Spot.RequestChannelAsync(...)` 호출이 반환하는 `Task` 는 arbitrary thread 가
   아니라 **spot execution context 안에서** complete 된다.
@@ -366,10 +369,13 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다.
 | `SubscribeReadable` | `Spot` | `Subscribe()` |
 | `RoutedReadable` | `Spot` | `RecvRouted()` |
 | `ChannelReplyReadable` | `ChannelDealer` | `DrainChannelReplyFrom(subject)` |
-| `TimerReadable` | `Timer` | `((Timer)subject).Recv()` |
+
+timer는 이 low-level dispatch table에 직접 기대지 않고, framework runtime이 만든
+managed `.NET` timer tick을 같은 spot 문맥으로 enqueue해서 처리한다.
 
 즉 framework 문서에서 "같은 spot 문맥"이라고 설명하는 부분은 새 semantics를
-정하는 일이 아니라, 기존 core 계약을 `.NET` 사용자 눈높이로 풀어 적는 일에
+정하는 일이 아니라, 기존 core 계약과 framework-owned timer dispatch를 `.NET`
+사용자 눈높이로 풀어 적는 일에
 가깝다. channel reply 도 이제 그 "같은 spot 문맥" 안에 포함된다.
 
 ### 4.3 Spot 생성과 lifecycle 초안

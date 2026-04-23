@@ -201,7 +201,7 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                           != 0)
                     || (completion_socket
                         && poller_add_registration (
-                             poller_, completion_socket, NULL, ZLINK_POLLIN,
+                             poller_, completion_socket, user_data_, ZLINK_POLLIN,
                              socket_, poller_subject_spot_request_completion)
                              != 0)) {
                     const int err = errno;

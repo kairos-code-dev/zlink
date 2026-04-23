@@ -89,6 +89,24 @@ int drain_hidden_completion_registration (
     }
 }
 
+int fill_hidden_completion_event (const poller_registration_t *registration_,
+                                  zlink_poller_event_t *event_out_)
+{
+    if (!registration_ || !event_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    memset (event_out_, 0, sizeof (*event_out_));
+    event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
+    event_out_->socket = registration_->subject;
+    event_out_->fd = 0;
+    event_out_->timer = NULL;
+    event_out_->user_data = registration_->user_data;
+    event_out_->events = ZLINK_POLLIN;
+    return 0;
+}
+
 long remaining_timeout_ms (long timeout_ms_,
                            zlink::clock_t &clock_,
                            uint64_t deadline_ms_)
@@ -612,11 +630,24 @@ int zlink_poller_wait_all (void *poller_,
             const poller_registration_t *registration =
               find_registration_for_native (poller, native_events[i]);
             if (is_hidden_completion_registration (registration)) {
-                if (drain_hidden_completion_registration (registration) < 0) {
+                const int drain_rc =
+                  drain_hidden_completion_registration (registration);
+                if (drain_rc < 0) {
                     if (error_out_)
                         *error_out_ =
                           zlink::config_result_internal::from_errno (errno);
                     return -1;
+                }
+                if (drain_rc > 0 && registration && registration->user_data) {
+                    if (fill_hidden_completion_event (registration,
+                                                      &events_[public_count])
+                        != 0) {
+                        if (error_out_)
+                            *error_out_ = zlink::config_result_internal::from_errno (
+                              errno);
+                        return -1;
+                    }
+                    ++public_count;
                 }
                 continue;
             }

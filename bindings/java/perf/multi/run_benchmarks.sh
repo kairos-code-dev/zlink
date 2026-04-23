@@ -605,8 +605,22 @@ report="${report}.txt"
 
 tmp_metrics="$(mktemp)"
 tmp_progress="$(mktemp)"
-trap 'rm -f "${tmp_metrics}" "${tmp_progress}"' EXIT
+tmp_failures="$(mktemp)"
+trap 'rm -f "${tmp_metrics}" "${tmp_progress}" "${tmp_failures}"' EXIT
 metrics_regex='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
+
+expected_result_lines=0
+actual_result_lines=0
+
+record_failure() {
+  local pattern="$1"
+  local transport="$2"
+  local size="$3"
+  local run="$4"
+  local reason="$5"
+  printf '%s,%s,%s,%s,%s\n' \
+    "${pattern}" "${transport}" "${size}" "${run}" "${reason}" >> "${tmp_failures}"
+}
 
 append_metrics() {
   local public_pattern="$1"
@@ -636,9 +650,10 @@ append_metrics() {
   done < "${source_file}"
 
   if [[ "${required_count}" -ne 5 ]]; then
-    echo "missing required RESULT lines for ${public_pattern}/${transport}/${size} run=${run}" >&2
-    exit 1
+    return 1
   fi
+
+  actual_result_lines=$((actual_result_lines + required_count))
 }
 
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
@@ -731,6 +746,7 @@ for pattern_index in "${!patterns[@]}"; do
     transport_unsupported=0
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
+        expected_result_lines=$((expected_result_lines + 5))
         if (( RUNS > 1 )); then
           if (( run == 1 )) || (( size == msg_sizes[0] )); then
             :
@@ -762,6 +778,7 @@ for pattern_index in "${!patterns[@]}"; do
           "${stream_server_cmd[@]}" <"${fifo}" >"${server_log}" 2>&1 &
           server_pid=$!
           if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
+            record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
             wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
             exec 3>&-
             rm -f "${fifo}"
@@ -779,15 +796,21 @@ for pattern_index in "${!patterns[@]}"; do
           status_record="$(case_status "${pattern}" "${transport}" "${size}" "${client_log}")"
           case "${status_record%%,*}" in
             unsupported)
+              expected_result_lines=$((expected_result_lines - 5))
               transport_unsupported=1
               break
               ;;
             fail)
+              record_failure "${pattern}" "${transport}" "${size}" "${run}" "${status_record#*,}"
               transport_failures=$((transport_failures + 1))
               continue
               ;;
           esac
-          append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${client_log}"
+          if ! append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${client_log}"; then
+            record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
+            transport_failures=$((transport_failures + 1))
+            continue
+          fi
           row="$(format_progress_row "${bare_pattern}" "${transport}" "${size}" "${client_log}" "      ")"
           echo "${row}"
           echo "${row}" >> "${tmp_progress}"
@@ -820,6 +843,7 @@ for pattern_index in "${!patterns[@]}"; do
         "${server_cmd[@]}" <"${server_fifo}" >"${server_log}" 2>&1 &
         server_pid=$!
         if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
+          record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
           wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
           exec {server_fd}>&-
           rm -f "${server_fifo}" "${client_fifo}"
@@ -844,6 +868,7 @@ for pattern_index in "${!patterns[@]}"; do
         client_pid=$!
         if is_start_gated_pattern "${bare_pattern}"; then
           if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${CONNECT_READY_TIMEOUT_MS}" >/dev/null; then
+            record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_ready_timeout"
             wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
             wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
             exec {client_fd}>&-
@@ -869,15 +894,21 @@ for pattern_index in "${!patterns[@]}"; do
         status_record="$(case_status "${pattern}" "${transport}" "${size}" "${metric_log}")"
         case "${status_record%%,*}" in
           unsupported)
+            expected_result_lines=$((expected_result_lines - 5))
             transport_unsupported=1
             break
             ;;
           fail)
+            record_failure "${pattern}" "${transport}" "${size}" "${run}" "${status_record#*,}"
             transport_failures=$((transport_failures + 1))
             continue
             ;;
         esac
-        append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${metric_log}"
+        if ! append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${metric_log}"; then
+          record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
+          transport_failures=$((transport_failures + 1))
+          continue
+        fi
         row="$(format_progress_row "${bare_pattern}" "${transport}" "${size}" "${metric_log}" "      ")"
         echo "${row}"
         echo "${row}" >> "${tmp_progress}"
@@ -913,19 +944,22 @@ for pattern_index in "${!patterns[@]}"; do
   fi
 done
 
-python3 - "${tmp_metrics}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
+python_status=0
+python3 - "${tmp_metrics}" "${tmp_failures}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
   "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
   "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
   "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
   "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" "${SERVER_BIND_PORT}" \
-  "${CONNECT_CONCURRENCY}" "${tmp_progress}" <<'PY'
+  "${CONNECT_CONCURRENCY}" "${tmp_progress}" "${expected_result_lines}" "${actual_result_lines}" <<'PY' || python_status=$?
 import csv
 import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path = sys.argv[1:]
+metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path, expected_result_lines, actual_result_lines = sys.argv[1:]
 runs = int(runs)
+expected_result_lines = int(expected_result_lines)
+actual_result_lines = int(actual_result_lines)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
 
@@ -934,6 +968,7 @@ patterns = []
 pattern_transports = defaultdict(list)
 pattern_sizes = defaultdict(list)
 pattern_clients = {}
+failures = []
 
 with open(metrics_path, newline="", encoding="utf-8") as f:
     reader = csv.reader(f)
@@ -949,6 +984,13 @@ with open(metrics_path, newline="", encoding="utf-8") as f:
             rows[key][metric].append(float(value))
         except ValueError:
             rows[key][metric].append(math.nan)
+
+with open(failures_path, newline="", encoding="utf-8") as f:
+    reader = csv.reader(f)
+    for row in reader:
+        if len(row) != 5:
+            continue
+        failures.append(row)
 
 for pattern in pattern_sizes:
     pattern_sizes[pattern].sort()
@@ -980,8 +1022,6 @@ def fmt_latency_ms(value):
 def fmt_size(size):
     return f"{size}B"
 
-expected = 0
-actual = 0
 lines = []
 
 def emit(line=""):
@@ -1034,9 +1074,6 @@ for pattern in patterns:
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             metric_values = {metric: median(rows[key].get(metric, [])) for metric in all_metrics}
-            expected += 5
-            if all(rows[key].get(metric) for metric in required_metrics):
-                actual += 5
             emit(
                 f"| {fmt_size(size)} | {fmt_rate(metric_values['throughput'])} {rate_unit} | "
                 f"{fmt_bandwidth(metric_values['bandwidth'])} | "
@@ -1056,18 +1093,24 @@ for line in result_lines:
 
 emit("")
 emit_effective_options("result")
+status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
 emit("## Completion")
-emit(f"- status: {'complete' if expected == actual else 'partial'}")
-emit(f"- expected_result_lines: {expected}")
-emit(f"- actual_result_lines: {actual}")
+emit(f"- status: {status}")
+emit(f"- expected_result_lines: {expected_result_lines}")
+emit(f"- actual_result_lines: {actual_result_lines}")
 emit("")
 emit("## Failures")
+if failures:
+    for pattern, transport, size, run, reason in failures:
+        emit(f"- pattern={pattern} transport={transport} size={size} run={run} reason={reason}")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as report_file:
     report_file.write(text)
 sys.stdout.write(text)
+sys.exit(0 if status == "complete" else 1)
 PY
 
 prune_reports "${RESULTS_ROOT}/multi/report"
 echo "saved report: ${report}"
+exit "${python_status}"

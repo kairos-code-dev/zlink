@@ -566,6 +566,18 @@ REPORT="${RESULTS_ROOT}/multi/report/${report_base}.txt"
 : > "${REPORT}"
 prune_report_dir "${RESULTS_ROOT}/multi/report" \
   "${PERF_RESULTS_MAX_FILES:-100}"
+FAILURES_FILE="${RESULTS_ROOT}/multi/tmp/${report_base}.failures.csv"
+: > "${FAILURES_FILE}"
+
+record_failure() {
+  local pattern="${1:-}"
+  local transport="${2:-}"
+  local size="${3:-}"
+  local run_index="${4:-}"
+  local reason="${5:-}"
+  printf '%s,%s,%s,%s,%s\n' \
+    "${pattern}" "${transport}" "${size}" "${run_index}" "${reason}" >> "${FAILURES_FILE}"
+}
 
 ensure_build_output
 
@@ -668,6 +680,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
           cat "${server_log}" >&2 || true
           echo "server did not become ready for ${pattern} ${transport} ${size}" >&2
+          record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "server_ready_timeout"
           terminate_pid "${server_pid}"
           if [[ -n "${server_control_fd}" ]]; then
             exec {server_control_fd}>&-
@@ -695,7 +708,12 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
               exec {server_control_fd}>&-
               continue
             fi
-            extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
+            if ! extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"; then
+              record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
+              status=1
+              exec {server_control_fd}>&-
+              continue
+            fi
           else
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
@@ -709,6 +727,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             cat "${client_log}" >&2 || true
             printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
             status=1
             exec {server_control_fd}>&-
             continue
@@ -742,6 +761,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             terminate_pid "${client_pid}"
             printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "client_ready_timeout"
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             status=1
@@ -767,6 +787,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${client_pid}"
             terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "result_timeout"
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             status=1
@@ -791,7 +812,13 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             exec {client_control_fd}>&-
             continue
           fi
-          extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
+          if ! extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"; then
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
+            status=1
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            continue
+          fi
           exec {server_control_fd}>&-
           exec {client_control_fd}>&-
         elif [[ "${pattern}" == "MULTI_DEALER_DEALER" || "${pattern}" == "MULTI_PUBSUB" || "${pattern}" == "MULTI_SPOT_REQREP" ]]; then
@@ -822,6 +849,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             terminate_pid "${client_pid}"
             printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "client_ready_timeout"
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             status=1
@@ -852,6 +880,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             printf 'STOP\n' >&${server_control_fd} || true
             terminate_pid "${client_pid}"
             terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "result_timeout"
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             status=1
@@ -877,7 +906,13 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             exec {client_control_fd}>&-
             continue
           fi
-          extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
+          if ! extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"; then
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
+            status=1
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            continue
+          fi
           exec {server_control_fd}>&-
           exec {client_control_fd}>&-
         else
@@ -897,7 +932,11 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
               expected_result_lines=$((expected_result_lines - 5))
               continue
             fi
-            extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"
+            if ! extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"; then
+              record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
+              status=1
+              continue
+            fi
           else
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
@@ -908,6 +947,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
             status=1
             continue
           fi
@@ -939,8 +979,6 @@ print_line "- transports: ${TRANSPORTS}"
 print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
 print_line "- clients: ${CLIENTS:-default(pattern)}"
 print_line "- duration_seconds: ${DURATION}"
-print_line "- expected_result_lines: ${expected_result_lines}"
-print_line "- actual_result_lines: ${result_lines}"
 print_line "- pin_cpu: off"
 if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
   completion_status="complete"
@@ -948,7 +986,18 @@ else
   completion_status="partial"
   status=1
 fi
+print_line ""
+print_line "## Completion"
 print_line "- status: ${completion_status}"
+print_line "- expected_result_lines: ${expected_result_lines}"
+print_line "- actual_result_lines: ${result_lines}"
+print_line ""
+print_line "## Failures"
+if [[ -s "${FAILURES_FILE}" ]]; then
+  while IFS=',' read -r pattern transport size run_index reason; do
+    print_line "- pattern=${pattern} transport=${transport} size=${size} run=${run_index} reason=${reason}"
+  done < "${FAILURES_FILE}"
+fi
 
 echo "saved report: ${REPORT}"
 exit "${status}"

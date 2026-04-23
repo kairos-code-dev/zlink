@@ -400,6 +400,18 @@ cleanup_tmp_dir() {
   fi
 }
 trap cleanup_tmp_dir EXIT
+FAILURES_FILE="${TMP_DIR}/failures.csv"
+: > "${FAILURES_FILE}"
+
+record_failure() {
+  local pattern="${1:-}"
+  local transport="${2:-}"
+  local size="${3:-}"
+  local run_index="${4:-}"
+  local reason="${5:-}"
+  printf '%s,%s,%s,%s,%s\n' \
+    "${pattern}" "${transport}" "${size}" "${run_index}" "${reason}" >> "${FAILURES_FILE}"
+}
 
 platform="$(normalize_platform)"
 timestamp="$(date +%Y%m%d_%H%M%S)"
@@ -481,7 +493,11 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             expected_result_lines=$((expected_result_lines - 5))
             continue
           fi
-          extracted="$(extract_required_results "${tmp_log}" "${pattern}" "${transport}" "${size}")"
+          if ! extracted="$(extract_required_results "${tmp_log}" "${pattern}" "${transport}" "${size}")"; then
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
+            status=1
+            continue
+          fi
           while IFS= read -r result_line; do
             [[ -n "${result_line}" ]] || continue
             print_line "${result_line}"
@@ -496,6 +512,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
           cat "${tmp_log}" >&2 || true
           echo "FAIL pattern=${pattern} transport=${transport} size=${size} run=${run_index}" >&2
+          record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
           status=1
         fi
       done
@@ -518,15 +535,24 @@ print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS:-auto(pattern)}"
 print_line "- msg_sizes: ${MSG_SIZES}"
 print_line "- pin_cpu: off"
-print_line "- expected_result_lines: ${expected_result_lines}"
-print_line "- actual_result_lines: ${result_lines}"
 if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
   completion_status="complete"
 else
   completion_status="partial"
   status=1
 fi
+print_line ""
+print_line "## Completion"
 print_line "- status: ${completion_status}"
+print_line "- expected_result_lines: ${expected_result_lines}"
+print_line "- actual_result_lines: ${result_lines}"
+print_line ""
+print_line "## Failures"
+if [[ -s "${FAILURES_FILE}" ]]; then
+  while IFS=',' read -r pattern transport size run_index reason; do
+    print_line "- pattern=${pattern} transport=${transport} size=${size} run=${run_index} reason=${reason}"
+  done < "${FAILURES_FILE}"
+fi
 
 echo "saved report: ${REPORT}"
 exit "${status}"

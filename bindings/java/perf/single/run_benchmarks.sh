@@ -195,7 +195,8 @@ fi
 report="${report}.txt"
 
 tmp_metrics="$(mktemp)"
-trap 'rm -f "${tmp_metrics}"' EXIT
+tmp_failures="$(mktemp)"
+trap 'rm -f "${tmp_metrics}" "${tmp_failures}"' EXIT
 
 metrics_regex='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 runner_cmd=("${RUNNER}")
@@ -211,6 +212,19 @@ if [[ "${PIN_CPU}" -eq 1 ]]; then
   runner_cmd=("taskset" "-c" "0" "${RUNNER}")
 fi
 
+expected_result_lines=0
+actual_result_lines=0
+
+record_failure() {
+  local pattern="$1"
+  local transport="$2"
+  local size="$3"
+  local run="$4"
+  local reason="$5"
+  printf '%s,%s,%s,%s,%s\n' \
+    "${pattern}" "${transport}" "${size}" "${run}" "${reason}" >> "${tmp_failures}"
+}
+
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
 IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${MSG_SIZES}")"
 
@@ -220,6 +234,7 @@ for pattern in "${patterns[@]}"; do
   for transport in "${transports[@]}"; do
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
+        expected_result_lines=$((expected_result_lines + 5))
         cmd=("${runner_cmd[@]}" "${pattern}" "${transport}" "${size}" \
           --duration "${DURATION}")
         if [[ -n "${IO_THREADS}" ]]; then
@@ -232,8 +247,16 @@ for pattern in "${patterns[@]}"; do
           cmd+=(--recv-hwm "${RECV_HWM}")
         fi
         cmd+=(--sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}")
-        output="$("${cmd[@]}")"
+        if ! output="$("${cmd[@]}" 2>&1)"; then
+          if printf '%s\n' "${output}" | grep -q '^UNSUPPORTED,'; then
+            expected_result_lines=$((expected_result_lines - 5))
+            continue
+          fi
+          record_failure "${pattern}" "${transport}" "${size}" "${run}" "process_exit_nonzero"
+          continue
+        fi
         if printf '%s\n' "${output}" | grep -q '^UNSUPPORTED,'; then
+          expected_result_lines=$((expected_result_lines - 5))
           continue
         fi
         while IFS= read -r line; do
@@ -244,29 +267,32 @@ for pattern in "${patterns[@]}"; do
           fi
           printf '%s,%s,%s,%s,%s,%s\n' \
             "${pattern}" "${transport}" "${size}" "${run}" "${metric}" "${value}" >> "${tmp_metrics}"
+          actual_result_lines=$((actual_result_lines + 1))
         done <<< "${output}"
         required_count="$(printf '%s\n' "${output}" \
           | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
         if [[ "${required_count}" -ne 5 ]]; then
-          echo "missing required RESULT lines for ${pattern}/${transport}/${size} run=${run}" >&2
-          exit 1
+          record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
         fi
       done
     done
   done
 done
 
-python3 - "${tmp_metrics}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" \
+python_status=0
+python3 - "${tmp_metrics}" "${tmp_failures}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
+  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" "${expected_result_lines}" "${actual_result_lines}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
-  "${RCVTIMEO_MS}" "${OUTPUT_PATH}" <<'PY'
+  "${RCVTIMEO_MS}" "${OUTPUT_PATH}" <<'PY' || python_status=$?
 import csv
 import math
 import sys
 from collections import defaultdict
 
-metrics_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
+metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, expected_result_lines, actual_result_lines, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
 runs = int(runs)
+expected_result_lines = int(expected_result_lines)
+actual_result_lines = int(actual_result_lines)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 all_metrics = required_metrics
 
@@ -274,6 +300,7 @@ rows = defaultdict(lambda: defaultdict(list))
 patterns = []
 pattern_transports = defaultdict(list)
 pattern_sizes = defaultdict(list)
+failures = []
 
 with open(metrics_path, newline="", encoding="utf-8") as f:
     reader = csv.reader(f)
@@ -289,6 +316,13 @@ with open(metrics_path, newline="", encoding="utf-8") as f:
             rows[key][metric].append(float(value))
         except ValueError:
             rows[key][metric].append(math.nan)
+
+with open(failures_path, newline="", encoding="utf-8") as f:
+    reader = csv.reader(f)
+    for row in reader:
+        if len(row) != 5:
+            continue
+        failures.append(row)
 
 for pattern in pattern_sizes:
     pattern_sizes[pattern].sort()
@@ -320,8 +354,6 @@ def fmt_latency_ms(value):
 def fmt_size(size):
     return f"{size}B"
 
-expected = 0
-actual = 0
 lines = []
 
 def emit(line=""):
@@ -362,9 +394,6 @@ for pattern in patterns:
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             metric_values = {metric: median(rows[key].get(metric, [])) for metric in all_metrics}
-            expected += 5
-            if all(rows[key].get(metric) for metric in required_metrics):
-                actual += 5
             emit(
                 f"| {fmt_size(size)} | {fmt_rate(metric_values['throughput'])} | "
                 f"{fmt_bandwidth(metric_values['bandwidth'])} | "
@@ -384,12 +413,16 @@ for line in result_lines:
 
 emit("")
 emit_effective_options("result")
+status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
 emit("## Completion")
-emit(f"- status: {'complete' if expected == actual else 'partial'}")
-emit(f"- expected_result_lines: {expected}")
-emit(f"- actual_result_lines: {actual}")
+emit(f"- status: {status}")
+emit(f"- expected_result_lines: {expected_result_lines}")
+emit(f"- actual_result_lines: {actual_result_lines}")
 emit("")
 emit("## Failures")
+if failures:
+    for pattern, transport, size, run, reason in failures:
+        emit(f"- pattern={pattern} transport={transport} size={size} run={run} reason={reason}")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as report_file:
@@ -398,6 +431,7 @@ if output_path:
     with open(output_path, "a", encoding="utf-8") as output_file:
         output_file.write(text)
 sys.stdout.write(text)
+sys.exit(0 if status == "complete" else 1)
 PY
 
 prune_reports "${RESULTS_ROOT}/single/report"
@@ -406,3 +440,4 @@ if [[ -n "${OUTPUT_PATH}" ]]; then
 else
   echo "saved report: ${report}"
 fi
+exit "${python_status}"

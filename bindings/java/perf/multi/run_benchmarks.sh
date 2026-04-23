@@ -808,7 +808,7 @@ run_socket_case() {
   exec {server_fd}>&-
   rm -f "${server_fifo}" "${client_fifo}"
 
-  if [[ "${bare_pattern}" == "DEALER_DEALER" || "${bare_pattern}" == "DEALER_ROUTER" \
+  if [[ "${bare_pattern}" == "DEALER_ROUTER" \
      || "${bare_pattern}" == "ROUTER_ROUTER" || "${bare_pattern}" == "PUBSUB" \
      || "${bare_pattern}" == "SPOT_REQREP" \
      || "${bare_pattern}" == "SPOT" ]]; then

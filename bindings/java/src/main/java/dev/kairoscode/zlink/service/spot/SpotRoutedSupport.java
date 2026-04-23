@@ -91,40 +91,25 @@ final class SpotRoutedSupport implements AutoCloseable {
     boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
-        List<Message> payload = clonePayload(parts);
-        try {
-            submitSpotSendSpot(Objects.requireNonNull(destNodeRid,
-                "destNodeRid"), Objects.requireNonNull(destSpotRid,
-                "destSpotRid"), payload, flags == SendFlags.DONT_WAIT);
-            return true;
-        } finally {
-            closeAll(payload);
-        }
+        submitSpotSendSpot(Objects.requireNonNull(destNodeRid,
+            "destNodeRid"), Objects.requireNonNull(destSpotRid,
+            "destSpotRid"), parts, flags == SendFlags.DONT_WAIT);
+        return true;
     }
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                      long requestSeq, List<Message> parts, SendFlags flags) {
         requireReplyFlagsSupported(flags);
-        List<Message> payload = clonePayload(parts);
-        try {
-            submitSpotReplySpot(Objects.requireNonNull(destNodeRid,
-                "destNodeRid"), Objects.requireNonNull(destSpotRid,
-                "destSpotRid"), requestSeq, payload);
-        } finally {
-            closeAll(payload);
-        }
+        submitSpotReplySpot(Objects.requireNonNull(destNodeRid,
+            "destNodeRid"), Objects.requireNonNull(destSpotRid,
+            "destSpotRid"), requestSeq, parts);
     }
 
     void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts,
                        SendFlags flags) {
         requireReplyFlagsSupported(flags);
-        List<Message> payload = clonePayload(parts);
-        try {
-            submitSpotReplyRouter(Objects.requireNonNull(peerRid, "peerRid"),
-                requestSeq, payload);
-        } finally {
-            closeAll(payload);
-        }
+        submitSpotReplyRouter(Objects.requireNonNull(peerRid, "peerRid"),
+            requestSeq, parts);
     }
 
     Received recvRouted(RecvFlags flags) {
@@ -377,17 +362,14 @@ final class SpotRoutedSupport implements AutoCloseable {
                                                               NativeRequest request) {
         long timeoutMs = timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
-        List<Message> payload = clonePayload(parts);
         CompletableFuture<Received> future = registerPending(requestId, timeoutMs);
         try (Arena arena = Arena.ofConfined()) {
-            int rc = request.invoke(arena, payload, requestId, timeoutMs);
+            int rc = request.invoke(arena, parts, requestId, timeoutMs);
             if (rc != 0) {
-                closeAll(payload);
                 future.cancel(false);
                 throw new SubmitException(SubmitResult.fromValue(rc));
             }
         } catch (RuntimeException ex) {
-            closeAll(payload);
             PENDING.remove(requestId);
             future.cancel(false);
             throw ex;
@@ -407,14 +389,11 @@ final class SpotRoutedSupport implements AutoCloseable {
     }
 
     private void sendViaNative(List<Message> parts, NativeSubmit submitter) {
-        List<Message> payload = clonePayload(parts);
         try (Arena arena = Arena.ofConfined()) {
-            int rc = submitter.invoke(arena, payload);
+            int rc = submitter.invoke(arena, parts);
             if (rc != 0) {
                 throw new SubmitException(SubmitResult.fromValue(rc));
             }
-        } finally {
-            closeAll(payload);
         }
     }
 
@@ -485,20 +464,9 @@ final class SpotRoutedSupport implements AutoCloseable {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-            try {
-                int rc = Native.spotReplySpotPart(handle(), nodeRid, spotRid,
-                    requestSeq, nativeMsg, partFlag);
-                if (rc != 0) {
-                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
-                        false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                    anchor);
-                throw ex;
-            }
+            InternalAccess.messageCopyTo(part, nativeMsg);
+            return Native.spotReplySpotPart(handle(), nodeRid, spotRid,
+                requestSeq, nativeMsg, partFlag);
         }
     }
 
@@ -511,20 +479,9 @@ final class SpotRoutedSupport implements AutoCloseable {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-            try {
-                int rc = Native.spotSendSpotPart(handle(), nodeRid, spotRid,
-                    nativeMsg, flags, partFlag);
-                if (rc != 0) {
-                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
-                        false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                    anchor);
-                throw ex;
-            }
+            InternalAccess.messageCopyTo(part, nativeMsg);
+            return Native.spotSendSpotPart(handle(), nodeRid, spotRid,
+                nativeMsg, flags, partFlag);
         }
     }
 
@@ -535,20 +492,9 @@ final class SpotRoutedSupport implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-            try {
-                int rc = Native.spotReplyRouterPart(handle(), nativeRid,
-                    requestSeq, nativeMsg, partFlag);
-                if (rc != 0) {
-                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
-                        false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                    anchor);
-                throw ex;
-            }
+            InternalAccess.messageCopyTo(part, nativeMsg);
+            return Native.spotReplyRouterPart(handle(), nativeRid,
+                requestSeq, nativeMsg, partFlag);
         }
     }
 
@@ -727,27 +673,6 @@ final class SpotRoutedSupport implements AutoCloseable {
             }
         } finally {
             NativeMsg.multipartClose(parts, partCount);
-        }
-    }
-
-    private static List<Message> clonePayload(List<Message> parts) {
-        Objects.requireNonNull(parts, "parts");
-        if (parts.isEmpty()) {
-            throw new IllegalArgumentException("parts must not be empty");
-        }
-        Message[] copies = new Message[parts.size()];
-        for (int i = 0; i < copies.length; i++) {
-            copies[i] = InternalAccess.messageSharedCopyOf(parts.get(i));
-        }
-        return List.of(copies);
-    }
-
-    private static void closeAll(List<Message> parts) {
-        for (Message part : parts) {
-            try {
-                part.close();
-            } catch (RuntimeException ignored) {
-            }
         }
     }
 

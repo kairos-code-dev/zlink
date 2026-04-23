@@ -12,13 +12,13 @@ public static class ProtoCodec
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(parser);
-        return parser.ParseFrom(message.AsReadOnlySpan().ToArray());
+        return parser.ParseFrom(message.AsReadOnlySpan());
     }
 
     public static Message Encode<T>(this T value)
         where T : IMessage<T>
     {
         ArgumentNullException.ThrowIfNull(value);
-        return Message.FromBytes(value.ToByteArray());
+        return Message.FromOwnedBytes(value.ToByteArray());
     }
 }

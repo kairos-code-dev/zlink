@@ -24,13 +24,9 @@ internal static class RequestReplySupport
         return cloned;
     }
 
-    internal static Received CloneReceived(Received source)
+    internal static IReadOnlyList<Message> TakeOwnedParts(Received source)
     {
-        Message[] parts = new Message[source.Parts.Count];
-        for (int i = 0; i < source.Parts.Count; i++)
-            parts[i] = CloneMessage(source.Parts[i]);
-        return Received.Create(source.RoutingId, parts, source.RequestSeq,
-            source.SpotRid);
+        return source.TakePartsOwnership();
     }
 
     internal static void DisposeParts(IEnumerable<Message> parts)

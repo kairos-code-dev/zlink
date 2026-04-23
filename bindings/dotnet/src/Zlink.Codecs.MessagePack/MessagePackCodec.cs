@@ -10,12 +10,12 @@ public static class MessagePackCodec
     public static T Decode<T>(this Message message, MessagePackSerializerOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(message);
-        return MessagePackSerializer.Deserialize<T>(message.AsReadOnlyMemory(), options);
+        return MessagePackSerializer.Deserialize<T>(message.AsReadOnlySpan(), options);
     }
 
     public static Message Encode<T>(this T value, MessagePackSerializerOptions? options = null)
     {
         byte[] payload = MessagePackSerializer.Serialize(value, options);
-        return Message.FromBytes(payload);
+        return Message.FromOwnedBytes(payload);
     }
 }

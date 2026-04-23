@@ -172,6 +172,15 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return message;
     }
 
+    public static Message FromOwnedBytes(byte[] data)
+    {
+        if (data == null)
+            throw new ArgumentNullException(nameof(data));
+        var message = new Message(false);
+        message.InitializeManagedOwned(data);
+        return message;
+    }
+
     public static Message FromBytes(ReadOnlySpan<byte> data)
     {
         var message = new Message(false);
@@ -663,6 +672,13 @@ public sealed class Message : IDisposable, IAsyncDisposable
     private void InitializeManagedCopy(ReadOnlySpan<byte> data)
     {
         _managedBytes = data.ToArray();
+        _managedLength = data.Length;
+        _valid = true;
+    }
+
+    private void InitializeManagedOwned(byte[] data)
+    {
+        _managedBytes = data;
         _managedLength = data.Length;
         _valid = true;
     }

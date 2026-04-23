@@ -26,4 +26,8 @@ public final class PerfSocketOptions {
     public static void recvTimeout(Socket socket, Duration value) {
         socket.options().recvTimeout(value);
     }
+
+    public static void linger(Socket socket, Duration value) {
+        socket.options().linger(value);
+    }
 }

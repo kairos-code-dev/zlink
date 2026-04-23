@@ -52,6 +52,11 @@ public final class Discovery implements AutoCloseable {
         return handle;
     }
 
+    /** Internal bridge for binding helpers. */
+    public MemorySegment handleInternal() {
+        return handle();
+    }
+
     /** Connects the discovery view to a registry router endpoint. */
     public void connectRegistry(String registryEndpoint) {
         try (Arena arena = Arena.ofConfined()) {

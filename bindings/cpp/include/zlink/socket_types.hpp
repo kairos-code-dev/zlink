@@ -32,9 +32,25 @@ take_parts (zlink_msg_t *parts_, size_t part_count_)
 
 struct request_state_t
 {
-    std::promise<std::vector<message_t>> promise;
+    std::unique_ptr<std::promise<std::vector<message_t>>> promise;
     std::function<void(request_result_t, std::vector<message_t>)> on_complete;
 };
+
+inline request_state_t *make_future_request_state ()
+{
+    request_state_t *state = new request_state_t ();
+    state->promise.reset (new std::promise<std::vector<message_t>> ());
+    return state;
+}
+
+inline request_state_t *
+make_callback_request_state (
+  std::function<void(request_result_t, std::vector<message_t>)> callback_)
+{
+    request_state_t *state = new request_state_t ();
+    state->on_complete = std::move (callback_);
+    return state;
+}
 
 inline std::function<void()> make_socket_request_progress (void *socket_)
 {
@@ -69,16 +85,21 @@ inline void complete_request_state (request_state_t *state_,
             holder->on_complete (
               static_cast<request_result_t> (result_),
               std::vector<message_t> ());
-        holder->promise.set_exception (
-          std::make_exception_ptr (
-            request_error_t (static_cast<request_result_t> (result_))));
+        if (holder->promise) {
+            holder->promise->set_exception (
+              std::make_exception_ptr (
+                request_error_t (static_cast<request_result_t> (result_))));
+        }
         return;
     }
 
     std::vector<message_t> parts = take_parts (parts_, part_count_);
-    if (holder->on_complete)
-        holder->on_complete (request_result_t::ok, parts);
-    holder->promise.set_value (std::move (parts));
+    if (holder->on_complete) {
+        holder->on_complete (request_result_t::ok, std::move (parts));
+        return;
+    }
+    if (holder->promise)
+        holder->promise->set_value (std::move (parts));
 }
 
 inline void request_callback_trampoline (zlink_request_result_t result_,
@@ -349,8 +370,9 @@ class dealer_socket_t : public message_socket_t
     request (std::vector<message_t> &parts_,
              std::chrono::milliseconds timeout_ = {})
     {
-        detail::request_state_t *state = new detail::request_state_t ();
-        std::future<std::vector<message_t>> future = state->promise.get_future ();
+        detail::request_state_t *state = detail::make_future_request_state ();
+        std::future<std::vector<message_t>> future =
+          state->promise->get_future ();
         std::vector<zlink_msg_t> native;
         if (detail::move_parts_to_native (parts_, native) != 0) {
             delete state;
@@ -398,8 +420,8 @@ class dealer_socket_t : public message_socket_t
                   send_flags_t flags_ = send_flags_t::none,
                   std::chrono::milliseconds timeout_ = {})
     {
-        detail::request_state_t *state = new detail::request_state_t ();
-        state->on_complete = std::move (callback_);
+        detail::request_state_t *state =
+          detail::make_callback_request_state (std::move (callback_));
         std::vector<zlink_msg_t> native;
         if (detail::move_parts_to_native (parts_, native) != 0) {
             delete state;
@@ -556,8 +578,9 @@ class router_socket_t : public routed_message_socket_t
              std::vector<message_t> &parts_,
              std::chrono::milliseconds timeout_ = {})
     {
-        detail::request_state_t *state = new detail::request_state_t ();
-        std::future<std::vector<message_t>> future = state->promise.get_future ();
+        detail::request_state_t *state = detail::make_future_request_state ();
+        std::future<std::vector<message_t>> future =
+          state->promise->get_future ();
         std::vector<zlink_msg_t> native;
         if (detail::move_parts_to_native (parts_, native) != 0) {
             delete state;
@@ -608,8 +631,8 @@ class router_socket_t : public routed_message_socket_t
                   send_flags_t flags_ = send_flags_t::none,
                   std::chrono::milliseconds timeout_ = {})
     {
-        detail::request_state_t *state = new detail::request_state_t ();
-        state->on_complete = std::move (callback_);
+        detail::request_state_t *state =
+          detail::make_callback_request_state (std::move (callback_));
         std::vector<zlink_msg_t> native;
         if (detail::move_parts_to_native (parts_, native) != 0) {
             delete state;
@@ -748,8 +771,9 @@ class router_socket_t : public routed_message_socket_t
                      message_t message_,
                      std::chrono::milliseconds timeout_ = {})
     {
-        detail::request_state_t *state = new detail::request_state_t ();
-        std::future<std::vector<message_t>> future = state->promise.get_future ();
+        detail::request_state_t *state = detail::make_future_request_state ();
+        std::future<std::vector<message_t>> future =
+          state->promise->get_future ();
         std::vector<message_t> parts;
         parts.push_back (std::move (message_));
         std::vector<zlink_msg_t> native;
@@ -790,8 +814,8 @@ class router_socket_t : public routed_message_socket_t
       send_flags_t flags_ = send_flags_t::none,
       std::chrono::milliseconds timeout_ = {})
     {
-        detail::request_state_t *state = new detail::request_state_t ();
-        state->on_complete = std::move (callback_);
+        detail::request_state_t *state =
+          detail::make_callback_request_state (std::move (callback_));
         std::vector<message_t> parts;
         parts.push_back (std::move (message_));
         std::vector<zlink_msg_t> native;

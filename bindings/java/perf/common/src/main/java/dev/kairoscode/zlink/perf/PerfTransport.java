@@ -55,6 +55,7 @@ final class PerfTransport {
     }
 
     static void applySocketOptions(Socket socket, PerfUtil.Config config) {
+        PerfSocketOptions.linger(socket, Duration.ZERO);
         if (config.sendHwm() > 0) {
             PerfSocketOptions.sendHwm(socket, config.sendHwm());
         }

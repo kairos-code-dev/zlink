@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Buffers;
 using System.Text.Json;
 using Zlink;
 
@@ -17,11 +16,8 @@ public static class JsonMessageExtensions
 
     public static Message ToMessage<T>(this T value)
     {
-        var buffer = new ArrayBufferWriter<byte>();
-        using var writer = new Utf8JsonWriter(buffer);
-        JsonSerializer.Serialize(writer, value);
-        writer.Flush();
-        return new Message(buffer.WrittenSpan);
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(value);
+        return Message.FromOwnedBytes(payload);
     }
 
     public static Message ToJsonMessage<T>(this T value)

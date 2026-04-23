@@ -1907,9 +1907,15 @@ public abstract class Socket implements AutoCloseable {
                                   int readerIndex,
                                   int length,
                                   int sendFlags) {
-        byte[] tmp = new byte[length];
-        buf.getBytes(readerIndex, tmp);
-        int rc = send(tmp, 0, length, sendFlags);
+        int rc;
+        if (buf.hasArray()) {
+            rc = send(buf.array(),
+              buf.arrayOffset() + readerIndex, length, sendFlags);
+        } else {
+            byte[] tmp = new byte[length];
+            buf.getBytes(readerIndex, tmp);
+            rc = send(tmp, 0, length, sendFlags);
+        }
         if (rc > 0)
             buf.readerIndex(readerIndex + rc);
         return rc;
@@ -1919,9 +1925,15 @@ public abstract class Socket implements AutoCloseable {
                                          int readerIndex,
                                          int length,
                                          int sendFlags) {
-        byte[] tmp = new byte[length];
-        buf.getBytes(readerIndex, tmp);
-        boolean sent = sendNoWaitResult(tmp, 0, length, sendFlags);
+        boolean sent;
+        if (buf.hasArray()) {
+            sent = sendNoWaitResult(buf.array(),
+              buf.arrayOffset() + readerIndex, length, sendFlags);
+        } else {
+            byte[] tmp = new byte[length];
+            buf.getBytes(readerIndex, tmp);
+            sent = sendNoWaitResult(tmp, 0, length, sendFlags);
+        }
         if (sent)
             buf.readerIndex(readerIndex + length);
         return sent;
@@ -1934,8 +1946,15 @@ public abstract class Socket implements AutoCloseable {
         try (Message frame = nextRecvFrame(flags, false)) {
             int rc = Math.min(writable, frame.size());
             if (rc > 0) {
-                ByteBuffer src = frame.dataSegment().asSlice(0, rc).asByteBuffer();
-                buf.setBytes(writerIndex, src);
+                if (buf.hasArray()) {
+                    MemorySegment.copy(frame.dataSegment(rc), 0,
+                      MemorySegment.ofArray(buf.array()),
+                      (long) buf.arrayOffset() + writerIndex, rc);
+                } else {
+                    ByteBuffer src = frame.dataSegment().asSlice(0, rc)
+                      .asByteBuffer();
+                    buf.setBytes(writerIndex, src);
+                }
                 buf.writerIndex(writerIndex + rc);
             }
             return rc;
@@ -1951,8 +1970,15 @@ public abstract class Socket implements AutoCloseable {
                 return -1;
             int rc = Math.min(writable, frame.size());
             if (rc > 0) {
-                ByteBuffer src = frame.dataSegment().asSlice(0, rc).asByteBuffer();
-                buf.setBytes(writerIndex, src);
+                if (buf.hasArray()) {
+                    MemorySegment.copy(frame.dataSegment(rc), 0,
+                      MemorySegment.ofArray(buf.array()),
+                      (long) buf.arrayOffset() + writerIndex, rc);
+                } else {
+                    ByteBuffer src = frame.dataSegment().asSlice(0, rc)
+                      .asByteBuffer();
+                    buf.setBytes(writerIndex, src);
+                }
                 buf.writerIndex(writerIndex + rc);
             }
             return rc;

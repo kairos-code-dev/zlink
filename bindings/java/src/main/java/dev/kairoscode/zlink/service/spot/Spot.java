@@ -34,6 +34,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -156,6 +157,11 @@ public final class Spot implements AutoCloseable {
     /** Returns the native spot handle. */
     MemorySegment handle() {
         return handle;
+    }
+
+    /** Internal bridge for binding helpers. */
+    public MemorySegment handleInternal() {
+        return handle();
     }
 
     /** Sets the logical routing id for this spot. */
@@ -415,7 +421,7 @@ public final class Spot implements AutoCloseable {
               .whenComplete((reply, error) -> {
                   List<Message> response = List.of();
                   if (reply != null) {
-                      response = List.copyOf(reply);
+                      response = reply;
                   }
                   callback.accept(error == null ? RequestResult.OK
                       : requestResult(error), response);
@@ -505,18 +511,15 @@ public final class Spot implements AutoCloseable {
       SendFlags flags) {
         long timeoutMs = timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
-        List<Message> payload = clonePayload(parts);
         CompletableFuture<Received> future = registerPending(requestId,
           timeoutMs);
         startRequestProgress(future);
         try {
-            submitSpotRequestChannel(channelName, payload, REPLY_CALLBACK,
+            submitSpotRequestChannel(channelName, parts, REPLY_CALLBACK,
                 MemorySegment.ofAddress(requestId),
                 Objects.requireNonNull(flags, "flags").value(),
                 toTimeoutInt(timeoutMs));
-            closeAll(payload);
         } catch (RuntimeException ex) {
-            closeAll(payload);
             PENDING.remove(requestId);
             future.cancel(false);
             throw ex;
@@ -884,8 +887,8 @@ public final class Spot implements AutoCloseable {
             length--;
         if (length == 0)
             return "";
-        return new String(topicBytes.asSlice(0, length).toArray(
-          ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+        ByteBuffer buffer = topicBytes.asSlice(0, length).asByteBuffer();
+        return StandardCharsets.UTF_8.decode(buffer).toString();
     }
 
     private void recordCallbackFailure(RuntimeException failure) {
@@ -909,7 +912,8 @@ public final class Spot implements AutoCloseable {
                 MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
                 topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
                 MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                List<Message> parts = new java.util.ArrayList<>();
+                Message[] parts = new Message[4];
+                int partCount = 0;
                 RoutingId routingId = null;
                 String serviceName = "";
                 String topicId = "";
@@ -926,7 +930,7 @@ public final class Spot implements AutoCloseable {
                             success = true;
                             InternalAccess.messageFinishReceive(part,
                               hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                            if (parts.isEmpty()) {
+                            if (partCount == 0) {
                                 routingId = readRoutingIdPtr(
                                   ridOut.get(ValueLayout.ADDRESS, 0));
                                 serviceName = decodeTopic(serviceOut,
@@ -935,16 +939,19 @@ public final class Spot implements AutoCloseable {
                                 int topicLength = normalizeTopicLength(topicOut,
                                   TOPIC_CAPACITY,
                                   topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                                topicId = topicLength == 0 ? ""
-                                  : new String(topicOut.asSlice(0, topicLength)
-                                    .toArray(ValueLayout.JAVA_BYTE),
-                                    StandardCharsets.UTF_8);
+                                topicId = decodeTopic(topicOut, topicLength);
                             }
-                            parts.add(part);
+                            if (partCount == parts.length) {
+                                parts = java.util.Arrays.copyOf(parts,
+                                  partCount * 2);
+                            }
+                            parts[partCount++] = part;
                             if (!InternalAccess.messageMore(part)) {
                                 return Optional.of(new TopicMessage(routingId,
                                   serviceName.isEmpty() ? null : serviceName,
-                                  topicId, parts.toArray(Message[]::new)));
+                                  topicId,
+                                  partCount == parts.length ? parts
+                                    : java.util.Arrays.copyOf(parts, partCount)));
                             }
                             continue;
                         }
@@ -957,7 +964,12 @@ public final class Spot implements AutoCloseable {
                         }
                     }
                     int errno = Native.errno();
-                    Message.closeAll(parts);
+                    for (int i = 0; i < partCount; i++) {
+                        try {
+                            parts[i].close();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
                     if (errno == ERRNO_EINTR)
                         break;
                     if (nonBlocking && (errno == ERRNO_EAGAIN
@@ -989,9 +1001,7 @@ public final class Spot implements AutoCloseable {
                 if (rc == 0) {
                     int topicLength = normalizeTopicLength(topicOut,
                       TOPIC_CAPACITY, topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    String topicId = topicLength == 0 ? "" : new String(
-                      topicOut.asSlice(0, topicLength).toArray(
-                        ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+                    String topicId = decodeTopic(topicOut, topicLength);
                     return Optional.of(new SubscriptionEvent(
                       Optional.ofNullable(readRoutingId(rid)),
                       Optional.empty(), topicId,
@@ -1084,26 +1094,6 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    private static List<Message> clonePayload(List<Message> parts) {
-        Objects.requireNonNull(parts, "parts");
-        if (parts.isEmpty())
-            throw new IllegalArgumentException("parts must not be empty");
-        Message[] copies = new Message[parts.size()];
-        for (int i = 0; i < copies.length; i++) {
-            copies[i] = InternalAccess.messageSharedCopyOf(parts.get(i));
-        }
-        return List.of(copies);
-    }
-
-    private static void closeAll(List<Message> parts) {
-        for (Message part : parts) {
-            try {
-                part.close();
-            } catch (RuntimeException ignored) {
-            }
-        }
-    }
-
     private int spotPublishPartOnce(String serviceName, String topicId,
                                     Message part, int flags, int partFlag) {
         try (Arena arena = Arena.ofConfined()) {
@@ -1185,20 +1175,9 @@ public final class Spot implements AutoCloseable {
             MemorySegment service = NativeHelpers.toCString(arena,
               requireServiceName(channelName));
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-            try {
-                int rc = Native.spotRequestChannelPart(handle, service,
-                  nativeMsg, handler, userData, flags, partFlag, timeoutMs);
-                if (rc != 0) {
-                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
-                        false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                    anchor);
-                throw ex;
-            }
+            InternalAccess.messageCopyTo(part, nativeMsg);
+            return Native.spotRequestChannelPart(handle, service,
+              nativeMsg, handler, userData, flags, partFlag, timeoutMs);
         }
     }
 

@@ -593,7 +593,15 @@ public final class Message implements AutoCloseable {
     }
 
     void copyTo(MemorySegment destination) {
-        int rc = NativeMsg.msgCopy(destination, msg);
+        int rc = NativeMsg.msgInit(destination);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_msg_init");
+        rc = NativeMsg.msgCopy(destination, msg);
+        if (rc != 0)
+            try {
+                NativeMsg.msgClose(destination);
+            } catch (RuntimeException ignored) {
+            }
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_copy");
     }

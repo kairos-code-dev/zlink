@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Buffers;
 using Google.Protobuf;
 using Zlink;
 
@@ -23,10 +22,7 @@ public static class ProtobufMessageExtensions
         where T : IMessage<T>
     {
         ArgumentNullException.ThrowIfNull(value);
-
-        var buffer = new ArrayBufferWriter<byte>(value.CalculateSize());
-        value.WriteTo(buffer);
-        return new Message(buffer.WrittenSpan);
+        return Message.FromOwnedBytes(value.ToByteArray());
     }
 
     public static Message ToProtoMessage<T>(this T value)

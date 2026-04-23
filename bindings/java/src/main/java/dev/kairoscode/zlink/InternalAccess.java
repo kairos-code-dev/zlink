@@ -1,130 +1,118 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package dev.kairoscode.zlink.internal;
+package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.Received;
-import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.ServiceMonitor;
-import java.lang.foreign.MemorySegment;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.Spot;
+import java.lang.foreign.MemorySegment;
 import java.util.List;
 import java.util.function.BiConsumer;
 
 /**
- * Compatibility wrapper that forwards to the direct root-package bridge.
+ * Direct bridge for package-private binding internals used by service
+ * subpackages.
  */
 public final class InternalAccess {
-    private InternalAccess() {}
+    private InternalAccess() {
+    }
 
     public static MemorySegment contextHandle(Context context) {
-        return dev.kairoscode.zlink.InternalAccess.contextHandle(context);
+        return context.handle();
     }
 
     public static MemorySegment discoveryHandle(Discovery discovery) {
-        return dev.kairoscode.zlink.InternalAccess.discoveryHandle(discovery);
+        return discovery.handleInternal();
     }
 
     public static MemorySegment socketHandle(Socket socket) {
-        return dev.kairoscode.zlink.InternalAccess.socketHandle(socket);
+        return socket.handle();
     }
 
     public static MemorySegment spotHandle(Spot spot) {
-        return dev.kairoscode.zlink.InternalAccess.spotHandle(spot);
+        return spot.handleInternal();
     }
 
     public static ServiceMonitor serviceMonitor(MemorySegment handle) {
-        return dev.kairoscode.zlink.InternalAccess.serviceMonitor(handle);
+        return new ServiceMonitor(handle);
     }
 
     public static MemorySegment messageDataSegment(Message message) {
-        return dev.kairoscode.zlink.InternalAccess.messageDataSegment(message);
+        return message.dataSegment();
     }
 
     public static MemorySegment messageDataSegment(Message message,
                                                    int knownSize) {
-        return dev.kairoscode.zlink.InternalAccess.messageDataSegment(message,
-            knownSize);
+        return message.dataSegment(knownSize);
     }
 
     public static void messageCopyTo(Message message, MemorySegment destination) {
-        dev.kairoscode.zlink.InternalAccess.messageCopyTo(message, destination);
+        message.copyTo(destination);
     }
 
     public static void messageMoveTo(Message message, MemorySegment destination) {
-        dev.kairoscode.zlink.InternalAccess.messageMoveTo(message, destination);
+        message.moveTo(destination);
     }
 
     public static MemorySegment messageNativeHandle(Message message) {
-        return dev.kairoscode.zlink.InternalAccess.messageNativeHandle(message);
+        return message.nativeHandle();
     }
 
     public static void messageSetMore(Message message, boolean more) {
-        dev.kairoscode.zlink.InternalAccess.messageSetMore(message, more);
+        message.setMore(more);
     }
 
     public static boolean messageMore(Message message) {
-        return dev.kairoscode.zlink.InternalAccess.messageMore(message);
+        return message.more();
     }
 
     public static void messageFinishReceive(Message message, boolean more) {
-        dev.kairoscode.zlink.InternalAccess.messageFinishReceive(message, more);
+        message.finishReceive(more);
     }
 
     public static Object messageTransferTo(Message message,
                                            MemorySegment destination) {
-        return dev.kairoscode.zlink.InternalAccess.messageTransferTo(message,
-            destination);
+        return message.transferTo(destination);
     }
 
     public static void messageRestoreFromNative(Message message,
                                                 MemorySegment source,
                                                 boolean moreFlag,
                                                 Object anchor) {
-        dev.kairoscode.zlink.InternalAccess.messageRestoreFromNative(message,
-            source, moreFlag, anchor);
+        message.restoreFromNative(source, moreFlag, anchor);
     }
 
     public static Message messageSharedCopyOf(Message message) {
-        return dev.kairoscode.zlink.InternalAccess.messageSharedCopyOf(message);
+        return Message.sharedCopyOf(message);
     }
 
     public static Message[] messageFromMsgVector(MemorySegment partsAddr,
                                                  long count) {
-        return dev.kairoscode.zlink.InternalAccess.messageFromMsgVector(
-            partsAddr, count);
+        return Message.fromMsgVector(partsAddr, count);
     }
 
     public static Message[] messageFromOwnedMsgVector(MemorySegment partsAddr,
                                                       long count) {
-        return dev.kairoscode.zlink.InternalAccess.messageFromOwnedMsgVector(
-            partsAddr, count);
+        return Message.fromOwnedMsgVector(partsAddr, count);
     }
 
     public static Message[] messageFromOwnedMsgVectorShared(
-                                                  MemorySegment partsAddr,
-                                                  long count) {
-        return dev.kairoscode.zlink.InternalAccess
-            .messageFromOwnedMsgVectorShared(partsAddr, count);
+      MemorySegment partsAddr,
+      long count) {
+        return Message.fromOwnedMsgVectorShared(partsAddr, count);
     }
 
-    public static Received received(dev.kairoscode.zlink.RoutingId routingId,
-                                    Message[] parts) {
-        return dev.kairoscode.zlink.InternalAccess.received(routingId, parts);
+    public static Received received(RoutingId routingId, Message[] parts) {
+        return received(routingId, null, parts, 0L, false, null);
     }
 
-    public static Received received(dev.kairoscode.zlink.RoutingId routingId,
-                                    dev.kairoscode.zlink.RoutingId spotRid,
+    public static Received received(RoutingId routingId,
+                                    RoutingId spotRid,
                                     Message[] parts,
                                     long requestSeq,
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender) {
-        return dev.kairoscode.zlink.InternalAccess.received(routingId, spotRid,
-            parts, requestSeq, hasRequestSeq, replySender);
+        return new Received(routingId, spotRid, parts, true, requestSeq,
+            hasRequestSeq, replySender);
     }
 
     public static Received receivedLazy(byte[] routingIdBytes,
@@ -135,9 +123,8 @@ public final class InternalAccess {
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
-        return dev.kairoscode.zlink.InternalAccess.receivedLazy(
-            routingIdBytes, spotRidBytes, firstPart, cursor, requestSeq,
-            hasRequestSeq, replySender, onTerminalState);
+        return new Received(routingIdBytes, spotRidBytes, firstPart, cursor,
+            requestSeq, hasRequestSeq, replySender, onTerminalState);
     }
 
     public static Received receivedLazy(RoutingId routingId,
@@ -148,38 +135,35 @@ public final class InternalAccess {
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
-        return dev.kairoscode.zlink.InternalAccess.receivedLazy(routingId,
-            spotRid, firstPart, cursor, requestSeq, hasRequestSeq, replySender,
-            onTerminalState);
+        return new Received(routingId, spotRid, firstPart, cursor, requestSeq,
+            hasRequestSeq, replySender, onTerminalState);
     }
 
     public static void receivedForceMaterialize(Received received) {
-        dev.kairoscode.zlink.InternalAccess.receivedForceMaterialize(received);
+        received.forceMaterialize();
     }
 
-    @SuppressWarnings("unchecked")
     public static List<Message> receivedTakeParts(Received received) {
-        return dev.kairoscode.zlink.InternalAccess.receivedTakeParts(received);
+        return received.takeParts();
     }
 
     public static boolean inCallback() {
-        return dev.kairoscode.zlink.InternalAccess.inCallback();
+        return SocketCore.inCallback();
     }
 
     public static void enterCallback() {
-        dev.kairoscode.zlink.InternalAccess.enterCallback();
+        SocketCore.enterCallback();
     }
 
     public static void leaveCallback() {
-        dev.kairoscode.zlink.InternalAccess.leaveCallback();
+        SocketCore.leaveCallback();
     }
 
     public static RoutingId routingIdFromTrusted(byte[] value) {
-        return dev.kairoscode.zlink.InternalAccess.routingIdFromTrusted(value);
+        return RoutingId.fromTrusted(value);
     }
 
     public static byte[] routingIdTrustedBytes(RoutingId routingId) {
-        return dev.kairoscode.zlink.InternalAccess.routingIdTrustedBytes(
-            routingId);
+        return routingId.trustedBytes();
     }
 }

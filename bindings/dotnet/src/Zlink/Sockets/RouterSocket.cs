@@ -87,9 +87,8 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                     IReadOnlyList<Message> payload = Array.Empty<Message>();
                     if (reply != null)
                     {
-                        Received copy = RequestReplySupport.CloneReceived(reply);
+                        payload = RequestReplySupport.TakeOwnedParts(reply);
                         reply.Dispose();
-                        payload = copy.Parts;
                     }
                     callback(result, payload);
                 });
@@ -251,9 +250,8 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                     IReadOnlyList<Message> payload = Array.Empty<Message>();
                     if (reply != null)
                     {
-                        Received copy = RequestReplySupport.CloneReceived(reply);
+                        payload = RequestReplySupport.TakeOwnedParts(reply);
                         reply.Dispose();
-                        payload = copy.Parts;
                     }
                     callback(result, payload);
                 });

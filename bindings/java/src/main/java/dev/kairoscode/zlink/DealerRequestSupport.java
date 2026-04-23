@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.internal.NativeRequestReplyBridge;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -110,10 +111,9 @@ final class DealerRequestSupport implements AutoCloseable {
                                                         Duration timeout,
                                                         SendFlags flags) {
         Objects.requireNonNull(parts, "parts");
-        List<Message> payload = RequestReplySupport.clonePayload(parts);
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         return RequestReplySupport.startTimedRequestExecution(
-            () -> submitRequest(payload, timeoutMs, flags), timeoutMs);
+            () -> submitRequest(parts, timeoutMs, flags), timeoutMs);
     }
 
     @Override
@@ -123,7 +123,7 @@ final class DealerRequestSupport implements AutoCloseable {
         }
     }
 
-    private static MemorySegment movePayloadToNative(Arena arena,
+    private static MemorySegment copyPayloadToNative(Arena arena,
                                                      List<Message> payload) {
         long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
         MemorySegment nativeParts = arena.allocate(msgSize * payload.size(),
@@ -131,15 +131,16 @@ final class DealerRequestSupport implements AutoCloseable {
         int built = 0;
         try {
             for (int i = 0; i < payload.size(); i++) {
-                payload.get(i).transferTo(nativeParts.asSlice((long) i * msgSize,
+                payload.get(i).copyTo(nativeParts.asSlice((long) i * msgSize,
                     msgSize));
                 built++;
             }
             return nativeParts;
         } catch (RuntimeException ex) {
-            for (int i = built; i < payload.size(); i++) {
+            for (int i = 0; i < built; i++) {
                 try {
-                    payload.get(i).close();
+                    NativeMsg.msgClose(nativeParts.asSlice((long) i * msgSize,
+                        msgSize));
                 } catch (RuntimeException ignored) {
                 }
             }
@@ -158,13 +159,12 @@ final class DealerRequestSupport implements AutoCloseable {
                                    long timeoutMs,
                                    SendFlags flags) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeParts = movePayloadToNative(arena, payload);
+            MemorySegment nativeParts = copyPayloadToNative(arena, payload);
             NativeRequestReplyBridge.ReplyResult reply =
                 NativeRequestReplyBridge.dealerRequestSync(
                     socket.handle(), nativeParts, payload.size(),
                     flags == null ? 0 : flags.value(), toTimeoutInt(timeoutMs));
             if (reply.submitResult() != SubmitResult.OK.value()) {
-                RequestReplySupport.closeAll(payload);
                 throw new SubmitException(SubmitResult.fromValue(reply.submitResult()));
             }
             if (reply.requestResult() != RequestResult.OK.value()) {
@@ -172,12 +172,10 @@ final class DealerRequestSupport implements AutoCloseable {
                     RequestResult.fromValue(reply.requestResult()),
                     reply.requestResult());
             }
-            RequestReplySupport.closeAll(payload);
             return new Received((RoutingId) null,
                 Message.fromMsgVector(reply.replyParts(), reply.replyPartCount()),
                 true);
         } catch (Throwable error) {
-            RequestReplySupport.closeAll(payload);
             if (error instanceof SubmitException submitException) {
                 throw submitException;
             }

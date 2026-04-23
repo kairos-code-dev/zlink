@@ -855,11 +855,25 @@ class base_socket_t : public socket_handle_t
                                      send_flags_t flags_ = send_flags_t::none)
     {
         validate_no_embedded_null (topic_id_, "topic");
-        std::vector<message_t> parts (1);
-        parts[0] = std::move (part_);
-        const int rc = publish (topic_id_, parts, flags_);
-        if (rc != 0)
-            part_ = std::move (parts[0]);
+        if (!part_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t native_part;
+        part_.move_to (&native_part);
+        if (part_.valid ())
+            return -1;
+
+        const int rc = zlink_publish_part (
+          handle (), topic_id_.c_str (), &native_part,
+          static_cast<zlink_send_flags_t> (flags_), ZLINK_PART_FINAL);
+        if (rc != 0) {
+            part_.init ();
+            if (part_.valid ())
+                (void) zlink_msg_move (part_.handle (), &native_part);
+            (void) zlink_msg_close (&native_part);
+        }
         return rc;
     }
 
@@ -890,12 +904,42 @@ class base_socket_t : public socket_handle_t
                  const std::string &topic_id_,
                  message_t &part_)
     {
-        std::vector<message_t> parts (1);
-        parts[0] = std::move (part_);
-        const int rc = publish_no_wait_result (result_, topic_id_, parts);
-        if (rc != 0 || result_ != send_result_t::sent)
-            part_ = std::move (parts[0]);
-        return rc;
+        validate_no_embedded_null (topic_id_, "topic");
+        if (!part_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t native_part;
+        part_.move_to (&native_part);
+        if (part_.valid ())
+            return -1;
+
+        const int rc = zlink_publish_part (
+          handle (), topic_id_.c_str (), &native_part, ZLINK_DONTWAIT,
+          ZLINK_PART_FINAL);
+        if (rc == 0) {
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int err = errno;
+        if (detail::classify_nonblocking_send_errno (err, result_)) {
+            if (result_ != send_result_t::sent) {
+                part_.init ();
+                if (part_.valid ())
+                    (void) zlink_msg_move (part_.handle (), &native_part);
+                (void) zlink_msg_close (&native_part);
+            }
+            return 0;
+        }
+
+        part_.init ();
+        if (part_.valid ())
+            (void) zlink_msg_move (part_.handle (), &native_part);
+        (void) zlink_msg_close (&native_part);
+        errno = err;
+        return -1;
     }
 
     ZLINK_CPP_NODISCARD int

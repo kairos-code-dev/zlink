@@ -25,9 +25,8 @@ final class RouterSpotSupport {
         Objects.requireNonNull(destNodeRid, "destNodeRid");
         Objects.requireNonNull(destSpotRid, "destSpotRid");
         Objects.requireNonNull(flags, "flags");
-        List<Message> payload = RequestReplySupport.clonePayload(parts);
         try {
-            submitRouterSendSpot(destNodeRid, destSpotRid, payload,
+            submitRouterSendSpot(destNodeRid, destSpotRid, parts,
                 flags.value());
             return true;
         } catch (SubmitException ex) {
@@ -36,8 +35,6 @@ final class RouterSpotSupport {
                 return false;
             }
             throw ex;
-        } finally {
-            RequestReplySupport.closeAll(payload);
         }
     }
 
@@ -56,20 +53,17 @@ final class RouterSpotSupport {
                                                    SendFlags flags) {
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = RoutedRequestSupport.nextRequestId();
-        List<Message> payload = RequestReplySupport.clonePayload(parts);
         CompletableFuture<Received> future = RoutedRequestSupport.registerPending(
           requestId, timeoutMs);
         try {
-            submitRouterRequestSpot(destNodeRid, destSpotRid, payload,
+            submitRouterRequestSpot(destNodeRid, destSpotRid, parts,
                 RoutedRequestSupport.replyCallback(),
                 RoutedRequestSupport.userData(requestId),
                 Objects.requireNonNull(flags, "flags").value(),
                 RoutedRequestSupport.toTimeoutInt(timeoutMs));
             RequestReplySupport.startSocketRequestProgress(future,
                 socket.handle(), "zlink-router-spot-request-progress");
-            RequestReplySupport.closeAll(payload);
         } catch (RuntimeException ex) {
-            RequestReplySupport.closeAll(payload);
             RoutedRequestSupport.removePending(requestId);
             future.cancel(false);
             throw ex;
@@ -84,20 +78,17 @@ final class RouterSpotSupport {
         Objects.requireNonNull(callback, "callback");
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = RoutedRequestSupport.nextRequestId();
-        List<Message> payload = RequestReplySupport.clonePayload(parts);
         CompletableFuture<Received> future = RoutedRequestSupport.registerPending(
           requestId, timeoutMs);
         try {
-            submitRouterRequestSpot(destNodeRid, destSpotRid, payload,
+            submitRouterRequestSpot(destNodeRid, destSpotRid, parts,
                 RoutedRequestSupport.replyCallback(),
                 RoutedRequestSupport.userData(requestId),
                 Objects.requireNonNull(flags, "flags").value(),
                 RoutedRequestSupport.toTimeoutInt(timeoutMs));
             RequestReplySupport.startSocketRequestProgress(future,
                 socket.handle(), "zlink-router-spot-request-progress");
-            RequestReplySupport.closeAll(payload);
         } catch (RuntimeException ex) {
-            RequestReplySupport.closeAll(payload);
             RoutedRequestSupport.removePending(requestId);
             future.cancel(false);
             if (ex instanceof SubmitException submitException
@@ -123,12 +114,7 @@ final class RouterSpotSupport {
         Objects.requireNonNull(destNodeRid, "destNodeRid");
         Objects.requireNonNull(destSpotRid, "destSpotRid");
         RequestReplySupport.requireReplyFlagsSupported(flags);
-        List<Message> payload = RequestReplySupport.clonePayload(parts);
-        try {
-            submitRouterReplySpot(destNodeRid, destSpotRid, requestSeq, payload);
-        } finally {
-            RequestReplySupport.closeAll(payload);
-        }
+        submitRouterReplySpot(destNodeRid, destSpotRid, requestSeq, parts);
     }
 
     private void submitRouterSendSpot(RoutingId destNodeRid,
@@ -206,18 +192,9 @@ final class RouterSpotSupport {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = part.transferTo(nativeMsg);
-            try {
-                int rc = Native.routerSendSpotPart(socket.handle(), nodeRid,
-                    spotRid, nativeMsg, flags, partFlag);
-                if (rc != 0) {
-                    part.restoreFromNative(nativeMsg, false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                part.restoreFromNative(nativeMsg, false, anchor);
-                throw ex;
-            }
+            part.copyTo(nativeMsg);
+            return Native.routerSendSpotPart(socket.handle(), nodeRid,
+                spotRid, nativeMsg, flags, partFlag);
         }
     }
 
@@ -233,19 +210,10 @@ final class RouterSpotSupport {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = part.transferTo(nativeMsg);
-            try {
-                int rc = Native.routerRequestSpotPart(socket.handle(), nodeRid,
-                    spotRid, nativeMsg, handler, userData, flags, partFlag,
-                    timeoutMs);
-                if (rc != 0) {
-                    part.restoreFromNative(nativeMsg, false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                part.restoreFromNative(nativeMsg, false, anchor);
-                throw ex;
-            }
+            part.copyTo(nativeMsg);
+            return Native.routerRequestSpotPart(socket.handle(), nodeRid,
+                spotRid, nativeMsg, handler, userData, flags, partFlag,
+                timeoutMs);
         }
     }
 
@@ -258,18 +226,9 @@ final class RouterSpotSupport {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = part.transferTo(nativeMsg);
-            try {
-                int rc = Native.routerReplySpotPart(socket.handle(), nodeRid,
-                    spotRid, requestSeq, nativeMsg, partFlag);
-                if (rc != 0) {
-                    part.restoreFromNative(nativeMsg, false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                part.restoreFromNative(nativeMsg, false, anchor);
-                throw ex;
-            }
+            part.copyTo(nativeMsg);
+            return Native.routerReplySpotPart(socket.handle(), nodeRid,
+                spotRid, requestSeq, nativeMsg, partFlag);
         }
     }
 

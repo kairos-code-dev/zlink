@@ -13,6 +13,7 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
     private readonly object _gate = new();
     private readonly Message?[] _messages;
     private ZlinkMsg[]? _nativeParts;
+    private int _nativePartCount;
     private int _closed;
 
     private MultipartMessageCollection(Message[] messages)
@@ -23,9 +24,15 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
     }
 
     private MultipartMessageCollection(ZlinkMsg[] nativeParts)
+        : this(nativeParts, nativeParts.Length)
     {
-        _messages = new Message?[nativeParts.Length];
+    }
+
+    private MultipartMessageCollection(ZlinkMsg[] nativeParts, int nativePartCount)
+    {
+        _messages = new Message?[nativePartCount];
         _nativeParts = nativeParts;
+        _nativePartCount = nativePartCount;
     }
 
     internal static MultipartMessageCollection FromMessages(Message[] messages)
@@ -43,6 +50,16 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
     internal static MultipartMessageCollection FromNativeParts(ZlinkMsg[] nativeParts)
     {
         return new MultipartMessageCollection(nativeParts ?? Array.Empty<ZlinkMsg>());
+    }
+
+    internal static MultipartMessageCollection FromNativeParts(ZlinkMsg[] nativeParts,
+        int nativePartCount)
+    {
+        if (nativeParts == null)
+            return new MultipartMessageCollection(Array.Empty<ZlinkMsg>(), 0);
+        if ((uint)nativePartCount > (uint)nativeParts.Length)
+            throw new ArgumentOutOfRangeException(nameof(nativePartCount));
+        return new MultipartMessageCollection(nativeParts, nativePartCount);
     }
 
     public int Count => _messages.Length;
@@ -83,6 +100,26 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
         return this[0];
     }
 
+    internal Message[] TakeMessages()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+            return Array.Empty<Message>();
+
+        lock (_gate)
+        {
+            Message[] taken = new Message[_messages.Length];
+            for (int i = 0; i < _messages.Length; i++)
+            {
+                taken[i] = GetOrMaterialize(i);
+                _messages[i] = null;
+            }
+
+            _nativeParts = null;
+            _nativePartCount = 0;
+            return taken;
+        }
+    }
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)
@@ -96,9 +133,10 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
             if (_nativeParts == null)
                 return;
 
-            for (int i = 0; i < _nativeParts.Length; i++)
+            for (int i = 0; i < _nativePartCount; i++)
                 NativeMethods.zlink_msg_close(ref _nativeParts[i]);
             _nativeParts = null;
+            _nativePartCount = 0;
         }
     }
 
@@ -135,7 +173,10 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
             Message created = Message.MoveFromNative(ref _nativeParts[index]);
             _messages[index] = created;
             if (AllMaterialized())
+            {
                 _nativeParts = null;
+                _nativePartCount = 0;
+            }
             return created;
         }
     }

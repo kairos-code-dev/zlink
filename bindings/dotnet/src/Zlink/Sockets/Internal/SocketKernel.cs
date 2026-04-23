@@ -1497,7 +1497,8 @@ internal sealed class SocketKernel : IDisposable
     private unsafe MultipartMessageCollection? ReceiveBasicParts(int flags,
         out byte[]? routingIdBytes, bool allowNoData = false)
     {
-        List<ZlinkMsg> nativeParts = new();
+        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
+        int nativePartCount = 0;
         routingIdBytes = null;
         try
         {
@@ -1514,7 +1515,7 @@ internal sealed class SocketKernel : IDisposable
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
-                    if (allowNoData && nativeParts.Count == 0
+                    if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
                         return null;
                     }
@@ -1523,16 +1524,17 @@ internal sealed class SocketKernel : IDisposable
 
                 initialized = false;
                 routingIdBytes ??= CopyRoutingIdBytes(sourceRoutingId);
-                nativeParts.Add(MoveStoredPart(ref part));
+                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (hasMore == 0)
                     break;
             }
 
-            return MultipartMessageCollection.FromNativeParts(nativeParts.ToArray());
+            return MultipartMessageCollection.FromNativeParts(nativeParts,
+                nativePartCount);
         }
         catch
         {
-            CloseNativeParts(nativeParts);
+            CloseNativeParts(nativeParts, nativePartCount);
             throw;
         }
     }
@@ -1548,7 +1550,8 @@ internal sealed class SocketKernel : IDisposable
             return ReceiveRouterParts(flags, out routingIdBytes, out spotRidBytes,
                 out requestSequence, allowNoData);
 
-        List<ZlinkMsg> nativeParts = new();
+        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
+        int nativePartCount = 0;
         try
         {
             while (true)
@@ -1566,7 +1569,7 @@ internal sealed class SocketKernel : IDisposable
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
-                    if (allowNoData && nativeParts.Count == 0
+                    if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
                         return null;
                     }
@@ -1575,16 +1578,17 @@ internal sealed class SocketKernel : IDisposable
 
                 initialized = false;
                 routingIdBytes ??= CopyRoutingIdBytes(sourceNodeRid);
-                nativeParts.Add(MoveStoredPart(ref part));
+                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (basicHasMore == 0)
                     break;
             }
 
-            return MultipartMessageCollection.FromNativeParts(nativeParts.ToArray());
+            return MultipartMessageCollection.FromNativeParts(nativeParts,
+                nativePartCount);
         }
         catch
         {
-            CloseNativeParts(nativeParts);
+            CloseNativeParts(nativeParts, nativePartCount);
             throw;
         }
     }
@@ -1593,7 +1597,8 @@ internal sealed class SocketKernel : IDisposable
         out byte[]? routingIdBytes, out byte[]? spotRidBytes,
         out ulong requestSequence, bool allowNoData)
     {
-        List<ZlinkMsg> nativeParts = new();
+        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
+        int nativePartCount = 0;
         routingIdBytes = null;
         spotRidBytes = null;
         requestSequence = 0;
@@ -1614,7 +1619,7 @@ internal sealed class SocketKernel : IDisposable
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
-                    if (allowNoData && nativeParts.Count == 0
+                    if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
                         return null;
                     }
@@ -1623,22 +1628,23 @@ internal sealed class SocketKernel : IDisposable
                 }
 
                 initialized = false;
-                if (nativeParts.Count == 0)
+                if (nativePartCount == 0)
                 {
                     routingIdBytes = CopyRoutingIdBytes(sourceNodeRid);
                     spotRidBytes = CopyRoutingIdBytes(sourceSpotRid);
                     requestSequence = receivedRequestSequence;
                 }
-                nativeParts.Add(MoveStoredPart(ref part));
+                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (hasMore == 0)
                     break;
             }
 
-            return MultipartMessageCollection.FromNativeParts(nativeParts.ToArray());
+            return MultipartMessageCollection.FromNativeParts(nativeParts,
+                nativePartCount);
         }
         catch
         {
-            CloseNativeParts(nativeParts);
+            CloseNativeParts(nativeParts, nativePartCount);
             throw;
         }
     }
@@ -1647,7 +1653,8 @@ internal sealed class SocketKernel : IDisposable
         byte[] topicBuffer, out byte[]? routingIdBytes, out string topic,
         bool allowNoData = false)
     {
-        List<ZlinkMsg> nativeParts = new();
+        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
+        int nativePartCount = 0;
         routingIdBytes = null;
         topic = string.Empty;
         try
@@ -1667,7 +1674,7 @@ internal sealed class SocketKernel : IDisposable
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
-                    if (allowNoData && nativeParts.Count == 0
+                    if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
                         return null;
                     }
@@ -1675,21 +1682,22 @@ internal sealed class SocketKernel : IDisposable
                 }
 
                 initialized = false;
-                if (nativeParts.Count == 0)
+                if (nativePartCount == 0)
                 {
                     routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
                     topic = DecodeTopic(topicBuffer, topicLength);
                 }
-                nativeParts.Add(MoveStoredPart(ref part));
+                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (hasMore == 0)
                     break;
             }
 
-            return MultipartMessageCollection.FromNativeParts(nativeParts.ToArray());
+            return MultipartMessageCollection.FromNativeParts(nativeParts,
+                nativePartCount);
         }
         catch
         {
-            CloseNativeParts(nativeParts);
+            CloseNativeParts(nativeParts, nativePartCount);
             throw;
         }
     }
@@ -1836,11 +1844,21 @@ internal sealed class SocketKernel : IDisposable
         }
     }
 
-    private static unsafe void CloseNativeParts(List<ZlinkMsg> parts)
+    private static void AppendNativePart(ref ZlinkMsg[] nativeParts,
+        ref int count, ref ZlinkMsg source)
     {
-        Span<ZlinkMsg> span = CollectionsMarshal.AsSpan(parts);
-        for (int i = 0; i < span.Length; i++)
-            NativeMethods.zlink_msg_close(ref span[i]);
+        if (count == nativeParts.Length)
+        {
+            Array.Resize(ref nativeParts, count == 0 ? 4 : count * 2);
+        }
+
+        nativeParts[count++] = MoveStoredPart(ref source);
+    }
+
+    private static unsafe void CloseNativeParts(ZlinkMsg[] parts, int count)
+    {
+        for (int i = 0; i < count; i++)
+            NativeMethods.zlink_msg_close(ref parts[i]);
     }
 
     private static unsafe byte[]? CopyRoutingIdBytes(IntPtr routingIdPtr)

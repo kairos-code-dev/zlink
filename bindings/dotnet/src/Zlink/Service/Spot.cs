@@ -789,9 +789,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                     IReadOnlyList<Message> payload = Array.Empty<Message>();
                     if (reply != null)
                     {
-                        Received copy = RequestReplySupport.CloneReceived(reply);
+                        payload = RequestReplySupport.TakeOwnedParts(reply);
                         reply.Dispose();
-                        payload = copy.Parts;
                     }
                     callback(result, payload);
                 });
@@ -1888,7 +1887,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         out byte[]? nodeRidBytes, out byte[]? spotRidBytes,
         out ulong requestSequence)
     {
-        List<ZlinkMsg> nativeParts = new();
+        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
+        int nativePartCount = 0;
         nodeRidBytes = null;
         spotRidBytes = null;
         requestSequence = 0;
@@ -1914,16 +1914,17 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 initialized = false;
                 nodeRidBytes ??= CopyRoutingIdBytes(sourceNodeRid);
                 spotRidBytes ??= CopyRoutingIdBytes(sourceSpotRid);
-                nativeParts.Add(MoveStoredPart(ref part));
+                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (hasMore == 0)
                     break;
             }
 
-            return MultipartMessageCollection.FromNativeParts(nativeParts.ToArray());
+            return MultipartMessageCollection.FromNativeParts(nativeParts,
+                nativePartCount);
         }
         catch
         {
-            CloseNativeParts(nativeParts);
+            CloseNativeParts(nativeParts, nativePartCount);
             throw;
         }
     }
@@ -1932,7 +1933,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         byte[] serviceBuffer, byte[] topicBuffer, out byte[]? routingIdBytes,
         out string serviceName, out string topic)
     {
-        List<ZlinkMsg> nativeParts = new();
+        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
+        int nativePartCount = 0;
         routingIdBytes = null;
         serviceName = string.Empty;
         topic = string.Empty;
@@ -1958,22 +1960,23 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 }
 
                 initialized = false;
-                if (nativeParts.Count == 0)
+                if (nativePartCount == 0)
                 {
                     routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
                     serviceName = DecodeBuffer(serviceBuffer, serviceLength);
                     topic = DecodeBuffer(topicBuffer, topicLength);
                 }
-                nativeParts.Add(MoveStoredPart(ref part));
+                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (hasMore == 0)
                     break;
             }
 
-            return MultipartMessageCollection.FromNativeParts(nativeParts.ToArray());
+            return MultipartMessageCollection.FromNativeParts(nativeParts,
+                nativePartCount);
         }
         catch
         {
-            CloseNativeParts(nativeParts);
+            CloseNativeParts(nativeParts, nativePartCount);
             throw;
         }
     }
@@ -2077,11 +2080,18 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private static unsafe void CloseNativeParts(List<ZlinkMsg> parts)
+    private static void AppendNativePart(ref ZlinkMsg[] nativeParts,
+        ref int count, ref ZlinkMsg source)
     {
-        Span<ZlinkMsg> span = CollectionsMarshal.AsSpan(parts);
-        for (int i = 0; i < span.Length; i++)
-            NativeMethods.zlink_msg_close(ref span[i]);
+        if (count == nativeParts.Length)
+            Array.Resize(ref nativeParts, count == 0 ? 4 : count * 2);
+        nativeParts[count++] = MoveStoredPart(ref source);
+    }
+
+    private static unsafe void CloseNativeParts(ZlinkMsg[] parts, int count)
+    {
+        for (int i = 0; i < count; i++)
+            NativeMethods.zlink_msg_close(ref parts[i]);
     }
 
     private static unsafe byte[]? CopyRoutingIdBytes(IntPtr routingIdPtr)

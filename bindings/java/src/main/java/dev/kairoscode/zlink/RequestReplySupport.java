@@ -12,7 +12,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -26,10 +25,7 @@ final class RequestReplySupport {
     private static final ScheduledExecutorService REQUEST_TIMEOUTS =
       Executors.newSingleThreadScheduledExecutor(
         new NamedDaemonThreadFactory("zlink-request-timeout"));
-    private static final ExecutorService REQUEST_EXECUTIONS =
-      Executors.newCachedThreadPool(
-        new NamedDaemonThreadFactory("zlink-request-exec"));
-    private static final ExecutorService REQUEST_COMPLETIONS =
+    private static final java.util.concurrent.ExecutorService REQUEST_COMPLETIONS =
       Executors.newSingleThreadExecutor(
         new NamedDaemonThreadFactory("zlink-request-complete"));
 
@@ -53,33 +49,12 @@ final class RequestReplySupport {
         future.whenComplete((ignored, error) -> timeout.cancel(false));
     }
 
-    static List<Message> clonePayload(List<Message> parts) {
-        Objects.requireNonNull(parts, "parts");
-        if (parts.isEmpty()) {
-            throw new IllegalArgumentException("parts must not be empty");
-        }
-        Message[] copies = new Message[parts.size()];
-        for (int i = 0; i < copies.length; i++) {
-            copies[i] = cloneMessage(parts.get(i));
-        }
-        return List.of(copies);
-    }
-
     static Message cloneMessage(Message source) {
         return Message.sharedCopyOf(source);
     }
 
     static List<Message> takeReceivedParts(Received received) {
         return received.takeParts();
-    }
-
-    static void closeAll(List<Message> parts) {
-        for (Message part : parts) {
-            try {
-                part.close();
-            } catch (RuntimeException ignored) {
-            }
-        }
     }
 
     static Throwable unwrap(Throwable error) {
@@ -155,34 +130,19 @@ final class RequestReplySupport {
     }
 
     static <T> CompletableFuture<T> startRequestExecution(Supplier<T> supplier) {
-        return CompletableFuture.supplyAsync(() -> supplier.get(),
-            REQUEST_EXECUTIONS);
+        try {
+            return CompletableFuture.completedFuture(supplier.get());
+        } catch (Throwable error) {
+            return CompletableFuture.failedFuture(error);
+        }
     }
 
     static <T> CompletableFuture<T> startTimedRequestExecution(
             Supplier<T> supplier,
             long timeoutMs) {
-        CompletableFuture<T> future = new CompletableFuture<>();
-        ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
-            future.completeExceptionally(new RequestException(
-                RequestResult.TIMED_OUT));
-        }, timeoutMs, TimeUnit.MILLISECONDS);
-        REQUEST_EXECUTIONS.execute(() -> {
-            try {
-                T value = supplier.get();
-                if (!future.complete(value) && value instanceof AutoCloseable closeable) {
-                    try {
-                        closeable.close();
-                    } catch (Exception ignored) {
-                    }
-                }
-            } catch (Throwable error) {
-                future.completeExceptionally(error);
-            } finally {
-                timeout.cancel(false);
-            }
-        });
-        return future;
+        if (timeoutMs < 0L)
+            throw new IllegalArgumentException("timeoutMs must be >= 0");
+        return startRequestExecution(supplier);
     }
 
     static <T> void completeAsync(CompletableFuture<T> future,

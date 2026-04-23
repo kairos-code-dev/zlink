@@ -169,6 +169,11 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         return _parts.Single();
     }
 
+    internal IReadOnlyList<Message> TakePartsOwnership()
+    {
+        return _parts.TakeMessages();
+    }
+
     public void Reply(Message part)
     {
         Reply(part, SendFlags.None);

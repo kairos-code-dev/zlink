@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
@@ -232,6 +233,30 @@ public sealed class RegistrationValidationTests
             }));
 
         Assert.Contains("router endpoint", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AddZLinkMonitoring_Throws_WhenSocketSourceIsUnknownOnStartup()
+    {
+        var endpoint = "tcp://127.0.0.1:7101";
+        var builder = Host.CreateApplicationBuilder();
+
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddChannel("profile", channel =>
+            {
+                channel.EnableServer(server => server.Bind(endpoint));
+            });
+        });
+        builder.Services.AddZLinkMonitoring(monitor =>
+        {
+            monitor.AddSocketEvents("missing.server", ZLinkSocketEventKind.ConnectionReady);
+        });
+
+        using var host = builder.Build();
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
+
+        Assert.Contains("missing.server", exception.Message, StringComparison.Ordinal);
     }
 
     private sealed class TestFilter : IZLinkHandlerFilter

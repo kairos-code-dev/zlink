@@ -2,6 +2,7 @@
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_handshake.hpp"
+#include "../common/perf_multi_metric_header.hpp"
 #include "../common/perf_multi_spot_control.hpp"
 #include "../common/perf_multi_spot_handle.hpp"
 #include "../common/perf_multi_spot_handshake.hpp"
@@ -24,6 +25,13 @@ static const char *k_server_spot_rid = "SPOT-REQREP-SERVER-SPOT";
 using perf_multi_client::is_supported_transport;
 
 static std::atomic<int> g_server_debug_recv_logs(0);
+static std::atomic<int> g_server_trace_recv_logs(0);
+static std::atomic<int> g_server_trace_reply_logs(0);
+
+bool spot_trace_enabled()
+{
+    return std::getenv("PERF_MULTI_SPOT_TRACE") != NULL;
+}
 
 struct spot_reqrep_server_state_t
 {
@@ -284,7 +292,30 @@ void on_spot_dispatch(void *spot,
             std::cerr << "[multi-spot-reqrep-server] recv request seq="
                       << request_seq << " parts=" << part_count << std::endl;
         }
+        if (spot_trace_enabled()
+            && g_server_trace_recv_logs.fetch_add(1, std::memory_order_acq_rel)
+                 < 8) {
+            perf_multi_metric::header_t header;
+            const bool decoded =
+              perf_multi_metric::decode_payload_header(
+                zlink_msg_data(&parts[0]),
+                zlink_msg_size(&parts[0]),
+                &header);
+            const uint64_t now_ns = perf_multi_metric::now_ns();
+            std::cerr << "[multi-spot-reqrep-trace] server recv seq="
+                      << request_seq
+                      << " payload_seq=" << (decoded ? header.seq : 0)
+                      << " recv_delay_ms="
+                      << ((decoded && header.sent_ts_ns > 0
+                           && now_ns >= static_cast<uint64_t>(header.sent_ts_ns))
+                            ? ((now_ns - static_cast<uint64_t>(header.sent_ts_ns))
+                               / 1000000.0)
+                            : -1.0)
+                      << std::endl;
+        }
 
+        const uint64_t reply_begin_ns =
+          spot_trace_enabled() ? perf_multi_metric::now_ns() : 0;
         if (zlink_spot_reply_spot(
               spot, source_rid, source_spot_rid, request_seq, parts, part_count)
             != ZLINK_SUBMIT_OK) {
@@ -295,6 +326,16 @@ void on_spot_dispatch(void *spot,
             zlink_multipart_close(parts, part_count);
             fail_server(state, zlink_errno());
             return;
+        }
+        if (spot_trace_enabled()
+            && g_server_trace_reply_logs.fetch_add(1, std::memory_order_acq_rel)
+                 < 8) {
+            const uint64_t reply_end_ns = perf_multi_metric::now_ns();
+            std::cerr << "[multi-spot-reqrep-trace] server reply seq="
+                      << request_seq
+                      << " submit_ms="
+                      << ((reply_end_ns - reply_begin_ns) / 1000000.0)
+                      << std::endl;
         }
     }
 }

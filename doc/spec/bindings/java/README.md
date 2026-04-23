@@ -575,7 +575,9 @@ distribution artifacts and public package names are fixed to:
 - `dev.kairoscode.zlink.codec.messagepack`
 
 These packages are separate public modules layered on top of the core binding.
-They must not be merged into `dev.kairoscode.zlink`.
+The public codec API stays in these packages and is published as separate
+artifacts. The core module may still keep supporting implementation
+dependencies, but codec entrypoints are not part of `dev.kairoscode.zlink`.
 
 JSON codec baseline: `Jackson`.
 MessagePack codec baseline: `jackson-dataformat-msgpack`.
@@ -620,7 +622,8 @@ public final class MessagePackCodec {
 ### Netty Buffer Extension
 
 Netty `ByteBuf` support is a separate public extension layered on top of the
-core binding. It must not be merged into `dev.kairoscode.zlink`.
+core binding. The public adapter surface lives in `dev.kairoscode.zlink.netty`
+and is published as `zlink-ext-netty`.
 
 The exported public distribution artifact and public package name are fixed to:
 
@@ -628,8 +631,11 @@ The exported public distribution artifact and public package name are fixed to:
 - `dev.kairoscode.zlink.netty`
 
 This extension exists because `ByteBuf` is valuable in Java network stacks,
-but it is still a third-party dependency. Keeping it separate lets the core
-binding remain JDK-only while Netty users still get a convenient adapter.
+but it is still a third-party dependency. The public `ByteBuf` adapter stays
+separate so Netty-specific entrypoints do not become part of the core package.
+Current core implementation may still use optional `netty-buffer`
+dependencies for internal low-level fast paths; that internal detail is not
+part of the public Java contract.
 
 Ownership rules:
 

@@ -18,6 +18,7 @@ SINGLE_MAP = {
     "perf_dealer_router": CPP_PERF_DIR / "single" / "build" / "cpp_perf_dealer_router",
     "perf_router_router": CPP_PERF_DIR / "single" / "build" / "cpp_perf_router_router",
     "perf_spot": CPP_PERF_DIR / "single" / "build" / "cpp_perf_spot",
+    "perf_spot_reqrep": CPP_PERF_DIR / "single" / "build" / "cpp_perf_spot_reqrep",
 }
 
 MULTI_SERVER_MAP = {
@@ -26,6 +27,7 @@ MULTI_SERVER_MAP = {
     "comp_src_router_router_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_router_router_server",
     "comp_src_pubsub_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_pubsub_server",
     "comp_src_spot_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_server",
+    "comp_src_spot_reqrep_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_reqrep_server",
     "comp_src_stream_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_stream_server",
 }
 
@@ -35,6 +37,7 @@ MULTI_CLIENT_MAP = {
     "comp_src_router_router_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_router_router_client",
     "comp_src_pubsub_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_pubsub_client",
     "comp_src_spot_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_client",
+    "comp_src_spot_reqrep_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_reqrep_client",
 }
 
 

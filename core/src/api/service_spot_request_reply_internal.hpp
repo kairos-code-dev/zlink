@@ -60,9 +60,13 @@ struct parsed_spot_envelope_t
     uint8_t source_class;
     std::string source_node_rid;
     std::string source_endpoint_rid;
+    zlink_routing_id_t source_node_rid_value;
+    zlink_routing_id_t source_endpoint_rid_value;
     uint8_t destination_class;
     std::string destination_node_rid;
     std::string destination_endpoint_rid;
+    zlink_routing_id_t destination_node_rid_value;
+    zlink_routing_id_t destination_endpoint_rid_value;
     zlink_msg_t *payload_parts;
     size_t payload_part_count;
 };

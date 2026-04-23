@@ -363,21 +363,15 @@ int dispatch_spot_request_to_spot (
                                              rr_envelope_.request_seq,
                                              ENOENT);
 
-    zlink_routing_id_t source_rid;
-    zlink_routing_id_t source_spot_rid;
-    routing_id_from_string_local (
-      spot_envelope_.source_class == zmp_router_class
-        ? spot_envelope_.source_endpoint_rid
-        : spot_envelope_.source_node_rid,
-      &source_rid);
-    routing_id_from_string_local (
-      spot_envelope_.source_class == zmp_spot_class
-        ? spot_envelope_.source_endpoint_rid
-        : std::string (),
-      &source_spot_rid);
-
     const int rc = dispatch_spot_message_local (
-      state.get (), &source_rid, &source_spot_rid, rr_envelope_.request_seq,
+      state.get (),
+      spot_envelope_.source_class == zmp_router_class
+        ? &spot_envelope_.source_endpoint_rid_value
+        : &spot_envelope_.source_node_rid_value,
+      spot_envelope_.source_class == zmp_spot_class
+        ? &spot_envelope_.source_endpoint_rid_value
+        : NULL,
+      rr_envelope_.request_seq,
       rr_envelope_.payload_parts, rr_envelope_.payload_part_count);
     return rc;
 }
@@ -394,13 +388,10 @@ int dispatch_spot_request_to_router (
                                              rr_envelope_.request_seq,
                                              ENOENT);
 
-    zlink_routing_id_t source_node_rid;
-    zlink_routing_id_t source_spot_rid;
-    routing_id_from_string_local (spot_envelope_.source_node_rid, &source_node_rid);
-    routing_id_from_string_local (spot_envelope_.source_endpoint_rid,
-                                  &source_spot_rid);
     return dispatch_router_spot_message_local (
-      state.get (), &source_node_rid, &source_spot_rid,
+      state.get (),
+      &spot_envelope_.source_node_rid_value,
+      &spot_envelope_.source_endpoint_rid_value,
       rr_envelope_.request_seq, rr_envelope_.payload_parts,
       rr_envelope_.payload_part_count);
 }
@@ -408,6 +399,8 @@ int dispatch_spot_request_to_router (
 int dispatch_local_direct_to_spot (uint8_t source_class_,
                                    const std::string &source_node_rid_,
                                    const std::string &source_endpoint_rid_,
+                                   const zlink_routing_id_t *source_node_rid_value_,
+                                   const zlink_routing_id_t *source_endpoint_rid_value_,
                                    const std::string &dest_node_rid_,
                                    const std::string &dest_spot_rid_,
                                    zlink_msg_t *parts_,
@@ -421,17 +414,26 @@ int dispatch_local_direct_to_spot (uint8_t source_class_,
         return 0;
     }
 
-    zlink_routing_id_t source_rid;
-    zlink_routing_id_t spot_rid;
-    routing_id_from_string_local (
-      source_class_ == zmp_router_class ? source_endpoint_rid_ : source_node_rid_,
-      &source_rid);
-    routing_id_from_string_local (
-      source_class_ == zmp_spot_class ? source_endpoint_rid_ : std::string (),
-      &spot_rid);
+    zlink_routing_id_t source_rid_fallback;
+    zlink_routing_id_t spot_rid_fallback;
+    const zlink_routing_id_t *source_rid =
+      source_class_ == zmp_router_class ? source_endpoint_rid_value_
+                                        : source_node_rid_value_;
+    const zlink_routing_id_t *spot_rid =
+      source_class_ == zmp_spot_class ? source_endpoint_rid_value_ : NULL;
+    if (!source_rid) {
+        routing_id_from_string_local (
+          source_class_ == zmp_router_class ? source_endpoint_rid_
+                                            : source_node_rid_,
+          &source_rid_fallback);
+        source_rid = &source_rid_fallback;
+    }
+    if (source_class_ == zmp_spot_class && !spot_rid) {
+        routing_id_from_string_local (source_endpoint_rid_, &spot_rid_fallback);
+        spot_rid = &spot_rid_fallback;
+    }
 
-    if (dispatch_spot_message_local (state.get (), &source_rid,
-                                     spot_rid.size > 0 ? &spot_rid : NULL, 0,
+    if (dispatch_spot_message_local (state.get (), source_rid, spot_rid, 0,
                                      parts_, part_count_)
         != 0)
         return -1;
@@ -442,6 +444,8 @@ int dispatch_local_direct_to_spot (uint8_t source_class_,
 int dispatch_local_direct_to_router (const std::string &router_rid_,
                                      const std::string &source_node_rid_,
                                      const std::string &source_spot_rid_,
+                                     const zlink_routing_id_t *source_node_rid_value_,
+                                     const zlink_routing_id_t *source_spot_rid_value_,
                                      zlink_msg_t *parts_,
                                      size_t part_count_)
 {
@@ -453,12 +457,20 @@ int dispatch_local_direct_to_router (const std::string &router_rid_,
         return -1;
     }
 
-    zlink_routing_id_t source_node_rid;
-    zlink_routing_id_t source_spot_rid;
-    routing_id_from_string_local (source_node_rid_, &source_node_rid);
-    routing_id_from_string_local (source_spot_rid_, &source_spot_rid);
+    zlink_routing_id_t source_node_rid_fallback;
+    zlink_routing_id_t source_spot_rid_fallback;
+    const zlink_routing_id_t *source_node_rid = source_node_rid_value_;
+    const zlink_routing_id_t *source_spot_rid = source_spot_rid_value_;
+    if (!source_node_rid) {
+        routing_id_from_string_local (source_node_rid_, &source_node_rid_fallback);
+        source_node_rid = &source_node_rid_fallback;
+    }
+    if (!source_spot_rid) {
+        routing_id_from_string_local (source_spot_rid_, &source_spot_rid_fallback);
+        source_spot_rid = &source_spot_rid_fallback;
+    }
     return dispatch_router_spot_message_local (
-      state.get (), &source_node_rid, &source_spot_rid, 0, parts_, part_count_);
+      state.get (), source_node_rid, source_spot_rid, 0, parts_, part_count_);
 }
 }
 
@@ -768,14 +780,20 @@ int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_deliver
         return dispatch_local_direct_to_spot (
           spot_envelope_.source_class, spot_envelope_.source_node_rid,
           spot_envelope_.source_endpoint_rid,
+          &spot_envelope_.source_node_rid_value,
+          &spot_envelope_.source_endpoint_rid_value,
           spot_envelope_.destination_node_rid,
           spot_envelope_.destination_endpoint_rid, spot_envelope_.payload_parts,
           spot_envelope_.payload_part_count);
     }
 
     return dispatch_local_direct_to_router (
-      spot_envelope_.destination_endpoint_rid, spot_envelope_.source_node_rid,
-      spot_envelope_.source_endpoint_rid, spot_envelope_.payload_parts,
+      spot_envelope_.destination_endpoint_rid,
+      spot_envelope_.source_node_rid,
+      spot_envelope_.source_endpoint_rid,
+      &spot_envelope_.source_node_rid_value,
+      &spot_envelope_.source_endpoint_rid_value,
+      spot_envelope_.payload_parts,
       spot_envelope_.payload_part_count);
 }
 

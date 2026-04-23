@@ -51,8 +51,9 @@ flowchart TB
 
 ## 2. Internal Socket Topology
 
-SpotNode creates 10 internal sockets connected via inproc endpoints,
-plus a monitor socket for connection state tracking (11 total).
+SpotNode creates 11 persistent sockets at startup,
+plus a monitor socket for connection state tracking (12 total).
+Three sender-cache sockets are created on demand as data paths are first used.
 
 ### 2.1 Socket Inventory
 
@@ -68,6 +69,7 @@ flowchart LR
         mesh_pub["mesh_pub<br/>PUB socket"]
         mesh_xsub["mesh_xsub<br/>XSUB socket"]
         route_in["route_ingress<br/>ROUTER socket<br/>BIND .route-in"]
+        peer_route_in["peer_route_ingress<br/>ROUTER socket<br/>BIND derived route endpoint"]
         node_router["node_router<br/>ROUTER socket<br/>BIND .node-router"]
         ctrl["ctrl<br/>PAIR socket"]
         peer_ctrl_pub["peer_ctrl_pub<br/>PUB socket"]
@@ -91,6 +93,7 @@ flowchart LR
     mesh_xsub -->|"topic forward"| fanout
     peer_ctrl_pub -->|control| remote_node
     remote_node -->|control| peer_ctrl_sub
+    remote_node -->|"direct route"| peer_route_in
 ```
 
 ### 2.2 Socket Details
@@ -102,6 +105,7 @@ flowchart LR
 | `mesh_pub` | PUB | (bound endpoint) | BIND | `node_pub_sndhwm` | Sends topics to remote peers |
 | `mesh_xsub` | XSUB | — | CONNECT to peers | `node_sub_rcvhwm` | Receives topics from remote peers |
 | `route_ingress` | ROUTER | `.route-in` | BIND | `routed_recv_hwm` | Receives routed messages from apps |
+| `peer_route_ingress` | ROUTER | (derived route endpoint) | BIND | `routed_recv_hwm` | Receives direct routed messages from remote peers (active after bind) |
 | `node_router` | ROUTER | `.node-router` | BIND | `routed_send/recv_hwm` | Delivers routed messages to apps |
 | `ctrl` | PAIR | `.ctrl` | CONNECT | — | Control plane ↔ data plane commands |
 | `peer_ctrl_pub` | PUB | (derived from bound) | BIND | 1024 | Sends control msgs to peers |
@@ -110,7 +114,17 @@ flowchart LR
 
 All inproc endpoints follow the pattern: `inproc://zlink.spot.{node_id}.{suffix}`
 
-### 2.3 Common Socket Settings
+### 2.3 Sender Cache Sockets (on demand)
+
+Three sockets are created lazily when first needed.
+
+| Socket | Type | Connects to | Role |
+|--------|------|-------------|------|
+| `route_ingress_tx` | DEALER | `.route-in` (inproc) | Data plane sends into route_ingress |
+| `node_router_tx` | DEALER | `.node-router` (inproc) | Data plane sends into node_router |
+| `peer_route_tx` | PAIR | Remote peer route endpoint | Sends routed messages directly to a remote peer |
+
+### 2.4 Common Socket Settings
 
 All data plane sockets share:
 - `LINGER = 0`
@@ -335,12 +349,14 @@ flowchart TD
 
 Peer control endpoints are derived from the bound data endpoint:
 
-| Transport | Data Endpoint | Control Endpoint |
-|-----------|--------------|-----------------|
-| tcp | `tcp://host:9000` | `tcp://host:10000` (port+1000) |
-| tls | `tls://host:9000` | `tls://host:10000` |
-| ipc | `ipc:///path` | `ipc:///path.zlink-spot-ctrl.{id}` |
-| inproc | `inproc://name` | `inproc://zlink.spot.peer-ctrl.{id}` |
+| Transport | Data Endpoint | Control Endpoint | Route Endpoint |
+|-----------|--------------|-----------------|----------------|
+| tcp | `tcp://host:9000` | `tcp://host:10000` (port+1000) | `tcp://host:29000` (port+20000) |
+| tls | `tls://host:9000` | `tls://host:10000` | `tls://host:29000` |
+| ipc | `ipc:///path` | `ipc:///path.zlink-spot-ctrl.{id}` | `ipc:///path.zlink-spot-route.{id}` |
+| inproc | `inproc://name` | `inproc://zlink.spot.peer-ctrl.{id}` | `inproc://zlink.spot.peer-route.{id}` |
+
+`peer_route_ingress` (ROUTER) binds to the route endpoint. A remote peer connects `peer_route_tx` (PAIR) to this endpoint to send routed messages directly.
 
 Control message prefixes:
 - `__zlink.spot.ctrl.snapshot` — status snapshots

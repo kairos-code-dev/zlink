@@ -166,8 +166,8 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 
 - 운영 점검, warm-up, 관리 화면, 디버깅에 유용하다.
 - Discovery가 지금 보고 있는 개별 channel view 밖의 전체 상태를 읽을 수 있다.
-- 다만 일반 요청 경로의 channel 생성과 실시간 요청 분산을 모두 topology
-  query에 의존하는 구조는 기본 방향으로 보지 않는다.
+- 일반 요청 경로에서는 topology query보다 Discovery channel view를 기준으로
+  동작하는 편을 기본 방향으로 본다.
 
 ### 5.4 runtime monitoring source 이름
 

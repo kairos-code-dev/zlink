@@ -52,6 +52,24 @@ static void spot_runtime_diag_logf_local (const char *fmt_, ...)
     va_end (args);
 }
 
+static bool socket_route_sender_ready_local (socket_base_t *socket_,
+                                             const std::string &endpoint_)
+{
+    if (!socket_ || endpoint_.empty ())
+        return false;
+
+    if (!socket_->socket_has_attached_pipes ())
+        return false;
+
+    std::vector<std::string> remote_endpoints;
+    socket_->socket_peer_remote_endpoints (&remote_endpoints);
+    for (size_t i = 0; i < remote_endpoints.size (); ++i) {
+        if (remote_endpoints[i] == endpoint_)
+            return true;
+    }
+    return remote_endpoints.empty ();
+}
+
 static int send_ascii_frame_local (socket_base_t *socket_,
                                    const std::string &value_,
                                    int flags_)
@@ -535,12 +553,12 @@ int spot_runtime_t::close_control_sockets ()
         if (route_ingress_local && !route_ingress_endpoint.empty ())
             (void) route_ingress_local->term_endpoint (
               route_ingress_endpoint.c_str ());
-        if (peer_route_ingress_local && !peer_route_bind_endpoint.empty ())
-            (void) peer_route_ingress_local->term_endpoint (
-              peer_route_bind_endpoint.c_str ());
         if (node_router_local && !node_router_endpoint.empty ())
             (void) node_router_local->term_endpoint (
               node_router_endpoint.c_str ());
+        if (node_router_local && !peer_route_bind_endpoint.empty ())
+            (void) node_router_local->term_endpoint (
+              peer_route_bind_endpoint.c_str ());
         if (ingress && !pub_ingress_endpoint.empty ())
             (void) ingress->term_endpoint (pub_ingress_endpoint.c_str ());
         if (fanout && !sub_fanout_endpoint.empty ())
@@ -721,8 +739,7 @@ int spot_runtime_t::ensure_peer_route_sender_socket (
 
     if (peer_route_tx && peer_route_sender_endpoint == target_endpoint_) {
         *out_ = peer_route_tx;
-        const uint64_t now_ms = zlink::clock_t ().now_ms ();
-        return now_ms >= peer_route_sender_ready_after_ms ? 0 : 1;
+        return 0;
     }
 
     if (peer_route_tx) {
@@ -731,12 +748,16 @@ int spot_runtime_t::ensure_peer_route_sender_socket (
         peer_route_sender_ready_after_ms = 0;
     }
 
-    socket_base_t *socket = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    socket_base_t *socket =
+      owner->_ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
     if (!socket)
         return -1;
 
     const int linger = 0;
+    const int immediate = 1;
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+    socket->setsockopt (ZLINK_INTERNAL_OPT_IMMEDIATE, &immediate,
+                        sizeof (immediate));
     if (spot_node_t::apply_tls_client (socket, owner->_tls_ca,
                                        owner->_tls_hostname,
                                        owner->_tls_trust_system)
@@ -748,28 +769,25 @@ int spot_runtime_t::ensure_peer_route_sender_socket (
         return -1;
     }
 
-    // Warm the outbound transport before the first routed direct send. The
-    // SPOT perf harness uses a single warmup request to establish readiness,
-    // so dropping or stalling that first send makes the whole run fail.
-    spot_data_plane_forwarder_t::pump_socket_commands (socket);
-    socket->set_all_pipes_nodelay ();
-    if (zlink::wait_socket_events_internal (socket, ZLINK_POLLOUT, 200) <= 0) {
-        const int saved_errno = errno != 0 ? errno : EAGAIN;
+    const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 1000;
+    while (zlink::clock_t ().now_ms () < deadline_ms) {
+        spot_data_plane_forwarder_t::pump_socket_commands (socket);
+        socket->set_all_pipes_nodelay ();
+        if (socket_route_sender_ready_local (socket, target_endpoint_))
+            break;
+        zlink::sleep_ms (1);
+    }
+    if (!socket_route_sender_ready_local (socket, target_endpoint_)) {
         close_socket_ptr_local (&socket);
-        errno = saved_errno;
+        errno = ETIMEDOUT;
         return -1;
     }
-    // POLLOUT becomes ready before the remote ROUTER side is reliably ready to
-    // drain the first multipart on some transports. Give the connection a
-    // short one-time settle window before switching from mesh fallback to the
-    // direct routed path.
-    zlink::sleep_ms (100);
 
     peer_route_tx = socket;
     peer_route_sender_endpoint = target_endpoint_;
-    peer_route_sender_ready_after_ms = zlink::clock_t ().now_ms () + 100;
+    peer_route_sender_ready_after_ms = 0;
     *out_ = peer_route_tx;
-    return 1;
+    return 0;
 }
 
 int spot_runtime_t::close_sender_cache (spot_runtime_sender_kind_t kind_,
@@ -879,11 +897,11 @@ int spot_runtime_t::detach_runtime_endpoints ()
         (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
     if (route_ingress_local && !route_ingress_endpoint.empty ())
         (void) route_ingress_local->term_endpoint (route_ingress_endpoint.c_str ());
-    if (peer_route_ingress_local && !peer_route_bind_endpoint.empty ())
-        (void) peer_route_ingress_local->term_endpoint (
-          peer_route_bind_endpoint.c_str ());
     if (node_router_local && !node_router_endpoint.empty ())
         (void) node_router_local->term_endpoint (node_router_endpoint.c_str ());
+    if (node_router_local && !peer_route_bind_endpoint.empty ())
+        (void) node_router_local->term_endpoint (
+          peer_route_bind_endpoint.c_str ());
     if (ingress && !pub_ingress_endpoint.empty ())
         (void) ingress->term_endpoint (pub_ingress_endpoint.c_str ());
     if (fanout && !sub_fanout_endpoint.empty ())

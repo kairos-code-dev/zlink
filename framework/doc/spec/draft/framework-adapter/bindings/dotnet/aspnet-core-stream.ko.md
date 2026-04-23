@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md)
+[.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md)
 
 # Draft -- ZLink Framework ASP.NET Core STREAM Integration
 
@@ -8,8 +8,8 @@
 > 현재 공개 계약이 아니며, `ASP.NET Core`에서 `STREAM`을 어떤 handler 모델로
 > 올릴지 방향을 정리한다.
 >
-> 아직 닫지 않은 serializer, write, lifecycle 항목은
-> [stream-open-items.ko.md](./stream-open-items.ko.md)를 참고한다.
+> serializer, write, lifecycle 결정 기준은
+> [stream-open-items.ko.md](./stream-open-items.ko.md)에 함께 정리한다.
 
 ## 1. 목표
 
@@ -52,6 +52,14 @@
 ```csharp
 public interface IZLinkStream
 {
+    string SessionId { get; }
+
+    RoutingId? RoutingId { get; }
+
+    string? LocalAddr { get; }
+
+    string? RemoteAddr { get; }
+
     bool Write(
         Message payload,
         SendFlags flags = SendFlags.None);
@@ -66,19 +74,18 @@ public enum ZLinkStreamSessionError
 {
     Internal = 0,
     TransportError,
+    // OnErrorAsync로 전달되지 않는다. handshake 실패는 runtime monitoring에만 남긴다.
+    // stream-open-items.ko.md section 4.2 참고.
     HandshakeFailed
 }
 
 public readonly record struct ZLinkStreamError(
     ZLinkStreamSessionError Error,
-    int InternalErrno)
-{
-    public ErrorCode GetErrorCode()
-        => ZlinkException.MapErrorCode(InternalErrno);
+    ZLinkStreamDiagnostic? Diagnostic);
 
-    public string GetErrorMessage()
-        => Zlink.Strerror(InternalErrno);
-}
+public readonly record struct ZLinkStreamDiagnostic(
+    int NativeCode,
+    string? Message);
 
 public interface IZLinkPacketStreamSession
 {
@@ -133,16 +140,17 @@ public interface IZLinkRawStreamSession
   각 packet 타입으로 decode한다.
 - 이 decode 과정은 가능하면 `Message.AsReadOnlySpan()`이나 그 위에 얹는 helper를
   사용해서 추가 복사를 피하는 쪽을 기본으로 본다.
-- 두 방식 모두 `IZLinkStream`에서 peer, connection metadata를 읽는다.
+- 두 방식 모두 `IZLinkStream`의 `SessionId`, `RoutingId`, `LocalAddr`,
+  `RemoteAddr`로 peer와 connection metadata를 읽는다.
 - 둘 다 framework dispatch 경로 위에 올라가고, application은 직접 recv loop를
   만들지 않는다.
 - `OnConnectedAsync(...)`와 `OnDisconnectedAsync(...)`는 monitor의 connection 수명
   이벤트에 대응하는 session callback으로 본다.
 - `OnErrorAsync(...)`는 monitor에서 관찰 가능한 session-correlatable transport
   오류만 받는다.
-- `OnErrorAsync(...)`가 받는 `ZLinkStreamError`는 error category enum과
-  `InternalErrno`를 같이 들고, `GetErrorCode()`, `GetErrorMessage()` 같은 편의
-  함수를 제공하는 쪽이 자연스럽다.
+- `OnErrorAsync(...)`가 받는 `ZLinkStreamError`는 framework error category enum을
+  먼저 주고, 필요할 때만 optional diagnostic detail로 native errno와 메시지를 같이
+  들고 있는 편이 자연스럽다.
 
 ## 4. 등록 모델 초안
 
@@ -163,6 +171,8 @@ builder.Services.AddZLinkFramework(options =>
 이 등록 모델에서 중요한 점은 아래와 같다.
 
 - packet session과 raw session을 분리해서 붙인다.
+- 한 `stream node`에는 packet session 또는 raw session 중 한 종류만 둔다.
+- 같은 node에 `AddPacketSession(...)`와 `AddRawSession(...)`를 함께 두지 않는다.
 - recv callback이나 recv loop를 application이 직접 노출받지 않는다.
 - 어떤 session이 packet path인지 raw path인지 등록 시점에 분명히 보인다.
 
@@ -208,13 +218,18 @@ recv 방식은 low-level binding에서는 유효할 수 있다.
 따라서 현재 초안은 recv 기반 사용을 막자는 뜻이 아니라, **framework의 기본
 application 표면으로는 올리지 않는다**는 뜻이다.
 
-## 7. 아직 확정하지 않는 것
+## 7. 결정된 기준
 
-- `AddStreamNode(...)` 같은 등록 이름을 그대로 갈지
-- packet session 등록을 attribute까지 지원할지
-- raw session과 packet session을 한 stream node에 같이 붙일지, 하나만 허용할지
-- body decode helper를 framework가 어디까지 제공할지
-- `Message` 위에 protobuf/json zero-copy helper를 둘지
-- protobuf/json/messagepack serializer를 확장 패키지로 나눌지
-- `OnErrorAsync(...)`에 매핑할 monitor 이벤트 범위를 어디까지로 좁힐지
-- codec 없는 raw stream과 framed packet stream을 같은 session 계약으로 설명할지
+- packet session과 raw session 등록은 attribute 기반으로 열지 않는다.
+  `AddStreamNode(...).AddPacketSession<T>()`, `AddRawSession<T>()` 같은 명시 등록만
+  기본 표면으로 둔다.
+- body decode helper와 encode helper는 framework 본체가 아니라 serializer 확장
+  패키지가 맡는다.
+  framework core는 `Message`, `AsReadOnlySpan()`, session contract까지만 책임진다.
+- protobuf/json/messagepack serializer는 확장 패키지로 분리한다.
+  transport core나 framework 기본 runtime에 codec 구현을 직접 섞지 않는다.
+- `OnErrorAsync(...)`는 session-correlatable transport 오류만 받는다.
+  handshake 실패와 socket/node 단위 오류는 runtime monitoring에서 다루고, session
+  callback에는 올리지 않는다.
+- raw stream과 framed packet stream은 같은 session 계약으로 합치지 않는다.
+  `IZLinkRawStreamSession`과 `IZLinkPacketStreamSession`을 별도 계약으로 유지한다.

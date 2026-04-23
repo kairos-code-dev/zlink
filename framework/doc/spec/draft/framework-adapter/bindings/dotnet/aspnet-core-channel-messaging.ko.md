@@ -53,9 +53,11 @@ request client에서는 둘 중 하나만 선택**하는 편을 기본으로 본
 여기서 중요한 점은 channel이 곧바로 하나의 소켓 조합을 뜻하지 않는다는 점이다.
 framework 사용자는 아래처럼 역할 이름으로 읽는 편이 자연스럽다.
 
-- `EnableServer()` -- local request/send handler를 받는다
+- `EnableServer()` -- local request/send handler를 받는다. 이 capability는
+  `server.Bind(...)`로 local endpoint를 같이 정해야 한다
 - `EnableClient()` -- 그 channel로 request/send outbound 호출을 보낸다
-- `EnablePublisher()` -- 그 channel의 event를 publish한다
+- `EnablePublisher()` -- 그 channel의 event를 publish한다. 이 capability도
+  `publisher.Bind(...)`로 local endpoint를 같이 정해야 한다
 - `EnableSubscriber()` -- 그 channel의 event를 subscribe한다
 
 즉 inbound handler를 붙이지 않고 outbound client만 쓰는 앱이라면, local server
@@ -68,7 +70,10 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddChannel("api", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
     });
 
     options.AddChannel("profile", channel =>
@@ -104,7 +109,10 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddChannel("api", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
     });
 
     options.AddChannel("profile", channel =>
@@ -202,10 +210,10 @@ builder.Services.AddZLinkFramework(options =>
 builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 ```
 
-또는 endpoint-style registration도 가능하지만, 1차 초안은 DI와 attribute 기반을
+또는 endpoint-style registration도 가능하지만, 현재 초안은 DI와 attribute 기반을
 우선 검토한다.
 
-현재 1차 attribute 후보는 아래처럼 둔다. 기본 packet key는 payload 타입 이름을
+현재 attribute 표면은 아래처럼 둔다. 기본 packet key는 payload 타입 이름을
 쓰고, 정말 필요할 때만 `PacketName`을 override하는 방향을 기준으로 본다.
 
 ```csharp
@@ -586,10 +594,14 @@ builder.Services.AddZLinkFramework(options =>
 따라서 내부 구현은 `IHostedService` 또는 그와 비슷한 hosted lifecycle 모델과
 잘 맞아야 한다.
 
-## 10. 아직 확정하지 않는 것
+## 10. 결정된 기준
 
-- attribute model과 endpoint model 중 어느 쪽을 우선할지
-- channel별 typed wrapper를 공식 제공할지
-- 일반 서버간 쪽에서 `IZLinkClient`와 event publisher를 어떤 이름으로 확정할지
-- channel runtime을 언제 만들고 언제 정리할지
-- topology query surface를 운영 API로만 둘지, 일반 DI 서비스로도 열지
+- framework core는 channel별 typed wrapper를 기본 표면으로 제공하지 않는다.
+  공용 outbound 표면은 `IZLinkClient` 하나로 유지한다.
+- channel runtime은 host startup 단계에서 등록된 capability 기준으로 만들고, host
+  shutdown 단계에서 정리한다.
+  lazy first-call 생성으로 숨기지 않고, startup에서 설정 오류를 드러내는 편을
+  기본으로 본다.
+- topology query는 운영 HTTP endpoint 전용 숨은 API로 두지 않는다.
+  앱 내부에서도 쓸 수 있는 일반 DI 서비스로 열고, 운영 API는 그 서비스를 얇게
+  감싸는 형태를 기본으로 본다.

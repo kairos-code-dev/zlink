@@ -135,7 +135,7 @@ internal sealed class ZLinkFrameworkRuntime
                 {
                     var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
                     dealer.AttachDiscovery(discovery);
-                    bundle.Track(discovery);
+                    bundle.Discovery = discovery;
                 }
 
                 state.ClientBundles.Add(channelName, bundle);
@@ -402,6 +402,76 @@ internal sealed class ZLinkFrameworkRuntime
             () => bundle.ManualConnections.AsReadOnly());
     }
 
+    internal IZLinkBackendSocket GetMonitoringSocket(string sourceName)
+    {
+        var (channelName, capability) = ParseChannelCapabilitySource(sourceName);
+        var state = GetOrStartState();
+
+        return capability switch
+        {
+            "server" => state.ServerBundles.TryGetValue(channelName, out var serverBundle)
+                ? serverBundle.Socket
+                : throw new InvalidOperationException(
+                    $"Socket monitoring source '{sourceName}' is not registered."),
+            "subscriber" => state.SubscriberBundles.TryGetValue(channelName, out var subscriberBundle)
+                ? subscriberBundle.Socket
+                : throw new InvalidOperationException(
+                    $"Socket monitoring source '{sourceName}' is not registered."),
+            "publisher" => GetOrCreatePublisherBundle(channelName).Socket,
+            "client" => GetOrCreateClientBundle(channelName).Socket,
+            _ => throw new InvalidOperationException(
+                $"Socket monitoring source '{sourceName}' is not registered."),
+        };
+    }
+
+    internal IZLinkBackendDiscovery GetMonitoringDiscovery(string sourceName)
+    {
+        if (_state is null)
+        {
+            StartAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        }
+
+        if (sourceName.EndsWith(".discovery", StringComparison.Ordinal))
+        {
+            var logicalName = sourceName[..^".discovery".Length];
+
+            if (_state!.SpotDiscoveries.TryGetValue(sourceName, out var spotDiscovery))
+            {
+                return new ZLinkBackendDiscoveryWrapper(spotDiscovery);
+            }
+
+            var socket = GetMonitoringSocket(logicalName);
+            var capability = logicalName[(logicalName.LastIndexOf('.') + 1)..];
+            var channelName = logicalName[..logicalName.LastIndexOf('.')];
+            var state = GetOrStartState();
+            var bundle = capability switch
+            {
+                "server" => state.ServerBundles.TryGetValue(channelName, out var serverBundle)
+                    ? serverBundle
+                    : null,
+                "subscriber" => state.SubscriberBundles.TryGetValue(channelName, out var subscriberBundle)
+                    ? subscriberBundle
+                    : null,
+                "publisher" => GetOrCreatePublisherBundle(channelName),
+                "client" => GetOrCreateClientBundle(channelName),
+                _ => null,
+            };
+
+            if (bundle?.Discovery is not null)
+            {
+                return bundle.Discovery;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Discovery monitoring source '{sourceName}' is not registered.");
+    }
+
+    internal ZLinkSpotMonitoringSnapshot GetSpotMonitoringSnapshot(string spotNodeName)
+    {
+        return GetSpotNode(spotNodeName).GetMonitoringSnapshot();
+    }
+
     private ZLinkFrameworkRuntimeState GetOrStartState()
     {
         if (_state is null)
@@ -561,7 +631,7 @@ internal sealed class ZLinkFrameworkRuntime
         {
             var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
             router.AttachDiscovery(discovery);
-            bundle.Track(discovery);
+            bundle.Discovery = discovery;
         }
 
         return bundle;
@@ -590,7 +660,7 @@ internal sealed class ZLinkFrameworkRuntime
         {
             var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
             subscriber.AttachDiscovery(discovery);
-            bundle.Track(discovery);
+            bundle.Discovery = discovery;
         }
 
         return bundle;
@@ -612,7 +682,7 @@ internal sealed class ZLinkFrameworkRuntime
         {
             var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
             publisher.AttachDiscovery(discovery);
-            bundle.Track(discovery);
+            bundle.Discovery = discovery;
         }
 
         return bundle;
@@ -631,6 +701,20 @@ internal sealed class ZLinkFrameworkRuntime
         }
 
         return discovery;
+    }
+
+    private static (string ChannelName, string Capability) ParseChannelCapabilitySource(string sourceName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(sourceName);
+
+        var separatorIndex = sourceName.LastIndexOf('.');
+        if (separatorIndex <= 0 || separatorIndex == sourceName.Length - 1)
+        {
+            throw new InvalidOperationException(
+                $"Monitoring source '{sourceName}' must use '<channel>.<capability>' form.");
+        }
+
+        return (sourceName[..separatorIndex], sourceName[(separatorIndex + 1)..]);
     }
 
     private ZLinkSpotNodeRuntime GetSpotNode(string spotNodeName)
@@ -870,6 +954,20 @@ internal sealed class ZLinkFrameworkRuntimeState(
     public async ValueTask DisposeAsync()
     {
         StopTokenSource.Cancel();
+
+        if (ListenerTasks.Count > 0)
+        {
+            try
+            {
+                await Task.WhenAll(ListenerTasks);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+        }
 
         foreach (var bundle in ClientBundles.Values)
         {

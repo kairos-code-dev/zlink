@@ -49,24 +49,25 @@ framework 등록은 아래처럼 두는 편이 자연스럽다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
+    options.UseDiscovery(registry =>
+    {
+        registry.Add("tcp://registry-1:5551");
+    });
+
+    options.UseSpotDiscovery("game.stage", registry =>
+    {
+        registry.Add("tcp://registry-1:5551");
+    });
+
     options.AddChannel("profile", channel =>
     {
         channel.EnableServer();
-        channel.EnableClient(client =>
-        {
-            client.UseDiscovery(registry =>
-            {
-                registry.Add("tcp://registry-1:5551");
-            });
-        });
+        channel.EnableClient();
     });
 
     options.AddSpotNode("stage-node", spot =>
     {
-        spot.UseSpotDiscovery("game.stage", registry =>
-        {
-            registry.Add("tcp://registry-1:5551");
-        });
+        spot.EnableRouter();
     });
 });
 
@@ -74,11 +75,16 @@ builder.Services.AddZLinkMonitoring(monitor =>
 {
     monitor.AddSocketEvents(
         "profile.server",
-        SocketEvent.ConnectionReady | SocketEvent.Disconnected);
+        ZLinkSocketEventKind.ConnectionReady,
+        ZLinkSocketEventKind.Disconnected);
 
     monitor.AddDiscoveryEvents(
         "profile.client.discovery",
-        ServiceMonitorEventMask.All);
+        ZLinkDiscoveryEventKind.ServiceUp,
+        ZLinkDiscoveryEventKind.ServiceDown,
+        ZLinkDiscoveryEventKind.ProvidersChanged,
+        ZLinkDiscoveryEventKind.Error,
+        ZLinkDiscoveryEventKind.Closed);
 
     monitor.AddRegistryEvents(
         "registry",
@@ -90,7 +96,16 @@ builder.Services.AddZLinkMonitoring(monitor =>
 });
 ```
 
-여기서 source 이름은 아래처럼 잡는 편이 자연스럽다.
+`AddZLinkMonitoring(...)`은 source 등록만 맡는다. 실제 socket, discovery, registry,
+spot source는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
+`AddZLinkRegistry(...)`로 먼저 올라와 있어야 한다.
+
+여기서 중요한 점은 discovery registration이 capability builder 아래가 아니라
+framework 등록 루트에 있다는 점이다. 일반 channel capability는
+`UseDiscovery(...)`가, SPOT mesh는 `UseSpotDiscovery(...)`가 registry endpoint
+집합을 공급한다.
+
+source 이름은 아래처럼 잡는 편이 자연스럽다.
 
 - socket
   - `channel + capability`
@@ -115,11 +130,11 @@ public interface IZLinkMonitoringOptions
 {
     void AddSocketEvents(
         string sourceName,
-        SocketEvent events = SocketEvent.All);
+        params ZLinkSocketEventKind[] events);
 
     void AddDiscoveryEvents(
         string sourceName,
-        params ServiceMonitorEventMask[] events);
+        params ZLinkDiscoveryEventKind[] events);
 
     void AddRegistryEvents(
         string sourceName,
@@ -146,7 +161,17 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
 }
 ```
 
-socket/discovery/registry/spot은 각각 event kind enum과 record payload를 가진다.
+socket/discovery/registry/spot은 각각 framework 소유 event kind enum과 record
+payload를 가진다. backend raw monitor enum과 status 값이 필요하면 event 안의
+optional diagnostic detail로만 노출한다.
+
+여기서 "optional diagnostic"도 framework 소유 타입으로 다시 감싼다.
+즉 backend `.NET` binding의 `MonitorEventType`, `ServiceEventType`,
+`SubjectKind`, `RegistryStatus`, `SpotNodeStatus` 같은 타입을 framework public
+surface에 직접 노출하지 않는다.
+
+`AddSocketEvents(...)`, `AddDiscoveryEvents(...)`에 event kind를 따로 넘기지 않으면,
+그 source에서 지원하는 모든 logical event를 받는 뜻으로 읽는다.
 
 ## 5. 샘플 코드
 
@@ -182,7 +207,7 @@ public sealed class ProfileServerSocketMonitor
                     "socket disconnected: {Source} {RemoteAddr} value={Value}",
                     @event.SourceName,
                     @event.RemoteAddr,
-                    @event.Value);
+                    @event.Diagnostic?.NativeValue);
                 break;
         }
 
@@ -225,7 +250,7 @@ public sealed class ProfileDiscoveryMonitor
                 _logger.LogError(
                     "discovery error: {Source} error={ErrorCode}",
                     @event.SourceName,
-                    @event.ErrorCode);
+                    @event.Diagnostic?.ErrorCode);
                 break;
         }
 
@@ -334,12 +359,15 @@ spot도 registry와 같은 이유로 raw monitor보다 snapshot diff 표면이 �
 이 구분이 있어야 framework가 source별 구현 차이를 숨기면서도, 없는 기능을 있는
 것처럼 보이지 않을 수 있다.
 
-## 7. 아직 확정하지 않는 것
+## 7. 결정된 기준
 
-- `AddZLinkMonitoring(...)`를 `AddZLinkFramework(...)` 안의 하위 builder로 넣을지
-- registry/spot polling 기본 주기를 둘지, 항상 명시하게 할지
-- registry event를 `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged` 세
-  가지로 둘지 더 줄일지
-- spot event를 `StatusChanged`, `PeersChanged`, `SubjectsChanged` 세 가지로 둘지 더
-  줄일지
-- socket/discovery event payload에서 raw native enum을 어디까지 같이 노출할지
+- registry/spot polling 주기는 monitoring 등록 시 항상 명시한다.
+  숨은 기본 주기를 두지 않고, 운영 코드가 polling cost를 설정에서 바로 읽을 수 있게
+  하는 편을 기본으로 본다.
+- registry event 종류는 `StatusChanged`, `TopologyChanged`,
+  `ServiceSummaryChanged` 세 가지로 고정한다.
+- spot event 종류는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`
+  세 가지로 고정한다.
+- socket/discovery event payload는 raw native enum과 상태 코드를 함께 노출한다.
+  반면 registry/spot event는 snapshot diff 기반 synthetic event이므로 별도 native
+  enum 필드를 두지 않는다.

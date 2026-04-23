@@ -23,31 +23,7 @@ public final class PerfMain {
         }
         PerfUtil.Result result;
         try {
-            result = switch (config.pattern()) {
-                case "DEALER_DEALER" -> serverRole
-                    ? PerfMultiDealerDealer.runServer(config)
-                    : PerfMultiDealerDealer.runClient(config);
-                case "DEALER_ROUTER" -> serverRole
-                    ? PerfMultiDealerRouter.runServer(config)
-                    : PerfMultiDealerRouter.runClient(config);
-                case "ROUTER_ROUTER" -> serverRole
-                    ? PerfMultiRouterRouter.runServer(config)
-                    : PerfMultiRouterRouter.runClient(config);
-                case "PUBSUB" -> serverRole
-                    ? PerfMultiPubSub.runServer(config)
-                    : PerfMultiPubSub.runClient(config);
-                case "SPOT" -> serverRole
-                    ? PerfMultiSpot.runServer(config)
-                    : PerfMultiSpot.runClient(config);
-                case "SPOT_REQREP" -> serverRole
-                    ? PerfMultiSpotReqRep.runServer(config)
-                    : PerfMultiSpotReqRep.runClient(config);
-                case "STREAM" -> serverRole
-                    ? PerfMultiStream.runServer(config)
-                    : PerfMultiStream.runClient(config);
-                default -> throw new IllegalArgumentException(
-                    "unsupported pattern: " + config.pattern());
-            };
+            result = PerfPatternRegistry.run(config, serverRole);
         } catch (Throwable failure) {
             result = PerfUtil.classifyFailure(config, failure);
         }

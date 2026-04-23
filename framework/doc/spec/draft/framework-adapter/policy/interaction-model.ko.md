@@ -24,8 +24,8 @@
 
 ## 2. 제안하는 공용 상호작용 모델
 
-| 모델 | 설명 | 1차 우선순위 |
-|------|------|--------------|
+| 모델 | 설명 | 현재 비중 |
+|------|------|-----------|
 | `request-response` | 요청 하나에 응답 하나가 돌아온다 | 높음 |
 | `command` | 응답을 기다리지 않는 one-way 전송 | 높음 |
 | `publish-subscribe` | 발행자와 구독자가 느슨하게 연결된다 | 높음 |
@@ -49,13 +49,9 @@
   설명한다.
 - outbound `DEALER(client)`가 받은 메시지는 기본적으로 reply 매칭 대상으로 보고,
   일반 handler dispatch 경로에 넣지 않는다.
-- 다만 같은 SPOT mesh 안의 `spot-to-spot` request/reply는
-  `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
-- 다만 최신 SPOT topology 초안에서는 `targetRid + spotRid` routed 호출을
-  high-level 기본 표면으로 먼저 설명하지 않는다. current SPOT channel 안의
-  상호작용과 다른 channel 호출을 분리해서 설명하는 편이 더 자연스럽다.
-- 그렇더라도 caller가 `targetRid`와 `spotRid`를 이미 알고 있는 경우에는,
-  advanced direct routed `RequestTo(...)` 표면을 둘 수 있다.
+- `SPOT` 쪽은 고급 표면으로 direct routed `RequestTo(...)` 같은 호출도 둘 수 있다.
+  자세한 topology 방향은 [channel-topology.ko.md](./channel-topology.ko.md)와
+  각 binding의 `SPOT` 문서를 참고한다.
 
 ### 3.2 command
 

@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
             new ZLinkHandlerRegistry(
                 provider.GetServices<ZLinkHandlerEndpointDescriptor>()));
         services.TryAddSingleton<ZLinkHandlerDispatcher>();
+        services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
         services.AddSingleton(static provider =>
             new ZLinkFrameworkRuntime(
                 provider,
@@ -134,6 +135,38 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(registration);
         services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
         services.AddSingleton<IZLinkRegistryQueryClient, ZLinkRegistryQueryClientService>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddZLinkMonitoring(
+        this IServiceCollection services,
+        Action<IZLinkMonitoringOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        if (services.Any(static descriptor => descriptor.ServiceType == typeof(ZLinkMonitoringRegistration)))
+        {
+            throw new ZLinkConfigurationException("Monitoring is already configured.");
+        }
+
+        var registration = new ZLinkMonitoringRegistration();
+        var builder = new ZLinkMonitoringOptionsModel(registration);
+
+        configure(builder);
+
+        services.AddSingleton(registration);
+        services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
+        services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(static provider =>
+            new ZLinkMonitoringHostedService(
+                provider,
+                provider.GetRequiredService<IZLinkBackendAdapterFactory>(),
+                provider.GetRequiredService<ZLinkMonitoringRegistration>(),
+                provider.GetRequiredService<ZLinkRuntimeEventDispatcher>(),
+                provider.GetService<ZLinkFrameworkRuntime>(),
+                provider.GetService<ZLinkRegistryRuntime>()));
 
         return services;
     }

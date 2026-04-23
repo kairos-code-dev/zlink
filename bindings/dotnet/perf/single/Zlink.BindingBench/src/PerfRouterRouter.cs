@@ -303,7 +303,7 @@ internal static class PerfRouterRouter
         try
         {
             receivedMessage = receiver.Recv(RecvFlags.DontWait);
-            return true;
+            return receivedMessage != null;
         }
         catch (ZlinkRecvException ex)
         {

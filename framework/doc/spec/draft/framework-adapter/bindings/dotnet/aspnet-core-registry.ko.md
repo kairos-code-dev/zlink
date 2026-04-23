@@ -235,14 +235,15 @@ builder.Services.AddZLinkRegistry(registry =>
 ```csharp
 public interface IZLinkRegistryQuery
 {
-    RegistryStatus StatusSnapshot();
-    RegistryServiceSummaryEntry[] ServiceSummarySnapshot(
-        RegistryServiceSummaryFilter? filter = null);
-    RegistryTopologyEntry[] TopologySnapshot();
-    RegistryTopologyEntry[] TopologyQuery(
-        RegistryTopologyFilter? filter = null);
-    MemberPeerEntry[] MemberPeers(
-        ChannelType channelType, string channelName);
+    ZLinkRegistryStatus StatusSnapshot();
+    ZLinkRegistryServiceSummaryEntry[] ServiceSummarySnapshot(
+        ZLinkRegistryServiceSummaryFilter? filter = null);
+    ZLinkRegistryTopologyEntry[] TopologySnapshot();
+    ZLinkRegistryTopologyEntry[] TopologyQuery(
+        ZLinkRegistryTopologyFilter? filter = null);
+    ZLinkMemberPeerEntry[] MemberPeers(
+        ZLinkServiceType serviceType,
+        string serviceName);
 }
 ```
 
@@ -289,8 +290,8 @@ builder.Services.AddZLinkRegistryQueryClient(query =>
 ```csharp
 public interface IZLinkRegistryQueryClient
 {
-    RegistryTopologyEntry[] Snapshot(
-        RegistryTopologyFilter? filter = null);
+    ZLinkRegistryTopologyEntry[] Snapshot(
+        ZLinkRegistryTopologyFilter? filter = null);
 }
 ```
 
@@ -422,15 +423,18 @@ app.MapGet("/admin/topology", (IZLinkRegistryQueryClient query) =>
 app.Run();
 ```
 
-## 9. 아직 확정하지 않는 것
+## 9. 결정된 기준
 
-- `AddZLinkRegistry`의 `IHostedService` startup 순서를 framework가 자동으로
-  보장할지, 사용자가 등록 순서로 제어할지
-- Registry health check를 `ASP.NET Core`의 `IHealthCheck` 인터페이스로
-  자동 등록할지
-- embedded 구성에서 `UseDiscovery`가 같은 프로세스의 Registry를 자동으로
-  감지할지, 명시적으로 endpoint를 적어야 할지
-- `IZLinkRegistryQuery`와 `IZLinkRegistryQueryClient`를 공용 인터페이스로
-  묶을지
-- topology 변경 이벤트를 callback이나 `IObservable`로 노출할지
-- `RegistryQueryClient`의 연결 실패 시 retry 정책을 framework가 제공할지
+- framework는 `AddZLinkRegistry(...)`와 `AddZLinkFramework(...)`를 함께 쓴 경우
+  Registry hosted service가 먼저 bind되도록 startup 순서를 자동으로 보장한다.
+- Registry health check는 `IHealthCheck`로 자동 등록하지 않는다.
+  health endpoint가 필요하면 응용이 `IZLinkRegistryQuery`를 써서 명시적으로 노출하는
+  편을 기본으로 본다.
+- embedded 구성에서도 `UseDiscovery(...)`는 같은 프로세스의 Registry를 자동 감지하지
+  않는다.
+  Discovery endpoint는 문서와 설정에서 분명히 보이도록 명시적으로 적는다.
+- `IZLinkRegistryQuery`와 `IZLinkRegistryQueryClient`는 묶지 않는다.
+- topology 변경 알림은 `IObservable`보다 framework의 일반 handler/callback 표면으로
+  올리는 편을 기본으로 본다.
+- `RegistryQueryClient`는 연결 실패 시 framework가 숨은 retry를 넣지 않는다.
+  retry가 필요하면 호출자나 monitoring 계층이 명시적으로 정책을 둔다.

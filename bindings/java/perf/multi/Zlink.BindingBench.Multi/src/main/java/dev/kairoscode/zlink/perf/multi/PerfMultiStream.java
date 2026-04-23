@@ -4,22 +4,14 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PerfStreamHooks;
-import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.StreamSocket;
-import dev.kairoscode.zlink.SubmitException;
-import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.perf.PerfControl;
-import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 final class PerfMultiStream {
     private PerfMultiStream() {
@@ -27,15 +19,11 @@ final class PerfMultiStream {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         AtomicBoolean stopRequested = new AtomicBoolean(false);
-        ConcurrentLinkedQueue<PendingReply> pending = new ConcurrentLinkedQueue<>();
-        AtomicInteger pendingCount = new AtomicInteger();
-        Object pendingSignal = new Object();
-        Thread controlWatcher = startControlWatcher(stopRequested, pendingSignal);
+        Object stopSignal = new Object();
+        Thread controlWatcher = startControlWatcher(stopRequested, stopSignal);
 
         try (Context ctx = PerfUtil.newContext(config);
-             StreamSocket server = new StreamSocket(ctx);
-             PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                 List.of(server), PollEventType.POLLOUT.getValue())) {
+             StreamSocket server = new StreamSocket(ctx)) {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.options().sendTimeout(java.time.Duration.ZERO);
@@ -44,26 +32,12 @@ final class PerfMultiStream {
             PerfControl.emitReady(config.endpoint());
             PerfStreamHooks.attachFramedPacketHandler(server,
                 (routingId, header, body) ->
-                    onPacket(server, routingId, header, body, pending,
-                        pendingCount, pendingSignal));
+                    onPacket(server, routingId, header, body, stopRequested, stopSignal));
 
-            while (!stopRequested.get()) {
-                if (pendingCount.get() == 0) {
-                    waitForPending(stopRequested, pendingCount, pendingSignal);
-                    continue;
-                }
-                pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
-                if (pollSet.poll(100) <= 0
-                    || !pollSet.isReady(0, PollEventType.POLLOUT.getValue())) {
-                    continue;
-                }
-                flushPending(server, pending, pendingCount);
-            }
-
+            waitForStop(stopRequested, stopSignal);
             return PerfUtil.Result.silent(config);
         } finally {
             controlWatcher.interrupt();
-            closePending(pending, pendingCount);
         }
     }
 
@@ -72,7 +46,7 @@ final class PerfMultiStream {
     }
 
     private static Thread startControlWatcher(AtomicBoolean stopRequested,
-                                              Object pendingSignal) {
+                                              Object stopSignal) {
         Thread watcher = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
@@ -80,13 +54,12 @@ final class PerfMultiStream {
                 while ((line = reader.readLine()) != null) {
                     if ("STOP".equals(line) || "QUIT".equals(line)) {
                         stopRequested.set(true);
-                        signalPending(pendingSignal);
+                        signal(stopSignal);
                         return;
                     }
                 }
             } catch (Exception ex) {
-                throw new IllegalStateException("stream control watcher failed",
-                    ex);
+                throw new IllegalStateException("stream control watcher failed", ex);
             }
         }, "stream-control");
         watcher.setDaemon(true);
@@ -98,85 +71,38 @@ final class PerfMultiStream {
                                 dev.kairoscode.zlink.RoutingId routingId,
                                 Message header,
                                 Message body,
-                                ConcurrentLinkedQueue<PendingReply> pending,
-                                AtomicInteger pendingCount,
-                                Object pendingSignal) {
+                                AtomicBoolean stopRequested,
+                                Object stopSignal) {
         if (routingId == null) {
             return 0;
         }
-        if (server.send(routingId, List.of(header.move(), body.move()),
-            SendFlags.DONT_WAIT)) {
+        try {
+            PerfStreamHooks.sendFramedPacket(server, routingId, header, body,
+                dev.kairoscode.zlink.SendFlags.NONE);
             return 0;
-        }
-        pending.add(new PendingReply(routingId, header.move(), body.move()));
-        pendingCount.incrementAndGet();
-        signalPending(pendingSignal);
-        return 0;
-    }
-
-    private static void flushPending(StreamSocket server,
-                                     ConcurrentLinkedQueue<PendingReply> pending,
-                                     AtomicInteger pendingCount) {
-        while (true) {
-            PendingReply reply = pending.peek();
-            if (reply == null) {
-                return;
-            }
-            if (!server.send(reply.routingId(),
-                List.of(reply.header(), reply.body()),
-                SendFlags.DONT_WAIT)) {
-                return;
-            }
-            pending.poll();
-            pendingCount.decrementAndGet();
-            reply.close();
+        } catch (RuntimeException ex) {
+            stopRequested.set(true);
+            signal(stopSignal);
+            return -1;
         }
     }
 
-    private static void closePending(ConcurrentLinkedQueue<PendingReply> pending,
-                                     AtomicInteger pendingCount) {
-        while (true) {
-            PendingReply reply = pending.poll();
-            if (reply == null) {
-                pendingCount.set(0);
-                return;
-            }
-            try {
-                reply.close();
-            } catch (RuntimeException ignored) {
-            } finally {
-                pendingCount.decrementAndGet();
-            }
-        }
-    }
-
-    private static void waitForPending(AtomicBoolean stopRequested,
-                                       AtomicInteger pendingCount,
-                                       Object pendingSignal) {
-        synchronized (pendingSignal) {
-            while (!stopRequested.get() && pendingCount.get() == 0) {
+    private static void waitForStop(AtomicBoolean stopRequested, Object stopSignal) {
+        synchronized (stopSignal) {
+            while (!stopRequested.get()) {
                 try {
-                    pendingSignal.wait();
+                    stopSignal.wait();
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
-                    throw new IllegalStateException("stream pending wait interrupted", ex);
+                    throw new IllegalStateException("stream stop wait interrupted", ex);
                 }
             }
         }
     }
 
-    private static void signalPending(Object pendingSignal) {
-        synchronized (pendingSignal) {
-            pendingSignal.notifyAll();
-        }
-    }
-
-    private record PendingReply(dev.kairoscode.zlink.RoutingId routingId,
-                                Message header,
-                                Message body) {
-        private void close() {
-            header.close();
-            body.close();
+    private static void signal(Object stopSignal) {
+        synchronized (stopSignal) {
+            stopSignal.notifyAll();
         }
     }
 }

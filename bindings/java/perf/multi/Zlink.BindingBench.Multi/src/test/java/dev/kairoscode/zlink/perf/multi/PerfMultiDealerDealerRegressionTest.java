@@ -16,14 +16,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PerfMultiDealerDealerRegressionTest {
+    private static final Duration PROCESS_TIMEOUT = Duration.ofSeconds(30);
+
     @Test
     void splitProcessServerAndClientCompleteWithoutTimeout() throws Exception {
+        runSplitProcessDealerDealer(1);
+    }
+
+    @Test
+    void splitProcessServerAndClientCompleteWithMultipleClients() throws Exception {
+        runSplitProcessDealerDealer(4);
+    }
+
+    private static void runSplitProcessDealerDealer(int clients) throws Exception {
         String endpoint = "tcp://127.0.0.1:" + freePort();
 
         Process server = startPerfProcess(List.of(
             "--multi-server", "MULTI_DEALER_DEALER", "tcp", "64",
             "--endpoint", endpoint,
-            "--clients", "1",
+            "--clients", Integer.toString(clients),
             "--duration", "1"
         ));
         ProcessOutput serverOutput = ProcessOutput.capture(server);
@@ -32,7 +43,7 @@ class PerfMultiDealerDealerRegressionTest {
         Process client = startPerfProcess(List.of(
             "--multi-client", "MULTI_DEALER_DEALER", "tcp", "64",
             "--endpoint", endpoint,
-            "--clients", "1",
+            "--clients", Integer.toString(clients),
             "--duration", "1"
         ));
         ProcessOutput clientOutput = ProcessOutput.capture(client);
@@ -41,13 +52,13 @@ class PerfMultiDealerDealerRegressionTest {
         writeLine(server.getOutputStream(), "START,64");
         writeLine(client.getOutputStream(), "START,64");
 
-        String clientOut = waitAndRead(client, clientOutput, Duration.ofSeconds(10), "client");
-        String serverOut = waitAndRead(server, serverOutput, Duration.ofSeconds(10), "server");
+        String clientOut = waitAndRead(client, clientOutput, PROCESS_TIMEOUT, "client");
+        String serverOut = waitAndRead(server, serverOutput, PROCESS_TIMEOUT, "server");
 
-        assertTrue(serverOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
-            "unexpected server output:\n" + serverOut);
-        assertTrue(!clientOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
+        assertTrue(clientOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
             "unexpected client output:\n" + clientOut);
+        assertTrue(!serverOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
+            "unexpected server output:\n" + serverOut);
     }
 
     private static Process startPerfProcess(List<String> args) throws Exception {

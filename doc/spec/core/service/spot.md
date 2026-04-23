@@ -304,9 +304,8 @@ zlink_config_result_t zlink_socket_get_channel_name(
 
 ## Spot routed request initiation
 
-`Spot` can initiate routed requests directly. One-way direct send is not on
-the public surface, but the following two paths are exposed to keep the
-request/reply surface symmetric.
+`Spot` can initiate routed requests and one-way direct sends.
+The following paths are exposed.
 
 ### Core helper substrate
 
@@ -331,6 +330,14 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_,
   uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
 ```
 
 ### C API wrapper
@@ -356,6 +363,14 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
   void *userdata_,
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
+
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
 ```
 
 - `zlink_spot_request_spot()` pairs with `zlink_spot_reply_spot(_part)` on the replier side.
@@ -363,6 +378,8 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
 - On `ZLINK_SUBMIT_OK` the handler is registered and called exactly once.
 - On any other return value the handler is not registered.
 - For the full result-code mapping see `doc/draft/spot-routed-request-api.ko.md` §8.
+- `zlink_spot_send_spot()` performs a one-way routed send to a destination `Spot`. No handler, no reply wait.
+- Returns `ZLINK_SUBMIT_OK` when the message is accepted into the send path.
 
 ## Router-side direct SPOT addressing
 

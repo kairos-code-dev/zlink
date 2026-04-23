@@ -14,7 +14,7 @@ internal static partial class PerfRunner
         try
         {
             var options = PerfOptions.CreateMulti(PerfExecutionKind.MultiClient,
-                outputPattern, transport, size, normalizedEndpoint, "recv");
+                outputPattern, transport, size, normalizedEndpoint);
             if (!MultiPerfPatternRegistry.TryGet(outputPattern,
                     out IPerfPattern perfPattern))
             {

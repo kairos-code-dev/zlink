@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-import os
-import subprocess
+import importlib.util
 import sys
 from pathlib import Path
 
 
-def main() -> int:
+def load_runner_module():
     runner = Path(__file__).resolve().parents[1] / "run_comparison.py"
-    cmd = [sys.executable, str(runner)]
-    cmd.extend(sys.argv[1:])
-    env = dict(os.environ)
-    env["PERF_INTERNAL_MULTI_ENTRY"] = "1"
-    return subprocess.call(cmd, env=env)
+    spec = importlib.util.spec_from_file_location("cpp_perf_run_comparison", runner)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load runner: {runner}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main() -> int:
+    runner = load_runner_module()
+    runner.configure_suite("multi")
+    return runner.main()
 
 
 if __name__ == "__main__":

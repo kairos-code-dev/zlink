@@ -295,7 +295,7 @@ for (;;) {
 
 subscribe plane도 같은 방식으로 drain한다.
 
-### 6.1 channel request reply가 dispatch stream에 포함되는 이유
+### 6.2 channel request reply가 dispatch stream에 포함되는 이유
 
 `zlink_spot_request_channel()`로 시작한 request의 reply는 transport 경로상으로는
 attach된 `DEALER`를 통해 돌아오지만, **최종 callback 실행은 해당 `Spot`의 dispatch
@@ -317,7 +317,7 @@ stream에서 처리된다**.
 순차 처리하려면 현재는 `zlink_spot_dispatch_event_handler()`를 사용하는 쪽이 맞다.
 `Spot` progress 하나만으로 channel reply completion을 포함한 모든 work가 진전된다.
 
-## 7. Routed receive와 reply
+## 8. Routed receive와 reply
 
 SPOT routed plane은 수신 시 source node rid, source spot rid, request sequence를
 함께 준다.
@@ -344,13 +344,13 @@ int rc = zlink_spot_recv(
 - 상대가 SPOT이면 `zlink_spot_reply_spot()`
 - 상대가 ROUTER면 `zlink_spot_reply_router()`
 
-## 8. Spot에서 routed request 시작하기
+## 9. Spot에서 routed request 시작하기
 
-`Spot`은 routed request를 직접 시작할 수 있다. 기본 경로는 여전히
-`send_channel()` / `request_channel()`이지만, 특정 peer를 직접 지목해
-request/reply를 해야 할 때는 아래 두 API를 사용한다.
+`Spot`은 routed request와 one-way direct send를 직접 시작할 수 있다.
+기본 경로는 `send_channel()` / `request_channel()`이지만, 특정 peer를 직접
+지목할 때는 아래 API를 사용한다.
 
-### 8.1 다른 Spot으로 request 보내기
+### 9.1 다른 Spot으로 request 보내기
 
 ```c
 zlink_spot_request_spot(
@@ -367,7 +367,7 @@ zlink_spot_request_spot(
 
 reply는 대상 Spot이 `zlink_spot_reply_spot()`으로 보낸다.
 
-### 8.2 Router peer로 request 보내기
+### 9.2 Router peer로 request 보내기
 
 ```c
 zlink_spot_request_router(
@@ -383,13 +383,16 @@ zlink_spot_request_router(
 
 reply는 대상 ROUTER가 `zlink_router_reply_spot()`으로 보낸다.
 
-### 8.3 one-way direct send는 공개 표면에 없음
+### 9.3 Spot에서 Spot으로 one-way direct send
 
-`Spot`에서 `rid`를 직접 지정해 one-way send를 하는 API는 현재 공개
-표면에 없다. one-way direct send가 필요하면 `RouterSocket` 또는 raw ROUTER
-API를 쓴다.
+`Spot`에서 `rid`를 직접 지정해 다른 `Spot`으로 one-way send를 하려면
+`zlink_spot_send_spot()` (C API) 또는 내부 substrate `zlink_spot_send_spot_part()`를
+사용한다.
 
-## 9. Router에서 SPOT으로 직접 보내기
+ROUTER peer로 one-way send는 현재 공개 표면에 없다. 필요하면 `RouterSocket`
+또는 raw ROUTER API를 쓴다.
+
+## 10. Router에서 SPOT으로 직접 보내기
 
 특정 destination node rid와 spot rid를 직접 지정해 ROUTER에서 SPOT으로
 one-way send 또는 request를 보낼 때는 `RouterSocket` 또는 raw ROUTER API를 쓴다.
@@ -407,7 +410,7 @@ zlink_router_request_spot(
   2000);
 ```
 
-## 10. 일반 PUB에서 SPOT으로 publish 넣기
+## 11. 일반 PUB에서 SPOT으로 publish 넣기
 
 외부 일반 `PUB`에서 SPOT topic plane으로 publish를 넣고 싶다면 ingress용 `PUB`를
 등록한다.
@@ -420,7 +423,7 @@ zlink_spot_node_attach_pub_ingress(node, pub);
 이 `PUB`는 `SpotNode` 전용 ingress source로 취급한다. node당 하나만 붙일 수 있고,
 attach 뒤에는 다른 일반 용도로 함께 쓰지 않는 편이 맞다.
 
-## 11. 상태 확인
+## 12. 상태 확인
 
 디버깅이나 운영 상태 확인에는 node snapshot과 service monitor를 사용한다.
 

@@ -225,15 +225,6 @@ public static class PerfShared
         }
     }
 
-    public static void TryDisposeAllQuietly(params IDisposable?[] disposables)
-    {
-        if (disposables == null)
-            return;
-
-        foreach (IDisposable? disposable in disposables)
-            TryDisposeQuietly(disposable);
-    }
-
     public static string NormalizePattern(string pattern,
         bool trimMultiPrefix = false)
     {

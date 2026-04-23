@@ -3,8 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+CPP_PERF_DIR="${ROOT_DIR}/bindings/cpp/perf"
 OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM"
+NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
+MAKE_BIN="$(command -v gmake || command -v make)"
+PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/multi/run_comparison.py"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
@@ -35,6 +39,13 @@ print_total_time() {
   echo "Total benchmark time: $(format_elapsed "${elapsed}") (${elapsed}s, exit=${status})"
 }
 trap 'print_total_time $?' EXIT
+
+IS_WINDOWS=0
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    IS_WINDOWS=1
+    ;;
+esac
 
 is_uint() {
   local value="${1:-}"
@@ -125,9 +136,9 @@ resolve_memory_max_clients() {
   local budget_pct
   local base_mb
   local per_client_kb
-  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
-  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
-  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
   if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
     echo ""
     return
@@ -180,9 +191,9 @@ ensure_memory_budget() {
   local budget_pct
   local base_mb
   local per_client_kb
-  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
-  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
-  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
   MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
   return 1
 }
@@ -193,7 +204,7 @@ Usage: bindings/cpp/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,STREAM
 By default, this wrapper runs current zlink only.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
@@ -333,42 +344,45 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${PERF_DURATION_SECONDS:-5}}"
-CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-}}"
-EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
-EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
-HWM="${PERF_MULTI_HWM:-${PERF_HWM:-}}"
-SNDHWM="${PERF_MULTI_SNDHWM:-${PERF_SNDHWM:-}}"
-RCVHWM="${PERF_MULTI_RCVHWM:-${PERF_RCVHWM:-}}"
-SNDBUF="${PERF_MULTI_SNDBUF:-${PERF_SNDBUF:-}}"
-RCVBUF="${PERF_MULTI_RCVBUF:-${PERF_RCVBUF:-}}"
-SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${PERF_SNDTIMEO_MS:-200}}"
-RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
-CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${PERF_CONNECT_CONCURRENCY:-}}"
-SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-${PERF_SERVICE_CLIENTS:-}}"
-LATENCY_SAMPLE_CAP="${PERF_MULTI_LATENCY_SAMPLE_CAP:-${PERF_LATENCY_SAMPLE_CAP:-}}"
-TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-}}"
-STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-}}"
-PUBSUB_XPUB_NODROP="${PERF_MULTI_PUBSUB_XPUB_NODROP:-${PERF_PUBSUB_XPUB_NODROP:-}}"
-SPOT_XPUB_NODROP="${PERF_MULTI_SPOT_XPUB_NODROP:-${PERF_SPOT_XPUB_NODROP:-}}"
-RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
-TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-${PERF_TRANSPORT_TRANSITION_MS:-3000}}"
-PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-${PERF_PATTERN_TRANSITION_MS:-3000}}"
-SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-${PERF_SERVER_READY_TIMEOUT_MS:-10000}}"
-CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-5000}}"
-MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-1000}}"
-SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
-SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
+DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-5}"
+CLIENTS="${PERF_MULTI_CLIENTS:-}"
+EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-100}"
+EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+HWM="${PERF_MULTI_HWM:-}"
+SNDHWM="${PERF_MULTI_SNDHWM:-}"
+RCVHWM="${PERF_MULTI_RCVHWM:-}"
+SNDBUF="${PERF_MULTI_SNDBUF:-}"
+RCVBUF="${PERF_MULTI_RCVBUF:-}"
+SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
+RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
+CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-}"
+SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-}"
+LATENCY_SAMPLE_CAP="${PERF_MULTI_LATENCY_SAMPLE_CAP:-}"
+TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-}"
+STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-}"
+PUBSUB_XPUB_NODROP="${PERF_MULTI_PUBSUB_XPUB_NODROP:-}"
+SPOT_XPUB_NODROP="${PERF_MULTI_SPOT_XPUB_NODROP:-}"
+RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
+TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
+PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
+SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
+CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
+MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-1000}"
+SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
+SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-0}"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
+OUTPUT_FILE=""
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
-EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-}}"
+EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-}"
 COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
-SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
-CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
-STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-${PERF_STREAM_SERVER_IO_THREADS:-}}"
-STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-${PERF_STREAM_CLIENT_IO_THREADS:-}}"
+SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-}"
+CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
+STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-}"
+STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-}"
+TRANSPORTS_OVERRIDE="${PERF_TRANSPORTS:-${TRANSPORTS}}"
+MSG_SIZES_OVERRIDE="${PERF_MSG_SIZES:-}"
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -397,7 +411,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: ${arg} requires a value." >&2
         exit 1
       fi
-      SCRIPT_ARGS+=( "$1" "$2" )
+      TRANSPORTS_OVERRIDE="${2}"
       shift 2
       ;;
     --msg-sizes)
@@ -406,7 +420,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: ${arg} requires a value." >&2
         exit 1
       fi
-      SCRIPT_ARGS+=( "$1" "$2" )
+      MSG_SIZES_OVERRIDE="${2}"
       shift 2
       ;;
     --pattern)
@@ -478,12 +492,20 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --build-dir|--output)
+    --build-dir)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
       SCRIPT_ARGS+=( "$1" "$2" )
+      shift 2
+      ;;
+    --output)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      OUTPUT_FILE="${2}"
       shift 2
       ;;
     --io-threads)
@@ -731,6 +753,120 @@ for (( idx=0; idx<${#SCRIPT_ARGS[@]}; ++idx )); do
   fi
 done
 
+if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
+  echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2
+  exit 1
+fi
+
+case "${BUILD_MODE}" in
+  reuse)
+    if [[ ! -d "${OFFICIAL_BUILD_DIR}" ]]; then
+      echo "Error: --reuse-build requires an existing build directory: ${OFFICIAL_BUILD_DIR}" >&2
+      exit 1
+    fi
+    echo "Reusing build directory: ${OFFICIAL_BUILD_DIR}"
+    ;;
+  clean)
+    echo "Cleaning build directory: ${OFFICIAL_BUILD_DIR}"
+    rm -rf "${OFFICIAL_BUILD_DIR}"
+    ;;
+  incremental)
+    if [[ -d "${OFFICIAL_BUILD_DIR}" ]]; then
+      echo "Using incremental build directory: ${OFFICIAL_BUILD_DIR}"
+    else
+      echo "Creating build directory: ${OFFICIAL_BUILD_DIR}"
+    fi
+    ;;
+  *)
+    echo "Error: invalid build mode: ${BUILD_MODE}" >&2
+    exit 1
+    ;;
+esac
+
+CMAKE_SOURCE_DIR="${ROOT_DIR}/bindings/cpp"
+if [[ "${BUILD_MODE}" != "reuse" && -f "${OFFICIAL_BUILD_DIR}/CMakeCache.txt" ]]; then
+  CACHE_CMAKE_SOURCE="$(
+    sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${OFFICIAL_BUILD_DIR}/CMakeCache.txt" \
+      | tail -n 1
+  )"
+  if [[ -n "${CACHE_CMAKE_SOURCE}" && "${CACHE_CMAKE_SOURCE}" != "${CMAKE_SOURCE_DIR}" ]]; then
+    echo "Build cache source mismatch detected:"
+    echo "  cache source: ${CACHE_CMAKE_SOURCE}"
+    echo "  required source: ${CMAKE_SOURCE_DIR}"
+    echo "Resetting build directory: ${OFFICIAL_BUILD_DIR}"
+    rm -rf "${OFFICIAL_BUILD_DIR}"
+  fi
+fi
+
+if [[ "${BUILD_MODE}" != "reuse" ]]; then
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
+    CMAKE_ARCH="${CMAKE_ARCH:-x64}"
+    cmake -S "${CMAKE_SOURCE_DIR}" -B "${OFFICIAL_BUILD_DIR}" \
+      -G "${CMAKE_GENERATOR}" \
+      -A "${CMAKE_ARCH}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DENABLE_LTO=OFF \
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_BUILD_BENCHMARKS=ON
+    cmake --build "${OFFICIAL_BUILD_DIR}" --config Release --target \
+      cpp_comp_src_dealer_dealer_server \
+      cpp_comp_src_dealer_dealer_client \
+      cpp_comp_src_dealer_router_server \
+      cpp_comp_src_dealer_router_client \
+      cpp_comp_src_router_router_server \
+      cpp_comp_src_router_router_client \
+      cpp_comp_src_pubsub_server \
+      cpp_comp_src_pubsub_client \
+      cpp_comp_src_spot_server \
+      cpp_comp_src_spot_client \
+      cpp_comp_src_spot_reqrep_server \
+      cpp_comp_src_spot_reqrep_client \
+      cpp_comp_src_stream_server
+  else
+    cmake -S "${CMAKE_SOURCE_DIR}" -B "${OFFICIAL_BUILD_DIR}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
+      -DENABLE_LTO=OFF \
+      -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
+      -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_BUILD_BENCHMARKS=ON
+    bash "${NORMALIZE_TIMESTAMPS_SH}" "${OFFICIAL_BUILD_DIR}"
+    cmake --build "${OFFICIAL_BUILD_DIR}" --target \
+      cpp_comp_src_dealer_dealer_server \
+      cpp_comp_src_dealer_dealer_client \
+      cpp_comp_src_dealer_router_server \
+      cpp_comp_src_dealer_router_client \
+      cpp_comp_src_router_router_server \
+      cpp_comp_src_router_router_client \
+      cpp_comp_src_pubsub_server \
+      cpp_comp_src_pubsub_client \
+      cpp_comp_src_spot_server \
+      cpp_comp_src_spot_client \
+      cpp_comp_src_spot_reqrep_server \
+      cpp_comp_src_spot_reqrep_client \
+      cpp_comp_src_stream_server
+  fi
+fi
+
+prepare_cpp_runtime_dir() {
+  "${SCRIPT_DIR}/prepare_cpp_runtime.py" --suite multi
+}
+
+RUNTIME_BUILD_DIR="$(prepare_cpp_runtime_dir)"
+RUNTIME_BIN_DIR="${RUNTIME_BUILD_DIR}/bin"
+
+PYTHON_BIN=()
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=(python3)
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN=(python)
+else
+  echo "Python not found. Install Python 3 or ensure it is on PATH." >&2
+  exit 1
+fi
+
 if [[ -z "${CLIENTS}" ]]; then
   memory_max_clients="$(resolve_memory_max_clients)"
   if is_uint "${memory_max_clients}"; then
@@ -760,23 +896,6 @@ fi
 
 RUN_BASE_ARGS=()
 RUN_BASE_ARGS+=(--duration "${DURATION_SECONDS}")
-if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 ]]; then
-  if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
-    RUN_BASE_ARGS+=(--transports "${PERF_TRANSPORTS}")
-  else
-    RUN_BASE_ARGS+=(--transports "${TRANSPORTS}")
-  fi
-fi
-if [[ "${HAS_EXPLICIT_MSG_SIZES}" -eq 0 ]]; then
-  if [[ -n "${PERF_MSG_SIZES:-}" ]]; then
-    RUN_BASE_ARGS+=(--msg-sizes "${PERF_MSG_SIZES}")
-  fi
-fi
-if [[ "${BUILD_MODE}" == "reuse" ]]; then
-  RUN_BASE_ARGS+=(--reuse-build)
-elif [[ "${BUILD_MODE}" == "clean" ]]; then
-  RUN_BASE_ARGS+=(--clean-build)
-fi
 if [[ "${HAS_EXPLICIT_RUNS}" -eq 0 ]]; then
   RUN_BASE_ARGS+=(--runs "1")
 fi
@@ -786,10 +905,9 @@ if [[ -z "${RESULTS_DIR_OVERRIDE}" ]]; then
 fi
 
 RUN_ENV=()
-RUN_ENV+=(PERF_INTERNAL_MULTI_ENTRY="1")
-RUN_ENV+=(PERF_ALLOW_MULTI="1")
 RUN_ENV+=(PERF_POLICY="1")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
+RUN_ENV+=(PERF_TRANSPORTS="${TRANSPORTS_OVERRIDE}")
 RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${DURATION_SECONDS}")
 RUN_ENV+=(PERF_MULTI_RUN_COOLDOWN_MS="${RUN_COOLDOWN_MS}")
 RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
@@ -803,6 +921,9 @@ RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${DISABLE_RESOURCE_METRICS}")
 RUN_ENV+=(PERF_MULTI_DEFAULT_IO_THREADS="${EFFECTIVE_DEFAULT_IO_THREADS}")
 if [[ -n "${CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${CLIENTS}")
+fi
+if [[ -n "${MSG_SIZES_OVERRIDE}" ]]; then
+  RUN_ENV+=(PERF_MSG_SIZES="${MSG_SIZES_OVERRIDE}")
 fi
 if [[ -n "${SERVICE_CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_SERVICE_CLIENTS="${SERVICE_CLIENTS}")
@@ -936,18 +1057,30 @@ PATTERN_CSV_DISPLAY="$(
 echo "=== Running multi benchmark: ${PATTERN_CSV_DISPLAY} ==="
 echo "    lang=cpp suite=multi"
 echo "    duration=${DURATION_SECONDS}s"
+
+RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${RUNTIME_BIN_DIR}")
+RUN_CMD+=("${RUN_BASE_ARGS[@]}")
+RUN_CMD+=("${SCRIPT_ARGS[@]}")
 RUN_EXIT_CODE=0
-if PERF_INTERNAL_MULTI_ENTRY=1 \
-  PERF_SUPPRESS_TOTAL_TIME=1 \
-  env "${RUN_ENV[@]}" \
-  "${SCRIPT_DIR}/run_binding_single.sh" \
-  "${RUN_BASE_ARGS[@]}" \
-  "${SCRIPT_ARGS[@]}" \
-  --pattern "${PATTERN_CSV}"; then
-  :
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  mkdir -p "$(dirname "${OUTPUT_FILE}")"
+  if PERF_SUPPRESS_TOTAL_TIME=1 \
+    env "${RUN_ENV[@]}" \
+    "${RUN_CMD[@]}" | tee "${OUTPUT_FILE}"; then
+    :
+  else
+    RUN_EXIT_CODE=${PIPESTATUS[0]}
+    FAILED_PATTERNS+=("${PATTERN_CSV}")
+  fi
 else
-  RUN_EXIT_CODE=$?
-  FAILED_PATTERNS+=("${PATTERN_CSV}")
+  if PERF_SUPPRESS_TOTAL_TIME=1 \
+    env "${RUN_ENV[@]}" \
+    "${RUN_CMD[@]}"; then
+    :
+  else
+    RUN_EXIT_CODE=$?
+    FAILED_PATTERNS+=("${PATTERN_CSV}")
+  fi
 fi
 
 if [[ "${#FAILED_PATTERNS[@]}" -gt 0 ]]; then

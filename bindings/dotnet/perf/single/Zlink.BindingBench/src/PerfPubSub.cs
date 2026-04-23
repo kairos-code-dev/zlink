@@ -127,6 +127,8 @@ internal static class PerfPubSub
 
                         using (maybe)
                         {
+                            if (maybe == null)
+                                break;
                             Message body = maybe.FirstPart();
                             ReadOnlySpan<byte> payloadSpan = body.AsReadOnlySpan();
                             long recvTicks = Stopwatch.GetTimestamp();

@@ -155,9 +155,10 @@ ensure_single_runner() {
   local runner_path="$2"
   local install_dir="${build_dir}/install"
   local dist_zip="${build_dir}/distributions/zlink-java-perf-single.zip"
-  if [[ -x "${runner_path}" ]]; then
+  if [[ -x "${runner_path}" && -s "${runner_path}" ]]; then
     return 0
   fi
+  rm -f "${runner_path}"
   if [[ -f "${dist_zip}" ]]; then
     mkdir -p "${install_dir}"
     unzip -qo "${dist_zip}" -d "${install_dir}"
@@ -172,12 +173,12 @@ if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
   rm -rf "${PROJECT_BUILD_DIR}"
 fi
 ensure_single_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
-if [[ "${REUSE_BUILD}" -eq 0 && ! -x "${RUNNER}" ]]; then
+if [[ "${REUSE_BUILD}" -eq 0 ]]; then
   "${JAVA_BINDINGS_DIR}/gradlew" --no-daemon -p "${JAVA_BINDINGS_DIR}" \
     -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-single:installDist >/dev/null
 fi
 ensure_single_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
-if [[ ! -x "${RUNNER}" ]]; then
+if [[ ! -x "${RUNNER}" || ! -s "${RUNNER}" ]]; then
   if [[ "${REUSE_BUILD}" -eq 1 ]]; then
     echo "runner not found for --reuse-build: ${RUNNER}" >&2
   else
@@ -280,7 +281,7 @@ for pattern in "${patterns[@]}"; do
 done
 
 python_status=0
-python3 - "${tmp_metrics}" "${tmp_failures}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
+python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
   "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" "${expected_result_lines}" "${actual_result_lines}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
   "${RCVTIMEO_MS}" "${OUTPUT_PATH}" <<'PY' || python_status=$?
@@ -288,8 +289,12 @@ import csv
 import math
 import sys
 from collections import defaultdict
+from pathlib import Path
 
-metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, expected_result_lines, actual_result_lines, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
+helper_path, metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, expected_result_lines, actual_result_lines, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
+sys.path.insert(0, str(Path(helper_path).resolve().parent))
+from report_common import emit_completion, emit_effective_options, emit_failures, load_failures, write_report
+
 runs = int(runs)
 expected_result_lines = int(expected_result_lines)
 actual_result_lines = int(actual_result_lines)
@@ -300,7 +305,6 @@ rows = defaultdict(lambda: defaultdict(list))
 patterns = []
 pattern_transports = defaultdict(list)
 pattern_sizes = defaultdict(list)
-failures = []
 
 with open(metrics_path, newline="", encoding="utf-8") as f:
     reader = csv.reader(f)
@@ -317,12 +321,7 @@ with open(metrics_path, newline="", encoding="utf-8") as f:
         except ValueError:
             rows[key][metric].append(math.nan)
 
-with open(failures_path, newline="", encoding="utf-8") as f:
-    reader = csv.reader(f)
-    for row in reader:
-        if len(row) != 5:
-            continue
-        failures.append(row)
+failures = load_failures(failures_path)
 
 for pattern in pattern_sizes:
     pattern_sizes[pattern].sort()
@@ -359,27 +358,24 @@ lines = []
 def emit(line=""):
     lines.append(line)
 
-def emit_effective_options(section):
-    emit(f"## Effective Options ({section})")
-    emit("- lang: java")
-    emit("- suite: single")
-    emit(f"- runs: {runs}")
-    emit(f"- patterns: {pattern_csv}")
-    emit(f"- transports: {transports_csv or 'default-per-pattern'}")
-    emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- pin_cpu: {'on' if pin_cpu == '1' else 'off'}")
-    emit(f"- io_threads: {io_threads or 'default(binding)'}")
-    emit(f"- hwm: {hwm or 'default(binding)'}")
-    emit(f"- send_hwm: {send_hwm or 'default(binding)'}")
-    emit(f"- recv_hwm: {recv_hwm or 'default(binding)'}")
-    emit(f"- send_timeout_ms: {sndtimeo_ms}")
-    emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
-    emit(f"- duration_seconds: {duration}")
-    if results_tag:
-        emit(f"- results_tag: {results_tag}")
-    emit("")
+start_options = [
+    ("runs", runs),
+    ("patterns", pattern_csv),
+    ("transports", transports_csv or "default-per-pattern"),
+    ("msg_sizes", msg_sizes_csv),
+    ("pin_cpu", "on" if pin_cpu == "1" else "off"),
+    ("io_threads", io_threads or "default(binding)"),
+    ("hwm", hwm or "default(binding)"),
+    ("send_hwm", send_hwm or "default(binding)"),
+    ("recv_hwm", recv_hwm or "default(binding)"),
+    ("send_timeout_ms", sndtimeo_ms),
+    ("recv_timeout_ms", rcvtimeo_ms),
+    ("duration_seconds", duration),
+]
+if results_tag:
+    start_options.append(("results_tag", results_tag))
 
-emit_effective_options("start")
+emit_effective_options(lines, "start", "java", "single", start_options)
 emit("===============================================================================")
 emit("")
 
@@ -412,24 +408,11 @@ for line in result_lines:
     emit(line)
 
 emit("")
-emit_effective_options("result")
+emit_effective_options(lines, "result", "java", "single", start_options)
 status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
-emit("## Completion")
-emit(f"- status: {status}")
-emit(f"- expected_result_lines: {expected_result_lines}")
-emit(f"- actual_result_lines: {actual_result_lines}")
-emit("")
-emit("## Failures")
-if failures:
-    for pattern, transport, size, run, reason in failures:
-        emit(f"- pattern={pattern} transport={transport} size={size} run={run} reason={reason}")
-
-text = "\n".join(lines) + "\n"
-with open(report_path, "w", encoding="utf-8") as report_file:
-    report_file.write(text)
-if output_path:
-    with open(output_path, "a", encoding="utf-8") as output_file:
-        output_file.write(text)
+emit_completion(lines, status, expected_result_lines, actual_result_lines)
+emit_failures(lines, failures)
+text = write_report(lines, report_path, output_path)
 sys.stdout.write(text)
 sys.exit(0 if status == "complete" else 1)
 PY

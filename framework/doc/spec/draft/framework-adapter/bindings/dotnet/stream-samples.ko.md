@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [인터페이스](./handler-interfaces.ko.md)
+[.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [인터페이스](./handler-interfaces.ko.md)
 
 # Draft -- ZLink Framework .NET STREAM Samples
 
@@ -22,6 +22,10 @@ recv 방식은 이 샘플 문서에 넣지 않는다.
 ## 2. 인터페이스 초안
 
 `STREAM` 샘플이 기대하는 최소 인터페이스는 아래 정도다.
+
+> **주의**: 아래 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의
+> 해당 섹션과 동일하다. 인터페이스가 변경되면 두 문서를 함께 갱신해야 한다.
+> 최신 계약은 항상 `handler-interfaces.ko.md`를 기준으로 한다.
 
 ```csharp
 public interface IZLinkStream
@@ -45,14 +49,11 @@ public enum ZLinkStreamSessionError
 
 public readonly record struct ZLinkStreamError(
     ZLinkStreamSessionError Error,
-    int InternalErrno)
-{
-    public ErrorCode GetErrorCode()
-        => ZlinkException.MapErrorCode(InternalErrno);
+    ZLinkStreamDiagnostic? Diagnostic);
 
-    public string GetErrorMessage()
-        => Zlink.Strerror(InternalErrno);
-}
+public readonly record struct ZLinkStreamDiagnostic(
+    int NativeCode,
+    string? Message);
 
 public interface IZLinkPacketStreamSession
 {
@@ -109,8 +110,8 @@ public interface IZLinkRawStreamSession
 
 `OnErrorAsync(...)`가 받는 값도 raw monitor event를 그대로 노출하지 않는다.
 샘플 기준으로는 `ZLinkStreamError`가 먼저 높은 수준의 오류 분류를 주고,
-필요하면 `GetErrorCode()`, `GetErrorMessage()`로 기존 `.NET zlink` errno 정보에
-다시 접근하는 방향을 기본으로 본다.
+필요하면 `Diagnostic`을 통해 native errno와 메시지를 함께 보는 방향을 기본으로
+본다.
 
 ## 3. packet session 샘플
 
@@ -161,8 +162,8 @@ public sealed class ClientPacketSession
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        ErrorCode code = error.GetErrorCode();
-        string message = error.GetErrorMessage();
+        int? errno = error.Diagnostic?.NativeCode;
+        string? message = error.Diagnostic?.Message;
         return ValueTask.CompletedTask;
     }
 
@@ -325,8 +326,8 @@ public sealed class ClientRawSession : IZLinkRawStreamSession
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        ErrorCode code = error.GetErrorCode();
-        string message = error.GetErrorMessage();
+        int? errno = error.Diagnostic?.NativeCode;
+        string? message = error.Diagnostic?.Message;
         return ValueTask.CompletedTask;
     }
 
@@ -375,12 +376,13 @@ public sealed class ClientRawSession : IZLinkRawStreamSession
 즉 recv가 하부 binding에서 불가능하다는 뜻이 아니라, **framework 샘플의 기본
 방향으로는 채택하지 않는다**는 뜻이다.
 
-## 7. 피드백 포인트
+## 7. 정리
 
-- `STREAM`은 packet session과 raw session 두 축이면 충분한가
-- `OnConnectedAsync(...)`를 `ConnectionReady` 기준으로 볼지 더 이른 monitor
-  event로 볼지
-- `OnErrorAsync(...)`에 어떤 monitor 오류까지 올릴지
-- body parse helper를 framework가 어디까지 제공할지
-- `Message`에 protobuf/json decode helper를 둘지
-- protobuf/json/messagepack을 별도 extension 패키지로 둘지
+- `STREAM` 기본 표면은 packet session과 raw session 두 축으로 고정한다.
+- `OnConnectedAsync(...)`는 `ConnectionReady` 기준으로 읽는다.
+- `OnErrorAsync(...)`는 session-correlatable transport 오류만 받고, handshake 실패와
+  socket/node 단위 오류는 monitoring으로 분리한다.
+- body parse와 encode helper는 framework 본체가 아니라 serializer 확장 패키지가
+  맡는다.
+- `Message.AsReadOnlySpan()` 기반 helper를 기본으로 해서 불필요한 복사를 줄인다.
+- protobuf/json/messagepack serializer는 확장 패키지로 분리한다.

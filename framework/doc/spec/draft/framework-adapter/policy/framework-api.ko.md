@@ -166,32 +166,18 @@ async 호출로 설명하는 편이 맞다.
 
 ### 3.3 ASP.NET Core의 SPOT 방향
 
-`SPOT`은 일반 channel messaging과 달리, logical instance lifecycle까지 함께
-설명해야 한다. 현재 공통 정책은 아래 방향을 기본으로 본다.
+`SPOT`은 일반 channel messaging보다 instance lifecycle과 실행 문맥이 더 먼저
+보이는 표면이다. 공통 정책 차원에서는 아래 정도만 고정한다.
 
-- `UseSpotDiscovery(channelName, ...)`가 `SpotNode`의 active channel view를 정한다.
-- `SpotNode` 안의 capability는 `router`, `pub/sub`, attach된 channel client,
-  attach된 spot publisher client로 나눠서 설명한다.
-- local spot 인스턴스를 만들 spot 타입은 `AddSpotFactory<TSpot>(spotName)`처럼
-  이름과 함께 등록한다.
-- 같은 `SpotNode`에서 이미 등록된 `spotName`을 다시 쓰면 조용히 덮어쓰지 않고
-  startup 시점에 예외를 던진다.
-- spot 생성은 `CreateAsync(spotName, ...)`처럼 등록 이름으로 설명한다.
-- 생성 결과에는 `spotRid`만이 아니라 `spotName`도 함께 돌려주는 편이 맞다.
-- runtime이 들고 있는 `spotRid -> spotName` 매핑은 `GetAsync(...)`,
-  `ListAsync(...)` 같은 조회 표면으로 다시 볼 수 있어야 한다.
-- local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish할 때는
-  별도 `IZLinkSpotPublisherClient` 같은 표면을 둔다.
-- timer는 공용 client scheduler보다, `ZLinkSpot.AddTimer<THandler>(...)`처럼
-  spot lifecycle registration 표면으로 두는 편이 더 자연스럽다.
-- cross-channel 호출은 attach된 channel client를 통한 `SendChannel(...)`,
-  `RequestChannel(...)`가 먼저 보이는 편이 맞다.
-- 다만 caller가 `targetRid`와 `spotRid`를 이미 알고 있으면, advanced surface로
-  direct routed `SendTo(...)`, `RequestTo(...)`를 둘 수 있다.
+- active SPOT channel view는 `UseSpotDiscovery(...)`가 정한다.
+- `SpotNode`는 router, pub/sub, attach된 외부 호출 capability를 가진다.
+- local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
+  timer를 등록한다.
+- local spot이 없는 외부 노드용 publish 표면은 별도 client로 분리할 수 있다.
 
-즉 공통 정책 차원에서는 `SPOT`을 단순 pub/sub helper로 보지 않고, named
-instance 생성, lifecycle, 현재 channel publish, attach된 외부 호출, 운영 조회를
-함께 가진 상위 모델로 설명하는 편이 맞다.
+자세한 contract와 샘플은
+[../bindings/dotnet/aspnet-core-spot.ko.md](../bindings/dotnet/aspnet-core-spot.ko.md)
+같은 binding 문서를 기준으로 본다.
 
 ## 4. Spring Boot 방향
 
@@ -315,18 +301,25 @@ int main() {
 핵심은 raw socket 배선을 application 코드로 퍼뜨리지 않으면서, lifecycle과
 dispatch loop를 framework가 직접 관리하는 것이다.
 
-## 8. 아직 확정하지 않는 것
+## 8. 결정된 기준
 
-- 공용 annotation 이름을 프레임워크마다 통일할지
-- NestJS에서 기존 decorator를 그대로 재사용할지, zlink 전용 decorator를 둘지
-- ASP.NET Core에서 endpoint mapping과 attribute model 중 어디를 우선할지
-- FastAPI에서 decorator보다 helper registration을 더 앞세울지
-- `C++` host가 어느 수준까지 scheduler/timer를 기본 제공할지
-- pub/sub을 `PUB/SUB` 중심으로 설명할지, `SPOT`와 묶은 상위 event 모델로 먼저
-  설명할지
-- stream을 packet/raw session 두 축과 session lifecycle만으로 충분히 설명할 수 있는지
-- scatter-gather 같은 aggregate helper를 adapter 기본 기능으로 둘지
-- workflow metadata를 context에 어느 수준까지 노출할지
+- 공용 annotation 이름을 모든 프레임워크에서 억지로 통일하지 않는다.
+  각 호스트 프레임워크의 익숙한 idiom을 우선한다.
+- NestJS는 기존 `@MessagePattern`, `@EventPattern`과 닮은 감각을 우선한다.
+- ASP.NET Core는 attribute 기반 handler model을 기본으로 보고, endpoint mapping은
+  보조 등록 표면으로 다룬다.
+- FastAPI는 runtime bootstrap을 helper registration이 맡고, HTTP 쪽은 기존 route
+  decorator를 그대로 사용한다.
+- `C++` host는 framework lifecycle에 필요한 scheduler/timer만 기본 제공하고,
+  범용 application scheduler까지 표준 표면으로 끌어올리지는 않는다.
+- pub/sub은 일반 `PUB/SUB` event 모델을 먼저 설명하고, `SPOT` event는 별도 상위
+  모델로 분리한다.
+- `STREAM` 정책 설명은 packet/raw session과 session lifecycle 축으로 충분하다고
+  본다.
+- scatter-gather 같은 aggregate helper는 adapter 기본 기능이 아니라 별도 확장
+  계층으로 둔다.
+- context에는 routing, timeout, trace 같은 공통 metadata만 올리고, workflow 엔진
+  수준의 metadata는 기본 표면으로 끌어올리지 않는다.
 
 지금 단계에서는 이름보다 "그 프레임워크 사용자가 낯설지 않게 느끼는가"를 더
 중요하게 본다.

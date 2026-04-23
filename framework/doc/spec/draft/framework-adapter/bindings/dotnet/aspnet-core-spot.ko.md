@@ -115,6 +115,10 @@ builder.Services.AddZLinkFramework(options =>
 - 필요하면 외부 노드용 spot publish client attach
 - host shutdown 시 lifecycle 정리
 
+애플리케이션에는 `AddSpotNode(...)`를 여러 번 둘 수 있다. 다만 현재 초안에서는
+앱 단위 active SPOT channel view를 하나만 두고, 같은 앱의 여러 `SpotNode`가
+그 view를 공유한다. 그 channel view는 `UseSpotDiscovery(...)` 등록이 정한다.
+
 여기서 registration 함수들은 역할이 다르다.
 
 - `EnableRouter()`
@@ -231,14 +235,14 @@ builder.Services.AddZLinkFramework(options =>
 
 - `router.ConfigureSocket(...)`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`와 같은 공통 socket 기본값을 정한다.
-- `router.ConfigureRouter(...)`
-  - 실제 `RouterSocket.RouterOptions`에 있는 전용 옵션을 정한다.
+- `router.ConfigureRouting(...)`
+  - routed peer 연결에만 적용되는 전용 옵션을 정한다.
 - `pubsub.ConfigurePublisherOptions(...)`
   - 실제 `SpotNode.PublisherOptions`에 있는 mesh publish 기본값을 정한다.
 - `pubsub.ConfigureSubscriberOptions(...)`
   - 실제 `SpotNode.SubscriberOptions`에 있는 mesh subscribe 기본값을 정한다.
-- `client.ConfigureSocket(...)`, `client.ConfigureDealer(...)`
-  - attach된 channel client의 `CommonSocketOptions`, `DealerSocketOptions`를 나눠 둔다.
+- `client.ConfigureSocket(...)`, `client.ConfigureRouting(...)`
+  - attach된 channel client의 공통 socket 설정과 routed outbound 설정을 나눠 둔다.
 - `publisher.ConfigureSocket(...)`
   - attach된 spot publisher client의 publish ingress 기본값을 정한다.
 
@@ -270,7 +274,7 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            router.ConfigureRouter(options =>
+            router.ConfigureRouting(options =>
             {
                 options.Mandatory = true;
                 options.Handover = true;
@@ -279,18 +283,18 @@ builder.Services.AddZLinkFramework(options =>
 
         spot.EnablePubSub(pubsub =>
         {
-            pubsub.ConfigurePublisherOptions(options =>
+            pubsub.ConfigurePublisherOptions(pubOpt =>
             {
-                options.SendHighWaterMark = 50_000;
-                options.SendTimeout = TimeSpan.FromMilliseconds(100);
-                options.NoDrop = true;
+                pubOpt.SendHighWaterMark = 50_000;
+                pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
+                pubOpt.NoDrop = true;
             });
 
-            pubsub.ConfigureSubscriberOptions(options =>
+            pubsub.ConfigureSubscriberOptions(subOpt =>
             {
-                options.ReceiveHighWaterMark = 50_000;
-                options.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
-                options.Linger = TimeSpan.Zero;
+                subOpt.ReceiveHighWaterMark = 50_000;
+                subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+                subOpt.Linger = TimeSpan.Zero;
             });
         });
 
@@ -305,9 +309,9 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            client.ConfigureDealer(dealer =>
+            client.ConfigureRouting(routing =>
             {
-                dealer.ProbeRouter = true;
+                routing.ProbeRouter = true;
             });
         });
 
@@ -376,39 +380,9 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다.
 이 기준에서 manager는 `channelName`이 아니라 현재 앱의 `SpotNode`를 대상으로
 동작하는 편이 더 자연스럽다.
 
-```csharp
-public readonly record struct ZLinkSpotCreateResult(
-    RoutingId SpotRid,
-    string SpotName,
-    bool Created);
-
-public readonly record struct ZLinkSpotInfo(
-    RoutingId SpotRid,
-    string SpotName);
-
-public interface IZLinkSpotManager
-{
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkSpotInfo?> GetAsync(
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
-        CancellationToken cancellationToken = default);
-
-    ValueTask<bool> RemoveAsync(
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-}
-```
+`IZLinkSpotManager` 전체 정의는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 6.3을 기준으로 본다.
+이 문서에서는 그 인터페이스를 어떻게 읽고 어떤 상황에 쓰는지만 설명한다.
 
 이 표면은 아래 상황을 함께 설명한다.
 
@@ -514,6 +488,13 @@ var reply = await client
 SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임을 나누는
 편이 더 자연스럽다.
 
+`ZLinkSpot` 기반 클래스의 `protected Publish(topic, message)` 편의 메서드는
+`IZLinkSpotClient.Publish(...)`를 내부적으로 위임한다.
+즉 spot 코드에서 `Publish(...)`를 직접 호출하는 것과, `IZLinkSpotClient`를
+constructor injection해서 호출하는 것은 같은 경로를 사용한다.
+`ZLinkSpot` 외부에서 현재 SPOT channel로 publish할 때는 `IZLinkSpotClient`를
+명시적으로 주입받아 쓰는 편이 의도를 더 명확히 드러낸다.
+
 ## 6. publish 모델 초안
 
 ### 6.1 topic publish
@@ -597,20 +578,17 @@ public sealed class StageSpot : ZLinkSpot
     private IZLinkTimer? _heartbeat;
 
     public override async ValueTask OnInitializeAsync(
-        IServiceProvider services,
         CancellationToken cancellationToken)
     {
-        AddPacket<GetStageStateHandler>(services);
-        AddPacket<ReportStageStateHandler>(services);
+        AddPacket<GetStageStateHandler>();
+        AddPacket<ReportStageStateHandler>();
 
         AddSubscribe<StageStateUpdatedHandler>(
-            "stage.state.updated",
-            services);
+            "stage.state.updated");
 
         _heartbeat = await AddTimer<StageHeartbeatHandler>(
             "heartbeat",
             TimeSpan.FromSeconds(1),
-            services,
             cancellationToken);
     }
 }
@@ -627,6 +605,8 @@ public sealed class StageSpot : ZLinkSpot
 - handler는 별도 class로 두고, `StageSpot` 안에는 코어 로직만 남길 수 있다.
 - handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 하면, `IZLinkClient`
   또는 `IZLinkSpotClient`를 constructor injection으로 받는 쪽이 더 자연스럽다.
+- framework는 per-spot scope를 만들고, 등록한 handler 타입을 그 scope에서 자동으로
+  resolve하는 편을 기본으로 본다.
 
 ### 7.1 room 계열 사용과 핫패스 원칙
 
@@ -636,19 +616,11 @@ public sealed class StageSpot : ZLinkSpot
 한다.
 
 - reflection은 registration 단계까지만 허용한다.
-- 런타임 packet 처리 경로에서는 `MethodInfo.Invoke` 같은 반사 호출이 있으면 안 된다.
-- `msgId -> handler descriptor` lookup은 미리 만든 dispatch table을 써야 한다.
-- handler 호출은 캐시된 delegate 또는 그와 비슷한 저비용 경로여야 한다.
 - per-packet allocation, 과도한 DI 재구성, 불필요한 boxing은 피해야 한다.
 
 즉 `AddPacket<THandler>(...)` 같은 등록 표면은 startup 또는 spot initialize 단계에서만
-비용이 들고, 실제 핫패스는 아래처럼 짧아야 한다.
-
-1. header에서 `msgId` 읽기
-2. dispatch table에서 handler descriptor 찾기
-3. packet decode
-4. handler resolve 또는 재사용
-5. `HandleAsync(...)` 호출
+비용이 들고, 실제 packet hot path에서는 반복적인 reflection이나 과도한 객체 생성이
+남지 않게 해야 한다.
 
 실제 room 성능에 더 큰 영향을 주는 것은 보통 registration 문법보다 아래 항목이다.
 
@@ -704,18 +676,19 @@ public sealed class StageSpot : ZLinkSpot
 예를 들어 `UseSpotDiscovery("game.stage", ...)`로 등록했다면, 그 `SpotNode`는
 `game.stage` channel mesh 안에서 동작한다고 이해하면 된다.
 
-## 10. 아직 확정하지 않는 것
+## 10. 결정된 기준
 
-- `SpotNode`를 하나만 둘지 여러 개 둘지
-- `SendChannel(...)` / `RequestChannel(...)` 이름을 그대로 둘지
-- attach된 channel client와 spot publisher client 설정을 얼마나 builder로 세분할지
-- `spotRid` 타입을 `RoutingId` 그대로 쓸지, 별도 wrapper로 올릴지
-- `IZLinkSpotManager` 조회 기능을 manager에 둘지 별도 query 표면으로 분리할지
-- subscriber concurrency와 backpressure를 어떻게 설정으로 노출할지
+- attach된 channel client와 spot publisher client 설정은 capability별 builder 하나로
+  묶는다.
+  socket option과 manual connection 같은 runtime 소유 설정만 노출하고, 더 세밀한
+  하위 builder 트리는 기본 표면으로 늘리지 않는다.
+- `spotRid` 타입은 `RoutingId`를 그대로 사용한다.
+- `IZLinkSpotManager`는 생성과 조회를 함께 가진다.
+  `GetAsync(...)`, `ListAsync(...)`는 별도 query 서비스로 분리하지 않고 manager에
+  남긴다.
+- subscriber concurrency와 backpressure는 per-handler나 per-topic API가 아니라,
+  subscriber capability option에서 node 단위로 설정한다.
 
-추가로 `Stage wrapper`를 염두에 둘 때는 아래 축도 따로 정리해야 한다.
-
-- spot 실행 문맥을 어떻게 보장할지
-- timer handler를 어떤 문맥에서 실행할지
-- create 시 초기 metadata를 어떻게 전달할지
-- membership 같은 상위 모델 축을 어디서 맡을지
+`Stage wrapper`에서 필요한 metadata 전달, membership, 실행 문맥 규칙은 framework
+기본 계약이 아니라 [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md)에서
+다루는 상위 wrapper 축으로 본다.

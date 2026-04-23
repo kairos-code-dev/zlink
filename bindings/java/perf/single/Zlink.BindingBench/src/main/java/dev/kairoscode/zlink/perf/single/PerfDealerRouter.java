@@ -130,6 +130,7 @@ final class PerfDealerRouter {
                 throw new IllegalStateException("dealer/router receiver failed",
                     failure.get());
             }
+            ctx.shutdown();
             return metrics.finishSingle(config);
         }
     }

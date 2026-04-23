@@ -86,6 +86,33 @@ class context_t {
 };
 ```
 
+### socket_handle_t
+
+Move-only low-level RAII owner for a native socket handle. This type is
+installed as a public header and therefore part of the compatibility
+contract, but ordinary binding users should prefer the typed socket
+classes (`pair_socket_t`, `dealer_socket_t`, `router_socket_t`, ...).
+
+```cpp
+class socket_handle_t {
+    socket_handle_t() noexcept;
+    explicit socket_handle_t(void* socket, bool own = true) noexcept;
+    ~socket_handle_t();
+
+    socket_handle_t(socket_handle_t&& other) noexcept;
+    socket_handle_t& operator=(socket_handle_t&& other) noexcept;
+
+    socket_handle_t(const socket_handle_t&) = delete;
+    socket_handle_t& operator=(const socket_handle_t&) = delete;
+
+    bool valid() const noexcept;
+    void* handle() noexcept;
+    const void* handle() const noexcept;
+
+    int close() noexcept;
+};
+```
+
 ### context_options_t
 
 Typed facade for context configuration options.
@@ -659,6 +686,36 @@ class stream_socket_options_t {
 };
 ```
 
+Installed public headers also expose the low-level compatibility enums
+and key wrappers used to build generic option code:
+
+```cpp
+enum class socket_option : int;
+enum class router_option : int;
+enum class dealer_option : int;
+enum class pub_option : int;
+enum class sub_option : int;
+enum class stream_option : int;
+
+template<typename T> struct socket_option_key_t;
+template<typename T> struct router_option_key_t;
+template<typename T> struct dealer_option_key_t;
+template<typename T> struct pub_option_key_t;
+template<typename T> struct sub_option_key_t;
+template<typename T> struct stream_option_key_t;
+
+namespace socket_options { /* installed predefined keys */ }
+namespace router_options { /* installed predefined keys */ }
+namespace dealer_options { /* installed predefined keys */ }
+namespace pub_options { /* installed predefined keys */ }
+namespace sub_options { /* installed predefined keys */ }
+namespace stream_options { /* installed predefined keys */ }
+```
+
+These declarations remain public for compatibility with existing generic
+option code. The typed facade classes above remain the canonical C++
+surface.
+
 ---
 
 ## Message / Domain Types
@@ -718,6 +775,36 @@ class message_t {
 };
 ```
 
+### multipart_t
+
+Move-only RAII owner for a native multipart array (`zlink_msg_t*` plus
+count). This type is public because `<zlink/multipart.hpp>` is an
+installed header. It is intended for low-level interop; most callers
+should use `std::vector<message_t>` instead.
+
+```cpp
+class multipart_t {
+    multipart_t();
+    ~multipart_t();
+
+    multipart_t(multipart_t&& other) noexcept;
+    multipart_t& operator=(multipart_t&& other) noexcept;
+
+    multipart_t(const multipart_t&) = delete;
+    multipart_t& operator=(const multipart_t&) = delete;
+
+    void reset();
+    zlink_msg_t* data();
+    const zlink_msg_t* data() const;
+    size_t size() const;
+
+    zlink_msg_t& operator[](size_t idx);
+    const zlink_msg_t& operator[](size_t idx) const;
+
+    void adopt(zlink_msg_t* parts, size_t count);
+};
+```
+
 ### Codec Extensions
 
 The binding exposes separate codec extension libraries. The distribution
@@ -728,6 +815,7 @@ library names and public header names are fixed to:
 - `zlink-codec-messagepack`
 
 - `<zlink/codec/protobuf.hpp>`
+- `<zlink/codec/proto.hpp>` (protobuf compatibility header)
 - `<zlink/codec/json.hpp>`
 - `<zlink/codec/messagepack.hpp>`
 
@@ -739,7 +827,13 @@ JSON codec baseline: `nlohmann/json`.
 MessagePack codec baseline: `msgpack-c`.
 
 ```cpp
-namespace zlink::codec::protobuf {
+namespace zlink::codec::proto {
+
+template<class T>
+T decode(const message_t& message);
+
+template<class T>
+message_t encode(const T& value);
 
 template<class T>
 T parse(const message_t& message);
@@ -747,9 +841,19 @@ T parse(const message_t& message);
 template<class T>
 message_t to_message(const T& value);
 
-} // namespace zlink::codec::protobuf
+} // namespace zlink::codec::proto
+
+namespace zlink::codec {
+namespace protobuf = proto; // compatibility namespace alias
+}
 
 namespace zlink::codec::json {
+
+template<class T>
+T decode(const message_t& message);
+
+template<class T>
+message_t encode(const T& value);
 
 template<class T>
 T parse(const message_t& message);
@@ -760,6 +864,12 @@ message_t to_message(const T& value);
 } // namespace zlink::codec::json
 
 namespace zlink::codec::messagepack {
+
+template<class T>
+T decode(const message_t& message);
+
+template<class T>
+message_t encode(const T& value);
 
 template<class T>
 T parse(const message_t& message);
@@ -962,7 +1072,209 @@ struct service_event_t {
 };
 ```
 
+### Compatibility Enums and Aliases
+
+The installed public headers also expose a set of low-level enums and
+aliases that back the higher-level typed surface above. They are part of
+the public compatibility contract even when typical users never touch
+them directly.
+
+#### Core compatibility enums
+
+```cpp
+enum class socket_type : int {
+    pair, dealer, router, stream, pub, xpub, sub, xsub
+};
+
+enum class context_option : int {
+    io_threads,
+    max_sockets,
+    socket_limit,
+    thread_priority,
+    thread_sched_policy,
+    max_msgsz,
+    msg_t_size,
+    thread_affinity_cpu_add,
+    thread_affinity_cpu_remove,
+    thread_name_prefix,
+    blocky
+};
+
+enum class send_result_t : int {
+    sent,
+    backpressured,
+    not_ready
+};
+```
+
+`send_result_t` is the lightweight classification used by internal and
+compatibility helpers for non-blocking sends. The canonical public
+throwing surface for submit failures remains `submit_result_t` plus
+`submit_error_t`.
+
+#### Low-level error and monitor enums
+
+```cpp
+enum class error_code : int {
+    efsm,
+    enocompatproto,
+    eterm,
+    emthread
+};
+
+enum class protocol_error : int {
+    zmp_malformed_command_hello
+};
+
+enum class monitor_source_kind : int {
+    socket,
+    spot_pub,
+    spot_sub
+};
+
+enum class monitor_state : uint32_t {
+    ready,
+    bound_ready,
+    send_ready,
+    closed
+};
+
+enum class monitor_snapshot_detail : uint32_t {
+    snd_pending_msgs,
+    rcv_pending_msgs
+};
+
+enum class disconnect_reason : int {
+    unknown,
+    handshake_failed,
+    transport_error,
+    ctx_term
+};
+```
+
+#### Service, spot, and topology enums
+
+```cpp
+enum class service_event_subject_kind : int {
+    none,
+    topic,
+    pattern
+};
+
+enum class monitor_target_kind : int {
+    socket,
+    discovery,
+    spot,
+    spot_node
+};
+
+enum class registry_socket_role : int {
+    pub,
+    router,
+    peer_sub
+};
+
+namespace zlink::service {
+enum class discovery_dealer_peer_mode_t : int {
+    router,
+    dealer
+};
+}
+
+enum class discovery_socket_role : int {
+    sub
+};
+
+enum class spot_node_socket_role : int {
+    node,
+    pub,
+    sub,
+    dealer
+};
+
+enum class spot_socket_role : int {
+    pub,
+    sub
+};
+
+enum class spot_node_state : int {
+    idle,
+    connecting,
+    partial_ready,
+    ready,
+    error
+};
+
+enum class spot_peer_source : int {
+    manual,
+    discovery,
+    mixed
+};
+
+enum class spot_peer_state : int {
+    configured,
+    connecting,
+    connected
+};
+
+enum class registry_state : int {
+    idle,
+    active,
+    degraded,
+    error
+};
+
+enum class topology_source : int {
+    manual,
+    discovery,
+    registry
+};
+
+enum class topology_state : int {
+    discovered,
+    connecting,
+    ready,
+    lost,
+    error,
+    stopped
+};
+```
+
+Installed alias declarations:
+
+```cpp
+using monitor_event_type_t = monitor_event;
+using monitor_source_kind_t = monitor_source_kind;
+using service_type_t = service_type;
+using service_role_t = service_role;
+using service_kind_t = service_kind;
+using service_event_type_t = service_monitor_event;
+using service_event_subject_kind_t = service_event_subject_kind;
+using monitor_target_kind_t = monitor_target_kind;
+using spot_role_t = spot_socket_role;
+using spot_node_state_t = spot_node_state;
+using spot_peer_source_t = spot_peer_source;
+using spot_peer_state_t = spot_peer_state;
+using topology_source_t = topology_source;
+using topology_state_t = topology_state;
+using subject_kind_t = subject_kind;
+```
+
 ### Error and Result Types
+
+#### error_t
+
+Generic compatibility exception wrapper. This type is public because it
+is installed in `<zlink/error.hpp>`, but canonical high-level API
+surfaces throw the category-specific subclasses below.
+
+```cpp
+class error_t : public zlink_error_t {
+public:
+    explicit error_t(int code);
+    error_t(int code, int internal_errno);
+};
+```
 
 #### submit_result_t
 

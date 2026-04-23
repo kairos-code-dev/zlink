@@ -232,19 +232,19 @@ public final class PerfUtil {
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(PairSocket socket) {
-        return socket.recv(RecvFlags.DONT_WAIT);
+        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(DealerSocket socket) {
-        return socket.recv(RecvFlags.DONT_WAIT);
+        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(RouterSocket socket) {
-        return socket.recv(RecvFlags.DONT_WAIT);
+        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(StreamSocket socket) {
-        return socket.recv(RecvFlags.DONT_WAIT);
+        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
     }
 
     public static Optional<TopicMessage> subscribeNoWait(SubSocket socket) {
@@ -280,6 +280,20 @@ public final class PerfUtil {
                 return Optional.empty();
             }
             throw ex;
+        }
+    }
+
+    private static <T> T tryRecv(CheckedSupplier<T> supplier) {
+        try {
+            return supplier.get();
+        } catch (RecvException ex) {
+            if (ex.getResult() == RecvResult.NO_DATA
+                || ex.getResult() == RecvResult.BUSY) {
+                return null;
+            }
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("recv failed", ex);
         }
     }
 

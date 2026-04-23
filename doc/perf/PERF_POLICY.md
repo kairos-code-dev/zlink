@@ -11,6 +11,10 @@
 > 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
 > 수준은 언어별로 점검/정렬 대상이 된다.
 >
+> 현재 Spot request/reply 계열인 `SPOT_REQREP` 과 `MULTI_SPOT_REQREP`
+> 성능 테스트는 일단 보류 상태다. 이 문서의 관련 내용은 재개 전에 정리할 참고
+> 기준으로만 두며, 현재 기본 구현 범위와 정식 비교 대상에는 포함하지 않는다.
+>
 > **언어별 적용 범위**:
 > - **기본 적용**: `core`(C), `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`, `bindings/go`, `bindings/node`, `bindings/python`
 > - perf의 기본 수신 측정 경로는 poller + recv drain 이다.
@@ -350,6 +354,8 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
     `spot(requester) -> spot_node -> spot_node -> spot(replier)` 를 따르며,
     replier 가 생성한 reply 는 같은 경로를 역방향으로 되돌아와
     requester 가 수신한다.
+  - 현재 성능 테스트는 일단 보류 상태다. 아래 규칙은 테스트를 다시 진행할 때
+    참고할 기준으로 유지한다.
   - client(requester) 와 server(replier) 는 echo 패턴과 동일하게
     request/reply 의미를 유지하며, send 역할과 recv 역할 정책을 둘 다
     적용한다.

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${DOTNET_DIR}/perf/common/report_helpers.sh"
 PROJECT="${DOTNET_DIR}/perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj"
 PROJECT_DIR="${DOTNET_DIR}/perf/single/Zlink.BindingBench"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
@@ -541,18 +542,8 @@ else
   completion_status="partial"
   status=1
 fi
-print_line ""
-print_line "## Completion"
-print_line "- status: ${completion_status}"
-print_line "- expected_result_lines: ${expected_result_lines}"
-print_line "- actual_result_lines: ${result_lines}"
-print_line ""
-print_line "## Failures"
-if [[ -s "${FAILURES_FILE}" ]]; then
-  while IFS=',' read -r pattern transport size run_index reason; do
-    print_line "- pattern=${pattern} transport=${transport} size=${size} run=${run_index} reason=${reason}"
-  done < "${FAILURES_FILE}"
-fi
+print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}"
+print_failures_section "${FAILURES_FILE}"
 
 echo "saved report: ${REPORT}"
 exit "${status}"

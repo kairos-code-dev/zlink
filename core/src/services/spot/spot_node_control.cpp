@@ -524,13 +524,13 @@ std::string spot_node_t::single_peer_route_endpoint () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
 
-    if (_peer_state.connected_endpoints.size () != 1 || !_runtime) {
+    if (_peer_state.active_endpoints.size () != 1 || !_runtime) {
         return std::string ();
     }
 
     std::string route_endpoint;
     if (!spot_control_protocol::derive_peer_route_bind_endpoint (
-          *_peer_state.connected_endpoints.begin (),
+          *_peer_state.active_endpoints.begin (),
           _runtime->node_id,
           &route_endpoint))
         return std::string ();

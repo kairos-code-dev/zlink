@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink.perf;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PerfSocketOptions;
 import dev.kairoscode.zlink.Socket;
@@ -13,6 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfTransport {
     private PerfTransport() {
@@ -107,22 +107,30 @@ final class PerfTransport {
     static void waitForMonitorEvent(MonitorSocket monitor, long expectedMask,
                                     int expectedCount, Duration timeout,
                                     String label) {
-        final RuntimeException[] failure = new RuntimeException[1];
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
         Thread waiter = new Thread(() -> {
-            int seen = 0;
-            while (seen < expectedCount) {
-                MonitorEvent event = monitor.recv();
-                if ((event.event().getValue() & expectedMask) == 0L) {
-                    continue;
+            try {
+                int seen = 0;
+                while (seen < expectedCount) {
+                    var event = monitor.recv();
+                    if ((event.event().getValue() & expectedMask) == 0L) {
+                        continue;
+                    }
+                    seen++;
                 }
-                seen++;
+            } catch (Throwable ex) {
+                failure.compareAndSet(null, ex);
+            } finally {
+                done.countDown();
             }
         }, "perf-monitor-wait");
         waiter.setDaemon(true);
         waiter.start();
-        join(waiter, label, timeout);
-        if (failure[0] != null) {
-            throw failure[0];
+        await(done, label, timeout);
+        Throwable error = failure.get();
+        if (error != null) {
+            throw new IllegalStateException(label + " failed", error);
         }
     }
 

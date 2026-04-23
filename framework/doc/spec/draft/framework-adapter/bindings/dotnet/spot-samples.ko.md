@@ -27,6 +27,10 @@ timer가 함께 나오기 때문에 설명만 보면 감이 잘 안 올 수 있�
 먼저 이 문서에서 전제로 두는 인터페이스 초안을 따로 본다.
 아래는 샘플 구현이 기대하는 최소 표면이다.
 
+> **주의**: 아래 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의
+> 해당 섹션과 동일하다. 인터페이스가 변경되면 두 문서를 함께 갱신해야 한다.
+> 최신 계약은 항상 `handler-interfaces.ko.md`를 기준으로 한다.
+
 ```csharp
 public abstract class ZLinkSpot
 {
@@ -48,6 +52,13 @@ public abstract class ZLinkSpot
         string topic)
         where THandler : class
     {
+    }
+
+    protected IZLinkPublishCall Publish<TEvent>(
+        string topic,
+        TEvent message)
+    {
+        return default!;
     }
 
     protected ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -141,28 +152,7 @@ public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid,
     string SpotName);
 
-public interface IZLinkSpotManager
-{
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkSpotInfo?> GetAsync(
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
-        CancellationToken cancellationToken = default);
-
-    ValueTask<bool> RemoveAsync(
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-}
+// IZLinkSpotManager is defined in handler-interfaces.ko.md section 6.3.
 
 public interface IZLinkClient
 {
@@ -289,7 +279,7 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            router.ConfigureRouter(options =>
+            router.ConfigureRouting(options =>
             {
                 options.Mandatory = true;
                 options.Handover = true;
@@ -324,9 +314,9 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            client.ConfigureDealer(dealer =>
+            client.ConfigureRouting(routing =>
             {
-                dealer.ProbeRouter = true;
+                routing.ProbeRouter = true;
             });
         });
 
@@ -360,10 +350,10 @@ app.Run();
 - `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     별도 publisher client를 붙인다.
-- `ConfigureSocket(...)`, `ConfigureRouter(...)`, `ConfigureDealer(...)`,
+- `ConfigureSocket(...)`, `ConfigureRouting(...)`,
   `ConfigurePublisherOptions(...)`, `ConfigureSubscriberOptions(...)`
-  - 실제 `.NET` 바인딩의 `CommonSocketOptions`, `RouterSocketOptions`,
-    `DealerSocketOptions`, `SpotNodePublisherOptions`,
+  - 실제 `.NET` 바인딩의 `CommonSocketOptions`, routed peer 옵션,
+    outbound peer 옵션, `SpotNodePublisherOptions`,
     `SpotNodeSubscriberOptions`와 같은 typed facade를 capability별로 등록한다.
   - 호출 단위 `WithTimeout(...)`과 달리 runtime 기본 동작을 정하는 설정이다.
 - `AddSpotFactory<SampleSpot>("sample")`
@@ -492,7 +482,7 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            router.ConfigureRouter(options =>
+            router.ConfigureRouting(options =>
             {
                 options.Mandatory = true;
                 options.Handover = true;
@@ -527,9 +517,9 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            client.ConfigureDealer(dealer =>
+            client.ConfigureRouting(routing =>
             {
-                dealer.ProbeRouter = true;
+                routing.ProbeRouter = true;
             });
         });
 
@@ -556,8 +546,8 @@ builder.Services.AddZLinkFramework(options =>
   capability 표면으로 끌어온다.
 - `router.ConfigureSocket(...)`, `client.ConfigureSocket(...)` 같은 표면은 실제
   `CommonSocketOptions`와 같은 공통 socket 기본 동작을 정한다.
-- `router.ConfigureRouter(...)`, `client.ConfigureDealer(...)`는 실제
-  `RouterSocketOptions`, `DealerSocketOptions`에 대응하는 socket type 전용 facade다.
+- `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)`은 실제
+  routed peer 옵션과 outbound peer 옵션에 대응하는 capability 전용 facade다.
 - `RequestTo(...).WithTimeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
   적용되고, 위 설정은 runtime 기본값이다.
 
@@ -592,11 +582,12 @@ app.MapPost("/stage/create", async (
 `spotRid`만 들고 있어도, 이 인스턴스가 어떤 등록 이름으로 만들어졌는지 다시
 확인할 수 있다.
 
-### 3.1.3 outbound-only spot client 앱
+### 3.1.3 outbound-only SPOT-aware 앱
 
-`SPOT`도 local `SpotNode`를 열지 않고, 다른 channel이나 다른 spot으로만 outbound
-호출하는 앱이 있을 수 있다. 이런 경우에는 `IZLinkSpotClient`만 주입받아 쓰고,
-local `SpotNode`와 local spot runtime은 만들지 않는다.
+local `SpotNode`와 local spot runtime을 열지 않고, 다른 channel이나 다른 spot으로만
+outbound 호출하는 앱이 있을 수 있다. 이런 경우의 기본 outbound 표면은
+`IZLinkClient`다. local `SpotNode`가 없으면 attach된 channel client 경로도 없으므로
+`IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 쓰는 모델로 설명하면 안 된다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -620,11 +611,11 @@ var app = builder.Build();
 
 app.MapPost("/stage/query", async (
     GetStageStateHttpRequest request,
-    IZLinkSpotClient spotClient,
+    IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    var reply = await spotClient
-        .RequestChannel(
+    var reply = await client
+        .Request(
             "orders",
             new SampleGetStateRequest { SpotRid = request.StageRid })
         .ExecAsync(cancellationToken);
@@ -635,8 +626,8 @@ app.MapPost("/stage/query", async (
 app.Run();
 ```
 
-RID를 이미 알고 있는 경우에는 outbound client가 direct routed 호출을 바로 쓸 수도
-있다.
+RID를 이미 알고 있는 경우에는 같은 앱이 `IZLinkClient`의 direct routed 호출을 바로
+쓸 수도 있다.
 
 ```csharp
 app.MapPost("/stage/direct-query", async (
@@ -902,9 +893,13 @@ builder.Services.AddZLinkFramework(options =>
         stream.AddPacketSession<SampleSession>();
     });
 
+    options.UseSpotDiscovery("game.room", registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+    });
+
     options.AddSpotNode("room.node", spot =>
     {
-        spot.UseSpotDiscovery("game.room", "room.node");
         spot.AddSpotFactory<SampleSpot>("sample-room");
     });
 });
@@ -1358,8 +1353,8 @@ public sealed class SampleSession
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        ErrorCode code = error.GetErrorCode();
-        string message = error.GetErrorMessage();
+        int? errno = error.Diagnostic?.NativeCode;
+        string? message = error.Diagnostic?.Message;
         return ValueTask.CompletedTask;
     }
 
@@ -1882,11 +1877,12 @@ room 핫패스로 쓰일 수 있으므로, 일반 channel messaging보다 더 �
 `SPOT` packet 처리 쪽은 room 핫패스이므로 더 강한 최적화를 먼저 요구하고, 일반
 channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다는 점이다.
 
-## 9. 피드백 포인트
+## 9. 정리
 
-- `SampleSpot : ZLinkSpot` 같은 상속 모델이 자연스러운가
-- `AddPacket / AddSubscribe / AddTimer` 같은 등록 표면이 자연스러운가
-- `AddActorFactory<TFactory>(actorType)` 같은 actor factory 등록 표면이 자연스러운가
-- packet 매핑을 header `msgId` 기준으로 보는 것이 자연스러운가
-- `IZLinkSpotManager`가 spot 객체 factory와 어떻게 연결되는 것이 자연스러운가
-- attach된 channel client 설정을 어떤 표면으로 노출하는 것이 자연스러운가
+- `SPOT` 기본 모델은 `SampleSpot : ZLinkSpot` 같은 상속 기반 lifecycle로 고정한다.
+- registration 표면은 `AddPacket`, `AddSubscribe`, `AddTimer`,
+  `AddActorJoin` 같은 명시 등록을 사용한다.
+- actor 생성은 `AddActorFactory<TFactory>(actorType)`로 등록한다.
+- packet dispatch 기준은 header `msgId`다.
+- `IZLinkSpotManager`는 spot 생성과 조회를 함께 가진다.
+- attach된 channel client와 SPOT publish 설정은 capability별 builder에서 노출한다.

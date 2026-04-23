@@ -5,405 +5,277 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.SpotDispatchEvent;
-import dev.kairoscode.zlink.SubmitException;
-import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.perf.PerfControl;
-import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
-import dev.kairoscode.zlink.service.discovery.Discovery;
-import dev.kairoscode.zlink.service.registry.Registry;
-import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfMultiSpotReqRep {
-    private static final String SERVICE_NAME = "perf.spot.reqrep.service";
-    private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
-    private static final RoutingId SERVER_NODE_ID = RoutingId.fromBytes(
-        "PERF_SPOT_REQREP_NODE".getBytes(StandardCharsets.UTF_8));
-    private static final RoutingId SERVER_SPOT_ID = RoutingId.fromBytes(
-        "PERF_SPOT_REQREP_SPOT".getBytes(StandardCharsets.UTF_8));
+    private static final String CHANNEL_NAME = "perf.spot.reqrep";
 
     private PerfMultiSpotReqRep() {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
-        String controlEndpoint = PerfUtil.derivedControlEndpoint(config.endpoint());
-        CountDownLatch finished = new CountDownLatch(config.clients());
-        AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
+        AtomicBoolean stopRequested = new AtomicBoolean(false);
+        int cooldownSeen = 0;
+        Thread watcher = startStopWatcher(stopRequested);
         try (Context ctx = PerfUtil.newContext(config);
-             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SPOT, SERVICE_NAME);
-             DealerSocket channelDealer = new DealerSocket(ctx);
-             SpotNode node = new SpotNode(ctx);
-             Spot replier = node.createSpot();
-             RouterSocket control = new RouterSocket(ctx)) {
-            String registryPub = PerfUtil.endpoint(config.transport(),
-                "multi-spot-reqrep-registry-pub");
-            String registryRouter = PerfUtil.endpoint(config.transport(),
-                "multi-spot-reqrep-registry-router");
-            node.setRoutingId(SERVER_NODE_ID);
-            replier.setRoutingId(SERVER_SPOT_ID);
-            registry.bind(registryPub, registryRouter);
-            discovery.connectRegistry(registryRouter);
-            node.attachChannelDealerManual(SERVICE_NAME, channelDealer);
-            node.attachDiscovery(discovery);
-            PerfUtil.applySpotOptions(node, config);
-            PerfUtil.applySocketOptions(control, config);
-            PerfUtil.configureServerTls(node, config.transport());
-            PerfUtil.configureServerTls(control, config.transport());
-            node.bind(config.endpoint());
-            control.bind(controlEndpoint);
-            replier.onDispatchEvent(info -> {
-                if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
-                    return;
-                }
-                try {
-                    while (true) {
-                        dev.kairoscode.zlink.Received received;
-                        try {
-                            received = replier.recvRouted(RecvFlags.DONT_WAIT);
-                        } catch (dev.kairoscode.zlink.RecvException ex) {
-                            if (ex.getResult() == dev.kairoscode.zlink.RecvResult.NO_DATA) {
-                                return;
-                            }
-                            throw ex;
-                        }
-                        try (received) {
-                            PerfUtil.Header header = PerfUtil.decodeHeader(
-                                received.firstPart(), config.size());
-                            if (header == null) {
-                                continue;
-                            }
-                            try (Message reply = received.firstPart().move()) {
-                                received.reply(reply);
-                            }
-                            if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                finished.countDown();
-                            }
-                        }
-                    }
-                } catch (Throwable ex) {
-                    callbackFailure.compareAndSet(null, ex);
-                    while (finished.getCount() > 0L) {
-                        finished.countDown();
-                    }
-                }
-            });
+             RouterSocket responder = new RouterSocket(ctx)) {
+            PerfUtil.applySocketOptions(responder, config);
+            PerfUtil.configureServerTls(responder, config.transport());
+            responder.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
-            PerfControl.emitControlReady(controlEndpoint);
-            PerfControl.awaitStart(config.size(), "spot reqrep server");
-            List<RoutingId> readyPeers = waitForReadyCounts(control, config);
-            broadcastControlStart(control, readyPeers, config.size());
-            PerfUtil.await(finished, "spot reqrep server",
-                Duration.ofSeconds(config.durationSeconds() + 20L));
-            if (callbackFailure.get() != null) {
-                throw new IllegalStateException("spot reqrep replier failed",
-                    callbackFailure.get());
+
+            while (!stopRequested.get()) {
+                dev.kairoscode.zlink.Received received;
+                try {
+                    received = responder.recv(RecvFlags.DONT_WAIT);
+                } catch (RecvException ex) {
+                    if (ex.getResult() == RecvResult.NO_DATA) {
+                        sleepQuietly(1);
+                        continue;
+                    }
+                    throw ex;
+                }
+
+                try (received) {
+                    PerfUtil.Header header = PerfUtil.decodeHeader(
+                        received.firstPart(), config.size());
+                    if (header == null) {
+                        continue;
+                    }
+                    try (Message reply = received.firstPart().move()) {
+                        received.reply(reply);
+                    }
+                    if (header.phase() == PerfUtil.PHASE_COOLDOWN
+                        && ++cooldownSeen >= config.clients()) {
+                        stopRequested.set(true);
+                    }
+                }
             }
             return PerfUtil.Result.silent(config);
+        } finally {
+            watcher.interrupt();
         }
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        String controlEndpoint = normalizeClientEndpoint(
-            PerfUtil.derivedControlEndpoint(config.endpoint()), config.transport());
-        String dataEndpoint = normalizeClientEndpoint(config.endpoint(), config.transport());
-        CountDownLatch ready = new CountDownLatch(config.clients());
-        CountDownLatch runnerStarted = new CountDownLatch(1);
-        CountDownLatch controlStarted = new CountDownLatch(config.clients());
-        CountDownLatch go = new CountDownLatch(1);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
+        String endpoint = normalizeClientEndpoint(config.endpoint(),
+            config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        PerfMultiSendLoops.runClients(config.clients(), (index, duration) ->
-            new Thread(() -> runClientSlot(config, dataEndpoint, controlEndpoint, duration,
-                ready, runnerStarted, controlStarted, go, metrics, failure),
-                "multi-spot-reqrep-client-" + index),
-            config.durationSeconds());
-        if (failure.get() != null) {
-            throw new IllegalStateException("spot reqrep client failed", failure.get());
-        }
-        return metrics.finishMulti(config);
-    }
 
-    private static void runClientSlot(PerfUtil.Config config,
-                                      String dataEndpoint,
-                                      String controlEndpoint,
-                                      int duration,
-                                      CountDownLatch ready,
-                                      CountDownLatch runnerStarted,
-                                      CountDownLatch controlStarted,
-                                      CountDownLatch go,
-                                      PerfUtil.Metrics metrics,
-                                      AtomicReference<Throwable> failure) {
-        try (Context ctx = PerfUtil.newContext(config);
-             DealerSocket control = new DealerSocket(ctx);
-             var controlMonitor = control.monitorOpen(MonitorEventType.CONNECTION_READY);
-             RouterSocket requester = new RouterSocket(ctx);
-             PerfSocketPollSet requesterPollSet = PerfSocketPollSet.fromSockets(
-                 List.of(requester), PollEventType.POLLIN.getValue())) {
-            PerfUtil.applyMonitorOptions(controlMonitor, config);
-            PerfUtil.applySocketOptions(control, config);
-            PerfUtil.applySocketOptions(requester, config);
-            PerfUtil.configureClientTls(control, config.transport());
-            PerfUtil.configureClientTls(requester, config.transport());
-            control.connect(controlEndpoint);
-            PerfUtil.waitForMonitorEvent(controlMonitor, READY_EVENTS, 1,
-                Duration.ofMillis(config.connectReadyTimeoutMs()),
-                "spot reqrep control ready");
-            requester.connect(dataEndpoint);
-            PerfControl.emitControlConnected(controlEndpoint);
-            settleReadyBarrier();
-            sendControl(control, "CONNECTED");
-            settleControlBarrier();
-            sendControl(control, "READY_COUNT," + config.size() + ",1");
-            ready.countDown();
-            if (ready.getCount() == 0L) {
-                PerfControl.emitClientReady(config.size());
-                PerfControl.awaitStart(config.size(), "spot reqrep client");
-                runnerStarted.countDown();
-            }
-            awaitControlStart(control, config.size(), config.connectReadyTimeoutMs());
-            controlStarted.countDown();
-            if (controlStarted.getCount() == 0L) {
-                PerfUtil.await(runnerStarted, "spot reqrep runner start",
-                    Duration.ofSeconds(10));
+        try (Context ctx = PerfUtil.newContext(config)) {
+            List<ClientSlot> slots = new ArrayList<>(config.clients());
+            try {
+                for (int i = 0; i < config.clients(); i++) {
+                    SpotNode node = new SpotNode(ctx);
+                    DealerSocket dealer = new DealerSocket(ctx);
+                    Spot requester = node.createSpot();
+                    PerfUtil.applySocketOptions(dealer, config);
+                    PerfUtil.configureClientTls(dealer, config.transport());
+                    dealer.setRoutingId(RoutingId.fromBytes(
+                        ("SPOT-REQREP-" + i).getBytes(StandardCharsets.UTF_8)));
+                    node.attachChannelDealerManual(CHANNEL_NAME, dealer);
+                    dealer.connect(endpoint);
+                    slots.add(new ClientSlot(node, dealer, requester));
+                }
+
+                if (!warmupClients(slots, config.size(),
+                        config.connectReadyTimeoutMs())) {
+                    throw new IllegalStateException("spot reqrep ready timed out");
+                }
+                settleAfterReady();
+
                 metrics.startActiveWindow();
-                go.countDown();
-            }
-            PerfUtil.await(go, "spot reqrep start", Duration.ofSeconds(10));
-
-            long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
-            while (System.nanoTime() < activeEnd) {
-                try (Message active = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    sendWhenWritable(requester, requesterPollSet, active,
-                        System.nanoTime() + Duration.ofSeconds(2).toNanos());
-                    PerfUtil.Header reply = awaitReply(requester, requesterPollSet, config,
-                        activeEnd + Duration.ofSeconds(2).toNanos());
-                    if (reply.phase() == PerfUtil.PHASE_ACTIVE) {
-                        metrics.recordNanos(reply.latencyNanos() / 2L);
-                    }
+                runClientWorkers(slots, config, metrics);
+                return metrics.finishMulti(config);
+            } finally {
+                for (ClientSlot slot : slots) {
+                    slot.close();
                 }
-            }
-            try (Message cooldown = PerfUtil.payload(config.size(),
-                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                sendWhenWritable(requester, requesterPollSet, cooldown,
-                    System.nanoTime() + Duration.ofSeconds(5).toNanos());
-                awaitReply(requester, requesterPollSet, config,
-                    System.nanoTime() + Duration.ofSeconds(5).toNanos());
-            }
-        } catch (Throwable ex) {
-            failure.compareAndSet(null, ex);
-        }
-    }
-
-    private static void sendWhenWritable(RouterSocket requester,
-                                         PerfSocketPollSet pollSet,
-                                         Message payload,
-                                         long deadlineNs) {
-        while (true) {
-            if (requester.sendToSpot(SERVER_NODE_ID, SERVER_SPOT_ID, payload,
-                SendFlags.DONT_WAIT)) {
-                return;
-            }
-            long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
-            if (remainingNs <= 0L) {
-                throw new IllegalStateException("spot reqrep send timed out");
-            }
-            pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
-            pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                Duration.ofNanos(remainingNs).toMillis())));
-        }
-    }
-
-    private static PerfUtil.Header awaitReply(RouterSocket requester,
-                                              PerfSocketPollSet pollSet,
-                                              PerfUtil.Config config,
-                                              long deadlineNs) {
-        while (System.nanoTime() < deadlineNs) {
-            long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
-            int timeoutMs = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                Duration.ofNanos(remainingNs).toMillis()));
-            pollSet.setEvents(0, PollEventType.POLLIN.getValue());
-            if (pollSet.poll(timeoutMs) <= 0
-                || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
-                continue;
-            }
-            while (true) {
-                dev.kairoscode.zlink.Received received = PerfUtil.recvNoWait(requester);
-                if (received == null) {
-                    break;
-                }
-                try (received) {
-                    PerfUtil.Header header = PerfUtil.decodeHeader(
-                        received.firstPart(), config.size());
-                    if (header != null) {
-                        return header;
-                    }
-                }
-            }
-        }
-        throw new IllegalStateException("spot reqrep reply timed out");
-    }
-
-    private static List<RoutingId> waitForReadyCounts(RouterSocket control,
-                                                      PerfUtil.Config config) {
-        int readyUnits = 0;
-        List<RoutingId> readyPeers = new ArrayList<>();
-        long deadlineNs = System.nanoTime()
-            + Duration.ofMillis(Math.max(10_000L,
-                config.connectReadyTimeoutMs() * 6L)).toNanos();
-        try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-            List.of(control), PollEventType.POLLIN.getValue())) {
-            while (readyUnits < config.clients() && System.nanoTime() < deadlineNs) {
-                long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
-                int timeoutMs = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                    Duration.ofNanos(remainingNs).toMillis()));
-                if (pollSet.poll(timeoutMs) <= 0
-                    || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
-                    continue;
-                }
-                while (true) {
-                    dev.kairoscode.zlink.Received received = PerfUtil.recvNoWait(control);
-                    if (received == null) {
-                        break;
-                    }
-                    try (received) {
-                        RoutingId peer = received.routingId().orElseThrow();
-                        String line = new String(received.firstPart().data(),
-                            StandardCharsets.UTF_8);
-                        if ("CONNECTED".equals(line)) {
-                            rememberPeer(readyPeers, peer);
-                            continue;
-                        }
-                        int increment = parseReadyCount(line, config.size());
-                        if (increment <= 0) {
-                            continue;
-                        }
-                        rememberPeer(readyPeers, peer);
-                        readyUnits += increment;
-                    }
-                }
-            }
-        }
-        if (readyUnits < config.clients()) {
-            throw new IllegalStateException("spot reqrep ready count timed out");
-        }
-        return readyPeers;
-    }
-
-    private static void broadcastControlStart(RouterSocket control,
-                                              List<RoutingId> peers,
-                                              int size) {
-        byte[] payload = ("START," + size).getBytes(StandardCharsets.UTF_8);
-        for (RoutingId peer : peers) {
-            try (Message message = Message.copyOf(payload)) {
-                control.send(peer, message);
             }
         }
     }
 
-    private static void awaitControlStart(DealerSocket control,
-                                          int size,
-                                          int readyTimeoutMs) {
-        long deadlineNs = System.nanoTime()
-            + Duration.ofMillis(Math.max(10_000L, readyTimeoutMs * 6L)).toNanos();
-        try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-            List.of(control), PollEventType.POLLIN.getValue())) {
-            while (System.nanoTime() < deadlineNs) {
-                long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
-                int timeoutMs = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                    Duration.ofNanos(remainingNs).toMillis()));
-                if (pollSet.poll(timeoutMs) <= 0
-                    || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
-                    continue;
-                }
-                while (true) {
-                    dev.kairoscode.zlink.Received received = PerfUtil.recvNoWait(control);
-                    if (received == null) {
-                        break;
-                    }
-                    try (received) {
-                        String line = new String(received.firstPart().data(),
-                            StandardCharsets.UTF_8);
-                        if (("START," + size).equals(line)) {
-                            return;
+    private static boolean warmupClients(List<ClientSlot> slots,
+                                         int size,
+                                         int timeoutMs) {
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        PerfMultiSendLoops.runClients(slots.size(), (index, durationSeconds) ->
+            new Thread(() -> {
+                try {
+                    long deadlineNs = System.nanoTime()
+                        + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
+                    while (System.nanoTime() < deadlineNs) {
+                        try (Message probe = PerfUtil.payload(size,
+                                 (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                            PerfUtil.Header reply = requestReply(
+                                slots.get(index).requester, probe, size,
+                                Duration.ofMillis(200));
+                            if (reply.phase() == PerfUtil.PHASE_WARMUP) {
+                                return;
+                            }
+                        } catch (Throwable ignored) {
+                            sleepQuietly(10);
                         }
                     }
+                    throw new IllegalStateException(
+                        "spot reqrep warmup reply timed out");
+                } catch (Throwable ex) {
+                    failure.compareAndSet(null, ex);
+                    throw new IllegalStateException(ex);
                 }
+            }, "multi-spot-reqrep-warmup-" + index), 1);
+        return failure.get() == null;
+    }
+
+    private static void runClientWorkers(List<ClientSlot> slots,
+                                         PerfUtil.Config config,
+                                         PerfUtil.Metrics metrics) {
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        PerfMultiSendLoops.runClients(slots.size(), (index, durationSeconds) ->
+            new Thread(() -> {
+                try {
+                    ClientSlot slot = slots.get(index);
+                    long activeEnd = System.nanoTime()
+                        + durationSeconds * 1_000_000_000L;
+                    while (System.nanoTime() < activeEnd) {
+                        try (Message active = PerfUtil.payload(config.size(),
+                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                            PerfUtil.Header reply = requestReply(slot.requester, active,
+                                config.size(), Duration.ofSeconds(2));
+                            if (reply.phase() == PerfUtil.PHASE_ACTIVE) {
+                                metrics.recordNanos(reply.latencyNanos() / 2L);
+                            }
+                        }
+                    }
+                    try (Message cooldown = PerfUtil.payload(config.size(),
+                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                        requestReply(slot.requester, cooldown, config.size(),
+                            Duration.ofSeconds(2));
+                    }
+                } catch (Throwable ex) {
+                    failure.compareAndSet(null, ex);
+                    throw new IllegalStateException(ex);
+                }
+            }, "multi-spot-reqrep-client-" + index), config.durationSeconds());
+        if (failure.get() != null) {
+            throw new IllegalStateException("spot reqrep client failed",
+                failure.get());
+        }
+    }
+
+    private static PerfUtil.Header requestReply(Spot requester,
+                                                Message payload,
+                                                int expectedSize,
+                                                Duration timeout) {
+        List<Message> replyParts;
+        try {
+            replyParts = requester.requestChannel(CHANNEL_NAME, payload, timeout)
+                .get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("spot reqrep request interrupted", ex);
+        } catch (ExecutionException ex) {
+            throw new IllegalStateException("spot reqrep request failed",
+                ex.getCause());
+        } catch (TimeoutException ex) {
+            throw new IllegalStateException("spot reqrep request timed out", ex);
+        }
+        try {
+            if (replyParts.isEmpty()) {
+                throw new IllegalStateException("spot reqrep reply was empty");
             }
-        }
-        throw new IllegalStateException("spot reqrep control start timed out");
-    }
-
-    private static void sendControl(DealerSocket control, String line) {
-        try (Message message = Message.copyOf(line.getBytes(StandardCharsets.UTF_8))) {
-            control.send(message);
-        }
-    }
-
-    private static int parseReadyCount(String line, int size) {
-        String[] parts = line.split(",", -1);
-        if (parts.length != 3 || !"READY_COUNT".equals(parts[0])) {
-            return 0;
-        }
-        int parsedSize = Integer.parseInt(parts[1]);
-        int count = Integer.parseInt(parts[2]);
-        return parsedSize == size && count > 0 ? count : 0;
-    }
-
-    private static void rememberPeer(List<RoutingId> peers, RoutingId peer) {
-        for (RoutingId current : peers) {
-            if (current.equals(peer)) {
-                return;
+            PerfUtil.Header header = PerfUtil.decodeHeader(replyParts.get(0),
+                expectedSize);
+            if (header == null) {
+                throw new IllegalStateException("spot reqrep reply header missing");
             }
+            return header;
+        } finally {
+            replyParts.forEach(Message::close);
         }
-        peers.add(peer);
     }
 
-    private static void settleReadyBarrier() {
+    private static Thread startStopWatcher(AtomicBoolean stopRequested) {
+        Thread watcher = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if ("STOP".equals(line) || "QUIT".equals(line)) {
+                        stopRequested.set(true);
+                        return;
+                    }
+                }
+                stopRequested.set(true);
+            } catch (Exception ex) {
+                throw new IllegalStateException("spot reqrep stop watcher failed",
+                    ex);
+            }
+        }, "multi-spot-reqrep-stop");
+        watcher.setDaemon(true);
+        watcher.start();
+        return watcher;
+    }
+
+    private static void settleAfterReady() {
         int settleMs = PerfUtil.intEnv("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000);
-        if (settleMs <= 0) {
-            return;
+        if (settleMs > 0) {
+            sleepQuietly(settleMs);
         }
-        sleepQuietly(settleMs, "spot reqrep ready barrier interrupted");
     }
 
-    private static void settleControlBarrier() {
-        int settleMs = PerfUtil.intEnv("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25);
-        if (settleMs <= 0) {
-            return;
-        }
-        sleepQuietly(settleMs, "spot reqrep control barrier interrupted");
-    }
-
-    private static void sleepQuietly(int millis, String label) {
+    private static void sleepQuietly(int millis) {
         try {
             Thread.sleep(millis);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException(label, ex);
+            throw new IllegalStateException("spot reqrep sleep interrupted", ex);
         }
     }
 
-    private static String normalizeClientEndpoint(String endpoint, String transport) {
+    private static String normalizeClientEndpoint(String endpoint,
+                                                  String transport) {
         if (!"tls".equals(transport) && !"wss".equals(transport)) {
             return endpoint;
         }
         return endpoint.replace("://127.0.0.1:", "://localhost:");
+    }
+
+    private static final class ClientSlot implements AutoCloseable {
+        private final SpotNode node;
+        private final DealerSocket dealer;
+        private final Spot requester;
+
+        private ClientSlot(SpotNode node, DealerSocket dealer, Spot requester) {
+            this.node = node;
+            this.dealer = dealer;
+            this.requester = requester;
+        }
+
+        @Override
+        public void close() {
+            requester.close();
+            dealer.close();
+            node.close();
+        }
     }
 }

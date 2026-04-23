@@ -310,8 +310,6 @@ internal sealed class ZLinkHandlerDispatcher(
 
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 {
-    private readonly List<IAsyncDisposable> _resources = [];
-
     public ZLinkChannelRuntimeBundle(IZLinkBackendSocket socket)
     {
         Socket = socket;
@@ -319,18 +317,15 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public IZLinkBackendSocket Socket { get; }
 
-    public List<string> ManualConnections { get; } = [];
+    public IZLinkBackendDiscovery? Discovery { get; set; }
 
-    public void Track(IAsyncDisposable resource)
-    {
-        _resources.Add(resource);
-    }
+    public List<string> ManualConnections { get; } = [];
 
     public async ValueTask DisposeAsync()
     {
-        for (var index = _resources.Count - 1; index >= 0; index--)
+        if (Discovery is not null)
         {
-            await _resources[index].DisposeAsync();
+            await Discovery.DisposeAsync();
         }
 
         await Socket.DisposeAsync();

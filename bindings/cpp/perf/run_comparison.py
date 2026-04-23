@@ -50,11 +50,13 @@ PATTERN_SUFFIX = {
     "ROUTER_ROUTER": "router_router",
     "PUBSUB": "pubsub",
     "SPOT": "spot",
+    "SPOT_REQREP": "spot_reqrep",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
+    "SPOT_REQREP",
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = {
@@ -63,7 +65,8 @@ SINGLE_ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
 }
-ALLOW_MULTI = os.environ.get("PERF_INTERNAL_MULTI_ENTRY", "0") == "1"
+SUITE = "single"
+ALLOW_MULTI = False
 SINGLE_COMPARISONS = [
     ("perf_pair", "PAIR"),
     ("perf_pubsub", "PUBSUB"),
@@ -71,6 +74,7 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
     ("perf_spot", "SPOT"),
+    ("perf_spot_reqrep", "SPOT_REQREP"),
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
@@ -78,6 +82,7 @@ MULTI_COMPARISONS = [
     ("comp_src_router_router_client", "ROUTER_ROUTER"),
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_spot_client", "SPOT"),
+    ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
@@ -87,41 +92,21 @@ SUPPORTED_MULTI_RECV_MODES = {
     "ROUTER_ROUTER": ("recv",),
     "PUBSUB": ("recv",),
     "SPOT": ("recv",),
+    "SPOT_REQREP": ("recv",),
     "STREAM": ("recv",),
 }
 
-MULTI_ENV_ALIAS_MAP = {
-    "PERF_STREAM_MSG_SIZES": "PERF_MULTI_STREAM_MSG_SIZES",
-    "PERF_PATTERN": "PERF_MULTI_PATTERN",
-    "PERF_CLIENTS": "PERF_MULTI_CLIENTS",
-    "PERF_HWM": "PERF_MULTI_HWM",
-    "PERF_DURATION_SECONDS": "PERF_MULTI_DURATION_SECONDS",
-    "PERF_SNDTIMEO_MS": "PERF_MULTI_SNDTIMEO_MS",
-    "PERF_RCVTIMEO_MS": "PERF_MULTI_RCVTIMEO_MS",
-    "PERF_CONNECT_CONCURRENCY": "PERF_MULTI_CONNECT_CONCURRENCY",
-    "PERF_CONNECT_READY_TIMEOUT_MS": "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
-    "PERF_MONITOR_HWM": "PERF_MULTI_MONITOR_HWM",
-    "PERF_SERVER_READY_TIMEOUT_MS": "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
-    "PERF_SERVER_SHUTDOWN_TIMEOUT_MS": "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-    "PERF_SERVER_BIND_PORT": "PERF_MULTI_SERVER_BIND_PORT",
-    "PERF_SERVER_IO_THREADS": "PERF_MULTI_SERVER_IO_THREADS",
-    "PERF_CLIENT_IO_THREADS": "PERF_MULTI_CLIENT_IO_THREADS",
-    "PERF_STREAM_SERVER_IO_THREADS": "PERF_MULTI_STREAM_SERVER_IO_THREADS",
-    "PERF_STREAM_CLIENT_IO_THREADS": "PERF_MULTI_STREAM_CLIENT_IO_THREADS",
-    "PERF_DEFAULT_IO_THREADS": "PERF_MULTI_DEFAULT_IO_THREADS",
-    "PERF_TIMEOUT_SECONDS": "PERF_MULTI_TIMEOUT_SECONDS",
-    "PERF_RUN_COOLDOWN_MS": "PERF_MULTI_RUN_COOLDOWN_MS",
-    "PERF_TRANSPORT_TRANSITION_MS": "PERF_MULTI_TRANSPORT_TRANSITION_MS",
-    "PERF_PATTERN_TRANSITION_MS": "PERF_MULTI_PATTERN_TRANSITION_MS",
-    "PERF_SERVICE_CLIENTS": "PERF_MULTI_SERVICE_CLIENTS",
-    "PERF_LATENCY_SAMPLE_CAP": "PERF_MULTI_LATENCY_SAMPLE_CAP",
-    "PERF_SNDHWM": "PERF_MULTI_SNDHWM",
-    "PERF_RCVHWM": "PERF_MULTI_RCVHWM",
-    "PERF_SNDBUF": "PERF_MULTI_SNDBUF",
-    "PERF_RCVBUF": "PERF_MULTI_RCVBUF",
-    "PERF_PUBSUB_XPUB_NODROP": "PERF_MULTI_PUBSUB_XPUB_NODROP",
-    "PERF_SPOT_XPUB_NODROP": "PERF_MULTI_SPOT_XPUB_NODROP",
-}
+def configure_suite(suite_name):
+    global SUITE, ALLOW_MULTI
+
+    normalized = (suite_name or "single").strip().lower()
+    if normalized not in {"single", "multi"}:
+        raise ValueError(f"unsupported suite: {suite_name}")
+    SUITE = normalized
+    ALLOW_MULTI = normalized == "multi"
+    if ALLOW_MULTI:
+        sync_multi_env_aliases(os.environ)
+        sync_multi_env_aliases(base_env)
 
 
 class TeeStream:
@@ -360,19 +345,9 @@ DEFAULT_NUM_RUNS = 1
 
 
 def _read_env_value(name, *fallback_names):
-    keys = []
     for key in (name,) + fallback_names:
-        if ALLOW_MULTI:
-            alias = MULTI_ENV_ALIAS_MAP.get(key)
-            if alias:
-                keys.append(alias)
-        keys.append(key)
-
-    seen = set()
-    for key in keys:
-        if not key or key in seen:
+        if not key:
             continue
-        seen.add(key)
         val = os.environ.get(key)
         if val:
             return val
@@ -593,8 +568,8 @@ def is_pattern(pattern_name):
 
 
 def select_transports(pattern_name):
-    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name == "SPOT"
-    if pattern_name == "SPOT":
+    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name in ("SPOT", "SPOT_REQREP")
+    if pattern_name in ("SPOT", "SPOT_REQREP"):
         base = STREAM_TRANSPORTS
     elif service_or_stream:
         base = STREAM_TRANSPORTS
@@ -636,6 +611,40 @@ DEFAULT_RUN_COOLDOWN_MS = max(
 
 base_env = os.environ.copy()
 
+MULTI_ENV_ALIAS_MAP = {
+    "PERF_MULTI_CLIENTS": "PERF_CLIENTS",
+    "PERF_MULTI_DURATION_SECONDS": "PERF_DURATION_SECONDS",
+    "PERF_MULTI_CONNECT_CONCURRENCY": "PERF_CONNECT_CONCURRENCY",
+    "PERF_MULTI_CONNECT_READY_TIMEOUT_MS": "PERF_CONNECT_READY_TIMEOUT_MS",
+    "PERF_MULTI_MONITOR_HWM": "PERF_MONITOR_HWM",
+    "PERF_MULTI_SERVER_READY_TIMEOUT_MS": "PERF_SERVER_READY_TIMEOUT_MS",
+    "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS": "PERF_SERVER_SHUTDOWN_TIMEOUT_MS",
+    "PERF_MULTI_SERVER_BIND_PORT": "PERF_SERVER_BIND_PORT",
+    "PERF_MULTI_SERVER_IO_THREADS": "PERF_SERVER_IO_THREADS",
+    "PERF_MULTI_CLIENT_IO_THREADS": "PERF_CLIENT_IO_THREADS",
+    "PERF_MULTI_STREAM_SERVER_IO_THREADS": "PERF_STREAM_SERVER_IO_THREADS",
+    "PERF_MULTI_STREAM_CLIENT_IO_THREADS": "PERF_STREAM_CLIENT_IO_THREADS",
+    "PERF_MULTI_DEFAULT_IO_THREADS": "PERF_DEFAULT_IO_THREADS",
+    "PERF_MULTI_HWM": "PERF_HWM",
+    "PERF_MULTI_SNDHWM": "PERF_SNDHWM",
+    "PERF_MULTI_RCVHWM": "PERF_RCVHWM",
+    "PERF_MULTI_SNDTIMEO_MS": "PERF_SNDTIMEO_MS",
+    "PERF_MULTI_RCVTIMEO_MS": "PERF_RCVTIMEO_MS",
+}
+
+
+def sync_multi_env_aliases(env):
+    if not ALLOW_MULTI:
+        return
+    for source_key, alias_key in MULTI_ENV_ALIAS_MAP.items():
+        source_value = env.get(source_key, "").strip()
+        alias_value = env.get(alias_key, "").strip()
+        if source_value and not alias_value:
+            env[alias_key] = source_value
+
+
+sync_multi_env_aliases(base_env)
+
 ENV_ALIAS_KEYS = (
     "PERF_TRANSPORTS",
     "PERF_MSG_SIZES",
@@ -669,25 +678,16 @@ ENV_ALIAS_KEYS = (
     "PERF_STREAM_DRAIN_RELAY_BUDGET",
 )
 def env_pair_value(env, key):
-    if ALLOW_MULTI:
-        alias = MULTI_ENV_ALIAS_MAP.get(key)
-        if alias:
-            value = env.get(alias, "").strip()
-            if value:
-                return value
     return env.get(key, "").strip()
 
 
 def set_env_pair(env, key, value):
     env[key] = str(value)
-    if ALLOW_MULTI:
-        alias = MULTI_ENV_ALIAS_MAP.get(key)
-        if alias:
-            env[alias] = str(value)
 
 
 def get_env_for_lib(_lib_name):
     env = base_env.copy()
+    sync_multi_env_aliases(env)
     if IS_WINDOWS:
         env["PATH"] = f"{CURRENT_LIB_DIR};{env.get('PATH', '')}"
     else:
@@ -1117,19 +1117,27 @@ def _prepare_case_env(
     if force_stream_sizes or pattern_name in STREAM_VARIANT_PATTERNS:
         set_env_pair(env, "PERF_STREAM_MSG_SIZES", size_csv)
 
-    clients_value = env_pair_value(env, "PERF_CLIENTS")
+    clients_value = env_pair_value(env, "PERF_CLIENTS") or env_pair_value(
+        env, "PERF_MULTI_CLIENTS"
+    )
     if not clients_value:
         clients_value = str(pattern_default_clients(pattern_name, transport))
     set_env_pair(env, "PERF_CLIENTS", clients_value)
+    if ALLOW_MULTI:
+        set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
     try:
         clients_int = max(1, int(clients_value))
     except ValueError:
         clients_int = pattern_default_clients(pattern_name, transport)
 
-    connect_value = env_pair_value(env, "PERF_CONNECT_CONCURRENCY")
+    connect_value = env_pair_value(env, "PERF_CONNECT_CONCURRENCY") or env_pair_value(
+        env, "PERF_MULTI_CONNECT_CONCURRENCY"
+    )
     if not connect_value:
         connect_value = str(resolve_pattern_connect_concurrency(clients_int))
     set_env_pair(env, "PERF_CONNECT_CONCURRENCY", connect_value)
+    if ALLOW_MULTI:
+        set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
 
     if pattern_name == "SPOT":
         spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
@@ -1273,6 +1281,8 @@ def run_sizes_test_stream_shared(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        if debug_transitions:
+            sys.stderr.write(f"[server-out] {line}\n")
         if pattern_name == "PUBSUB" and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -1512,6 +1522,8 @@ def run_sizes_test_stream_shared(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
+            if debug_transitions:
+                sys.stderr.write(f"[client] {line}\n")
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -1837,6 +1849,8 @@ def run_sizes_test_split(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        if debug_transitions:
+            sys.stderr.write(f"[server-out] {line}\n")
         if pattern_name in ("PUBSUB", "DEALER_DEALER") and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -2076,6 +2090,8 @@ def run_sizes_test_split(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
+            if debug_transitions:
+                sys.stderr.write(f"[client] {line}\n")
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:

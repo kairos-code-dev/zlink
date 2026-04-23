@@ -288,21 +288,10 @@ framework가 같은 `Spot` 실행 계약 안에서 timer handler를 호출한다
 - stage id
 - create packet 또는 metadata
 
-현재 초안은 아래 정도다.
-
-```csharp
-public interface IZLinkSpotManager
-{
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-}
-```
+현재 `IZLinkSpotManager`의 기본 정의는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 6.3을 따른다.
+즉 현재 framework 기본 계약은 `spotName`만 받는 생성과, `spotName + spotRid`
+까지를 다루는 수준이다.
 
 `Stage wrapper`를 위해서는 최소한 아래 중 하나가 더 필요하다.
 
@@ -313,7 +302,7 @@ public interface IZLinkSpotManager
 형태는 "framework 기본 계약"보다 "wrapper 전용 확장 후보"로 보는 편이 맞다.
 
 ```csharp
-public interface IZLinkSpotManager
+public interface IStageSpotManager
 {
     ValueTask<ZLinkSpotCreateResult> CreateAsync<TMetadata>(
         string spotName,

@@ -115,14 +115,13 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 - publish-subscribe
 - stream
 
-고급 조합 모델은 아래처럼 후속으로 다룬다.
+고급 조합 모델은 아래처럼 별도 조합 범주로 다룬다.
 
 - worker-dispatch
 - scatter-gather
 - workflow orchestration
 
-여기서 `stream`은 더 이상 단순 후순위 참고 항목이 아니다. 현재 방향에서는
-`STREAM`도 네 가지 직접 통합 축 중 하나다. 다만 `send/request`처럼 모든
+현재 방향에서는 `STREAM`도 네 가지 직접 통합 축 중 하나다. 다만 `send/request`처럼 모든
 프레임워크의 기본 업무 API로 똑같이 보이게 하기보다, 연결 수명과 packet 처리
 성격을 드러내는 별도 handler 모델로 설명하는 편을 기본으로 본다.
 

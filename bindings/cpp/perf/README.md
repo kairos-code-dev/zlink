@@ -8,9 +8,13 @@ They are benchmark and regression surfaces, not alternate public API contracts.
 - Single: `bindings/cpp/perf/run_benchmarks.sh`
 - Multi: `bindings/cpp/perf/run_benchmarks_multi.sh`
 
-Both wrappers call `bindings/cpp/perf/run_policy_bench.py --binding cpp`.
+Each entry point owns its suite directly:
+
+- `run_benchmarks.sh` -> single runner
+- `run_benchmarks_multi.sh` -> multi runner
+
 The C++ perf runner is self-contained under `bindings/cpp/perf/` while
-preserving the core-compatible CLI exposed from the C++ perf directory.
+preserving the policy-compliant CLI exposed from the C++ perf directory.
 
 Policy references:
 

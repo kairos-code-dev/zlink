@@ -30,7 +30,7 @@ framework는 channel마다 역할을 선언하고, request client capability에 
 자동 연결과 수동 연결 중 하나만 선택해야 한다.
 
 - `Discovery`를 이용한 자동 연결
-- endpoint와 `RoutingId`를 직접 넣는 수동 연결
+- endpoint 집합만 등록하는 수동 연결
 
 ### 2.1 자동 연결 샘플
 
@@ -41,7 +41,10 @@ builder.Services.AddZLinkFramework(options =>
     options.Codecs.AddProtobuf();
     options.AddChannel("api", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
     });
 
     options.AddChannel("profile", channel =>
@@ -77,7 +80,10 @@ builder.Services.AddZLinkFramework(options =>
     options.Codecs.AddProtobuf();
     options.AddChannel("api", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
     });
 
     options.AddChannel("profile", channel =>
@@ -107,7 +113,10 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddChannel("api", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
     });
 
     options.AddChannel("profile", channel =>
@@ -163,9 +172,7 @@ public sealed class WarmupService : BackgroundService
     {
         var profileClient = _connections.GetClient("profile");
 
-        profileClient.Connect(
-            RoutingId.Parse("01HZZ..."),
-            "tcp://10.0.10.17:7101");
+        profileClient.Connect("tcp://10.0.10.17:7101");
 
         return Task.CompletedTask;
     }
@@ -204,10 +211,10 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            server.ConfigureRouter(router =>
+            server.ConfigureRouting(routing =>
             {
-                router.Mandatory = true;
-                router.Handover = true;
+                routing.Mandatory = true;
+                routing.Handover = true;
             });
         });
 
@@ -235,9 +242,9 @@ builder.Services.AddZLinkFramework(options =>
                 socket.Immediate = true;
             });
 
-            client.ConfigureDealer(dealer =>
+            client.ConfigureRouting(routing =>
             {
-                dealer.ProbeRouter = true;
+                routing.ProbeRouter = true;
             });
         });
     });
@@ -253,9 +260,9 @@ builder.Services.AddZLinkFramework(options =>
 
 - `server.ConfigureSocket(...)`, `client.ConfigureSocket(...)`는 capability가 들고
   있는 socket 기본 동작을 정한다.
-- `server.ConfigureRouter(...)`, `client.ConfigureDealer(...)`는 socket type 전용
-  facade를 따로 둔다는 뜻이다. 실제 `.NET` 바인딩 기준으로 전자는
-  `RouterSocketOptions`, 후자는 `DealerSocketOptions`에 대응한다.
+- `server.ConfigureRouting(...)`, `client.ConfigureRouting(...)`는 capability별
+  routed 연결 규칙을 따로 둔다는 뜻이다. 현재 `.NET` backend 기준으로도 server 쪽과
+  client 쪽은 서로 다른 low-level option object에 대응한다.
 - `client.Request(...).WithTimeout(...)`은 특정 호출 하나에만 적용되는 값이고,
   실제 low-level 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`
   처럼 호출 인자로 준다. 위 설정은 capability 전체의 기본값이다.
@@ -314,14 +321,14 @@ builder.Services.AddZLinkFramework(options =>
 var app = builder.Build();
 
 app.MapPost("/profiles/get", async (
-    GetProfileHttpRequest request,
+    GetUserHttpRequest request,
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
     var reply = await client
         .Request(
             "profile",
-            new GetProfileRequest { AccountId = request.AccountId })
+            new GetUserRequest { AccountId = request.AccountId })
         .ExecAsync(cancellationToken);
 
     return Results.Ok(reply);
@@ -359,7 +366,14 @@ builder.Services.AddZLinkFramework(options =>
     options.Codecs.AddProtobuf();
     options.AddChannel("api", channel =>
     {
-        channel.EnableServer();
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+        });
+        channel.EnablePublisher(publisher =>
+        {
+            publisher.Bind("tcp://0.0.0.0:7201");
+        });
         channel.EnableSubscriber();
     });
 
@@ -385,28 +399,28 @@ builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 var app = builder.Build();
 
 app.MapPost("/profiles/get", async (
-    GetProfileHttpRequest request,
+    GetUserHttpRequest request,
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
     var reply = await client
         .Request(
             "profile",
-            new GetProfileRequest { AccountId = request.AccountId })
+            new GetUserRequest { AccountId = request.AccountId })
         .ExecAsync(cancellationToken);
 
     return Results.Ok(reply);
 });
 
 app.MapPost("/profiles/refresh-cache", async (
-    RefreshProfileCacheHttpRequest request,
+    RefreshUserCacheHttpRequest request,
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
     client
         .Send(
             "profile",
-            new RefreshProfileCacheCommand { AccountId = request.AccountId })
+            new RefreshUserCacheCommand { AccountId = request.AccountId })
         .Exec();
 
     return Results.Accepted();
@@ -585,7 +599,7 @@ section 9를 참고한다.
 client
     .Send(
         "profile",
-        new RefreshProfileCacheCommand { AccountId = accountId })
+        new RefreshUserCacheCommand { AccountId = accountId })
     .Exec();
 ```
 
@@ -593,7 +607,7 @@ client
 var reply = await client
     .Request(
         "profile",
-        new GetProfileRequest { AccountId = accountId })
+        new GetUserRequest { AccountId = accountId })
     .ExecAsync(cancellationToken);
 ```
 
@@ -601,7 +615,7 @@ var reply = await client
 var fastReply = await client
     .Request(
         "profile",
-        new GetProfileRequest { AccountId = accountId })
+        new GetUserRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
     .ExecAsync(cancellationToken);
 ```
@@ -610,7 +624,7 @@ var fastReply = await client
 client
     .Send(
         "profile",
-        new RefreshProfileCacheCommand { AccountId = accountId })
+        new RefreshUserCacheCommand { AccountId = accountId })
     .WithPacketName("profile.refresh-cache")
     .Exec();
 ```
@@ -626,10 +640,10 @@ binding 문서에서 다루고, framework 문서에서는 아래처럼 typed rep
 설명한다.
 
 ```csharp
-GetProfileReply reply = await client
+GetUserReply reply = await client
     .Request(
         "profile",
-        new GetProfileRequest { AccountId = accountId })
+        new GetUserRequest { AccountId = accountId })
     .ExecAsync(cancellationToken);
 ```
 
@@ -637,13 +651,13 @@ GetProfileReply reply = await client
 publisher
     .Publish(
         "profile",
-        "profile.cache-refreshed",
-        new ProfileCacheRefreshedEvent { AccountId = accountId })
+        "user.cache-refreshed",
+        new UserCacheRefreshedEvent { AccountId = accountId })
     .Exec();
 ```
 
 이 예시에서 첫 번째 문자열 `profile`은 publish 대상 `channelName`이고, 두 번째
-문자열 `profile.cache-refreshed`는 그 channel 안의 `topic`이다. 즉 같은
+문자열 `user.cache-refreshed`는 그 channel 안의 `topic`이다. 즉 같은
 `profile` channel 안에서도 여러 topic을 fan-out 할 수 있다.
 
 ## 7. handler 시그니처만 따로 보면
@@ -726,7 +740,7 @@ app.MapPost("/profiles/get", async (
 {
     var reply = await client
         .Request(
-            "api",
+            "profile",
             new GetUserRequest { AccountId = request.AccountId })
         .ExecAsync(cancellationToken);
 
@@ -737,18 +751,12 @@ app.MapPost("/profiles/get", async (
 이 부분이 있어야 기존 웹 요청 처리와 ZLink 서버간 요청 처리가 같은 outbound
 표면으로 묶인다.
 
-## 8. 피드백 포인트
+## 9. 정리
 
-이 문서로 피드백을 받을 때는 아래를 보면 된다.
-
-- `IZLinkClient` 시그니처가 충분히 단순한가
-- `channel name` 기준 client 표면이 자연스러운가
-- `channelName`을 앱 등록 레벨 개념으로 두는 것이 맞는가
-- `Request(...).WithTimeout(...).ExecAsync()` 같은 fluent 호출 구성이
-  자연스러운가
-- `Send(...).WithPacketName(...).Exec()`와 `Publish(...).Exec()`
-  모양이 자연스러운가
-- request/send handler 시그니처가 HTTP handler와 비슷하게 느껴지는가
-- 주제별 handler 묶음과 패킷별 단일 class를 둘 다 허용하는 것이 자연스러운가
-- event publish/subscribe를 같은 응용 안에서 같이 쓰는 흐름이 괜찮은가
-- channel별 구조가 코드 관점에서도 이해되기 쉬운가
+- channel outbound 표면은 `IZLinkClient` 하나로 고정한다.
+- 호출 대상은 endpoint나 gateway가 아니라 `channel name`이다.
+- capability는 `EnableServer`, `EnableClient`, `EnablePublisher`,
+  `EnableSubscriber`로 명시 등록한다.
+- outbound-only 앱도 같은 표면을 그대로 쓴다.
+- request/send/event handler는 HTTP handler와 비슷한 DI 감각으로 읽히도록 유지한다.
+- event publish는 publisher capability가 열린 channel에서만 가능하다.

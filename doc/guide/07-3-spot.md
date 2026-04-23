@@ -301,10 +301,14 @@ zlink_spot_request_router(
 
 The replier sends back via `zlink_router_reply_spot()`.
 
-### 7.3 One-way direct send is not on the public surface
+### 7.3 One-way direct send to another Spot
 
-`Spot` does not expose one-way direct send by RID. If you need that, use
-`RouterSocket` or raw ROUTER APIs.
+To send a one-way message directly to another `Spot` without a reply, use
+`zlink_spot_send_spot()` (C API) or the helper substrate
+`zlink_spot_send_spot_part()`.
+
+One-way direct send to a ROUTER peer is not on the public surface.
+If you need that, use `RouterSocket` or raw ROUTER APIs.
 
 ## 8. Direct addressing from ROUTER
 

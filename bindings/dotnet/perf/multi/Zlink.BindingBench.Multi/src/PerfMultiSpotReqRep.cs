@@ -14,12 +14,10 @@ internal static class PerfMultiSpotReqRep
     internal static int RunServer(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         string bindEndpoint = MultiEndpointFor(options.Transport,
             "multi-spot-reqrep", options);
 
         using var ctx = new Context();
-        using var controlState = new RunnerControlState(size);
         ApplyMultiServerContextOptions(ctx, options);
         using var responder = new RouterSocket(ctx);
         try
@@ -30,14 +28,9 @@ internal static class PerfMultiSpotReqRep
             WriteStdoutLine(
                 $"READY,{NormalizeClientEndpoint(bindEndpoint, options.Transport)}");
 
-            if (!controlState.WaitForStart(readyTimeoutMs))
-            {
-                if (!controlState.StopRequested)
-                    Console.Error.WriteLine("multi_server_error:no_start");
-                return controlState.StopRequested ? 0 : 2;
-            }
-
-            while (!controlState.StopRequested)
+            int stopRequested = 0;
+            StartStopWatcher(() => Volatile.Write(ref stopRequested, 1));
+            while (Volatile.Read(ref stopRequested) == 0)
             {
                 using Received? received = responder.Recv(RecvFlags.DontWait);
                 if (received == null)
@@ -61,6 +54,34 @@ internal static class PerfMultiSpotReqRep
                 $"multi_server_error:{ex.GetType().Name}:{ex.Message}");
             return 2;
         }
+    }
+
+    private static void StartStopWatcher(Action requestStop)
+    {
+        var watcher = new Thread(static arg =>
+        {
+            var stop = (Action)arg!;
+            while (true)
+            {
+                string? line = Console.ReadLine();
+                if (line == null)
+                {
+                    stop();
+                    return;
+                }
+
+                if (string.Equals(line, "STOP", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(line, "QUIT", StringComparison.OrdinalIgnoreCase))
+                {
+                    stop();
+                    return;
+                }
+            }
+        })
+        {
+            IsBackground = true,
+        };
+        watcher.Start(requestStop);
     }
 
     internal static int RunClient(PerfOptions options)

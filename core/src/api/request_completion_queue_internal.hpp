@@ -44,6 +44,7 @@ struct queue_state_t
     zlink::internal_pair_queue::queue_t signal;
     std::thread::id owner_thread;
     bool owner_thread_valid;
+    bool signal_pending;
 };
 
 int ensure_signal_ready (queue_state_t *state_,

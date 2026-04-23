@@ -3,18 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${DOTNET_DIR}/perf/common/report_helpers.sh"
 PROJECT="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj"
 PROJECT_DIR="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi"
 REPO_DIR="$(cd "${DOTNET_DIR}/../.." && pwd)"
-CORE_BUILD_DIR="${REPO_DIR}/core/build"
+STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
+STREAM_BUILD_DIR="${REPO_DIR}/bindings/c/build"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 MSG_SIZES="${PERF_MSG_SIZES:-}"
-CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-}}"
-DURATION="${PERF_MULTI_DURATION_SECONDS:-${PERF_DURATION_SECONDS:-5}}"
+CLIENTS="${PERF_MULTI_CLIENTS:-}"
+DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 RUNS="${PERF_RUNS:-1}"
-READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-5000}}"
+READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
 RESULTS_TAG=""
 CONFIGURATION="${PERF_CONFIGURATION:-Release}"
 REPORT=""
@@ -98,6 +100,17 @@ ensure_build_output() {
   fi
 
   dotnet build "${PROJECT}" -c "${CONFIGURATION}" >/dev/null
+}
+
+ensure_stream_client() {
+  if [[ -x "${STREAM_CLIENT}" ]]; then
+    return
+  fi
+
+  cmake -S "${REPO_DIR}/bindings/c" -B "${STREAM_BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_LTO=OFF >/dev/null
+  cmake --build "${STREAM_BUILD_DIR}" --target perf_stream_client >/dev/null
 }
 
 normalize_platform() {
@@ -579,6 +592,49 @@ record_failure() {
     "${pattern}" "${transport}" "${size}" "${run_index}" "${reason}" >> "${FAILURES_FILE}"
 }
 
+run_multi_process() {
+  local role="$1"
+  local log_path="$2"
+  local endpoint="${3:-}"
+  local control_fd="${4:-}"
+  local background="${5:-0}"
+  local shell_cmd="${PERF_BINARY@Q} --multi-${role} ${pattern@Q} ${transport@Q} ${size@Q}"
+  local env_prefix=(
+    "PERF_MULTI_CLIENTS=${pattern_clients}"
+    "PERF_MULTI_DURATION_SECONDS=${DURATION}"
+    "PERF_MULTI_CONNECT_READY_TIMEOUT_MS=${READY_TIMEOUT_MS}"
+    "DOTNET_TieredCompilation=0"
+  )
+
+  if [[ -n "${endpoint}" ]]; then
+    shell_cmd+=" --endpoint ${endpoint@Q}"
+  fi
+
+  if [[ "${background}" == "1" ]]; then
+    if [[ -n "${control_fd}" ]]; then
+      env "${env_prefix[@]}" bash -lc "${shell_cmd}" <&${control_fd} > "${log_path}" 2>&1 &
+    else
+      env "${env_prefix[@]}" bash -lc "${shell_cmd}" > "${log_path}" 2>&1 &
+    fi
+    return 0
+  fi
+
+  if [[ -n "${control_fd}" ]]; then
+    env "${env_prefix[@]}" bash -lc "${shell_cmd}" <&${control_fd} > "${log_path}" 2>&1
+  else
+    env "${env_prefix[@]}" bash -lc "${shell_cmd}" > "${log_path}" 2>&1
+  fi
+}
+
+run_external_stream_client() {
+  local endpoint="$1"
+  ensure_stream_client
+  "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
+    --sizes "${size}" --runs 1 --duration "${DURATION}" \
+    --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}" \
+    > "${client_log}" 2>&1
+}
+
 ensure_build_output
 
 if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench.Multi")"; then
@@ -650,19 +706,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           mkfifo "${server_control_fifo}"
           exec {server_control_fd}<>"${server_control_fifo}"
           rm -f "${server_control_fifo}"
-          PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
-          DOTNET_TieredCompilation=0 \
-          PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-          bash -lc "${PERF_BINARY@Q} --multi-server ${pattern@Q} ${transport@Q} ${size@Q}" \
-          <&${server_control_fd} > "${server_log}" 2>&1 &
+          run_multi_process "server" "${server_log}" "" "${server_control_fd}" 1
         else
-          PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
-            DOTNET_TieredCompilation=0 \
-            PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-            bash -lc "${PERF_BINARY@Q} --multi-server ${pattern@Q} ${transport@Q} ${size@Q}" \
-            > "${server_log}" 2>&1 &
+          run_multi_process "server" "${server_log}" "" "" 1
         fi
         server_pid=$!
 
@@ -690,12 +736,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         fi
 
         if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-          if PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
-            DOTNET_TieredCompilation=0 \
-            PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-            bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
-            > "${client_log}" 2>&1; then
+          if run_external_stream_client "${server_endpoint}"; then
             printf 'STOP\n' >&${server_control_fd} || true
             if ! wait_for_pid "${server_pid}" 5; then
               terminate_pid "${server_pid}"
@@ -737,12 +778,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           mkfifo "${client_control_fifo}"
           exec {client_control_fd}<>"${client_control_fifo}"
           rm -f "${client_control_fifo}"
-          PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
-          DOTNET_TieredCompilation=0 \
-          PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-          bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
-          > "${client_log}" 2>&1 &
+          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fd}" 1
           client_pid=$!
 
           if ! wait_for_client_ready_line "${client_log}"; then
@@ -769,6 +805,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
 
           printf 'START,%s\n' "${size}" >&${server_control_fd}
+          printf 'START,%s\n' "${size}" >&${client_control_fd}
           if ! wait_for_result_line "${client_log}" \
             "RESULT,current,SPOT,${transport},${size},latency_p99," \
             $((DURATION + 30)); then
@@ -794,7 +831,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          printf 'STOP\n' >&${server_control_fd} || true
           if ! wait_for_pid "${client_pid}" 5; then
             terminate_pid "${client_pid}"
           else
@@ -825,12 +861,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           mkfifo "${client_control_fifo}"
           exec {client_control_fd}<>"${client_control_fifo}"
           rm -f "${client_control_fifo}"
-          PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
-            DOTNET_TieredCompilation=0 \
-            PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-            bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
-            <&${client_control_fd} > "${client_log}" 2>&1 &
+          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fd}" 1
           client_pid=$!
 
           if ! wait_for_client_ready_line "${client_log}"; then
@@ -916,12 +947,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           exec {server_control_fd}>&-
           exec {client_control_fd}>&-
         else
-          if PERF_CLIENTS="${pattern_clients}" PERF_MULTI_CLIENTS="${pattern_clients}" \
-            PERF_DURATION_SECONDS="${DURATION}" PERF_MULTI_DURATION_SECONDS="${DURATION}" \
-            DOTNET_TieredCompilation=0 \
-            PERF_CONNECT_READY_TIMEOUT_MS="${READY_TIMEOUT_MS}" \
-            bash -lc "${PERF_BINARY@Q} --multi-client ${pattern@Q} ${transport@Q} ${size@Q} --endpoint ${server_endpoint@Q}" \
-            > "${client_log}" 2>&1; then
+          if run_multi_process "client" "${client_log}" "${server_endpoint}" "" 0; then
             if ! wait_for_pid "${server_pid}" 5; then
               terminate_pid "${server_pid}"
             else
@@ -986,18 +1012,8 @@ else
   completion_status="partial"
   status=1
 fi
-print_line ""
-print_line "## Completion"
-print_line "- status: ${completion_status}"
-print_line "- expected_result_lines: ${expected_result_lines}"
-print_line "- actual_result_lines: ${result_lines}"
-print_line ""
-print_line "## Failures"
-if [[ -s "${FAILURES_FILE}" ]]; then
-  while IFS=',' read -r pattern transport size run_index reason; do
-    print_line "- pattern=${pattern} transport=${transport} size=${size} run=${run_index} reason=${reason}"
-  done < "${FAILURES_FILE}"
-fi
+print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}"
+print_failures_section "${FAILURES_FILE}"
 
 echo "saved report: ${REPORT}"
 exit "${status}"

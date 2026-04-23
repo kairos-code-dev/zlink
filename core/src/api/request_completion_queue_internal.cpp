@@ -131,7 +131,8 @@ zlink::request_completion::queued_completion_t::operator= (
 }
 
 zlink::request_completion::queue_state_t::queue_state_t () :
-    owner_thread_valid (false)
+    owner_thread_valid (false),
+    signal_pending (false)
 {
 }
 
@@ -169,9 +170,18 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
     if (move_completion_parts (&completion.parts, parts_, part_count_) != 0)
         return -1;
 
+    bool should_signal = false;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
+        should_signal = state_->pending.empty () && !state_->signal_pending;
         state_->pending.push_back (std::move (completion));
+        if (should_signal)
+            state_->signal_pending = true;
+    }
+
+    if (!should_signal) {
+        errno = 0;
+        return 0;
     }
 
     static const unsigned char signal_byte = 0x7a;
@@ -188,26 +198,29 @@ int zlink::request_completion::drain (queue_state_t *state_,
     }
 
     claim_owner_thread (state_);
-    drain_signal_socket_nonblocking (state_->signal.rx);
-
     int drained = 0;
     while (true) {
-        queued_completion_t completion;
+        drain_signal_socket_nonblocking (state_->signal.rx);
+
+        std::deque<queued_completion_t> batch;
         {
             std::lock_guard<std::mutex> lock (state_->mutex);
-            if (state_->pending.empty ())
+            if (state_->pending.empty ()) {
+                state_->signal_pending = false;
                 break;
-            completion = std::move (state_->pending.front ());
-            state_->pending.pop_front ();
+            }
+            batch.swap (state_->pending);
+            state_->signal_pending = false;
         }
 
-        const request_completion_callback_scope_t scope (owner_handle_);
-        zlink_msg_t *parts = completion.parts.empty () ? NULL
-                                                       : &completion.parts[0];
-        zlink::request_reply::complete_reply_callback (
-          completion.handler, completion.errnum, parts,
-          completion.parts.size (), completion.userdata);
-        ++drained;
+        for (std::deque<queued_completion_t>::iterator it = batch.begin ();
+             it != batch.end (); ++it) {
+            const request_completion_callback_scope_t scope (owner_handle_);
+            zlink_msg_t *parts = it->parts.empty () ? NULL : &it->parts[0];
+            zlink::request_reply::complete_reply_callback (
+              it->handler, it->errnum, parts, it->parts.size (), it->userdata);
+            ++drained;
+        }
     }
 
     drain_signal_socket_nonblocking (state_->signal.rx);
@@ -224,6 +237,7 @@ void zlink::request_completion::close (queue_state_t *state_)
         std::lock_guard<std::mutex> lock (state_->mutex);
         state_->pending.clear ();
         state_->owner_thread_valid = false;
+        state_->signal_pending = false;
     }
     zlink::internal_pair_queue::close (&state_->signal);
 }

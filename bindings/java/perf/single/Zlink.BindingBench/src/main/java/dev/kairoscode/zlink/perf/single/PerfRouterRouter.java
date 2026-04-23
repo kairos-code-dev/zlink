@@ -136,6 +136,10 @@ final class PerfRouterRouter {
                 throw new IllegalStateException("router/router receiver failed",
                     failure.get());
             }
+            senderCtx.shutdown();
+            if (!sharedContext) {
+                receiverCtx.shutdown();
+            }
             return metrics.finishSingle(config);
         } finally {
             if (!sharedContext) {

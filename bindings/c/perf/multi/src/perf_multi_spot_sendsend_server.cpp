@@ -530,12 +530,11 @@ int run_server_benchmark(const std::string &lib_name,
           perf_multi_handshake::signal_start(
             &server_state->start_gate, start_size);
       });
-    state.recv_thread = std::thread(spot_recv_worker_main, &state);
+    if (zlink_spot_dispatch_event_handler(state.pub, on_spot_dispatch, &state)
+        != 0) {
+        return 1;
+    }
     const bool ok = run_server_loop(&state, settings, msg_sizes);
-    state.recv_stop.store(true, std::memory_order_release);
-    perf_stop_requested().store(true, std::memory_order_release);
-    if (state.recv_thread.joinable())
-        state.recv_thread.join();
     fast_exit_process(ok ? 0 : 1);
     return ok ? 0 : 1;
 }

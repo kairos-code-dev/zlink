@@ -8,10 +8,6 @@
 namespace perf {
 namespace single {
 
-// latency_stats_builder_t methods removed: now a typedef to
-// the unified header-only perf::latency_sampler_t in
-// common/perf_latency_sampler.hpp.
-
 ctx_guard_t::ctx_guard_t () : _ctx ()
 {
     if (_ctx.handle ())

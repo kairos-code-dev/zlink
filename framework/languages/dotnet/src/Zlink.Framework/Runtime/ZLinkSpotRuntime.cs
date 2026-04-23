@@ -168,6 +168,22 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public List<string> PubSubManualConnections { get; } = [];
 
+    public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
+    {
+        return new ZLinkSpotMonitoringSnapshot(
+            Node.StatusSnapshot().ToFramework(),
+            Node.PeersSnapshot()
+                .Select(static entry => entry.ToFramework())
+                .OrderBy(static entry => entry.PeerEndpoint, StringComparer.Ordinal)
+                .ThenBy(static entry => entry.ServiceName, StringComparer.Ordinal)
+                .ToArray(),
+            Node.SubjectsSnapshot()
+                .Select(static entry => entry.ToFramework())
+                .OrderBy(static entry => entry.Subject, StringComparer.Ordinal)
+                .ThenBy(static entry => entry.Role)
+                .ToArray());
+    }
+
     public void AddChannelBundle(string channelName, ZLinkSpotAttachedChannelBundle bundle)
     {
         _channelBundles.Add(channelName, bundle);
@@ -458,6 +474,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _gate.Dispose();
     }
 }
+
+internal sealed record ZLinkSpotMonitoringSnapshot(
+    ZLinkSpotNodeStatus Status,
+    IReadOnlyList<ZLinkSpotNodePeerEntry> Peers,
+    IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects);
 
 internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDisposable
 {

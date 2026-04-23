@@ -51,8 +51,9 @@ flowchart TB
 
 ## 2. 내부 소켓 토폴로지
 
-SpotNode는 10개의 내부 소켓을 inproc endpoint로 연결하고,
-연결 상태 추적용 monitor 소켓 1개를 추가로 생성한다 (총 11개).
+SpotNode는 시작 시점에 11개의 상시 소켓을 생성하고,
+연결 상태 추적용 monitor 소켓 1개를 추가로 생성한다 (총 12개).
+데이터 전달 경로에서 최초 필요 시점에 sender cache 소켓 3개가 추가로 생성된다.
 
 ### 2.1 소켓 목록
 
@@ -68,6 +69,7 @@ flowchart LR
         mesh_pub["mesh_pub<br/>PUB socket"]
         mesh_xsub["mesh_xsub<br/>XSUB socket"]
         route_in["route_ingress<br/>ROUTER socket<br/>BIND .route-in"]
+        peer_route_in["peer_route_ingress<br/>ROUTER socket<br/>BIND derived route endpoint"]
         node_router["node_router<br/>ROUTER socket<br/>BIND .node-router"]
         ctrl["ctrl<br/>PAIR socket"]
         peer_ctrl_pub["peer_ctrl_pub<br/>PUB socket"]
@@ -91,6 +93,7 @@ flowchart LR
     mesh_xsub -->|"topic forward"| fanout
     peer_ctrl_pub -->|control| remote_node
     remote_node -->|control| peer_ctrl_sub
+    remote_node -->|"direct route"| peer_route_in
 ```
 
 ### 2.2 소켓 상세
@@ -102,6 +105,7 @@ flowchart LR
 | `mesh_pub` | PUB | (bound endpoint) | BIND | `node_pub_sndhwm` | 원격 peer에 토픽 송신 |
 | `mesh_xsub` | XSUB | — | CONNECT to peers | `node_sub_rcvhwm` | 원격 peer에서 토픽 수신 |
 | `route_ingress` | ROUTER | `.route-in` | BIND | `routed_recv_hwm` | app에서 routed 메시지 수신 |
+| `peer_route_ingress` | ROUTER | (파생된 route endpoint) | BIND | `routed_recv_hwm` | 원격 peer의 직접 routed 메시지 수신 (bind 시 활성화) |
 | `node_router` | ROUTER | `.node-router` | BIND | `routed_send/recv_hwm` | app에 routed 메시지 전달 |
 | `ctrl` | PAIR | `.ctrl` | CONNECT | — | control plane ↔ data plane 명령 |
 | `peer_ctrl_pub` | PUB | (derived from bound) | BIND | 1024 | peer에 제어 메시지 송신 |
@@ -110,7 +114,17 @@ flowchart LR
 
 모든 inproc endpoint 패턴: `inproc://zlink.spot.{node_id}.{suffix}`
 
-### 2.3 공통 소켓 설정
+### 2.3 Sender Cache 소켓 (on-demand)
+
+아래 소켓 3개는 처음 필요할 때 생성된다.
+
+| 소켓 | 타입 | 연결 대상 | 역할 |
+|------|------|----------|------|
+| `route_ingress_tx` | DEALER | `.route-in` (inproc) | data plane에서 route_ingress로 송신할 때 사용 |
+| `node_router_tx` | DEALER | `.node-router` (inproc) | data plane에서 node_router로 송신할 때 사용 |
+| `peer_route_tx` | PAIR | 원격 peer의 route endpoint | 원격 peer에 직접 routed 메시지 송신 |
+
+### 2.4 공통 소켓 설정
 
 모든 data plane 소켓 공통:
 - `LINGER = 0`
@@ -337,12 +351,14 @@ flowchart TD
 
 Peer 제어 endpoint는 바인드된 데이터 endpoint에서 파생된다:
 
-| Transport | Data Endpoint | Control Endpoint |
-|-----------|--------------|-----------------|
-| tcp | `tcp://host:9000` | `tcp://host:10000` (port+1000) |
-| tls | `tls://host:9000` | `tls://host:10000` |
-| ipc | `ipc:///path` | `ipc:///path.zlink-spot-ctrl.{id}` |
-| inproc | `inproc://name` | `inproc://zlink.spot.peer-ctrl.{id}` |
+| Transport | Data Endpoint | Control Endpoint | Route Endpoint |
+|-----------|--------------|-----------------|----------------|
+| tcp | `tcp://host:9000` | `tcp://host:10000` (port+1000) | `tcp://host:29000` (port+20000) |
+| tls | `tls://host:9000` | `tls://host:10000` | `tls://host:29000` |
+| ipc | `ipc:///path` | `ipc:///path.zlink-spot-ctrl.{id}` | `ipc:///path.zlink-spot-route.{id}` |
+| inproc | `inproc://name` | `inproc://zlink.spot.peer-ctrl.{id}` | `inproc://zlink.spot.peer-route.{id}` |
+
+Route endpoint에는 `peer_route_ingress` (ROUTER)가 바인드된다. 원격 peer는 `peer_route_tx` (PAIR)로 이 endpoint에 연결해 직접 routed 메시지를 보낸다.
 
 제어 메시지 접두어:
 - `__zlink.spot.ctrl.snapshot` — 상태 스냅샷

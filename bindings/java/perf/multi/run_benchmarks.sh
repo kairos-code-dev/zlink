@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${ROOT_DIR}/../../.." && pwd)"
 JAVA_BINDINGS_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
-STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
-CORE_BUILD_DIR="${REPO_DIR}/core/build"
+STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
+CORE_BUILD_DIR="${REPO_DIR}/bindings/c/build"
 RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
@@ -27,9 +27,9 @@ CLEAN_BUILD=0
 COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
 SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
-HWM="${PERF_MULTI_HWM:-${PERF_HWM:-}}"
-SEND_HWM="${PERF_MULTI_SNDHWM:-${PERF_SNDHWM:-${HWM}}}"
-RECV_HWM="${PERF_MULTI_RCVHWM:-${PERF_RCVHWM:-${HWM}}}"
+HWM="${PERF_MULTI_HWM:-}"
+SEND_HWM="${PERF_MULTI_SNDHWM:-${HWM}}"
+RECV_HWM="${PERF_MULTI_RCVHWM:-${HWM}}"
 SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
 CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
@@ -323,9 +323,10 @@ ensure_multi_runner() {
   local runner_path="$2"
   local install_dir="${build_dir}/install"
   local dist_zip="${build_dir}/distributions/zlink-java-perf-multi.zip"
-  if [[ -x "${runner_path}" ]]; then
+  if [[ -x "${runner_path}" && -s "${runner_path}" ]]; then
     return 0
   fi
+  rm -f "${runner_path}"
   if [[ -f "${dist_zip}" ]]; then
     mkdir -p "${install_dir}"
     unzip -qo "${dist_zip}" -d "${install_dir}"
@@ -341,16 +342,9 @@ ensure_core_stream_client() {
     return
   fi
 
-  cmake -S "${REPO_DIR}" -B "${CORE_BUILD_DIR}" \
+  cmake -S "${REPO_DIR}/bindings/c" -B "${CORE_BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DENABLE_LTO=OFF \
-    -DBUILD_BENCHMARKS=ON \
-    -DZLINK_BUILD_TESTS=OFF \
-    -DZLINK_BUILD_BENCH_ZMQ=OFF \
-    -DZLINK_BUILD_BENCH_ZLINK=ON \
-    -DZLINK_BUILD_BENCH_BEAST=OFF \
-    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
     -DZLINK_CXX_STANDARD=17 >/dev/null
   cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
 }
@@ -432,9 +426,9 @@ resolve_memory_max_clients() {
     echo ""
     return
   fi
-  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
-  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
-  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
   if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
     echo ""
     return
@@ -475,9 +469,9 @@ ensure_memory_budget() {
   fi
   local available_kb budget_pct base_mb per_client_kb
   available_kb="$(memory_available_kb)"
-  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
-  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
-  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
   MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
   return 1
 }
@@ -581,12 +575,12 @@ if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
   rm -rf "${PROJECT_BUILD_DIR}"
 fi
 ensure_multi_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
-if [[ "${REUSE_BUILD}" -eq 0 && ! -x "${RUNNER}" ]]; then
+if [[ "${REUSE_BUILD}" -eq 0 ]]; then
   "${JAVA_BINDINGS_DIR}/gradlew" --no-daemon -p "${JAVA_BINDINGS_DIR}" \
     -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-multi:installDist >/dev/null
 fi
 ensure_multi_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
-if [[ ! -x "${RUNNER}" ]]; then
+if [[ ! -x "${RUNNER}" || ! -s "${RUNNER}" ]]; then
   if [[ "${REUSE_BUILD}" -eq 1 ]]; then
     echo "runner not found for --reuse-build: ${RUNNER}" >&2
   else
@@ -654,6 +648,188 @@ append_metrics() {
   fi
 
   actual_result_lines=$((actual_result_lines + required_count))
+}
+
+resolve_case_connect_concurrency() {
+  local clients="$1"
+  if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
+    printf '%s' "${CONNECT_CONCURRENCY}"
+  elif [[ "${clients}" -ge 10000 ]]; then
+    printf '1024'
+  else
+    printf '128'
+  fi
+}
+
+append_multi_socket_args() {
+  local target_name="$1"
+  local -n cmd_ref="${target_name}"
+  if [[ -n "${SEND_HWM}" ]]; then
+    cmd_ref+=(--send-hwm "${SEND_HWM}")
+  fi
+  if [[ -n "${RECV_HWM}" ]]; then
+    cmd_ref+=(--recv-hwm "${RECV_HWM}")
+  fi
+}
+
+build_multi_role_cmd() {
+  local target_name="$1"
+  local -n cmd_ref="${target_name}"
+  local role="$2"
+  local endpoint="$3"
+  local io_threads="$4"
+  local concurrency="$5"
+
+  cmd_ref=("${runner_prefix[@]}" "${RUNNER}" "--multi-${role}" "${pattern}" "${transport}" "${size}" \
+    --endpoint "${endpoint}" --clients "${pattern_clients}" \
+    --duration "${DURATION}" --control-port 0 \
+    --io-threads "${io_threads}" \
+    --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
+    --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}" \
+    --connect-concurrency "${concurrency}")
+  append_multi_socket_args "${target_name}"
+}
+
+CASE_STATUS=""
+CASE_METRIC_LOG=""
+
+run_stream_case() {
+  local concurrency="$1"
+  local fifo="${RESULTS_ROOT}/multi/tmp/stream_control_${transport}_${size}.fifo"
+  local endpoint
+  local stream_server_cmd=()
+
+  CASE_STATUS=""
+  CASE_METRIC_LOG=""
+  rm -f "${fifo}"
+  mkfifo "${fifo}"
+  endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
+  exec 3<>"${fifo}"
+  build_multi_role_cmd stream_server_cmd "server" "${endpoint}" "${pattern_server_io_threads}" "${concurrency}"
+  "${stream_server_cmd[@]}" <"${fifo}" >"${server_log}" 2>&1 &
+  local server_pid=$!
+  if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
+    wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
+    exec 3>&-
+    rm -f "${fifo}"
+    CASE_STATUS="fail"
+    return 0
+  fi
+
+  local stream_client_rc=0
+  "${stream_client_prefix[@]}" "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
+    --sizes "${size}" --runs 1 --duration "${DURATION}" \
+    --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}" \
+    >"${client_log}" 2>&1 || stream_client_rc=$?
+  printf 'STOP\n' >&3
+  exec 3>&-
+  wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
+  rm -f "${fifo}"
+
+  if [[ "${stream_client_rc}" -ne 0 ]]; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" \
+      "stream_client_exit_${stream_client_rc}"
+    CASE_STATUS="fail"
+    return 0
+  fi
+
+  local status_record
+  status_record="$(case_status "${pattern}" "${transport}" "${size}" "${client_log}")"
+  case "${status_record%%,*}" in
+    unsupported)
+      CASE_STATUS="unsupported"
+      return 0
+      ;;
+    fail)
+      record_failure "${pattern}" "${transport}" "${size}" "${run}" "${status_record#*,}"
+      CASE_STATUS="fail"
+      return 0
+      ;;
+  esac
+
+  CASE_STATUS="ok"
+  CASE_METRIC_LOG="${client_log}"
+}
+
+run_socket_case() {
+  local concurrency="$1"
+  local endpoint
+  local server_fifo="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_server.fifo"
+  local client_fifo="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_client.fifo"
+  local server_cmd=()
+  local client_cmd=()
+  local server_pid
+  local client_pid
+  local server_fd
+  local client_fd
+  local metric_log="${server_log}"
+
+  CASE_STATUS=""
+  CASE_METRIC_LOG=""
+  endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
+  rm -f "${server_fifo}" "${client_fifo}"
+  mkfifo "${server_fifo}" "${client_fifo}"
+  exec {server_fd}<>"${server_fifo}"
+  build_multi_role_cmd server_cmd "server" "${endpoint}" "${pattern_server_io_threads}" "${concurrency}"
+  "${server_cmd[@]}" <"${server_fifo}" >"${server_log}" 2>&1 &
+  server_pid=$!
+  if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
+    wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+    exec {server_fd}>&-
+    rm -f "${server_fifo}" "${client_fifo}"
+    CASE_STATUS="fail"
+    return 0
+  fi
+
+  exec {client_fd}<>"${client_fifo}"
+  build_multi_role_cmd client_cmd "client" "${endpoint}" "${pattern_client_io_threads}" "${concurrency}"
+  "${client_cmd[@]}" <"${client_fifo}" >"${client_log}" 2>&1 &
+  client_pid=$!
+  if is_start_gated_pattern "${bare_pattern}"; then
+    if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${CONNECT_READY_TIMEOUT_MS}" >/dev/null; then
+      record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_ready_timeout"
+      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      exec {client_fd}>&-
+      exec {server_fd}>&-
+      rm -f "${server_fifo}" "${client_fifo}"
+      CASE_STATUS="fail"
+      return 0
+    fi
+    printf 'START,%s\n' "${size}" >&${server_fd}
+    printf 'START,%s\n' "${size}" >&${client_fd}
+  fi
+
+  wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
+  exec {client_fd}>&-
+  wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+  exec {server_fd}>&-
+  rm -f "${server_fifo}" "${client_fifo}"
+
+  if [[ "${bare_pattern}" == "DEALER_DEALER" || "${bare_pattern}" == "DEALER_ROUTER" \
+     || "${bare_pattern}" == "ROUTER_ROUTER" || "${bare_pattern}" == "PUBSUB" \
+     || "${bare_pattern}" == "SPOT_REQREP" \
+     || "${bare_pattern}" == "SPOT" ]]; then
+    metric_log="${client_log}"
+  fi
+  local status_record
+  status_record="$(case_status "${pattern}" "${transport}" "${size}" "${metric_log}")"
+  case "${status_record%%,*}" in
+    unsupported)
+      CASE_STATUS="unsupported"
+      return 0
+      ;;
+    fail)
+      record_failure "${pattern}" "${transport}" "${size}" "${run}" "${status_record#*,}"
+      CASE_STATUS="fail"
+      return 0
+      ;;
+  esac
+
+  CASE_STATUS="ok"
+  CASE_METRIC_LOG="${metric_log}"
 }
 
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
@@ -746,6 +922,7 @@ for pattern_index in "${!patterns[@]}"; do
     transport_unsupported=0
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
+        case_connect_concurrency="$(resolve_case_connect_concurrency "${pattern_clients}")"
         expected_result_lines=$((expected_result_lines + 5))
         if (( RUNS > 1 )); then
           if (( run == 1 )) || (( size == msg_sizes[0] )); then
@@ -757,159 +934,28 @@ for pattern_index in "${!patterns[@]}"; do
         rm -f "${server_log}" "${client_log}"
 
         if [[ "${bare_pattern}" == "STREAM" ]]; then
-          fifo="${RESULTS_ROOT}/multi/tmp/stream_control_${transport}_${size}.fifo"
-          rm -f "${fifo}"
-          mkfifo "${fifo}"
-          endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
-          exec 3<>"${fifo}"
-          stream_server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
-            --endpoint "${endpoint}" --clients "${pattern_clients}" \
-            --duration "${DURATION}" --control-port 0 \
-            --io-threads "${pattern_server_io_threads}" \
-            --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
-            --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}" \
-            --connect-concurrency "${CONNECT_CONCURRENCY:-$( [[ "${pattern_clients}" -ge 10000 ]] && echo 1024 || echo 128 )}")
-          if [[ -n "${SEND_HWM}" ]]; then
-            stream_server_cmd+=(--send-hwm "${SEND_HWM}")
-          fi
-          if [[ -n "${RECV_HWM}" ]]; then
-            stream_server_cmd+=(--recv-hwm "${RECV_HWM}")
-          fi
-          "${stream_server_cmd[@]}" <"${fifo}" >"${server_log}" 2>&1 &
-          server_pid=$!
-          if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
-            record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
-            wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
-            exec 3>&-
-            rm -f "${fifo}"
-            transport_failures=$((transport_failures + 1))
-            continue
-          fi
-          "${stream_client_prefix[@]}" "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
-            --sizes "${size}" --runs 1 --duration "${DURATION}" \
-            --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}" \
-            >"${client_log}" 2>&1
-          printf 'STOP\n' >&3
-          exec 3>&-
-          wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
-          rm -f "${fifo}"
-          status_record="$(case_status "${pattern}" "${transport}" "${size}" "${client_log}")"
-          case "${status_record%%,*}" in
-            unsupported)
-              expected_result_lines=$((expected_result_lines - 5))
-              transport_unsupported=1
-              break
-              ;;
-            fail)
-              record_failure "${pattern}" "${transport}" "${size}" "${run}" "${status_record#*,}"
-              transport_failures=$((transport_failures + 1))
-              continue
-              ;;
-          esac
-          if ! append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${client_log}"; then
-            record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
-            transport_failures=$((transport_failures + 1))
-            continue
-          fi
-          row="$(format_progress_row "${bare_pattern}" "${transport}" "${size}" "${client_log}" "      ")"
-          echo "${row}"
-          echo "${row}" >> "${tmp_progress}"
-          if (( run < RUNS )); then
-            echo "[cooldown ${RUN_COOLDOWN_MS}ms]"
-            sleep_ms "${RUN_COOLDOWN_MS}"
-          fi
-          continue
+          run_stream_case "${case_connect_concurrency}"
+        else
+          run_socket_case "${case_connect_concurrency}"
         fi
 
-        endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
-        server_fifo="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_server.fifo"
-        client_fifo="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_client.fifo"
-        rm -f "${server_fifo}" "${client_fifo}"
-        mkfifo "${server_fifo}" "${client_fifo}"
-        exec {server_fd}<>"${server_fifo}"
-        server_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-server "${pattern}" "${transport}" "${size}" \
-          --endpoint "${endpoint}" --clients "${pattern_clients}" \
-          --duration "${DURATION}" --control-port 0 \
-          --io-threads "${pattern_server_io_threads}" \
-          --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
-          --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}")
-        if [[ -n "${SEND_HWM}" ]]; then
-          server_cmd+=(--send-hwm "${SEND_HWM}")
-        fi
-        if [[ -n "${RECV_HWM}" ]]; then
-          server_cmd+=(--recv-hwm "${RECV_HWM}")
-        fi
-        server_cmd+=(--connect-concurrency "${CONNECT_CONCURRENCY:-$( [[ "${pattern_clients}" -ge 10000 ]] && echo 1024 || echo 128 )}")
-        "${server_cmd[@]}" <"${server_fifo}" >"${server_log}" 2>&1 &
-        server_pid=$!
-        if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
-          record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
-          wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
-          exec {server_fd}>&-
-          rm -f "${server_fifo}" "${client_fifo}"
-          transport_failures=$((transport_failures + 1))
-          continue
-        fi
-        exec {client_fd}<>"${client_fifo}"
-        client_cmd=("${runner_prefix[@]}" "${RUNNER}" --multi-client "${pattern}" "${transport}" "${size}" \
-          --endpoint "${endpoint}" --clients "${pattern_clients}" \
-          --duration "${DURATION}" --control-port 0 \
-          --io-threads "${pattern_client_io_threads}" \
-          --sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}" \
-          --monitor-hwm "${MONITOR_HWM}" --connect-ready-timeout-ms "${CONNECT_READY_TIMEOUT_MS}")
-        if [[ -n "${SEND_HWM}" ]]; then
-          client_cmd+=(--send-hwm "${SEND_HWM}")
-        fi
-        if [[ -n "${RECV_HWM}" ]]; then
-          client_cmd+=(--recv-hwm "${RECV_HWM}")
-        fi
-        client_cmd+=(--connect-concurrency "${CONNECT_CONCURRENCY:-$( [[ "${pattern_clients}" -ge 10000 ]] && echo 1024 || echo 128 )}")
-        "${client_cmd[@]}" <"${client_fifo}" >"${client_log}" 2>&1 &
-        client_pid=$!
-        if is_start_gated_pattern "${bare_pattern}"; then
-          if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${CONNECT_READY_TIMEOUT_MS}" >/dev/null; then
-            record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_ready_timeout"
-            wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
-            wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
-            exec {client_fd}>&-
-            exec {server_fd}>&-
-            rm -f "${server_fifo}" "${client_fifo}"
-            transport_failures=$((transport_failures + 1))
-            continue
-          fi
-          printf 'START,%s\n' "${size}" >&${server_fd}
-          printf 'START,%s\n' "${size}" >&${client_fd}
-        fi
-        wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
-        exec {client_fd}>&-
-        wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
-        exec {server_fd}>&-
-        rm -f "${server_fifo}" "${client_fifo}"
-        metric_log="${server_log}"
-        if [[ "${bare_pattern}" == "DEALER_ROUTER" || "${bare_pattern}" == "ROUTER_ROUTER" \
-           || "${bare_pattern}" == "PUBSUB" || "${bare_pattern}" == "SPOT" \
-           || "${bare_pattern}" == "STREAM" ]]; then
-          metric_log="${client_log}"
-        fi
-        status_record="$(case_status "${pattern}" "${transport}" "${size}" "${metric_log}")"
-        case "${status_record%%,*}" in
+        case "${CASE_STATUS}" in
           unsupported)
             expected_result_lines=$((expected_result_lines - 5))
             transport_unsupported=1
             break
             ;;
           fail)
-            record_failure "${pattern}" "${transport}" "${size}" "${run}" "${status_record#*,}"
             transport_failures=$((transport_failures + 1))
             continue
             ;;
         esac
-        if ! append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${metric_log}"; then
+        if ! append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${CASE_METRIC_LOG}"; then
           record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
           transport_failures=$((transport_failures + 1))
           continue
         fi
-        row="$(format_progress_row "${bare_pattern}" "${transport}" "${size}" "${metric_log}" "      ")"
+        row="$(format_progress_row "${bare_pattern}" "${transport}" "${size}" "${CASE_METRIC_LOG}" "      ")"
         echo "${row}"
         echo "${row}" >> "${tmp_progress}"
         if (( run < RUNS )); then
@@ -945,7 +991,7 @@ for pattern_index in "${!patterns[@]}"; do
 done
 
 python_status=0
-python3 - "${tmp_metrics}" "${tmp_failures}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
+python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
   "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
   "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
   "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
@@ -955,8 +1001,12 @@ import csv
 import math
 import sys
 from collections import defaultdict
+from pathlib import Path
 
-metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path, expected_result_lines, actual_result_lines = sys.argv[1:]
+helper_path, metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path, expected_result_lines, actual_result_lines = sys.argv[1:]
+sys.path.insert(0, str(Path(helper_path).resolve().parent))
+from report_common import emit_completion, emit_effective_options, emit_failures, load_failures, write_report
+
 runs = int(runs)
 expected_result_lines = int(expected_result_lines)
 actual_result_lines = int(actual_result_lines)
@@ -968,7 +1018,6 @@ patterns = []
 pattern_transports = defaultdict(list)
 pattern_sizes = defaultdict(list)
 pattern_clients = {}
-failures = []
 
 with open(metrics_path, newline="", encoding="utf-8") as f:
     reader = csv.reader(f)
@@ -985,12 +1034,7 @@ with open(metrics_path, newline="", encoding="utf-8") as f:
         except ValueError:
             rows[key][metric].append(math.nan)
 
-with open(failures_path, newline="", encoding="utf-8") as f:
-    reader = csv.reader(f)
-    for row in reader:
-        if len(row) != 5:
-            continue
-        failures.append(row)
+failures = load_failures(failures_path)
 
 for pattern in pattern_sizes:
     pattern_sizes[pattern].sort()
@@ -1027,33 +1071,30 @@ lines = []
 def emit(line=""):
     lines.append(line)
 
-def emit_effective_options(section):
-    emit(f"## Effective Options ({section})")
-    emit("- lang: java")
-    emit("- suite: multi")
-    emit(f"- runs: {runs}")
-    emit(f"- patterns: {pattern_csv}")
-    emit(f"- transports: {transports_csv}")
-    emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- clients: {clients}")
-    emit(f"- pin_cpu: {'on' if pin_cpu == '1' else 'off'}")
-    emit(f"- server_io_threads: {server_io_threads}")
-    emit(f"- client_io_threads: {client_io_threads}")
-    emit(f"- hwm: {hwm or 'default(binding)'}")
-    emit(f"- send_hwm: {send_hwm or 'default(binding)'}")
-    emit(f"- recv_hwm: {recv_hwm or 'default(binding)'}")
-    emit(f"- send_timeout_ms: {sndtimeo_ms}")
-    emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
-    emit(f"- connect_concurrency: {connect_concurrency or 'auto'}")
-    emit(f"- connect_ready_timeout_ms: {connect_ready_timeout_ms}")
-    emit(f"- monitor_hwm: {monitor_hwm}")
-    emit(f"- server_bind_port: {server_bind_port}")
-    emit(f"- duration_seconds: {duration}")
-    if results_tag:
-        emit(f"- results_tag: {results_tag}")
-    emit("")
+start_options = [
+    ("runs", runs),
+    ("patterns", pattern_csv),
+    ("transports", transports_csv),
+    ("msg_sizes", msg_sizes_csv),
+    ("clients", clients),
+    ("pin_cpu", "on" if pin_cpu == "1" else "off"),
+    ("server_io_threads", server_io_threads),
+    ("client_io_threads", client_io_threads),
+    ("hwm", hwm or "default(binding)"),
+    ("send_hwm", send_hwm or "default(binding)"),
+    ("recv_hwm", recv_hwm or "default(binding)"),
+    ("send_timeout_ms", sndtimeo_ms),
+    ("recv_timeout_ms", rcvtimeo_ms),
+    ("connect_concurrency", connect_concurrency or "auto"),
+    ("connect_ready_timeout_ms", connect_ready_timeout_ms),
+    ("monitor_hwm", monitor_hwm),
+    ("server_bind_port", server_bind_port),
+    ("duration_seconds", duration),
+]
+if results_tag:
+    start_options.append(("results_tag", results_tag))
 
-emit_effective_options("start")
+emit_effective_options(lines, "start", "java", "multi", start_options)
 emit("===============================================================================")
 emit("")
 with open(progress_path, encoding="utf-8") as progress_file:
@@ -1092,21 +1133,11 @@ for line in result_lines:
     emit(line)
 
 emit("")
-emit_effective_options("result")
+emit_effective_options(lines, "result", "java", "multi", start_options)
 status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
-emit("## Completion")
-emit(f"- status: {status}")
-emit(f"- expected_result_lines: {expected_result_lines}")
-emit(f"- actual_result_lines: {actual_result_lines}")
-emit("")
-emit("## Failures")
-if failures:
-    for pattern, transport, size, run, reason in failures:
-        emit(f"- pattern={pattern} transport={transport} size={size} run={run} reason={reason}")
-
-text = "\n".join(lines) + "\n"
-with open(report_path, "w", encoding="utf-8") as report_file:
-    report_file.write(text)
+emit_completion(lines, status, expected_result_lines, actual_result_lines)
+emit_failures(lines, failures)
+text = write_report(lines, report_path)
 sys.stdout.write(text)
 sys.exit(0 if status == "complete" else 1)
 PY

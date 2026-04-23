@@ -301,7 +301,7 @@ internal static class PerfDealerRouter
         try
         {
             receivedMessage = receiver.Recv(RecvFlags.DontWait);
-            return true;
+            return receivedMessage != null;
         }
         catch (ZlinkRecvException ex)
         {

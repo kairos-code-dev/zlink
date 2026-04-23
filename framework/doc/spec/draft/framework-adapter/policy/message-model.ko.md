@@ -103,6 +103,14 @@ binding 또는 framework 위에 얹는 별도 codec extension/provider 계층으
 - outbound `DEALER(client)`가 받은 response는 일반 handler dispatch 대상이 아니라,
   먼저 보낸 request의 pending reply를 완료하는 데 쓴다
 
+### 5.3 command
+
+- `message-kind = command`
+- `packet-name` 필요
+- 응답 body를 전제로 하지 않는다
+- local `ROUTER(server)`가 받은 command는 `packet-name` 기준으로 send handler에
+  dispatch한다
+
 ## 6. 이벤트의 기본 의미
 
 이벤트는 응답을 기대하지 않으므로 아래가 핵심이다.
@@ -123,14 +131,16 @@ binding 또는 framework 위에 얹는 별도 codec extension/provider 계층으
 따라서 stream은 공통 message model을 일부 공유하더라도, framework 표면에서는
 별도 context와 handler 계약을 둘 가능성이 높다.
 
-## 8. 이 문서가 아직 확정하지 않는 것
+여기서 중요한 점은 `STREAM`이 공용 `message-kind`에 새 값을 추가하지 않는다는
+점이다. 이 정책 초안의 공용 `message-kind`는 `request`, `response`, `command`,
+`event` 네 가지로 고정하고, `STREAM`은 별도 session contract로 설명한다.
 
-- header를 어떤 binary 형식으로 인코딩할지
-- header 자체도 codec별로 다르게 둘지
-- 표준 status code 체계를 어떻게 정의할지
-- body 없는 메시지를 어떻게 표현할지
-- partial success나 aggregate result를 어떤 공통 형식으로 담을지
-- pub/sub에서 header를 어느 수준까지 공용 context에 노출할지
-- monitor 이벤트를 어떤 범위까지 stream session error로 승격할지
+## 8. 이 문서의 범위
 
-이 항목들은 use case를 더 모은 뒤에 좁히는 편이 낫다.
+- 이 문서는 공용 logical message kind와 header 의미만 정한다.
+- header의 binary encoding 형식과 serializer 내부 규칙은 binding 또는 codec 확장
+  문서에서 다룬다.
+- 표준 status code 체계, aggregate result 형식, body 없는 메시지 표현은 상위
+  use case가 더 모인 뒤 별도 계약 문서에서 다룬다.
+- `STREAM` monitor 이벤트를 session error로 어디까지 승격할지는 `STREAM` 바인딩
+  문서에서 다룬다.

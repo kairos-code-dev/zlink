@@ -364,8 +364,8 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
 
 ## Spot routed request 시작
 
-`Spot`은 routed request를 직접 시작할 수 있다. one-way direct send는 공개
-표면에 없지만, request/reply 짝을 맞추기 위해 아래 두 경로를 공개한다.
+`Spot`은 routed request와 one-way direct send를 직접 시작할 수 있다.
+아래 경로들을 공개한다.
 
 ### core helper substrate
 
@@ -390,6 +390,14 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_,
   uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
 ```
 
 ### C API wrapper
@@ -415,6 +423,14 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
   void *userdata_,
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_);
+
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
 ```
 
 - `zlink_spot_request_spot()`은 `zlink_spot_reply_spot(_part)`와 reply 짝을 이룬다.
@@ -422,6 +438,8 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
 - submit이 `ZLINK_SUBMIT_OK`이면 `handler_`가 정확히 한 번 호출된다.
 - 그 외 반환값이면 handler는 등록되지 않는다.
 - 반환 코드 의미는 `doc/draft/spot-routed-request-api.ko.md` 8절을 참조한다.
+- `zlink_spot_send_spot()`은 대상 `Spot`으로 one-way routed send를 수행한다. reply를 기다리지 않으며 handler가 없다.
+- `zlink_spot_send_spot()`은 `ZLINK_SUBMIT_OK`이면 메시지가 전송 경로에 올라간 것이다.
 
 ## Router와 SPOT 직접 주소 지정
 

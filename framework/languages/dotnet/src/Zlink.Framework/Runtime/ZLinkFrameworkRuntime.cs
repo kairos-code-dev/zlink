@@ -133,7 +133,12 @@ internal sealed class ZLinkFrameworkRuntime
                 }
                 else
                 {
-                    var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
+                    var discovery = CreateDiscovery(
+                        adapter,
+                        state,
+                        channelName,
+                        ZLinkBackendServiceType.Socket,
+                        _registration.Discovery?.Endpoints ?? []);
                     dealer.AttachDiscovery(discovery);
                     bundle.Discovery = discovery;
                 }
@@ -325,23 +330,9 @@ internal sealed class ZLinkFrameworkRuntime
         }
 
         return new ZLinkSpotPublisherConnections(
-            endpoint =>
-            {
-                if (bundle.ManualConnections.Contains(endpoint, StringComparer.Ordinal))
-                {
-                    return false;
-                }
-
-                bundle.Socket.Connect(endpoint);
-                bundle.ManualConnections.Add(endpoint);
-                return true;
-            },
-            endpoint =>
-            {
-                bundle.Socket.Disconnect(endpoint);
-                bundle.ManualConnections.Remove(endpoint);
-            },
-            () => bundle.ManualConnections.AsReadOnly());
+            endpoint => node.ConnectPubSubAsync(endpoint, CancellationToken.None).AsTask().GetAwaiter().GetResult(),
+            node.DisconnectPubSub,
+            () => node.PubSubManualConnections.AsReadOnly());
     }
 
     internal IChannelClientConnections GetClientConnections(string channelName)
@@ -629,7 +620,12 @@ internal sealed class ZLinkFrameworkRuntime
 
         if (_registration.Discovery is not null)
         {
-            var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
+            var discovery = CreateDiscovery(
+                adapter,
+                state,
+                channelName,
+                ZLinkBackendServiceType.Socket,
+                _registration.Discovery.Endpoints);
             router.AttachDiscovery(discovery);
             bundle.Discovery = discovery;
         }
@@ -658,7 +654,12 @@ internal sealed class ZLinkFrameworkRuntime
         }
         else
         {
-            var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
+            var discovery = CreateDiscovery(
+                adapter,
+                state,
+                channelName,
+                ZLinkBackendServiceType.Socket,
+                _registration.Discovery?.Endpoints ?? []);
             subscriber.AttachDiscovery(discovery);
             bundle.Discovery = discovery;
         }
@@ -680,7 +681,12 @@ internal sealed class ZLinkFrameworkRuntime
 
         if (_registration.Discovery is not null)
         {
-            var discovery = CreateDiscovery(adapter, state, channelName, ZLinkBackendServiceType.Socket);
+            var discovery = CreateDiscovery(
+                adapter,
+                state,
+                channelName,
+                ZLinkBackendServiceType.Socket,
+                _registration.Discovery.Endpoints);
             publisher.AttachDiscovery(discovery);
             bundle.Discovery = discovery;
         }
@@ -692,10 +698,11 @@ internal sealed class ZLinkFrameworkRuntime
         IZLinkChannelBackendAdapter adapter,
         ZLinkFrameworkRuntimeState state,
         string channelName,
-        ZLinkBackendServiceType serviceType)
+        ZLinkBackendServiceType serviceType,
+        IReadOnlyCollection<string> endpoints)
     {
         var discovery = adapter.CreateDiscovery(state.Context, serviceType, channelName);
-        foreach (var endpoint in _registration.Discovery?.Endpoints ?? [])
+        foreach (var endpoint in endpoints)
         {
             discovery.ConnectRegistry(endpoint);
         }
@@ -957,41 +964,55 @@ internal sealed class ZLinkFrameworkRuntimeState(
 
         foreach (var bundle in ClientBundles.Values)
         {
-            await bundle.DisposeAsync();
+            await DisposeSafelyAsync(bundle);
         }
 
         foreach (var bundle in PublisherBundles.Values)
         {
-            await bundle.DisposeAsync();
+            await DisposeSafelyAsync(bundle);
         }
 
         foreach (var bundle in SubscriberBundles.Values)
         {
-            await bundle.DisposeAsync();
+            await DisposeSafelyAsync(bundle);
         }
 
         foreach (var bundle in ServerBundles.Values)
         {
-            await bundle.DisposeAsync();
+            await DisposeSafelyAsync(bundle);
         }
 
         foreach (var node in SpotNodes.Values)
         {
-            await node.DisposeAsync();
+            await DisposeSafelyAsync(node);
         }
 
         foreach (var stream in StreamNodes.Values)
         {
-            await stream.DisposeAsync();
+            await DisposeSafelyAsync(stream);
         }
 
         foreach (var discovery in SpotDiscoveries.Values)
         {
-            await discovery.DisposeAsync();
+            await DisposeSafelyAsync(discovery);
         }
 
         StopTokenSource.Dispose();
-        await Context.DisposeAsync();
+        await DisposeSafelyAsync(Context);
+    }
+
+    private static async ValueTask DisposeSafelyAsync(IAsyncDisposable disposable)
+    {
+        try
+        {
+            await disposable.DisposeAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (global::Zlink.ZlinkCloseException)
+        {
+        }
     }
 }
 

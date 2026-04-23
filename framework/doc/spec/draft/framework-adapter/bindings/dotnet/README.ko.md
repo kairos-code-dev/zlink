@@ -13,7 +13,7 @@
 이 문서는 `.NET` 바인딩 위에 올라가는 `ZLink Framework`의 `.NET` 방향을 정리한다.
 특히 아래 세 축을 우선 다룬다.
 
-- channel 이름 기준 direct call과 event messaging
+- channel 이름 기준 request/send와 event messaging
 - `SPOT`을 `ASP.NET Core` 애플리케이션에서 다루는 방법
 - Registry 서버를 `ASP.NET Core` lifecycle 안에서 구동하고 topology를 조회하는 방법
 
@@ -76,6 +76,9 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 - `SPOT`을 지원하는 문서는 named spot factory 등록, `spotName` 기준 생성,
   `spotRid -> spotName` 조회, lifecycle timer, 외부 spot publish 표면을
   공통 정책과 맞춰 설명해야 한다.
+- 현재 framework core 문서에서는 `targetRid + spotRid` direct routed 호출과
+  actor join/factory 표면을 기본 공용 계약으로 두지 않는다. 이런 모델은 현재
+  구현 범위 밖의 확장 후보로만 다룬다.
 
 ## 2. 문서 구조와 역할 분담
 

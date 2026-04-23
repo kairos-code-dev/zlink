@@ -22,6 +22,15 @@ timer가 함께 나오기 때문에 설명만 보면 감이 잘 안 올 수 있�
 6. channel send / request
 7. topic publish
 
+현재 구현 범위를 기준으로 이 문서는 두 층으로 나눠 읽어야 한다.
+
+- 3.1과 3.1.4, 그리고 이 절의 `ZLinkSpot` / `IZLinkSpotClient` 예시는 현재
+  framework core public surface에 맞춘 샘플이다.
+- 3.2.1의 actor/session membership 예시는 stage wrapper 같은 상위 확장 아이디어
+  메모다. 현재 framework core public surface가 아니다.
+- `targetRid + spotRid` direct routed 호출 예시도 같은 이유로 현재 core 계약으로
+  읽지 않는다.
+
 ## 2. 인터페이스 초안
 
 먼저 이 문서에서 전제로 두는 인터페이스 초안을 따로 본다.
@@ -70,12 +79,6 @@ public abstract class ZLinkSpot
         return ValueTask.FromResult<IZLinkTimer>(default!);
     }
 
-    protected void AddActorJoin<THandler, TRequest, TReply>()
-        where THandler : class
-        where TRequest : IZLinkRequest<TReply>
-    {
-    }
-
     public virtual ValueTask OnInitializeAsync(
         CancellationToken cancellationToken)
     {
@@ -118,17 +121,6 @@ public interface IZLinkSpotTimerHandler<TSpot>
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpotActorJoinHandler<TSpot, in TRequest, TReply>
-    where TSpot : ZLinkSpot
-    where TRequest : IZLinkRequest<TReply>
-{
-    ValueTask<TReply> HandleAsync(
-        TSpot spot,
-        IZLinkActor actor,
-        TRequest request,
-        CancellationToken cancellationToken);
-}
-
 // Low-level Zlink binding basis
 public sealed class Timer : IDisposable, IAsyncDisposable
 {
@@ -163,43 +155,16 @@ public interface IZLinkClient
     IZLinkRequestCall<TReply> Request<TReply>(
         string channelName,
         IZLinkRequest<TReply> request);
-
-    IZLinkSendCall SendTo<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message);
-
-    IZLinkRequestCall<TReply> RequestTo<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IZLinkRequest<TReply> request);
 }
 
 public interface IZLinkSpotClient
 {
-    ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
-        RoutingId spotRid,
-        IZLinkActor actor,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-        where TRequest : IZLinkRequest<TReply>;
-
     IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);
 
     IZLinkRequestCall<TReply> RequestChannel<TReply>(
         string channelName,
-        IZLinkRequest<TReply> request);
-
-    IZLinkSendCall SendTo<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message);
-
-    IZLinkRequestCall<TReply> RequestTo<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
         IZLinkRequest<TReply> request);
 
     IZLinkPublishCall Publish<TEvent>(
@@ -213,15 +178,6 @@ public interface IZLinkSpotPublisherClient
         string channelName,
         string topic,
         TEvent message);
-}
-
-public interface IZLinkActorFactory
-{
-    string ActorType { get; }
-
-    ValueTask<IZLinkActor> CreateAsync(
-        string actorKey,
-        CancellationToken cancellationToken);
 }
 
 public enum ZLinkDispatchMode
@@ -548,7 +504,7 @@ builder.Services.AddZLinkFramework(options =>
   `CommonSocketOptions`와 같은 공통 socket 기본 동작을 정한다.
 - `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)`은 실제
   routed peer 옵션과 outbound peer 옵션에 대응하는 capability 전용 facade다.
-- `RequestTo(...).WithTimeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
+- `RequestChannel(...).WithTimeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
   적용되고, 위 설정은 runtime 기본값이다.
 
 이렇게 두면 framework 사용자는 low-level `spot_node_option`이나 `setsockopt`
@@ -626,60 +582,12 @@ app.MapPost("/stage/query", async (
 app.Run();
 ```
 
-RID를 이미 알고 있는 경우에는 같은 앱이 `IZLinkClient`의 direct routed 호출을 바로
-쓸 수도 있다.
-
-```csharp
-app.MapPost("/stage/direct-query", async (
-    DirectStageRouteHttpRequest request,
-    IZLinkClient client,
-    CancellationToken cancellationToken) =>
-{
-    var reply = await client
-        .RequestTo<SampleGetStateReply>(
-        targetRid: RoutingId.Parse(request.TargetNodeRid),
-        spotRid: RoutingId.Parse(request.TargetSpotRid),
-        request: new SampleGetStateRequest
-        {
-            SpotRid = request.TargetSpotRid
-        })
-        .WithTimeout(TimeSpan.FromMilliseconds(200))
-        .ExecAsync(cancellationToken);
-
-    client
-        .SendTo(
-            targetRid: RoutingId.Parse(request.TargetNodeRid),
-            spotRid: RoutingId.Parse(request.TargetSpotRid),
-            message: new SampleReportStateCommand
-            {
-                ActorCount = request.UserCount,
-                ConnectedSessionCount = request.UserCount
-            })
-        .Exec();
-
-    return Results.Ok(reply);
-});
-```
-
-이 경로는 channel 이름으로 라우팅하지 않고, caller가 `targetRid`와 `spotRid`를
-직접 알고 있을 때만 쓰는 direct spot routed 호출이다.
+현재 framework core public surface는 RID direct routed 호출을 열지 않는다.
+그래서 이 샘플도 `channelName` 기반 request/send와 `IZLinkSpotPublisherClient`
+기반 publish까지만 현재 계약으로 본다.
 
 send/publish builder는 기본 blocking submit이고, 필요하면 `WithDontWait()`를
 붙여 temporary backpressure 시 `false`를 받을 수 있다.
-
-```csharp
-bool submitted = client
-    .SendTo(
-        targetRid: RoutingId.Parse(request.TargetNodeRid),
-        spotRid: RoutingId.Parse(request.TargetSpotRid),
-        message: new SampleReportStateCommand
-        {
-            ActorCount = request.UserCount,
-            ConnectedSessionCount = request.UserCount
-        })
-    .WithDontWait()
-    .Exec();
-```
 
 ### 3.1.4 외부 노드에서 SPOT channel publish
 
@@ -778,6 +686,10 @@ public sealed class SampleSpot : ZLinkSpot
 ```
 
 ### 3.2.1 room이 먼저 있고, session이 인증한 뒤 actor가 room에 들어가는 상세 샘플
+
+> 이 절은 현재 framework core 구현 범위가 아니라 stage wrapper 확장 아이디어를
+> 설명하는 메모다. 아래 actor/session membership 모델은 현행 public surface가
+> 아니다.
 
 게임 서버에서는 outgame, 로비, 매치메이킹을 보통 웹 서버 쪽에서 처리하고,
 room 서버는 이미 만들어진 room에 플레이어를 들이는 역할만 맡는 경우가 많다.
@@ -1822,11 +1734,9 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
   - `SendChannel(...).Exec()`
 - attach된 다른 channel에 request packet을 보내고 싶다
   - `RequestChannel(...).WithTimeout(...).ExecAsync(...)`
-- 다른 SPOT peer에 routed packet을 보내고 싶다
-  - `IZLinkClient.SendTo(...).Exec()` 또는 `IZLinkSpotClient.SendTo(...).Exec()`
-- 다른 SPOT peer에 routed request를 보내고 싶다
-  - `IZLinkClient.RequestTo(...).WithTimeout(...).ExecAsync(...)` 또는
-    `IZLinkSpotClient.RequestTo(...).WithTimeout(...).ExecAsync(...)`
+- 다른 SPOT peer와 직접 RID routed 호출을 하고 싶다
+  - 현재 framework core 기본 표면에는 없다. 필요하면 stage wrapper나 별도 확장
+    패키지에서 다룬다.
 - 현재 spot 자신의 rid를 알고 싶다
   - `SampleSpot.SpotRid`
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 보고 싶다
@@ -1880,9 +1790,9 @@ channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다�
 ## 9. 정리
 
 - `SPOT` 기본 모델은 `SampleSpot : ZLinkSpot` 같은 상속 기반 lifecycle로 고정한다.
-- registration 표면은 `AddPacket`, `AddSubscribe`, `AddTimer`,
-  `AddActorJoin` 같은 명시 등록을 사용한다.
-- actor 생성은 `AddActorFactory<TFactory>(actorType)`로 등록한다.
+- current framework core registration 표면은 `AddPacket`, `AddSubscribe`,
+  `AddTimer` 같은 명시 등록을 사용한다.
+- actor join / actor factory 예시는 3.2.1에서 따로 적은 stage wrapper 확장 메모다.
 - packet dispatch 기준은 header `msgId`다.
 - `IZLinkSpotManager`는 spot 생성과 조회를 함께 가진다.
 - attach된 channel client와 SPOT publish 설정은 capability별 builder에서 노출한다.

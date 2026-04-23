@@ -77,20 +77,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.Filters.Add(typeof(TFilter));
     }
 
-    public void AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory
-    {
-        if (string.IsNullOrWhiteSpace(actorType))
-        {
-            throw new ZLinkConfigurationException("Actor type must not be empty.");
-        }
-
-        if (!_registration.ActorFactories.TryAdd(actorType, typeof(TFactory)))
-        {
-            throw new ZLinkConfigurationException($"Duplicate actor factory '{actorType}'.");
-        }
-    }
-
     public void ConfigureDispatch(Action<IZLinkDispatchOptions> configure)
     {
         configure(_registration.DispatchOptions);

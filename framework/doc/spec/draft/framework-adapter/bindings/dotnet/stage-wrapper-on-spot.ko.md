@@ -257,11 +257,10 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 low-level `Timer.Stop()`와 dispose lifecycle을 감싼 고수준 timer handle로 읽는
 편이 자연스럽다.
 
-같은 맥락으로 actor join도 `ZLinkSpot` override로 열기보다,
-`AddActorJoin<THandler, TRequest, TReply>(...)`와
-`IZLinkSpotClient.JoinActorAsync(...)` 조합으로 여는 편이 wrapper 설계에 더
-자연스럽다. 그래야 actor를 어떤 `Spot`에 귀속시킬지, join을 허용할지,
-결과 payload에 무엇을 담을지를 모두 같은 `Spot` 실행 문맥 안에서 결정할 수 있다.
+같은 맥락으로 actor join은 framework core 기본 표면보다 stage wrapper 같은 상위
+확장 계층에서 따로 정의하는 편이 더 자연스럽다. 그래야 actor를 어떤 `Spot`에
+귀속시킬지, join을 허용할지, 결과 payload에 무엇을 담을지를 wrapper가 자기
+도메인 규칙으로 닫을 수 있다.
 
 또한 이 표면에 `IServiceProvider`를 매번 넣는 것은 굳이 public 계약으로 보일 필요가
 없다. `Spot`, timer handler, join handler는 framework가 만든 per-spot scope에서

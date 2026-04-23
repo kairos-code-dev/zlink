@@ -1,22 +1,32 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
 
+[CollectionDefinition(nameof(StreamIntegrationTestsCollection), DisableParallelization = true)]
+public sealed class StreamIntegrationTestsCollection
+{
+}
+
+[Collection(nameof(StreamIntegrationTestsCollection))]
 public sealed class StreamIntegrationTests
 {
+    private static readonly TimeSpan PollingInterval = TimeSpan.FromMilliseconds(150);
+
     [Fact]
     public async Task RawStreamSession_Receives_Writes_And_Tracks_Lifecycle()
     {
         var endpoint = GetFreeTcpEndpoint();
         var recorder = new RawStreamRecorder();
+        using var callbackCapture = CallbackExceptionCapture.Start();
 
-        using var host = await CreateHostAsync(endpoint, services =>
+        var host = await CreateHostAsync(endpoint, services =>
         {
             services.AddSingleton(recorder);
             services.AddZLinkFramework(options =>
@@ -28,16 +38,52 @@ public sealed class StreamIntegrationTests
                 });
             });
         });
+        try
+        {
+            using var client = ConnectRawClient(endpoint);
+            var network = client.GetStream();
+            try
+            {
+                await RetryAsync(
+                    async () =>
+                    {
+                        SendAll(network, "ping"u8);
+                        await Task.Yield();
+                        callbackCapture.ThrowIfAny();
+                        return recorder.ReceivedPayloads.Contains("ping");
+                    },
+                    received => received,
+                    TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex) when (ex is TimeoutException or AggregateException)
+            {
+                throw new TimeoutException(
+                    $"STREAM raw retry timed out. Connected={recorder.ConnectedCount}, Disconnected={recorder.DisconnectedCount}, Errors={recorder.ErrorCount}, Received={string.Join(',', recorder.ReceivedPayloads)}",
+                    ex);
+            }
 
-        using var client = ConnectRawClient(endpoint);
-        var network = client.GetStream();
-        SendAll(network, "ping"u8);
+            await RetryAsync(
+                () => recorder.LastSessionId is not null
+                    && recorder.LastRoutingId is not null
+                    && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+            Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
+            Assert.NotNull(recorder.LastSessionId);
+            Assert.NotNull(recorder.LastRoutingId);
+            Assert.Equal(1, recorder.ConnectedCount);
 
-        await RetryAsync(() => recorder.ReceivedPayloads.Contains("ping"), TimeSpan.FromSeconds(5));
-        Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
-
-        client.Dispose();
-        await RetryAsync(() => recorder.DisconnectedCount > 0, TimeSpan.FromSeconds(5));
+            client.Dispose();
+            await RetryAsync(
+                () => recorder.DisconnectedCount > 0 && recorder.ErrorCount > 0,
+                TimeSpan.FromSeconds(5));
+            Assert.Equal(ZLinkStreamSessionError.TransportError, recorder.LastError?.Error);
+        }
+        finally
+        {
+            await host.StopAsync();
+            host.Dispose();
+        }
     }
 
     [Fact]
@@ -45,8 +91,9 @@ public sealed class StreamIntegrationTests
     {
         var endpoint = GetFreeTcpEndpoint();
         var recorder = new PacketStreamRecorder();
+        using var callbackCapture = CallbackExceptionCapture.Start();
 
-        using var host = await CreateHostAsync(endpoint, services =>
+        var host = await CreateHostAsync(endpoint, services =>
         {
             services.AddSingleton(recorder);
             services.AddZLinkFramework(options =>
@@ -58,15 +105,45 @@ public sealed class StreamIntegrationTests
                 });
             });
         });
+        try
+        {
+            using var client = ConnectRawClient(endpoint);
+            var network = client.GetStream();
+            try
+            {
+                await RetryAsync(
+                    async () =>
+                    {
+                        SendAll(network, BuildStreamPacketFrame("hdr"u8, "body"u8));
+                        await Task.Yield();
+                        callbackCapture.ThrowIfAny();
+                        return recorder.LastHeader == "hdr" && recorder.LastBody == "body";
+                    },
+                    received => received,
+                    TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex) when (ex is TimeoutException or AggregateException)
+            {
+                throw new TimeoutException(
+                    $"STREAM packet retry timed out. Connected={recorder.ConnectedCount}, Header={recorder.LastHeader ?? "<null>"}, Body={recorder.LastBody ?? "<null>"}",
+                    ex);
+            }
 
-        using var client = ConnectRawClient(endpoint);
-        var network = client.GetStream();
-        SendAll(network, BuildLen32BeFrame("hdr"u8));
-        SendAll(network, BuildLen32BeFrame("body"u8));
-
-        await RetryAsync(
-            () => recorder.LastHeader == "hdr" && recorder.LastBody == "body",
-            TimeSpan.FromSeconds(5));
+            await RetryAsync(
+                () => recorder.LastSessionId is not null
+                    && recorder.LastRoutingId is not null
+                    && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+            Assert.NotNull(recorder.LastSessionId);
+            Assert.NotNull(recorder.LastRoutingId);
+            Assert.Equal(1, recorder.ConnectedCount);
+        }
+        finally
+        {
+            await host.StopAsync();
+            host.Dispose();
+        }
     }
 
     private static async Task<IHost> CreateHostAsync(
@@ -91,7 +168,41 @@ public sealed class StreamIntegrationTests
                 return;
             }
 
-            await Task.Delay(50);
+            await Task.Delay(PollingInterval);
+        }
+
+        throw new TimeoutException("STREAM integration retry timed out.");
+    }
+
+    private static async Task<T> RetryAsync<T>(
+        Func<Task<T>> action,
+        Func<T, bool> predicate,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        Exception? lastError = null;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var result = await action();
+                if (predicate(result))
+                {
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+
+            await Task.Delay(PollingInterval);
+        }
+
+        if (lastError is not null)
+        {
+            throw lastError;
         }
 
         throw new TimeoutException("STREAM integration retry timed out.");
@@ -140,23 +251,42 @@ public sealed class StreamIntegrationTests
         return buffer;
     }
 
-    private static byte[] BuildLen32BeFrame(ReadOnlySpan<byte> payload)
+    private static byte[] BuildStreamPacketFrame(
+        ReadOnlySpan<byte> header,
+        ReadOnlySpan<byte> body)
     {
-        var frame = new byte[4 + payload.Length];
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(0, 4), (uint)payload.Length);
-        payload.CopyTo(frame.AsSpan(4));
+        var frame = new byte[6 + header.Length + body.Length];
+        frame[0] = (byte)(header.Length >> 8);
+        frame[1] = (byte)header.Length;
+        frame[2] = (byte)(body.Length >> 24);
+        frame[3] = (byte)(body.Length >> 16);
+        frame[4] = (byte)(body.Length >> 8);
+        frame[5] = (byte)body.Length;
+
+        header.CopyTo(frame.AsSpan(6, header.Length));
+        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
         return frame;
     }
 
     public sealed class RawStreamRecorder
     {
-        public List<string> ReceivedPayloads { get; } = [];
+        public ConcurrentBag<string> ReceivedPayloads { get; } = [];
+
+        public string? LastSessionId { get; set; }
+
+        public global::Zlink.RoutingId? LastRoutingId { get; set; }
 
         public string? LastLocalAddr { get; set; }
 
         public string? LastRemoteAddr { get; set; }
 
+        public int ConnectedCount { get; set; }
+
         public int DisconnectedCount { get; set; }
+
+        public int ErrorCount { get; set; }
+
+        public ZLinkStreamError? LastError { get; set; }
     }
 
     public sealed class RawStreamSession(RawStreamRecorder recorder) : IZLinkRawStreamSession
@@ -164,8 +294,11 @@ public sealed class StreamIntegrationTests
         public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
         {
             _ = cancellationToken;
+            recorder.LastSessionId = stream.SessionId;
+            recorder.LastRoutingId = stream.RoutingId;
             recorder.LastLocalAddr = stream.LocalAddr;
             recorder.LastRemoteAddr = stream.RemoteAddr;
+            recorder.ConnectedCount++;
             return ValueTask.CompletedTask;
         }
 
@@ -183,8 +316,9 @@ public sealed class StreamIntegrationTests
             CancellationToken cancellationToken)
         {
             _ = stream;
-            _ = error;
             _ = cancellationToken;
+            recorder.LastError = error;
+            recorder.ErrorCount++;
             return ValueTask.CompletedTask;
         }
 
@@ -207,9 +341,15 @@ public sealed class StreamIntegrationTests
 
         public string? LastBody { get; set; }
 
+        public string? LastSessionId { get; set; }
+
+        public global::Zlink.RoutingId? LastRoutingId { get; set; }
+
         public string? LastLocalAddr { get; set; }
 
         public string? LastRemoteAddr { get; set; }
+
+        public int ConnectedCount { get; set; }
     }
 
     public sealed class PacketStreamSession(PacketStreamRecorder recorder) : IZLinkPacketStreamSession
@@ -217,8 +357,11 @@ public sealed class StreamIntegrationTests
         public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
         {
             _ = cancellationToken;
+            recorder.LastSessionId = stream.SessionId;
+            recorder.LastRoutingId = stream.RoutingId;
             recorder.LastLocalAddr = stream.LocalAddr;
             recorder.LastRemoteAddr = stream.RemoteAddr;
+            recorder.ConnectedCount++;
             return ValueTask.CompletedTask;
         }
 
@@ -251,6 +394,50 @@ public sealed class StreamIntegrationTests
             recorder.LastHeader = Encoding.UTF8.GetString(header.AsReadOnlySpan());
             recorder.LastBody = Encoding.UTF8.GetString(body.AsReadOnlySpan());
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class CallbackExceptionCapture : IDisposable
+    {
+        private readonly ConcurrentQueue<Exception> _exceptions = new();
+        private readonly EventInfo _eventInfo;
+        private readonly Action<Exception> _handlerDelegate;
+
+        private CallbackExceptionCapture()
+        {
+            _eventInfo = typeof(global::Zlink.Context).Assembly
+                .GetType("Zlink.Runtime", throwOnError: true)!
+                .GetEvent("UnhandledCallbackException", BindingFlags.Public | BindingFlags.Static)!
+                ?? throw new InvalidOperationException("Could not locate Zlink.Runtime.UnhandledCallbackException.");
+            _handlerDelegate = OnUnhandledCallbackException;
+            _eventInfo.AddEventHandler(null, _handlerDelegate);
+        }
+
+        public bool IsEmpty => _exceptions.IsEmpty;
+
+        public static CallbackExceptionCapture Start()
+        {
+            return new CallbackExceptionCapture();
+        }
+
+        public void Dispose()
+        {
+            _eventInfo.RemoveEventHandler(null, _handlerDelegate);
+        }
+
+        public void ThrowIfAny()
+        {
+            if (_exceptions.IsEmpty)
+            {
+                return;
+            }
+
+            throw new AggregateException(_exceptions);
+        }
+
+        private void OnUnhandledCallbackException(Exception exception)
+        {
+            _exceptions.Enqueue(exception);
         }
     }
 }

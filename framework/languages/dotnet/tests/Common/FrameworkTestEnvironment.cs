@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.Versioning;
+using System.Diagnostics;
 
 namespace Zlink.Framework.Tests.Common;
 
@@ -83,5 +84,57 @@ internal static class FrameworkTestEnvironment
             GetBuildConfiguration(),
             GetTargetFrameworkMoniker(),
             OperatingSystem.IsWindows() ? "Zlink.Framework.TestHost.exe" : "Zlink.Framework.TestHost");
+    }
+
+    public static string GetDotNetHostPath()
+    {
+        const string localHostPath = "/home/hep7/.dotnet/dotnet";
+
+        if (File.Exists(localHostPath))
+        {
+            return localHostPath;
+        }
+
+        var hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+
+        if (!string.IsNullOrWhiteSpace(hostPath) && File.Exists(hostPath))
+        {
+            return hostPath;
+        }
+
+        return "dotnet";
+    }
+
+    public static ProcessStartInfo CreateTestHostStartInfo(
+        string? readyFilePath = null,
+        IReadOnlyList<string>? additionalArguments = null,
+        bool redirectStandardInput = true)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = GetDotNetHostPath(),
+            RedirectStandardInput = redirectStandardInput,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        startInfo.ArgumentList.Add(GetTestHostAssemblyPath());
+
+        if (!string.IsNullOrWhiteSpace(readyFilePath))
+        {
+            startInfo.ArgumentList.Add("--ready-file");
+            startInfo.ArgumentList.Add(readyFilePath);
+        }
+
+        if (additionalArguments is not null)
+        {
+            foreach (var argument in additionalArguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+        }
+
+        return startInfo;
     }
 }

@@ -22,7 +22,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.AttachStreamRaw(handler);
     }
 
-    internal void OnFramedPacket(StreamFramedPacketHandler handler)
+    public void OnFramedPacket(StreamFramedPacketHandler handler)
     {
         Kernel.AttachStreamPacket(handler);
     }

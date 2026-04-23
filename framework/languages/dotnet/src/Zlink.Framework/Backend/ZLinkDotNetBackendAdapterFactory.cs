@@ -335,12 +335,22 @@ internal sealed class ZLinkBackendSocketMonitorWrapper(global::Zlink.SocketMonit
 {
     public object NativeInstance => nativeMonitor;
 
+    public void OnEvent(Action<global::Zlink.MonitorEvent> handler)
+    {
+        nativeMonitor.OnEvent(handler);
+    }
+
     public ValueTask DisposeAsync() => nativeMonitor.DisposeAsync();
 }
 
 internal sealed class ZLinkBackendServiceMonitorWrapper(global::Zlink.ServiceMonitor nativeMonitor) : IZLinkBackendServiceMonitor
 {
     public object NativeInstance => nativeMonitor;
+
+    public void OnEvent(Action<global::Zlink.ServiceEvent> handler)
+    {
+        nativeMonitor.OnEvent(handler);
+    }
 
     public ValueTask DisposeAsync() => nativeMonitor.DisposeAsync();
 }

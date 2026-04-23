@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend;
+using System.Threading;
 
 namespace Zlink.Framework.AspNetCore;
 
@@ -140,15 +141,19 @@ internal sealed class ZLinkMonitoringHostedService(
             }
 
             var monitor = _monitoringAdapter.OpenSocketMonitor(socket);
-            monitor.RequireNative<global::Zlink.SocketMonitor>().OnEvent(
-                monitorEvent =>
-                {
-                    var mapped = MapSocketEvent(source, monitorEvent);
-                    if (mapped is ZLinkSocketEvent @event)
+            RegisterWithoutSynchronizationContext(() =>
+            {
+                monitor.OnEvent(
+                    monitorEvent =>
                     {
-                        QueueDispatch(@event);
-                    }
-                });
+                        var mapped = MapSocketEvent(source, monitorEvent);
+                        if (mapped is ZLinkSocketEvent @event)
+                        {
+                            QueueDispatch(@event);
+                        }
+                    });
+                return 0;
+            });
             _monitors.Add(monitor);
         }
     }
@@ -173,16 +178,34 @@ internal sealed class ZLinkMonitoringHostedService(
             }
 
             var monitor = _monitoringAdapter.OpenDiscoveryMonitor(discovery);
-            monitor.RequireNative<global::Zlink.ServiceMonitor>().OnEvent(
-                serviceEvent =>
-                {
-                    var mapped = MapDiscoveryEvent(source, serviceEvent);
-                    if (mapped is ZLinkDiscoveryEvent @event)
+            RegisterWithoutSynchronizationContext(() =>
+            {
+                monitor.OnEvent(
+                    serviceEvent =>
                     {
-                        QueueDispatch(@event);
-                    }
-                });
+                        var mapped = MapDiscoveryEvent(source, serviceEvent);
+                        if (mapped is ZLinkDiscoveryEvent @event)
+                        {
+                            QueueDispatch(@event);
+                        }
+                    });
+                return 0;
+            });
             _monitors.Add(monitor);
+        }
+    }
+
+    private static T RegisterWithoutSynchronizationContext<T>(Func<T> action)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
         }
     }
 

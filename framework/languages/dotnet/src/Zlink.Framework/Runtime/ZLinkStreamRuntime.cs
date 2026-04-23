@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using System.Buffers.Binary;
+using System.Threading;
 
 namespace Zlink.Framework;
 
@@ -8,8 +8,11 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private readonly IServiceProvider _services;
     private readonly Type? _packetSessionType;
     private readonly Type? _rawSessionType;
-    private readonly Dictionary<uint, ZLinkStreamSessionRuntime> _sessions = [];
+    private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
+    private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
     private readonly object _gate = new();
+    private readonly CancellationTokenSource _stopSource = new();
+    private Task? _monitorLoop;
 
     public ZLinkStreamNodeRuntime(
         string nodeName,
@@ -34,66 +37,153 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     public void Start()
     {
-        Socket.OnPacket(
-            new global::Zlink.StreamUInt32PacketHandler(OnRawPacket));
+        RegisterWithoutSynchronizationContext(() =>
+        {
+            if (_packetSessionType is not null)
+            {
+                Socket.OnFramedPacket(OnFramedPacket);
+            }
+            else
+            {
+                Socket.OnPacket(OnRawPacket);
+            }
+            return 0;
+        });
 
-        Monitor.OnEvent(OnMonitorEvent);
+        _monitorLoop = Task.Run(
+            () => RunMonitorLoopAsync(_stopSource.Token),
+            CancellationToken.None);
     }
 
     public async ValueTask DisposeAsync()
     {
+        _stopSource.Cancel();
+        await Monitor.DisposeAsync();
+        await Socket.DisposeAsync();
+
+        if (_monitorLoop is not null)
+        {
+            try
+            {
+                await _monitorLoop;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
         foreach (var session in _sessions.Values.ToArray())
         {
             await session.DisposeAsync();
         }
 
-        await Monitor.DisposeAsync();
-        await Socket.DisposeAsync();
+        _stopSource.Dispose();
     }
 
-    private int OnRawPacket(uint routingId, global::Zlink.Message payload)
+    private int OnRawPacket(string routingIdText, global::Zlink.Message payload)
     {
+        var routingId = ParsePublicRoutingId(routingIdText);
         var session = GetOrCreateSession(routingId);
+        ApplyPendingConnectionMetadata(session);
         session.DispatchRawAsync(payload).AsTask().GetAwaiter().GetResult();
         return 0;
     }
 
+    private void OnFramedPacket(
+        string routingIdText,
+        global::Zlink.Message header,
+        global::Zlink.Message body)
+    {
+        var routingId = ParsePublicRoutingId(routingIdText);
+        var session = GetOrCreateSession(routingId);
+        ApplyPendingConnectionMetadata(session);
+        session.DispatchPacketAsync(header, body).AsTask().GetAwaiter().GetResult();
+    }
+
     private void OnMonitorEvent(global::Zlink.MonitorEvent monitorEvent)
     {
-        if (monitorEvent.RoutingId is null
-            || !global::Zlink.RoutingIdCodec.TryToUInt32(monitorEvent.RoutingId.Value.ToBytes(), out var streamRoutingId))
-        {
-            return;
-        }
-
-        var session = GetOrCreateSession(streamRoutingId);
         switch (monitorEvent.Event)
         {
             case global::Zlink.MonitorEventType.ConnectionReady:
             case global::Zlink.MonitorEventType.Accepted:
-                session.MarkConnectedAsync(monitorEvent.LocalAddr, monitorEvent.RemoteAddr)
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult();
+                if (monitorEvent.RoutingId is global::Zlink.RoutingId readyRoutingId)
+                {
+                    var session = GetOrCreateSession(readyRoutingId);
+                    session.MarkConnectedAsync(monitorEvent.LocalAddr, monitorEvent.RemoteAddr)
+                        .AsTask()
+                        .GetAwaiter()
+                        .GetResult();
+                }
+                else
+                {
+                    lock (_gate)
+                    {
+                        _pendingConnectionMetadata.Enqueue((monitorEvent.LocalAddr, monitorEvent.RemoteAddr));
+                    }
+                }
                 break;
             case global::Zlink.MonitorEventType.Disconnected:
-                session.MarkDisconnectedAsync(
-                        new ZLinkStreamError(
-                            ZLinkStreamSessionError.TransportError,
-                            new ZLinkStreamDiagnostic((int)monitorEvent.Value, monitorEvent.Event.ToString())))
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult();
-                RemoveSession(streamRoutingId);
+                if (TryResolveSessionForMonitorEvent(monitorEvent.RoutingId, out var disconnectedSession))
+                {
+                    disconnectedSession.MarkDisconnectedAsync(
+                            new ZLinkStreamError(
+                                ZLinkStreamSessionError.TransportError,
+                                new ZLinkStreamDiagnostic((int)monitorEvent.Value, monitorEvent.Event.ToString())))
+                        .AsTask()
+                        .GetAwaiter()
+                        .GetResult();
+
+                    if (monitorEvent.RoutingId is global::Zlink.RoutingId disconnectedRoutingId)
+                    {
+                        RemoveSession(disconnectedRoutingId);
+                    }
+                    else
+                    {
+                        RemoveSession(disconnectedSession.Stream.SessionId);
+                    }
+                }
                 break;
         }
     }
 
-    private ZLinkStreamSessionRuntime GetOrCreateSession(uint routingId)
+    private async Task RunMonitorLoopAsync(CancellationToken cancellationToken)
     {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var monitorEvent = Monitor.Recv();
+                OnMonitorEvent(monitorEvent);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (global::Zlink.ZlinkException ex)
+                when (cancellationToken.IsCancellationRequested
+                      || ex.InternalErrno is (int)global::Zlink.ErrorCode.EFault
+                      or (int)global::Zlink.ErrorCode.EBadf)
+            {
+                return;
+            }
+
+            await Task.Yield();
+        }
+    }
+
+    private ZLinkStreamSessionRuntime GetOrCreateSession(global::Zlink.RoutingId routingId)
+    {
+        var sessionId = routingId.ToHex();
         lock (_gate)
         {
-            if (_sessions.TryGetValue(routingId, out var existing))
+            if (_sessions.TryGetValue(sessionId, out var existing))
             {
                 return existing;
             }
@@ -104,16 +194,97 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                 routingId,
                 _packetSessionType,
                 _rawSessionType);
-            _sessions.Add(routingId, created);
+            _sessions.Add(sessionId, created);
             return created;
         }
     }
 
-    private void RemoveSession(uint routingId)
+    private void RemoveSession(global::Zlink.RoutingId routingId)
+    {
+        RemoveSession(routingId.ToHex());
+    }
+
+    private void RemoveSession(string sessionId)
     {
         lock (_gate)
         {
-            _sessions.Remove(routingId);
+            _sessions.Remove(sessionId);
+        }
+    }
+
+    private void ApplyPendingConnectionMetadata(ZLinkStreamSessionRuntime session)
+    {
+        (string LocalAddr, string RemoteAddr)? metadata = null;
+
+        lock (_gate)
+        {
+            if (session.Stream.LocalAddr is null
+                && session.Stream.RemoteAddr is null
+                && _pendingConnectionMetadata.Count > 0)
+            {
+                metadata = _pendingConnectionMetadata.Dequeue();
+            }
+        }
+
+        if (metadata is { } value)
+        {
+            session.MarkConnectedAsync(value.LocalAddr, value.RemoteAddr)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
+        }
+    }
+
+    private bool TryResolveSessionForMonitorEvent(
+        global::Zlink.RoutingId? routingId,
+        out ZLinkStreamSessionRuntime session)
+    {
+        lock (_gate)
+        {
+            if (routingId is global::Zlink.RoutingId streamRoutingId)
+            {
+                var sessionId = streamRoutingId.ToHex();
+                if (_sessions.TryGetValue(sessionId, out var existing))
+                {
+                    session = existing;
+                    return true;
+                }
+            }
+
+            if (_sessions.Count == 1)
+            {
+                session = _sessions.Values.First();
+                return true;
+            }
+        }
+
+        session = null!;
+        return false;
+    }
+
+    private static global::Zlink.RoutingId ParsePublicRoutingId(string routingIdText)
+    {
+        if (routingIdText.StartsWith("hex:", StringComparison.OrdinalIgnoreCase))
+        {
+            return global::Zlink.RoutingId.FromBytes(
+                Convert.FromHexString(routingIdText["hex:".Length..]));
+        }
+
+        return global::Zlink.RoutingId.FromBytes(
+            System.Text.Encoding.UTF8.GetBytes(routingIdText));
+    }
+
+    private static T RegisterWithoutSynchronizationContext<T>(Func<T> action)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
         }
     }
 }
@@ -126,13 +297,12 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly object _handler;
     private readonly Type? _packetSessionType;
     private readonly Type? _rawSessionType;
-    private readonly ZLinkLen32BeAccumulator _packetAccumulator = new();
     private int _connected;
 
     public ZLinkStreamSessionRuntime(
         AsyncServiceScope scope,
         global::Zlink.StreamSocket socket,
-        uint routingId,
+        global::Zlink.RoutingId routingId,
         Type? packetSessionType,
         Type? rawSessionType)
     {
@@ -179,39 +349,32 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             await _gate.WaitAsync();
             try
             {
-                if (Interlocked.CompareExchange(ref _connected, 1, 1) == 0)
-                {
-                    if (_rawSessionType is not null)
-                    {
-                        await ((IZLinkRawStreamSession)_handler).OnConnectedAsync(Stream, CancellationToken.None);
-                    }
+                await EnsureConnectedAsync();
+                await ((IZLinkRawStreamSession)_handler).OnRawAsync(Stream, payload.Move(), CancellationToken.None);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+    }
 
-                    Interlocked.Exchange(ref _connected, 1);
-                }
-
-                if (_rawSessionType is not null)
-                {
-                    await ((IZLinkRawStreamSession)_handler).OnRawAsync(Stream, payload.Move(), CancellationToken.None);
-                    return;
-                }
-
-                var frames = _packetAccumulator.AppendAndDrain(payload.AsReadOnlySpan());
-                foreach (var frame in frames)
-                {
-                    _packetAccumulator.PendingFrames.Add(frame);
-                }
-
-                while (_packetAccumulator.PendingFrames.Count >= 2)
-                {
-                    using var header = _packetAccumulator.PendingFrames[0];
-                    using var body = _packetAccumulator.PendingFrames[1];
-                    _packetAccumulator.PendingFrames.RemoveRange(0, 2);
-                    await ((IZLinkPacketStreamSession)_handler).OnPacketAsync(
-                        Stream,
-                        header.Move(),
-                        body.Move(),
-                        CancellationToken.None);
-                }
+    public async ValueTask DispatchPacketAsync(
+        global::Zlink.Message header,
+        global::Zlink.Message body)
+    {
+        using (header)
+        using (body)
+        {
+            await _gate.WaitAsync();
+            try
+            {
+                await EnsureConnectedAsync();
+                await ((IZLinkPacketStreamSession)_handler).OnPacketAsync(
+                    Stream,
+                    header.Move(),
+                    body.Move(),
+                    CancellationToken.None);
             }
             finally
             {
@@ -247,52 +410,19 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         await _scope.DisposeAsync();
         _gate.Dispose();
     }
-}
 
-internal sealed class ZLinkLen32BeAccumulator
-{
-    private byte[] _buffer = Array.Empty<byte>();
-    private int _length;
-
-    public List<global::Zlink.Message> PendingFrames { get; } = [];
-
-    public global::Zlink.Message[] AppendAndDrain(ReadOnlySpan<byte> payload)
+    private ValueTask EnsureConnectedAsync()
     {
-        EnsureCapacity(_length + payload.Length);
-        payload.CopyTo(_buffer.AsSpan(_length));
-        _length += payload.Length;
-
-        var frames = new List<global::Zlink.Message>();
-        var offset = 0;
-        while (_length - offset >= 4)
+        if (Interlocked.CompareExchange(ref _connected, 1, 1) != 0)
         {
-            var frameLength = checked((int)BinaryPrimitives.ReadUInt32BigEndian(_buffer.AsSpan(offset, 4)));
-            if (_length - offset < 4 + frameLength)
-            {
-                break;
-            }
-
-            frames.Add(global::Zlink.Message.FromBytes(_buffer.AsSpan(offset + 4, frameLength)));
-            offset += 4 + frameLength;
+            return ValueTask.CompletedTask;
         }
 
-        if (offset > 0)
-        {
-            _buffer.AsSpan(offset, _length - offset).CopyTo(_buffer);
-            _length -= offset;
-        }
+        Interlocked.Exchange(ref _connected, 1);
 
-        return [.. frames];
-    }
-
-    private void EnsureCapacity(int size)
-    {
-        if (_buffer.Length >= size)
-        {
-            return;
-        }
-
-        Array.Resize(ref _buffer, Math.Max(size, Math.Max(256, _buffer.Length * 2)));
+        return _packetSessionType is not null
+            ? ((IZLinkPacketStreamSession)_handler).OnConnectedAsync(Stream, CancellationToken.None)
+            : ((IZLinkRawStreamSession)_handler).OnConnectedAsync(Stream, CancellationToken.None);
     }
 }
 
@@ -301,10 +431,12 @@ internal sealed class ZLinkManagedStream : IZLinkStream
     private readonly global::Zlink.StreamSocket _socket;
     private readonly global::Zlink.RoutingId _routingId;
 
-    public ZLinkManagedStream(global::Zlink.StreamSocket socket, uint routingId)
+    public ZLinkManagedStream(
+        global::Zlink.StreamSocket socket,
+        global::Zlink.RoutingId routingId)
     {
         _socket = socket;
-        _routingId = global::Zlink.RoutingId.FromBytes(global::Zlink.RoutingIdCodec.FromUInt32(routingId));
+        _routingId = routingId;
         SessionId = _routingId.ToHex();
     }
 

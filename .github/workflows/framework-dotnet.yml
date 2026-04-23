@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/framework-dotnet.yml"
+      - "framework/doc/**"
       - "framework/languages/dotnet/**"
       - "bindings/dotnet/src/Zlink/**"
       - "bindings/dotnet/runtimes/**"
@@ -14,6 +15,7 @@ on:
       - main
     paths:
       - ".github/workflows/framework-dotnet.yml"
+      - "framework/doc/**"
       - "framework/languages/dotnet/**"
       - "bindings/dotnet/src/Zlink/**"
       - "bindings/dotnet/runtimes/**"
@@ -87,3 +89,15 @@ jobs:
 
       - name: Run multi-process tests (Release, net10.0)
         run: dotnet test ${{ env.FRAMEWORK_MULTIPROCESS_TESTS }} -c Release -f net10.0 --no-build
+
+  framework-dotnet-gate:
+    name: release-gate
+    runs-on: ubuntu-24.04
+    needs:
+      - framework-dotnet
+    steps:
+      - name: Confirm matrix completed
+        run: |
+          echo "Framework .NET release gate passed."
+          echo "RID matrix: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64"
+          echo "Test matrix: net8.0 Debug/Release-hosted coverage and net10.0 Release coverage"

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend;
 using System.Reflection;
+using System.Threading;
 
 namespace Zlink.Framework;
 
@@ -78,25 +79,16 @@ internal sealed class ZLinkSpotTimerDescriptor
 
 internal sealed class ZLinkSpotPublisherBundle : IAsyncDisposable
 {
-    public ZLinkSpotPublisherBundle(global::Zlink.PubSocket socket)
+    public ZLinkSpotPublisherBundle(global::Zlink.Spot spot)
     {
-        Socket = socket;
+        Spot = spot;
     }
 
-    public global::Zlink.PubSocket Socket { get; }
-
-    public global::Zlink.Discovery? Discovery { get; set; }
-
-    public List<string> ManualConnections { get; } = [];
+    public global::Zlink.Spot Spot { get; }
 
     public async ValueTask DisposeAsync()
     {
-        if (Discovery is not null)
-        {
-            await Discovery.DisposeAsync();
-        }
-
-        await Socket.DisposeAsync();
+        await Spot.DisposeAsync();
     }
 }
 
@@ -253,31 +245,19 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 $"SPOT node '{Name}' publisher client '{channelName}' is not registered.");
         }
 
-        var publisher = new global::Zlink.PubSocket(_context);
-        publisher.SetChannelName(attached.ChannelName);
+        var publisher = Node.CreateSpot();
         var bundle = new ZLinkSpotPublisherBundle(publisher);
 
         if (attached.ManualConnections.Count > 0)
         {
             foreach (var endpoint in attached.ManualConnections)
             {
-                publisher.Connect(endpoint);
-                bundle.ManualConnections.Add(endpoint);
+                if (!PubSubManualConnections.Contains(endpoint, StringComparer.Ordinal))
+                {
+                    Node.ConnectPeer(endpoint);
+                    PubSubManualConnections.Add(endpoint);
+                }
             }
-        }
-        else
-        {
-            var discovery = new global::Zlink.Discovery(
-                _context,
-                global::Zlink.ServiceType.Spot,
-                attached.ChannelName);
-            foreach (var endpoint in _frameworkRegistration.SpotDiscovery?.Endpoints ?? [])
-            {
-                discovery.ConnectRegistry(endpoint);
-            }
-
-            publisher.AttachDiscovery(discovery);
-            bundle.Discovery = discovery;
         }
 
         _publisherBundles.Add(channelName, bundle);
@@ -489,7 +469,12 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
     private readonly Dictionary<string, ZLinkSpotDescriptor> _packetsByName = new(StringComparer.Ordinal);
     private readonly List<IZLinkTimer> _timers = [];
     private readonly TimeSpan _defaultTimeout;
+    private static readonly TimeSpan SubscriptionPollInterval = TimeSpan.FromMilliseconds(20);
+    private Task? _subscriptionPump;
     private int _disposed;
+    private int _subscriptionMessageCount;
+    private int _subscriptionDispatchCount;
+    private int _subscriptionIgnoreCount;
 
     public ZLinkSpotActivation(
         AsyncServiceScope scope,
@@ -519,6 +504,16 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     public IServiceProvider Services => _scope.ServiceProvider;
 
+    public int SubscriptionMessageCount => Volatile.Read(ref _subscriptionMessageCount);
+
+    public int SubscriptionDispatchCount => Volatile.Read(ref _subscriptionDispatchCount);
+
+    public int SubscriptionIgnoreCount => Volatile.Read(ref _subscriptionIgnoreCount);
+
+    public string? LastSubscriptionTopic { get; private set; }
+
+    public string? LastSubscriptionPacketName { get; private set; }
+
     public void BindDescriptors()
     {
         foreach (var packet in Spot.Packets)
@@ -547,30 +542,38 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     public async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
-        NativeSpot.OnDispatchEvent((spot, info) =>
+        if (_packetsByName.Count > 0)
         {
-            _ = spot;
-            if (info.Event == global::Zlink.SpotDispatchEvent.SubscribeReadable)
+            RegisterWithoutSynchronizationContext(() =>
             {
-                _ = Task.Run(() => ExecuteSerializedAsync(
-                    static (activation, ct) => activation.DispatchSubscriptionsAsync(ct),
-                    cancellationToken: StopToken),
-                    CancellationToken.None);
-            }
-            else if (info.Event == global::Zlink.SpotDispatchEvent.RoutedReadable)
-            {
-                _ = Task.Run(() => ExecuteSerializedAsync(
-                    static (activation, ct) => activation.DispatchRoutedDrainAsync(ct),
-                    cancellationToken: StopToken),
-                    CancellationToken.None);
-            }
-            else if (info.Event == global::Zlink.SpotDispatchEvent.ChannelReplyReadable
-                && info.Subject is IntPtr dealerSubject
-                && dealerSubject != IntPtr.Zero)
-            {
-                NativeSpot.DrainChannelReplyFrom(dealerSubject);
-            }
-        });
+                NativeSpot.OnDispatchEvent((spot, info) =>
+                {
+                    _ = spot;
+                    if (info.Event == global::Zlink.SpotDispatchEvent.RoutedReadable)
+                    {
+                        _ = Task.Run(() => ExecuteSerializedAsync(
+                            static (activation, ct) => activation.DispatchRoutedDrainAsync(ct),
+                            cancellationToken: StopToken),
+                            CancellationToken.None);
+                    }
+                    else if (info.Event == global::Zlink.SpotDispatchEvent.ChannelReplyReadable
+                        && info.Subject is IntPtr dealerSubject
+                        && dealerSubject != IntPtr.Zero)
+                    {
+                        NativeSpot.DrainChannelReplyFrom(dealerSubject);
+                    }
+                });
+
+                return 0;
+            });
+        }
+
+        if (_subscriptionsByTopic.Count > 0)
+        {
+            _subscriptionPump = Task.Run(
+                () => RunSubscriptionLoopAsync(StopToken),
+                CancellationToken.None);
+        }
 
         await ExecuteSerializedAsync(
             static (activation, ct) => activation.Spot.OnInitializeAsync(ct),
@@ -603,16 +606,21 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         var descriptor = CreateTimerDescriptor(name, typeof(THandler), Spot.GetType());
         var nativeTimer = global::Zlink.Timer.FromSpot(NativeSpot);
         var timer = new ZLinkTimer(nativeTimer);
-        nativeTimer.OnFire((_, _) =>
+        RegisterWithoutSynchronizationContext(() =>
         {
-            _ = Task.Run(() => ExecuteSerializedAsync(
-                async static (activation, state, ct) =>
-                {
-                    await activation.InvokeTimerAsync(state, ct);
-                },
-                descriptor,
-                StopToken),
-                CancellationToken.None);
+            nativeTimer.OnFire((_, _) =>
+            {
+                _ = Task.Run(() => ExecuteSerializedAsync(
+                    async static (activation, state, ct) =>
+                    {
+                        await activation.InvokeTimerAsync(state, ct);
+                    },
+                    descriptor,
+                    StopToken),
+                    CancellationToken.None);
+            });
+
+            return 0;
         });
         nativeTimer.Start((ulong)period.TotalNanoseconds, repeatCount: 0);
         _timers.Add(timer);
@@ -667,6 +675,19 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         }
 
         _stopSource.Cancel();
+        if (_subscriptionPump is not null)
+        {
+            try
+            {
+                await _subscriptionPump;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
         foreach (var timer in _timers)
         {
             await timer.DisposeAsync();
@@ -798,23 +819,72 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
                 return;
             }
 
-            if (!_subscriptionsByTopic.TryGetValue(message.Topic, out var descriptors)
-                || message.Parts.Count == 0)
+            await DispatchSubscriptionMessageAsync(message, cancellationToken);
+        }
+    }
+
+    private async Task RunSubscriptionLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await ExecuteSerializedAsync(
+                    static (activation, ct) => activation.DispatchSubscriptionsAsync(ct),
+                    cancellationToken);
+                await Task.Delay(SubscriptionPollInterval, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (global::Zlink.ZlinkException ex)
+                when (cancellationToken.IsCancellationRequested
+                      || ex.InternalErrno is (int)global::Zlink.ErrorCode.EFault
+                      or (int)global::Zlink.ErrorCode.EBadf)
+            {
+                return;
+            }
+        }
+    }
+
+    private async ValueTask DispatchSubscriptionMessageAsync(
+        global::Zlink.TopicMessage message,
+        CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _subscriptionMessageCount);
+        LastSubscriptionTopic = message.Topic;
+
+        if (!_subscriptionsByTopic.TryGetValue(message.Topic, out var descriptors)
+            || message.Parts.Count == 0)
+        {
+            Interlocked.Increment(ref _subscriptionIgnoreCount);
+            return;
+        }
+
+        var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts[0]);
+        LastSubscriptionPacketName = header.PacketName;
+        var dispatched = false;
+        foreach (var descriptor in descriptors)
+        {
+            if (!string.Equals(descriptor.PacketName, header.PacketName, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts[0]);
-            foreach (var descriptor in descriptors)
-            {
-                if (!string.Equals(descriptor.PacketName, header.PacketName, StringComparison.Ordinal))
-                {
-                    continue;
-                }
+            var body = ZLinkEnvelopeCodec.DecodeBody(message.Parts[0], descriptor.MessageType);
+            await InvokeSubscriptionAsync(descriptor, body, cancellationToken);
+            dispatched = true;
+            Interlocked.Increment(ref _subscriptionDispatchCount);
+        }
 
-                var body = ZLinkEnvelopeCodec.DecodeBody(message.Parts[0], descriptor.MessageType);
-                await InvokeSubscriptionAsync(descriptor, body, cancellationToken);
-            }
+        if (!dispatched)
+        {
+            Interlocked.Increment(ref _subscriptionIgnoreCount);
         }
     }
 
@@ -1003,6 +1073,20 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
         return result;
     }
+
+    private static T RegisterWithoutSynchronizationContext<T>(Func<T> action)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
 }
 
 internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
@@ -1085,7 +1169,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             null,
             null);
         using var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TEvent));
-        return bundle.Socket.Publish(topic, envelope, _flags);
+        return bundle.Spot.Publish(channelName, topic, envelope, _flags);
     }
 }
 
@@ -1107,29 +1191,6 @@ internal sealed class ZLinkSpotClientService : IZLinkSpotClient
             ZLinkSpotAmbientContext.RequireCurrent(),
             channelName,
             request);
-    }
-
-    public IZLinkSendCall SendTo<TMessage>(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        TMessage message)
-    {
-        return new ZLinkCurrentSpotDirectSendCall<TMessage>(
-            ZLinkSpotAmbientContext.RequireCurrent(),
-            targetRid,
-            spotRid,
-            message);
-    }
-
-    public IZLinkRequestCall<TReply> RequestTo<TReply>(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        IZLinkRequest<TReply> request)
-    {
-        _ = targetRid;
-        _ = spotRid;
-        _ = request;
-        throw new NotSupportedException("Direct SPOT request-response is not implemented yet.");
     }
 
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
@@ -1172,44 +1233,6 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             null);
         using var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TMessage));
         return activation.SendChannel(channelName, envelope, _flags);
-    }
-}
-
-internal sealed class ZLinkCurrentSpotDirectSendCall<TMessage>(
-    ZLinkSpotActivation activation,
-    global::Zlink.RoutingId targetRid,
-    global::Zlink.RoutingId spotRid,
-    TMessage message) : IZLinkSendCall
-{
-    private string? _packetName = ZLinkPacketNameResolver.ResolveFromMessage(message);
-    private global::Zlink.SendFlags _flags;
-
-    public IZLinkSendCall WithPacketName(string packetName)
-    {
-        _packetName = packetName;
-        return this;
-    }
-
-    public IZLinkSendCall WithDontWait()
-    {
-        _flags |= global::Zlink.SendFlags.DontWait;
-        return this;
-    }
-
-    public bool Exec()
-    {
-        var header = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Command,
-            activation.ChannelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            null,
-            null,
-            null,
-            null);
-        using var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TMessage));
-        return activation.SendToSpot(targetRid, spotRid, envelope, _flags);
     }
 }
 

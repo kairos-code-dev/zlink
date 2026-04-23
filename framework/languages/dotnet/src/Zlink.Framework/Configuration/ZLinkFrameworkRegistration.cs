@@ -10,8 +10,6 @@ internal sealed class ZLinkFrameworkRegistration
 
     public List<Type> Filters { get; } = [];
 
-    public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkStreamNodeRegistration> StreamNodes { get; } = new(StringComparer.Ordinal);

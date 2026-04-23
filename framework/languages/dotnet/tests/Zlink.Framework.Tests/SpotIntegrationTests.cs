@@ -3,12 +3,15 @@ using Microsoft.Extensions.Hosting;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
 
 public sealed class SpotIntegrationTests
 {
+    private static readonly TimeSpan PollingInterval = TimeSpan.FromMilliseconds(150);
+
     [Fact]
     public async Task SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime()
     {
@@ -50,6 +53,347 @@ public sealed class SpotIntegrationTests
         Assert.True(second.Created);
         Assert.NotEqual(first.SpotRid, second.SpotRid);
         Assert.NotEqual(firstScope, events.ScopeId(second.SpotRid));
+    }
+
+    [Fact]
+    public async Task Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var publisherNodeEndpoint = GetFreeTcpEndpoint();
+        var subscriberNodeEndpoint = GetFreeTcpEndpoint();
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+
+        var publisherBuilder = Host.CreateApplicationBuilder();
+        publisherBuilder.Services.AddSingleton<SpotLifecycleRecorder>();
+        publisherBuilder.Services.AddScoped<SpotHeartbeatTimerHandler>();
+        publisherBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.stage", discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddSpotNode("publisher-node", spot =>
+            {
+                spot.Bind(publisherNodeEndpoint);
+                spot.EnablePubSub();
+                spot.AddSpotFactory<PublishingStageSpot>("publisher-stage");
+            });
+        });
+
+        var subscriberBuilder = Host.CreateApplicationBuilder();
+        subscriberBuilder.Services.AddSingleton<SpotLifecycleRecorder>();
+        subscriberBuilder.Services.AddScoped<LocalStageEventHandler>();
+        subscriberBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.stage", discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddSpotNode("subscriber-node", spot =>
+            {
+                spot.Bind(subscriberNodeEndpoint);
+                spot.EnablePubSub();
+                spot.AddSpotFactory<LocalSubscriberStageSpot>("subscriber-stage");
+            });
+        });
+
+        using var registryHost = registryBuilder.Build();
+        using var publisherHost = publisherBuilder.Build();
+        using var subscriberHost = subscriberBuilder.Build();
+
+        await registryHost.StartAsync();
+        await publisherHost.StartAsync();
+        await subscriberHost.StartAsync();
+
+        var publisherManager = publisherHost.Services.GetRequiredService<IZLinkSpotManager>();
+        var subscriberManager = subscriberHost.Services.GetRequiredService<IZLinkSpotManager>();
+        var publisherRecorder = publisherHost.Services.GetRequiredService<SpotLifecycleRecorder>();
+        var subscriberRecorder = subscriberHost.Services.GetRequiredService<SpotLifecycleRecorder>();
+
+        _ = await subscriberManager.CreateAsync("subscriber-stage");
+        var created = await publisherManager.CreateAsync("publisher-stage");
+
+        await RetryAsync(
+            () => subscriberRecorder.LocalEvents.Count > 0 && publisherRecorder.TickCount >= 2,
+            TimeSpan.FromSeconds(10));
+
+        var ticksBeforeRemove = publisherRecorder.TickCount;
+        Assert.Contains(created.SpotRid.ToString(), subscriberRecorder.LocalEvents);
+
+        Assert.True(await publisherManager.RemoveAsync(created.SpotRid));
+        await Task.Delay(300);
+        Assert.Equal(ticksBeforeRemove, publisherRecorder.TickCount);
+
+        await subscriberHost.StopAsync();
+        await publisherHost.StopAsync();
+        await registryHost.StopAsync();
+    }
+
+    [Fact]
+    public async Task OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var subscriberNodeEndpoint = GetFreeTcpEndpoint();
+        var publisherNodeEndpoint = GetFreeTcpEndpoint();
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+
+        var subscriberBuilder = Host.CreateApplicationBuilder();
+        subscriberBuilder.Services.AddSingleton<SpotLifecycleRecorder>();
+        subscriberBuilder.Services.AddScoped<ExternalStageEventHandler>();
+        subscriberBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.stage", discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddSpotNode("subscriber-node", spot =>
+            {
+                spot.Bind(subscriberNodeEndpoint);
+                spot.EnablePubSub();
+                spot.AddSpotFactory<ExternalSubscriberStageSpot>("subscriber-stage");
+            });
+        });
+
+        var publisherBuilder = Host.CreateApplicationBuilder();
+        publisherBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.stage", discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddSpotNode("publisher-node", spot =>
+            {
+                spot.Bind(publisherNodeEndpoint);
+                spot.EnablePubSub();
+                spot.AttachSpotPublisherClient("game.stage");
+            });
+        });
+
+        using var registryHost = registryBuilder.Build();
+        using var subscriberHost = subscriberBuilder.Build();
+        using var publisherHost = publisherBuilder.Build();
+
+        await registryHost.StartAsync();
+        await subscriberHost.StartAsync();
+        await publisherHost.StartAsync();
+
+        var manager = subscriberHost.Services.GetRequiredService<IZLinkSpotManager>();
+        _ = await manager.CreateAsync("subscriber-stage");
+
+        var publisher = publisherHost.Services.GetRequiredService<IZLinkSpotPublisherClient>();
+        var recorder = subscriberHost.Services.GetRequiredService<SpotLifecycleRecorder>();
+        var publisherRuntime = publisherHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var subscriberRuntime = subscriberHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+
+        await RetryAsync(
+            async () => (await manager.ListAsync()).Count,
+            count => count == 1,
+            TimeSpan.FromSeconds(10));
+
+        try
+        {
+            await RetryAsync(
+                async () =>
+                {
+                    publisher.Publish(
+                            "game.stage",
+                            "stage.external",
+                            new ExternalStageEvent("external"))
+                        .Exec();
+                    await Task.Yield();
+                    return recorder.ExternalEvents.Count;
+                },
+                count => count > 0,
+                TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex) when (ex is TimeoutException or ZlinkException)
+        {
+            var publisherSnapshot = publisherRuntime.GetSpotMonitoringSnapshot("publisher-node");
+            var subscriberSnapshot = subscriberRuntime.GetSpotMonitoringSnapshot("subscriber-node");
+            var publisherBundle = publisherRuntime.GetSpotPublisherBundle("game.stage");
+            var directPublishResult = false;
+            var rawReceived = "probe-unavailable";
+            using (var probeEnvelope = ZLinkEnvelopeCodec.Encode(
+                       new ZLinkEnvelopeHeader(
+                           ZLinkMessageKind.Event,
+                           "game.stage",
+                           nameof(ExternalStageEvent),
+                           ZLinkEnvelopeCodec.DefaultContentType,
+                           null,
+                           null,
+                           "stage.external",
+                           null,
+                           null),
+                       new ExternalStageEvent("probe"),
+                       typeof(ExternalStageEvent)))
+            {
+                directPublishResult = publisherBundle.Spot.Publish(
+                    "game.stage",
+                    "stage.external",
+                    probeEnvelope,
+                    global::Zlink.SendFlags.None);
+            }
+
+            var subscriberActivation = GetSingleSpotActivation(subscriberRuntime, "subscriber-node");
+            var pumpState = GetSubscriptionPumpState(subscriberActivation);
+            var subscriptionState =
+                $"Messages={subscriberActivation.SubscriptionMessageCount},Dispatches={subscriberActivation.SubscriptionDispatchCount},Ignores={subscriberActivation.SubscriptionIgnoreCount},LastTopic={subscriberActivation.LastSubscriptionTopic},LastPacket={subscriberActivation.LastSubscriptionPacketName}";
+            var publisherPeers = string.Join(';',
+                publisherSnapshot.Peers.Select(static entry =>
+                    $"{entry.Source}:{entry.PeerEndpoint}:{entry.State}:{entry.ServiceName}"));
+            var subscriberPeers = string.Join(';',
+                subscriberSnapshot.Peers.Select(static entry =>
+                    $"{entry.Source}:{entry.PeerEndpoint}:{entry.State}:{entry.ServiceName}"));
+            throw new TimeoutException(
+                $"SPOT outbound publish failed. PublisherStatus={publisherSnapshot.Status}, PublisherPeers={publisherPeers}, PublisherSubjects={string.Join(';', publisherSnapshot.Subjects.Select(static entry => $"{entry.Role}:{entry.Subject}:{entry.ReadyPeerCount}/{entry.ActivePeerCount}"))}, SubscriberStatus={subscriberSnapshot.Status}, SubscriberPeers={subscriberPeers}, SubscriberSubjects={string.Join(';', subscriberSnapshot.Subjects.Select(static entry => $"{entry.Role}:{entry.Subject}:{entry.ReadyPeerCount}/{entry.ActivePeerCount}"))}, DirectPublishResult={directPublishResult}, RawReceived={rawReceived}, PumpState={pumpState}, SubscriptionState={subscriptionState}, ExternalEvents={recorder.ExternalEvents.Count}",
+                ex);
+        }
+
+        var publisherNode = publisherRuntime.GetSpotMonitoringSnapshot("publisher-node");
+        var subscriberNode = subscriberRuntime.GetSpotMonitoringSnapshot("subscriber-node");
+
+        Assert.Contains("external", recorder.ExternalEvents);
+        Assert.True(publisherNode.Status.ConnectedPeerCount > 0,
+            $"Publisher node has no connected peers. Status={publisherNode.Status}");
+        Assert.True(subscriberNode.Status.ConnectedPeerCount > 0,
+            $"Subscriber node has no connected peers. Status={subscriberNode.Status}");
+
+        await publisherHost.StopAsync();
+        await subscriberHost.StopAsync();
+        await registryHost.StopAsync();
+    }
+
+    [Fact]
+    public async Task OutboundOnly_SpotPublisherClient_Reaches_RawSubscriber_On_FrameworkNode()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var subscriberNodeEndpoint = GetFreeTcpEndpoint();
+        var publisherNodeEndpoint = GetFreeTcpEndpoint();
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+
+        var subscriberBuilder = Host.CreateApplicationBuilder();
+        subscriberBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.stage", discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddSpotNode("subscriber-node", spot =>
+            {
+                spot.Bind(subscriberNodeEndpoint);
+                spot.EnablePubSub();
+            });
+        });
+
+        var publisherBuilder = Host.CreateApplicationBuilder();
+        publisherBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.stage", discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+
+            options.AddSpotNode("publisher-node", spot =>
+            {
+                spot.Bind(publisherNodeEndpoint);
+                spot.EnablePubSub();
+                spot.AttachSpotPublisherClient("game.stage");
+            });
+        });
+
+        using var registryHost = registryBuilder.Build();
+        using var subscriberHost = subscriberBuilder.Build();
+        using var publisherHost = publisherBuilder.Build();
+
+        await registryHost.StartAsync();
+        await subscriberHost.StartAsync();
+        await publisherHost.StartAsync();
+
+        var publisherRuntime = publisherHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var subscriberRuntime = subscriberHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var publisher = publisherHost.Services.GetRequiredService<IZLinkSpotPublisherClient>();
+        var subscriberNodeRuntime = GetSpotNodeRuntime(subscriberRuntime, "subscriber-node");
+
+        using var rawSubscriber = subscriberNodeRuntime.Node.CreateSpot();
+        rawSubscriber.SetSubscription("stage.external");
+
+        await RetryAsync(
+            () =>
+            {
+                var publisherSnapshot = publisherRuntime.GetSpotMonitoringSnapshot("publisher-node");
+                var subscriberSnapshot = subscriberRuntime.GetSpotMonitoringSnapshot("subscriber-node");
+                return publisherSnapshot.Status.ConnectedPeerCount > 0
+                    && subscriberSnapshot.Status.ConnectedPeerCount > 0;
+            },
+            TimeSpan.FromSeconds(10));
+
+        global::Zlink.TopicMessage? received = null;
+        try
+        {
+            await RetryAsync(
+                async () =>
+                {
+                    publisher.Publish(
+                            "game.stage",
+                            "stage.external",
+                            new ExternalStageEvent("raw"))
+                        .Exec();
+                    await Task.Yield();
+
+                    try
+                    {
+                        received = rawSubscriber.Subscribe(global::Zlink.RecvFlags.DontWait);
+                    }
+                    catch (global::Zlink.ZlinkRecvException ex)
+                        when (ex.Result == global::Zlink.RecvResult.NoData)
+                    {
+                        received = null;
+                    }
+
+                    return received is not null;
+                },
+                static ok => ok,
+                TimeSpan.FromSeconds(10));
+
+            Assert.NotNull(received);
+            using var topicMessage = received!;
+            Assert.Equal("game.stage", topicMessage.ServiceName);
+            Assert.Equal("stage.external", topicMessage.Topic);
+        }
+        finally
+        {
+            received?.Dispose();
+        }
+
+        await publisherHost.StopAsync();
+        await subscriberHost.StopAsync();
+        await registryHost.StopAsync();
     }
 
     private static async Task<IHost> CreateHostAsync(
@@ -96,7 +440,41 @@ public sealed class SpotIntegrationTests
                 return;
             }
 
-            await Task.Delay(50);
+            await Task.Delay(PollingInterval);
+        }
+
+        throw new TimeoutException("SPOT integration retry timed out.");
+    }
+
+    private static async Task<T> RetryAsync<T>(
+        Func<Task<T>> action,
+        Func<T, bool> predicate,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        Exception? lastError = null;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var result = await action();
+                if (predicate(result))
+                {
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+
+            await Task.Delay(PollingInterval);
+        }
+
+        if (lastError is not null)
+        {
+            throw lastError;
         }
 
         throw new TimeoutException("SPOT integration retry timed out.");
@@ -167,6 +545,22 @@ public sealed class SpotIntegrationTests
         public ConcurrentBag<string> ReceivedScopes { get; } = [];
     }
 
+    public sealed class SpotLifecycleRecorder
+    {
+        public ConcurrentBag<string> LocalEvents { get; } = [];
+
+        public ConcurrentBag<string> ExternalEvents { get; } = [];
+
+        private int _tickCount;
+
+        public int TickCount => Volatile.Read(ref _tickCount);
+
+        public void RecordTick()
+        {
+            Interlocked.Increment(ref _tickCount);
+        }
+    }
+
     public sealed class SpotEventsRecorder
     {
         private readonly ConcurrentDictionary<global::Zlink.RoutingId, string> _scopes = [];
@@ -180,5 +574,152 @@ public sealed class SpotIntegrationTests
         {
             return _scopes.TryGetValue(spotRid, out var scopeId) ? scopeId : null;
         }
+    }
+
+    public sealed class PublishingStageSpot : ZLinkSpot
+    {
+        public PublishingStageSpot(
+            global::Zlink.RoutingId spotRid,
+            global::Zlink.RoutingId nodeRid)
+            : base(spotRid, nodeRid)
+        {
+        }
+
+        public override async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
+        {
+            _ = await AddTimer<SpotHeartbeatTimerHandler>(
+                "heartbeat",
+                TimeSpan.FromMilliseconds(250),
+                cancellationToken);
+        }
+
+        public void PublishLocal()
+        {
+            Assert.True(Publish("stage.local", new LocalStageEvent(SpotRid.ToString())).Exec());
+        }
+    }
+
+    public sealed class LocalSubscriberStageSpot : ZLinkSpot
+    {
+        public LocalSubscriberStageSpot(
+            global::Zlink.RoutingId spotRid,
+            global::Zlink.RoutingId nodeRid)
+            : base(spotRid, nodeRid)
+        {
+            AddSubscribe<LocalStageEventHandler>("stage.local");
+        }
+    }
+
+    public sealed class ExternalSubscriberStageSpot : ZLinkSpot
+    {
+        public ExternalSubscriberStageSpot(
+            global::Zlink.RoutingId spotRid,
+            global::Zlink.RoutingId nodeRid)
+            : base(spotRid, nodeRid)
+        {
+            AddSubscribe<ExternalStageEventHandler>("stage.external");
+        }
+    }
+
+    public sealed record LocalStageEvent(string SpotRid);
+
+    public sealed record ExternalStageEvent(string Value);
+
+    public sealed class SpotHeartbeatTimerHandler(SpotLifecycleRecorder recorder)
+        : IZLinkSpotTimerHandler<PublishingStageSpot>
+    {
+        public ValueTask HandleAsync(
+            PublishingStageSpot spot,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.RecordTick();
+            spot.PublishLocal();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class LocalStageEventHandler(SpotLifecycleRecorder recorder)
+        : IZLinkSpotSubscriptionHandler<LocalSubscriberStageSpot, LocalStageEvent>
+    {
+        public ValueTask HandleAsync(
+            LocalSubscriberStageSpot spot,
+            LocalStageEvent message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = cancellationToken;
+            recorder.LocalEvents.Add(message.SpotRid);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class ExternalStageEventHandler(SpotLifecycleRecorder recorder)
+        : IZLinkSpotSubscriptionHandler<ExternalSubscriberStageSpot, ExternalStageEvent>
+    {
+        public ValueTask HandleAsync(
+            ExternalSubscriberStageSpot spot,
+            ExternalStageEvent message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = cancellationToken;
+            recorder.ExternalEvents.Add(message.Value);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private static ZLinkSpotActivation GetSingleSpotActivation(
+        ZLinkFrameworkRuntime runtime,
+        string spotNodeName)
+    {
+        var nodeRuntime = GetSpotNodeRuntime(runtime, spotNodeName);
+        return Assert.Single(nodeRuntime.Spots);
+    }
+
+    private static ZLinkSpotNodeRuntime GetSpotNodeRuntime(
+        ZLinkFrameworkRuntime runtime,
+        string spotNodeName)
+    {
+        var stateField = typeof(ZLinkFrameworkRuntime).GetField("_state",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var state = stateField.GetValue(runtime)!;
+        var spotNodesProperty = state.GetType().GetProperty("SpotNodes",
+            BindingFlags.Instance | BindingFlags.Public)!;
+        var spotNodes = (IReadOnlyDictionary<string, ZLinkSpotNodeRuntime>)spotNodesProperty.GetValue(state)!;
+        return spotNodes[spotNodeName];
+    }
+
+    private static string GetSubscriptionPumpState(ZLinkSpotActivation activation)
+    {
+        var field = typeof(ZLinkSpotActivation).GetField("_subscriptionPump",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (field is null)
+        {
+            return "not-used";
+        }
+
+        var task = (Task?)field.GetValue(activation);
+        if (task is null)
+        {
+            return "null";
+        }
+
+        if (task.IsFaulted)
+        {
+            return task.Exception?.GetBaseException().ToString() ?? "faulted";
+        }
+
+        if (task.IsCanceled)
+        {
+            return "canceled";
+        }
+
+        if (task.IsCompleted)
+        {
+            return "completed";
+        }
+
+        return "running";
     }
 }

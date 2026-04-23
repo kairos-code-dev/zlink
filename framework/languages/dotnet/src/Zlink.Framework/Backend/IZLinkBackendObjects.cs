@@ -79,8 +79,10 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
 internal interface IZLinkBackendSocketMonitor : IZLinkBackendObject, IAsyncDisposable
 {
+    void OnEvent(Action<global::Zlink.MonitorEvent> handler);
 }
 
 internal interface IZLinkBackendServiceMonitor : IZLinkBackendObject, IAsyncDisposable
 {
+    void OnEvent(Action<global::Zlink.ServiceEvent> handler);
 }

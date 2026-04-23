@@ -90,7 +90,6 @@
 - duplicate channel 이름
 - duplicate `spotNodeName`
 - duplicate `spotName` factory
-- duplicate `actorType` factory
 - outbound capability에 discovery/manual 경로가 모두 없음
 - 같은 capability 안에서 discovery/manual 혼용
 - 존재하지 않는 source를 monitoring에 등록

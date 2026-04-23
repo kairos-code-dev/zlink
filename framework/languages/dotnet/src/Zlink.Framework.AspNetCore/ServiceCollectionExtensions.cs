@@ -49,11 +49,6 @@ public static class ServiceCollectionExtensions
             services.AddTransient(filterType);
         }
 
-        foreach (var actorFactoryType in registration.ActorFactories.Values)
-        {
-            services.AddTransient(actorFactoryType);
-        }
-
         foreach (var streamNode in registration.StreamNodes.Values)
         {
             if (streamNode.PacketSessionType is not null)

@@ -70,16 +70,17 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 
 - 현재 SPOT channel 안에서는 topic publish/subscribe를 쓴다.
 - 다른 channel 호출은 attach된 channel client를 통해 보낸다.
-- `SpotNode.router`는 peer topology를 위해 남기되, public high-level API에서
-  `targetRid + spotRid`를 직접 넣는 모델은 spot-to-spot routed 경로에만 남기고
-  기본 표면으로 두지 않는다.
+- `SpotNode.router`는 peer topology와 내부 routed delivery를 위해 남기되, 현재
+  framework core의 public high-level API에서는 `targetRid + spotRid`를 직접
+  받는 direct routed 호출 표면을 두지 않는다.
 - 외부 `PUB -> Spot` 입력은 generic pub/sub attach가 아니라 별도 ingress 표면으로
   분리한다.
 
 여기서 경계를 분명히 하면, `SPOT`이 제공하는 것은 주소 가능한 논리 인스턴스와
 그 인스턴스에 대한 메시징, publish/subscribe, timer, lifecycle까지다.
 반면 membership, actor/session, room broadcast 정책 같은 것은 기본 `zlink
-framework` 범위를 넘어가는 상위 wrapper의 책임으로 두는 편이 맞다.
+framework` 범위를 넘어가는 상위 wrapper의 책임으로 두는 편이 맞다. actor join과
+actor factory도 같은 이유로 현재 framework core 기본 범위에는 넣지 않는다.
 
 ## 4. ASP.NET Core 등록 모델 초안
 

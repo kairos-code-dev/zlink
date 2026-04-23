@@ -379,28 +379,6 @@ internal sealed class ZLinkClient(ZLinkFrameworkRuntime runtime, ZLinkFrameworkR
     {
         return new ZLinkRequestCall<TReply>(runtime, registration, channelName, request);
     }
-
-    public IZLinkSendCall SendTo<TMessage>(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        TMessage message)
-    {
-        _ = targetRid;
-        _ = spotRid;
-        _ = message;
-        throw new NotSupportedException("Direct routed channel calls are not implemented yet.");
-    }
-
-    public IZLinkRequestCall<TReply> RequestTo<TReply>(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        IZLinkRequest<TReply> request)
-    {
-        _ = targetRid;
-        _ = spotRid;
-        _ = request;
-        throw new NotSupportedException("Direct routed channel requests are not implemented yet.");
-    }
 }
 
 internal sealed class ZLinkEventPublisher(ZLinkFrameworkRuntime runtime) : IZLinkEventPublisher

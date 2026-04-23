@@ -42,16 +42,6 @@ public interface IZLinkSpotClient
         string channelName,
         IZLinkRequest<TReply> request);
 
-    IZLinkSendCall SendTo<TMessage>(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        TMessage message);
-
-    IZLinkRequestCall<TReply> RequestTo<TReply>(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        IZLinkRequest<TReply> request);
-
     IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);

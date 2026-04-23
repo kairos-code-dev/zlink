@@ -45,10 +45,8 @@
 | handler | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | SPOT request-response handler | 4.3.1 |
 | handler | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | SPOT subscription handler | 4.3.1 |
 | handler | `IZLinkSpotTimerHandler<TSpot>` | SPOT lifecycle timer handler | 4.3.1 |
-| handler | `IZLinkSpotActorJoinHandler<TSpot, TRequest, TReply>` | SPOT actor join approval + result callback | 4.3.1 |
 | handler | `IZLinkPacketStreamSession` | packet stream session lifecycle + packet callback | 4.4 |
 | handler | `IZLinkRawStreamSession` | raw stream session lifecycle + raw callback | 4.4 |
-| handler | `IZLinkActor` | spot-attached actor lifecycle + packet dispatch | 4.4.1 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `ZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
@@ -75,7 +73,6 @@
 | builder | `IChannelSubscriberCapabilityBuilder` | channel subscriber capability builder | 6.1 |
 | builder | `IZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
-| factory | `IZLinkActorFactory` | named actor factory | 6.5 |
 | management | `IZLinkChannelConnectionManager` | channel capability별 수동 연결 제어 | 6.2 |
 | management | `IZLinkSpotManager` | spot 인스턴스 생성/삭제 | 6.3 |
 | management | `IZLinkSpotConnectionManager` | spot capability별 수동 연결 제어 | 6.4 |
@@ -287,32 +284,12 @@ public interface IZLinkSpotTimerHandler<TSpot>
         TSpot spot,
         CancellationToken cancellationToken);
 }
-
-public interface IZLinkSpotActorJoinHandler<TSpot, in TRequest, TReply>
-    where TSpot : ZLinkSpot
-    where TRequest : IZLinkRequest<TReply>
-{
-    ValueTask<TReply> HandleAsync(
-        TSpot spot,
-        IZLinkActor actor,
-        TRequest request,
-        CancellationToken cancellationToken);
-}
 ```
 
 여기서 `Publish(topic, ...)`는 현재 spot이 속한 active SPOT channel에 publish하는
 편의 메서드다. 별도 `IZLinkSpotClient`를 spot 생성자에 직접 주입받지 않아도,
 spot 내부에서는 이 메서드로 current channel publish를 할 수 있는 쪽을 기본으로
 본다.
-
-actor join은 사용자가 `ZLinkSpot`을 상속해서 attach 함수를 override하는 모델보다,
-framework가 target `Spot` 실행 문맥으로 join 요청을 넣고 그 안에서 승인/거절
-callback을 호출하는 모델이 더 자연스럽다. 그래야 join 승인, 기존 actor 재사용,
-기존 spot에서의 이탈, attach 후 후속 callback까지 모두 같은 `Spot` 직렬 실행
-규칙 안에서 닫을 수 있다.
-즉 `JoinActorAsync(...)`의 성공 응답은 "attach가 예약되었다"가 아니라,
-"target `Spot` 실행 문맥 안에서 attach와 join callback이 끝난 뒤 결과 payload가
-돌아왔다"는 의미로 읽는 편이 맞다.
 
 이 초안이 기대하는 low-level `.NET` 바인딩 기반 표면도 문서 안에 같이 고정해 둘
 필요가 있다. 현재 `bindings/dotnet/src/Zlink` 기준 실제 public surface는 아래와
@@ -457,11 +434,9 @@ join이 끝난 session/actor가 **같은 spot execution context**에서 처리�
 
 - 사용자는 `Recv(...)`나 `Drain(...)` loop를 직접 작성하지 않는다.
 - 사용자는 `AddPacket<THandler>(...)`, `AddSubscribe<THandler>(...)`,
-  `AddTimer<THandler>(...)`, stream attach, actor join request 같은 고수준
-  표면만 사용한다.
+  `AddTimer<THandler>(...)`, stream attach 같은 고수준 표면만 사용한다.
 - 같은 `Spot`에 귀속된 handler, timer handler, channel reply continuation,
-  stream session callback, actor join callback은 framework가 정한 같은 실행 문맥
-  규칙을 따른다.
+  stream session callback은 framework가 정한 같은 실행 문맥 규칙을 따른다.
 - 이 계약이 유지되는 한, 사용자는 `SampleSpot.ActorCount` 같은 spot state를
   handler 안에서 직접 다룰 수 있다.
 
@@ -469,7 +444,7 @@ join이 끝난 session/actor가 **같은 spot execution context**에서 처리�
 
 - handler 등록
 - timer 등록
-- stream attach와 actor join
+- stream attach
 - spot state 접근 규칙
 
 반대로 아래 내용은 framework 내부 구현이다.
@@ -618,93 +593,12 @@ session에 raw payload 또는 framed packet을 submit하는 동작으로 본다.
 protobuf/json decode helper가 가능한 한 추가 메모리 할당 없이 동작하도록
 설계하는 쪽을 기본 원칙으로 본다.
 
-#### 4.4.1 actor contract
+#### 4.4.1 actor/session 상위 모델 메모
 
-stream session은 네트워크 연결 수명에 가깝고, actor는 `Spot`에 붙는 논리 객체에
-가깝다. 게임 room 같은 상위 모델에서는 이 둘을 분리해야 reconnect를 자연스럽게
-설명할 수 있다.
-
-이 초안에서 framework가 먼저 보여 주는 actor 관련 표면은 아래 하나다.
-
-```csharp
-public interface IZLinkActor
-{
-    string ActorKey { get; }
-
-    IZLinkStream? Stream { get; }
-
-    ZLinkSpot? Spot { get; }
-
-    ValueTask AttachAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
-
-    ValueTask OnAttachedAsync(
-        ZLinkSpot spot,
-        CancellationToken cancellationToken);
-
-    ValueTask OnDetachedAsync(
-        ZLinkSpot spot,
-        CancellationToken cancellationToken);
-
-    ValueTask OnDisconnectedAsync(
-        CancellationToken cancellationToken);
-
-    ValueTask OnDispatchAsync(
-        Message header,
-        Message body,
-        CancellationToken cancellationToken);
-}
-```
-
-이때 `AttachAsync(...)`는 actor에 현재 live stream을 붙이는 명시적 동작이고,
-`OnDispatchAsync(...)`는 같은 `Spot` 실행 문맥 안에서 실제 actor 로직을 수행하는
-framework callback으로 읽는다.
-즉 packet session은 transport에서 받은 `header/body`를 그대로 넘기고, raw session은
-사용자 정의 framing으로 chunk를 다시 묶은 뒤 같은 `header/body` 형태로 넘긴다.
-이렇게 하면 actor와 room 로직은 transport가 packet path였는지 raw path였는지를
-모르고 같은 dispatch 계약만 보면 된다.
-
-stream session이 actor를 찾은 뒤 packet을 넘길 때는 public `IZLinkActor` 메서드를
-직접 노출하기보다, framework 내부 runtime이 흔히 `SubmitAsync(...)` 같은 내부
-이름으로 그 actor가 attach된 `Spot` 실행 문맥에 work item을 넣는 쪽이 자연스럽다.
-즉 stream session은 packet ingress adapter이고, 실제 actor 처리는 attach된
-`Spot` execution context가 ownership을 가진다. 그 문맥 안에서 최종적으로
-`OnDispatchAsync(...)`가 호출된다고 읽는다.
-
-disconnect도 같은 규칙으로 본다. framework는 끊긴 stream이 현재 actor에 attach된
-동일한 stream인지 먼저 확인한 뒤, stale disconnect가 아닐 때만
-`OnDisconnectedAsync(...)`를 올린다. 그래서 callback 시그니처는 별도 id 인자 없이
-단순해도 된다.
-
-핵심 규칙은 아래와 같다.
-
-- `IZLinkPacketStreamSession`은 transport connection 수명을 받는다.
-- `IZLinkActor`는 `Spot`에 attach되는 논리 객체 수명을 받는다.
-- `IZLinkActor`는 현재 bind된 `IZLinkStream?`를 직접 가진다.
-- `IZLinkActor`는 현재 attach된 `ZLinkSpot?`도 직접 가진다.
-- actor attach/detach와 stream attach/disconnect는 다른 이벤트다.
-- 같은 actor는 stream이 끊겨도 `Spot`에 남아 있을 수 있다.
-- 새 stream이 같은 `ActorKey`로 다시 들어오면 기존 actor에 다시 `AttachAsync(...)`
-  할 수 있다.
-
-즉 인증이 먼저 끝나고 stream attach가 먼저 일어난 뒤, 그 actor가 나중에
-`IZLinkSpotClient.JoinActorAsync(...)` 같은 join request를 통해 특정 `Spot`에
-attach되는 흐름도 자연스럽게 표현할 수 있어야 한다. 게임 room에서는 `accountId`
-기준 actor를 먼저 찾고, `JoinRoom` 같은 다음 패킷에서 room attach를 완료하는
-모델이 흔하기 때문이다.
-
-즉 framework가 보장해야 하는 최소 의미는 "`Actor`는 `Stream`과 `Spot`을 각각
-독립적으로 참조하고, stream attach/disconnect와 spot attach/detach는 서로 다른
-수명"이라는 것이다. 이 모델 위에서 응용은
-즉시 제거, reconnect 유예, spectator 전환 같은 상위 정책을 올릴 수 있다.
-
-#### 4.4.2 actor factory contract
-
-actor는 인증, 재연결, join 같은 느린 경계에서 타입을 고르고 생성하는 모델이
-자연스럽다. named actor factory 표면은 [6.5 actor factory](#65-actor-factory)에서
-따로 정리한다. 여기서 중요한 점은 actor type 선택과 actor 생성이 gameplay packet
-hot path로 들어오면 안 된다는 것이다.
+actor join, actor factory, stream-attached actor 모델은 현재 framework core 구현
+범위에 포함하지 않는다. 이 문서 묶음에서는 packet/session/spot/runtime 경계까지만
+현재 공용 계약으로 다루고, actor/session membership 같은 상위 모델은
+`stage-wrapper-on-spot.ko.md`에서 확장 방향 메모로만 다룬다.
 
 #### 4.4.3 dispatch mode
 
@@ -840,16 +734,6 @@ public interface IZLinkClient
     IZLinkRequestCall<TReply> Request<TReply>(
         string channelName,
         IZLinkRequest<TReply> request);
-
-    IZLinkSendCall SendTo<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message);
-
-    IZLinkRequestCall<TReply> RequestTo<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IZLinkRequest<TReply> request);
 }
 ```
 
@@ -879,11 +763,9 @@ timeout과 non-blocking 구분은 request/send에서 다르게 다룬다.
 - `Request(...)`는 reply를 기다리므로 `WithTimeout(...)`을 둘 수 있다.
 - `Send(...)`는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)`도 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
-- `Send(...)` / `SendTo(...)`는 기본적으로 blocking submit이다.
+- `Send(...)`는 기본적으로 blocking submit이다.
 - 필요하면 send/publish builder에서 `WithDontWait()`를 붙여 temporary backpressure
   상황에서 즉시 `false`를 돌려받을 수 있다.
-- `SendTo(...)` / `RequestTo(...)`는 caller가 `targetRid`와 `spotRid`를 이미 알고
-  있을 때 direct spot routed 호출로 쓴다.
 
 즉 public 호출 감각은 아래처럼 보는 편이 맞다.
 
@@ -902,21 +784,6 @@ bool submitted = client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .WithDontWait()
     .Exec();
-
-client
-    .SendTo(
-        targetRid: RoutingId.Parse("01-00-00-00-00-00-00-10"),
-        spotRid: RoutingId.Parse("01-00-00-00-00-00-10-01"),
-        message: new ReportStageStateCommand { UserCount = 12 })
-    .Exec();
-
-GetStageStateReply directReply = await client
-    .RequestTo<GetStageStateReply>(
-        targetRid: RoutingId.Parse("01-00-00-00-00-00-00-10"),
-        spotRid: RoutingId.Parse("01-00-00-00-00-00-10-01"),
-        request: new GetStageStateRequest { StageRid = "01-00-00-00-00-00-10-01" })
-    .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync(cancellationToken);
 ```
 
 ### 5.2 IZLinkSpotClient
@@ -924,38 +791,20 @@ GetStageStateReply directReply = await client
 현재 spot runtime 안에서 쓰는 SPOT client다.
 `IZLinkClient`와 독립된 인터페이스이며, 하부에서 서로 다른 C API를 감싼다.
 최신 SPOT topology 초안에서는 high-level public surface에서 `targetRid +
-spotRid` routed 호출을 기본으로 두지 않는다. 현재 방향은 아래 세 축이다.
+spotRid` routed 호출을 기본으로 두지 않는다. 현재 구현 범위는 아래 두 축이다.
 
 - 현재 SPOT channel 안의 publish/subscribe
 - attach된 channel client를 통한 다른 channel send/request
-- 필요할 때만 쓰는 spot-to-spot routed 호출
 
 ```csharp
 public interface IZLinkSpotClient
 {
-    ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
-        RoutingId spotRid,
-        IZLinkActor actor,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-        where TRequest : IZLinkRequest<TReply>;
-
     IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);
 
     IZLinkRequestCall<TReply> RequestChannel<TReply>(
         string channelName,
-        IZLinkRequest<TReply> request);
-
-    IZLinkSendCall SendTo<TMessage>(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        TMessage message);
-
-    IZLinkRequestCall<TReply> RequestTo<TReply>(
-        RoutingId targetRid,
-        RoutingId spotRid,
         IZLinkRequest<TReply> request);
 
     IZLinkPublishCall Publish<TEvent>(
@@ -966,16 +815,9 @@ public interface IZLinkSpotClient
 
 `IZLinkClient`와의 차이점은 아래와 같다.
 
-- `JoinActorAsync(...)`가 있다. 이 호출은 target `Spot` 실행 문맥으로 actor join
-  요청을 넣고, 등록된 `IZLinkSpotActorJoinHandler<...>`가 승인/거절과 결과 payload를
-  만든 뒤 그 결과를 호출자에게 돌려준다.
 - `Publish(topic, ...)`가 있다. SPOT 쪽은 현재 channel 안의 topic publish를
   함께 쓰는 경우가 많으므로 한 인터페이스에 같이 둔다.
 - 다른 channel send/request는 attach된 channel client를 통해 푼다.
-- `SendTo(...)` / `RequestTo(...)`는 spot-to-spot routed 호출에만 쓴다.
-  일반 channel `ROUTER(server)`를 `rid`로 직접 지정하는 용도는 아니다.
-- 같은 direct routed 호출 표면을 `IZLinkClient`에도 둘 수 있다. 차이는
-  `IZLinkSpotClient`가 local spot 문맥 안에서 이어지는 호출이라는 점이다.
 - 따라서 local `SpotNode`나 local spot runtime이 없는 앱의 기본 outbound 표면은
   `IZLinkClient`다. 그런 앱에서 외부 SPOT channel publish만 필요하면
   `IZLinkSpotPublisherClient`를 따로 쓴다.
@@ -1192,9 +1034,6 @@ public interface IZLinkFrameworkOptions
     void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter;
 
-    void AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory;
-
     void ConfigureDispatch(
         Action<IZLinkDispatchOptions> configure);
 
@@ -1230,10 +1069,6 @@ public interface IZLinkFrameworkOptions
   - 명명된 `SpotNode`를 등록한다. `EnableRouter()`, `EnablePubSub()`,
     `AttachChannelClient(...)`, `AddSpotFactory<TSpot>(...)` 같은 capability 구성은
     builder 람다 안에서 선언한다.
-- `AddActorFactory<TFactory>(...)`
-  - named actor factory를 framework에 등록한다.
-  - actor 타입 선택은 인증이나 join 같은 느린 경계에서 끝나야 하고,
-    gameplay packet hot path로 들어오면 안 된다.
 - `EnableServer(...)`
   - local request/send handler를 받을 `ROUTER(server)` capability를 연다.
   - 이 capability는 local bind endpoint가 없으면 다른 프로세스에서 접근할 수
@@ -1587,31 +1422,6 @@ public interface IZLinkSpotConnectionManager
 
 이 관리 인터페이스도 아무 node에나 항상 열리는 것이 아니라, 해당 capability가
 manual 모드일 때만 유효한 표면으로 보는 편이 맞다.
-
-### 6.5 actor factory
-
-actor도 spot처럼 이름으로 여러 타입을 고를 수 있어야 한다. 다만 spot과 달리 actor는
-인스턴스 생성이 packet hot path가 아니라 인증, 재연결, join 같은 느린 경계에서
-일어나야 한다.
-
-```csharp
-public interface IZLinkActorFactory
-{
-    string ActorType { get; }
-
-    ValueTask<IZLinkActor> CreateAsync(
-        string actorKey,
-        CancellationToken cancellationToken);
-}
-```
-
-framework 등록 루트에서는 [6.1 framework 등록 루트](#61-framework-등록-루트)의
-`AddActorFactory<TFactory>(string actorType)`를 사용한다.
-
-이때 중요한 점은 아래 두 가지다.
-
-- `actorType` 선택은 인증 결과나 join 요청 같은 느린 경계에서 끝나야 한다.
-- gameplay packet 경로에는 이미 만들어진 actor만 들어와야 한다.
 
 ## 7. Timer 인터페이스
 
@@ -2013,12 +1823,11 @@ framework가 강제하는 것은 class 구조가 아니라, resolved packet key 
   `IServiceProvider`를 기준으로 handler invocation을 구성한다.
 - 다만 public registration 함수에 `IServiceProvider services`를 매번 노출할 필요는
   없다.
-- `Spot`, packet handler, timer handler, actor join handler는 framework가 만든
-  per-spot scope에서 resolve하고, registration 함수는 handler 타입만 받는 편이 더
-  자연스럽다.
-- 즉 `AddPacket<THandler>()`, `AddTimer<THandler>(...)`, `AddActorJoin<...>()` 같은
-  표면은 service locator가 아니라 "이 타입을 spot scope에서 써 달라"는 등록 의미로
-  읽는 쪽이 맞다.
+- `Spot`, packet handler, timer handler는 framework가 만든 per-spot scope에서
+  resolve하고, registration 함수는 handler 타입만 받는 편이 더 자연스럽다.
+- 즉 `AddPacket<THandler>()`, `AddTimer<THandler>(...)` 같은 표면은 service
+  locator가 아니라 "이 타입을 spot scope에서 써 달라"는 등록 의미로 읽는 쪽이
+  맞다.
 - `OnInitializeAsync(...)`도 `IServiceProvider`를 직접 받기보다, spot 자신의
   constructor injection과 cached dependency를 쓰는 편이 hot path와 경계를 더
   분명하게 만든다.

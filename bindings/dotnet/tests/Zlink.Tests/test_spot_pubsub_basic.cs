@@ -98,4 +98,410 @@ public sealed class test_spot_pubsub_basic
         Assert.Throws<ObjectDisposedException>(() =>
             spot.Publish("svc", "topic", message));
     }
+
+    [Fact]
+    public void spot_node_pub_ingress_forwards_to_remote_subscriber()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var publisherNode = new SpotNode(ctx);
+        using var subscriberNode = new SpotNode(ctx);
+        using var subscriber = subscriberNode.CreateSpot();
+        using var ingress = new PubSocket(ctx);
+
+        const string topic = "spot:external";
+        const string payload = "hello-external";
+
+        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp", "spot-pub-ingress-publisher");
+        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp", "spot-pub-ingress-subscriber");
+
+        publisherNode.Bind(publisherEndpoint);
+        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.ConnectPeer(subscriberEndpoint);
+        subscriberNode.ConnectPeer(publisherEndpoint);
+        subscriber.SetSubscription(topic);
+        publisherNode.AttachPubIngress(ingress);
+
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
+                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+            5000));
+
+        using var message = Message.FromString(payload);
+        ingress.Publish(topic, message);
+
+        TopicMessage? subscribed = null;
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                try
+                {
+                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                    return subscribed is not null;
+                }
+                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                {
+                    return false;
+                }
+            },
+            5000));
+
+        using var received = subscribed!;
+        Assert.Equal(topic, received.Topic);
+        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+    }
+
+    [Fact]
+    public void spot_node_create_spot_publishes_to_remote_subscriber_via_discovery()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var registry = new Registry(ctx);
+        using var publisherDiscovery = new Discovery(ctx, ServiceType.Spot,
+            "game.stage");
+        using var subscriberDiscovery = new Discovery(ctx, ServiceType.Spot,
+            "game.stage");
+        using var publisherNode = new SpotNode(ctx);
+        using var subscriberNode = new SpotNode(ctx);
+        using var publisher = publisherNode.CreateSpot();
+        using var subscriber = subscriberNode.CreateSpot();
+
+        const string topic = "spot:external";
+        const string payload = "hello-discovery";
+
+        string registryPub = CoreTestSupport.NewEndpoint("tcp",
+            "spot-discovery-pub");
+        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
+            "spot-discovery-router");
+        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-discovery-publisher");
+        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-discovery-subscriber");
+
+        registry.Bind(registryPub, registryRouter);
+        registry.SetBroadcastInterval(50);
+        publisherDiscovery.ConnectRegistry(registryRouter);
+        subscriberDiscovery.ConnectRegistry(registryRouter);
+        publisherNode.Bind(publisherEndpoint);
+        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.AttachDiscovery(publisherDiscovery);
+        subscriberNode.AttachDiscovery(subscriberDiscovery);
+        subscriber.SetSubscription(topic);
+
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
+                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+            10000));
+
+        TopicMessage? subscribed = null;
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                using var message = Message.FromString(payload);
+                publisher.Publish("game.stage", topic, message);
+
+                try
+                {
+                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                    return subscribed is not null;
+                }
+                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                {
+                    return false;
+                }
+            },
+            10000));
+
+        using var received = subscribed!;
+        Assert.Equal("game.stage", received.ServiceName);
+        Assert.Equal(topic, received.Topic);
+        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+    }
+
+    [Fact]
+    public void spot_node_create_spot_publishes_to_remote_subscriber_via_discovery_across_contexts()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var registryContext = new Context();
+        using var publisherContext = new Context();
+        using var subscriberContext = new Context();
+        using var registry = new Registry(registryContext);
+        using var publisherDiscovery = new Discovery(publisherContext,
+            ServiceType.Spot, "game.stage");
+        using var subscriberDiscovery = new Discovery(subscriberContext,
+            ServiceType.Spot, "game.stage");
+        using var publisherNode = new SpotNode(publisherContext);
+        using var subscriberNode = new SpotNode(subscriberContext);
+        using var publisher = publisherNode.CreateSpot();
+        using var subscriber = subscriberNode.CreateSpot();
+
+        const string topic = "spot:external";
+        const string payload = "hello-separate-context";
+
+        string registryPub = CoreTestSupport.NewEndpoint("tcp",
+            "spot-cross-context-pub");
+        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
+            "spot-cross-context-router");
+        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-cross-context-publisher");
+        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-cross-context-subscriber");
+
+        registry.Bind(registryPub, registryRouter);
+        registry.SetBroadcastInterval(50);
+        publisherDiscovery.ConnectRegistry(registryRouter);
+        subscriberDiscovery.ConnectRegistry(registryRouter);
+        publisherNode.Bind(publisherEndpoint);
+        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.AttachDiscovery(publisherDiscovery);
+        subscriberNode.AttachDiscovery(subscriberDiscovery);
+        subscriber.SetSubscription(topic);
+
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
+                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+            10000));
+
+        TopicMessage? subscribed = null;
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                using var message = Message.FromString(payload);
+                publisher.Publish("game.stage", topic, message);
+
+                try
+                {
+                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                    return subscribed is not null;
+                }
+                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                {
+                    return false;
+                }
+            },
+            10000));
+
+        using var received = subscribed!;
+        Assert.Equal("game.stage", received.ServiceName);
+        Assert.Equal(topic, received.Topic);
+        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+    }
+
+    [Fact]
+    public void spot_node_late_created_publisher_spot_publishes_to_remote_subscriber_via_discovery()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var registryContext = new Context();
+        using var publisherContext = new Context();
+        using var subscriberContext = new Context();
+        using var registry = new Registry(registryContext);
+        using var publisherDiscovery = new Discovery(publisherContext,
+            ServiceType.Spot, "game.stage");
+        using var subscriberDiscovery = new Discovery(subscriberContext,
+            ServiceType.Spot, "game.stage");
+        using var publisherNode = new SpotNode(publisherContext);
+        using var subscriberNode = new SpotNode(subscriberContext);
+        using var subscriber = subscriberNode.CreateSpot();
+
+        const string topic = "spot:external";
+        const string payload = "hello-late-publisher";
+
+        string registryPub = CoreTestSupport.NewEndpoint("tcp",
+            "spot-late-publisher-pub");
+        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
+            "spot-late-publisher-router");
+        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-late-publisher-publisher");
+        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-late-publisher-subscriber");
+
+        registry.Bind(registryPub, registryRouter);
+        registry.SetBroadcastInterval(50);
+        publisherDiscovery.ConnectRegistry(registryRouter);
+        subscriberDiscovery.ConnectRegistry(registryRouter);
+        publisherNode.Bind(publisherEndpoint);
+        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.AttachDiscovery(publisherDiscovery);
+        subscriberNode.AttachDiscovery(subscriberDiscovery);
+        subscriber.SetSubscription(topic);
+
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
+                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+            10000));
+
+        using var publisher = publisherNode.CreateSpot();
+
+        TopicMessage? subscribed = null;
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                using var message = Message.FromString(payload);
+                publisher.Publish("game.stage", topic, message);
+
+                try
+                {
+                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                    return subscribed is not null;
+                }
+                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                {
+                    return false;
+                }
+            },
+            10000));
+
+        using var received = subscribed!;
+        Assert.Equal("game.stage", received.ServiceName);
+        Assert.Equal(topic, received.Topic);
+        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+    }
+
+    [Fact]
+    public void spot_node_preconnected_publisher_spot_recovers_after_discovery_peers_become_ready()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var registryContext = new Context();
+        using var publisherContext = new Context();
+        using var subscriberContext = new Context();
+        using var registry = new Registry(registryContext);
+        using var publisherDiscovery = new Discovery(publisherContext,
+            ServiceType.Spot, "game.stage");
+        using var subscriberDiscovery = new Discovery(subscriberContext,
+            ServiceType.Spot, "game.stage");
+        using var publisherNode = new SpotNode(publisherContext);
+        using var subscriberNode = new SpotNode(subscriberContext);
+        using var subscriber = subscriberNode.CreateSpot();
+
+        const string topic = "spot:external";
+        const string payload = "hello-preconnected-publisher";
+
+        string registryPub = CoreTestSupport.NewEndpoint("tcp",
+            "spot-preconnected-pub");
+        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
+            "spot-preconnected-router");
+        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-preconnected-publisher");
+        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-preconnected-subscriber");
+
+        registry.Bind(registryPub, registryRouter);
+        registry.SetBroadcastInterval(50);
+        publisherDiscovery.ConnectRegistry(registryRouter);
+        subscriberDiscovery.ConnectRegistry(registryRouter);
+        publisherNode.Bind(publisherEndpoint);
+        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.AttachDiscovery(publisherDiscovery);
+        subscriberNode.AttachDiscovery(subscriberDiscovery);
+
+        using var publisher = publisherNode.CreateSpot();
+        subscriber.SetSubscription(topic);
+
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
+                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+            10000));
+
+        TopicMessage? subscribed = null;
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                using var message = Message.FromString(payload);
+                publisher.Publish("game.stage", topic, message);
+
+                try
+                {
+                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                    return subscribed is not null;
+                }
+                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                {
+                    return false;
+                }
+            },
+            10000));
+
+        using var received = subscribed!;
+        Assert.Equal("game.stage", received.ServiceName);
+        Assert.Equal(topic, received.Topic);
+        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+    }
+
+    [Fact]
+    public void spot_node_publisher_spot_eventually_delivers_when_publish_starts_before_discovery_ready()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var registryContext = new Context();
+        using var publisherContext = new Context();
+        using var subscriberContext = new Context();
+        using var registry = new Registry(registryContext);
+        using var publisherDiscovery = new Discovery(publisherContext,
+            ServiceType.Spot, "game.stage");
+        using var subscriberDiscovery = new Discovery(subscriberContext,
+            ServiceType.Spot, "game.stage");
+        using var publisherNode = new SpotNode(publisherContext);
+        using var subscriberNode = new SpotNode(subscriberContext);
+        using var subscriber = subscriberNode.CreateSpot();
+
+        const string topic = "spot:external";
+        const string payload = "hello-early-publish";
+
+        string registryPub = CoreTestSupport.NewEndpoint("tcp",
+            "spot-early-publish-pub");
+        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
+            "spot-early-publish-router");
+        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-early-publish-publisher");
+        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-early-publish-subscriber");
+
+        registry.Bind(registryPub, registryRouter);
+        registry.SetBroadcastInterval(50);
+        publisherDiscovery.ConnectRegistry(registryRouter);
+        subscriberDiscovery.ConnectRegistry(registryRouter);
+        publisherNode.Bind(publisherEndpoint);
+        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.AttachDiscovery(publisherDiscovery);
+        subscriberNode.AttachDiscovery(subscriberDiscovery);
+
+        using var publisher = publisherNode.CreateSpot();
+        subscriber.SetSubscription(topic);
+
+        TopicMessage? subscribed = null;
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                using var message = Message.FromString(payload);
+                publisher.Publish("game.stage", topic, message);
+
+                try
+                {
+                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                    return subscribed is not null;
+                }
+                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                {
+                    return false;
+                }
+            },
+            10000));
+
+        using var received = subscribed!;
+        Assert.Equal("game.stage", received.ServiceName);
+        Assert.Equal(topic, received.Topic);
+        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+    }
+
 }

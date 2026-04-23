@@ -132,9 +132,6 @@ public interface IZLinkFrameworkOptions
     void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter;
 
-    void AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory;
-
     void ConfigureDispatch(Action<IZLinkDispatchOptions> configure);
 
     void AddStreamNode(

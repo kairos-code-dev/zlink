@@ -251,6 +251,31 @@ public sealed class RegistrationValidationTests
         Assert.Contains("AddZLinkFramework", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AddZLinkMonitoring_Throws_WhenSocketSourceDoesNotMatchRegisteredCapability()
+    {
+        var endpoint = "tcp://127.0.0.1:7101";
+        var builder = Host.CreateApplicationBuilder();
+
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddChannel("profile", channel =>
+            {
+                channel.EnableServer(server => server.Bind(endpoint));
+            });
+        });
+
+        builder.Services.AddZLinkMonitoring(monitor =>
+        {
+            monitor.AddSocketEvents("orders.server", ZLinkSocketEventKind.ConnectionReady);
+        });
+
+        using var host = builder.Build();
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
+
+        Assert.Contains("not registered", exception.Message, StringComparison.Ordinal);
+    }
+
     private sealed class TestFilter : IZLinkHandlerFilter
     {
         public ValueTask<object?> InvokeAsync(

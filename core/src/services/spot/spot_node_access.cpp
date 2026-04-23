@@ -6,6 +6,7 @@
 
 #include <new>
 
+#include "api/service_handle_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "services/discovery/discovery_access.hpp"
 #include "services/spot/spot_node.hpp"
@@ -25,6 +26,7 @@ void *spot_node_access_t::create (ctx_t *ctx_)
         errno = EINVAL;
         return NULL;
     }
+    register_spot_node_mode_state (node);
     return node;
 }
 
@@ -40,7 +42,7 @@ mutex_t &spot_node_access_t::sync (spot_node_t *node_)
 
 spot_node_t *spot_node_access_t::from_handle (void *node_)
 {
-    if (!node_) {
+    if (!node_ || !is_registered_spot_node_handle (node_)) {
         errno = EFAULT;
         return NULL;
     }
@@ -105,6 +107,7 @@ int spot_node_access_t::destroy (spot_node_t *node_)
 
 void spot_node_access_t::delete_handle (spot_node_t *node_)
 {
+    erase_spot_node_mode_state (node_);
     delete node_;
 }
 

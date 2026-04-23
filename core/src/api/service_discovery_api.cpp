@@ -28,8 +28,10 @@ void *zlink_discovery_new (void *ctx_,
         errno = EINVAL;
         return NULL;
     }
-    return zlink::discovery_access_t::create (
+    void *discovery = zlink::discovery_access_t::create (
       static_cast<zlink::ctx_t *> (ctx_), service_type_, service_name_);
+    register_discovery_handle (discovery);
+    return discovery;
 }
 
 zlink_connect_result_t zlink_discovery_connect_registry (void *discovery_,
@@ -203,7 +205,7 @@ zlink_close_result_t zlink_discovery_destroy (void **discovery_p_)
     }
     if (zlink::discovery_access_t::destroy (discovery) != 0)
         return zlink::close_result_internal::from_rc (-1);
-    delete discovery;
+    zlink::discovery_access_t::delete_handle (discovery);
     *discovery_p_ = NULL;
     return ZLINK_CLOSE_OK;
 }

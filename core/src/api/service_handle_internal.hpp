@@ -34,9 +34,21 @@ struct service_handle_resolution_t
 service_handle_resolution_t resolve_service_handle (void *handle_);
 }
 
+bool is_registered_discovery_handle (void *discovery_);
+bool is_registered_registry_handle (void *registry_);
+bool is_registered_spot_pub_side_handle (void *pub_);
+bool is_registered_spot_sub_side_handle (void *sub_);
 bool is_registered_spot_node_handle (void *node_);
 bool is_registered_spot_handle (void *spot_);
 
+void register_discovery_handle (void *discovery_);
+void erase_discovery_handle (void *discovery_);
+void register_registry_handle (void *registry_);
+void erase_registry_handle (void *registry_);
+void register_spot_pub_side_handle (void *pub_);
+void erase_spot_pub_side_handle (void *pub_);
+void register_spot_sub_side_handle (void *sub_);
+void erase_spot_sub_side_handle (void *sub_);
 void register_spot_node_mode_state (zlink::spot_node_t *node_);
 void register_spot_mode_state (spot_handle_t *spot_);
 void erase_spot_node_mode_state (zlink::spot_node_t *node_);

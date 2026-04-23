@@ -284,6 +284,15 @@ zlink_config_result_t zlink_set_option (void *handle_,
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
 
+    errno = 0;
+    if (zlink_service_set_common_option (handle_, option_, socket_option, optval_,
+                                         optvallen_)
+        == 0) {
+        return ZLINK_CONFIG_OK;
+    }
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
+
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
             errno = EINVAL;
@@ -292,10 +301,8 @@ zlink_config_result_t zlink_set_option (void *handle_,
         return zlink::config_result_internal::from_rc (
           socket->setsockopt (socket_option, optval_, optvallen_));
     }
-    errno = 0;
-
-    return zlink::config_result_internal::from_rc (zlink_service_set_common_option (
-      handle_, option_, socket_option, optval_, optvallen_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_get_option (void *handle_,
@@ -317,6 +324,15 @@ zlink_config_result_t zlink_get_option (void *handle_,
             return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
 
+    errno = 0;
+    if (zlink_service_get_common_option (handle_, option_, socket_option, optval_,
+                                         optvallen_)
+        == 0) {
+        return ZLINK_CONFIG_OK;
+    }
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
+
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
             errno = EINVAL;
@@ -325,14 +341,18 @@ zlink_config_result_t zlink_get_option (void *handle_,
         return zlink::config_result_internal::from_rc (
           socket->getsockopt (socket_option, optval_, optvallen_));
     }
-    errno = 0;
-
-    return zlink::config_result_internal::from_rc (zlink_service_get_common_option (
-      handle_, option_, socket_option, optval_, optvallen_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_set_routing_id (void *handle_, const void *data_, size_t size_)
 {
+    errno = 0;
+    if (zlink_service_set_routing_id (handle_, data_, size_) == 0)
+        return ZLINK_CONFIG_OK;
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
+
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
         if (type == ZLINK_CORE_SOCKET_STREAM) {
@@ -342,10 +362,8 @@ zlink_config_result_t zlink_set_routing_id (void *handle_, const void *data_, si
         return zlink::config_result_internal::from_rc (
           socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, data_, size_));
     }
-    errno = 0;
-
-    return zlink::config_result_internal::from_rc (
-      zlink_service_set_routing_id (handle_, data_, size_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *out_)
@@ -354,6 +372,12 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
+
+    errno = 0;
+    if (zlink_service_get_routing_id (handle_, out_) == 0)
+        return ZLINK_CONFIG_OK;
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         size_t size = sizeof (out_->data);
@@ -368,10 +392,8 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
         out_->size = static_cast<uint8_t> (size);
         return ZLINK_CONFIG_OK;
     }
-    errno = 0;
-
-    return zlink::config_result_internal::from_rc (
-      zlink_service_get_routing_id (handle_, out_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_socket_set_channel_name (void *socket_,
@@ -407,6 +429,12 @@ zlink_config_result_t zlink_set_admission_state (void *handle_,
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
 
+    errno = 0;
+    if (zlink_service_set_admission_state (handle_, state_) == 0)
+        return ZLINK_CONFIG_OK;
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
+
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!socket_supports_admission_state (socket)) {
             errno = EINVAL;
@@ -415,9 +443,8 @@ zlink_config_result_t zlink_set_admission_state (void *handle_,
         return zlink::config_result_internal::from_rc (
           socket->set_admission_state (state_));
     }
-    errno = 0;
-    return zlink::config_result_internal::from_rc (
-      zlink_service_set_admission_state (handle_, state_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_get_admission_state (
@@ -429,6 +456,12 @@ zlink_config_result_t zlink_get_admission_state (
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
 
+    errno = 0;
+    if (zlink_service_get_admission_state (handle_, state_out_) == 0)
+        return ZLINK_CONFIG_OK;
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
+
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!socket_supports_admission_state (socket)) {
             errno = EINVAL;
@@ -437,9 +470,8 @@ zlink_config_result_t zlink_get_admission_state (
         return zlink::config_result_internal::from_rc (
           socket->get_admission_state (state_out_));
     }
-    errno = 0;
-    return zlink::config_result_internal::from_rc (
-      zlink_service_get_admission_state (handle_, state_out_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_set_tls_server (void *handle_,
@@ -447,6 +479,14 @@ zlink_config_result_t zlink_set_tls_server (void *handle_,
                                            const char *key_,
                                            int require_client_cert_)
 {
+    errno = 0;
+    if (zlink_service_set_tls_server (handle_, cert_, key_,
+                                      require_client_cert_)
+        == 0)
+        return ZLINK_CONFIG_OK;
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
+
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!cert_ || !key_) {
             errno = EFAULT;
@@ -468,9 +508,8 @@ zlink_config_result_t zlink_set_tls_server (void *handle_,
 
         return ZLINK_CONFIG_OK;
     }
-    errno = 0;
-    return zlink::config_result_internal::from_rc (zlink_service_set_tls_server (
-      handle_, cert_, key_, require_client_cert_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_set_tls_client (void *handle_,
@@ -478,6 +517,14 @@ zlink_config_result_t zlink_set_tls_client (void *handle_,
                                             const char *hostname_,
                                             int trust_system_)
 {
+    errno = 0;
+    if (zlink_service_set_tls_client (handle_, ca_cert_, hostname_,
+                                      trust_system_)
+        == 0)
+        return ZLINK_CONFIG_OK;
+    if (errno != EFAULT)
+        return zlink::config_result_internal::from_rc (-1);
+
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!ca_cert_ || !hostname_) {
             errno = EFAULT;
@@ -499,7 +546,6 @@ zlink_config_result_t zlink_set_tls_client (void *handle_,
 
         return ZLINK_CONFIG_OK;
     }
-    errno = 0;
-    return zlink::config_result_internal::from_rc (zlink_service_set_tls_client (
-      handle_, ca_cert_, hostname_, trust_system_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }

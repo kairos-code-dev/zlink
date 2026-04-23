@@ -609,6 +609,9 @@ NON_SERVICE_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 if not IS_WINDOWS:
     NON_SERVICE_TRANSPORTS.append("ipc")
 
+# SPOT control-plane patterns currently support tcp/tls only.
+SPOT_TRANSPORTS = ["tcp", "tls"]
+
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 FAIL_FAST = os.environ.get("PERF_FAIL_FAST", "0") == "1"
@@ -627,7 +630,7 @@ def select_transports(pattern_name):
         or pattern_name in SPOT_CONTROL_PATTERNS
     )
     if pattern_name in SPOT_CONTROL_PATTERNS:
-        base = STREAM_TRANSPORTS
+        base = SPOT_TRANSPORTS
     elif service_or_stream:
         base = STREAM_TRANSPORTS
     elif is_pattern(pattern_name):
@@ -887,6 +890,9 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
 
 
 def pattern_default_clients(pattern_name, transport=None):
+    normalized = normalize_multi_pattern_name(pattern_name)
+    if normalized == "SPOT_SENDSEND":
+        return 32
     if pattern_name in STREAM_VARIANT_PATTERNS:
         base = 10000
         tr = (transport or "").strip().lower()
@@ -2314,10 +2320,17 @@ def run_sizes_test(
         "reason": "",
         "warnings": [],
     }
+    size_retry_limit = max(0, parse_env_int("PERF_MULTI_SIZE_RETRIES", 1))
     for size_index, size in enumerate(size_list):
-        isolated = run_one_size_case(size)
-        merged["warnings"].extend(isolated.get("warnings", []))
-        merged["parsed"].update(isolated.get("parsed", {}))
+        isolated = None
+        for attempt in range(size_retry_limit + 1):
+            isolated = run_one_size_case(size)
+            merged["warnings"].extend(isolated.get("warnings", []))
+            merged["parsed"].update(isolated.get("parsed", {}))
+            if isolated.get("status") == "success":
+                break
+            if attempt < size_retry_limit:
+                time.sleep(1.0)
 
         if isolated.get("status") != "success":
             merged["status"] = isolated.get("status", "fail")

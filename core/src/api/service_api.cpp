@@ -13,6 +13,61 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
 
+namespace
+{
+std::mutex g_service_handle_registry_sync;
+std::set<void *> g_registered_discovery_handles;
+std::set<void *> g_registered_registry_handles;
+}
+
+bool is_registered_discovery_handle (void *discovery_)
+{
+    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    return discovery_
+           && g_registered_discovery_handles.find (discovery_)
+                != g_registered_discovery_handles.end ();
+}
+
+bool is_registered_registry_handle (void *registry_)
+{
+    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    return registry_
+           && g_registered_registry_handles.find (registry_)
+                != g_registered_registry_handles.end ();
+}
+
+void register_discovery_handle (void *discovery_)
+{
+    if (!discovery_)
+        return;
+    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    g_registered_discovery_handles.insert (discovery_);
+}
+
+void erase_discovery_handle (void *discovery_)
+{
+    if (!discovery_)
+        return;
+    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    g_registered_discovery_handles.erase (discovery_);
+}
+
+void register_registry_handle (void *registry_)
+{
+    if (!registry_)
+        return;
+    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    g_registered_registry_handles.insert (registry_);
+}
+
+void erase_registry_handle (void *registry_)
+{
+    if (!registry_)
+        return;
+    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    g_registered_registry_handles.erase (registry_);
+}
+
 namespace zlink
 {
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
@@ -31,17 +86,15 @@ service_handle_resolution_t resolve_service_handle (void *handle_)
     if (!handle_)
         return resolved;
 
-    discovery_t *discovery = discovery_access_t::from_handle (handle_);
-    if (discovery) {
+    if (is_registered_discovery_handle (handle_)) {
         resolved.kind = service_handle_discovery;
-        resolved.discovery = discovery;
+        resolved.discovery = static_cast<discovery_t *> (handle_);
         return resolved;
     }
 
-    registry_t *registry = registry_access_t::from_handle (handle_);
-    if (registry) {
+    if (is_registered_registry_handle (handle_)) {
         resolved.kind = service_handle_registry;
-        resolved.registry = registry;
+        resolved.registry = static_cast<registry_t *> (handle_);
         return resolved;
     }
 

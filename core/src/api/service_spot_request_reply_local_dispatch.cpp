@@ -363,6 +363,8 @@ int dispatch_spot_request_to_spot (
                                              rr_envelope_.request_seq,
                                              ENOENT);
 
+    zlink_routing_id_t empty_spot_rid;
+    memset (&empty_spot_rid, 0, sizeof (empty_spot_rid));
     const int rc = dispatch_spot_message_local (
       state.get (),
       spot_envelope_.source_class == zmp_router_class
@@ -370,7 +372,7 @@ int dispatch_spot_request_to_spot (
         : &spot_envelope_.source_node_rid_value,
       spot_envelope_.source_class == zmp_spot_class
         ? &spot_envelope_.source_endpoint_rid_value
-        : NULL,
+        : &empty_spot_rid,
       rr_envelope_.request_seq,
       rr_envelope_.payload_parts, rr_envelope_.payload_part_count);
     return rc;
@@ -416,11 +418,13 @@ int dispatch_local_direct_to_spot (uint8_t source_class_,
 
     zlink_routing_id_t source_rid_fallback;
     zlink_routing_id_t spot_rid_fallback;
+    memset (&spot_rid_fallback, 0, sizeof (spot_rid_fallback));
     const zlink_routing_id_t *source_rid =
       source_class_ == zmp_router_class ? source_endpoint_rid_value_
                                         : source_node_rid_value_;
-    const zlink_routing_id_t *spot_rid =
-      source_class_ == zmp_spot_class ? source_endpoint_rid_value_ : NULL;
+    const zlink_routing_id_t *spot_rid = source_class_ == zmp_spot_class
+                                           ? source_endpoint_rid_value_
+                                           : &spot_rid_fallback;
     if (!source_rid) {
         routing_id_from_string_local (
           source_class_ == zmp_router_class ? source_endpoint_rid_
@@ -428,7 +432,7 @@ int dispatch_local_direct_to_spot (uint8_t source_class_,
           &source_rid_fallback);
         source_rid = &source_rid_fallback;
     }
-    if (source_class_ == zmp_spot_class && !spot_rid) {
+    if (source_class_ == zmp_spot_class && !source_endpoint_rid_value_) {
         routing_id_from_string_local (source_endpoint_rid_, &spot_rid_fallback);
         spot_rid = &spot_rid_fallback;
     }

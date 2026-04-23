@@ -6,6 +6,7 @@
 
 #include <new>
 
+#include "api/service_handle_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 
@@ -36,7 +37,7 @@ void *discovery_access_t::create (ctx_t *ctx_,
 
 discovery_t *discovery_access_t::from_handle (void *discovery_)
 {
-    if (!discovery_) {
+    if (!discovery_ || !is_registered_discovery_handle (discovery_)) {
         errno = EFAULT;
         return NULL;
     }
@@ -155,6 +156,12 @@ int discovery_access_t::member_peer_metadata (discovery_t *discovery_,
 int discovery_access_t::destroy (discovery_t *discovery_)
 {
     return discovery_ ? discovery_->destroy () : -1;
+}
+
+void discovery_access_t::delete_handle (discovery_t *discovery_)
+{
+    erase_discovery_handle (discovery_);
+    delete discovery_;
 }
 
 void *discovery_access_t::monitor_open (discovery_t *discovery_, int events_)

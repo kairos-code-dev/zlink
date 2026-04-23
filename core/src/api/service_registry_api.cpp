@@ -35,8 +35,10 @@ void *zlink_registry_new (void *ctx_)
         errno = EFAULT;
         return NULL;
     }
-    return zlink::registry_access_t::create (
-      static_cast<zlink::ctx_t *> (ctx_));
+    void *registry =
+      zlink::registry_access_t::create (static_cast<zlink::ctx_t *> (ctx_));
+    register_registry_handle (registry);
+    return registry;
 }
 
 zlink_bind_result_t zlink_registry_bind (void *registry_,

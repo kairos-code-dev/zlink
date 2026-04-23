@@ -50,6 +50,7 @@ DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
+DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls"]
 STREAM_TRANSPORT_PATTERNS = {
     "SPOT",
 }
@@ -413,7 +414,7 @@ def run_cmake_build(cmake_build_dir: str, targets: List[str]) -> int:
 
 def select_transports(pattern: str) -> List[str]:
     base = (
-        DEFAULT_STREAM_TRANSPORTS
+        DEFAULT_SPOT_TRANSPORTS
         if pattern in STREAM_TRANSPORT_PATTERNS
         else DEFAULT_SOCKET_TRANSPORTS
     )
@@ -593,88 +594,98 @@ def run_single_test(
     binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(current_lib_dir)
     cmd = build_bench_cmd(binary_path, [lib_name, transport, str(size)], pin_cpu)
-    try:
-        sampled = run_command_with_metrics(cmd, env, timeout_sec)
-    except Exception as exc:  # pragma: no cover - defensive
-        return RunOutcome(status="fail", reason=f"exception:{exc}")
+    timeout_retry_limit = max(0, parse_env_int("PERF_SINGLE_TIMEOUT_RETRIES", 1))
+    last_outcome = RunOutcome(status="fail", reason="no_data")
 
-    stdout = str(sampled.get("stdout") or "")
-    stderr = str(sampled.get("stderr") or "")
+    for attempt in range(timeout_retry_limit + 1):
+        try:
+            sampled = run_command_with_metrics(cmd, env, timeout_sec)
+        except Exception as exc:  # pragma: no cover - defensive
+            return RunOutcome(status="fail", reason=f"exception:{exc}")
 
-    metrics: Dict[str, float] = {}
-    warnings: List[str] = []
-    for line in stdout.splitlines():
-        parsed, warning = parse_metric_from_result_line(
-            line, lib_name, pattern, transport, size
-        )
-        if warning:
-            warnings.append(warning)
-        if not parsed:
-            continue
-        metric, value = parsed
-        if metric in metrics:
-            warnings.append(
-                "duplicate RESULT metric detected; keeping last value: "
-                f"{pattern} {transport} {size}B {metric}"
+        stdout = str(sampled.get("stdout") or "")
+        stderr = str(sampled.get("stderr") or "")
+
+        metrics: Dict[str, float] = {}
+        warnings: List[str] = []
+        for line in stdout.splitlines():
+            parsed, warning = parse_metric_from_result_line(
+                line, lib_name, pattern, transport, size
             )
-        metrics[metric] = value
+            if warning:
+                warnings.append(warning)
+            if not parsed:
+                continue
+            metric, value = parsed
+            if metric in metrics:
+                warnings.append(
+                    "duplicate RESULT metric detected; keeping last value: "
+                    f"{pattern} {transport} {size}B {metric}"
+                )
+            metrics[metric] = value
 
-    if sampled.get("timed_out"):
+        if sampled.get("timed_out"):
+            last_outcome = RunOutcome(
+                status="fail",
+                reason="timeout",
+                warnings=warnings or None,
+                stderr=stderr,
+            )
+            if attempt < timeout_retry_limit:
+                time.sleep(1.0)
+                continue
+            return last_outcome
+
+        special = detect_special_status(stdout, lib_name, pattern, transport)
+        return_code = int(sampled.get("returncode") or 0)
+        if return_code != 0:
+            return RunOutcome(
+                status="fail",
+                reason=f"non_zero_exit_{return_code}",
+                warnings=warnings or None,
+                stderr=stderr,
+            )
+
+        if "throughput" in metrics and "bandwidth" in metrics and "latency" in metrics:
+            latency_mean, latency_p95, latency_p99 = resolve_latency_triplet(
+                metrics.get("latency"),
+                metrics.get(LATENCY_P95_METRIC),
+                metrics.get(LATENCY_P99_METRIC),
+            )
+            return RunOutcome(
+                status="success",
+                throughput=metrics["throughput"],
+                bandwidth=metrics["bandwidth"],
+                latency=latency_mean if latency_mean is not None else metrics["latency"],
+                latency_p95=latency_p95 if latency_p95 is not None else metrics["latency"],
+                latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
+                warnings=warnings or None,
+                stderr=stderr,
+            )
+
+        if special == "unsupported" and not metrics:
+            return RunOutcome(
+                status="unsupported",
+                reason="unsupported",
+                warnings=warnings or None,
+                stderr=stderr,
+            )
+        if special == "skip" and not metrics:
+            return RunOutcome(
+                status="skip",
+                reason="skip",
+                warnings=warnings or None,
+                stderr=stderr,
+            )
+
         return RunOutcome(
             status="fail",
-            reason="timeout",
+            reason="no_data",
             warnings=warnings or None,
             stderr=stderr,
         )
 
-    special = detect_special_status(stdout, lib_name, pattern, transport)
-    return_code = int(sampled.get("returncode") or 0)
-    if return_code != 0:
-        return RunOutcome(
-            status="fail",
-            reason=f"non_zero_exit_{return_code}",
-            warnings=warnings or None,
-            stderr=stderr,
-        )
-
-    if "throughput" in metrics and "bandwidth" in metrics and "latency" in metrics:
-        latency_mean, latency_p95, latency_p99 = resolve_latency_triplet(
-            metrics.get("latency"),
-            metrics.get(LATENCY_P95_METRIC),
-            metrics.get(LATENCY_P99_METRIC),
-        )
-        return RunOutcome(
-            status="success",
-            throughput=metrics["throughput"],
-            bandwidth=metrics["bandwidth"],
-            latency=latency_mean if latency_mean is not None else metrics["latency"],
-            latency_p95=latency_p95 if latency_p95 is not None else metrics["latency"],
-            latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
-            warnings=warnings or None,
-            stderr=stderr,
-        )
-
-    if special == "unsupported" and not metrics:
-        return RunOutcome(
-            status="unsupported",
-            reason="unsupported",
-            warnings=warnings or None,
-            stderr=stderr,
-        )
-    if special == "skip" and not metrics:
-        return RunOutcome(
-            status="skip",
-            reason="skip",
-            warnings=warnings or None,
-            stderr=stderr,
-        )
-
-    return RunOutcome(
-        status="fail",
-        reason="no_data",
-        warnings=warnings or None,
-        stderr=stderr,
-    )
+    return last_outcome
 
 
 def parse_pattern_arg(pattern_arg: str) -> List[str]:

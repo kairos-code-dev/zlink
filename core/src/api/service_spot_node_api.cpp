@@ -122,8 +122,10 @@ void *zlink_spot_new (void *node_)
     }
 
     spot->node = node;
+    register_spot_mode_state (spot);
     if (zlink::spot_node_access_t::try_register_spot_facade (node, spot) != 0) {
         const int err = errno;
+        erase_spot_mode_state (spot);
         delete spot;
         errno = err;
         return NULL;
@@ -132,6 +134,7 @@ void *zlink_spot_new (void *node_)
         const int err = errno;
         zlink_spot_request_reply_cleanup_spot (spot);
         zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+        erase_spot_mode_state (spot);
         delete spot;
         errno = err;
         return NULL;
@@ -140,6 +143,7 @@ void *zlink_spot_new (void *node_)
         const int err = errno;
         zlink_spot_request_reply_cleanup_spot (spot);
         zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+        erase_spot_mode_state (spot);
         delete spot;
         errno = err;
         return NULL;
@@ -182,6 +186,7 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
     zlink_timer_cleanup_spot (spot);
     zlink::spot_node_access_t::unregister_spot_facade (node, spot);
     zlink::destroy_spot_handle_for_testing (spot);
+    erase_spot_mode_state (spot);
     *spot_p_ = NULL;
     return ZLINK_CLOSE_OK;
 }

@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "api/service_handle_internal.hpp"
 #include "services/spot/spot_sub.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
@@ -45,10 +46,12 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
     initialize_routing_id (&_routing_id);
+    register_spot_sub_side_handle (this);
 }
 
 spot_sub_t::~spot_sub_t ()
 {
+    erase_spot_sub_side_handle (this);
     _tag = 0xdeadbeef;
 }
 

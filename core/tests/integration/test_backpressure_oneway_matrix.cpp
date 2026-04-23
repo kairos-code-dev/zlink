@@ -143,6 +143,16 @@ static bool is_tls_transport (const char *transport_)
     return strcmp (transport_, "tls") == 0 || strcmp (transport_, "wss") == 0;
 }
 
+static bool is_spot_transport_available (const char *transport_)
+{
+    if (strcmp (transport_, "tcp") == 0)
+        return true;
+    if (strcmp (transport_, "tls") == 0)
+        return zlink_has ("tls") != 0;
+
+    return false;
+}
+
 static void configure_tls (void *server_,
                            void *client_,
                            const tls_test_files_t &files_)
@@ -926,7 +936,7 @@ static void verify_raw_progress_matrix ()
          transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
          ++transport_index) {
         const char *transport = kTransports[transport_index];
-        if (!is_transport_available (transport))
+        if (!is_spot_transport_available (transport))
             continue;
 
         for (int pattern_value = raw_pattern_dealer_dealer;
@@ -1134,7 +1144,7 @@ static void verify_spot_forwarding_matrix ()
          transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
          ++transport_index) {
         const char *transport = kTransports[transport_index];
-        if (!is_transport_available (transport))
+        if (!is_spot_transport_available (transport))
             continue;
 
         std::vector<size_t> counts;

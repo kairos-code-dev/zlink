@@ -4,6 +4,7 @@
 
 #include <new>
 
+#include "api/service_handle_internal.hpp"
 #include "services/discovery/registry_access.hpp"
 
 #include "services/discovery/registry.hpp"
@@ -22,7 +23,7 @@ void *registry_access_t::create (ctx_t *ctx_)
 
 registry_t *registry_access_t::from_handle (void *registry_)
 {
-    if (!registry_) {
+    if (!registry_ || !is_registered_registry_handle (registry_)) {
         errno = EFAULT;
         return NULL;
     }
@@ -74,6 +75,7 @@ int registry_access_t::destroy (registry_t *registry_)
 
 void registry_access_t::delete_handle (registry_t *registry_)
 {
+    erase_registry_handle (registry_);
     delete registry_;
 }
 

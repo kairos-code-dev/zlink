@@ -114,6 +114,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             ):
                 os.environ.pop(key, None)
             self.assertEqual(RC.pattern_default_clients("DEALER_DEALER"), 100)
+            self.assertEqual(RC.pattern_default_clients("SPOT_SENDSEND"), 32)
             self.assertEqual(RC.pattern_default_clients("STREAM"), 10000)
             self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 100)
             self.assertEqual(RC.pattern_default_hwm("STREAM"), 10)
@@ -252,6 +253,59 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test_split = old_split
             RC.time.sleep = old_sleep
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_multi_size_case_retries_once_before_failing(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        old_split = RC.run_sizes_test_split
+        old_env = os.environ.copy()
+        calls = []
+        try:
+            RC.ALLOW_MULTI = True
+            os.environ["PERF_MULTI_SIZE_RETRIES"] = "1"
+
+            def fake_split(server_name, client_name, lib_name, transport, sizes,
+                           pattern_name, result_line_callback=None):
+                size = sizes[0]
+                calls.append(size)
+                if len(calls) == 1:
+                    return {
+                        "status": "fail",
+                        "parsed": {},
+                        "timed_out": False,
+                        "returncode": 1,
+                        "reason": "client_ready",
+                        "warnings": [],
+                    }
+                return {
+                    "status": "success",
+                    "parsed": {f"tcp|{size}|throughput": 1.0},
+                    "timed_out": False,
+                    "returncode": 0,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            RC.run_sizes_test_split = fake_split
+
+            outcome = RC.run_sizes_test(
+                "ignored",
+                "current",
+                "tcp",
+                [65536],
+                "SPOT",
+            )
+
+            self.assertEqual(outcome["status"], "success")
+            self.assertEqual(calls, [65536, 65536])
+            self.assertEqual(
+                outcome["parsed"],
+                {"tcp|65536|throughput": 1.0},
+            )
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
+            RC.run_sizes_test_split = old_split
             os.environ.clear()
             os.environ.update(old_env)
 

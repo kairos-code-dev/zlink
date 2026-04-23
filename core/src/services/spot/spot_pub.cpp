@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "api/service_handle_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
@@ -129,10 +130,12 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
     initialize_routing_id (&_routing_id);
+    register_spot_pub_side_handle (this);
 }
 
 spot_pub_t::~spot_pub_t ()
 {
+    erase_spot_pub_side_handle (this);
     _tag = 0xdeadbeef;
 }
 

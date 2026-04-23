@@ -115,6 +115,7 @@ static void *default_pub_handle (void *node_)
         return NULL;
     }
     spot->node = node;
+    register_spot_mode_state (spot);
     g_default_spot_handles[node_] = spot;
     return spot;
 }
@@ -133,6 +134,7 @@ static void destroy_default_handle (void *node_)
         return;
 
     zlink::destroy_spot_handle_for_testing (it->second);
+    erase_spot_mode_state (it->second);
     g_default_spot_handles.erase (it);
 }
 
@@ -203,6 +205,7 @@ void tearDown ()
            g_default_spot_handles.begin ();
          it != g_default_spot_handles.end (); ++it) {
         zlink::destroy_spot_handle_for_testing (it->second);
+        erase_spot_mode_state (it->second);
     }
     g_default_spot_handles.clear ();
 }

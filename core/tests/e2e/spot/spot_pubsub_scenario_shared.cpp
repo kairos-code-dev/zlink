@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "spot_pubsub_scenario_shared.hpp"
+#include "../../../src/api/service_api_internal.hpp"
 #include "../../../src/api/zlink_testing.hpp"
 #include "../../../src/services/spot/spot_handle.hpp"
 #include "../../../src/services/spot/spot_node.hpp"
@@ -149,6 +150,7 @@ void *create_spot_pub_handle (void *node_)
             return NULL;
         }
         spot->node = node;
+        register_spot_mode_state (spot);
         std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
         g_spot_handles[node_] = spot;
     }
@@ -191,6 +193,7 @@ static void clear_spot_handle_map ()
     for (std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.begin ();
          it != g_spot_handles.end (); ++it) {
         zlink::destroy_spot_handle_for_testing (it->second);
+        erase_spot_mode_state (it->second);
     }
     g_spot_handles.clear ();
 }
@@ -208,6 +211,7 @@ int destroy_spot_node_with_handles (void **node_p_)
           g_spot_handles.find (*node_p_);
         if (it != g_spot_handles.end ()) {
             zlink::destroy_spot_handle_for_testing (it->second);
+            erase_spot_mode_state (it->second);
             g_spot_handles.erase (it);
         }
         g_sub_probes.erase (*node_p_);

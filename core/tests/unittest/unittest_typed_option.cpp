@@ -26,6 +26,7 @@ void *make_test_spot_handle (void *node_)
     if (!spot)
         return NULL;
     spot->node = node;
+    register_spot_mode_state (spot);
     return spot;
 }
 
@@ -36,6 +37,7 @@ void destroy_test_spot_handle (void **spot_p_)
 
     spot_handle_t *spot = static_cast<spot_handle_t *> (*spot_p_);
     zlink::destroy_spot_handle_for_testing (spot);
+    erase_spot_mode_state (spot);
     *spot_p_ = NULL;
 }
 } // namespace

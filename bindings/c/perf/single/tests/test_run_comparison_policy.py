@@ -180,7 +180,70 @@ class RunComparisonPolicyTests(unittest.TestCase):
             self.assertNotIn("ipc", pair_transports)
         else:
             self.assertIn("ipc", pair_transports)
-        self.assertEqual(stream_transports, ["tcp", "tls", "ws", "wss"])
+        self.assertEqual(stream_transports, ["tcp", "tls"])
+
+    def test_run_single_test_retries_timeout_once(self):
+        old_run_command_with_metrics = RC.run_command_with_metrics
+        old_get_env_for_lib = RC.get_env_for_lib
+        old_build_bench_cmd = RC.build_bench_cmd
+        old_env = os.environ.copy()
+        calls = []
+
+        try:
+            def fake_run_command_with_metrics(cmd, env, timeout_sec):
+                calls.append((tuple(cmd), timeout_sec))
+                if len(calls) == 1:
+                    return {
+                        "returncode": -9,
+                        "stdout": "",
+                        "stderr": "timeout",
+                        "timed_out": True,
+                    }
+                return {
+                    "returncode": 0,
+                    "stdout": "\n".join(
+                        [
+                            "RESULT,current,ROUTER_ROUTER,inproc,262144,throughput,1",
+                            "RESULT,current,ROUTER_ROUTER,inproc,262144,bandwidth,2",
+                            "RESULT,current,ROUTER_ROUTER,inproc,262144,latency,3",
+                            "RESULT,current,ROUTER_ROUTER,inproc,262144,latency_p95,4",
+                            "RESULT,current,ROUTER_ROUTER,inproc,262144,latency_p99,5",
+                        ]
+                    ),
+                    "stderr": "",
+                    "timed_out": False,
+                }
+
+            RC.run_command_with_metrics = fake_run_command_with_metrics
+            RC.get_env_for_lib = lambda _path: {}
+            RC.build_bench_cmd = lambda binary_path, args, pin_cpu: [binary_path] + list(args)
+            os.environ["PERF_SINGLE_TIMEOUT_RETRIES"] = "1"
+
+            outcome = RC.run_single_test(
+                build_dir="/tmp/build",
+                current_lib_dir="/tmp/lib",
+                binary_name="perf_router_router",
+                lib_name="current",
+                pattern="ROUTER_ROUTER",
+                transport="inproc",
+                size=262144,
+                timeout_sec=300,
+                pin_cpu=False,
+            )
+
+            self.assertEqual(outcome.status, "success")
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(outcome.throughput, 1.0)
+            self.assertEqual(outcome.bandwidth, 2.0)
+            self.assertEqual(outcome.latency, 3.0)
+            self.assertEqual(outcome.latency_p95, 4.0)
+            self.assertEqual(outcome.latency_p99, 5.0)
+        finally:
+            RC.run_command_with_metrics = old_run_command_with_metrics
+            RC.get_env_for_lib = old_get_env_for_lib
+            RC.build_bench_cmd = old_build_bench_cmd
+            os.environ.clear()
+            os.environ.update(old_env)
 
     def test_stream_patterns_removed_from_single_runner(self):
         with self.assertRaises(ValueError):

@@ -57,6 +57,7 @@ struct discovery_access_t
                                      const char *endpoint_,
                                      zlink_msg_t *metadata_out_);
     static int destroy (discovery_t *discovery_);
+    static void delete_handle (discovery_t *discovery_);
     static void *monitor_open (discovery_t *discovery_, int events_);
     static void set_summary_enabled (discovery_t *discovery_, bool enabled_);
     static int add_observer (discovery_t *discovery_,

@@ -882,6 +882,183 @@ bool spot_request_completed(spot_reqrep_client_slot_t *slot)
            && !slot->send_pending.load(std::memory_order_acquire);
 }
 
+void reset_active_slot(spot_reqrep_client_slot_t *slot)
+{
+    if (!slot)
+        return;
+    slot->waiting_reply.store(false, std::memory_order_release);
+    slot->send_pending.store(false, std::memory_order_release);
+    slot->next_seq = 1;
+    slot->payload.clear();
+}
+
+bool reset_reqrep_poller(spot_reqrep_client_state_t *state)
+{
+    if (!state || !state->poller) {
+        errno = EINVAL;
+        return false;
+    }
+
+    for (size_t i = 0; i < state->slots.size(); ++i) {
+        if (zlink_poller_modify(state->poller, state->slots[i].socket, ZLINK_POLLIN)
+            != 0) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-reqrep-client] poller reset failed slot="
+                          << i << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool try_submit_ready_requests(spot_reqrep_client_state_t *client_state,
+                               const zlink_routing_id_t *server_node_rid,
+                               const zlink_routing_id_t *server_spot_rid,
+                               uint32_t run_id,
+                               size_t msg_size,
+                               uint32_t request_timeout_ms,
+                               bool *send_progress_out,
+                               bool *has_waiting_reply_out)
+{
+    if (!client_state || !server_node_rid || !server_spot_rid
+        || !send_progress_out || !has_waiting_reply_out) {
+        errno = EINVAL;
+        return false;
+    }
+
+    *send_progress_out = false;
+    *has_waiting_reply_out = false;
+    for (size_t i = 0; i < client_state->slots.size(); ++i) {
+        spot_reqrep_client_slot_t &slot = client_state->slots[i];
+        const bool waiting_reply =
+          slot.waiting_reply.load(std::memory_order_acquire);
+        const bool send_pending =
+          slot.send_pending.load(std::memory_order_acquire);
+        if (waiting_reply || send_pending) {
+            *has_waiting_reply_out = true;
+            continue;
+        }
+
+        const send_result_t send_rc =
+          send_request(&slot,
+                       server_node_rid,
+                       server_spot_rid,
+                       run_id,
+                       msg_size,
+                       request_timeout_ms);
+        if (send_rc == send_result_ok) {
+            *send_progress_out = true;
+        } else if (send_rc == send_result_blocked) {
+            if (bench_debug_enabled()
+                && g_client_debug_send_logs.fetch_add(
+                     1, std::memory_order_acq_rel)
+                     < 8) {
+                std::cerr << "[multi-spot-reqrep-client] send blocked slot="
+                          << slot.index << std::endl;
+            }
+            if (zlink_poller_modify(client_state->poller,
+                                    slot.socket,
+                                    ZLINK_POLLIN | ZLINK_POLLOUT)
+                != 0) {
+                if (bench_debug_enabled()) {
+                    std::cerr
+                      << "[multi-spot-reqrep-client] poller arm failed slot="
+                      << slot.index << " err=" << zlink_errno()
+                      << std::endl;
+                }
+                return false;
+            }
+        } else if (send_rc != send_result_not_connected) {
+            if (bench_debug_enabled()) {
+                std::cerr
+                  << "[multi-spot-reqrep-client] send request fatal slot="
+                  << slot.index << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool handle_reqrep_ready_events(spot_reqrep_client_state_t *client_state,
+                                int event_count)
+{
+    if (!client_state || event_count < 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    bool completion_ready = false;
+    std::vector<spot_reqrep_client_slot_t *> readable_slots;
+    readable_slots.reserve(static_cast<size_t>(event_count));
+    for (int i = 0; i < event_count; ++i) {
+        spot_reqrep_client_slot_t *slot =
+          static_cast<spot_reqrep_client_slot_t *>(
+            client_state->events[i].user_data);
+        if (!slot) {
+            if ((client_state->events[i].events & ZLINK_POLLIN) != 0)
+                completion_ready = true;
+            continue;
+        }
+
+        if ((client_state->events[i].events & ZLINK_POLLOUT) != 0) {
+            slot->send_pending.store(false, std::memory_order_release);
+            if (zlink_poller_modify(client_state->poller,
+                                    slot->socket,
+                                    ZLINK_POLLIN)
+                != 0) {
+                if (bench_debug_enabled()) {
+                    std::cerr
+                      << "[multi-spot-reqrep-client] poller disarm failed slot="
+                      << slot->index << " err=" << zlink_errno()
+                      << std::endl;
+                }
+                return false;
+            }
+        }
+
+        if ((client_state->events[i].events & ZLINK_POLLIN) != 0)
+            readable_slots.push_back(slot);
+    }
+
+    for (size_t i = 0; i < readable_slots.size(); ++i) {
+        if (spot_request_completed(readable_slots[i]))
+            continue;
+        if (!progress_request_callbacks(readable_slots[i])) {
+            if (bench_debug_enabled()) {
+                std::cerr
+                  << "[multi-spot-reqrep-client] progress after poll failed slot="
+                  << readable_slots[i]->index << " err=" << zlink_errno()
+                  << std::endl;
+            }
+            return false;
+        }
+    }
+
+    if (!completion_ready)
+        return true;
+
+    for (size_t i = 0; i < client_state->slots.size(); ++i) {
+        if (!client_state->slots[i].waiting_reply.load(
+              std::memory_order_acquire)) {
+            continue;
+        }
+        if (spot_request_completed(&client_state->slots[i]))
+            continue;
+        if (!progress_request_callbacks(&client_state->slots[i])) {
+            if (bench_debug_enabled()) {
+                std::cerr
+                  << "[multi-spot-reqrep-client] completion progress failed slot="
+                  << i << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
 bool run_active_window(spot_reqrep_client_state_t *state,
                        const multi_bench_settings_t &settings,
                        uint32_t run_id,
@@ -913,28 +1090,12 @@ bool run_active_window(spot_reqrep_client_state_t *state,
       std::memory_order_release);
     state->active_reply_count.store(0, std::memory_order_release);
     state->active_latency.reset();
-    const auto reset_slot = [] (spot_reqrep_client_slot_t *slot) {
-        if (!slot)
-            return;
-        slot->waiting_reply.store(false, std::memory_order_release);
-        slot->send_pending.store(false, std::memory_order_release);
-        slot->next_seq = 1;
-        slot->payload.clear();
-    };
     for (size_t i = 0; i < state->slots.size(); ++i) {
-        reset_slot(&state->slots[i]);
+        reset_active_slot(&state->slots[i]);
     }
 
-    for (size_t i = 0; i < state->slots.size(); ++i) {
-        if (zlink_poller_modify(state->poller, state->slots[i].socket, ZLINK_POLLIN)
-            != 0) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-reqrep-client] poller reset failed slot="
-                          << i << " err=" << zlink_errno() << std::endl;
-            }
-            return false;
-        }
-    }
+    if (!reset_reqrep_poller(state))
+        return false;
 
     const auto deadline =
       std::chrono::steady_clock::now()
@@ -943,149 +1104,18 @@ bool run_active_window(spot_reqrep_client_state_t *state,
       static_cast<uint32_t>(bench_timeout_ms_from_env(
         "PERF_MULTI_RCVTIMEO_MS",
         bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200)));
-    const auto try_submit_ready_requests =
-      [&server_node_rid,
-       &server_spot_rid,
-       run_id,
-       msg_size,
-       request_timeout_ms] (spot_reqrep_client_state_t *client_state,
-                            bool *send_progress_out,
-                            bool *has_waiting_reply_out) -> bool {
-        if (!client_state || !send_progress_out || !has_waiting_reply_out) {
-            errno = EINVAL;
-            return false;
-        }
-
-        *send_progress_out = false;
-        *has_waiting_reply_out = false;
-        for (size_t i = 0; i < client_state->slots.size(); ++i) {
-            spot_reqrep_client_slot_t &slot = client_state->slots[i];
-            const bool waiting_reply =
-              slot.waiting_reply.load(std::memory_order_acquire);
-            const bool send_pending =
-              slot.send_pending.load(std::memory_order_acquire);
-            if (waiting_reply || send_pending) {
-                *has_waiting_reply_out = true;
-                continue;
-            }
-
-            const send_result_t send_rc =
-              send_request(&slot,
-                           &server_node_rid,
-                           &server_spot_rid,
-                           run_id,
-                           msg_size,
-                           request_timeout_ms);
-            if (send_rc == send_result_ok) {
-                *send_progress_out = true;
-            } else if (send_rc == send_result_blocked) {
-                if (bench_debug_enabled()
-                    && g_client_debug_send_logs.fetch_add(
-                         1, std::memory_order_acq_rel)
-                         < 8) {
-                    std::cerr << "[multi-spot-reqrep-client] send blocked slot="
-                              << slot.index << std::endl;
-                }
-                if (zlink_poller_modify(client_state->poller,
-                                        slot.socket,
-                                        ZLINK_POLLIN | ZLINK_POLLOUT)
-                    != 0) {
-                    if (bench_debug_enabled()) {
-                        std::cerr
-                          << "[multi-spot-reqrep-client] poller arm failed slot="
-                          << slot.index << " err=" << zlink_errno()
-                          << std::endl;
-                    }
-                    return false;
-                }
-            } else if (send_rc != send_result_not_connected) {
-                if (bench_debug_enabled()) {
-                    std::cerr
-                      << "[multi-spot-reqrep-client] send request fatal slot="
-                      << slot.index << " err=" << zlink_errno() << std::endl;
-                }
-                return false;
-            }
-        }
-        return true;
-    };
-
-    const auto handle_ready_events =
-      [] (spot_reqrep_client_state_t *client_state,
-          int event_count) -> bool {
-        bool completion_ready = false;
-        std::vector<spot_reqrep_client_slot_t *> readable_slots;
-        readable_slots.reserve(static_cast<size_t>(event_count));
-        for (int i = 0; i < event_count; ++i) {
-            spot_reqrep_client_slot_t *slot =
-              static_cast<spot_reqrep_client_slot_t *>(
-                client_state->events[i].user_data);
-            if (!slot) {
-                if ((client_state->events[i].events & ZLINK_POLLIN) != 0)
-                    completion_ready = true;
-                continue;
-            }
-
-            if ((client_state->events[i].events & ZLINK_POLLOUT) != 0) {
-                slot->send_pending.store(false, std::memory_order_release);
-                if (zlink_poller_modify(client_state->poller,
-                                        slot->socket,
-                                        ZLINK_POLLIN)
-                    != 0) {
-                    if (bench_debug_enabled()) {
-                        std::cerr
-                          << "[multi-spot-reqrep-client] poller disarm failed slot="
-                          << slot->index << " err=" << zlink_errno()
-                          << std::endl;
-                    }
-                    return false;
-                }
-            }
-
-            if ((client_state->events[i].events & ZLINK_POLLIN) != 0)
-                readable_slots.push_back(slot);
-        }
-
-        for (size_t i = 0; i < readable_slots.size(); ++i) {
-            if (spot_request_completed(readable_slots[i]))
-                continue;
-            if (!progress_request_callbacks(readable_slots[i])) {
-                if (bench_debug_enabled()) {
-                    std::cerr
-                      << "[multi-spot-reqrep-client] progress after poll failed slot="
-                      << readable_slots[i]->index << " err=" << zlink_errno()
-                      << std::endl;
-                }
-                return false;
-            }
-        }
-
-        if (!completion_ready)
-            return true;
-
-        for (size_t i = 0; i < client_state->slots.size(); ++i) {
-            if (!client_state->slots[i].waiting_reply.load(
-                  std::memory_order_acquire)) {
-                continue;
-            }
-            if (spot_request_completed(&client_state->slots[i]))
-                continue;
-            if (!progress_request_callbacks(&client_state->slots[i])) {
-                if (bench_debug_enabled()) {
-                    std::cerr
-                      << "[multi-spot-reqrep-client] completion progress failed slot="
-                      << i << " err=" << zlink_errno() << std::endl;
-                }
-                return false;
-            }
-        }
-        return true;
-    };
 
     while (std::chrono::steady_clock::now() < deadline) {
         bool send_progress = false;
         bool has_waiting_reply = false;
-        if (!try_submit_ready_requests(state, &send_progress, &has_waiting_reply))
+        if (!try_submit_ready_requests(state,
+                                       &server_node_rid,
+                                       &server_spot_rid,
+                                       run_id,
+                                       msg_size,
+                                       request_timeout_ms,
+                                       &send_progress,
+                                       &has_waiting_reply))
             return false;
         if (send_progress)
             continue;
@@ -1108,7 +1138,7 @@ bool run_active_window(spot_reqrep_client_state_t *state,
         if (event_count == 0)
             continue;
 
-        if (!handle_ready_events(state, event_count))
+        if (!handle_reqrep_ready_events(state, event_count))
             return false;
     }
 

@@ -232,19 +232,7 @@ spot_request_reply_completion_state_t::spot_request_reply_completion_state_t () 
 }
 
 spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) :
-    owner (owner_),
-    default_timeout_ms (requests.default_timeout_ms),
-    next_request_seq (requests.next_request_seq),
-    pending_sequences (requests.pending_sequences),
-    pending_replies (requests.pending_replies),
-    subscribe_queue (recv.subscribe_queue),
-    routed_recv_queue (recv.routed_recv_queue),
-    routed_recv_socket (recv.routed_recv_socket),
-    completion (completion_state.direct),
-    channel_reply_sources (completion_state.channel_reply_sources),
-    pending_channel_requests (completion_state.pending_channel_requests),
-    request_handler (recv.request_handler),
-    request_handler_userdata (recv.request_handler_userdata)
+    owner (owner_)
 {
 }
 
@@ -257,11 +245,7 @@ router_spot_request_reply_request_state_t::
 
 router_spot_request_reply_state_t::router_spot_request_reply_state_t (
   void *owner_) :
-    owner (owner_),
-    default_timeout_ms (requests.default_timeout_ms),
-    next_request_seq (requests.next_request_seq),
-    pending_sequences (requests.pending_sequences),
-    pending_replies (requests.pending_replies)
+    owner (owner_)
 {
 }
 

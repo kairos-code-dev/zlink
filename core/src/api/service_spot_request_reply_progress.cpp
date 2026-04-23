@@ -33,16 +33,18 @@ extern "C" int zlink_spot_request_progress_internal (void *spot_)
     }
 
     bool dispatch_handler_installed = false;
-    bool has_channel_reply_sources = false;
-    bool has_direct_reply_completions = false;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         dispatch_handler_installed = state->dispatch.handler != NULL;
-        has_channel_reply_sources = !state->channel_reply_sources.empty ();
-        has_direct_reply_completions = !state->completion.pending.empty ();
     }
 
     int drained = 0;
+    const bool has_direct_reply_completions =
+      zlink::spot_reqrep_internal::has_spot_reply_completions (state);
+    std::vector<void *> dealers;
+    zlink::spot_reqrep_internal::snapshot_spot_channel_reply_dealers (state,
+                                                                      &dealers);
+    const bool has_channel_reply_sources = !dealers.empty ();
     if (!has_direct_reply_completions && !has_channel_reply_sources) {
         errno = 0;
         return 0;
@@ -72,18 +74,6 @@ extern "C" int zlink_spot_request_progress_internal (void *spot_)
     if (!has_channel_reply_sources) {
         errno = 0;
         return drained;
-    }
-
-    std::vector<void *> dealers;
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        for (std::map<void *,
-                      std::shared_ptr<
-                        zlink::spot_reqrep_internal::spot_channel_reply_source_t> >::const_iterator
-               it = state->channel_reply_sources.begin ();
-             it != state->channel_reply_sources.end (); ++it) {
-            dealers.push_back (it->first);
-        }
     }
 
     for (size_t i = 0; i < dealers.size (); ++i) {
@@ -116,8 +106,8 @@ extern "C" int zlink_spot_channel_reply_progress_from (void *spot_,
     }
 
     {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->channel_reply_sources.count (dealer_) == 0) {
+        if (!zlink::spot_reqrep_internal::has_spot_channel_reply_source (state,
+                                                                         dealer_)) {
             errno = ENOENT;
             return -1;
         }

@@ -42,114 +42,101 @@ struct spot_route_stats_t
 };
 
 spot_route_stats_t g_spot_route_stats;
+
+bool assign_routing_id_value_local (const char *data_,
+                                    size_t size_,
+                                    zlink_routing_id_t *out_rid_)
+{
+    if (!out_rid_)
+        return false;
+    memset (out_rid_, 0, sizeof (*out_rid_));
+    if (!data_ || size_ == 0)
+        return true;
+    if (size_ > sizeof (out_rid_->data))
+        return false;
+    memcpy (out_rid_->data, data_, size_);
+    out_rid_->size = static_cast<uint8_t> (size_);
+    return true;
 }
 
-bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  parsed_spot_envelope_t *out_)
+bool parse_packed_spot_routed_envelope (zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        parsed_spot_envelope_t *out_)
 {
-    if (!parts_ || !out_ || part_count_ == 0)
-        return false;
-
-    memset (&out_->source_node_rid_value, 0, sizeof (out_->source_node_rid_value));
-    memset (&out_->source_endpoint_rid_value,
-            0,
-            sizeof (out_->source_endpoint_rid_value));
-    memset (&out_->destination_node_rid_value,
-            0,
-            sizeof (out_->destination_node_rid_value));
-    memset (&out_->destination_endpoint_rid_value,
-            0,
-            sizeof (out_->destination_endpoint_rid_value));
-
-    const auto assign_routing_id_value =
-      [] (const char *data_,
-          size_t size_,
-          zlink_routing_id_t *out_rid_) -> bool {
-        if (!out_rid_)
-            return false;
-        memset (out_rid_, 0, sizeof (*out_rid_));
-        if (!data_ || size_ == 0)
-            return true;
-        if (size_ > sizeof (out_rid_->data))
-            return false;
-        memcpy (out_rid_->data, data_, size_);
-        out_rid_->size = static_cast<uint8_t> (size_);
-        return true;
-      };
-
     const size_t packed_header_prefix_size = 20;
     zlink::msg_t *first_frame = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
-    if (first_frame->check ()) {
-        const unsigned char *data =
-          static_cast<const unsigned char *> (zlink_msg_data (&parts_[0]));
-        const size_t size = zlink_msg_size (&parts_[0]);
-        if (size >= packed_header_prefix_size
-            && data[0] == zmp_spot_routed_protocol_id
-            && data[1] == zmp_packed_protocol_version
-            && (data[2] == zmp_spot_class || data[2] == zmp_router_class)
-            && (data[3] == zmp_spot_class || data[3] == zmp_router_class)) {
-            const uint32_t source_node_size =
-              zlink::request_reply::decode_u32_be (data + 4);
-            const uint32_t source_endpoint_size =
-              zlink::request_reply::decode_u32_be (data + 8);
-            const uint32_t destination_node_size =
-              zlink::request_reply::decode_u32_be (data + 12);
-            const uint32_t destination_endpoint_size =
-              zlink::request_reply::decode_u32_be (data + 16);
-            const size_t total_header_size =
-              packed_header_prefix_size + static_cast<size_t> (source_node_size)
-              + static_cast<size_t> (source_endpoint_size)
-              + static_cast<size_t> (destination_node_size)
-              + static_cast<size_t> (destination_endpoint_size);
-            if (size < total_header_size)
-                return false;
+    if (!first_frame->check ())
+        return false;
 
-            const char *cursor = reinterpret_cast<const char *> (data)
-                                 + packed_header_prefix_size;
-            out_->source_class = data[2];
-            out_->destination_class = data[3];
-            out_->source_node_rid.assign (cursor, source_node_size);
-            if (!assign_routing_id_value (
-                  cursor, source_node_size, &out_->source_node_rid_value)) {
-                return false;
-            }
-            cursor += source_node_size;
-            out_->source_endpoint_rid.assign (cursor, source_endpoint_size);
-            if (!assign_routing_id_value (
-                  cursor,
-                  source_endpoint_size,
-                  &out_->source_endpoint_rid_value)) {
-                return false;
-            }
-            cursor += source_endpoint_size;
-            out_->destination_node_rid.assign (cursor, destination_node_size);
-            if (!assign_routing_id_value (cursor,
-                                          destination_node_size,
-                                          &out_->destination_node_rid_value)) {
-                return false;
-            }
-            cursor += destination_node_size;
-            out_->destination_endpoint_rid.assign (cursor,
-                                                   destination_endpoint_size);
-            if (!assign_routing_id_value (
-                  cursor,
-                  destination_endpoint_size,
-                  &out_->destination_endpoint_rid_value)) {
-                return false;
-            }
-            out_->payload_parts = parts_ + 1;
-            out_->payload_part_count = part_count_ - 1;
-            return true;
-        }
+    const unsigned char *data =
+      static_cast<const unsigned char *> (zlink_msg_data (&parts_[0]));
+    const size_t size = zlink_msg_size (&parts_[0]);
+    if (size < packed_header_prefix_size
+        || data[0] != zmp_spot_routed_protocol_id
+        || data[1] != zmp_packed_protocol_version
+        || (data[2] != zmp_spot_class && data[2] != zmp_router_class)
+        || (data[3] != zmp_spot_class && data[3] != zmp_router_class)) {
+        return false;
     }
 
+    const uint32_t source_node_size =
+      zlink::request_reply::decode_u32_be (data + 4);
+    const uint32_t source_endpoint_size =
+      zlink::request_reply::decode_u32_be (data + 8);
+    const uint32_t destination_node_size =
+      zlink::request_reply::decode_u32_be (data + 12);
+    const uint32_t destination_endpoint_size =
+      zlink::request_reply::decode_u32_be (data + 16);
+    const size_t total_header_size =
+      packed_header_prefix_size + static_cast<size_t> (source_node_size)
+      + static_cast<size_t> (source_endpoint_size)
+      + static_cast<size_t> (destination_node_size)
+      + static_cast<size_t> (destination_endpoint_size);
+    if (size < total_header_size)
+        return false;
+
+    const char *cursor =
+      reinterpret_cast<const char *> (data) + packed_header_prefix_size;
+    out_->source_class = data[2];
+    out_->destination_class = data[3];
+    out_->source_node_rid.assign (cursor, source_node_size);
+    if (!assign_routing_id_value_local (
+          cursor, source_node_size, &out_->source_node_rid_value)) {
+        return false;
+    }
+    cursor += source_node_size;
+    out_->source_endpoint_rid.assign (cursor, source_endpoint_size);
+    if (!assign_routing_id_value_local (
+          cursor, source_endpoint_size, &out_->source_endpoint_rid_value)) {
+        return false;
+    }
+    cursor += source_endpoint_size;
+    out_->destination_node_rid.assign (cursor, destination_node_size);
+    if (!assign_routing_id_value_local (
+          cursor, destination_node_size, &out_->destination_node_rid_value)) {
+        return false;
+    }
+    cursor += destination_node_size;
+    out_->destination_endpoint_rid.assign (cursor, destination_endpoint_size);
+    if (!assign_routing_id_value_local (
+          cursor,
+          destination_endpoint_size,
+          &out_->destination_endpoint_rid_value)) {
+        return false;
+    }
+    out_->payload_parts = parts_ + 1;
+    out_->payload_part_count = part_count_ - 1;
+    return true;
+}
+
+bool parse_legacy_spot_routed_envelope (zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        parsed_spot_envelope_t *out_)
+{
     if (part_count_ < spot_routed_control_part_count)
         return false;
 
-    zlink::msg_t *protocol_id =
-      reinterpret_cast<zlink::msg_t *> (&parts_[0]);
+    zlink::msg_t *protocol_id = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
     if (!protocol_id->check ()
         || !zlink::request_reply::frame_is_single_byte_value (
           &parts_[0], zmp_spot_routed_protocol_id)
@@ -173,7 +160,7 @@ bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
     out_->source_node_rid.assign (
       static_cast<const char *> (zlink_msg_data (&parts_[3])),
       zlink_msg_size (&parts_[3]));
-    if (!assign_routing_id_value (
+    if (!assign_routing_id_value_local (
           static_cast<const char *> (zlink_msg_data (&parts_[3])),
           zlink_msg_size (&parts_[3]),
           &out_->source_node_rid_value)) {
@@ -182,7 +169,7 @@ bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
     out_->source_endpoint_rid.assign (
       static_cast<const char *> (zlink_msg_data (&parts_[4])),
       zlink_msg_size (&parts_[4]));
-    if (!assign_routing_id_value (
+    if (!assign_routing_id_value_local (
           static_cast<const char *> (zlink_msg_data (&parts_[4])),
           zlink_msg_size (&parts_[4]),
           &out_->source_endpoint_rid_value)) {
@@ -193,7 +180,7 @@ bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
     out_->destination_node_rid.assign (
       static_cast<const char *> (zlink_msg_data (&parts_[6])),
       zlink_msg_size (&parts_[6]));
-    if (!assign_routing_id_value (
+    if (!assign_routing_id_value_local (
           static_cast<const char *> (zlink_msg_data (&parts_[6])),
           zlink_msg_size (&parts_[6]),
           &out_->destination_node_rid_value)) {
@@ -202,7 +189,7 @@ bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
     out_->destination_endpoint_rid.assign (
       static_cast<const char *> (zlink_msg_data (&parts_[7])),
       zlink_msg_size (&parts_[7]));
-    if (!assign_routing_id_value (
+    if (!assign_routing_id_value_local (
           static_cast<const char *> (zlink_msg_data (&parts_[7])),
           zlink_msg_size (&parts_[7]),
           &out_->destination_endpoint_rid_value)) {
@@ -211,6 +198,30 @@ bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
     out_->payload_parts = parts_ + spot_routed_control_part_count;
     out_->payload_part_count = part_count_ - spot_routed_control_part_count;
     return true;
+}
+}
+
+bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  parsed_spot_envelope_t *out_)
+{
+    if (!parts_ || !out_ || part_count_ == 0)
+        return false;
+
+    memset (&out_->source_node_rid_value, 0, sizeof (out_->source_node_rid_value));
+    memset (&out_->source_endpoint_rid_value,
+            0,
+            sizeof (out_->source_endpoint_rid_value));
+    memset (&out_->destination_node_rid_value,
+            0,
+            sizeof (out_->destination_node_rid_value));
+    memset (&out_->destination_endpoint_rid_value,
+            0,
+            sizeof (out_->destination_endpoint_rid_value));
+
+    return parse_packed_spot_routed_envelope (parts_, part_count_, out_)
+           || parse_legacy_spot_routed_envelope (parts_, part_count_, out_);
 }
 
 bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (

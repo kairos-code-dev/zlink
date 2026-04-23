@@ -122,6 +122,84 @@ int dispatch_local_router_spot_delivery (
     return process_route_combined_for_local_delivery (combined_);
 }
 
+int dispatch_remote_spot_routed_delivery (
+  zlink::spot_node_t *origin_node_,
+  routed_spot_delivery_kind_t kind_,
+  zlink_send_flags_t flags_,
+  std::vector<zlink_msg_t> *combined_)
+{
+    if (!origin_node_ || !combined_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::spot_runtime_t *runtime =
+      zlink::spot_node_access_t::runtime (origin_node_);
+    const std::string route_endpoint = origin_node_->single_peer_route_endpoint ();
+    if (!runtime || route_endpoint.empty ()) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
+
+    zlink::socket_base_t *socket = NULL;
+    if (spot_direct_route_debug_enabled ()) {
+        std::fprintf (stderr,
+                      "[spot-direct] try endpoint=%s flags=%d parts=%zu\n",
+                      route_endpoint.c_str (),
+                      static_cast<int> (flags_),
+                      combined_->size ());
+    }
+    int rc = runtime->ensure_peer_route_sender_socket (route_endpoint, &socket);
+    if (rc > 0 && (flags_ & ZLINK_DONTWAIT) != 0) {
+        errno = EAGAIN;
+        return -1;
+    }
+    if (rc < 0)
+        return -1;
+
+    zlink::scoped_lock_t send_lock (runtime->routed_send_sync);
+    zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
+    socket->set_all_pipes_nodelay ();
+    const long wait_timeout_ms = (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : 100;
+    const std::chrono::steady_clock::time_point wait_begin =
+      std::chrono::steady_clock::now ();
+    const int wait_rc =
+      zlink::wait_socket_events_internal (socket, ZLINK_POLLOUT, wait_timeout_ms);
+    const long long wait_us =
+      std::chrono::duration_cast<std::chrono::microseconds> (
+        std::chrono::steady_clock::now () - wait_begin)
+        .count ();
+    if (spot_direct_route_wait_trace_enabled ()) {
+        static std::atomic<int> g_wait_trace_logs (0);
+        if (g_wait_trace_logs.fetch_add (1, std::memory_order_acq_rel) < 24) {
+            std::fprintf (
+              stderr,
+              "[spot-direct-wait] kind=%d flags=%d timeout_ms=%ld rc=%d errno=%d wait_us=%lld endpoint=%s\n",
+              static_cast<int> (kind_),
+              static_cast<int> (flags_),
+              wait_timeout_ms,
+              wait_rc,
+              errno,
+              wait_us,
+              route_endpoint.c_str ());
+        }
+    }
+    if (wait_rc <= 0) {
+        errno = errno != 0 ? errno : EAGAIN;
+        return -1;
+    }
+
+    rc = send_combined_parts_locked (socket, combined_, flags_);
+    if (spot_direct_route_debug_enabled ()) {
+        std::fprintf (stderr,
+                      "[spot-direct] send rc=%d errno=%d endpoint=%s\n",
+                      rc,
+                      errno,
+                      route_endpoint.c_str ());
+    }
+    return rc;
+}
+
 void spot_peer_route_dispatch (const zlink_routing_id_t *,
                                zlink_msg_t *parts_,
                                size_t part_count_,
@@ -211,71 +289,8 @@ int zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
         rc = dispatch_local_spot_routed_delivery (
           kind_, destination_endpoint_rid_, combined_);
     } else if (origin_node_) {
-        zlink::spot_runtime_t *runtime =
-          zlink::spot_node_access_t::runtime (origin_node_);
-        const std::string route_endpoint =
-          origin_node_->single_peer_route_endpoint ();
-        if (runtime && !route_endpoint.empty ()) {
-            zlink::socket_base_t *socket = NULL;
-            if (spot_direct_route_debug_enabled ()) {
-                std::fprintf (stderr,
-                              "[spot-direct] try endpoint=%s flags=%d parts=%zu\n",
-                              route_endpoint.c_str (),
-                              static_cast<int> (flags_),
-                              combined_->size ());
-            }
-            rc = runtime->ensure_peer_route_sender_socket (route_endpoint, &socket);
-            if (rc > 0 && (flags_ & ZLINK_DONTWAIT) != 0) {
-                errno = EAGAIN;
-                rc = -1;
-            } else if (rc >= 0) {
-                rc = 0;
-            }
-            if (rc == 0) {
-                zlink::scoped_lock_t send_lock (runtime->routed_send_sync);
-                zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
-                socket->set_all_pipes_nodelay ();
-                const long wait_timeout_ms =
-                  (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : 100;
-                const std::chrono::steady_clock::time_point wait_begin =
-                  std::chrono::steady_clock::now ();
-                const int wait_rc = zlink::wait_socket_events_internal (
-                  socket, ZLINK_POLLOUT, wait_timeout_ms);
-                const long long wait_us =
-                  std::chrono::duration_cast<std::chrono::microseconds> (
-                    std::chrono::steady_clock::now () - wait_begin)
-                    .count ();
-                if (spot_direct_route_wait_trace_enabled ()) {
-                    static std::atomic<int> g_wait_trace_logs (0);
-                    if (g_wait_trace_logs.fetch_add (1, std::memory_order_acq_rel)
-                        < 24) {
-                        std::fprintf (
-                          stderr,
-                          "[spot-direct-wait] kind=%d flags=%d timeout_ms=%ld rc=%d errno=%d wait_us=%lld endpoint=%s\n",
-                          static_cast<int> (kind_),
-                          static_cast<int> (flags_),
-                          wait_timeout_ms,
-                          wait_rc,
-                          errno,
-                          wait_us,
-                          route_endpoint.c_str ());
-                    }
-                }
-                if (wait_rc <= 0) {
-                    errno = errno != 0 ? errno : EAGAIN;
-                    rc = -1;
-                } else {
-                    rc = send_combined_parts_locked (socket, combined_, flags_);
-                }
-            }
-            if (spot_direct_route_debug_enabled ()) {
-                std::fprintf (stderr,
-                              "[spot-direct] send rc=%d errno=%d endpoint=%s\n",
-                              rc,
-                              errno,
-                              route_endpoint.c_str ());
-            }
-        }
+        rc = dispatch_remote_spot_routed_delivery (
+          origin_node_, kind_, flags_, combined_);
     }
     return rc;
 }

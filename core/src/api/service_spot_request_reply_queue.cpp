@@ -138,12 +138,13 @@ int zlink::spot_reqrep_internal::queue_spot_message (
     zlink::socket_base_t *queue_tx = NULL;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        if (!state->routed_recv_queue.signal.tx || !state->routed_recv_socket) {
+        if (!state->recv.routed_recv_queue.signal.tx
+            || !state->recv.routed_recv_socket) {
             errno = ETERM;
             zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
             return -1;
         }
-        queue_tx = state->routed_recv_queue.signal.tx;
+        queue_tx = state->recv.routed_recv_queue.signal.tx;
     }
 
     if (!queue_tx) {
@@ -243,14 +244,14 @@ int zlink::spot_reqrep_internal::queue_spot_subscribe_message (
     }
 
     {
-        std::lock_guard<std::mutex> lock (state_->subscribe_queue.mutex);
-        if (state_->subscribe_queue.closed) {
+        std::lock_guard<std::mutex> lock (state_->recv.subscribe_queue.mutex);
+        if (state_->recv.subscribe_queue.closed) {
             errno = ETERM;
             return -1;
         }
-        state_->subscribe_queue.messages.push_back (std::move (message));
+        state_->recv.subscribe_queue.messages.push_back (std::move (message));
     }
-    state_->subscribe_queue.cv.notify_one ();
+    state_->recv.subscribe_queue.cv.notify_one ();
 
     maybe_dispatch_spot_info (state_,
                               ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
@@ -295,7 +296,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
     zlink_msg_init (&spot_rid_msg);
     zlink_msg_init (&request_seq_msg);
 
-    if (state_->routed_recv_socket->recv (
+    if (state_->recv.routed_recv_socket->recv (
           reinterpret_cast<zlink::msg_t *> (&source_rid_msg), flags_)
         != 0) {
         zlink_msg_close (&source_rid_msg);
@@ -305,11 +306,11 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
     }
     if (!zlink::internal_pair_queue::frame_has_more (source_rid_msg)
         || zlink::internal_pair_queue::recv_followup_with_retry (
-             state_->routed_recv_socket, &spot_rid_msg, flags_)
+             state_->recv.routed_recv_socket, &spot_rid_msg, flags_)
              != 0
         || !zlink::internal_pair_queue::frame_has_more (spot_rid_msg)
         || zlink::internal_pair_queue::recv_followup_with_retry (
-             state_->routed_recv_socket, &request_seq_msg, flags_)
+             state_->recv.routed_recv_socket, &request_seq_msg, flags_)
              != 0) {
         zlink_msg_close (&source_rid_msg);
         zlink_msg_close (&spot_rid_msg);
@@ -337,7 +338,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         zlink_msg_t payload_part;
         zlink_msg_init (&payload_part);
         if (zlink::internal_pair_queue::recv_followup_with_retry (
-              state_->routed_recv_socket, &payload_part, flags_)
+              state_->recv.routed_recv_socket, &payload_part, flags_)
             != 0) {
             const int saved_errno = errno;
             zlink_msg_close (&payload_part);

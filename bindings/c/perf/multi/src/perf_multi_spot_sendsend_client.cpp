@@ -841,6 +841,71 @@ send_result_t send_request(spot_reqrep_client_slot_t *slot,
     }
 }
 
+void reset_active_slot(spot_reqrep_client_slot_t *slot)
+{
+    if (!slot)
+        return;
+    slot->waiting_reply.store(false, std::memory_order_release);
+    slot->send_pending.store(false, std::memory_order_release);
+    slot->next_seq = 1;
+    slot->payload.clear();
+}
+
+bool run_sendsend_slot_step(spot_reqrep_client_slot_t *slot,
+                            const zlink_routing_id_t *server_node_rid,
+                            const zlink_routing_id_t *server_spot_rid,
+                            uint32_t run_id,
+                            size_t msg_size,
+                            bool *progress_out)
+{
+    if (!slot || !server_node_rid || !server_spot_rid || !progress_out) {
+        errno = EINVAL;
+        return false;
+    }
+
+    if (slot->waiting_reply.load(std::memory_order_acquire)) {
+        if (!drain_slot_recv(slot)) {
+            if (zlink_errno() != EAGAIN && zlink_errno() != EWOULDBLOCK) {
+                if (bench_debug_enabled()) {
+                    std::cerr
+                      << "[multi-spot-sendsend-client] recv sweep failed slot="
+                      << slot->index << " err=" << zlink_errno()
+                      << std::endl;
+                }
+                return false;
+            }
+        } else {
+            *progress_out = true;
+        }
+        return true;
+    }
+
+    const send_result_t send_rc =
+      send_request(slot, server_node_rid, server_spot_rid, run_id, msg_size);
+    if (send_rc == send_result_ok) {
+        *progress_out = true;
+        return true;
+    }
+    if (send_rc == send_result_blocked) {
+        if (bench_debug_enabled()
+            && g_client_debug_send_logs.fetch_add(
+                 1, std::memory_order_acq_rel)
+                 < 8) {
+            std::cerr << "[multi-spot-sendsend-client] send blocked slot="
+                      << slot->index << std::endl;
+        }
+        return true;
+    }
+    if (send_rc == send_result_not_connected)
+        return true;
+
+    if (bench_debug_enabled()) {
+        std::cerr << "[multi-spot-sendsend-client] send request fatal slot="
+                  << slot->index << " err=" << zlink_errno() << std::endl;
+    }
+    return false;
+}
+
 bool run_active_window(spot_reqrep_client_state_t *state,
                        const multi_bench_settings_t &settings,
                        uint32_t run_id,
@@ -872,68 +937,9 @@ bool run_active_window(spot_reqrep_client_state_t *state,
       std::memory_order_release);
     state->active_reply_count.store(0, std::memory_order_release);
     state->active_latency.reset();
-    const auto reset_slot = [] (spot_reqrep_client_slot_t *slot) {
-        if (!slot)
-            return;
-        slot->waiting_reply.store(false, std::memory_order_release);
-        slot->send_pending.store(false, std::memory_order_release);
-        slot->next_seq = 1;
-        slot->payload.clear();
-    };
     for (size_t i = 0; i < state->slots.size(); ++i) {
-        reset_slot(&state->slots[i]);
+        reset_active_slot(&state->slots[i]);
     }
-
-    const auto run_slot_step =
-      [&server_node_rid, &server_spot_rid, run_id, msg_size] (
-        spot_reqrep_client_slot_t *slot, bool *progress_out) -> bool {
-        if (!slot || !progress_out) {
-            errno = EINVAL;
-            return false;
-        }
-
-        if (slot->waiting_reply.load(std::memory_order_acquire)) {
-            if (!drain_slot_recv(slot)) {
-                if (zlink_errno() != EAGAIN && zlink_errno() != EWOULDBLOCK) {
-                    if (bench_debug_enabled()) {
-                        std::cerr
-                          << "[multi-spot-sendsend-client] recv sweep failed slot="
-                          << slot->index << " err=" << zlink_errno()
-                          << std::endl;
-                    }
-                    return false;
-                }
-            } else {
-                *progress_out = true;
-            }
-            return true;
-        }
-
-        const send_result_t send_rc =
-          send_request(slot, &server_node_rid, &server_spot_rid, run_id, msg_size);
-        if (send_rc == send_result_ok) {
-            *progress_out = true;
-            return true;
-        }
-        if (send_rc == send_result_blocked) {
-            if (bench_debug_enabled()
-                && g_client_debug_send_logs.fetch_add(
-                     1, std::memory_order_acq_rel)
-                     < 8) {
-                std::cerr << "[multi-spot-sendsend-client] send blocked slot="
-                          << slot->index << std::endl;
-            }
-            return true;
-        }
-        if (send_rc == send_result_not_connected)
-            return true;
-
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-sendsend-client] send request fatal slot="
-                      << slot->index << " err=" << zlink_errno() << std::endl;
-        }
-        return false;
-    };
 
     const auto deadline =
       std::chrono::steady_clock::now()
@@ -941,7 +947,12 @@ bool run_active_window(spot_reqrep_client_state_t *state,
     while (std::chrono::steady_clock::now() < deadline) {
         bool progress = false;
         for (size_t i = 0; i < state->slots.size(); ++i) {
-            if (!run_slot_step(&state->slots[i], &progress)) {
+            if (!run_sendsend_slot_step(&state->slots[i],
+                                        &server_node_rid,
+                                        &server_spot_rid,
+                                        run_id,
+                                        msg_size,
+                                        &progress)) {
                 return false;
             }
         }

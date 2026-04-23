@@ -91,8 +91,8 @@ void run_spot_timeout_reaper ()
                        pending_spot_key_t,
                        pending_reply_t,
                        zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator
-                       it = state->pending_replies.begin ();
-                     it != state->pending_replies.end ();) {
+                       it = state->requests.pending_replies.begin ();
+                     it != state->requests.pending_replies.end ();) {
                     if (it->second.deadline_ns == 0
                         || it->second.deadline_ns > now_ns) {
                         if (it->second.deadline_ns != 0
@@ -105,8 +105,9 @@ void run_spot_timeout_reaper ()
                     }
 
                     expired.push_back (it->second);
-                    state->pending_sequences.erase (it->first.request_seq);
-                    it = state->pending_replies.erase (it);
+                    state->requests.pending_sequences.erase (
+                      it->first.request_seq);
+                    it = state->requests.pending_replies.erase (it);
                 }
             }
 
@@ -155,12 +156,12 @@ void on_router_spot_request_timeout (void *userdata_)
     {
         std::lock_guard<std::mutex> lock (ctx->state->mutex);
         std::unordered_map<uint64_t, pending_reply_t>::iterator it =
-          ctx->state->pending_replies.find (ctx->request_seq);
-        if (it == ctx->state->pending_replies.end ())
+          ctx->state->requests.pending_replies.find (ctx->request_seq);
+        if (it == ctx->state->requests.pending_replies.end ())
             return;
         pending = it->second;
-        ctx->state->pending_sequences.erase (ctx->request_seq);
-        ctx->state->pending_replies.erase (it);
+        ctx->state->requests.pending_sequences.erase (ctx->request_seq);
+        ctx->state->requests.pending_replies.erase (it);
         found = true;
     }
 
@@ -190,7 +191,7 @@ int zlink::spot_reqrep_internal::register_spot_pending_request (
 
     const uint32_t resolved_timeout_ms =
       zlink::request_reply::resolve_timeout_ms (timeout_ms_,
-                                                state_->default_timeout_ms);
+                                                state_->requests.default_timeout_ms);
     if (resolved_timeout_ms > 0) {
         pending.deadline_ns =
           monotonic_now_ns ()
@@ -200,8 +201,8 @@ int zlink::spot_reqrep_internal::register_spot_pending_request (
     }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    state_->pending_sequences.insert (key_.request_seq);
-    state_->pending_replies[key_] = pending;
+    state_->requests.pending_sequences.insert (key_.request_seq);
+    state_->requests.pending_replies[key_] = pending;
     if (pending.deadline_ns != 0)
         update_spot_timeout_reaper_deadline (pending.deadline_ns);
     return 0;
@@ -229,7 +230,7 @@ int zlink::spot_reqrep_internal::register_router_spot_pending_request (
 
     const uint32_t resolved_timeout_ms =
       zlink::request_reply::resolve_timeout_ms (timeout_ms_,
-                                                state_->default_timeout_ms);
+                                                state_->requests.default_timeout_ms);
     std::unique_ptr<router_spot_timeout_callback_ctx_t> timeout_ctx (
       new (std::nothrow) router_spot_timeout_callback_ctx_t ());
     if (!timeout_ctx.get ()) {
@@ -248,8 +249,8 @@ int zlink::spot_reqrep_internal::register_router_spot_pending_request (
     }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    state_->pending_sequences.insert (request_seq_);
-    state_->pending_replies[request_seq_] = pending;
+    state_->requests.pending_sequences.insert (request_seq_);
+    state_->requests.pending_replies[request_seq_] = pending;
     return 0;
 }
 
@@ -261,13 +262,13 @@ void zlink::spot_reqrep_internal::erase_spot_pending_request (
         return;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    state_->pending_sequences.erase (key_.request_seq);
+    state_->requests.pending_sequences.erase (key_.request_seq);
     std::unordered_map<pending_spot_key_t,
                        pending_reply_t,
                        zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
-      state_->pending_replies.find (key_);
-    if (it == state_->pending_replies.end ())
+      state_->requests.pending_replies.find (key_);
+    if (it == state_->requests.pending_replies.end ())
         return;
     zlink::request_timeout::cancel (it->second.timeout_task);
-    state_->pending_replies.erase (it);
+    state_->requests.pending_replies.erase (it);
 }

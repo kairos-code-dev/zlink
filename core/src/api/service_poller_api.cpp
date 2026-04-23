@@ -184,10 +184,8 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                 }
                 zlink::socket_base_t *routed_socket = NULL;
                 zlink::socket_base_t *completion_socket = NULL;
-                {
-                    std::lock_guard<std::mutex> lock (state->mutex);
-                    routed_socket = state->routed_recv_socket;
-                }
+                routed_socket =
+                  zlink::spot_reqrep_internal::spot_routed_recv_socket (state);
                 completion_socket =
                   zlink::spot_reqrep_internal::spot_completion_signal_socket (
                     state);

@@ -224,8 +224,8 @@ void channel_reply_bridge_completion (zlink_request_result_t result_,
 
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->pending_channel_requests > 0)
-            --state->pending_channel_requests;
+        if (state->completion_state.pending_channel_requests > 0)
+            --state->completion_state.pending_channel_requests;
     }
 
     const int errnum = request_result_to_errno (result_);
@@ -245,8 +245,8 @@ int dispatch_spot_message (spot_request_reply_state_t *state_,
     void *handler_userdata = NULL;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        handler = state_->request_handler;
-        handler_userdata = state_->request_handler_userdata;
+        handler = state_->recv.request_handler;
+        handler_userdata = state_->recv.request_handler_userdata;
     }
 
     if (handler) {
@@ -488,7 +488,8 @@ int start_spot_request_common (void *spot_,
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         request_seq =
-          allocate_request_seq (&state->next_request_seq, state->pending_sequences);
+          allocate_request_seq (&state->requests.next_request_seq,
+                                state->requests.pending_sequences);
         if (request_seq == 0)
             return -1;
 
@@ -616,7 +617,8 @@ int start_router_request_to_spot (void *router_,
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         request_seq =
-          allocate_request_seq (&state->next_request_seq, state->pending_sequences);
+          allocate_request_seq (&state->requests.next_request_seq,
+                                state->requests.pending_sequences);
         if (request_seq == 0)
             return -1;
 
@@ -640,12 +642,12 @@ int start_router_request_to_spot (void *router_,
         pending_reply_t pending;
         {
             std::lock_guard<std::mutex> lock (state->mutex);
-            state->pending_sequences.erase (request_seq);
+            state->requests.pending_sequences.erase (request_seq);
             std::unordered_map<uint64_t, pending_reply_t>::iterator it =
-              state->pending_replies.find (request_seq);
-            if (it != state->pending_replies.end ()) {
+              state->requests.pending_replies.find (request_seq);
+            if (it != state->requests.pending_replies.end ()) {
                 pending = it->second;
-                state->pending_replies.erase (it);
+                state->requests.pending_replies.erase (it);
             }
         }
         zlink::request_timeout::cancel (pending.timeout_task);
@@ -661,12 +663,12 @@ int start_router_request_to_spot (void *router_,
         pending_reply_t pending;
         {
             std::lock_guard<std::mutex> lock (state->mutex);
-            state->pending_sequences.erase (request_seq);
+            state->requests.pending_sequences.erase (request_seq);
             std::unordered_map<uint64_t, pending_reply_t>::iterator it =
-              state->pending_replies.find (request_seq);
-            if (it != state->pending_replies.end ()) {
+              state->requests.pending_replies.find (request_seq);
+            if (it != state->requests.pending_replies.end ()) {
                 pending = it->second;
-                state->pending_replies.erase (it);
+                state->requests.pending_replies.erase (it);
             }
         }
         zlink::request_timeout::cancel (pending.timeout_task);
@@ -835,7 +837,7 @@ int spot_dispatch_subscribe_recv_internal (
     if (validate_recv_flags (flags_) != 0)
         return -1;
 
-    return recv_internal_spot_subscribe_queue (&state->subscribe_queue,
+    return recv_internal_spot_subscribe_queue (&state->recv.subscribe_queue,
                                                source_rid_out_, parts_out_,
                                                part_count_out_, topic_id_out_,
                                                topic_id_len_out_, flags_);
@@ -1073,13 +1075,13 @@ zlink_submit_result_t spot_request_channel_impl (
       find_or_create_spot_state (spot_);
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->channel_reply_sources.count (router) == 0) {
-            state->channel_reply_sources[router] =
+        if (state->completion_state.channel_reply_sources.count (router) == 0) {
+            state->completion_state.channel_reply_sources[router] =
               std::shared_ptr<zlink::spot_reqrep_internal::spot_channel_reply_source_t> (
                 new zlink::spot_reqrep_internal::spot_channel_reply_source_t (
                   router));
         }
-        ++state->pending_channel_requests;
+        ++state->completion_state.pending_channel_requests;
     }
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> socket_state =
@@ -1091,8 +1093,8 @@ zlink_submit_result_t spot_request_channel_impl (
     if (!bridge.get ()) {
         {
             std::lock_guard<std::mutex> lock (state->mutex);
-            if (state->pending_channel_requests > 0)
-                --state->pending_channel_requests;
+            if (state->completion_state.pending_channel_requests > 0)
+                --state->completion_state.pending_channel_requests;
         }
         errno = ENOMEM;
         return zlink::submit_result_internal::from_errno (errno);
@@ -1107,8 +1109,8 @@ zlink_submit_result_t spot_request_channel_impl (
       timeout_ms_, &channel_reply_bridge_completion, bridge.release ());
     if (rc != 0) {
         std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->pending_channel_requests > 0)
-            --state->pending_channel_requests;
+        if (state->completion_state.pending_channel_requests > 0)
+            --state->completion_state.pending_channel_requests;
     }
     return zlink::submit_result_internal::from_request_submit_rc (rc);
 }
@@ -1676,14 +1678,14 @@ zlink_handler_result_t zlink_spot_handler (void *spot_,
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::lock_guard<std::mutex> lock (state->mutex);
-    if (state->request_handler || state->dispatch.handler) {
+    if (state->recv.request_handler || state->dispatch.handler) {
         spot_revert_callback_transition (as_spot_handle (spot_));
         errno = EBUSY;
         return ZLINK_HANDLER_BUSY;
     }
 
-    state->request_handler = handler_;
-    state->request_handler_userdata = userdata_;
+    state->recv.request_handler = handler_;
+    state->recv.request_handler_userdata = userdata_;
     return ZLINK_HANDLER_OK;
 }
 
@@ -1708,7 +1710,7 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler (
       find_or_create_spot_state (spot_);
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->request_handler || state->dispatch.handler) {
+        if (state->recv.request_handler || state->dispatch.handler) {
             spot_revert_callback_transition (as_spot_handle (spot_));
             errno = EBUSY;
             return ZLINK_HANDLER_BUSY;
@@ -1773,7 +1775,7 @@ zlink_recv_result_t spot_recv_impl (void *spot_,
     if (ensure_spot_recv_ready (state) != 0)
         return zlink::recv_result_internal::from_errno (errno);
     std::unique_lock<std::mutex> lock (state->mutex);
-    if (state->request_handler
+    if (state->recv.request_handler
         || (state->dispatch.handler
             && !in_spot_dispatch_event_callback (spot_))) {
         errno = EBUSY;
@@ -1797,7 +1799,9 @@ zlink_recv_result_t spot_recv_impl (void *spot_,
         bool input_ready = false;
         bool signal_ready = false;
         const int wait_rc = zlink::request_completion::wait_input_or_signal (
-          state->routed_recv_socket, spot_completion_signal_socket (state), -1,
+          zlink::spot_reqrep_internal::spot_routed_recv_socket (state),
+          spot_completion_signal_socket (state),
+          -1,
           &input_ready, &signal_ready);
         if (wait_rc <= 0) {
             if (wait_rc == 0)
@@ -2303,7 +2307,7 @@ extern "C" int zlink_spot_request_reply_set_default_timeout (
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     std::lock_guard<std::mutex> lock (state->mutex);
-    state->default_timeout_ms = static_cast<uint32_t> (timeout_ms);
+    state->requests.default_timeout_ms = static_cast<uint32_t> (timeout_ms);
     return 0;
 }
 
@@ -2326,7 +2330,7 @@ extern "C" int zlink_spot_request_reply_get_default_timeout (
     int timeout_ms = 0;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        timeout_ms = static_cast<int> (state->default_timeout_ms);
+        timeout_ms = static_cast<int> (state->requests.default_timeout_ms);
     }
 
     memcpy (optval_, &timeout_ms, sizeof (timeout_ms));
@@ -2363,19 +2367,17 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
         }
 
         std::lock_guard<std::mutex> state_lock (state->mutex);
-        state->request_handler = NULL;
-        state->request_handler_userdata = NULL;
+        state->recv.request_handler = NULL;
+        state->recv.request_handler_userdata = NULL;
         state->dispatch.handler = NULL;
         state->dispatch.handler_userdata = NULL;
         dispatch_runtime = state->dispatch.runtime;
         dispatch_task_id = state->dispatch.task_id;
         state->dispatch.runtime = NULL;
         state->dispatch.task_id = 0;
-        routed_recv_signal = state->routed_recv_queue.signal;
-        state->routed_recv_queue.signal = zlink::internal_pair_queue::queue_t ();
-        state->routed_recv_queue.pending.clear ();
-        state->routed_recv_socket = NULL;
     }
+    zlink::spot_reqrep_internal::close_spot_routed_recv_state (
+      state, &routed_recv_signal);
     if (routed_recv_signal.rx || routed_recv_signal.tx) {
         if (routed_recv_signal.rx)
             zlink::spot_node_access_t::untrack_owned_socket (
@@ -2390,18 +2392,17 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     if (state) {
         zlink::spot_reqrep_internal::unregister_spot_channel_reply_observers (
           state);
+        std::vector<std::shared_ptr<
+          zlink::spot_reqrep_internal::spot_channel_reply_source_t> > sources;
+        zlink::spot_reqrep_internal::clear_spot_channel_reply_sources (state,
+                                                                       &sources);
         std::lock_guard<std::mutex> state_lock (state->mutex);
-        close_spot_subscribe_dispatch_queue (&state->subscribe_queue);
-        zlink::request_completion::close (&state->completion);
-        for (std::map<void *,
-                      std::shared_ptr<
-                        zlink::spot_reqrep_internal::spot_channel_reply_source_t> >::iterator
-               it = state->channel_reply_sources.begin ();
-             it != state->channel_reply_sources.end (); ++it) {
-            if (it->second)
-                zlink::request_completion::close (&it->second->completion);
+        close_spot_subscribe_dispatch_queue (&state->recv.subscribe_queue);
+        zlink::request_completion::close (&state->completion_state.direct);
+        for (size_t i = 0; i < sources.size (); ++i) {
+            if (sources[i])
+                zlink::request_completion::close (&sources[i]->completion);
         }
-        state->channel_reply_sources.clear ();
     }
     erase_spot_owner_state (spot_);
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);

@@ -126,8 +126,8 @@ int dispatch_spot_message_local (spot_request_reply_state_t *state_,
     void *handler_userdata = NULL;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        handler = state_->request_handler;
-        handler_userdata = state_->request_handler_userdata;
+        handler = state_->recv.request_handler;
+        handler_userdata = state_->recv.request_handler_userdata;
     }
 
     if (handler) {
@@ -234,11 +234,11 @@ int deliver_reply_to_spot (
         std::unordered_map<pending_spot_key_t,
                            pending_reply_t,
                            zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
-          state->pending_replies.find (key);
-        if (it != state->pending_replies.end ()) {
+          state->requests.pending_replies.find (key);
+        if (it != state->requests.pending_replies.end ()) {
             pending = it->second;
-            state->pending_sequences.erase (key.request_seq);
-            state->pending_replies.erase (it);
+            state->requests.pending_sequences.erase (key.request_seq);
+            state->requests.pending_replies.erase (it);
             found = true;
         }
     }
@@ -282,11 +282,11 @@ int deliver_reply_to_router (
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         std::unordered_map<uint64_t, pending_reply_t>::iterator it =
-          state->pending_replies.find (rr_envelope_.request_seq);
-        if (it != state->pending_replies.end ()) {
+          state->requests.pending_replies.find (rr_envelope_.request_seq);
+        if (it != state->requests.pending_replies.end ()) {
             pending = it->second;
-            state->pending_sequences.erase (rr_envelope_.request_seq);
-            state->pending_replies.erase (it);
+            state->requests.pending_sequences.erase (rr_envelope_.request_seq);
+            state->requests.pending_replies.erase (it);
             found = true;
         }
     }

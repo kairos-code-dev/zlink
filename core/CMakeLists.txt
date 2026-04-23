@@ -972,6 +972,7 @@ set(api-sources
     src/api/service_spot_routed_codec.cpp
     src/api/service_spot_request_reply_utils.cpp
     src/api/service_spot_request_reply_registry.cpp
+    src/api/service_spot_request_reply_lifecycle.cpp
     src/api/service_spot_request_reply_identity_registry.cpp
     src/api/service_spot_request_reply_pending.cpp
     src/api/service_spot_request_reply_timeout.cpp

@@ -19,10 +19,6 @@
 >
 > 본 문서는 multi suite **전용** 정책만 기술한다.
 > 양 suite에 공통으로 적용되는 규칙은 상위 문서에서 관리한다.
->
-> 현재 multi `MULTI_SPOT_REQREP` 성능 테스트는 일단 보류 상태다. 이 문서의
-> 관련 내용은 테스트를 다시 진행하기 전에 정리할 참고 기준으로만 둔다.
-
 ---
 
 ## 1. Multi 핵심 정책
@@ -64,8 +60,6 @@
     기반 reply recv 로 왕복을 측정한다.
   - 즉 `MULTI_SPOT_REQREP` 에서 callback 은 data-plane direct callback surface
     자체가 아니라 recv drain 을 시작하는 activation signal 이다.
-- 현재 `MULTI_SPOT_REQREP` 성능 테스트는 보류 상태다. 아래 규칙은 재개 시
-  기준을 다시 맞추기 위한 참고 내용이다.
 - `MULTI_STREAM`은 raw callback을 테스트하지 않고
   `zlink_stream_packet_handler()`를 기준으로 packet receive surface를 테스트한다.
 - `while (send 실패)` 식의 즉시 재시도는 금지한다.

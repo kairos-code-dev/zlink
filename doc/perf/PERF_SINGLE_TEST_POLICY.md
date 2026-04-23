@@ -19,10 +19,6 @@
 >
 > 본 문서는 single suite **전용** 정책만 기술한다.
 > 양 suite에 공통으로 적용되는 규칙은 상위 문서에서 관리한다.
->
-> 현재 single `SPOT_REQREP` 성능 테스트는 일단 보류 상태다. 이 문서의 관련
-> 내용은 테스트를 다시 진행하기 전에 정리할 참고 기준으로만 둔다.
-
 ---
 
 ## 1. Single 핵심 정책
@@ -52,8 +48,6 @@
   `ROUTER_ROUTER`, `SPOT`, `SPOT_REQREP` 전부 수신 경로에 이 recv 모델만
   쓴다. `SPOT_REQREP` 은 echo 패턴이라 requester/replier 양쪽이 send 도
   수행하지만, 수신 경로는 여전히 recv 모델로 고정한다.
-- 현재 `SPOT_REQREP` 성능 테스트는 보류 상태다. 아래 규칙은 재개 시 기준을
-  다시 맞추기 위한 참고 내용이다.
 - 단, `SPOT` / `SPOT_REQREP` 은 direct message callback을 쓰지 않고,
   `dispatch_event` callback 안에서 recv drain 하는 방식으로 수신을 활성화한다.
   즉 callback은 data delivery가 아니라 recv drain activation signal이다.

@@ -61,6 +61,23 @@ int drain_peer_ctrl_messages (spot_node_t *node_,
       state_->peer_ctrl_sub, node_, protocol_state_);
 }
 
+int drain_direct_route_messages (spot_node_t *node_,
+                                 spot_data_plane_runtime_state_t *state_)
+{
+    if (state_->peer_route_ingress
+        && !state_->peer_route_ingress->socket_msg_dispatch_active ()
+        && zlink_spot_process_peer_route_ingress (
+             node_, state_->peer_route_ingress)
+             != 0)
+        return -1;
+
+    if (state_->node_router
+        && zlink_spot_process_node_router (node_, state_->node_router) != 0)
+        return -1;
+
+    return 0;
+}
+
 bool is_ctrl_event (socket_base_t *socket_,
                     const spot_data_plane_runtime_state_t &state_)
 {
@@ -112,7 +129,8 @@ bool handle_ctrl_event (socket_base_t *socket_,
     }
 
     if (socket_ == state_->peer_route_ingress) {
-        if (zlink_spot_process_peer_route_ingress (node_, socket_) != 0) {
+        if (!socket_->socket_msg_dispatch_active ()
+            && zlink_spot_process_peer_route_ingress (node_, socket_) != 0) {
             *fatal_errno_out_ = errno;
             *running_out_ = false;
         }
@@ -300,10 +318,7 @@ int spot_data_plane_loop_t::run_until_shutdown (
             fatal_errno = errno;
             break;
         }
-        if (state_->peer_route_ingress
-            && zlink_spot_process_peer_route_ingress (
-                 node_, state_->peer_route_ingress)
-                 != 0) {
+        if (drain_direct_route_messages (node_, state_) != 0) {
             fatal_errno = errno;
             break;
         }
@@ -359,10 +374,7 @@ int spot_data_plane_loop_t::run_once (
 
     if (drain_peer_ctrl_messages (node_, state_, protocol_state_) != 0)
         return errno;
-    if (state_->peer_route_ingress
-        && zlink_spot_process_peer_route_ingress (
-             node_, state_->peer_route_ingress)
-             != 0)
+    if (drain_direct_route_messages (node_, state_) != 0)
         return errno;
     socket_poller_t::event_t events[8];
     const int rc = state_->poller->wait (events, 8, 0);

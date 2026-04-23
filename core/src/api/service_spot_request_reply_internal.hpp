@@ -15,6 +15,7 @@
 #include <thread>
 #include <stdint.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "api/internal_pair_queue_internal.hpp"
@@ -48,9 +49,9 @@ struct pending_spot_key_hash_t
 
 struct pending_reply_t
 {
-    pending_spot_key_t key;
     zlink_reply_handler_fn handler;
     void *userdata;
+    uint64_t deadline_ns;
     std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
 };
 
@@ -160,7 +161,7 @@ struct spot_request_reply_state_t
     std::mutex mutex;
     uint32_t default_timeout_ms;
     uint64_t next_request_seq;
-    std::set<uint64_t> pending_sequences;
+    std::unordered_set<uint64_t> pending_sequences;
     std::unordered_map<pending_spot_key_t,
                        pending_reply_t,
                        pending_spot_key_hash_t>
@@ -186,12 +187,14 @@ struct router_spot_request_reply_state_t
     std::mutex mutex;
     uint32_t default_timeout_ms;
     uint64_t next_request_seq;
-    std::set<uint64_t> pending_sequences;
+    std::unordered_set<uint64_t> pending_sequences;
     std::unordered_map<uint64_t, pending_reply_t> pending_replies;
     zlink::request_completion::queue_state_t completion;
 };
 
 typedef std::unordered_map<std::string, std::weak_ptr<spot_request_reply_state_t> >
+  spot_state_spot_index_t;
+typedef std::unordered_map<std::string, spot_state_spot_index_t>
   spot_state_identity_index_t;
 typedef std::unordered_map<std::string, std::weak_ptr<router_spot_request_reply_state_t> >
   router_state_identity_index_t;
@@ -202,8 +205,6 @@ extern router_state_identity_index_t g_router_state_identity_index;
 extern thread_local zlink_routing_id_t g_spot_recv_source_rid;
 extern thread_local zlink_routing_id_t g_spot_recv_spot_rid;
 
-std::string make_spot_identity_key (const std::string &node_rid_,
-                                    const std::string &spot_rid_);
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
 int init_buffer_frame (zlink_msg_t *msg_, const void *data_, size_t size_);
 std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_);
@@ -336,6 +337,7 @@ std::shared_ptr<router_spot_request_reply_state_t> find_or_create_router_state (
 std::shared_ptr<spot_request_reply_state_t> find_spot_state_by_identity (
   const std::string &node_rid_,
   const std::string &spot_rid_);
+std::vector<std::shared_ptr<spot_request_reply_state_t> > snapshot_spot_states ();
 std::shared_ptr<router_spot_request_reply_state_t> find_router_state_by_rid (
   const std::string &router_rid_);
 void unregister_spot_identity (

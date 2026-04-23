@@ -473,25 +473,53 @@ int zlink::spot_reqrep_internal::recv_combined_router_message (
 
     out_->clear ();
 
-    zlink_routing_id_t source_rid;
-    memset (&source_rid, 0, sizeof (source_rid));
-
     zlink_msg_t first;
-    zlink_msg_init (&first);
-    if (zlink::recv_msg_routed_socket (socket_, &first, &source_rid,
-                                       ZLINK_DONTWAIT)
-        != 0) {
-        zlink_msg_close (&first);
-        return -1;
-    }
+    while (true) {
+        zlink_msg_init (&first);
+        if (zlink::recv_msg_socket (socket_, ZLINK_CORE_SOCKET_ROUTER, &first,
+                                    ZLINK_DONTWAIT)
+            != 0) {
+            if (errno == EAGAIN && socket_->socket_has_attached_pipes ()) {
+                const int wait_rc = zlink::wait_socket_events_internal (
+                  socket_, ZLINK_POLLIN, 1);
+                if (wait_rc > 0
+                    && zlink::recv_msg_socket (
+                         socket_, ZLINK_CORE_SOCKET_ROUTER, &first,
+                         ZLINK_DONTWAIT)
+                         == 0) {
+                    // Received a real frame after a short scheduler gap.
+                } else {
+                    if (wait_rc <= 0 && errno == 0)
+                        errno = EAGAIN;
+                    zlink_msg_close (&first);
+                    return -1;
+                }
+            } else {
+            zlink_msg_close (&first);
+            return -1;
+            }
+        }
 
-    const bool has_more = zlink::internal_pair_queue::frame_has_more (first);
-    out_->push_back (first);
-    if (!has_more) {
-        zlink::request_reply::close_built_parts (out_);
-        out_->clear ();
-        errno = EPROTO;
-        return -1;
+        const bool routing_id_has_more =
+          zlink::internal_pair_queue::frame_has_more (first);
+        zlink_msg_close (&first);
+
+        if (!routing_id_has_more)
+            continue;
+
+        zlink_msg_t payload_first;
+        zlink_msg_init (&payload_first);
+        if (zlink::internal_pair_queue::recv_followup_with_retry (
+              socket_, &payload_first, ZLINK_DONTWAIT)
+            != 0) {
+            const int saved_errno = errno;
+            zlink_msg_close (&payload_first);
+            errno = saved_errno;
+            return -1;
+        }
+
+        out_->push_back (payload_first);
+        break;
     }
 
     while (out_->empty ()

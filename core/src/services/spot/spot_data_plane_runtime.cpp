@@ -10,6 +10,7 @@
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
+#include "api/service_surface_internal.hpp"
 #include "core/socket_poller.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
 #include "sockets/socket_base.hpp"
@@ -330,7 +331,7 @@ int spot_data_plane_t::initialize_runtime (
     state_out_->route_ingress =
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
     state_out_->peer_route_ingress =
-      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
+      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
     state_out_->node_router =
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
     state_out_->ingress = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
@@ -381,6 +382,22 @@ int spot_data_plane_t::initialize_runtime (
         node_->track_owned_socket (state_out_->node_router);
         node_->track_owned_socket (state_out_->ingress);
         node_->track_owned_socket (state_out_->fanout);
+    }
+
+    if (zlink_spot_install_peer_route_dispatch (node_,
+                                                state_out_->peer_route_ingress)
+        != 0) {
+        const int err = errno != 0 ? errno : EIO;
+        close_runtime_sockets (node_, state_out_);
+        {
+            scoped_lock_t lock (node_->_sync);
+            clear_runtime_socket_refs (runtime_);
+            runtime_->mark_fault (err);
+        }
+        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
+          runtime_);
+        errno = err;
+        return -1;
     }
     configure_runtime_sockets (runtime_, state_out_);
 

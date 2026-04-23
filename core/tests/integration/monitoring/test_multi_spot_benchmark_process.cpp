@@ -534,6 +534,9 @@ void run_multi_spot_process_case (const char *recv_mode_,
                                   const char *msg_size_,
                                   int clients_,
                                   int connect_ready_timeout_ms_,
+                                  const char *server_binary_,
+                                  const char *client_binary_,
+                                  const std::vector<std::string> *extra_env_,
                                   int duration_seconds_ = 1,
                                   int warmup_seconds_ = 1)
 {
@@ -543,9 +546,9 @@ void run_multi_spot_process_case (const char *recv_mode_,
     register_active_process (client);
 
     const std::string server_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_server");
+      sibling_binary_path (g_self_path, server_binary_);
     const std::string client_path =
-      sibling_binary_path (g_self_path, "comp_src_spot_client");
+      sibling_binary_path (g_self_path, client_binary_);
 
     std::vector<std::string> common_env;
     common_env.push_back (std::string ("PERF_MSG_SIZES=") + msg_size_);
@@ -579,6 +582,9 @@ void run_multi_spot_process_case (const char *recv_mode_,
         common_env.push_back (buf);
     }
     common_env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
+    if (extra_env_)
+        common_env.insert (common_env.end (), extra_env_->begin (),
+                           extra_env_->end ());
 
     std::vector<std::string> server_args;
     server_args.push_back ("zlink");
@@ -650,6 +656,23 @@ void run_multi_spot_process_case (const char *recv_mode_,
     destroy_process_capture (client);
     stop_server_process (server, exit_timeout_ms);
     destroy_process_capture (server);
+}
+
+void run_multi_spot_process_case (const char *recv_mode_,
+                                  const char *transport_,
+                                  const char *msg_size_,
+                                  int clients_,
+                                  int connect_ready_timeout_ms_,
+                                  int duration_seconds_ = 1,
+                                  int warmup_seconds_ = 1)
+{
+    run_multi_spot_process_case (recv_mode_, transport_, msg_size_, clients_,
+                                 connect_ready_timeout_ms_,
+                                 "comp_src_spot_server",
+                                 "comp_src_spot_client",
+                                 NULL,
+                                 duration_seconds_,
+                                 warmup_seconds_);
 }
 
 void run_multi_spot_process_sequence_case (
@@ -925,6 +948,38 @@ void test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeo
       "recv", "wss", "64,256,65536,262144", 100, 5000, 1, 1);
 }
 
+void test_multi_spot_reqrep_process_direct_route_smoke ()
+{
+    std::vector<std::string> env;
+    env.push_back ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE=1");
+    run_multi_spot_process_case ("recv",
+                                 "tcp",
+                                 "64",
+                                 1,
+                                 15000,
+                                 "comp_src_spot_reqrep_server",
+                                 "comp_src_spot_reqrep_client",
+                                 &env,
+                                 1,
+                                 1);
+}
+
+void test_multi_spot_sendsend_process_direct_route_smoke ()
+{
+    std::vector<std::string> env;
+    env.push_back ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE=1");
+    run_multi_spot_process_case ("recv",
+                                 "tcp",
+                                 "64",
+                                 1,
+                                 15000,
+                                 "comp_src_spot_sendsend_server",
+                                 "comp_src_spot_sendsend_client",
+                                 &env,
+                                 1,
+                                 1);
+}
+
 void test_multi_spot_process_invalid_mode_is_rejected ()
 {
     run_multi_spot_invalid_mode_case ();
@@ -943,6 +998,8 @@ int main (int argc, char **argv)
     RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_smoke);
     RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tcp_large_sequence);
     RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tls_large_sequence);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_reqrep_process_direct_route_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_sendsend_process_direct_route_smoke);
     RUN_SPOT_PROCESS_TEST (test_multi_spot_process_invalid_mode_is_rejected);
 #undef RUN_SPOT_PROCESS_TEST
     return UNITY_END ();

@@ -66,6 +66,8 @@ extern "C" void zlink_spot_notify_dispatch_info (
   zlink_spot_dispatch_event_t event_,
   zlink_spot_dispatch_subject_kind_t subject_kind_,
   void *subject_);
+extern "C" int zlink_spot_install_peer_route_dispatch (void *node_,
+                                                        void *socket_);
 extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_);
 extern "C" int zlink_spot_process_peer_route_ingress (void *node_, void *socket_);
 extern "C" int zlink_spot_process_node_router (void *node_, void *socket_);

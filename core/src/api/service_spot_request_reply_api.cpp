@@ -41,6 +41,11 @@ bool spot_direct_route_debug_enabled ()
     return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
 }
 
+bool spot_direct_route_wait_trace_enabled ()
+{
+    return std::getenv ("ZLINK_TRACE_SPOT_DIRECT_ROUTE_WAIT") != NULL;
+}
+
 bool spot_direct_route_enabled ()
 {
     return std::getenv ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE") != NULL;
@@ -53,7 +58,6 @@ using zlink::spot_reqrep_internal::g_spot_state_identity_index;
 using zlink::spot_reqrep_internal::g_router_state_identity_index;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::init_buffer_frame;
-using zlink::spot_reqrep_internal::make_spot_identity_key;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::pending_reply_t;
 using zlink::spot_reqrep_internal::pending_spot_key_t;
@@ -65,6 +69,7 @@ using zlink::spot_reqrep_internal::routing_id_key;
 using zlink::spot_reqrep_internal::routing_pair_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_state_identity_index_t;
+using zlink::spot_reqrep_internal::spot_state_spot_index_t;
 using zlink::spot_reqrep_internal::bind_router_state_rid;
 using zlink::spot_reqrep_internal::erase_spot_owner_state;
 using zlink::spot_reqrep_internal::find_or_create_router_state;
@@ -87,10 +92,10 @@ using zlink::spot_reqrep_internal::dispatch_local_request;
 using zlink::spot_reqrep_internal::dispatch_local_built_message;
 using zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::process_route_combined_for_local_delivery;
-using zlink::spot_reqrep_internal::publish_spot_routed_to_mesh;
 using zlink::spot_reqrep_internal::register_router_spot_pending_request;
 using zlink::spot_reqrep_internal::register_spot_pending_request;
 using zlink::spot_reqrep_internal::resolve_runtime_for_spot_destination;
+using zlink::spot_reqrep_internal::resolve_spot_node_routing_id;
 using zlink::spot_reqrep_internal::should_process_spot_routed_locally;
 using zlink::spot_reqrep_internal::try_find_spot_state;
 using zlink::spot_reqrep_internal::validate_request_parts;
@@ -198,6 +203,78 @@ extern "C" void zlink_spot_notify_dispatch_info (
   void *subject_)
 {
     notify_spot_dispatch_info (spot_, event_, subject_kind_, subject_);
+}
+
+namespace
+{
+void spot_peer_route_dispatch (const zlink_routing_id_t *,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               void *userdata_)
+{
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (userdata_);
+    if (!node || !parts_ || part_count_ == 0) {
+        zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+        return;
+    }
+
+    std::vector<zlink_msg_t> combined;
+    combined.reserve (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        combined.push_back (zlink_msg_t ());
+        zlink_msg_init (&combined.back ());
+        if (zlink_msg_move (&combined.back (), &parts_[i]) != 0) {
+            zlink::request_reply::consume_send_frames_from (parts_, i,
+                                                            part_count_);
+            zlink::request_reply::close_built_parts (&combined);
+            return;
+        }
+    }
+
+    parsed_spot_envelope_t spot_envelope;
+    int rc = -1;
+    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (
+          &combined[0], combined.size (), &spot_envelope)) {
+        if (spot_direct_route_debug_enabled ()) {
+            std::fprintf (
+              stderr,
+              "[spot-direct] dispatch parse failed parts=%zu\n",
+              combined.size ());
+        }
+        zlink::request_reply::close_built_parts (&combined);
+        return;
+    }
+
+    if (should_process_spot_routed_locally (node, spot_envelope)) {
+        rc = process_parsed_route_combined_for_local_delivery (&combined,
+                                                               spot_envelope);
+    } else {
+        rc = 0;
+    }
+
+    const int saved_errno = errno;
+    zlink::request_reply::close_built_parts (&combined);
+    errno = saved_errno;
+    LIBZLINK_UNUSED (rc);
+}
+}
+
+extern "C" int zlink_spot_install_peer_route_dispatch (void *node_,
+                                                        void *socket_)
+{
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    zlink::socket_base_t *socket =
+      static_cast<zlink::socket_base_t *> (socket_);
+    if (!node || !socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (socket->socket_msg_dispatch_active ())
+        return 0;
+
+    return socket->socket_set_msg_handler_with_userdata (
+      &spot_peer_route_dispatch, NULL, node);
 }
 
 void channel_reply_bridge_completion (zlink_request_result_t result_,
@@ -351,7 +428,6 @@ int dispatch_spot_routed_delivery (
           origin_node_->single_peer_route_endpoint ();
         if (runtime && !route_endpoint.empty ()) {
             zlink::socket_base_t *socket = NULL;
-            bool warmup_fallback = false;
             if (spot_direct_route_debug_enabled ()) {
                 std::fprintf (stderr,
                               "[spot-direct] try endpoint=%s flags=%d parts=%zu\n",
@@ -360,45 +436,57 @@ int dispatch_spot_routed_delivery (
                               combined_->size ());
             }
             rc = runtime->ensure_peer_route_sender_socket (route_endpoint, &socket);
-            if (rc >= 0) {
-                warmup_fallback = (rc == 1);
+            if (rc > 0 && (flags_ & ZLINK_DONTWAIT) != 0) {
+                errno = EAGAIN;
+                rc = -1;
+            } else if (rc >= 0) {
                 rc = 0;
             }
-            if (rc == 0 && !warmup_fallback) {
+            if (rc == 0) {
                 zlink::scoped_lock_t send_lock (runtime->routed_send_sync);
                 zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
                 socket->set_all_pipes_nodelay ();
                 const long wait_timeout_ms =
                   (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : 100;
-                if (zlink::wait_socket_events_internal (
-                      socket, ZLINK_POLLOUT, wait_timeout_ms)
-                    <= 0) {
+                const std::chrono::steady_clock::time_point wait_begin =
+                  std::chrono::steady_clock::now ();
+                const int wait_rc = zlink::wait_socket_events_internal (
+                  socket, ZLINK_POLLOUT, wait_timeout_ms);
+                const long long wait_us =
+                  std::chrono::duration_cast<std::chrono::microseconds> (
+                    std::chrono::steady_clock::now () - wait_begin)
+                    .count ();
+                if (spot_direct_route_wait_trace_enabled ()) {
+                    static std::atomic<int> g_wait_trace_logs (0);
+                    if (g_wait_trace_logs.fetch_add (1, std::memory_order_acq_rel)
+                        < 24) {
+                        std::fprintf (
+                          stderr,
+                          "[spot-direct-wait] kind=%d flags=%d timeout_ms=%ld rc=%d errno=%d wait_us=%lld endpoint=%s\n",
+                          static_cast<int> (kind_),
+                          static_cast<int> (flags_),
+                          wait_timeout_ms,
+                          wait_rc,
+                          errno,
+                          wait_us,
+                          route_endpoint.c_str ());
+                    }
+                }
+                if (wait_rc <= 0) {
                     errno = errno != 0 ? errno : EAGAIN;
                     rc = -1;
                 } else {
                     rc = send_combined_parts_locked (socket, combined_, flags_);
                 }
             }
-            if (rc == 0 && warmup_fallback)
-                rc = publish_spot_routed_to_mesh (origin_node_, combined_);
             if (spot_direct_route_debug_enabled ()) {
                 std::fprintf (stderr,
-                              "[spot-direct] send rc=%d errno=%d endpoint=%s warmup=%d\n",
+                              "[spot-direct] send rc=%d errno=%d endpoint=%s\n",
                               rc,
                               errno,
-                              route_endpoint.c_str (),
-                              warmup_fallback ? 1 : 0);
+                              route_endpoint.c_str ());
             }
         }
-
-        if (rc != 0)
-            rc = publish_spot_routed_to_mesh (origin_node_, combined_);
-    }
-
-    if (rc != 0 && !local_target_
-        && errno != ENOTCONN && errno != EHOSTUNREACH && errno != EAGAIN) {
-        rc = dispatch_local_spot_routed_delivery (
-          kind_, destination_endpoint_rid_, combined_);
     }
     return rc;
 }
@@ -563,7 +651,7 @@ int enqueue_runtime_node_router_once (zlink::spot_runtime_t *runtime_,
 }
 
 uint64_t allocate_request_seq (uint64_t *next_request_seq_,
-                               const std::set<uint64_t> &pending_sequences_)
+                               const std::unordered_set<uint64_t> &pending_sequences_)
 {
     if (!next_request_seq_) {
         errno = EFAULT;
@@ -685,10 +773,11 @@ int start_spot_request_to_spot (void *spot_,
         return -1;
     }
 
+    const std::string destination_node_rid = routing_id_key (dest_node_rid_);
+    const std::string destination_spot_rid = routing_id_key (dest_spot_rid_);
     return start_spot_request_common (
-      spot_, zmp_spot_class, routing_id_key (dest_node_rid_),
-      routing_id_key (dest_spot_rid_), zmp_spot_class,
-      routing_id_key (dest_node_rid_), routing_id_key (dest_spot_rid_), parts_,
+      spot_, zmp_spot_class, destination_node_rid, destination_spot_rid,
+      zmp_spot_class, destination_node_rid, destination_spot_rid, parts_,
       part_count_, flags_, timeout_ms_, handler_, userdata_);
 }
 
@@ -706,9 +795,10 @@ int start_spot_request_to_router (void *spot_,
         return -1;
     }
 
+    const std::string peer_rid = routing_id_key (peer_rid_);
     return start_spot_request_common (
-      spot_, zmp_router_class, std::string (), routing_id_key (peer_rid_),
-      zmp_router_class, routing_id_key (peer_rid_), std::string (), parts_,
+      spot_, zmp_router_class, std::string (), peer_rid, zmp_router_class,
+      peer_rid, std::string (), parts_,
       part_count_, flags_, timeout_ms_, handler_, userdata_);
 }
 
@@ -735,10 +825,11 @@ int start_router_request_to_spot (void *router_,
     memset (&router_rid, 0, sizeof (router_rid));
     if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
         return -1;
+    const std::string router_rid_key = routing_id_key (&router_rid);
 
     std::shared_ptr<router_spot_request_reply_state_t> state =
       find_or_create_router_state (router_);
-    bind_router_state_rid (router_, routing_id_key (&router_rid), state);
+    bind_router_state_rid (router_, router_rid_key, state);
 
     uint64_t request_seq = 0;
     pending_spot_key_t key;
@@ -761,7 +852,7 @@ int start_router_request_to_spot (void *router_,
 
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
-          zmp_router_class, std::string (), state->router_rid, zmp_spot_class,
+          zmp_router_class, std::string (), router_rid_key, zmp_spot_class,
           destination_node_rid, destination_spot_rid,
           zlink::request_reply::request_type, request_seq, parts_, part_count_,
           &combined)
@@ -982,6 +1073,22 @@ extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
     while (true) {
         std::vector<zlink_msg_t> combined;
         if (recv_combined_router_message (socket, &combined) != 0) {
+            if (spot_direct_route_debug_enabled () && errno == EAGAIN) {
+                std::vector<std::string> remote_endpoints;
+                socket->socket_peer_remote_endpoints (&remote_endpoints);
+                if (!remote_endpoints.empty ()) {
+                    static std::atomic<int> g_ingress_eagain_logs (0);
+                    if (g_ingress_eagain_logs.fetch_add (
+                          1, std::memory_order_acq_rel)
+                        < 32) {
+                        std::fprintf (
+                          stderr,
+                          "[spot-direct] ingress recv eagain socket=%d peer=%s\n",
+                          socket->socket_id (),
+                          remote_endpoints.front ().c_str ());
+                    }
+                }
+            }
             if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
                 std::fprintf (stderr,
                               "[spot-direct] ingress recv failed errno=%d socket=%d\n",
@@ -1023,8 +1130,18 @@ extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
             rc = process_parsed_route_combined_for_local_delivery (&combined,
                                                                    spot_envelope);
         } else {
-            rc = publish_spot_routed_to_mesh (
-              static_cast<zlink::spot_node_t *> (node_), &combined);
+            if (spot_direct_route_debug_enabled ()) {
+                std::string local_node_rid;
+                (void) resolve_spot_node_routing_id (
+                  static_cast<zlink::spot_node_t *> (node_), &local_node_rid);
+                std::fprintf (
+                  stderr,
+                  "[spot-direct] drop non-local routed envelope on routed ingress node=%s dest_node=%s dest_endpoint=%s\n",
+                  local_node_rid.c_str (),
+                  spot_envelope.destination_node_rid.c_str (),
+                  spot_envelope.destination_endpoint_rid.c_str ());
+            }
+            rc = 0;
         }
 
         const int saved_errno = errno;
@@ -1038,68 +1155,7 @@ extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
 
 extern "C" int zlink_spot_process_peer_route_ingress (void *node_, void *socket_)
 {
-    zlink::socket_base_t *socket =
-      static_cast<zlink::socket_base_t *> (socket_);
-    if (!socket) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    while (true) {
-        std::vector<zlink_msg_t> combined;
-        if (recv_combined_plain_message (socket, &combined) != 0) {
-            if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
-                std::fprintf (
-                  stderr,
-                  "[spot-direct] peer ingress recv failed errno=%d socket=%d\n",
-                  errno,
-                  socket->socket_id ());
-            }
-            if (errno == EAGAIN)
-                return 0;
-            return -1;
-        }
-
-        if (spot_direct_route_debug_enabled ()) {
-            std::fprintf (stderr,
-                          "[spot-direct] peer ingress recv parts=%zu socket=%d\n",
-                          combined.size (),
-                          socket->socket_id ());
-        }
-
-        parsed_spot_envelope_t spot_envelope;
-        int rc = -1;
-        if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-              &combined[0], combined.size (), &spot_envelope)) {
-            const int saved_errno = errno != 0 ? errno : EPROTO;
-            if (spot_direct_route_debug_enabled ()) {
-                std::fprintf (stderr,
-                              "[spot-direct] peer ingress parse failed errno=%d parts=%zu socket=%d\n",
-                              saved_errno,
-                              combined.size (),
-                              socket->socket_id ());
-            }
-            zlink::request_reply::close_built_parts (&combined);
-            errno = saved_errno;
-            return -1;
-        }
-
-        if (should_process_spot_routed_locally (
-              static_cast<zlink::spot_node_t *> (node_), spot_envelope)) {
-            rc = process_parsed_route_combined_for_local_delivery (&combined,
-                                                                   spot_envelope);
-        } else {
-            rc = publish_spot_routed_to_mesh (
-              static_cast<zlink::spot_node_t *> (node_), &combined);
-        }
-
-        const int saved_errno = errno;
-        zlink::request_reply::close_built_parts (&combined);
-        if (rc != 0) {
-            errno = saved_errno;
-            return -1;
-        }
-    }
+    return zlink_spot_process_route_ingress (node_, socket_);
 }
 
 extern "C" int zlink_spot_process_node_router (void *node_, void *socket_)
@@ -1544,22 +1600,23 @@ zlink_submit_result_t spot_reply_spot_impl (void *spot_,
         return zlink::submit_result_internal::from_errno (errno);
 
     spot_handle_t *spot = as_spot_handle (spot_);
+    const std::string destination_node_rid = routing_id_key (dest_node_rid_);
+    const std::string destination_spot_rid = routing_id_key (dest_spot_rid_);
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
           zmp_spot_class, source_identity.node_rid, source_identity.spot_rid,
-          zmp_spot_class, routing_id_key (dest_node_rid_),
-          routing_id_key (dest_spot_rid_), zlink::request_reply::reply_type,
+          zmp_spot_class, destination_node_rid, destination_spot_rid,
+          zlink::request_reply::reply_type,
           request_seq_, parts_, part_count_, &combined)
         != 0)
         return zlink::submit_result_internal::from_errno (errno);
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
     const bool local_target = has_local_spot_route_target (
-      zmp_spot_class, routing_id_key (dest_node_rid_),
-      routing_id_key (dest_spot_rid_));
+      zmp_spot_class, destination_node_rid, destination_spot_rid);
     int rc = dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_reply, local_target,
-      std::string (), ZLINK_SEND_FLAGS_NONE, &combined);
+      std::string (), ZLINK_DONTWAIT, &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -1747,19 +1804,20 @@ zlink_submit_result_t spot_reply_router_impl (
         return zlink::submit_result_internal::from_errno (errno);
 
     spot_handle_t *spot = as_spot_handle (spot_);
+    const std::string peer_rid = routing_id_key (peer_rid_);
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
           zmp_spot_class, source_identity.node_rid, source_identity.spot_rid,
-          zmp_router_class, std::string (), routing_id_key (peer_rid_),
+          zmp_router_class, std::string (), peer_rid,
           zlink::request_reply::reply_type, request_seq_, parts_, part_count_,
           &combined)
         != 0)
         return zlink::submit_result_internal::from_errno (errno);
     const bool local_target = has_local_spot_route_target (
-      zmp_router_class, std::string (), routing_id_key (peer_rid_));
+      zmp_router_class, std::string (), peer_rid);
     int rc = dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_reply, local_target,
-      routing_id_key (peer_rid_), ZLINK_SEND_FLAGS_NONE, &combined);
+      peer_rid, ZLINK_DONTWAIT, &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -2356,10 +2414,11 @@ zlink_submit_result_t router_reply_spot_impl (
     memset (&router_rid, 0, sizeof (router_rid));
     if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
         return zlink::submit_result_internal::from_errno (errno);
+    const std::string router_rid_key = routing_id_key (&router_rid);
 
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
-          zmp_router_class, std::string (), routing_id_key (&router_rid),
+          zmp_router_class, std::string (), router_rid_key,
           zmp_spot_class, destination_node_rid, destination_spot_rid,
           zlink::request_reply::reply_type, request_seq_, parts_, part_count_,
           &combined)
@@ -2367,7 +2426,7 @@ zlink_submit_result_t router_reply_spot_impl (
         return zlink::submit_result_internal::from_errno (errno);
     int rc = dispatch_router_spot_delivery (
       destination_node_rid, destination_spot_rid, router_spot_delivery_reply,
-      ZLINK_SEND_FLAGS_NONE, &combined);
+      ZLINK_DONTWAIT, &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -2463,10 +2522,11 @@ zlink_submit_result_t router_send_spot_impl (
     memset (&router_rid, 0, sizeof (router_rid));
     if (zlink_get_routing_id (router_, &router_rid) != 0 || router_rid.size == 0)
         return zlink::submit_result_internal::from_errno (errno);
+    const std::string router_rid_key = routing_id_key (&router_rid);
 
     std::vector<zlink_msg_t> combined;
     if (build_spot_routed_message (zmp_router_class, std::string (),
-                                   routing_id_key (&router_rid),
+                                   router_rid_key,
                                    zmp_spot_class, destination_node_rid,
                                    destination_spot_rid, parts_, part_count_,
                                    &combined)
@@ -2689,8 +2749,17 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     for (spot_state_identity_index_t::iterator it =
            g_spot_state_identity_index.begin ();
          it != g_spot_state_identity_index.end ();) {
-        std::shared_ptr<spot_request_reply_state_t> indexed = it->second.lock ();
-        if (!indexed || indexed == state)
+        spot_state_spot_index_t &spot_index = it->second;
+        for (spot_state_spot_index_t::iterator spot_it = spot_index.begin ();
+             spot_it != spot_index.end ();) {
+            std::shared_ptr<spot_request_reply_state_t> indexed =
+              spot_it->second.lock ();
+            if (!indexed || indexed == state)
+                spot_it = spot_index.erase (spot_it);
+            else
+                ++spot_it;
+        }
+        if (spot_index.empty ())
             it = g_spot_state_identity_index.erase (it);
         else
             ++it;

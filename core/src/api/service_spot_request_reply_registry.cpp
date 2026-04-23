@@ -22,7 +22,6 @@ using zlink::spot_reqrep_internal::g_router_state_identity_index;
 using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
 using zlink::spot_reqrep_internal::g_spot_state_identity_index;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
-using zlink::spot_reqrep_internal::make_spot_identity_key;
 using zlink::spot_reqrep_internal::resolve_spot_identity;
 using zlink::spot_reqrep_internal::resolve_spot_runtime;
 using zlink::spot_reqrep_internal::routing_pair_t;
@@ -31,6 +30,7 @@ using zlink::spot_reqrep_internal::router_state_identity_index_t;
 using zlink::spot_reqrep_internal::routing_id_key;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_state_identity_index_t;
+using zlink::spot_reqrep_internal::spot_state_spot_index_t;
 
 std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
   g_spot_owner_states;
@@ -224,9 +224,7 @@ void refresh_spot_identity_index (
         return;
 
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
-    g_spot_state_identity_index[make_spot_identity_key (identity.node_rid,
-                                                        identity.spot_rid)] =
-      state_;
+    g_spot_state_identity_index[identity.node_rid][identity.spot_rid] = state_;
 }
 }
 
@@ -391,18 +389,41 @@ zlink::spot_reqrep_internal::find_spot_state_by_identity (
   const std::string &node_rid_,
   const std::string &spot_rid_)
 {
-    const std::string key = make_spot_identity_key (node_rid_, spot_rid_);
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
-    spot_state_identity_index_t::iterator it =
-      g_spot_state_identity_index.find (key);
-    if (it == g_spot_state_identity_index.end ())
+    spot_state_identity_index_t::iterator node_it =
+      g_spot_state_identity_index.find (node_rid_);
+    if (node_it == g_spot_state_identity_index.end ())
         return std::shared_ptr<spot_request_reply_state_t> ();
-    std::shared_ptr<spot_request_reply_state_t> state = it->second.lock ();
+
+    spot_state_spot_index_t::iterator spot_it =
+      node_it->second.find (spot_rid_);
+    if (spot_it == node_it->second.end ())
+        return std::shared_ptr<spot_request_reply_state_t> ();
+
+    std::shared_ptr<spot_request_reply_state_t> state = spot_it->second.lock ();
     if (!state) {
-        g_spot_state_identity_index.erase (it);
+        node_it->second.erase (spot_it);
+        if (node_it->second.empty ())
+            g_spot_state_identity_index.erase (node_it);
         return std::shared_ptr<spot_request_reply_state_t> ();
     }
     return state;
+}
+
+std::vector<std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> >
+zlink::spot_reqrep_internal::snapshot_spot_states ()
+{
+    std::vector<std::shared_ptr<spot_request_reply_state_t> > states;
+    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    states.reserve (g_spot_owner_states.size ());
+    for (std::unordered_map<void *,
+                            std::shared_ptr<spot_request_reply_state_t> >::const_iterator
+           it = g_spot_owner_states.begin ();
+         it != g_spot_owner_states.end (); ++it) {
+        if (it->second)
+            states.push_back (it->second);
+    }
+    return states;
 }
 
 std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
@@ -432,17 +453,22 @@ void zlink::spot_reqrep_internal::unregister_spot_identity (
     if (!resolve_spot_identity (state_->owner, &identity))
         return;
 
-    const std::string key =
-      make_spot_identity_key (identity.node_rid, identity.spot_rid);
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
-    spot_state_identity_index_t::iterator it =
-      g_spot_state_identity_index.find (key);
-    if (it == g_spot_state_identity_index.end ())
+    spot_state_identity_index_t::iterator node_it =
+      g_spot_state_identity_index.find (identity.node_rid);
+    if (node_it == g_spot_state_identity_index.end ())
         return;
 
-    std::shared_ptr<spot_request_reply_state_t> indexed = it->second.lock ();
+    spot_state_spot_index_t::iterator spot_it =
+      node_it->second.find (identity.spot_rid);
+    if (spot_it == node_it->second.end ())
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> indexed = spot_it->second.lock ();
     if (!indexed || indexed == state_)
-        g_spot_state_identity_index.erase (it);
+        node_it->second.erase (spot_it);
+    if (node_it->second.empty ())
+        g_spot_state_identity_index.erase (node_it);
 }
 
 zlink::spot_runtime_t *

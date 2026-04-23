@@ -1026,8 +1026,10 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             return 0;
         }
 
-        if (spot_node_t::apply_tls_server (runtime_->node_router, cert, key) != 0
-            || runtime_->node_router->bind (route_bind_endpoint.c_str ())
+        if (spot_node_t::apply_tls_server (runtime_->peer_route_ingress, cert,
+                                           key)
+              != 0
+            || runtime_->peer_route_ingress->bind (route_bind_endpoint.c_str ())
                  != 0) {
             const int saved_errno = errno != 0 ? errno : EIO;
             (void) peer_ctrl_sub_->term_endpoint (ctrl_bind_endpoint.c_str ());
@@ -1039,6 +1041,15 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         runtime_->peer_ctrl_endpoint = ctrl_bind_endpoint;
         runtime_->peer_route_bind_endpoint = route_bind_endpoint;
         runtime_->bound_endpoint = resolved_endpoint;
+        if (std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
+            std::fprintf (
+              stderr,
+              "[spot-direct] bind peer route socket=%d endpoint=%s\n",
+              runtime_->peer_route_ingress
+                ? runtime_->peer_route_ingress->socket_id ()
+                : -1,
+              route_bind_endpoint.c_str ());
+        }
         {
             scoped_lock_t lock (node_->_sync);
             node_->_bound_endpoint = resolved_endpoint;

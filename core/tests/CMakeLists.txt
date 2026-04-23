@@ -543,6 +543,26 @@ if(TARGET test_multi_spot_benchmark_process)
       test_multi_spot_benchmark_process
       comp_src_spot_client)
   endif()
+  if(TARGET comp_src_spot_reqrep_server)
+    add_dependencies(
+      test_multi_spot_benchmark_process
+      comp_src_spot_reqrep_server)
+  endif()
+  if(TARGET comp_src_spot_reqrep_client)
+    add_dependencies(
+      test_multi_spot_benchmark_process
+      comp_src_spot_reqrep_client)
+  endif()
+  if(TARGET comp_src_spot_sendsend_server)
+    add_dependencies(
+      test_multi_spot_benchmark_process
+      comp_src_spot_sendsend_server)
+  endif()
+  if(TARGET comp_src_spot_sendsend_client)
+    add_dependencies(
+      test_multi_spot_benchmark_process
+      comp_src_spot_sendsend_client)
+  endif()
   set_tests_properties(
     test_multi_spot_benchmark_process
     PROPERTIES

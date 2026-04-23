@@ -39,14 +39,13 @@ public abstract class ZLinkSpot
     public RoutingId SpotRid { get; }
     public RoutingId NodeRid { get; }
 
-    protected void AddPacket<THandler>(IServiceProvider services)
+    protected void AddPacket<THandler>()
         where THandler : class
     {
     }
 
     protected void AddSubscribe<THandler>(
-        string topic,
-        IServiceProvider services)
+        string topic)
         where THandler : class
     {
     }
@@ -54,37 +53,19 @@ public abstract class ZLinkSpot
     protected ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
-        IServiceProvider services,
         CancellationToken cancellationToken)
         where THandler : class
     {
         return ValueTask.FromResult<IZLinkTimer>(default!);
     }
 
-    public virtual ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default)
+    protected void AddActorJoin<THandler, TRequest, TReply>()
+        where THandler : class
+        where TRequest : IZLinkRequest<TReply>
     {
-        return ValueTask.CompletedTask;
-    }
-
-    public virtual ValueTask DetachActorAsync(
-        string actorKey,
-        CancellationToken cancellationToken = default)
-    {
-        return ValueTask.CompletedTask;
-    }
-
-    public virtual bool TryGetActor(
-        string actorKey,
-        out IZLinkActor? actor)
-    {
-        actor = default;
-        return false;
     }
 
     public virtual ValueTask OnInitializeAsync(
-        IServiceProvider services,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
@@ -123,6 +104,17 @@ public interface IZLinkSpotTimerHandler<TSpot>
 {
     ValueTask HandleAsync(
         TSpot spot,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSpotActorJoinHandler<TSpot, in TRequest, TReply>
+    where TSpot : ZLinkSpot
+    where TRequest : IZLinkRequest<TReply>
+{
+    ValueTask<TReply> HandleAsync(
+        TSpot spot,
+        IZLinkActor actor,
+        TRequest request,
         CancellationToken cancellationToken);
 }
 
@@ -195,6 +187,13 @@ public interface IZLinkClient
 
 public interface IZLinkSpotClient
 {
+    ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
+        RoutingId spotRid,
+        IZLinkActor actor,
+        TRequest request,
+        CancellationToken cancellationToken = default)
+        where TRequest : IZLinkRequest<TReply>;
+
     IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);
@@ -224,6 +223,27 @@ public interface IZLinkSpotPublisherClient
         string channelName,
         string topic,
         TEvent message);
+}
+
+public interface IZLinkActorFactory
+{
+    string ActorType { get; }
+
+    ValueTask<IZLinkActor> CreateAsync(
+        string actorKey,
+        CancellationToken cancellationToken);
+}
+
+public enum ZLinkDispatchMode
+{
+    Compiled = 1,
+    Dynamic = 2
+}
+
+public interface IZLinkDispatchOptions
+{
+    ZLinkDispatchMode SpotDispatchMode { get; set; }
+    ZLinkDispatchMode StreamDispatchMode { get; set; }
 }
 ```
 
@@ -743,20 +763,18 @@ public sealed class SampleSpot : ZLinkSpot
     public int ConnectedSessionCount { get; private set; } = 8;
 
     public override async ValueTask OnInitializeAsync(
-        IServiceProvider services,
         CancellationToken cancellationToken)
     {
-        AddPacket<SampleGetStateHandler>(services);
-        AddPacket<SampleReportStateHandler>(services);
+        AddPacket<SampleGetStateHandler>();
+        AddPacket<SampleReportStateHandler>();
+        AddActorJoin<SampleJoinRoomHandler, SampleJoinRoomRequest, SampleJoinRoomReply>();
 
         AddSubscribe<SampleStateUpdatedHandler>(
-            "sample.state.updated",
-            services);
+            "sample.state.updated");
 
         _sessionTimeoutSweep = await AddTimer<SampleSessionTimeoutSweepHandler>(
             "session-timeout-sweep",
             TimeSpan.FromSeconds(1),
-            services,
             cancellationToken);
     }
 
@@ -780,9 +798,10 @@ room 서버는 이미 만들어진 room에 플레이어를 들이는 역할만 �
 2. 웹 서버가 client에게 room 서버 주소와 `roomId`를 내려 준다.
 3. client가 room 서버에 연결한다.
 4. `SampleSession`이 `SampleAuthenticateRequest`를 받고 API 서버에 토큰 검증을 요청한다.
-5. 검증이 끝나면 `accountId`로 기존 `SampleActor`를 찾거나 새로 만든다.
+5. 검증이 끝나면 `actorType + accountId`로 기존 `SampleActor`를 찾거나 새로 만든다.
 6. actor와 stream을 먼저 연결한다.
-7. client가 `SampleJoinRoomRequest`를 보내면 그때 기존 room인 `SampleSpot`에 actor를 attach한다.
+7. client가 `SampleJoinRoomRequest`를 보내면 `SampleSession`이
+   `IZLinkSpotClient.JoinActorAsync(...)`로 target room에 join 요청을 넣는다.
 8. join이 끝난 뒤의 heartbeat, gameplay packet, disconnect, timer는 같은
    `SampleSpot` 실행 문맥에서 처리된다고 읽는다.
 
@@ -792,21 +811,25 @@ room 서버는 이미 만들어진 room에 플레이어를 들이는 역할만 �
   - `ZLinkSpot`
   - `IZLinkPacketStreamSession`
   - `IZLinkActor`
+  - `IZLinkSpotClient`
+  - `IZLinkSpotActorJoinHandler<...>`
 - sample 전용 타입
   - `SampleSpot`
   - `SampleSession`
   - `SampleActor`
   - `ISampleRoomDirectory`
   - `ISampleAuthVerifier`
-  - `ISampleActorRegistry`
+  - `ISampleActorFactoryRegistry`
 
 핵심은 `Spot`이 session을 직접 소유하지 않고 actor만 다룬다는 점이다.
 session handler는 인증과 재연결을 맡는 ingress adapter이고, 실제 live 연결은
 `IZLinkStream`이다. actor는 계정 단위의 논리 객체다. 그래서 stream이 끊겨도
 actor는 room에 남아 있을 수 있고, 새 stream이 같은
 `accountId`로 다시 들어오면 같은 actor에 다시 연결할 수 있다.
-그리고 이 모델이 public 계약으로 보이려면 `ZLinkSpot.AttachActorAsync(...)` 같은
-actor attach 진입점이 `ZLinkSpot` 자체에 있어야 한다.
+그리고 이 모델이 public 계약으로 보이려면 actor attach는 `ZLinkSpot` override가
+아니라 `IZLinkSpotClient.JoinActorAsync(...)`와
+`IZLinkSpotActorJoinHandler<...>` 조합으로 보여야 한다. join 승인과 attach는
+반드시 target `Spot` 실행 문맥에서 함께 처리되어야 하기 때문이다.
 
 샘플을 읽기 전에 먼저 봐야 하는 framework draft 계약은 actor contract 하나다.
 
@@ -819,6 +842,10 @@ public interface IZLinkActor
 
     ZLinkSpot? Spot { get; }
 
+    ValueTask AttachAsync(
+        IZLinkStream stream,
+        CancellationToken cancellationToken);
+
     ValueTask OnAttachedAsync(
         ZLinkSpot spot,
         CancellationToken cancellationToken);
@@ -827,15 +854,10 @@ public interface IZLinkActor
         ZLinkSpot spot,
         CancellationToken cancellationToken);
 
-    ValueTask OnStreamBoundAsync(
-        IZLinkStream stream,
+    ValueTask OnDisconnectedAsync(
         CancellationToken cancellationToken);
 
-    ValueTask OnStreamUnboundAsync(
-        string sessionId,
-        CancellationToken cancellationToken);
-
-    ValueTask DispatchAsync(
+    ValueTask OnDispatchAsync(
         Message header,
         Message body,
         CancellationToken cancellationToken);
@@ -850,7 +872,8 @@ public interface IZLinkActor
   - 현재 붙어 있는 연결이다. reconnect가 일어나면 새 stream으로 바뀔 수 있다.
 - `IZLinkActor.Spot`
   - 현재 들어가 있는 room이다. room에 아직 안 들어갔으면 `null`이다.
-- stream bind/unbind와 room attach/detach는 다른 수명이다.
+- stream attach/disconnect와 room attach/detach는 다른 수명이다.
+- framework는 stale disconnect를 내부에서 걸러낸 뒤에만 `OnDisconnectedAsync(...)`를 호출한다.
 
 bootstrap은 아래처럼 읽는다. room은 외부에서 이미 만들어진다고 가정하므로,
 stream node는 client 접속만 받고 spot node는 room 인스턴스를 제공한다.
@@ -858,10 +881,19 @@ stream node는 client 접속만 받고 spot node는 room 인스턴스를 제공�
 ```csharp
 builder.Services.AddScoped<ISampleRoomDirectory, SampleRoomDirectory>();
 builder.Services.AddScoped<ISampleAuthVerifier, SampleAuthVerifier>();
-builder.Services.AddScoped<ISampleActorRegistry, SampleActorRegistry>();
+builder.Services.AddScoped<ISampleActorFactoryRegistry, SampleActorFactoryRegistry>();
 
 builder.Services.AddZLinkFramework(options =>
 {
+    options.AddActorFactory<SampleWarriorActorFactory>("warrior");
+    options.AddActorFactory<SampleTraderActorFactory>("trader");
+
+    options.ConfigureDispatch(dispatch =>
+    {
+        dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled;
+        dispatch.StreamDispatchMode = ZLinkDispatchMode.Compiled;
+    });
+
     options.Codecs.AddProtobuf();
 
     options.AddStreamNode("client.stream", stream =>
@@ -879,8 +911,11 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 실제 샘플 코드는 아래처럼 읽는다. `SampleSpot`은 actor table만 소유하고,
-`SampleSession`은 인증과 actor rebind, room join 진입점, 그리고 actor로 넘길
-`header/body` 정규화를 맡는다.
+`SampleSession`은 인증과 actor 재연결, 그리고 actor로 넘길
+`header/body` 정규화와 room join 요청을 맡는다.
+여기서 `FrameworkActorRuntime.*(...)` 호출은 sample application 코드가 아니라
+framework 내부 브리지 경로를 뜻하는 표기다. 이 문서에서는 내부 구현 클래스를 따로
+보여 주지 않고, "session이 framework 내부 submit 경로를 호출한다"는 의미만 남긴다.
 
 ```csharp
 public sealed class SampleSpot : ZLinkSpot
@@ -903,46 +938,48 @@ public sealed class SampleSpot : ZLinkSpot
     public int ConnectedSessionCount => _actors.Values.Count(x => x.Stream is not null);
 
     public override async ValueTask OnInitializeAsync(
-        IServiceProvider services,
         CancellationToken cancellationToken)
     {
-        AddPacket<SampleGetStateHandler>(services);
-        AddPacket<SampleReportStateHandler>(services);
+        AddPacket<SampleGetStateHandler>();
+        AddPacket<SampleReportStateHandler>();
+        AddActorJoin<SampleJoinRoomHandler, SampleJoinRoomRequest, SampleJoinRoomReply>();
 
         AddSubscribe<SampleStateUpdatedHandler>(
-            "sample.state.updated",
-            services);
+            "sample.state.updated");
 
         _sessionTimeoutSweep = await AddTimer<SampleSessionTimeoutSweepHandler>(
             "session-timeout-sweep",
             TimeSpan.FromSeconds(1),
-            services,
             cancellationToken);
     }
 
-    public override async ValueTask AttachActorAsync(
-        IZLinkActor actor,
+    internal async ValueTask<SampleJoinRoomReply> JoinActorAsync(
+        SampleActor actor,
+        SampleJoinRoomRequest request,
         CancellationToken cancellationToken = default)
     {
-        SampleActor sampleActor = (SampleActor)actor;
-
-        if (sampleActor.Spot is SampleSpot current && !ReferenceEquals(current, this))
+        if (actor.Spot is SampleSpot current && !ReferenceEquals(current, this))
         {
-            await current.DetachActorAsync(sampleActor.ActorKey, cancellationToken);
+            await current.LeaveActorAsync(actor.ActorKey, cancellationToken);
         }
 
-        if (_actors.ContainsKey(sampleActor.ActorKey))
+        if (!_actors.ContainsKey(actor.ActorKey))
         {
-            PublishSampleState();
-            return;
+            _actors.Add(actor.ActorKey, actor);
+            await actor.OnAttachedAsync(this, cancellationToken);
         }
 
-        _actors.Add(sampleActor.ActorKey, sampleActor);
-        await sampleActor.OnAttachedAsync(this, cancellationToken);
         PublishSampleState();
+
+        return new SampleJoinRoomReply
+        {
+            RoomId = RoomId,
+            ActorKey = actor.ActorKey,
+            ConnectedSessionCount = ConnectedSessionCount
+        };
     }
 
-    public override async ValueTask DetachActorAsync(
+    internal async ValueTask LeaveActorAsync(
         string actorKey,
         CancellationToken cancellationToken = default)
     {
@@ -955,27 +992,17 @@ public sealed class SampleSpot : ZLinkSpot
         PublishSampleState();
     }
 
-    public override bool TryGetActor(
-        string actorKey,
-        out IZLinkActor? actor)
-    {
-        bool found = _actors.TryGetValue(actorKey, out SampleActor? sampleActor);
-        actor = sampleActor;
-        return found;
-    }
-
     public async ValueTask HandleDisconnectedActorSessionAsync(
         SampleActor actor,
-        string sessionId,
         CancellationToken cancellationToken)
     {
         if (!_actors.ContainsKey(actor.ActorKey))
         {
-            await actor.OnStreamUnboundAsync(sessionId, cancellationToken);
+            await actor.OnDisconnectedAsync(cancellationToken);
             return;
         }
 
-        await actor.OnStreamUnboundAsync(sessionId, cancellationToken);
+        await actor.OnDisconnectedAsync(cancellationToken);
         PublishSampleState();
     }
 
@@ -1038,8 +1065,7 @@ public sealed class SampleSpot : ZLinkSpot
             if (actor.Stream is not null &&
                 actor.IsIdleTimedOut(now, idleTimeout))
             {
-                await actor.OnStreamUnboundAsync(
-                    actor.Stream.SessionId,
+                await actor.OnDisconnectedAsync(
                     cancellationToken);
                 continue;
             }
@@ -1053,7 +1079,7 @@ public sealed class SampleSpot : ZLinkSpot
 
         foreach (string actorKey in expiredActors)
         {
-            await DetachActorAsync(actorKey, cancellationToken);
+            await LeaveActorAsync(actorKey, cancellationToken);
         }
     }
 }
@@ -1107,7 +1133,7 @@ public sealed class SampleActor : IZLinkActor
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnStreamBoundAsync(
+    public ValueTask AttachAsync(
         IZLinkStream stream,
         CancellationToken cancellationToken)
     {
@@ -1135,16 +1161,11 @@ public sealed class SampleActor : IZLinkActor
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnStreamUnboundAsync(
-        string sessionId,
+    public ValueTask OnDisconnectedAsync(
         CancellationToken cancellationToken)
     {
-        if (_stream is not null &&
-            string.Equals(_stream.SessionId, sessionId, StringComparison.Ordinal))
-        {
-            _stream = null;
-            DisconnectedAt = DateTimeOffset.UtcNow;
-        }
+        _stream = null;
+        DisconnectedAt = DateTimeOffset.UtcNow;
 
         return ValueTask.CompletedTask;
     }
@@ -1171,17 +1192,24 @@ public sealed class SampleActor : IZLinkActor
             now - DisconnectedAt.Value >= reconnectGrace;
     }
 
-    public ValueTask DispatchAsync(
+    // Framework-internal submit entry that resumes on the same Spot context.
+    public ValueTask SubmitAsync(
         Message header,
         Message body,
         CancellationToken cancellationToken)
     {
-        if (_spot is not SampleSpot room)
-        {
-            throw new InvalidOperationException(
-                $"Actor '{ActorKey}' is not attached to a room.");
-        }
+        MarkSeen(DateTimeOffset.UtcNow);
+        return OnDispatchAsync(
+            header,
+            body,
+            cancellationToken);
+    }
 
+    public ValueTask OnDispatchAsync(
+        Message header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
         if (_stream is null)
         {
             throw new InvalidOperationException(
@@ -1189,6 +1217,12 @@ public sealed class SampleActor : IZLinkActor
         }
 
         RouteHeader route = header.Parse<RouteHeader>();
+
+        if (_spot is not SampleSpot room)
+        {
+            throw new InvalidOperationException(
+                "JoinRoom is required before gameplay packets.");
+        }
 
         switch (route.MsgId)
         {
@@ -1226,7 +1260,7 @@ public sealed class SampleActor : IZLinkActor
 
             case "SampleLeaveRoomCommand":
             {
-                return room.DetachActorAsync(
+                return room.LeaveActorAsync(
                     ActorKey,
                     cancellationToken);
             }
@@ -1267,7 +1301,6 @@ public sealed class SampleActor : IZLinkActor
             }
         }
     }
-
 }
 
 public sealed class SampleSession
@@ -1275,16 +1308,19 @@ public sealed class SampleSession
 {
     private readonly ISampleRoomDirectory _rooms;
     private readonly ISampleAuthVerifier _authVerifier;
-    private readonly ISampleActorRegistry _actors;
+    private readonly ISampleActorFactoryRegistry _actors;
+    private readonly IZLinkSpotClient _spotClient;
 
     public SampleSession(
         ISampleRoomDirectory rooms,
         ISampleAuthVerifier authVerifier,
-        ISampleActorRegistry actors)
+        ISampleActorFactoryRegistry actors,
+        IZLinkSpotClient spotClient)
     {
         _rooms = rooms;
         _authVerifier = authVerifier;
         _actors = actors;
+        _spotClient = spotClient;
     }
 
     public IZLinkStream Stream { get; private set; } = default!;
@@ -1311,17 +1347,9 @@ public sealed class SampleSession
         SampleActor actor = Actor;
         Actor = null;
 
-        if (actor.Spot is SampleSpot room)
-        {
-            await room.HandleDisconnectedActorSessionAsync(
-                actor,
-                stream.SessionId,
-                cancellationToken);
-            return;
-        }
-
-        await actor.OnStreamUnboundAsync(
-            stream.SessionId,
+        await FrameworkActorRuntime.DisconnectAsync(
+            actor,
+            stream,
             cancellationToken);
     }
 
@@ -1364,6 +1392,7 @@ public sealed class SampleSession
 
             SampleActor actor =
                 await _actors.GetOrCreateAsync(
+                    auth.ActorType,
                     auth.AccountId,
                     auth.DisplayName,
                     cancellationToken);
@@ -1371,13 +1400,17 @@ public sealed class SampleSession
             if (actor.Stream is not null &&
                 !string.Equals(actor.Stream.SessionId, stream.SessionId, StringComparison.Ordinal))
             {
-                await actor.OnStreamUnboundAsync(
-                    actor.Stream.SessionId,
+                await FrameworkActorRuntime.DisconnectAsync(
+                    actor,
+                    actor.Stream,
                     cancellationToken);
             }
 
             Actor = actor;
-            await actor.OnStreamBoundAsync(stream, cancellationToken);
+            await FrameworkActorRuntime.AttachAsync(
+                actor,
+                stream,
+                cancellationToken);
 
             using Message replyBody = new SampleAuthenticateReply
             {
@@ -1396,8 +1429,6 @@ public sealed class SampleSession
             return;
         }
 
-        Actor.MarkSeen(DateTimeOffset.UtcNow);
-
         if (string.Equals(
             route.MsgId,
             "SampleJoinRoomRequest",
@@ -1411,19 +1442,20 @@ public sealed class SampleSession
                     join.RoomId,
                     cancellationToken);
 
-            await room.AttachActorAsync(Actor, cancellationToken);
+            SampleJoinRoomReply joinReply =
+                await _spotClient.JoinActorAsync<
+                    SampleJoinRoomRequest,
+                    SampleJoinRoomReply>(
+                        room.SpotRid,
+                        Actor,
+                        join,
+                        cancellationToken);
 
-            using Message replyBody = new SampleJoinRoomReply
-            {
-                RoomId = room.RoomId,
-                ActorKey = Actor.ActorKey,
-                ConnectedSessionCount = room.ConnectedSessionCount
-            }.ToProtoMessage();
-
+            using Message replyBody = joinReply.ToProtoMessage();
             using Message replyHeader = new RouteHeader
             {
                 MsgId = "SampleJoinRoomReply",
-                StageId = room.RoomId,
+                StageId = joinReply.RoomId,
                 AccountId = Actor.ActorKey
             }.ToProtoMessage();
 
@@ -1431,39 +1463,32 @@ public sealed class SampleSession
             return;
         }
 
-        if (Actor.Spot is not SampleSpot joinedRoom)
+        if (Actor.Spot is null)
         {
             throw new InvalidOperationException(
                 "JoinRoom is required before gameplay packets.");
         }
 
-        await DispatchActorAsync(
+        await FrameworkActorRuntime.SubmitAsync(
+            Actor,
             header,
             body,
             cancellationToken);
     }
+}
 
-    private ValueTask DispatchActorAsync(
-        Message header,
-        Message body,
+public sealed class SampleJoinRoomHandler
+    : IZLinkSpotActorJoinHandler<SampleSpot, SampleJoinRoomRequest, SampleJoinRoomReply>
+{
+    public ValueTask<SampleJoinRoomReply> HandleAsync(
+        SampleSpot spot,
+        IZLinkActor actor,
+        SampleJoinRoomRequest request,
         CancellationToken cancellationToken)
     {
-        if (Actor is null)
-        {
-            throw new InvalidOperationException(
-                "Actor binding is required before actor dispatch.");
-        }
-
-        if (Actor.Spot is not SampleSpot room)
-        {
-            throw new InvalidOperationException(
-                "JoinRoom is required before actor dispatch.");
-        }
-
-        Actor.MarkSeen(DateTimeOffset.UtcNow);
-        return Actor.DispatchAsync(
-            header,
-            body,
+        return spot.JoinActorAsync(
+            (SampleActor)actor,
+            request,
             cancellationToken);
     }
 }
@@ -1482,9 +1507,20 @@ public interface ISampleAuthVerifier
         CancellationToken cancellationToken);
 }
 
-public interface ISampleActorRegistry
+public interface ISampleActorFactory
+{
+    string ActorType { get; }
+
+    ValueTask<SampleActor> CreateAsync(
+        string accountId,
+        string displayName,
+        CancellationToken cancellationToken);
+}
+
+public interface ISampleActorFactoryRegistry
 {
     ValueTask<SampleActor> GetOrCreateAsync(
+        string actorType,
         string accountId,
         string displayName,
         CancellationToken cancellationToken);
@@ -1492,13 +1528,20 @@ public interface ISampleActorRegistry
 
 public sealed record SampleAuthenticationResult(
     string AccountId,
-    string DisplayName);
+    string DisplayName,
+    string ActorType);
 ```
+
+여기서 `ISampleActorFactoryRegistry`는 `actorType -> factory` 매핑을 잡고,
+인증 결과에 따라 `SampleWarriorActor`, `SampleTraderActor` 같은 서로 다른 actor
+타입을 고를 수 있게 하는 샘플용 registry로 읽는다. 이 선택은 인증이나 재연결
+경계에서 한 번만 일어나고, gameplay packet hot path에는 다시 들어오지 않는 쪽이
+맞다.
 
 이 샘플에서 관계를 짧게 정리하면 아래와 같다.
 
 - `SampleSession`
-  - stream에서 packet을 받고, 인증을 하고, actor를 찾고, room join 전후를 이어 준다.
+  - stream에서 packet을 받고, 인증을 하고, actor factory를 고르고, room join 전후를 이어 준다.
 - `SampleActor`
   - `accountId` 기준으로 살아 있는 논리 객체다.
   - 현재 `Stream`과 현재 `Spot`을 직접 가진다.
@@ -1510,16 +1553,19 @@ public sealed record SampleAuthenticationResult(
 
 1. 첫 패킷은 `SampleAuthenticateRequest`다.
 2. `SampleSession`이 API 서버에 토큰 검증을 요청한다.
-3. `accountId`로 `SampleActor`를 찾거나 새로 만든다.
-4. 이미 다른 stream이 붙어 있었다면 그 stream을 떼고 현재 stream을 actor에 bind한다.
+3. 인증 결과의 `actorType`과 `accountId`로 `SampleActor`를 찾거나 새로 만든다.
+4. 이미 다른 stream이 붙어 있었다면 framework가 stale 여부를 확인한 뒤 현재 stream을 actor에 다시 `AttachAsync(...)` 한다.
 5. client가 `SampleJoinRoomRequest`를 보낸다.
-6. `SampleSession`이 이미 존재하는 `SampleSpot`을 `roomId`로 찾는다.
-7. `SampleSpot.AttachActorAsync(actor)`가 actor를 room에 attach한다.
+6. `SampleSession`은 room 정보를 찾은 뒤 `IZLinkSpotClient.JoinActorAsync(...)`로
+   target room의 join callback을 호출한다.
+7. 등록된 `SampleJoinRoomHandler`가 같은 `SampleSpot` 실행 문맥에서 승인, attach,
+   기존 room에서의 이탈, 결과 생성까지 마무리한다.
 8. 그 뒤의 `SampleHeartbeatCommand`, `SampleMoveActorCommand`,
    `SampleSendRoomChatCommand` 같은 패킷은 framework 내부 `SubmitAsync(...)`를 통해
    actor가 붙은 `Spot` 문맥으로 제출된다.
 9. 같은 `Spot` 실행 문맥 안에서 실제 처리는
-   `SampleActor.DispatchAsync(header, body, ...)`가 맡는다.
+   actor의 `SubmitAsync(...)`를 거친 뒤 `SampleActor.OnDispatchAsync(header, body, ...)`
+   가 맡는다.
 10. room 전체 로직이 필요하면 actor가 자기 `Spot`이나 `Stream`을 통해 이어서 처리한다.
 
 즉 room은 actor만 붙잡고, session handler는 room 밖에서 인증과 재연결을 처리한다.
@@ -1528,7 +1574,8 @@ public sealed record SampleAuthenticationResult(
 이 샘플 코드는 packet session 기준이지만, raw session도 같은 모델로 읽는다.
 즉 raw session은 자기 protocol 규칙으로 chunk를 재조립한 뒤 `header/body`를 만들고,
 framework 내부 `SubmitAsync(...)`로 같은 `Spot` 문맥에 올린 뒤,
-최종 actor 로직은 `SampleActor.DispatchAsync(header, body, ...)`가 처리한다.
+actor의 `SubmitAsync(...)`를 거쳐 최종 actor 로직은
+`SampleActor.OnDispatchAsync(header, body, ...)`가 처리한다.
 또한 room timer는 room에 attach된 actor만 본다. 즉 인증은 끝났지만 아직
 `SampleJoinRoomRequest`를 보내지 않은 연결은 `SampleSpot` 바깥의 stream 수명으로
 읽고, room 안의 heartbeat timeout과는 구분한다.
@@ -1677,6 +1724,10 @@ lifecycle을 감싼 고수준 handle에 가깝다.
 - `SampleSpot`은 `ZLinkSpot`을 상속받고 자기 `SpotRid`, `NodeRid`를 상태로 가진다.
 - `SampleSpot` 안에는 상태와 코어 로직만 두고, packet 처리는 별도 handler class로 뺄 수 있다.
 - handler는 `IZLinkSpotClient`를 constructor injection으로 받을 수 있다.
+- `SampleSpot`과 그 spot에 귀속된 handler, timer handler, join handler는 같은
+  per-spot DI scope에서 resolve된다고 읽는 편이 맞다.
+- 그래서 public registration 함수에 `IServiceProvider services`를 매번 넘기지 않고,
+  `AddPacket<THandler>()`처럼 타입만 등록하는 쪽이 더 자연스럽다.
 - local spot 인스턴스가 없는 외부 노드는 `IZLinkSpotPublisherClient`를 따로
   주입받아 SPOT channel publish를 할 수 있다.
 - `AddPacket<THandler>(...)`는 request와 send packet을 함께 등록한다.
@@ -1706,8 +1757,8 @@ lifecycle을 감싼 고수준 handle에 가깝다.
 
 반면 stream session은 `SampleSpot`이 자기 초기화 단계에서 정적으로 등록하지 않는다.
 `SampleSession`은 `stream node`가 생성하고, 먼저 인증과 actor lookup을 마친 뒤
-`SampleJoinRoomRequest`가 왔을 때 기존 room인 `SampleSpot`에 actor를 attach하는
-쪽이 이 문서의 기본 모델이다.
+`SampleJoinRoomRequest`가 왔을 때 `IZLinkSpotClient.JoinActorAsync(...)`로
+target `SampleSpot`의 join callback을 호출하는 쪽이 이 문서의 기본 모델이다.
 
 packet은 request와 send를 함께 묶는 상위 개념이다.
 즉 `SampleGetStateHandler`처럼 reply를 돌려주는 handler도 packet이고,
@@ -1741,9 +1792,9 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 
 즉 위 코드에서:
 
-- `AddPacket<SampleGetStateHandler>(services)`
+- `AddPacket<SampleGetStateHandler>()`
   - `SampleGetStateRequest`의 protobuf `msgName`으로 등록
-- `AddPacket<SampleReportStateHandler>(services)`
+- `AddPacket<SampleReportStateHandler>()`
   - `SampleReportStateCommand`의 protobuf `msgName`으로 등록
 
 같은 형태로 읽으면 된다.
@@ -1765,7 +1816,7 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
   - `protobuf`면 protobuf message name
   - `json`이면 `SampleReportStateCommand`
 
-즉 `AddPacket<SampleGetStateHandler>(...)`는 결국
+즉 `AddPacket<SampleGetStateHandler>()`는 결국
 `SampleGetStateRequest`의 `msgId`를 기준으로 등록되는 셈이다.
 
 ## 7. 어떤 상황에 어떤 API를 쓰는가
@@ -1799,6 +1850,17 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 room 핫패스로 쓰일 수 있으므로, 일반 channel messaging보다 더 강한 최적화 기준이
 필요하다.
 
+이 초안에서는 이 선택을 framework가 숨기지 않고, 사용자가 dispatch mode로 직접
+고를 수 있어야 한다고 본다.
+
+- `ZLinkDispatchMode.Compiled`
+  - registration 또는 warm-up 단계까지만 reflection을 허용한다.
+  - hot path는 cached delegate, prebuilt dispatch table, 미리 고른 actor factory만
+    사용한다.
+- `ZLinkDispatchMode.Dynamic`
+  - 늦은 바인딩과 실험 편의를 더 우선한다.
+  - 관리용 handler나 초기 prototype에는 허용할 수 있다.
+
 - `AddPacket`, `AddSubscribe`, `AddTimer`는 registration 단계에서만 동작해야 한다.
 - reflection은 registration 단계에서 끝나야 한다.
 - 런타임 packet 처리 경로에서는 캐시된 dispatch table을 써야 한다.
@@ -1824,6 +1886,7 @@ channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다�
 
 - `SampleSpot : ZLinkSpot` 같은 상속 모델이 자연스러운가
 - `AddPacket / AddSubscribe / AddTimer` 같은 등록 표면이 자연스러운가
+- `AddActorFactory<TFactory>(actorType)` 같은 actor factory 등록 표면이 자연스러운가
 - packet 매핑을 header `msgId` 기준으로 보는 것이 자연스러운가
 - `IZLinkSpotManager`가 spot 객체 factory와 어떻게 연결되는 것이 자연스러운가
 - attach된 channel client 설정을 어떤 표면으로 노출하는 것이 자연스러운가

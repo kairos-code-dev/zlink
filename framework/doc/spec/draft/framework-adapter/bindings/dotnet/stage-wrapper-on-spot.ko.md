@@ -150,13 +150,14 @@
 내부 처리는 보통 아래 순서로 읽는 것이 가장 자연스럽다.
 
 1. client session이 인증을 끝내고 actor를 찾는다.
-2. `JoinRoom` 같은 packet으로 actor를 특정 `Spot`에 attach한다.
+2. `JoinRoom` 같은 packet이 오면 framework가 target `Spot` 실행 문맥으로
+   join 요청을 넣는다.
 3. framework는 `actorKey -> spot runtime` 연결을 내부 membership으로 기록한다.
 4. 그 뒤 session에서 packet이 오면 먼저 packet path인지 raw path인지와 무관하게
    `header/body` 형태로 정규화한다.
 5. 정규화된 packet을 해당 actor가 attach된 `Spot` runtime inbox로 넣는다.
 6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
-7. 그 실행기 안에서만 `actor.DispatchAsync(header, body, ...)`가 수행된다.
+7. 그 실행기 안에서만 `actor.OnDispatchAsync(header, body, ...)`가 수행된다.
 8. actor가 room 상태를 바꾸거나 `Spot` 메서드를 호출해도, 이미 같은 `Spot`
    실행 문맥 안이므로 추가 lock이 필요 없다.
 
@@ -167,7 +168,7 @@ joined actor session packet
     -> normalize to header/body
     -> submit to spot-owned inbox
     -> single spot consumer
-    -> actor.DispatchAsync(...)
+    -> actor.OnDispatchAsync(...)
     -> actor accesses Spot state
 ```
 
@@ -193,7 +194,7 @@ joined actor session packet
 
 - attach된 actor의 packet은 `Spot` 실행 문맥 밖에서 직접 처리하지 않는다.
 - framework 내부 `SubmitAsync(...)`는 `Spot`이 소유한 직렬 실행 규칙 안에서만
-  수행되고, 그 안에서 최종적으로 `actor.DispatchAsync(...)`가 호출된다.
+  수행되고, 그 안에서 최종적으로 `actor.OnDispatchAsync(...)`가 호출된다.
 - raw session도 예외가 아니다. raw chunk는 session이 재조립한 뒤
   `header/body`로 바꿔 같은 actor dispatch 경로를 탄다.
 
@@ -225,22 +226,13 @@ public interface IZLinkTimer : IAsyncDisposable
 
 public abstract class ZLinkSpot
 {
-    public virtual ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-
-    public virtual ValueTask DetachActorAsync(
-        string actorKey,
-        CancellationToken cancellationToken = default);
-
-    public virtual bool TryGetActor(
-        string actorKey,
-        out IZLinkActor? actor);
+    protected void AddActorJoin<THandler, TRequest, TReply>()
+        where THandler : class
+        where TRequest : IZLinkRequest<TReply>;
 
     protected ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
-        IServiceProvider services,
         CancellationToken cancellationToken = default);
 }
 ```
@@ -265,11 +257,15 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 low-level `Timer.Stop()`와 dispose lifecycle을 감싼 고수준 timer handle로 읽는
 편이 자연스럽다.
 
-같은 맥락으로 actor membership도 sample 전용 helper에만 두기보다, `ZLinkSpot`이
-`AttachActorAsync(...)`, `DetachActorAsync(...)`, `TryGetActor(...)` 같은 최소
-public 표면을 가지는 편이 wrapper 설계에 더 자연스럽다. 그래야 actor를 어떤 `Spot`에
-귀속시키는 ownership이 framework 계약으로 먼저 보이고, wrapper는 그 위에 stage
-정책만 얹으면 된다.
+같은 맥락으로 actor join도 `ZLinkSpot` override로 열기보다,
+`AddActorJoin<THandler, TRequest, TReply>(...)`와
+`IZLinkSpotClient.JoinActorAsync(...)` 조합으로 여는 편이 wrapper 설계에 더
+자연스럽다. 그래야 actor를 어떤 `Spot`에 귀속시킬지, join을 허용할지,
+결과 payload에 무엇을 담을지를 모두 같은 `Spot` 실행 문맥 안에서 결정할 수 있다.
+
+또한 이 표면에 `IServiceProvider`를 매번 넣는 것은 굳이 public 계약으로 보일 필요가
+없다. `Spot`, timer handler, join handler는 framework가 만든 per-spot scope에서
+resolve하고, 사용자에게는 "무슨 타입을 등록하는가"만 보이게 두는 편이 더 낫다.
 
 여기서 더 중요한 것은 timer handler가 어느 실행 문맥에서 도는가다.
 `AddTimer<THandler>(...)`로 등록한 timer handler는 가능하면 같은 spot 실행

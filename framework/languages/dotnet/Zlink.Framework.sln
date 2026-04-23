@@ -1,0 +1,59 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{25834A3B-01B0-47D5-B891-58DD52896532}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework", "src\Zlink.Framework\Zlink.Framework.csproj", "{22AA3415-E273-40A3-9F3C-279FC21A4FF9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.AspNetCore", "src\Zlink.Framework.AspNetCore\Zlink.Framework.AspNetCore.csproj", "{3853B05A-6F45-4A7F-860B-FCA8C4AE9A90}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{F3E5F8A1-DEF5-4540-A4B0-73ABB7129801}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.Tests", "tests\Zlink.Framework.Tests\Zlink.Framework.Tests.csproj", "{321996DA-5258-4029-9A49-4121C7D1377A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.MultiProcessTests", "tests\Zlink.Framework.MultiProcessTests\Zlink.Framework.MultiProcessTests.csproj", "{20C24988-F307-4957-8547-7201F6593FCD}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "testapps", "testapps", "{24582C8A-3FB9-4856-BA31-F72F4EE9CDE5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.TestHost", "testapps\Zlink.Framework.TestHost\Zlink.Framework.TestHost.csproj", "{FF1A6329-0D5F-4849-B66C-C947AEB74AFE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{22AA3415-E273-40A3-9F3C-279FC21A4FF9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22AA3415-E273-40A3-9F3C-279FC21A4FF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22AA3415-E273-40A3-9F3C-279FC21A4FF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22AA3415-E273-40A3-9F3C-279FC21A4FF9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3853B05A-6F45-4A7F-860B-FCA8C4AE9A90}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3853B05A-6F45-4A7F-860B-FCA8C4AE9A90}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3853B05A-6F45-4A7F-860B-FCA8C4AE9A90}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3853B05A-6F45-4A7F-860B-FCA8C4AE9A90}.Release|Any CPU.Build.0 = Release|Any CPU
+		{321996DA-5258-4029-9A49-4121C7D1377A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{321996DA-5258-4029-9A49-4121C7D1377A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{321996DA-5258-4029-9A49-4121C7D1377A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{321996DA-5258-4029-9A49-4121C7D1377A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20C24988-F307-4957-8547-7201F6593FCD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20C24988-F307-4957-8547-7201F6593FCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20C24988-F307-4957-8547-7201F6593FCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20C24988-F307-4957-8547-7201F6593FCD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FF1A6329-0D5F-4849-B66C-C947AEB74AFE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FF1A6329-0D5F-4849-B66C-C947AEB74AFE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FF1A6329-0D5F-4849-B66C-C947AEB74AFE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FF1A6329-0D5F-4849-B66C-C947AEB74AFE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{22AA3415-E273-40A3-9F3C-279FC21A4FF9} = {25834A3B-01B0-47D5-B891-58DD52896532}
+		{3853B05A-6F45-4A7F-860B-FCA8C4AE9A90} = {25834A3B-01B0-47D5-B891-58DD52896532}
+		{321996DA-5258-4029-9A49-4121C7D1377A} = {F3E5F8A1-DEF5-4540-A4B0-73ABB7129801}
+		{20C24988-F307-4957-8547-7201F6593FCD} = {F3E5F8A1-DEF5-4540-A4B0-73ABB7129801}
+		{FF1A6329-0D5F-4849-B66C-C947AEB74AFE} = {24582C8A-3FB9-4856-BA31-F72F4EE9CDE5}
+	EndGlobalSection
+EndGlobal

@@ -34,26 +34,34 @@ internal sealed class ZLinkMonitoringHostedService(
                 "Monitoring registry sources require AddZLinkRegistry(...).");
         }
 
-        if (frameworkRuntime is not null)
-        {
-            await frameworkRuntime.StartAsync(cancellationToken);
-        }
-
-        if (registryRuntime is not null)
-        {
-            await registryRuntime.StartAsync(cancellationToken);
-        }
-
-        PreflightPollingSources(frameworkRuntime, registryRuntime);
-
         try
         {
+            if (frameworkRuntime is not null)
+            {
+                await frameworkRuntime.StartAsync(cancellationToken);
+            }
+
+            if (registryRuntime is not null)
+            {
+                await registryRuntime.StartAsync(cancellationToken);
+            }
+
+            PreflightPollingSources(frameworkRuntime, registryRuntime);
             AttachSocketMonitors(frameworkRuntime);
             AttachDiscoveryMonitors(frameworkRuntime);
         }
         catch
         {
             await DisposeMonitorsAsync();
+            if (frameworkRuntime is not null && frameworkRuntime.IsStarted)
+            {
+                await frameworkRuntime.StopAsync(CancellationToken.None);
+            }
+            else if (registryRuntime is not null && registryRuntime.IsStarted)
+            {
+                await registryRuntime.StopAsync(CancellationToken.None);
+            }
+
             throw;
         }
 

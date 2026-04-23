@@ -955,20 +955,6 @@ internal sealed class ZLinkFrameworkRuntimeState(
     {
         StopTokenSource.Cancel();
 
-        if (ListenerTasks.Count > 0)
-        {
-            try
-            {
-                await Task.WhenAll(ListenerTasks);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch
-            {
-            }
-        }
-
         foreach (var bundle in ClientBundles.Values)
         {
             await bundle.DisposeAsync();

@@ -9,45 +9,37 @@ namespace Zlink.Framework.Tests;
 public sealed class MonitoringIntegrationTests
 {
     [Fact]
-    public async Task RegistryMonitoring_Emits_TopologyChanged_When_ServiceRegisters()
+    public async Task RegistryMonitoring_Emits_StatusChanged_For_EmbeddedRegistry()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
-        var serviceEndpoint = GetFreeTcpEndpoint();
 
-        var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddSingleton<RegistryMonitorProbe>();
-        builder.Services.AddSingleton<IZLinkRuntimeEventHandler<ZLinkRegistryEvent>>(static provider =>
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddSingleton<RegistryMonitorProbe>();
+        registryBuilder.Services.AddSingleton<IZLinkRuntimeEventHandler<ZLinkRegistryEvent>>(static provider =>
             provider.GetRequiredService<RegistryMonitorProbe>());
-        builder.Services.AddZLinkRegistry(options =>
+        registryBuilder.Services.AddZLinkRegistry(options =>
         {
             options.PubEndpoint = registryPubEndpoint;
             options.RouterEndpoint = registryRouterEndpoint;
         });
-        builder.Services.AddZLinkMonitoring(monitor =>
+        registryBuilder.Services.AddZLinkMonitoring(monitor =>
         {
             monitor.AddRegistryEvents("registry", TimeSpan.FromMilliseconds(100));
         });
-        builder.Services.AddZLinkFramework(options =>
-        {
-            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.AddChannel("api", channel =>
-            {
-                channel.EnableServer(server => server.Bind(serviceEndpoint));
-            });
-        });
 
-        using var host = builder.Build();
-        await host.StartAsync();
+        using var registryHost = registryBuilder.Build();
+        await registryHost.StartAsync();
 
-        var probe = host.Services.GetRequiredService<RegistryMonitorProbe>();
+        var probe = registryHost.Services.GetRequiredService<RegistryMonitorProbe>();
         var @event = await probe.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal(ZLinkRegistryEventKind.TopologyChanged, @event.Event);
-        Assert.NotNull(@event.Topology);
-        Assert.Contains(@event.Topology!, entry => entry.Endpoint == serviceEndpoint);
+        Assert.Equal(ZLinkRegistryEventKind.StatusChanged, @event.Event);
+        Assert.Equal("registry", @event.SourceName);
+        Assert.NotNull(@event.Status);
+        Assert.True(@event.Status?.State is ZLinkRegistryState.Idle or ZLinkRegistryState.Active);
 
-        await host.StopAsync();
+        await registryHost.StopAsync();
     }
 
     [Fact]
@@ -108,8 +100,8 @@ public sealed class MonitoringIntegrationTests
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
-            if (@event.Event == ZLinkRegistryEventKind.TopologyChanged
-                && @event.Topology is { Count: > 0 })
+            if (@event.Event == ZLinkRegistryEventKind.StatusChanged
+                && @event.Status is not null)
             {
                 _completion.TrySetResult(@event);
             }

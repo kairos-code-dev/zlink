@@ -5,6 +5,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include <unordered_map>
 #include <vector>
 
 #include "api/socket_api_internal.hpp"
@@ -54,6 +55,9 @@ struct poller_handle_t
     uint32_t tag;
     zlink::socket_poller_t poller;
     std::vector<poller_registration_t> registrations;
+    std::vector<zlink::socket_poller_t::event_t> native_events;
+    std::unordered_map<void *, size_t> socket_registration_indices;
+    std::unordered_map<zlink_fd_t, size_t> fd_registration_indices;
 };
 
 static inline poller_handle_t *as_poller_handle (void *poller_)

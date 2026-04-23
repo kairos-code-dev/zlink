@@ -30,7 +30,8 @@ static std::atomic<int> g_server_trace_reply_logs(0);
 
 bool spot_trace_enabled()
 {
-    return std::getenv("PERF_MULTI_SPOT_TRACE") != NULL;
+    static const bool enabled = std::getenv("PERF_MULTI_SPOT_TRACE") != NULL;
+    return enabled;
 }
 
 struct spot_reqrep_server_state_t

@@ -919,7 +919,6 @@ bool run_active_window(spot_reqrep_client_state_t *state,
                     std::cerr << "[multi-spot-sendsend-client] send blocked slot="
                               << slot.index << std::endl;
                 }
-                progress = true;
             } else if (send_rc == send_result_not_connected) {
                 continue;
             } else {

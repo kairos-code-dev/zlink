@@ -200,18 +200,25 @@ int zlink::request_completion::drain (queue_state_t *state_,
     claim_owner_thread (state_);
     int drained = 0;
     while (true) {
-        drain_signal_socket_nonblocking (state_->signal.rx);
-
         std::deque<queued_completion_t> batch;
+        bool signal_may_be_pending = false;
+        bool queue_empty = false;
         {
             std::lock_guard<std::mutex> lock (state_->mutex);
+            signal_may_be_pending = state_->signal_pending;
             if (state_->pending.empty ()) {
                 state_->signal_pending = false;
-                break;
+                queue_empty = true;
+            } else {
+                batch.swap (state_->pending);
+                state_->signal_pending = false;
             }
-            batch.swap (state_->pending);
-            state_->signal_pending = false;
         }
+
+        if (signal_may_be_pending)
+            drain_signal_socket_nonblocking (state_->signal.rx);
+        if (queue_empty)
+            break;
 
         for (std::deque<queued_completion_t>::iterator it = batch.begin ();
              it != batch.end (); ++it) {
@@ -222,8 +229,6 @@ int zlink::request_completion::drain (queue_state_t *state_,
             ++drained;
         }
     }
-
-    drain_signal_socket_nonblocking (state_->signal.rx);
     errno = 0;
     return drained;
 }

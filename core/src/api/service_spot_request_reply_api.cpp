@@ -2181,26 +2181,34 @@ extern "C" int zlink_spot_request_progress_internal (void *spot_)
         return 0;
     }
 
+    bool dispatch_handler_installed = false;
+    bool has_channel_reply_sources = false;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        dispatch_handler_installed = state->dispatch.handler != NULL;
+        has_channel_reply_sources = !state->channel_reply_sources.empty ();
+    }
+
     int drained = 0;
-    const int bridge_rc =
-      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
-        state);
-    if (bridge_rc < 0)
-        return -1;
-    drained += bridge_rc;
+    if (has_channel_reply_sources) {
+        const int bridge_rc =
+          zlink::spot_reqrep_internal::
+            drain_attached_channel_reply_bridge_progress (state);
+        if (bridge_rc < 0)
+            return -1;
+        drained += bridge_rc;
+    }
 
     const int direct_rc = drain_spot_reply_completions (state, spot_);
     if (direct_rc < 0)
         return -1;
     drained += direct_rc;
 
-    bool dispatch_handler_installed = false;
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        dispatch_handler_installed = state->dispatch.handler != NULL;
-    }
-
     if (dispatch_handler_installed && !in_spot_dispatch_event_callback (spot_)) {
+        errno = 0;
+        return drained;
+    }
+    if (!has_channel_reply_sources) {
         errno = 0;
         return drained;
     }

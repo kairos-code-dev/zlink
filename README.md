@@ -167,6 +167,21 @@ cmake --build core/build/local
 ctest --test-dir core/build/local --output-on-failure
 ```
 
+### C Perf Benchmark Build Rule
+
+`bindings/c/perf/run_benchmarks_multi.sh` does not use `build_cpp_release`.
+The standalone C benchmark build links zlink core from `core/build`, so benchmark
+results are valid only after rebuilding that runtime.
+
+```bash
+cmake --build core/build
+./bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_REQREP
+```
+
+The runner now prints the resolved `libzlink.so` path before execution and fails
+fast when files under `core/src` or `core/include` are newer than the runtime
+library in `core/build`.
+
 ### CMake Options
 
 | Option | Default | Description |

@@ -167,6 +167,20 @@ cmake --build core/build/local
 ctest --test-dir core/build/local --output-on-failure
 ```
 
+### C Perf 벤치마크 빌드 규칙
+
+`bindings/c/perf/run_benchmarks_multi.sh` 는 `build_cpp_release` 를 쓰지 않는다.
+standalone C 벤치마크 빌드는 zlink core runtime 을 `core/build` 에서 가져오기 때문에,
+성능 수치는 그 runtime 을 다시 빌드한 뒤에만 신뢰할 수 있다.
+
+```bash
+cmake --build core/build
+./bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_REQREP
+```
+
+이제 runner 는 실행 전에 실제 `libzlink.so` 경로를 출력하고, `core/src` 나
+`core/include` 가 `core/build` runtime 보다 더 새로우면 즉시 실패한다.
+
 ### CMake 옵션
 
 | 옵션 | 기본값 | 설명 |

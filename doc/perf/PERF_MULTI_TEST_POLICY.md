@@ -137,6 +137,10 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   ready barrier 에 참여하는 client spot 수와 같아야 한다.
 - 모든 bindings 와 core perf harness 는 이 topology 를 동일하게 따라야 하며,
   각 언어 구현이 임의로 `clients == SpotNode count` 로 재해석하면 안 된다.
+- 정식 표에 아직 없는 SPOT 계열 비교 패턴을 추가로 만들 때도, 별도 문서에서
+  예외를 선언하지 않는 한 위 topology 계약을 그대로 따른다. 예를 들어
+  `MULTI_SPOT_SENDSEND` 같은 추가 패턴도 기본적으로
+  `client process 당 SpotNode 1개 + spot N개` 로 해석해야 한다.
 - SPOT data plane 수신은 direct message callback이 아니라 `dispatch_event`
   callback 안의 recv drain 으로 처리한다.
 - SPOT client 는 `connect_peer()` 직후 즉시 `READY_COUNT` 를 보내지 않는다.

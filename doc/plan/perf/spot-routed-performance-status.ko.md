@@ -33,6 +33,9 @@ SPOT multi topology 해석은 perf 정책에 고정했다.
 - `clients` 는 `SpotNode` 수가 아니라 **logical spot 수**다.
 - 기본 topology 는 **client process 당 SpotNode 1개 + spot N개**다.
 - 예: `--clients 100` 은 `SpotNode 1개 + spot 100개`를 뜻한다.
+- `MULTI_SPOT_SENDSEND` 는 아직 정식 표에 없는 추가 비교 패턴이지만, 현재
+  성능 개선 작업에서는 `MULTI_SPOT` / `MULTI_SPOT_REQREP` 와 같은 topology
+  계약을 그대로 따른다.
 
 ## 3. 현재 수치
 
@@ -56,12 +59,18 @@ SPOT multi topology 해석은 perf 정책에 고정했다.
 
 - `clients=1, duration=3s`: `80.667 ops/s`
   - [perf_c_multi_linux_20260423_090121.txt](/home/hep7/project/kairos/zlink/bindings/c/perf/results/multi/report/perf_c_multi_linux_20260423_090121.txt)
-- `clients=100, duration=2s`: `32.218 Kops/s`
-  - [perf_c_multi_linux_20260423_090225.txt](/home/hep7/project/kairos/zlink/bindings/c/perf/results/multi/report/perf_c_multi_linux_20260423_090225.txt)
+- `clients=100, duration=2s`: 한 번은 `32.218 Kops/s`까지 회복됨
 - 같은 방향의 코드 상태에서도 다시 `CLIENT_READY` failure 로 흔들림
   - [perf_c_multi_linux_20260423_090329.txt](/home/hep7/project/kairos/zlink/bindings/c/perf/results/multi/report/perf_c_multi_linux_20260423_090329.txt)
+- 최신 실험 상태에서는 `clients=1, duration=3s`가 다시 `0.333 ops/s`까지
+  떨어진 실행도 있었다. 즉 현재 코드는 `80.667 ops/s`를 안정적으로 재현하는
+  상태가 아니다.
 
 정리하면, 현재는 **성능 부족**과 **경로 불안정**이 동시에 있다.
+현재 handoff 기준으로 신뢰할 수 있는 결론은 아래 두 가지다.
+
+- `SPOT` direct route는 아직 steady-state 로 안정화되지 않았다.
+- `clients=100`에서 `CLIENT_READY` fail 이 다시 발생할 수 있다.
 
 ## 4. 기대 구조와 실제 문제
 
@@ -132,6 +141,16 @@ client spot
 - direct routed send 에 runtime-level send lock 추가
   - [service_spot_request_reply_api.cpp](/home/hep7/project/kairos/zlink/core/src/api/service_spot_request_reply_api.cpp)
 
+### 6.1 landed 변경과 실험 중 변경 구분
+
+이 문서를 작성하는 시점의 워크트리 기준으로 아래 둘은 **실험 중 변경**이다.
+
+- [spot_runtime.cpp](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.cpp)
+- [service_spot_request_reply_api.cpp](/home/hep7/project/kairos/zlink/core/src/api/service_spot_request_reply_api.cpp)
+
+즉 다른 작업자는 이 두 파일의 현재 내용을 “확정된 개선”으로 보지 말고,
+실험 상태로 간주하고 다시 검증해야 한다.
+
 ## 7. 목표 수치
 
 - 최소 목표: `100 Kops/s` 이상에서 run 마다 흔들리지 않을 것
@@ -190,9 +209,12 @@ client spot
 이 섹션은 자동화 감독 루프가 실행한 작업과 perf 결과를 순서대로 기록한다.
 각 이터레이션마다 작업 내용, 빌드/테스트 결과, 다음 판단을 남긴다.
 
-| 이터레이션 | 날짜       | 작업 요약                                  | SENDSEND tcp 64B (clients=100) | 판단            |
-|-----------|-----------|------------------------------------------|-------------------------------|-----------------|
-| 0         | 2026-04-23 | ready window 보정 후 초기 상태                | 32.218 Kops/s (불안정)          | 계속: 이슈 8.1 착수 |
+| 이터레이션 | 날짜       | 작업 요약 | 관측 결과 | 판단 |
+|-----------|-----------|-----------|-----------|------|
+| 0 | 2026-04-23 | local queue/signal 비용 축소 후 baseline 확인 | `45~55 Kops/s`, reqrep와 sendsend 차이 작음 | 병목은 req/rep보다 routed path 쪽 |
+| 1 | 2026-04-23 | direct route sender warmup/ready-after window 추가 | `clients=1`에서 한 번 `80.667 ops/s` 회복 | direct path 방향은 맞지만 안정화 미완료 |
+| 2 | 2026-04-23 | shared sender/send lock/ready window 조정 | `clients=100`에서 `32.218 Kops/s`와 `CLIENT_READY fail`이 번갈아 발생 | 경로 안정성 우선 필요 |
+| 3 | 2026-04-23 | `node_router <-> node_router` direct path 실험 계속 | 최신 상태에서도 `clients=1` 재현 불안정, `clients=100` partial fail 재발 | 다음 작업자는 안정화부터 다시 시작해야 함 |
 
 ---
 

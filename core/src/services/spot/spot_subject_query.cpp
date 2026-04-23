@@ -221,7 +221,10 @@ int spot_subject_set_routing_id (void *handle_,
         if (!admission.acquired ())
             return -1;
         zlink::spot_pub_t *pub = node->ensure_default_pub ();
-        return pub ? pub->set_routing_id (data_, size_) : -1;
+        if (!pub || pub->set_routing_id (data_, size_) != 0)
+            return -1;
+        (void) zlink_service_spot_node_refresh_routed_mesh_subscription (handle_);
+        return 0;
     }
     errno = EFAULT;
     return -1;

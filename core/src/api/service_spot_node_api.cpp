@@ -47,6 +47,13 @@ int ensure_spot_routed_mesh_subscription (zlink::spot_node_t *node)
         std::string (reinterpret_cast<const char *> (node_rid.data),
                      node_rid.size));
 
+    if (topic == runtime->routed_mesh_subscription_topic)
+        return 0;
+
+    if (!runtime->routed_mesh_subscription_topic.empty ())
+        (void) zlink::spot_node_access_t::send_internal_subscription_update (
+          node, runtime->routed_mesh_subscription_topic, false);
+
     if (zlink::spot_node_access_t::send_internal_subscription_update (
           node, topic, true)
         != 0)
@@ -54,6 +61,21 @@ int ensure_spot_routed_mesh_subscription (zlink::spot_node_t *node)
     runtime->routed_mesh_subscription_topic = topic;
     return 0;
 }
+
+}
+
+int zlink_service_spot_node_refresh_routed_mesh_subscription (void *node_handle_)
+{
+    if (!node_handle_) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_handle_);
+    return ensure_spot_routed_mesh_subscription (node);
+}
+
+namespace
+{
 
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
 extern "C" void zlink_timer_cleanup_spot (void *spot_);

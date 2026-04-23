@@ -200,6 +200,7 @@ int zlink_service_spot_set_routing_id_internal (void *handle_,
                                                 size_t size_);
 int zlink_service_spot_get_routing_id_internal (void *handle_,
                                                 zlink_routing_id_t *out_);
+int zlink_service_spot_node_refresh_routed_mesh_subscription (void *node_handle_);
 int zlink_service_spot_set_admission_state_internal (
   void *handle_,
   zlink_admission_state_t state_);

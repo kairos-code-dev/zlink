@@ -19,6 +19,9 @@
 #include "utils/err.hpp"
 
 #include <errno.h>
+#include <atomic>
+#include <chrono>
+#include <unistd.h>
 #include <map>
 #include <set>
 #include <stdarg.h>
@@ -34,6 +37,46 @@ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
 // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
 // data-plane thread long enough to inflate delivery tail latency.
 static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
+
+bool spot_route_stats_enabled_local ()
+{
+    return std::getenv ("ZLINK_DEBUG_SPOT_ROUTE_STATS") != NULL;
+}
+
+struct spot_route_recv_stats_t
+{
+    std::atomic<unsigned long long> recv_count;
+    std::atomic<unsigned long long> recv_ns;
+
+    spot_route_recv_stats_t () : recv_count (0), recv_ns (0) {}
+
+    ~spot_route_recv_stats_t ()
+    {
+        if (!spot_route_stats_enabled_local ())
+            return;
+        const unsigned long long count =
+          recv_count.load (std::memory_order_relaxed);
+        const unsigned long long total_ns =
+          recv_ns.load (std::memory_order_relaxed);
+        std::fprintf (stderr,
+                      "[spot-route-stats] recv count=%llu ns=%llu avg_ns=%llu\n",
+                      count,
+                      total_ns,
+                      count == 0 ? 0 : total_ns / count);
+        std::fflush (stderr);
+        char path[128];
+        std::snprintf (path, sizeof (path), "/tmp/zlink_spot_route_recv_%d.log",
+                       static_cast<int> (getpid ()));
+        FILE *fp = std::fopen (path, "a");
+        if (fp) {
+            std::fprintf (fp, "count=%llu ns=%llu avg_ns=%llu\n", count,
+                          total_ns, count == 0 ? 0 : total_ns / count);
+            std::fclose (fp);
+        }
+    }
+};
+
+spot_route_recv_stats_t g_spot_route_recv_stats;
 
 static void spot_ctrl_debugf (const char *fmt_, ...)
 {
@@ -316,6 +359,113 @@ static int dispatch_routed_mesh_message (spot_node_t *node_,
     errno = saved_errno;
     return parsed ? rc : 0;
 }
+
+static bool topic_frame_equals (const msg_t &frame_, const char *topic_)
+{
+    if (!topic_)
+        return false;
+
+    const size_t topic_size = strlen (topic_);
+    return frame_.size () == topic_size
+           && (topic_size == 0
+                 || memcmp (const_cast<msg_t &> (frame_).data (),
+                            topic_,
+                            topic_size)
+                      == 0);
+}
+
+static int recv_remaining_frames_to_vector (socket_base_t *socket_,
+                                            std::vector<zlink_msg_t> *out_,
+                                            size_t *wire_bytes_out_)
+{
+    if (!socket_ || !out_ || !wire_bytes_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    while (out_->empty ()
+           || (reinterpret_cast<msg_t *> (&out_->back ())->flags () & msg_t::more)
+                != 0) {
+        msg_t frame;
+        if (frame.init () != 0)
+            return -1;
+
+        if (socket_->recv (&frame, 0) != 0) {
+            const int err = errno;
+            frame.close ();
+            zlink::request_reply::close_built_parts (out_);
+            out_->clear ();
+            errno = err;
+            return -1;
+        }
+
+        *wire_bytes_out_ += frame.size ();
+        out_->push_back (zlink_msg_t ());
+        zlink_msg_t &stored = out_->back ();
+        zlink_msg_init (&stored);
+        if (zlink_msg_move (&stored, reinterpret_cast<zlink_msg_t *> (&frame))
+            != 0) {
+            const int err = errno;
+            frame.close ();
+            zlink_msg_close (&stored);
+            out_->pop_back ();
+            zlink::request_reply::close_built_parts (out_);
+            out_->clear ();
+            errno = err;
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int recv_remaining_frames_to_parts (socket_base_t *socket_,
+                                           spot_owned_msg_parts_t *parts_out_,
+                                           size_t *wire_bytes_out_)
+{
+    if (!socket_ || !parts_out_ || !wire_bytes_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    spot_clear_msg_parts (parts_out_);
+    while (parts_out_->empty ()
+           || (reinterpret_cast<msg_t *> (&parts_out_->back ())->flags ()
+                & msg_t::more)
+                != 0) {
+        msg_t frame;
+        if (frame.init () != 0) {
+            spot_clear_msg_parts (parts_out_);
+            return -1;
+        }
+
+        if (socket_->recv (&frame, 0) != 0) {
+            const int err = errno;
+            frame.close ();
+            spot_clear_msg_parts (parts_out_);
+            errno = err;
+            return -1;
+        }
+
+        parts_out_->push_back (zlink_msg_t ());
+        zlink_msg_t &stored = parts_out_->back ();
+        spot_init_msg_frame (&stored);
+        if (zlink_msg_move (&stored, reinterpret_cast<zlink_msg_t *> (&frame))
+            != 0) {
+            const int err = errno;
+            frame.close ();
+            spot_close_msg_frame (&stored);
+            parts_out_->pop_back ();
+            spot_clear_msg_parts (parts_out_);
+            errno = err;
+            return -1;
+        }
+
+        *wire_bytes_out_ += zlink_msg_size (&stored);
+    }
+
+    return 0;
+}
 }
 
 int spot_data_plane_protocol_t::recv_ascii_command (
@@ -424,7 +574,6 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
     const std::string version =
       spot_control_protocol::node_id_string (
         static_cast<uint32_t> (spot_control_protocol::protocol_version));
-
     if (send_ascii_frame (mesh_pub_,
                           spot_control_protocol::bootstrap_ctrl_descriptor_topic,
                           ZLINK_SNDMORE)
@@ -637,22 +786,69 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
     unsigned int processed = 0;
     size_t processed_bytes = 0;
     for (;;) {
-        std::string topic;
-        spot_owned_msg_parts_t frames;
-        if (spot_recv_logical_message_parts (
-              mesh_xsub_, true, &topic, &frames, &processed_bytes)
-            != 0) {
-            if (errno == EAGAIN)
+        msg_t topic_msg;
+        if (topic_msg.init () != 0)
+            return -1;
+        if (mesh_xsub_->recv (&topic_msg, ZLINK_DONTWAIT) != 0) {
+            const int err = errno;
+            topic_msg.close ();
+            if (err == EAGAIN)
                 return 0;
             return -1;
         }
 
-        const char *topic_data = topic.data ();
-        const size_t topic_size = topic.size ();
+        processed_bytes += topic_msg.size ();
+        const bool routed =
+          zlink::spot_reqrep_internal::is_spot_routed_mesh_topic (
+            static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
 
-        if (topic == zlink::spot_reqrep_internal::spot_routed_mesh_topic ()) {
-            if (dispatch_routed_mesh_message (node_, &frames) != 0)
+        if (routed) {
+            const uint64_t start_ns =
+              spot_route_stats_enabled_local ()
+                ? static_cast<uint64_t> (
+                    std::chrono::duration_cast<std::chrono::nanoseconds> (
+                      std::chrono::steady_clock::now ().time_since_epoch ())
+                      .count ())
+                : 0;
+            std::vector<zlink_msg_t> combined;
+            if (recv_remaining_frames_to_vector (
+                  mesh_xsub_, &combined, &processed_bytes)
+                != 0) {
+                topic_msg.close ();
                 return -1;
+            }
+            topic_msg.close ();
+
+            zlink::spot_reqrep_internal::parsed_spot_envelope_t envelope;
+            const bool parsed =
+              !combined.empty ()
+              && zlink::spot_reqrep_internal::parse_spot_routed_envelope (
+                &combined[0], combined.size (), &envelope);
+            if (parsed
+                && zlink::spot_reqrep_internal::should_process_spot_routed_locally (
+                  node_, envelope)) {
+                if (zlink::spot_reqrep_internal::
+                      process_parsed_route_combined_for_local_delivery (
+                        &combined,
+                        envelope)
+                    != 0) {
+                    const int saved_errno = errno;
+                    zlink::request_reply::close_built_parts (&combined);
+                    errno = saved_errno;
+                    return -1;
+                }
+            }
+            zlink::request_reply::close_built_parts (&combined);
+            if (spot_route_stats_enabled_local ()) {
+                const uint64_t end_ns = static_cast<uint64_t> (
+                  std::chrono::duration_cast<std::chrono::nanoseconds> (
+                    std::chrono::steady_clock::now ().time_since_epoch ())
+                    .count ());
+                g_spot_route_recv_stats.recv_count.fetch_add (
+                  1, std::memory_order_relaxed);
+                g_spot_route_recv_stats.recv_ns.fetch_add (end_ns - start_ns,
+                                                           std::memory_order_relaxed);
+            }
 
             ++processed;
             if (processed >= mesh_xsub_forward_batch_limit
@@ -660,6 +856,20 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
                 return 0;
             continue;
         }
+
+        std::string topic (
+          static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
+        topic_msg.close ();
+
+        spot_owned_msg_parts_t frames;
+        if (recv_remaining_frames_to_parts (
+              mesh_xsub_, &frames, &processed_bytes)
+            != 0) {
+            return -1;
+        }
+
+        const char *topic_data = topic.data ();
+        const size_t topic_size = topic.size ();
 
         if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (
               topic_data, topic_size)) {
@@ -728,6 +938,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
   socket_base_t *ctrl_,
   spot_node_t *node_,
   spot_runtime_t *runtime_,
+  socket_poller_t *poller_,
   socket_base_t *mesh_pub_,
   socket_base_t *mesh_xsub_,
   socket_base_t *peer_ctrl_pub_,
@@ -736,7 +947,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
   spot_data_plane_protocol_state_t *state_,
   bool *running_out_)
 {
-    if (!ctrl_ || !node_ || !runtime_ || !mesh_pub_ || !mesh_xsub_
+    if (!ctrl_ || !node_ || !runtime_ || !poller_ || !mesh_pub_ || !mesh_xsub_
         || !peer_ctrl_pub_ || !peer_ctrl_sub_ || !state_ || !running_out_) {
         errno = EFAULT;
         return -1;
@@ -801,13 +1012,32 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             return 0;
         }
 
+        std::string route_bind_endpoint;
+        if (!spot_control_protocol::derive_peer_route_bind_endpoint (
+              resolved_endpoint, runtime_->node_id, &route_bind_endpoint)) {
+            if (send_errno_reply (ctrl_, EINVAL) != 0)
+                return -1;
+            return 0;
+        }
+
         if (peer_ctrl_sub_->bind (ctrl_bind_endpoint.c_str ()) != 0) {
             if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
                 return -1;
             return 0;
         }
 
+        if (spot_node_t::apply_tls_server (runtime_->node_router, cert, key) != 0
+            || runtime_->node_router->bind (route_bind_endpoint.c_str ())
+                 != 0) {
+            const int saved_errno = errno != 0 ? errno : EIO;
+            (void) peer_ctrl_sub_->term_endpoint (ctrl_bind_endpoint.c_str ());
+            if (send_errno_reply (ctrl_, saved_errno) != 0)
+                return -1;
+            return 0;
+        }
+
         runtime_->peer_ctrl_endpoint = ctrl_bind_endpoint;
+        runtime_->peer_route_bind_endpoint = route_bind_endpoint;
         runtime_->bound_endpoint = resolved_endpoint;
         {
             scoped_lock_t lock (node_->_sync);
@@ -945,6 +1175,10 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             (void) peer_ctrl_sub_->term_endpoint (
               runtime_->peer_ctrl_endpoint.c_str ());
         runtime_->peer_ctrl_endpoint.clear ();
+        if (!runtime_->peer_route_bind_endpoint.empty ())
+            (void) runtime_->peer_route_ingress->term_endpoint (
+              runtime_->peer_route_bind_endpoint.c_str ());
+        runtime_->peer_route_bind_endpoint.clear ();
         runtime_->bound_endpoint.clear ();
         spot_mesh_pub_budget_t::reset_runtime_state (runtime_);
         if (mesh_pub_->term_endpoint (arg.c_str ()) != 0) {

@@ -106,6 +106,7 @@ class spot_node_t : public discovery_observer_t
     bool has_local_filtered_subs () const;
     int replay_subscriptions_if_active_peers ();
     std::string first_active_peer_endpoint () const;
+    std::string single_peer_route_endpoint () const;
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
     void untrack_owned_socket (const socket_base_t *socket_);

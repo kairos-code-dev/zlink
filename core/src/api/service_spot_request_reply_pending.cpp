@@ -206,15 +206,15 @@ int zlink::spot_reqrep_internal::ensure_spot_recv_ready (
         std::lock_guard<std::mutex> lock (state_->mutex);
         if (!state_->routed_recv_socket) {
             if (zlink::internal_pair_queue::ensure (
-                  ctx, "zlink.spot.route", &state_->routed_recv_queue)
+                  ctx, "zlink.spot.route", &state_->routed_recv_queue.signal)
                 != 0) {
                 return -1;
             }
             zlink::spot_node_access_t::track_owned_socket (
-              spot->node, state_->routed_recv_queue.rx);
+              spot->node, state_->routed_recv_queue.signal.rx);
             zlink::spot_node_access_t::track_owned_socket (
-              spot->node, state_->routed_recv_queue.tx);
-            state_->routed_recv_socket = state_->routed_recv_queue.rx;
+              spot->node, state_->routed_recv_queue.signal.tx);
+            state_->routed_recv_socket = state_->routed_recv_queue.signal.rx;
         }
     }
 

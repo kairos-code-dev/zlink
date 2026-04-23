@@ -7,7 +7,6 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
-
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_owned_service.hpp"
 #include "services/discovery/discovery_protocol.hpp"

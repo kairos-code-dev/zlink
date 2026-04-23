@@ -125,6 +125,33 @@ struct spot_subscribe_dispatch_queue_t
     bool closed;
 };
 
+struct queued_routed_message_t
+{
+    queued_routed_message_t ();
+    ~queued_routed_message_t ();
+
+    queued_routed_message_t (queued_routed_message_t &&other_) noexcept;
+    queued_routed_message_t &operator= (queued_routed_message_t &&other_) noexcept;
+
+    zlink_routing_id_t source_rid;
+    zlink_routing_id_t spot_rid;
+    uint64_t request_seq;
+    std::vector<zlink_msg_t> parts;
+
+  private:
+    queued_routed_message_t (const queued_routed_message_t &);
+    queued_routed_message_t &operator= (const queued_routed_message_t &);
+};
+
+struct routed_message_queue_t
+{
+    routed_message_queue_t ();
+
+    std::mutex mutex;
+    std::deque<queued_routed_message_t> pending;
+    zlink::internal_pair_queue::queue_t signal;
+};
+
 struct spot_request_reply_state_t
 {
     explicit spot_request_reply_state_t (void *owner_);
@@ -139,7 +166,7 @@ struct spot_request_reply_state_t
                        pending_spot_key_hash_t>
       pending_replies;
     spot_subscribe_dispatch_queue_t subscribe_queue;
-    zlink::internal_pair_queue::queue_t routed_recv_queue;
+    routed_message_queue_t routed_recv_queue;
     zlink::socket_base_t *routed_recv_socket;
     zlink::request_completion::queue_state_t completion;
     std::map<void *, std::shared_ptr<spot_channel_reply_source_t> >
@@ -202,7 +229,7 @@ int queue_spot_subscribe_message (spot_request_reply_state_t *state_,
                                   size_t part_count_);
 void close_spot_subscribe_dispatch_queue (
   spot_subscribe_dispatch_queue_t *queue_);
-int recv_internal_spot_queue (zlink::socket_base_t *socket_,
+int recv_internal_spot_queue (spot_request_reply_state_t *state_,
                               const zlink_routing_id_t **source_rid_out_,
                               const zlink_routing_id_t **spot_rid_out_,
                               uint64_t *request_seq_out_,
@@ -268,6 +295,21 @@ int publish_spot_routed_to_mesh (spot_node_t *node_,
 inline const char *spot_routed_mesh_topic ()
 {
     return "__zlink.spot.routed";
+}
+inline std::string spot_routed_mesh_topic_for_node (
+  const std::string &destination_node_rid_)
+{
+    return destination_node_rid_.empty ()
+             ? std::string (spot_routed_mesh_topic ())
+             : std::string (spot_routed_mesh_topic ()) + "."
+                 + destination_node_rid_;
+}
+inline bool is_spot_routed_mesh_topic (const char *value_, size_t value_size_)
+{
+    const char *prefix = spot_routed_mesh_topic ();
+    const size_t prefix_size = strlen (prefix);
+    return value_ && value_size_ >= prefix_size
+           && memcmp (value_, prefix, prefix_size) == 0;
 }
 int dispatch_local_reply (std::vector<zlink_msg_t> *combined_);
 int dispatch_local_request (const std::string &router_rid_,

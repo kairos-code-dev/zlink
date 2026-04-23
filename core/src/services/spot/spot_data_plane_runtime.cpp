@@ -110,6 +110,7 @@ static void close_runtime_sockets (spot_node_t *node_,
     spot_data_plane_t::close_socket_ptr (node_, state_->fanout);
     spot_data_plane_t::close_socket_ptr (node_, state_->ingress);
     spot_data_plane_t::close_socket_ptr (node_, state_->node_router);
+    spot_data_plane_t::close_socket_ptr (node_, state_->peer_route_ingress);
     spot_data_plane_t::close_socket_ptr (node_, state_->route_ingress);
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_sub);
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_pub);
@@ -117,6 +118,24 @@ static void close_runtime_sockets (spot_node_t *node_,
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_pub);
     spot_data_plane_t::close_socket_ptr (node_, state_->ctrl);
+}
+
+static int subscribe_runtime_mesh_topics (spot_runtime_t *runtime_,
+                                          socket_base_t *mesh_xsub_)
+{
+    if (!runtime_ || !mesh_xsub_ || !runtime_->owner) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (spot_data_plane_protocol_t::send_subscription_update (
+          mesh_xsub_,
+          spot_control_protocol::bootstrap_ctrl_descriptor_topic, true)
+        != 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
 static int configure_runtime_sockets (spot_runtime_t *runtime_,
@@ -178,6 +197,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     apply_common_internal_opts (state_->peer_ctrl_pub, linger);
     apply_common_internal_opts (state_->peer_ctrl_sub, linger);
     apply_common_internal_opts (state_->route_ingress, linger);
+    apply_common_internal_opts (state_->peer_route_ingress, linger);
     apply_common_internal_opts (state_->node_router, linger);
     apply_common_internal_opts (state_->ingress, linger);
     apply_common_internal_opts (state_->fanout, linger);
@@ -219,6 +239,12 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                        sizeof (route_ingress_rcvhwm));
     state_->route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
                                        sizeof (neg_one));
+    state_->peer_route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                            &route_ingress_rcvhwm,
+                                            sizeof (route_ingress_rcvhwm));
+    state_->peer_route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO,
+                                            &neg_one,
+                                            sizeof (neg_one));
     state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                      &node_router_rcvhwm,
                                      sizeof (node_router_rcvhwm));
@@ -243,6 +269,7 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     peer_ctrl_pub (NULL),
     peer_ctrl_sub (NULL),
     route_ingress (NULL),
+    peer_route_ingress (NULL),
     node_router (NULL),
     ingress (NULL),
     fanout (NULL),
@@ -277,6 +304,7 @@ void spot_data_plane_t::clear_runtime_socket_refs (
     runtime_->peer_ctrl_pub = NULL;
     runtime_->peer_ctrl_sub = NULL;
     runtime_->route_ingress = NULL;
+    runtime_->peer_route_ingress = NULL;
     runtime_->node_router = NULL;
     runtime_->local_pub_ingress_sub = NULL;
     runtime_->local_fanout_xpub = NULL;
@@ -301,6 +329,8 @@ int spot_data_plane_t::initialize_runtime (
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
     state_out_->route_ingress =
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
+    state_out_->peer_route_ingress =
+      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
     state_out_->node_router =
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
     state_out_->ingress = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
@@ -308,7 +338,8 @@ int spot_data_plane_t::initialize_runtime (
 
     if (!state_out_->ctrl || !state_out_->mesh_pub || !state_out_->mesh_xsub
         || !state_out_->peer_ctrl_pub || !state_out_->peer_ctrl_sub
-        || !state_out_->route_ingress || !state_out_->node_router
+        || !state_out_->route_ingress || !state_out_->peer_route_ingress
+        || !state_out_->node_router
         || !state_out_->ingress || !state_out_->fanout) {
         const int err = errno != 0 ? errno : ENOMEM;
         if (state_out_->ctrl) {
@@ -336,6 +367,7 @@ int spot_data_plane_t::initialize_runtime (
         runtime_->peer_ctrl_pub = state_out_->peer_ctrl_pub;
         runtime_->peer_ctrl_sub = state_out_->peer_ctrl_sub;
         runtime_->route_ingress = state_out_->route_ingress;
+        runtime_->peer_route_ingress = state_out_->peer_route_ingress;
         runtime_->node_router = state_out_->node_router;
         runtime_->local_pub_ingress_sub = state_out_->ingress;
         runtime_->local_fanout_xpub = state_out_->fanout;
@@ -345,6 +377,7 @@ int spot_data_plane_t::initialize_runtime (
         node_->track_owned_socket (state_out_->peer_ctrl_pub);
         node_->track_owned_socket (state_out_->peer_ctrl_sub);
         node_->track_owned_socket (state_out_->route_ingress);
+        node_->track_owned_socket (state_out_->peer_route_ingress);
         node_->track_owned_socket (state_out_->node_router);
         node_->track_owned_socket (state_out_->ingress);
         node_->track_owned_socket (state_out_->fanout);
@@ -384,6 +417,9 @@ int spot_data_plane_t::initialize_runtime (
         || state_out_->poller->add (state_out_->route_ingress, NULL,
                                     ZLINK_POLLIN)
              != 0
+        || state_out_->poller->add (state_out_->peer_route_ingress, NULL,
+                                    ZLINK_POLLIN)
+             != 0
         || state_out_->poller->add (state_out_->node_router, NULL,
                                     ZLINK_POLLIN)
              != 0
@@ -407,9 +443,7 @@ int spot_data_plane_t::initialize_runtime (
         return -1;
     }
 
-    if (spot_data_plane_protocol_t::send_subscription_update (
-          state_out_->mesh_xsub, "", true)
-          != 0
+    if (subscribe_runtime_mesh_topics (runtime_, state_out_->mesh_xsub) != 0
         || state_out_->route_ingress->bind (
              runtime_->route_ingress_endpoint.c_str ())
              != 0

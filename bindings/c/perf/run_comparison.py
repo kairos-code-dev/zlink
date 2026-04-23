@@ -36,7 +36,7 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = ("STREAM",)
-SPOT_CONTROL_PATTERNS = ("SPOT", "SPOT_REQREP")
+SPOT_CONTROL_PATTERNS = ("SPOT", "SPOT_REQREP", "SPOT_SENDSEND")
 PATTERN_ALIASES = {
     "STREAM": ("STREAM",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
@@ -52,12 +52,14 @@ PATTERN_SUFFIX = {
     "PUBSUB": "pubsub",
     "SPOT": "spot",
     "SPOT_REQREP": "spot_reqrep",
+    "SPOT_SENDSEND": "spot_sendsend",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "SPOT_REQREP",
+    "SPOT_SENDSEND",
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = {
@@ -82,6 +84,7 @@ MULTI_COMPARISONS = [
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_spot_client", "SPOT"),
     ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
+    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
@@ -92,6 +95,7 @@ SUPPORTED_MULTI_RECV_MODES = {
     "PUBSUB": ("recv",),
     "SPOT": ("recv",),
     "SPOT_REQREP": ("recv",),
+    "SPOT_SENDSEND": ("recv",),
     "STREAM": ("recv",),
 }
 
@@ -1491,7 +1495,7 @@ def run_sizes_test_stream_shared(
         def maybe_send_size_start(size_value):
             if size_value is None:
                 return
-            if not use_control_plane and not control_connected[0]:
+            if use_control_plane and not control_connected[0]:
                 return
             try:
                 if server_proc.stdin:
@@ -2011,7 +2015,7 @@ def run_sizes_test_split(
         def maybe_send_size_start(size_value):
             if size_value is None:
                 return
-            if not use_control_plane and not control_connected[0]:
+            if use_control_plane and not control_connected[0]:
                 return
             try:
                 if server_proc.stdin:

@@ -353,4 +353,16 @@ void spot_node_access_t::schedule_subscription_replay (spot_node_t *node_)
     if (node_)
         node_->schedule_subscription_replay ();
 }
+
+int spot_node_access_t::send_internal_subscription_update (
+  spot_node_t *node_,
+  const std::string &raw_filter_,
+  bool subscribe_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node_->send_subscription_update (raw_filter_, subscribe_);
+}
 }

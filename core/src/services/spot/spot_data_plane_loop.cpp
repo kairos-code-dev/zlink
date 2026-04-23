@@ -33,6 +33,8 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->route_ingress);
+    spot_data_plane_forwarder_t::pump_socket_commands (
+      state_->peer_route_ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->node_router);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->fanout);
@@ -41,6 +43,7 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     state_->peer_ctrl_pub->set_all_pipes_nodelay ();
     state_->peer_ctrl_sub->set_all_pipes_nodelay ();
     state_->route_ingress->set_all_pipes_nodelay ();
+    state_->peer_route_ingress->set_all_pipes_nodelay ();
     state_->node_router->set_all_pipes_nodelay ();
     state_->ingress->set_all_pipes_nodelay ();
     state_->fanout->set_all_pipes_nodelay ();
@@ -62,7 +65,9 @@ bool is_ctrl_event (socket_base_t *socket_,
                     const spot_data_plane_runtime_state_t &state_)
 {
     return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
-           || socket_ == state_.route_ingress || socket_ == state_.node_router
+           || socket_ == state_.route_ingress
+           || socket_ == state_.peer_route_ingress
+           || socket_ == state_.node_router
            || socket_ == state_.mesh_xsub_monitor;
 }
 
@@ -80,7 +85,7 @@ bool handle_ctrl_event (socket_base_t *socket_,
                                                             &frames)
               != 0
             || spot_data_plane_protocol_t::handle_ctrl_command (
-                 state_->ctrl, node_, runtime_, state_->mesh_pub,
+                 state_->ctrl, node_, runtime_, state_->poller, state_->mesh_pub,
                  state_->mesh_xsub, state_->peer_ctrl_pub,
                  state_->peer_ctrl_sub, frames, protocol_state_, running_out_)
                  != 0) {
@@ -100,6 +105,14 @@ bool handle_ctrl_event (socket_base_t *socket_,
 
     if (socket_ == state_->route_ingress) {
         if (zlink_spot_process_route_ingress (node_, socket_) != 0) {
+            *fatal_errno_out_ = errno;
+            *running_out_ = false;
+        }
+        return true;
+    }
+
+    if (socket_ == state_->peer_route_ingress) {
+        if (zlink_spot_process_peer_route_ingress (node_, socket_) != 0) {
             *fatal_errno_out_ = errno;
             *running_out_ = false;
         }
@@ -287,11 +300,17 @@ int spot_data_plane_loop_t::run_until_shutdown (
             fatal_errno = errno;
             break;
         }
-
-        socket_poller_t::event_t events[7];
+        if (state_->peer_route_ingress
+            && zlink_spot_process_peer_route_ingress (
+                 node_, state_->peer_route_ingress)
+                 != 0) {
+            fatal_errno = errno;
+            break;
+        }
+        socket_poller_t::event_t events[8];
         const int rc =
           state_->poller->wait (
-            events, 7,
+            events, 8,
             resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));
         if (rc < 0) {
             if (errno == EAGAIN || errno == EINTR)
@@ -340,9 +359,13 @@ int spot_data_plane_loop_t::run_once (
 
     if (drain_peer_ctrl_messages (node_, state_, protocol_state_) != 0)
         return errno;
-
-    socket_poller_t::event_t events[7];
-    const int rc = state_->poller->wait (events, 7, 0);
+    if (state_->peer_route_ingress
+        && zlink_spot_process_peer_route_ingress (
+             node_, state_->peer_route_ingress)
+             != 0)
+        return errno;
+    socket_poller_t::event_t events[8];
+    const int rc = state_->poller->wait (events, 8, 0);
     if (rc < 0) {
         if (errno == EAGAIN || errno == EINTR)
             return 0;

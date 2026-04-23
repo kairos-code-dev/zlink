@@ -240,6 +240,7 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
     socket_base_t *route_ingress;
+    socket_base_t *peer_route_ingress;
     socket_base_t *node_router;
     socket_base_t *ingress;
     socket_base_t *fanout;
@@ -273,6 +274,7 @@ struct spot_data_plane_protocol_t
       socket_base_t *ctrl_,
       spot_node_t *node_,
       spot_runtime_t *runtime_,
+      socket_poller_t *poller_,
       socket_base_t *mesh_pub_,
       socket_base_t *mesh_xsub_,
       socket_base_t *peer_ctrl_pub_,

@@ -7,7 +7,7 @@ OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/c/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 MSG_SIZES="${PERF_MSG_SIZES:-}"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
@@ -204,7 +204,7 @@ Usage: bindings/c/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,STREAM
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM
 This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -338,6 +338,12 @@ resolve_multi_build_targets() {
         ;;
       SPOT)
         targets+=("comp_src_spot_server" "comp_src_spot_client")
+        ;;
+      SPOT_REQREP)
+        targets+=("comp_src_spot_reqrep_server" "comp_src_spot_reqrep_client")
+        ;;
+      SPOT_SENDSEND)
+        targets+=("comp_src_spot_sendsend_server" "comp_src_spot_sendsend_client")
         ;;
       STREAM)
         targets+=("comp_src_stream_server" "perf_stream_client")

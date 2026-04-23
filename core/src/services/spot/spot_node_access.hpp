@@ -107,6 +107,9 @@ struct spot_node_access_t
     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
     static void wake_control_task (spot_node_t *node_);
     static void schedule_subscription_replay (spot_node_t *node_);
+    static int send_internal_subscription_update (spot_node_t *node_,
+                                                  const std::string &raw_filter_,
+                                                  bool subscribe_);
 };
 }
 

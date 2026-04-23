@@ -125,6 +125,18 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   `READY_COUNT,<msg_size>,<count>` control message 로 보낸다. server 는
   msg_size 별 누적 ready unit 이 `expected_clients` 와 같아지면 `START` 를
   broadcast 해서 판정한다.
+- MULTI_SPOT / MULTI_SPOT_REQREP 에서 `clients` 는 `SpotNode` 수가 아니라
+  **logical spot 수**를 뜻한다.
+- MULTI_SPOT / MULTI_SPOT_REQREP 의 기본 client topology 는
+  **client process 당 SpotNode 1개 + 그 SpotNode 위의 spot N개**다.
+  예를 들어 `--clients 100` 이면, 특별한 패턴 문서가 없는 한
+  `SpotNode 100개 + spot 100개`로 해석하지 않고
+  `SpotNode 1개 + spot 100개`로 구현해야 한다.
+- server 도 동일하게 pattern 문서에 별도 예외가 없으면 data plane 기준
+  SpotNode 1개를 사용한다. `expected_clients` 는 peer SpotNode 수가 아니라
+  ready barrier 에 참여하는 client spot 수와 같아야 한다.
+- 모든 bindings 와 core perf harness 는 이 topology 를 동일하게 따라야 하며,
+  각 언어 구현이 임의로 `clients == SpotNode count` 로 재해석하면 안 된다.
 - SPOT data plane 수신은 direct message callback이 아니라 `dispatch_event`
   callback 안의 recv drain 으로 처리한다.
 - SPOT client 는 `connect_peer()` 직후 즉시 `READY_COUNT` 를 보내지 않는다.
@@ -771,6 +783,10 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
 > STREAM client 예외(core): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
+> SPOT 계열 topology 고정: `MULTI_SPOT`, `MULTI_SPOT_REQREP` 은 기본적으로
+> client process 당 SpotNode 1개를 만들고, `--clients N` 수만큼 logical spot을
+> 그 SpotNode 위에 생성한다. 별도 패턴 문서가 없는 한 언어별 구현이
+> SpotNode N개로 바꾸면 안 된다.
 
 #### MULTI_STREAM 계열 패턴
 

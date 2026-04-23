@@ -25,11 +25,69 @@ enum : uint8_t
 {
     zmp_spot_routed_protocol_id = 0x02,
     zmp_protocol_version = 0x01,
+    zmp_packed_protocol_version = 0x02,
     zmp_spot_class = 0x01,
     zmp_router_class = 0x02
 };
 
-const size_t spot_routed_control_part_count = 8;
+const size_t packed_spot_routed_control_part_count = 1;
+
+int init_packed_spot_routed_header (zlink_msg_t *msg_,
+                                    uint8_t source_class_,
+                                    const std::string &source_node_rid_,
+                                    const std::string &source_endpoint_rid_,
+                                    uint8_t destination_class_,
+                                    const std::string &destination_node_rid_,
+                                    const std::string &destination_endpoint_rid_)
+{
+    if (!msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const size_t total_size =
+      20 + source_node_rid_.size () + source_endpoint_rid_.size ()
+      + destination_node_rid_.size () + destination_endpoint_rid_.size ();
+    if (zlink_msg_init_size (msg_, total_size) != 0)
+        return -1;
+
+    unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (msg_));
+    data[0] = zmp_spot_routed_protocol_id;
+    data[1] = zmp_packed_protocol_version;
+    data[2] = source_class_;
+    data[3] = destination_class_;
+    zlink::request_reply::encode_u32_be (
+      static_cast<uint32_t> (source_node_rid_.size ()), data + 4);
+    zlink::request_reply::encode_u32_be (
+      static_cast<uint32_t> (source_endpoint_rid_.size ()), data + 8);
+    zlink::request_reply::encode_u32_be (
+      static_cast<uint32_t> (destination_node_rid_.size ()), data + 12);
+    zlink::request_reply::encode_u32_be (
+      static_cast<uint32_t> (destination_endpoint_rid_.size ()), data + 16);
+
+    unsigned char *cursor = data + 20;
+    if (!source_node_rid_.empty ()) {
+        memcpy (cursor, source_node_rid_.data (), source_node_rid_.size ());
+        cursor += source_node_rid_.size ();
+    }
+    if (!source_endpoint_rid_.empty ()) {
+        memcpy (
+          cursor, source_endpoint_rid_.data (), source_endpoint_rid_.size ());
+        cursor += source_endpoint_rid_.size ();
+    }
+    if (!destination_node_rid_.empty ()) {
+        memcpy (
+          cursor, destination_node_rid_.data (), destination_node_rid_.size ());
+        cursor += destination_node_rid_.size ();
+    }
+    if (!destination_endpoint_rid_.empty ()) {
+        memcpy (cursor,
+                destination_endpoint_rid_.data (),
+                destination_endpoint_rid_.size ());
+    }
+
+    return 0;
+}
 
 std::string routing_id_key_local (const zlink_routing_id_t *peer_rid_)
 {
@@ -428,8 +486,10 @@ int zlink::spot_reqrep_internal::recv_combined_router_message (
     }
 
     const bool has_more = zlink::internal_pair_queue::frame_has_more (first);
-    zlink_msg_close (&first);
+    out_->push_back (first);
     if (!has_more) {
+        zlink::request_reply::close_built_parts (out_);
+        out_->clear ();
         errno = EPROTO;
         return -1;
     }
@@ -472,54 +532,37 @@ int zlink::spot_reqrep_internal::build_spot_request_reply_message (
     }
 
     const size_t total_part_count =
-      spot_routed_control_part_count + zlink::request_reply::control_part_count
-      + part_count_;
+      packed_spot_routed_control_part_count
+      + zlink::request_reply::control_part_count + part_count_;
     out_->resize (total_part_count);
     for (size_t i = 0; i < total_part_count; ++i)
         zlink_msg_init (&(*out_)[i]);
 
-    unsigned char spot_protocol_id = zmp_spot_routed_protocol_id;
-    unsigned char version = zmp_protocol_version;
     unsigned char source_class = source_class_;
     unsigned char destination_class = destination_class_;
     unsigned char rr_protocol_id = zlink::request_reply::protocol_id;
+    unsigned char rr_version = zmp_protocol_version;
     unsigned char rr_type = message_type_;
     unsigned char seq_buf[8];
     zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
 
-    if (zlink::request_reply::init_control_part (&(*out_)[0], &spot_protocol_id, 1)
+    if (init_packed_spot_routed_header (&(*out_)[0],
+                                        source_class,
+                                        source_node_rid_,
+                                        source_endpoint_rid_,
+                                        destination_class,
+                                        destination_node_rid_,
+                                        destination_endpoint_rid_)
           != 0
-        || zlink::request_reply::init_control_part (&(*out_)[1], &version, 1)
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[2], &source_class, 1)
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[3],
-                                                    source_node_rid_.data (),
-                                                    source_node_rid_.size ())
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[4],
-                                                    source_endpoint_rid_.data (),
-                                                    source_endpoint_rid_.size ())
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[5],
-                                                    &destination_class, 1)
-             != 0
-        || zlink::request_reply::init_control_part (
-             &(*out_)[6], destination_node_rid_.data (),
-             destination_node_rid_.size ())
-             != 0
-        || zlink::request_reply::init_control_part (
-             &(*out_)[7], destination_endpoint_rid_.data (),
-             destination_endpoint_rid_.size ())
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[8],
+        || zlink::request_reply::init_control_part (&(*out_)[1],
                                                     &rr_protocol_id, 1)
              != 0
-        || zlink::request_reply::init_control_part (&(*out_)[9], &version, 1)
+        || zlink::request_reply::init_control_part (&(*out_)[2],
+                                                    &rr_version, 1)
              != 0
-        || zlink::request_reply::init_control_part (&(*out_)[10], &rr_type, 1)
+        || zlink::request_reply::init_control_part (&(*out_)[3], &rr_type, 1)
              != 0
-        || zlink::request_reply::init_control_part (&(*out_)[11], seq_buf,
+        || zlink::request_reply::init_control_part (&(*out_)[4], seq_buf,
                                                     sizeof (seq_buf))
              != 0) {
         const int saved_errno = errno;
@@ -530,7 +573,7 @@ int zlink::spot_reqrep_internal::build_spot_request_reply_message (
     }
 
     for (size_t i = 0; i < part_count_; ++i) {
-        if (zlink_msg_move (&(*out_)[spot_routed_control_part_count
+        if (zlink_msg_move (&(*out_)[packed_spot_routed_control_part_count
                                      + zlink::request_reply::control_part_count
                                      + i],
                             &parts_[i])
@@ -563,41 +606,23 @@ int zlink::spot_reqrep_internal::build_spot_routed_message (
         return -1;
     }
 
-    const size_t total_part_count = spot_routed_control_part_count + part_count_;
+    const size_t total_part_count =
+      packed_spot_routed_control_part_count + part_count_;
     out_->resize (total_part_count);
     for (size_t i = 0; i < total_part_count; ++i)
         zlink_msg_init (&(*out_)[i]);
 
-    unsigned char spot_protocol_id = zmp_spot_routed_protocol_id;
-    unsigned char version = zmp_protocol_version;
     unsigned char source_class = source_class_;
     unsigned char destination_class = destination_class_;
 
-    if (zlink::request_reply::init_control_part (&(*out_)[0], &spot_protocol_id, 1)
-          != 0
-        || zlink::request_reply::init_control_part (&(*out_)[1], &version, 1)
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[2], &source_class, 1)
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[3],
-                                                    source_node_rid_.data (),
-                                                    source_node_rid_.size ())
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[4],
-                                                    source_endpoint_rid_.data (),
-                                                    source_endpoint_rid_.size ())
-             != 0
-        || zlink::request_reply::init_control_part (&(*out_)[5],
-                                                    &destination_class, 1)
-             != 0
-        || zlink::request_reply::init_control_part (
-             &(*out_)[6], destination_node_rid_.data (),
-             destination_node_rid_.size ())
-             != 0
-        || zlink::request_reply::init_control_part (
-             &(*out_)[7], destination_endpoint_rid_.data (),
-             destination_endpoint_rid_.size ())
-             != 0) {
+    if (init_packed_spot_routed_header (&(*out_)[0],
+                                        source_class,
+                                        source_node_rid_,
+                                        source_endpoint_rid_,
+                                        destination_class,
+                                        destination_node_rid_,
+                                        destination_endpoint_rid_)
+        != 0) {
         const int saved_errno = errno;
         zlink::request_reply::close_built_parts (out_);
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
@@ -606,7 +631,8 @@ int zlink::spot_reqrep_internal::build_spot_routed_message (
     }
 
     for (size_t i = 0; i < part_count_; ++i) {
-        if (zlink_msg_move (&(*out_)[spot_routed_control_part_count + i], &parts_[i])
+        if (zlink_msg_move (&(*out_)[packed_spot_routed_control_part_count + i],
+                            &parts_[i])
             != 0) {
             const int saved_errno = errno;
             zlink::request_reply::close_built_parts (out_);

@@ -5,6 +5,7 @@
 #include "services/spot/spot_node.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_mesh_pub_budget.hpp"
 #include "services/spot/spot_node_control_policy.hpp"
@@ -517,6 +518,23 @@ std::string spot_node_t::first_connected_peer_endpoint () const
     if (_peer_state.connected_endpoints.empty ())
         return std::string ();
     return *_peer_state.connected_endpoints.begin ();
+}
+
+std::string spot_node_t::single_peer_route_endpoint () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+
+    if (_peer_state.connected_endpoints.size () != 1 || !_runtime) {
+        return std::string ();
+    }
+
+    std::string route_endpoint;
+    if (!spot_control_protocol::derive_peer_route_bind_endpoint (
+          *_peer_state.connected_endpoints.begin (),
+          _runtime->node_id,
+          &route_endpoint))
+        return std::string ();
+    return route_endpoint;
 }
 
 uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const

@@ -131,6 +131,75 @@
 - 단, `Stage` wrapper 외부에서 `SpotRid` 를 받아 직접 state 를 건드리려 하면
   그 접근은 같은 실행 계약 바깥이므로 별도 동기화가 필요하다.
 
+#### 4.1.1 actor attach 이후 내부 처리 모델
+
+위 실행 계약만으로는 "왜 actor dispatch 안에서 `Spot` 객체를 lock 없이 만져도
+되는가"가 바로 보이지 않을 수 있다. `Stage wrapper`나 room wrapper를 실제로
+만들려면 내부에서 어떤 흐름으로 직렬화하는지 한 번은 설명해 둘 필요가 있다.
+
+핵심은 아래 두 가지다.
+
+- actor는 반드시 특정 `Spot`에 attach된 뒤에만 room packet을 처리한다.
+- attach된 actor로 들어가는 모든 packet은 **같은 `Spot` 실행 문맥**으로 다시
+  모아서 처리한다.
+
+즉 actor가 `Spot`에 붙었다는 것은 단순히 membership table에 들어갔다는 뜻만이
+아니다. 그 actor에 대한 후속 packet, disconnect, timer 후속 작업도 모두 그
+`Spot`이 소유하는 실행 문맥으로 다시 들어온다는 뜻까지 포함한다.
+
+내부 처리는 보통 아래 순서로 읽는 것이 가장 자연스럽다.
+
+1. client session이 인증을 끝내고 actor를 찾는다.
+2. `JoinRoom` 같은 packet으로 actor를 특정 `Spot`에 attach한다.
+3. framework는 `actorKey -> spot runtime` 연결을 내부 membership으로 기록한다.
+4. 그 뒤 session에서 packet이 오면 먼저 packet path인지 raw path인지와 무관하게
+   `header/body` 형태로 정규화한다.
+5. 정규화된 packet을 해당 actor가 attach된 `Spot` runtime inbox로 넣는다.
+6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
+7. 그 실행기 안에서만 `actor.DispatchAsync(header, body, ...)`가 수행된다.
+8. actor가 room 상태를 바꾸거나 `Spot` 메서드를 호출해도, 이미 같은 `Spot`
+   실행 문맥 안이므로 추가 lock이 필요 없다.
+
+즉 구현 관점에서는 아래 흐름으로 보면 된다.
+
+```text
+joined actor session packet
+    -> normalize to header/body
+    -> submit to spot-owned inbox
+    -> single spot consumer
+    -> actor.DispatchAsync(...)
+    -> actor accesses Spot state
+```
+
+이 모델에서 중요한 점은 actor packet 처리를 session callback thread에서 바로
+실행하지 않는다는 것이다. session callback은 actor가 어느 `Spot`에 붙어 있는지
+확인하고, packet을 그 `Spot`이 소유한 실행 문맥으로 넘기는 데까지만 책임을 가진다.
+실제 actor packet 처리는 반드시 `Spot` 실행 문맥 안에서만 일어난다.
+
+이 규칙을 지키면 아래 입력원이 모두 한 줄로 선다.
+
+- routed packet handler
+- subscribe handler
+- timer handler
+- channel reply continuation
+- attach가 끝난 actor session packet
+- actor session disconnect 후속 처리
+
+그래서 actor 안에서 `Spot` 상태를 읽고 쓸 때 "이 시점에 다른 packet handler가
+같은 `Spot` state를 동시에 만지는가"를 매번 고민할 필요가 없다.
+
+내부 구현은 mailbox, queue, executor, fiber 등 여러 방식으로 만들 수 있다.
+하지만 wrapper 문서에서 고정해야 하는 최소 의미는 아래 정도다.
+
+- attach된 actor의 packet은 `Spot` 실행 문맥 밖에서 직접 처리하지 않는다.
+- framework 내부 `SubmitAsync(...)`는 `Spot`이 소유한 직렬 실행 규칙 안에서만
+  수행되고, 그 안에서 최종적으로 `actor.DispatchAsync(...)`가 호출된다.
+- raw session도 예외가 아니다. raw chunk는 session이 재조립한 뒤
+  `header/body`로 바꿔 같은 actor dispatch 경로를 탄다.
+
+즉 "`Spot`에 actor가 attach된다"는 말은 membership만 뜻하는 것이 아니라,
+**그 actor의 packet 처리 ownership이 해당 `Spot`으로 넘어간다**는 뜻으로 읽어야 한다.
+
 ### 4.2 timer 등록
 
 `Stage` 성격의 모델에는 timer가 거의 필수다.
@@ -156,6 +225,18 @@ public interface IZLinkTimer : IAsyncDisposable
 
 public abstract class ZLinkSpot
 {
+    public virtual ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    public virtual ValueTask DetachActorAsync(
+        string actorKey,
+        CancellationToken cancellationToken = default);
+
+    public virtual bool TryGetActor(
+        string actorKey,
+        out IZLinkActor? actor);
+
     protected ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
@@ -183,6 +264,12 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 두 번째 인자는 누적 `fireCount`다. framework의 `IZLinkTimer.CancelAsync()`는
 low-level `Timer.Stop()`와 dispose lifecycle을 감싼 고수준 timer handle로 읽는
 편이 자연스럽다.
+
+같은 맥락으로 actor membership도 sample 전용 helper에만 두기보다, `ZLinkSpot`이
+`AttachActorAsync(...)`, `DetachActorAsync(...)`, `TryGetActor(...)` 같은 최소
+public 표면을 가지는 편이 wrapper 설계에 더 자연스럽다. 그래야 actor를 어떤 `Spot`에
+귀속시키는 ownership이 framework 계약으로 먼저 보이고, wrapper는 그 위에 stage
+정책만 얹으면 된다.
 
 여기서 더 중요한 것은 timer handler가 어느 실행 문맥에서 도는가다.
 `AddTimer<THandler>(...)`로 등록한 timer handler는 가능하면 같은 spot 실행

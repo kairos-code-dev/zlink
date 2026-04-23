@@ -353,6 +353,10 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   - client(requester) 와 server(replier) 는 echo 패턴과 동일하게
     request/reply 의미를 유지하며, send 역할과 recv 역할 정책을 둘 다
     적용한다.
+  - multi suite 에서 `clients` 는 SpotNode 수가 아니라 logical spot 수를 뜻한다.
+    별도 패턴 문서가 없는 한 기본 topology 는
+    `client process 당 SpotNode 1개 + spot N개` 이고,
+    bindings 가 이를 `SpotNode N개 + spot N개` 로 임의 해석하면 안 된다.
 - `MULTI_DEALER_ROUTER`
   - echo(request/reply) 패턴이다. client(dealer requester) 가 request 를 보내고,
     server(router replier) 는 request 를 읽은 뒤 source routing id 로 reply 를

@@ -49,7 +49,6 @@
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `ZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
-| stream | `IZLinkSession` | actor가 보는 session bind/rebind handle | 4.4.1 |
 | value | `ZLinkStreamSessionError` | stream session error category enum | 4.4 |
 | value | `ZLinkStreamError` | stream error detail + errno helper | 4.4 |
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event | 10.3 |
@@ -226,6 +225,28 @@ public abstract class ZLinkSpot
         return ValueTask.FromResult<IZLinkTimer>(default!);
     }
 
+    public virtual ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    public virtual ValueTask DetachActorAsync(
+        string actorKey,
+        CancellationToken cancellationToken = default)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    public virtual bool TryGetActor(
+        string actorKey,
+        out IZLinkActor? actor)
+    {
+        actor = default;
+        return false;
+    }
+
     public virtual ValueTask OnInitializeAsync(
         IServiceProvider services,
         CancellationToken cancellationToken)
@@ -269,6 +290,11 @@ public interface IZLinkSpotTimerHandler<TSpot>
         CancellationToken cancellationToken);
 }
 ```
+
+`ZLinkSpot`이 `IZLinkActor`를 public 계약으로 노출한다면, 그 actor를 `Spot`에
+귀속시키는 공개 진입점도 같이 있어야 한다. 그래서 최소 초안은
+`AttachActorAsync(...)`, `DetachActorAsync(...)`, `TryGetActor(...)` 정도를 함께
+가지는 편이 자연스럽다.
 
 이 초안이 기대하는 low-level `.NET` 바인딩 기반 표면도 문서 안에 같이 고정해 둘
 필요가 있다. 현재 `bindings/dotnet/src/Zlink` 기준 실제 public surface는 아래와
@@ -413,7 +439,8 @@ join이 끝난 session/actor가 **같은 spot execution context**에서 처리�
 
 - 사용자는 `Recv(...)`나 `Drain(...)` loop를 직접 작성하지 않는다.
 - 사용자는 `AddPacket<THandler>(...)`, `AddSubscribe<THandler>(...)`,
-  `AddTimer<THandler>(...)`, session join 같은 고수준 표면만 사용한다.
+  `AddTimer<THandler>(...)`, stream bind, `AttachActorAsync(...)` 같은 고수준
+  표면만 사용한다.
 - 같은 `Spot`에 귀속된 handler, timer handler, channel reply continuation,
   stream session callback은 framework가 정한 같은 실행 문맥 규칙을 따른다.
 - 이 계약이 유지되는 한, 사용자는 `SampleSpot.ActorCount` 같은 spot state를
@@ -423,7 +450,7 @@ join이 끝난 session/actor가 **같은 spot execution context**에서 처리�
 
 - handler 등록
 - timer 등록
-- session/actor join
+- stream bind와 actor attach
 - spot state 접근 규칙
 
 반대로 아래 내용은 framework 내부 구현이다.
@@ -554,6 +581,9 @@ session에 raw payload 또는 framed packet을 submit하는 동작으로 본다.
   - `OnPacketAsync(...)`로 framed `header/body`를 받는다.
 - raw session
   - `OnRawAsync(...)`로 raw payload chunk를 받는다.
+  - session이 자기 framing 규칙으로 chunk를 재조립한다.
+  - 재조립이 끝나면 framework 쪽 표준 형태인 `header/body` pair로 다시 만든다.
+  - actor나 상위 dispatch에는 이 `header/body` pair를 넘기는 쪽을 기본으로 본다.
 - 공통 lifecycle
   - `OnConnectedAsync(...)`
   - `OnDisconnectedAsync(...)`
@@ -581,31 +611,14 @@ stream session은 네트워크 연결 수명에 가깝고, actor는 `Spot`에 �
 가깝다. 게임 room 같은 상위 모델에서는 이 둘을 분리해야 reconnect를 자연스럽게
 설명할 수 있다.
 
-이 초안에서 framework가 먼저 보여 주는 actor 관련 표면은 아래 두 가지다.
+이 초안에서 framework가 먼저 보여 주는 actor 관련 표면은 아래 하나다.
 
 ```csharp
-public interface IZLinkSession
-{
-    string SessionId { get; }
-
-    RoutingId? RoutingId { get; }
-
-    IZLinkStream Stream { get; }
-
-    bool Send(
-        string msgId,
-        Message payload,
-        SendFlags flags = SendFlags.None);
-
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken);
-}
-
 public interface IZLinkActor
 {
     string ActorKey { get; }
 
-    IZLinkSession? Session { get; }
+    IZLinkStream? Stream { get; }
 
     ZLinkSpot? Spot { get; }
 
@@ -617,11 +630,11 @@ public interface IZLinkActor
         ZLinkSpot spot,
         CancellationToken cancellationToken);
 
-    ValueTask OnSessionBoundAsync(
-        IZLinkSession session,
+    ValueTask OnStreamBoundAsync(
+        IZLinkStream stream,
         CancellationToken cancellationToken);
 
-    ValueTask OnSessionUnboundAsync(
+    ValueTask OnStreamUnboundAsync(
         string sessionId,
         CancellationToken cancellationToken);
 
@@ -632,23 +645,37 @@ public interface IZLinkActor
 }
 ```
 
+이때 `DispatchAsync(...)`는 같은 `Spot` 실행 문맥 안에서 실제 actor 로직을
+수행하는 public 진입점으로 읽는다.
+즉 packet session은 transport에서 받은 `header/body`를 그대로 넘기고, raw session은
+사용자 정의 framing으로 chunk를 다시 묶은 뒤 같은 `header/body` 형태로 넘긴다.
+이렇게 하면 actor와 room 로직은 transport가 packet path였는지 raw path였는지를
+모르고 같은 dispatch 계약만 보면 된다.
+
+stream session이 actor를 찾은 뒤 packet을 넘길 때는 public `IZLinkActor` 메서드를
+직접 노출하기보다, framework 내부 runtime이 흔히 `SubmitAsync(...)` 같은 내부
+이름으로 그 actor가 attach된 `Spot` 실행 문맥에 work item을 넣는 쪽이 자연스럽다.
+즉 stream session은 packet ingress adapter이고, 실제 actor 처리는 attach된
+`Spot` execution context가 ownership을 가진다. 그 문맥 안에서 최종적으로
+`DispatchAsync(...)`가 호출된다고 읽는다.
+
 핵심 규칙은 아래와 같다.
 
 - `IZLinkPacketStreamSession`은 transport connection 수명을 받는다.
 - `IZLinkActor`는 `Spot`에 attach되는 논리 객체 수명을 받는다.
-- `IZLinkActor`는 현재 bind된 `IZLinkSession?`를 직접 가진다.
+- `IZLinkActor`는 현재 bind된 `IZLinkStream?`를 직접 가진다.
 - `IZLinkActor`는 현재 attach된 `ZLinkSpot?`도 직접 가진다.
-- actor attach/detach와 session bind/unbind는 다른 이벤트다.
-- 같은 actor는 session이 끊겨도 `Spot`에 남아 있을 수 있다.
-- 새 session이 같은 `ActorKey`로 다시 들어오면 기존 actor에 rebind할 수 있다.
+- actor attach/detach와 stream bind/unbind는 다른 이벤트다.
+- 같은 actor는 stream이 끊겨도 `Spot`에 남아 있을 수 있다.
+- 새 stream이 같은 `ActorKey`로 다시 들어오면 기존 actor에 rebind할 수 있다.
 
-즉 인증이 먼저 끝나고 session bind가 먼저 일어난 뒤, 그 actor가 나중에 특정
+즉 인증이 먼저 끝나고 stream bind가 먼저 일어난 뒤, 그 actor가 나중에 특정
 `Spot`에 attach되는 흐름도 자연스럽게 표현할 수 있어야 한다. 게임 room에서는
 `accountId` 기준 actor를 먼저 찾고, `JoinRoom` 같은 다음 패킷에서 room attach를
 완료하는 모델이 흔하기 때문이다.
 
-즉 framework가 보장해야 하는 최소 의미는 "`Actor`는 `Session`과 `Spot`을 각각
-독립적으로 참조하고, session bind/unbind와 spot attach/detach는 서로 다른
+즉 framework가 보장해야 하는 최소 의미는 "`Actor`는 `Stream`과 `Spot`을 각각
+독립적으로 참조하고, stream bind/unbind와 spot attach/detach는 서로 다른
 수명"이라는 것이다. 이 모델 위에서 응용은
 즉시 제거, reconnect 유예, spectator 전환 같은 상위 정책을 올릴 수 있다.
 

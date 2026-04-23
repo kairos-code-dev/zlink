@@ -99,6 +99,8 @@ struct spot_runtime_t
     void mark_fault (int err_);
     int ensure_sender_socket (spot_runtime_sender_kind_t kind_,
                               socket_base_t **out_);
+    int ensure_peer_route_sender_socket (const std::string &target_endpoint_,
+                                         socket_base_t **out_);
     int close_sender_cache (spot_runtime_sender_kind_t kind_, int timeout_ms_);
     int close_sender_caches (int timeout_ms_);
     void begin_shutdown ();
@@ -133,9 +135,11 @@ struct spot_runtime_t
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
     socket_base_t *route_ingress;
+    socket_base_t *peer_route_ingress;
     socket_base_t *node_router;
     socket_base_t *route_ingress_tx;
     socket_base_t *node_router_tx;
+    socket_base_t *peer_route_tx;
     socket_base_t *local_pub_ingress_sub;
     socket_base_t *local_fanout_xpub;
     service_control_runtime_t *data_plane_runtime;
@@ -148,8 +152,12 @@ struct spot_runtime_t
     std::string node_router_endpoint;
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
+    std::string peer_route_bind_endpoint;
     std::string route_ingress_sender_endpoint;
     std::string node_router_sender_endpoint;
+    std::string peer_route_sender_endpoint;
+    uint64_t peer_route_sender_ready_after_ms;
+    std::string routed_mesh_subscription_topic;
     bool faulted;
     int fault_errno;
     bool abortive_shutdown;

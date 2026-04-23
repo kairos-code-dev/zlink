@@ -7,6 +7,9 @@
 #include "api/service_spot_request_reply_internal.hpp"
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_pub.hpp"
 #include "api/zlink_testing.hpp"
 #include "api/bind_result_internal.hpp"
 #include "api/close_result_internal.hpp"
@@ -21,6 +24,37 @@
 
 namespace
 {
+int ensure_spot_routed_mesh_subscription (zlink::spot_node_t *node)
+{
+    if (!node)
+        return -1;
+
+    zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
+    if (!runtime)
+        return -1;
+
+    zlink::spot_pub_t *node_pub = node->ensure_default_pub ();
+    if (!node_pub)
+        return -1;
+
+    zlink_routing_id_t node_rid;
+    memset (&node_rid, 0, sizeof (node_rid));
+    if (node_pub->routing_id (&node_rid) != 0 || node_rid.size == 0)
+        return -1;
+
+    const std::string topic =
+      zlink::spot_reqrep_internal::spot_routed_mesh_topic_for_node (
+        std::string (reinterpret_cast<const char *> (node_rid.data),
+                     node_rid.size));
+
+    if (zlink::spot_node_access_t::send_internal_subscription_update (
+          node, topic, true)
+        != 0)
+        return -1;
+    runtime->routed_mesh_subscription_topic = topic;
+    return 0;
+}
+
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
 extern "C" void zlink_timer_cleanup_spot (void *spot_);
 
@@ -73,6 +107,14 @@ void *zlink_spot_new (void *node_)
         return NULL;
     }
     if (!zlink::spot_reqrep_internal::find_or_create_spot_state (spot)) {
+        const int err = errno;
+        zlink_spot_request_reply_cleanup_spot (spot);
+        zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+        delete spot;
+        errno = err;
+        return NULL;
+    }
+    if (ensure_spot_routed_mesh_subscription (node) != 0) {
         const int err = errno;
         zlink_spot_request_reply_cleanup_spot (spot);
         zlink::spot_node_access_t::unregister_spot_facade (node, spot);

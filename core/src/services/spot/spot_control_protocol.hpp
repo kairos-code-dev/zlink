@@ -153,6 +153,67 @@ inline bool derive_peer_ctrl_bind_endpoint (const std::string &data_endpoint_,
     return false;
 }
 
+inline bool derive_peer_route_bind_endpoint (const std::string &data_endpoint_,
+                                             uint32_t node_id_,
+                                             std::string *out_)
+{
+    if (!out_ || data_endpoint_.empty ())
+        return false;
+
+    if (starts_with (data_endpoint_, "inproc://")) {
+        *out_ = std::string ("inproc://zlink.spot.peer-route.")
+                + node_id_string (node_id_);
+        return true;
+    }
+
+    if (starts_with (data_endpoint_, "ipc://")) {
+        *out_ = data_endpoint_ + ".zlink-spot-route." + node_id_string (node_id_);
+        return true;
+    }
+
+    const auto derive_offset_port_endpoint =
+      [out_] (const std::string &endpoint_, const char *prefix_,
+              int offset_) -> bool {
+        if (!starts_with (endpoint_, prefix_))
+            return false;
+
+        const size_t host_offset = strlen (prefix_);
+        const size_t port_sep = endpoint_.rfind (':');
+        if (port_sep == std::string::npos || port_sep <= host_offset
+            || port_sep + 1 >= endpoint_.size ()) {
+            return false;
+        }
+
+        const std::string port_text = endpoint_.substr (port_sep + 1);
+        char *end = NULL;
+        const unsigned long port = std::strtoul (port_text.c_str (), &end, 10);
+        if (!end || *end != '\0' || port < 1024UL || port > 65535UL)
+            return false;
+
+        const unsigned long min_port = 1024UL;
+        const unsigned long port_space = 65535UL - min_port + 1UL;
+        const unsigned long mapped_port =
+          ((port - min_port + static_cast<unsigned long> (offset_)) % port_space)
+          + min_port;
+
+        char buf[32];
+        snprintf (buf, sizeof (buf), "%lu", mapped_port);
+        *out_ = endpoint_.substr (0, port_sep + 1) + buf;
+        return true;
+      };
+
+    if (derive_offset_port_endpoint (data_endpoint_, "tcp://", 20000))
+        return true;
+    if (derive_offset_port_endpoint (data_endpoint_, "tls://", 20000))
+        return true;
+    if (derive_offset_port_endpoint (data_endpoint_, "ws://", 20000))
+        return true;
+    if (derive_offset_port_endpoint (data_endpoint_, "wss://", 20000))
+        return true;
+
+    return false;
+}
+
 }
 }
 

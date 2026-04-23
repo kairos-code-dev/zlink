@@ -174,6 +174,7 @@ inline void print_result(const std::string &lib_type,
       || pattern == "ROUTER_ROUTER"
       || pattern == "STREAM"
       || pattern == "MULTI_SPOT_REQREP"
+      || pattern == "MULTI_SPOT_SENDSEND"
       || pattern == "MULTI_DEALER_ROUTER"
       || pattern == "MULTI_ROUTER_ROUTER"
       || pattern == "MULTI_STREAM";

@@ -22,8 +22,6 @@ internal static partial class NativeMethods
         "zlink_router_recv_part",
         "zlink_subscribe_part",
         "zlink_xpub_recv_part",
-        "zlink_set_admission_state",
-        "zlink_get_admission_state",
         "zlink_errno",
         "zlink_strerror",
         "zlink_msg_init",

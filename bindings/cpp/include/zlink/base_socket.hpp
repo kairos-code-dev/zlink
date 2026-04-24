@@ -553,24 +553,6 @@ class base_socket_t : public socket_handle_t
               detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
-    void set_admission_state (admission_state_t state)
-    {
-        const int rc = zlink_set_admission_state (
-          handle (), static_cast<zlink_admission_state_t> (state));
-        if (rc != ZLINK_CONFIG_OK)
-            throw config_error_t (static_cast<config_result_t> (rc));
-    }
-
-    admission_state_t get_admission_state () const
-    {
-        zlink_admission_state_t state = ZLINK_ADMISSION_SERVING;
-        const int rc =
-          zlink_get_admission_state (const_cast<void *> (handle ()), &state);
-        if (rc != ZLINK_CONFIG_OK)
-            throw config_error_t (static_cast<config_result_t> (rc));
-        return static_cast<admission_state_t> (state);
-    }
-
   protected:
     template<typename DiscoveryT>
     ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)

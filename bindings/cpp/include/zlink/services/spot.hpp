@@ -979,23 +979,6 @@ class spot_t
             zlink_set_subscription (_spot, filter_.c_str ())));
     }
 
-    void set_admission_state (admission_state_t state)
-    {
-        const int rc = zlink_set_admission_state (
-          _spot, static_cast<zlink_admission_state_t> (state));
-        if (rc != ZLINK_CONFIG_OK)
-            throw config_error_t (static_cast<config_result_t> (rc));
-    }
-
-    admission_state_t get_admission_state () const
-    {
-        zlink_admission_state_t state = ZLINK_ADMISSION_SERVING;
-        const int rc = zlink_get_admission_state (_spot, &state);
-        if (rc != ZLINK_CONFIG_OK)
-            throw config_error_t (static_cast<config_result_t> (rc));
-        return static_cast<admission_state_t> (state);
-    }
-
     void unset_subscription (const std::string &filter_)
     {
         validate_no_embedded_null (filter_, "filter");

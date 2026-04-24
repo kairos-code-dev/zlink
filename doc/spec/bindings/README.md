@@ -828,12 +828,12 @@ Discovery `ServiceMonitor` 가 방출하는 이벤트.
 노출하면 안 되며 언어별 named field 로 래핑).
 
 - `MemberPeerEntry` — discovery 가 제공하는 멤버 peer 정보.
-  `admissionState` (또는 언어 관례의 동등 필드) 를 포함해야 한다.
+  `weight` (또는 언어 관례의 동등 필드) 를 포함해야 한다.
 - `RegistryTopologyEntry` — registry 의 topology 엔트리
 - `RegistryServiceSummaryEntry` — registry service summary 엔트리
 - `SpotNodeStatus` — spot node 상태 스냅샷
 - `SpotNodePeerEntry` — spot node peer 엔트리.
-  `admissionState` 를 포함해야 한다.
+  `weight` 를 포함해야 한다.
 - `SpotNodeSubjectEntry` — spot node subject 엔트리
 
 각 spec 은 이들 타입의 필드를 표 또는 코드 블록으로 명시한다. `Cpp` 는

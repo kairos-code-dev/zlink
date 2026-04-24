@@ -91,7 +91,7 @@ class ZlinkSpotNodePeerEntry(ctypes.Structure):
         ("peer_endpoint", ctypes.c_char * 256),
         ("source", ctypes.c_uint32),
         ("state", ctypes.c_uint32),
-        ("admission_state", ctypes.c_int32),
+        ("weight", ctypes.c_uint32),
         ("connected_since_ms", ctypes.c_uint64),
         ("last_changed_ms", ctypes.c_uint64),
     ]
@@ -139,7 +139,7 @@ class ZlinkMemberPeerEntry(ctypes.Structure):
         ("service_name", ctypes.c_char * 256),
         ("endpoint", ctypes.c_char * 256),
         ("routing_id", ZlinkRoutingId),
-        ("admission_state", ctypes.c_int32),
+        ("weight", ctypes.c_uint32),
         ("value", ctypes.c_int64),
     ]
 
@@ -283,17 +283,6 @@ class _Lib:
         )
         self._require("zlink_errno", [], ctypes.c_int)
         self._require("zlink_strerror", [ctypes.c_int], ctypes.c_char_p)
-        self._require(
-            "zlink_set_admission_state",
-            [ctypes.c_void_p, ctypes.c_int32],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_get_admission_state",
-            [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int32)],
-            ctypes.c_int,
-        )
-
         self._require("zlink_ctx_new", [], ctypes.c_void_p)
         self._require("zlink_ctx_term", [ctypes.c_void_p], ctypes.c_int)
         self._require("zlink_ctx_shutdown", [ctypes.c_void_p], ctypes.c_int)

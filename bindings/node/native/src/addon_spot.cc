@@ -2212,8 +2212,8 @@ napi_value spot_node_peers_snapshot(napi_env env, napi_callback_info info)
         set_string_property(env, obj, "peerEndpoint", entries[i].peer_endpoint);
         set_uint32_property(env, obj, "source", static_cast<uint32_t>(entries[i].source));
         set_uint32_property(env, obj, "state", static_cast<uint32_t>(entries[i].state));
-        set_uint32_property(env, obj, "admissionState",
-                            static_cast<uint32_t>(entries[i].admission_state));
+        set_uint32_property(env, obj, "weight",
+                            static_cast<uint32_t>(entries[i].weight));
         set_int64_property(env, obj, "connectedSinceMs",
                            static_cast<int64_t>(entries[i].connected_since_ms));
         set_int64_property(env, obj, "lastChangedMs",
@@ -2257,8 +2257,8 @@ napi_value spot_node_peers_query(napi_env env, napi_callback_info info)
         set_string_property(env, obj, "peerEndpoint", entries[i].peer_endpoint);
         set_uint32_property(env, obj, "source", static_cast<uint32_t>(entries[i].source));
         set_uint32_property(env, obj, "state", static_cast<uint32_t>(entries[i].state));
-        set_uint32_property(env, obj, "admissionState",
-                            static_cast<uint32_t>(entries[i].admission_state));
+        set_uint32_property(env, obj, "weight",
+                            static_cast<uint32_t>(entries[i].weight));
         set_int64_property(env, obj, "connectedSinceMs",
                            static_cast<int64_t>(entries[i].connected_since_ms));
         set_int64_property(env, obj, "lastChangedMs",

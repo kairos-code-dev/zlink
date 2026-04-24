@@ -2,7 +2,6 @@
 
 package dev.kairoscode.zlink.internal;
 
-import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
 import dev.kairoscode.zlink.service.registry.ServiceEvent;
@@ -45,14 +44,13 @@ public final class ServiceDecoders {
                 + NativeLayouts.ROUTING_ID_DATA_OFFSET,
               MemorySegment.ofArray(routingBytes), 0, routingSize);
         }
-        AdmissionState admissionState = AdmissionState.fromValue(
-          segment.get(ValueLayout.JAVA_INT,
-            NativeLayouts.MEMBER_PEER_ADMISSION_STATE_OFFSET));
+        int weight = segment.get(ValueLayout.JAVA_INT,
+          NativeLayouts.MEMBER_PEER_WEIGHT_OFFSET);
         long value = segment.get(ValueLayout.JAVA_LONG_UNALIGNED,
           NativeLayouts.MEMBER_PEER_VALUE_OFFSET);
         return new MemberPeerEntry(serviceType, serviceRole, serviceName,
           endpoint, InternalAccess.routingIdFromTrusted(routingBytes), value,
-          admissionState);
+          weight);
     }
 
     public static ServiceEvent serviceEvent(MemorySegment event) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Zlink.Native;
@@ -9,10 +10,13 @@ namespace Zlink;
 
 public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
 {
+    private static readonly NativeMethods.ZlinkServiceMonitorHandlerDelegate NativeCallback =
+        OnNativeEvent;
     private IntPtr _handle;
-    private NativeMethods.ZlinkServiceMonitorHandlerDelegate? _handlerDelegate;
     private Action<ServiceEvent>? _handler;
     private SynchronizationContext? _handlerContext;
+    private GCHandle _selfHandle;
+    private bool _selfHandleAllocated;
 
     internal ServiceMonitor(IntPtr handle)
     {
@@ -30,9 +34,9 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
         SynchronizationContext? context = SynchronizationContext.Current;
         _handler = handler;
         _handlerContext = context;
-        _handlerDelegate = OnNativeEvent;
+        EnsureSelfHandle();
         int rc = NativeMethods.zlink_service_monitor_handler(_handle,
-            _handlerDelegate, IntPtr.Zero);
+            NativeCallback, GCHandle.ToIntPtr(_selfHandle));
         if (rc != 0)
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
@@ -83,12 +87,12 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
     {
         if (_handle == IntPtr.Zero)
             return;
+        _handler = null;
+        _handlerContext = null;
         int rc = NativeMethods.zlink_monitor_close(ref _handle);
         if (rc != 0)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
-        _handler = null;
-        _handlerContext = null;
-        _handlerDelegate = null;
+        ReleaseSelfHandle();
     }
 
     public void Dispose()
@@ -128,7 +132,26 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
             throw new ObjectDisposedException(nameof(ServiceMonitor));
     }
 
-    private void OnNativeEvent(ref ZlinkServiceEvent native, IntPtr userData)
+    private void EnsureSelfHandle()
+    {
+        if (_selfHandleAllocated)
+            return;
+
+        _selfHandle = GCHandle.Alloc(this, GCHandleType.Normal);
+        _selfHandleAllocated = true;
+    }
+
+    private void ReleaseSelfHandle()
+    {
+        if (!_selfHandleAllocated)
+            return;
+
+        _selfHandle.Free();
+        _selfHandle = default;
+        _selfHandleAllocated = false;
+    }
+
+    private void OnNativeEventCore(ref ZlinkServiceEvent native)
     {
         Action<ServiceEvent>? handler = _handler;
         SynchronizationContext? context = _handlerContext;
@@ -144,5 +167,15 @@ public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
         {
             Runtime.ReportUnhandledCallbackException(ex);
         }
+    }
+
+    private static void OnNativeEvent(ref ZlinkServiceEvent native, IntPtr userData)
+    {
+        if (userData == IntPtr.Zero)
+            return;
+
+        GCHandle handle = GCHandle.FromIntPtr(userData);
+        if (handle.Target is ServiceMonitor monitor)
+            monitor.OnNativeEventCore(ref native);
     }
 }

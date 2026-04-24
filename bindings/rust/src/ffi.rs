@@ -207,13 +207,6 @@ pub enum zlink_stream_option_t {
     ZLINK_STREAM_OPT_NOTIFY = 0x3501,
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_admission_state_t {
-    ZLINK_ADMISSION_SERVING = 1,
-    ZLINK_ADMISSION_DRAINING = 2,
-}
-
 // ---------------------------------------------------------------------------
 // Monitor types
 // ---------------------------------------------------------------------------
@@ -567,6 +560,7 @@ pub struct zlink_spot_node_peer_entry_t {
     pub peer_endpoint: [c_char; 256],
     pub source: zlink_spot_peer_source_t,
     pub state: zlink_spot_peer_state_t,
+    pub weight: u32,
     pub connected_since_ms: u64,
     pub last_changed_ms: u64,
 }
@@ -651,6 +645,7 @@ pub struct zlink_member_peer_entry_t {
     pub service_name: [c_char; 256],
     pub endpoint: [c_char; 256],
     pub routing_id: zlink_routing_id_t,
+    pub weight: u32,
     pub value: i64,
 }
 
@@ -806,11 +801,6 @@ unsafe extern "C" {
         option: zlink_option_t,
         optval: *mut c_void,
         optvallen: *mut usize,
-    ) -> c_int;
-    pub fn zlink_set_admission_state(handle: *mut c_void, state: zlink_admission_state_t) -> c_int;
-    pub fn zlink_get_admission_state(
-        handle: *mut c_void,
-        state: *mut zlink_admission_state_t,
     ) -> c_int;
     pub fn zlink_set_routing_id(handle: *mut c_void, data: *const c_void, size: usize) -> c_int;
     pub fn zlink_get_routing_id(handle: *mut c_void, out: *mut zlink_routing_id_t) -> c_int;

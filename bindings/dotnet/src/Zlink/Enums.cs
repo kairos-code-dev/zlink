@@ -264,7 +264,7 @@ public enum SocketEvent
     ConnectionReady = 0x1000,
     HandshakeFailedProtocol = 0x2000,
     HandshakeFailedAuth = 0x4000,
-    PeerAdmissionChanged = 0x8000,
+    PeerWeightChanged = 0x8000,
     All = 0xFFFF
 }
 
@@ -285,7 +285,7 @@ public enum MonitorEventType
     ConnectionReady = 0x1000,
     HandshakeFailedProtocol = 0x2000,
     HandshakeFailedAuth = 0x4000,
-    PeerAdmissionChanged = 0x8000
+    PeerWeightChanged = 0x8000
 }
 
 internal enum DisconnectReason
@@ -335,14 +335,14 @@ public enum ServiceMonitorEventMask : uint
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
-    PeerAdmissionChanged = 1u << 8,
+    PeerWeightChanged = 1u << 8,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
-        | PeerAdmissionChanged
+        | PeerWeightChanged
 }
 
 [Flags]
@@ -353,14 +353,14 @@ internal enum ServiceMonitorEvents : uint
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
-    PeerAdmissionChanged = 1u << 8,
+    PeerWeightChanged = 1u << 8,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
-        | PeerAdmissionChanged
+        | PeerWeightChanged
 }
 
 [Flags]

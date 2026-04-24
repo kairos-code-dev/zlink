@@ -16,7 +16,6 @@ from ._socket_base import (
 )
 from ._request_reply import _ensure_reply_flags_supported
 from ._enums import (
-    AdmissionState,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
     SpotNodeState,
@@ -443,7 +442,7 @@ class SpotNodePeerEntry:
     peer_endpoint: str
     source: int
     state: int
-    admission_state: AdmissionState
+    weight: int
     connected_since_ms: int
     last_changed_ms: int
 
@@ -510,19 +509,6 @@ class SpotNode:
         rc = lib().zlink_spot_node_attach_discovery(
             self._handle, discovery._handle
         )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def get_admission_state(self):
-        raw = ctypes.c_int32()
-        rc = lib().zlink_get_admission_state(self._handle, ctypes.byref(raw))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return AdmissionState(int(raw.value))
-
-    def set_admission_state(self, state):
-        typed = AdmissionState(int(state))
-        rc = lib().zlink_set_admission_state(self._handle, int(typed))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
@@ -687,7 +673,7 @@ class SpotNode:
                 peer_endpoint=_decode_fixed(entry.peer_endpoint),
                 source=SpotPeerSource(int(entry.source)),
                 state=SpotPeerState(int(entry.state)),
-                admission_state=AdmissionState(int(entry.admission_state)),
+                weight=int(entry.weight),
                 connected_since_ms=int(entry.connected_since_ms),
                 last_changed_ms=int(entry.last_changed_ms),
             )
@@ -832,19 +818,6 @@ class Spot:
     @property
     def routing_id(self):
         return RoutingId(self.get_routing_id())
-
-    def get_admission_state(self):
-        raw = ctypes.c_int32()
-        rc = lib().zlink_get_admission_state(self._handle, ctypes.byref(raw))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return AdmissionState(int(raw.value))
-
-    def set_admission_state(self, state):
-        typed = AdmissionState(int(state))
-        rc = lib().zlink_set_admission_state(self._handle, int(typed))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def _native_parts_from_payload(self, payload):
         if isinstance(payload, (list, tuple)):

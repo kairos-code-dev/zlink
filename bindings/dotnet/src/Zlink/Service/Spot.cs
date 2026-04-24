@@ -101,22 +101,6 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConnectIfError(rc);
     }
 
-    public void SetAdmissionState(AdmissionState state)
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_set_admission_state(_handle, (int)state);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    public AdmissionState GetAdmissionState()
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_get_admission_state(_handle,
-            out int state);
-        ZlinkException.ThrowConfigIfError(rc);
-        return (AdmissionState)state;
-    }
-
     /// <summary>
     /// Attaches this SPOT node to a discovery-owned service lifecycle.
     /// </summary>
@@ -566,22 +550,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             return RoutingId.FromBytes(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
-    }
-
-    public void SetAdmissionState(AdmissionState state)
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_set_admission_state(_handle, (int)state);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    public AdmissionState GetAdmissionState()
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_get_admission_state(_handle,
-            out int state);
-        ZlinkException.ThrowConfigIfError(rc);
-        return (AdmissionState)state;
     }
 
     public bool Publish(string serviceName, string topic, Message message,

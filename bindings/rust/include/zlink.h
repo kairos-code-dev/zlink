@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 2
+#define ZLINK_VERSION_PATCH 4
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -119,6 +119,8 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_THREAD_PRIORITY_DFLT -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT 0
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT 1
+#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
 
 /**
  * @brief Create a new zlink context.
@@ -447,12 +449,6 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
                                         size_t size_);
 ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                                         zlink_routing_id_t *out_);
-ZLINK_EXPORT zlink_config_result_t zlink_set_admission_state (
-  void *handle_,
-  zlink_admission_state_t state_);
-ZLINK_EXPORT zlink_config_result_t zlink_get_admission_state (
-  void *handle_,
-  zlink_admission_state_t *state_out_);
 ZLINK_EXPORT zlink_config_result_t zlink_set_tls_server (void *handle_,
                                         const char *cert_,
                                         const char *key_,
@@ -552,6 +548,16 @@ ZLINK_EXPORT zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
 
 /** @brief Disconnect a socket from a remote address. */
 ZLINK_EXPORT zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
+
+/**
+ * @brief Disconnect the connected peer whose source routing id matches peer_rid_.
+ *
+ * Success means the matching pipe was asked to terminate asynchronously.
+ * Discovery-attached sockets reject this manual lifecycle change.
+ */
+ZLINK_EXPORT zlink_connect_result_t zlink_disconnect_rid (
+  void *s_,
+  const zlink_routing_id_t *peer_rid_);
 
 /**
  * @brief Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery service view.
@@ -868,6 +874,25 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_snapshot_detail_mask_t detail_flags;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
+    uint32_t auto_hwm_enabled;
+    uint32_t auto_hwm_role;
+    uint32_t auto_hwm_managed_connections;
+    uint32_t auto_hwm_active_hwm_connections;
+    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_base_floor_per_connection;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_requested_sndbuf;
+    int32_t auto_hwm_requested_rcvbuf;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
+    uint64_t auto_hwm_total_memory_budget_bytes;
+    uint64_t auto_hwm_queue_budget_bytes;
+    uint64_t auto_hwm_transport_budget_bytes;
+    uint64_t auto_hwm_runtime_reserve_bytes;
+    uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_effective_message_bytes;
 } zlink_monitor_snapshot_t;
 
 /**
@@ -1091,6 +1116,8 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
   void *node, const char *peer_endpoint);
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
+  void *node, const zlink_routing_id_t *target_node_rid);
 
 /**
  * @brief Attach a Discovery instance for discovery-owned SPOT peer connection.
@@ -1183,7 +1210,7 @@ typedef struct zlink_spot_node_peer_entry_t
     char peer_endpoint[256];
     zlink_spot_peer_source_t source;
     zlink_spot_peer_state_t state;
-    zlink_admission_state_t admission_state;
+    uint32_t weight;
     uint64_t connected_since_ms;
     uint64_t last_changed_ms;
 } zlink_spot_node_peer_entry_t;
@@ -1252,7 +1279,7 @@ typedef struct zlink_member_peer_entry_t
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
-    zlink_admission_state_t admission_state;
+    uint32_t weight;
     int64_t value;
 } zlink_member_peer_entry_t;
 

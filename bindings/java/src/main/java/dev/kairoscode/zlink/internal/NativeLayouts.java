@@ -157,7 +157,7 @@ public final class NativeLayouts {
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("peer_endpoint"),
                     ValueLayout.JAVA_INT.withName("source"),
                     ValueLayout.JAVA_INT.withName("state"),
-                    ValueLayout.JAVA_INT.withName("admission_state"),
+                    ValueLayout.JAVA_INT.withName("weight"),
                     MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("connected_since_ms"),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
@@ -240,7 +240,7 @@ public final class NativeLayouts {
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("endpoint"),
                     ROUTING_ID_LAYOUT.withName("routing_id"),
-                    ValueLayout.JAVA_INT.withName("admission_state"),
+                    ValueLayout.JAVA_INT.withName("weight"),
                     MemoryLayout.paddingLayout(8),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("value"));
     public static final long MEMBER_PEER_SERVICE_TYPE_OFFSET =
@@ -258,9 +258,9 @@ public final class NativeLayouts {
     public static final long MEMBER_PEER_ROUTING_ID_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("routing_id"));
-    public static final long MEMBER_PEER_ADMISSION_STATE_OFFSET =
+    public static final long MEMBER_PEER_WEIGHT_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
-                    PathElement.groupElement("admission_state"));
+                    PathElement.groupElement("weight"));
     public static final long MEMBER_PEER_VALUE_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("value"));

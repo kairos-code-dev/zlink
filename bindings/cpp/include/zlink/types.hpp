@@ -46,7 +46,11 @@ enum class context_option : int
     thread_affinity_cpu_add = ZLINK_THREAD_AFFINITY_CPU_ADD,
     thread_affinity_cpu_remove = ZLINK_THREAD_AFFINITY_CPU_REMOVE,
     thread_name_prefix = ZLINK_THREAD_NAME_PREFIX,
-    blocky = ZLINK_CTX_OPT_BLOCKY
+    blocky = ZLINK_CTX_OPT_BLOCKY,
+    spot_worker_threads = ZLINK_SPOT_WORKER_THREADS,
+    auto_hwm_enable = ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
+    auto_hwm_total_memory_budget_mb =
+      ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB
 };
 
 enum class socket_option : int
@@ -106,12 +110,16 @@ enum class router_option : int
     mandatory = ZLINK_ROUTER_OPT_MANDATORY,
     handover = ZLINK_ROUTER_OPT_HANDOVER,
     probe = ZLINK_ROUTER_OPT_PROBE,
-    connect_routing_id = ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID
+    connect_routing_id = ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+    request_timeout_ms = ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
+    weight = ZLINK_ROUTER_OPT_WEIGHT
 };
 
 enum class dealer_option : int
 {
-    probe = ZLINK_DEALER_OPT_PROBE
+    probe = ZLINK_DEALER_OPT_PROBE,
+    request_timeout_ms = ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+    weight = ZLINK_DEALER_OPT_WEIGHT
 };
 
 enum class pub_option : int
@@ -862,8 +870,7 @@ enum class monitor_event : uint32_t
     connection_ready = ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
     connection_ready_changed =
       ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
-    peer_admission_changed =
-      ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED,
+    peer_weight_changed = ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED,
     handshake_failed_protocol =
       ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL,
     handshake_failed_auth = ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH,
@@ -991,8 +998,7 @@ enum class service_monitor_event : uint32_t
       ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN,
     discovery_providers_changed =
       ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
-    peer_admission_changed =
-      ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED,
+    peer_weight_changed = ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED,
     all = ZLINK_SERVICE_MONITOR_EVENT_ALL
 };
 
@@ -1192,12 +1198,6 @@ enum class subject_kind : uint32_t
     pattern = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
 };
 
-enum class admission_state_t : int
-{
-    serving = ZLINK_ADMISSION_SERVING,
-    draining = ZLINK_ADMISSION_DRAINING
-};
-
 using monitor_event_type_t = monitor_event;
 using monitor_source_kind_t = monitor_source_kind;
 using service_type_t = service_type;
@@ -1218,8 +1218,8 @@ struct member_peer_entry_t
 {
     member_peer_entry_t ()
         : service_type (service_type::socket), service_role (service_role::invalid),
-          service_name (), endpoint (), routing_id (std::nullopt),
-          admission_state (admission_state_t::serving), value (0)
+          service_name (), endpoint (), routing_id (std::nullopt), weight (0),
+          value (0)
     {
     }
 
@@ -1232,8 +1232,7 @@ struct member_peer_entry_t
                         ? std::optional<routing_id_t> (
                             routing_id_t (entry_.routing_id))
                         : std::nullopt),
-          admission_state (
-            static_cast<zlink::admission_state_t> (entry_.admission_state)),
+          weight (entry_.weight),
           value (entry_.value)
     {
     }
@@ -1243,7 +1242,7 @@ struct member_peer_entry_t
     std::string service_name;
     std::string endpoint;
     std::optional<routing_id_t> routing_id;
-    zlink::admission_state_t admission_state;
+    uint32_t weight;
     int64_t value;
 };
 
@@ -1413,7 +1412,7 @@ struct spot_node_peer_entry_t
     spot_node_peer_entry_t ()
         : service_name (), local_endpoint (), peer_endpoint (),
           source (spot_peer_source::manual), state (spot_peer_state::configured),
-          admission_state (admission_state_t::serving), connected_since_ms (0),
+          weight (0), connected_since_ms (0),
           last_changed_ms (0)
     {
     }
@@ -1424,8 +1423,7 @@ struct spot_node_peer_entry_t
           peer_endpoint (fixed_string_to_string (entry_.peer_endpoint)),
           source (static_cast<spot_peer_source> (entry_.source)),
           state (static_cast<spot_peer_state> (entry_.state)),
-          admission_state (
-            static_cast<admission_state_t> (entry_.admission_state)),
+          weight (entry_.weight),
           connected_since_ms (entry_.connected_since_ms),
           last_changed_ms (entry_.last_changed_ms)
     {
@@ -1436,7 +1434,7 @@ struct spot_node_peer_entry_t
     std::string peer_endpoint;
     spot_peer_source source;
     spot_peer_state state;
-    admission_state_t admission_state;
+    uint32_t weight;
     uint64_t connected_since_ms;
     uint64_t last_changed_ms;
 };

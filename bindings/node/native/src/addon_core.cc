@@ -3911,40 +3911,6 @@ napi_value handle_get_routing_id(napi_env env, napi_callback_info info)
     return create_routing_id_value(env, routing_id);
 }
 
-napi_value handle_set_admission_state(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *handle = NULL;
-    napi_get_value_external(env, argv[0], &handle);
-    int32_t state = 0;
-    napi_get_value_int32(env, argv[1], &state);
-    int rc = zlink_set_admission_state(
-      handle, static_cast<zlink_admission_state_t>(state));
-    if (rc != 0)
-        return throw_last_error(env, "set_admission_state failed");
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
-napi_value handle_get_admission_state(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *handle = NULL;
-    napi_get_value_external(env, argv[0], &handle);
-    zlink_admission_state_t state = ZLINK_ADMISSION_SERVING;
-    int rc = zlink_get_admission_state(handle, &state);
-    if (rc != 0)
-        return throw_last_error(env, "get_admission_state failed");
-    napi_value out;
-    napi_create_int32(env, static_cast<int32_t>(state), &out);
-    return out;
-}
-
 napi_value dealer_request(napi_env env, napi_callback_info info)
 {
     napi_value argv[5];

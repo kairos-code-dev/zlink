@@ -16,6 +16,25 @@ internal struct ZlinkMonitorSnapshot
     public uint DetailFlags;
     public ulong SndPendingMsgs;
     public ulong RcvPendingMsgs;
+    public uint AutoHwmEnabled;
+    public uint AutoHwmRole;
+    public uint AutoHwmManagedConnections;
+    public uint AutoHwmActiveHwmConnections;
+    public uint AutoHwmPlanningTransportConnections;
+    public uint AutoHwmBaseFloorPerConnection;
+    public int AutoHwmAppliedSndHwm;
+    public int AutoHwmAppliedRcvHwm;
+    public int AutoHwmRequestedSndBuf;
+    public int AutoHwmRequestedRcvBuf;
+    public int AutoHwmEffectiveSndBuf;
+    public int AutoHwmEffectiveRcvBuf;
+    public ulong AutoHwmTotalMemoryBudgetBytes;
+    public ulong AutoHwmQueueBudgetBytes;
+    public ulong AutoHwmTransportBudgetBytes;
+    public ulong AutoHwmRuntimeReserveBytes;
+    public ulong AutoHwmGroupBudgetBytes;
+    public ulong AutoHwmGroupMessageSlots;
+    public ulong AutoHwmEffectiveMessageBytes;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -64,7 +83,7 @@ internal unsafe struct ZlinkSpotNodePeerEntry
     public fixed byte PeerEndpoint[256];
     public int Source;
     public int State;
-    public int AdmissionState;
+    public uint Weight;
     public ulong ConnectedSinceMs;
     public ulong LastChangedMs;
 }
@@ -140,7 +159,7 @@ internal unsafe struct ZlinkMemberPeerEntry
     public fixed byte ServiceName[256];
     public fixed byte Endpoint[256];
     public ZlinkRoutingId RoutingId;
-    public int AdmissionState;
+    public uint Weight;
     public long Value;
 }
 

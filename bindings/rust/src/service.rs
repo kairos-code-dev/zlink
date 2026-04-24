@@ -236,29 +236,6 @@ impl SpotRole {
     }
 }
 
-/// Admission state shared by sockets, Spot, and SpotNode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AdmissionState {
-    Serving,
-    Draining,
-}
-
-impl AdmissionState {
-    pub(crate) fn to_raw(self) -> ffi::zlink_admission_state_t {
-        match self {
-            Self::Serving => ffi::zlink_admission_state_t::ZLINK_ADMISSION_SERVING,
-            Self::Draining => ffi::zlink_admission_state_t::ZLINK_ADMISSION_DRAINING,
-        }
-    }
-
-    pub(crate) fn from_raw(raw: ffi::zlink_admission_state_t) -> Self {
-        match raw {
-            ffi::zlink_admission_state_t::ZLINK_ADMISSION_DRAINING => Self::Draining,
-            ffi::zlink_admission_state_t::ZLINK_ADMISSION_SERVING => Self::Serving,
-        }
-    }
-}
-
 /// Current SPOT node lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpotNodeState {
@@ -454,6 +431,7 @@ pub struct SpotNodePeerEntry {
     pub peer_endpoint: String,
     pub source: SpotPeerSource,
     pub state: SpotPeerState,
+    pub weight: u32,
     pub connected_since_ms: u64,
     pub last_changed_ms: u64,
 }
@@ -466,6 +444,7 @@ impl SpotNodePeerEntry {
             peer_endpoint: fixed_cstr_to_string(&raw.peer_endpoint),
             source: SpotPeerSource::from_raw(raw.source),
             state: SpotPeerState::from_raw(raw.state),
+            weight: raw.weight,
             connected_since_ms: raw.connected_since_ms,
             last_changed_ms: raw.last_changed_ms,
         }
@@ -619,6 +598,7 @@ pub struct MemberPeerEntry {
     pub service_name: String,
     pub endpoint: String,
     pub routing_id: RoutingId,
+    pub weight: u32,
     pub value: i64,
 }
 
@@ -630,6 +610,7 @@ impl MemberPeerEntry {
             service_name: fixed_cstr_to_string(&raw.service_name),
             endpoint: fixed_cstr_to_string(&raw.endpoint),
             routing_id: RoutingId::from_raw(raw.routing_id),
+            weight: raw.weight,
             value: raw.value,
         })
     }
@@ -953,16 +934,6 @@ impl SpotNode {
         set_tls_client_config(self.handle, ca_cert_pem, hostname, trust_system)
     }
 
-    pub fn admission_state(&self) -> Result<AdmissionState, ConfigError> {
-        let mut raw = ffi::zlink_admission_state_t::ZLINK_ADMISSION_SERVING;
-        check_config_rc(unsafe { ffi::zlink_get_admission_state(self.handle, &mut raw) })?;
-        Ok(AdmissionState::from_raw(raw))
-    }
-
-    pub fn set_admission_state(&self, state: AdmissionState) -> Result<(), ConfigError> {
-        check_config_rc(unsafe { ffi::zlink_set_admission_state(self.handle, state.to_raw()) })
-    }
-
     pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_spot_node_status_t>::uninit();
         check_config_rc(unsafe {
@@ -1099,16 +1070,6 @@ impl Spot {
             routed_cb: None,
             dispatch_cb: None,
         })
-    }
-
-    pub fn admission_state(&self) -> Result<AdmissionState, ConfigError> {
-        let mut raw = ffi::zlink_admission_state_t::ZLINK_ADMISSION_SERVING;
-        check_config_rc(unsafe { ffi::zlink_get_admission_state(self.handle, &mut raw) })?;
-        Ok(AdmissionState::from_raw(raw))
-    }
-
-    pub fn set_admission_state(&self, state: AdmissionState) -> Result<(), ConfigError> {
-        check_config_rc(unsafe { ffi::zlink_set_admission_state(self.handle, state.to_raw()) })
     }
 
     pub fn publish(

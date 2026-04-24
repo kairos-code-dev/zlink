@@ -34,7 +34,7 @@ use crate::error::{
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
-use crate::service::{AdmissionState, Discovery};
+use crate::service::Discovery;
 
 // ---------------------------------------------------------------------------
 // CallbackBox – type-erased, owned callback pointer
@@ -130,16 +130,6 @@ impl SocketInner {
             ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
         })?;
         check_connect_rc(unsafe { ffi::zlink_disconnect(self.handle, c.as_ptr()) })
-    }
-
-    pub fn admission_state(&self) -> Result<AdmissionState, ConfigError> {
-        let mut raw = ffi::zlink_admission_state_t::ZLINK_ADMISSION_SERVING;
-        check_config_rc(unsafe { ffi::zlink_get_admission_state(self.handle, &mut raw) })?;
-        Ok(AdmissionState::from_raw(raw))
-    }
-
-    pub fn set_admission_state(&self, state: AdmissionState) -> Result<(), ConfigError> {
-        check_config_rc(unsafe { ffi::zlink_set_admission_state(self.handle, state.to_raw()) })
     }
 
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
@@ -1047,17 +1037,6 @@ macro_rules! impl_base_socket {
             }
             pub fn last_endpoint(&self) -> Result<String, crate::error::ConfigError> {
                 self.inner.last_endpoint()
-            }
-            pub fn admission_state(
-                &self,
-            ) -> Result<crate::service::AdmissionState, crate::error::ConfigError> {
-                self.inner.admission_state()
-            }
-            pub fn set_admission_state(
-                &self,
-                state: crate::service::AdmissionState,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_admission_state(state)
             }
             pub(crate) fn set_linger(&self, d: Duration) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_linger(d)

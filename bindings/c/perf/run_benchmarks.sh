@@ -4,6 +4,8 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/c/build"
+DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 
@@ -146,6 +148,105 @@ set_build_mode() {
   fi
   BUILD_MODE="${next_mode}"
   BUILD_MODE_EXPLICIT=1
+}
+
+resolve_configured_core_build_dir() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local cache_path="${build_dir}/CMakeCache.txt"
+  local configured_dir=""
+  if [[ -f "${cache_path}" ]]; then
+    configured_dir="$(
+      sed -n 's/^ZLINK_C_CORE_BUILD_DIR:PATH=//p' "${cache_path}" | tail -n 1
+    )"
+  fi
+  if [[ -z "${configured_dir}" ]]; then
+    configured_dir="${DEFAULT_CORE_BUILD_DIR}"
+  fi
+  realpath -m "${configured_dir}"
+}
+
+resolve_core_runtime_library() {
+  local core_build_dir="${1:-}"
+  local candidates=()
+  case "$(uname -s)" in
+    Linux*)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.so"
+        "${core_build_dir}/bin/libzlink.so"
+      )
+      ;;
+    Darwin*)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.dylib"
+        "${core_build_dir}/bin/libzlink.dylib"
+      )
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      candidates=(
+        "${core_build_dir}/bin/zlink.dll"
+        "${core_build_dir}/lib/zlink.dll"
+      )
+      ;;
+    *)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.so"
+        "${core_build_dir}/bin/libzlink.so"
+      )
+      ;;
+  esac
+
+  local candidate=""
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "${candidate}" ]]; then
+      realpath -e "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+print_core_runtime_binding() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local core_build_dir=""
+  local runtime_lib=""
+  core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
+  if runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
+    echo "Perf core build dir: ${core_build_dir}"
+    echo "Perf runtime libzlink: ${runtime_lib}"
+    return 0
+  fi
+  echo "Perf core build dir: ${core_build_dir}"
+  echo "Error: core runtime library not found under ${core_build_dir}." >&2
+  echo "Build core first so bindings/c/perf can link the intended runtime." >&2
+  return 1
+}
+
+ensure_core_runtime_not_stale() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local core_build_dir=""
+  local runtime_lib=""
+  local newer_source=""
+  core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
+  if ! runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
+    echo "Error: core runtime library not found under ${core_build_dir}." >&2
+    echo "Build core first before running bindings/c/perf benchmarks." >&2
+    return 1
+  fi
+
+  newer_source="$(
+    find \
+      "${ROOT_DIR}/core/src" \
+      "${ROOT_DIR}/core/include" \
+      -type f -newer "${runtime_lib}" -print -quit 2>/dev/null || true
+  )"
+  if [[ -n "${newer_source}" ]]; then
+    echo "Error: stale core runtime detected for bindings/c/perf." >&2
+    echo "  runtime: ${runtime_lib}" >&2
+    echo "  newer source: ${newer_source}" >&2
+    echo "Rebuild core/build before running run_benchmarks.sh." >&2
+    return 1
+  fi
+  return 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -375,8 +476,6 @@ fi
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 PERF_COMPARISON_SCRIPT="$(realpath -m "${PERF_COMPARISON_SCRIPT}")"
-OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/c/build"
-
 if [[ "${BUILD_DIR}" != "${OFFICIAL_BUILD_DIR}" ]]; then
   echo "Build directory must be exactly: ${OFFICIAL_BUILD_DIR}" >&2
   exit 1
@@ -541,6 +640,9 @@ fi
 if [[ -n "${RESULTS_DIR}" ]]; then
   cleanup_old_results_dirs "${RESULTS_DIR}"
 fi
+
+print_core_runtime_binding "${BUILD_DIR}"
+ensure_core_runtime_not_stale "${BUILD_DIR}"
 
 PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"
 RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${BUILD_DIR}" "--runs" "${RUNS}")

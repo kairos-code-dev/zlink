@@ -57,7 +57,7 @@ func newSpotNode(ctx *Context) (*SpotNode, error) {
 	}
 	return &SpotNode{
 		handle: handle,
-		spots: make(map[*spotCore]struct{}),
+		spots:  make(map[*spotCore]struct{}),
 	}, nil
 }
 
@@ -347,24 +347,6 @@ func (s *spotCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size C
 	return setNativeOption(s.handle, s.closed, "spot is closed", option, ptr, size)
 }
 
-func (s *spotCore) AdmissionState() (AdmissionState, error) {
-	if s == nil {
-		return AdmissionStateServing, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	var raw C.zlink_admission_state_t
-	if err := configErrorFromResult(C.zlink_get_admission_state(s.handle, &raw)); err != nil {
-		return AdmissionStateServing, err
-	}
-	return AdmissionState(raw), nil
-}
-
-func (s *spotCore) SetAdmissionState(state AdmissionState) error {
-	if s == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	return configErrorFromResult(C.zlink_set_admission_state(s.handle, C.zlink_admission_state_t(state)))
-}
-
 func (s *spotCore) setIntOption(option C.zlink_option_t, value int32) error {
 	if s == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
@@ -449,20 +431,6 @@ func (s *Spot) SetNoDrop(value bool) error {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	return setNativePubBoolOption(s.raw(), s.core.closed, "spot is closed", C.ZLINK_PUB_OPT_NODROP, value)
-}
-
-func (s *Spot) AdmissionState() (AdmissionState, error) {
-	if s == nil || s.core == nil || s.core.closed {
-		return AdmissionStateServing, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	return s.core.AdmissionState()
-}
-
-func (s *Spot) SetAdmissionState(state AdmissionState) error {
-	if s == nil || s.core == nil || s.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	return s.core.SetAdmissionState(state)
 }
 
 func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) error {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Zlink.Native;
@@ -11,12 +12,15 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
     private static readonly NativeMethods.ZlinkMonitorHandlerDelegate NativeIgnore =
         NativeMethods.zlink_monitor_ignore_handler;
+    private static readonly NativeMethods.ZlinkMonitorHandlerDelegate NativeCallback =
+        OnNativeEvent;
     public static readonly Action<MonitorEvent> IgnoreHandler = static _ => { };
 
     private IntPtr _handle;
-    private NativeMethods.ZlinkMonitorHandlerDelegate? _handlerDelegate;
     private Action<MonitorEvent>? _handler;
     private SynchronizationContext? _handlerContext;
+    private GCHandle _selfHandle;
+    private bool _selfHandleAllocated;
 
     internal SocketMonitor(IntPtr handle)
     {
@@ -36,9 +40,11 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         bool useNativeIgnore = ReferenceEquals(handler, IgnoreHandler);
         _handler = useNativeIgnore ? null : handler;
         _handlerContext = useNativeIgnore ? null : SynchronizationContext.Current;
-        _handlerDelegate = useNativeIgnore ? NativeIgnore : OnNativeEvent;
+        if (!useNativeIgnore)
+            EnsureSelfHandle();
         int rc = NativeMethods.zlink_socket_monitor_handler(_handle,
-            _handlerDelegate, IntPtr.Zero);
+            useNativeIgnore ? NativeIgnore : NativeCallback,
+            useNativeIgnore ? IntPtr.Zero : GCHandle.ToIntPtr(_selfHandle));
         if (rc != 0)
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
@@ -87,12 +93,12 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
     {
         if (_handle == IntPtr.Zero)
             return;
+        _handler = null;
+        _handlerContext = null;
         int rc = NativeMethods.zlink_monitor_close(ref _handle);
         if (rc != 0)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
-        _handler = null;
-        _handlerContext = null;
-        _handlerDelegate = null;
+        ReleaseSelfHandle();
     }
 
     public void Dispose()
@@ -132,7 +138,26 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
             throw new ObjectDisposedException(nameof(SocketMonitor));
     }
 
-    private void OnNativeEvent(ref ZlinkMonitorEvent native, IntPtr userData)
+    private void EnsureSelfHandle()
+    {
+        if (_selfHandleAllocated)
+            return;
+
+        _selfHandle = GCHandle.Alloc(this, GCHandleType.Normal);
+        _selfHandleAllocated = true;
+    }
+
+    private void ReleaseSelfHandle()
+    {
+        if (!_selfHandleAllocated)
+            return;
+
+        _selfHandle.Free();
+        _selfHandle = default;
+        _selfHandleAllocated = false;
+    }
+
+    private void OnNativeEventCore(ref ZlinkMonitorEvent native)
     {
         Action<MonitorEvent>? handler = _handler;
         if (handler == null)
@@ -147,6 +172,16 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         {
             Runtime.ReportUnhandledCallbackException(ex);
         }
+    }
+
+    private static void OnNativeEvent(ref ZlinkMonitorEvent native, IntPtr userData)
+    {
+        if (userData == IntPtr.Zero)
+            return;
+
+        GCHandle handle = GCHandle.FromIntPtr(userData);
+        if (handle.Target is SocketMonitor monitor)
+            monitor.OnNativeEventCore(ref native);
     }
 }
 
@@ -181,13 +216,42 @@ public sealed record MonitorEvent(
 public sealed class MonitorSnapshot
 {
     public MonitorSnapshot(SourceKind sourceKind, uint stateFlags,
-        uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs)
+        uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs,
+        uint autoHwmEnabled, uint autoHwmRole,
+        uint autoHwmManagedConnections, uint autoHwmActiveHwmConnections,
+        uint autoHwmPlanningTransportConnections,
+        uint autoHwmBaseFloorPerConnection, int autoHwmAppliedSndHwm,
+        int autoHwmAppliedRcvHwm, int autoHwmRequestedSndBuf,
+        int autoHwmRequestedRcvBuf, int autoHwmEffectiveSndBuf,
+        int autoHwmEffectiveRcvBuf, ulong autoHwmTotalMemoryBudgetBytes,
+        ulong autoHwmQueueBudgetBytes, ulong autoHwmTransportBudgetBytes,
+        ulong autoHwmRuntimeReserveBytes, ulong autoHwmGroupBudgetBytes,
+        ulong autoHwmGroupMessageSlots, ulong autoHwmEffectiveMessageBytes)
     {
         SourceKind = sourceKind;
         StateFlags = stateFlags;
         DetailFlags = detailFlags;
         SndPendingMsgs = sndPendingMsgs;
         RcvPendingMsgs = rcvPendingMsgs;
+        AutoHwmEnabled = autoHwmEnabled != 0;
+        AutoHwmRole = autoHwmRole;
+        AutoHwmManagedConnections = autoHwmManagedConnections;
+        AutoHwmActiveHwmConnections = autoHwmActiveHwmConnections;
+        AutoHwmPlanningTransportConnections = autoHwmPlanningTransportConnections;
+        AutoHwmBaseFloorPerConnection = autoHwmBaseFloorPerConnection;
+        AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
+        AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;
+        AutoHwmRequestedSndBuf = autoHwmRequestedSndBuf;
+        AutoHwmRequestedRcvBuf = autoHwmRequestedRcvBuf;
+        AutoHwmEffectiveSndBuf = autoHwmEffectiveSndBuf;
+        AutoHwmEffectiveRcvBuf = autoHwmEffectiveRcvBuf;
+        AutoHwmTotalMemoryBudgetBytes = autoHwmTotalMemoryBudgetBytes;
+        AutoHwmQueueBudgetBytes = autoHwmQueueBudgetBytes;
+        AutoHwmTransportBudgetBytes = autoHwmTransportBudgetBytes;
+        AutoHwmRuntimeReserveBytes = autoHwmRuntimeReserveBytes;
+        AutoHwmGroupBudgetBytes = autoHwmGroupBudgetBytes;
+        AutoHwmGroupMessageSlots = autoHwmGroupMessageSlots;
+        AutoHwmEffectiveMessageBytes = autoHwmEffectiveMessageBytes;
     }
 
     public SourceKind SourceKind { get; }
@@ -195,6 +259,25 @@ public sealed class MonitorSnapshot
     public uint DetailFlags { get; }
     public ulong SndPendingMsgs { get; }
     public ulong RcvPendingMsgs { get; }
+    public bool AutoHwmEnabled { get; }
+    public uint AutoHwmRole { get; }
+    public uint AutoHwmManagedConnections { get; }
+    public uint AutoHwmActiveHwmConnections { get; }
+    public uint AutoHwmPlanningTransportConnections { get; }
+    public uint AutoHwmBaseFloorPerConnection { get; }
+    public int AutoHwmAppliedSndHwm { get; }
+    public int AutoHwmAppliedRcvHwm { get; }
+    public int AutoHwmRequestedSndBuf { get; }
+    public int AutoHwmRequestedRcvBuf { get; }
+    public int AutoHwmEffectiveSndBuf { get; }
+    public int AutoHwmEffectiveRcvBuf { get; }
+    public ulong AutoHwmTotalMemoryBudgetBytes { get; }
+    public ulong AutoHwmQueueBudgetBytes { get; }
+    public ulong AutoHwmTransportBudgetBytes { get; }
+    public ulong AutoHwmRuntimeReserveBytes { get; }
+    public ulong AutoHwmGroupBudgetBytes { get; }
+    public ulong AutoHwmGroupMessageSlots { get; }
+    public ulong AutoHwmEffectiveMessageBytes { get; }
     public bool IsReady => SourceKind == SourceKind.Socket
         && (StateFlags & 0x1u) != 0;
 
@@ -202,6 +285,20 @@ public sealed class MonitorSnapshot
     {
         return new MonitorSnapshot((SourceKind)native.SourceKind,
             native.StateFlags, native.DetailFlags, native.SndPendingMsgs,
-            native.RcvPendingMsgs);
+            native.RcvPendingMsgs, native.AutoHwmEnabled, native.AutoHwmRole,
+            native.AutoHwmManagedConnections,
+            native.AutoHwmActiveHwmConnections,
+            native.AutoHwmPlanningTransportConnections,
+            native.AutoHwmBaseFloorPerConnection,
+            native.AutoHwmAppliedSndHwm, native.AutoHwmAppliedRcvHwm,
+            native.AutoHwmRequestedSndBuf, native.AutoHwmRequestedRcvBuf,
+            native.AutoHwmEffectiveSndBuf, native.AutoHwmEffectiveRcvBuf,
+            native.AutoHwmTotalMemoryBudgetBytes,
+            native.AutoHwmQueueBudgetBytes,
+            native.AutoHwmTransportBudgetBytes,
+            native.AutoHwmRuntimeReserveBytes,
+            native.AutoHwmGroupBudgetBytes,
+            native.AutoHwmGroupMessageSlots,
+            native.AutoHwmEffectiveMessageBytes);
     }
 }

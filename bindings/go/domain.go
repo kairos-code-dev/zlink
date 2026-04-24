@@ -114,9 +114,9 @@ const (
 type SpotDispatchEvent int
 
 const (
-	SpotDispatchEventSubscribeReadable SpotDispatchEvent = 1
-	SpotDispatchEventRoutedReadable    SpotDispatchEvent = 2
-	SpotDispatchEventTimerReadable     SpotDispatchEvent = 3
+	SpotDispatchEventSubscribeReadable    SpotDispatchEvent = 1
+	SpotDispatchEventRoutedReadable       SpotDispatchEvent = 2
+	SpotDispatchEventTimerReadable        SpotDispatchEvent = 3
 	SpotDispatchEventChannelReplyReadable SpotDispatchEvent = 4
 )
 
@@ -133,13 +133,6 @@ type SpotDispatchInfo struct {
 	SubjectKind SpotDispatchSubjectKind
 	Subject     unsafe.Pointer
 }
-
-type AdmissionState int
-
-const (
-	AdmissionStateServing  AdmissionState = AdmissionState(C.ZLINK_ADMISSION_SERVING)
-	AdmissionStateDraining AdmissionState = AdmissionState(C.ZLINK_ADMISSION_DRAINING)
-)
 
 type Received struct {
 	routingID     RoutingID

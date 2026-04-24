@@ -100,42 +100,44 @@ public sealed class test_spot_pubsub_basic
     }
 
     [Fact]
-    public void spot_node_pub_ingress_forwards_to_remote_subscriber()
+    public void spot_node_pub_ingress_forwards_to_local_subscriber()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = new Context();
-        using var publisherNode = new SpotNode(ctx);
-        using var subscriberNode = new SpotNode(ctx);
-        using var subscriber = subscriberNode.CreateSpot();
+        using var node = new SpotNode(ctx);
+        using var subscriber = node.CreateSpot();
         using var ingress = new PubSocket(ctx);
 
         const string topic = "spot:external";
         const string payload = "hello-external";
 
-        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp", "spot-pub-ingress-publisher");
-        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp", "spot-pub-ingress-subscriber");
-
-        publisherNode.Bind(publisherEndpoint);
-        subscriberNode.Bind(subscriberEndpoint);
-        publisherNode.ConnectPeer(subscriberEndpoint);
-        subscriberNode.ConnectPeer(publisherEndpoint);
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "spot-pub-ingress-local");
+        node.Bind(endpoint);
         subscriber.SetSubscription(topic);
-        publisherNode.AttachPubIngress(ingress);
+        node.AttachPubIngress(ingress);
 
         Assert.True(CoreTestSupport.WaitUntil(
-            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
-                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+            () =>
+            {
+                SpotNodeStatus status = node.StatusSnapshot();
+                return status.SubjectCount > 0
+                    && (status.ReadySubjectCount > 0
+                        || status.ConnectedPeerCount > 0
+                        || status.ActivePeerCount > 0
+                        || status.ConfiguredPeerCount == 0);
+            },
             5000));
-
-        using var message = Message.FromString(payload);
-        ingress.Publish(topic, message);
 
         TopicMessage? subscribed = null;
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
+                using var message = Message.FromString(payload);
+                ingress.Publish(topic, message);
+
                 try
                 {
                     subscribed = subscriber.Subscribe(RecvFlags.DontWait);

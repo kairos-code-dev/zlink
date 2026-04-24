@@ -26,6 +26,9 @@ class ContextOption(IntEnum):
     THREAD_AFFINITY_CPU_REMOVE = 8
     THREAD_NAME_PREFIX = 9
     CTX_OPT_BLOCKY = 10
+    SPOT_WORKER_THREADS = 11
+    AUTO_HWM_ENABLE = 12
+    AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13
 
 
 class SocketOption(IntEnum):
@@ -176,6 +179,8 @@ class RouterOption(IntEnum):
     HANDOVER = 0x3102
     PROBE = 0x3103
     CONNECT_ROUTING_ID = 0x3104
+    REQUEST_TIMEOUT_MS = 0x3105
+    WEIGHT = 0x3106
 
 
 class ErrorCode(IntEnum):
@@ -205,7 +210,7 @@ class MonitorEventMask(IntFlag):
     CONNECTION_READY = 0x1000
     HANDSHAKE_FAILED_PROTOCOL = 0x2000
     HANDSHAKE_FAILED_AUTH = 0x4000
-    PEER_ADMISSION_CHANGED = 0x8000
+    PEER_WEIGHT_CHANGED = 0x8000
     ALL = 0xFFFF
 
 
@@ -247,21 +252,16 @@ class ServiceMonitorMask(IntFlag):
     DISCOVERY_SERVICE_UP = 1 << 5
     DISCOVERY_SERVICE_DOWN = 1 << 6
     DISCOVERY_PROVIDERS_CHANGED = 1 << 7
-    PEER_ADMISSION_CHANGED = 1 << 8
+    PEER_WEIGHT_CHANGED = 1 << 8
     CLOSED = 1 << 17
     ALL = (
         ERROR
         | DISCOVERY_SERVICE_UP
         | DISCOVERY_SERVICE_DOWN
         | DISCOVERY_PROVIDERS_CHANGED
-        | PEER_ADMISSION_CHANGED
+        | PEER_WEIGHT_CHANGED
         | CLOSED
     )
-
-
-class AdmissionState(IntEnum):
-    SERVING = 1
-    DRAINING = 2
 
 
 class RegistrySocketRole(IntEnum):
@@ -290,6 +290,11 @@ class SpotNodeOption(IntEnum):
     PUB_MODE = 1
     PUB_QUEUE_HWM = 2
     PUB_QUEUE_FULL_POLICY = 3
+    TOPIC_SEND_HWM = 0x3608
+    TOPIC_RECV_HWM = 0x3609
+    ROUTED_SEND_HWM = 0x360A
+    ROUTED_RECV_HWM = 0x360B
+    WEIGHT = 0x360C
 
 
 class SpotNodePubMode(IntEnum):

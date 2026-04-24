@@ -2,7 +2,6 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.Received;
@@ -193,25 +192,6 @@ public final class Spot implements AutoCloseable {
             }
             return readRoutingId(outRid);
         }
-    }
-
-    public AdmissionState getAdmissionState() {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment stateOut = arena.allocate(ValueLayout.JAVA_INT);
-            int rc = Native.getAdmissionState(handle, stateOut);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_get_admission_state");
-            return AdmissionState.fromValue(stateOut.get(ValueLayout.JAVA_INT, 0));
-        }
-    }
-
-    public void setAdmissionState(AdmissionState state) {
-        Objects.requireNonNull(state, "state");
-        ensureOpen();
-        int rc = Native.setAdmissionState(handle, state.value());
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_set_admission_state");
     }
 
     /** Publishes one payload part through a service-aware Spot attachment. */

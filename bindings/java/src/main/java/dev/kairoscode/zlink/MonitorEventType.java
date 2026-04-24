@@ -13,7 +13,7 @@ public enum MonitorEventType {
     CONNECTION_READY(0x1000),
     HANDSHAKE_FAILED_PROTOCOL(0x2000),
     HANDSHAKE_FAILED_AUTH(0x4000),
-    PEER_ADMISSION_CHANGED(0x8000),
+    PEER_WEIGHT_CHANGED(0x8000),
     ALL(0xFFFF);
 
     private final int value;

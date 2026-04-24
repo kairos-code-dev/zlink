@@ -209,13 +209,13 @@ Rust nonblocking data-plane helpers follow this rule:
 - `try_recv()` returns `Ok(None)` when no message is currently available and
   still returns `Err(RecvError)` for real recv failures.
 
-Every socket type (and `Spot`) also exposes the admission-state accessor
-pair through `CommonSocketOptions` (or an equivalent inherent method):
+Peer weight is not part of `CommonSocketOptions`. Rust exposes weight only on
+`RouterSocket`, `DealerSocket`, `SpotNode`, and `Spot`:
 
 ```rust
 impl<'a, S> CommonSocketOptions<'a, S> {
-    // No common peer-weight accessor. Bindings expose weight only on
-    // RouterSocket, DealerSocket, SpotNode, and Spot.
+    // No common peer-weight accessor. RouterSocket, DealerSocket,
+    // SpotNode, and Spot expose weight on their typed option facade.
 }
 ```
 

@@ -181,24 +181,6 @@ func (s *socketCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size
 	return setNativeOption(s.handle, s.closed, "socket is closed", option, ptr, size)
 }
 
-func (s *socketCore) AdmissionState() (AdmissionState, error) {
-	if s == nil {
-		return AdmissionStateServing, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	var raw C.zlink_admission_state_t
-	if err := configErrorFromResult(C.zlink_get_admission_state(s.handle, &raw)); err != nil {
-		return AdmissionStateServing, err
-	}
-	return AdmissionState(raw), nil
-}
-
-func (s *socketCore) SetAdmissionState(state AdmissionState) error {
-	if s == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	return configErrorFromResult(C.zlink_set_admission_state(s.handle, C.zlink_admission_state_t(state)))
-}
-
 func (s *socketCore) setDurationOption(option C.zlink_option_t, value time.Duration) error {
 	return setNativeDurationOption(s.handle, s.closed, "socket is closed", option, value)
 }

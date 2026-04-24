@@ -7,10 +7,13 @@
 #include <map>
 
 #include "api/close_result_internal.hpp"
+#include "api/part_helper_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "core/ctx.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "utils/clock.hpp"
 #include "utils/mutex.hpp"
+#include "utils/sleep.hpp"
 
 namespace
 {
@@ -77,10 +80,26 @@ void finalize_monitor_handler_self_close (monitor_handler_state_t *state_)
         return;
 
     zlink::socket_base_t *socket = state_->socket;
+    zlink::service_control_runtime_t *runtime =
+      socket ? socket->get_ctx ()->service_control_runtime () : NULL;
+    const uint64_t dispatch_task_id = state_->dispatch_task_id;
     state_->stop.store (true, std::memory_order_release);
+    zlink::socket_base_t *raw_monitor_source =
+      raw_monitor_snapshot_subject (state_);
+    if (raw_monitor_source && raw_monitor_source != socket) {
+        state_->snapshot_subject.store (NULL, std::memory_order_release);
+        (void) raw_monitor_source->monitor (NULL, 0, 3,
+                                            ZLINK_CORE_SOCKET_PAIR);
+    } else {
+        clear_raw_monitor_snapshot_subjects (socket);
+    }
     erase_monitor_handler_state (socket, state_);
     state_->socket = NULL;
+    state_->dispatch_task_id = 0;
+    if (runtime && dispatch_task_id != 0)
+        (void) runtime->remove_task (dispatch_task_id);
     if (socket) {
+        zlink::part_helper_internal::cleanup_handle (socket);
         socket->stop ();
         socket->close ();
     }
@@ -174,6 +193,11 @@ void monitor_handler_task (void *arg_)
                 return;
             }
         }
+    }
+
+    if (state_->close_requested.load (std::memory_order_acquire)
+        && state_->callback_depth.load (std::memory_order_acquire) == 0) {
+        finalize_monitor_handler_self_close (state_);
     }
 }
 }
@@ -377,6 +401,7 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
       && !monitor_state->socket_handler.load (std::memory_order_acquire)
       && !monitor_state->service_handler.load (std::memory_order_acquire);
     bool stop_socket_before_close = no_dispatch_monitor;
+    bool async_close_via_callback = false;
     if (monitor_state) {
         zlink::scoped_lock_t dispatch_lock (monitor_state->dispatch_sync);
         if (had_dispatch_monitor) {
@@ -385,9 +410,22 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
             monitor_state->service_handler.store (NULL,
                                                   std::memory_order_release);
             if (zlink::current_monitor_handler_state () != monitor_state) {
+                monitor_state->close_requested.store (true,
+                                                      std::memory_order_release);
                 monitor_state->stop.store (true, std::memory_order_release);
                 stop_socket_before_close = true;
+                async_close_via_callback = true;
             }
+        }
+        if (!async_close_via_callback
+            && zlink::current_monitor_handler_state () != monitor_state
+            && monitor_state->callback_depth.load (std::memory_order_acquire)
+                 > 0) {
+            monitor_state->close_requested.store (true,
+                                                  std::memory_order_release);
+            monitor_state->stop.store (true, std::memory_order_release);
+            stop_socket_before_close = true;
+            async_close_via_callback = true;
         }
     }
     if (monitor_state && zlink::current_monitor_handler_state () == monitor_state) {
@@ -395,6 +433,18 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
         if (rc == ZLINK_CLOSE_OK)
             *monitor_p_ = NULL;
         return rc;
+    }
+    if (async_close_via_callback) {
+        if (stop_socket_before_close)
+            socket->stop ();
+        zlink::part_helper_internal::cleanup_handle (monitor);
+        const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 250;
+        while (find_monitor_handler_state (socket) != NULL
+               && zlink::clock_t ().now_ms () < deadline_ms) {
+            zlink::sleep_ms (1);
+        }
+        *monitor_p_ = NULL;
+        return ZLINK_CLOSE_OK;
     }
     if (stop_socket_before_close) {
         socket->stop ();

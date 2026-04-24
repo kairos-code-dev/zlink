@@ -66,14 +66,6 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
     }
 
-    public AdmissionState GetAdmissionState()
-    {
-        int rc = NativeMethods.zlink_get_admission_state(Handle, out int state);
-        if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        return (AdmissionState)state;
-    }
-
     public void SetChannelName(string channelName)
     {
         if (channelName == null)
@@ -91,13 +83,6 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         return System.Text.Encoding.UTF8.GetString(buffer, 0, checked((int)length));
-    }
-
-    public void SetAdmissionState(AdmissionState state)
-    {
-        int rc = NativeMethods.zlink_set_admission_state(Handle, (int)state);
-        if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void SetTlsServer(string certPath, string keyPath,

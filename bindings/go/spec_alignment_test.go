@@ -265,9 +265,6 @@ func TestExportedSpecShapeForSpotServiceBindingTypes(t *testing.T) {
 
 	assertField("serviceName", reflect.TypeOf(TopicMessage{}), reflect.String)
 	assertField("serviceName", reflect.TypeOf(SubscriptionEvent{}), reflect.String)
-	assertField("AdmissionState", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Int)
-	assertField("AdmissionState", reflect.TypeOf(MemberPeerEntry{}), reflect.Int)
-	if AdmissionStateServing == AdmissionStateDraining {
-		t.Fatalf("AdmissionState constants should be distinct")
-	}
+	assertField("Weight", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint32)
+	assertField("Weight", reflect.TypeOf(MemberPeerEntry{}), reflect.Uint32)
 }

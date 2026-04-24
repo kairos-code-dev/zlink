@@ -50,7 +50,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink, "SendFlags"))
         self.assertTrue(hasattr(zlink, "RecvFlags"))
         self.assertTrue(hasattr(zlink, "SubmitResult"))
-        self.assertTrue(hasattr(zlink, "AdmissionState"))
         self.assertTrue(hasattr(zlink, "RequestResult"))
         self.assertTrue(hasattr(zlink, "RecvResult"))
         self.assertTrue(hasattr(zlink, "SpotDispatchEvent"))
@@ -58,8 +57,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink, "SpotServiceAttachmentRole"))
         self.assertTrue(hasattr(zlink, "MonitorEvent"))
         self.assertTrue(hasattr(zlink, "MonitorEventMask"))
-        self.assertEqual(zlink.MonitorEventMask.PEER_ADMISSION_CHANGED.value, 1 << 15)
-        self.assertEqual(zlink.ServiceMonitorMask.PEER_ADMISSION_CHANGED.value, 1 << 8)
+        self.assertEqual(zlink.MonitorEventMask.PEER_WEIGHT_CHANGED.value, 1 << 15)
+        self.assertEqual(zlink.ServiceMonitorMask.PEER_WEIGHT_CHANGED.value, 1 << 8)
         self.assertIs(zlink.SocketMonitorEvent, zlink.MonitorEvent)
 
     def test_context_options_use_snake_case(self):
@@ -85,8 +84,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
         with ctx:
             with zlink.PairSocket(ctx) as sock:
-                self.assertTrue(hasattr(sock, "get_admission_state"))
-                self.assertTrue(hasattr(sock, "set_admission_state"))
                 self.assertTrue(hasattr(sock, "get_channel_name"))
                 self.assertTrue(hasattr(sock, "set_channel_name"))
                 options = sock.options

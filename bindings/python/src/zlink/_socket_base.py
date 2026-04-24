@@ -6,7 +6,6 @@ import queue
 import threading
 
 from ._enums import (
-    AdmissionState,
     BindResult,
     CloseResult,
     ConfigResult,
@@ -550,19 +549,6 @@ class _BaseSocket:
             _ = _keepalive
             native_parts.append(native)
         return native_parts
-
-    def get_admission_state(self):
-        raw = ctypes.c_int32()
-        rc = lib().zlink_get_admission_state(self._handle, ctypes.byref(raw))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return AdmissionState(int(raw.value))
-
-    def set_admission_state(self, state):
-        typed = AdmissionState(int(state))
-        rc = lib().zlink_set_admission_state(self._handle, int(typed))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def _unsupported_capability(self, capability):
         actual = _socket_type_name(self._socket_type)

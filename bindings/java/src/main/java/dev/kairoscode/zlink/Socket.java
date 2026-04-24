@@ -273,25 +273,6 @@ public abstract class Socket implements AutoCloseable {
         return socketCore.monitorOpen(resolveMonitorEvents(events));
     }
 
-    public final AdmissionState getAdmissionState() {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment stateOut = arena.allocate(ValueLayout.JAVA_INT);
-            int rc = Native.getAdmissionState(handle, stateOut);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_get_admission_state");
-            return AdmissionState.fromValue(stateOut.get(ValueLayout.JAVA_INT, 0));
-        }
-    }
-
-    public final void setAdmissionState(AdmissionState state) {
-        Objects.requireNonNull(state, "state");
-        ensureOpen();
-        int rc = Native.setAdmissionState(handle, state.value());
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_set_admission_state");
-    }
-
     public final void setTlsServer(String certPem, String keyPem,
                                    boolean requireClientCert) {
         socketCore.setTlsServer(certPem, keyPem, requireClientCert);

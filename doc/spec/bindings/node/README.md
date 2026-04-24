@@ -148,11 +148,12 @@ Node / TypeScript nonblocking data-plane helpers follow this rule:
   `RecvFlags.DontWait` finds no message and still throw `RecvError` for real
   recv failures.
 
-All sockets (and `Spot`) also expose the admission-state accessor pair:
+Peer weight is not a common socket option. Bindings expose weight only on
+`RouterSocket`, `DealerSocket`, `SpotNode`, and `Spot`:
 
 ```typescript
-// No common peer-weight accessor. Bindings expose weight only on
-// RouterSocket, DealerSocket, SpotNode, and Spot.
+// No common peer-weight accessor. RouterSocket, DealerSocket,
+// SpotNode, and Spot expose weight on their typed option facade.
 ```
 
 ### PairSocket

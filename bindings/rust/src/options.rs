@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use crate::error::ConfigError;
 use crate::message::RoutingId;
-use crate::service::AdmissionState;
 use crate::socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
     XSubSocket,
@@ -19,8 +18,6 @@ impl<'a, T> CommonSocketOptions<'a, T> {
 }
 
 pub(crate) trait CommonSocketOptionAccess {
-    fn admission_state(&self) -> Result<AdmissionState, ConfigError>;
-    fn set_admission_state(&self, state: AdmissionState) -> Result<(), ConfigError>;
     fn set_linger(&self, d: Duration) -> Result<(), ConfigError>;
     fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError>;
     fn send_hwm(&self) -> Result<i32, ConfigError>;
@@ -46,12 +43,6 @@ macro_rules! impl_common_access {
     ($($ty:ty),+ $(,)?) => {
         $(
             impl CommonSocketOptionAccess for $ty {
-                fn admission_state(&self) -> Result<AdmissionState, ConfigError> {
-                    self.inner.admission_state()
-                }
-                fn set_admission_state(&self, state: AdmissionState) -> Result<(), ConfigError> {
-                    self.inner.set_admission_state(state)
-                }
                 fn set_linger(&self, d: Duration) -> Result<(), ConfigError> { self.set_linger(d) }
                 fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError> { self.set_send_hwm(value) }
                 fn send_hwm(&self) -> Result<i32, ConfigError> { self.send_hwm() }
@@ -92,12 +83,6 @@ impl<T> CommonSocketOptions<'_, T>
 where
     T: CommonSocketOptionAccess,
 {
-    pub fn admission_state(&self) -> Result<AdmissionState, ConfigError> {
-        self.socket.admission_state()
-    }
-    pub fn set_admission_state(&self, state: AdmissionState) -> Result<(), ConfigError> {
-        self.socket.set_admission_state(state)
-    }
     pub fn set_linger(&self, d: Duration) -> Result<(), ConfigError> {
         self.socket.set_linger(d)
     }

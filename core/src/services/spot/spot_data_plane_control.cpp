@@ -151,6 +151,44 @@ int spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
     return 0;
 }
 
+static int sync_outbound_mesh_subscriptions (
+  socket_base_t *mesh_xsub_,
+  spot_node_t *node_,
+  spot_data_plane_protocol_state_t *state_)
+{
+    if (!mesh_xsub_ || !node_ || !state_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::set<std::string> desired_filters;
+    node_->snapshot_raw_subscription_filters (&desired_filters);
+
+    for (std::set<std::string>::const_iterator it =
+           state_->outbound_subscription_filters.begin ();
+         it != state_->outbound_subscription_filters.end (); ++it) {
+        if (desired_filters.count (*it) != 0)
+            continue;
+        if (spot_data_plane_protocol_t::send_subscription_update (
+              mesh_xsub_, *it, false)
+            != 0)
+            return -1;
+    }
+
+    for (std::set<std::string>::const_iterator it = desired_filters.begin ();
+         it != desired_filters.end (); ++it) {
+        if (state_->outbound_subscription_filters.count (*it) != 0)
+            continue;
+        if (spot_data_plane_protocol_t::send_subscription_update (
+              mesh_xsub_, *it, true)
+            != 0)
+            return -1;
+    }
+
+    state_->outbound_subscription_filters.swap (desired_filters);
+    return 0;
+}
+
 int spot_data_plane_protocol_t::handle_ctrl_command (
   socket_base_t *ctrl_,
   spot_node_t *node_,
@@ -333,6 +371,11 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
 
     if (verb == "replay_subscriptions" || verb == "subscription_subscribe"
         || verb == "subscription_unsubscribe") {
+        if (sync_outbound_mesh_subscriptions (mesh_xsub_, node_, state_) != 0) {
+            if (send_errno_reply (ctrl_, errno) != 0)
+                return -1;
+            return 0;
+        }
         if (spot_io::send_snapshot_to_peers (
               peer_ctrl_pub_, node_, state_->peer_ctrl_endpoints)
             != 0) {

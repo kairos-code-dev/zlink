@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.PubSocket;

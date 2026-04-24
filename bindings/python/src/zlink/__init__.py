@@ -121,7 +121,6 @@ from ._enums import (
     SpotPeerState,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
-    AdmissionState,
     SpotSocketRole,
     SpotServiceAttachmentRole,
 )
@@ -235,7 +234,6 @@ __all__ = [
     "SpotPeerState",
     "SpotDispatchEvent",
     "SpotDispatchSubjectKind",
-    "AdmissionState",
     "SpotSocketRole",
     "SpotServiceAttachmentRole",
 ]

@@ -7,6 +7,23 @@ export interface NativeBinding {
   [name: string]: (...args: any[]) => any;
 }
 
+function refreshAddonRuntimeLink(
+  addonLib: string,
+  sourceLibs: string[]
+): void {
+  for (const sourceLib of sourceLibs) {
+    if (!fs.existsSync(sourceLib)) continue;
+
+    const sourceReal = fs.realpathSync(sourceLib);
+    const currentReal = fs.existsSync(addonLib) ? fs.realpathSync(addonLib) : null;
+    if (currentReal === sourceReal) return;
+
+    fs.rmSync(addonLib, { force: true });
+    fs.symlinkSync(sourceLib, addonLib);
+    return;
+  }
+}
+
 function prependPathEntries(entries: Array<string | undefined>): void {
   const existing = (process.env.PATH || '').split(';').filter(Boolean);
   for (const entry of entries) {
@@ -26,23 +43,9 @@ function loadNative(): NativeBinding | null {
       const addonLib = path.join(addonDir, 'libzlink.so.5');
       const coreLib = path.join(coreDir, 'libzlink.so.5');
       const coreAltLib = path.join(coreAltDir, 'libzlink.so.5');
-      if (!fs.existsSync(addonLib)) {
-        let sourceLib: string | null = null;
-        if (fs.existsSync(coreAltLib)) {
-          sourceLib = coreAltLib;
-        } else if (fs.existsSync(coreLib)) {
-          sourceLib = coreLib;
-        }
-        if (sourceLib) {
-          try {
-            fs.symlinkSync(sourceLib, addonLib);
-          } catch (err: any) {
-            if (!err || err.code !== 'EEXIST') throw err;
-          }
-        }
-      }
+      refreshAddonRuntimeLink(addonLib, [coreLib, coreAltLib]);
       const existing = (process.env.LD_LIBRARY_PATH || '').split(':').filter(Boolean);
-      for (const entry of [coreAltDir, coreDir, addonDir]) {
+      for (const entry of [coreDir, coreAltDir, addonDir]) {
         if (!existing.includes(entry)) existing.unshift(entry);
       }
       process.env.LD_LIBRARY_PATH = existing.join(':');

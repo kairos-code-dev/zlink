@@ -53,11 +53,6 @@ int resolve_spot_bound_service_name (spot_handle_t *spot_,
 
     *service_name_out_ =
       zlink::spot_node_access_t::summary_service_name (spot_->node);
-    if (service_name_out_->empty ()) {
-        errno = ENOENT;
-        return -1;
-    }
-
     return 0;
 }
 

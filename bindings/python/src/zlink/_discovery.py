@@ -4,7 +4,6 @@ import ctypes
 from dataclasses import dataclass
 
 from ._enums import (
-    AdmissionState,
     DiscoveryDealerPeerMode,
     RegistryState,
     ServiceMonitorMask,
@@ -53,7 +52,7 @@ class MemberPeerEntry:
     service_name: str
     endpoint: str
     routing_id: bytes
-    admission_state: AdmissionState
+    weight: int
     value: int
 
 
@@ -122,7 +121,7 @@ def _member_peer_from_native(entry):
         service_name=_decode_fixed(entry.service_name),
         endpoint=_decode_fixed(entry.endpoint),
         routing_id=_routing_id_bytes(entry.routing_id),
-        admission_state=AdmissionState(int(entry.admission_state)),
+        weight=int(entry.weight),
         value=int(entry.value),
     )
 

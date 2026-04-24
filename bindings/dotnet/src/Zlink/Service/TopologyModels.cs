@@ -28,12 +28,6 @@ public enum ServiceRole : ushort
     Sub = 6
 }
 
-public enum AdmissionState
-{
-    Serving = 1,
-    Draining = 2
-}
-
 public enum DiscoveryDealerPeerMode
 {
     Router = 1,
@@ -115,14 +109,14 @@ public enum ServiceEventType : uint
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
-    PeerAdmissionChanged = 1u << 8,
+    PeerWeightChanged = 1u << 8,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
-        | PeerAdmissionChanged
+        | PeerWeightChanged
 }
 
 public sealed record SpotNodePeerFilter(
@@ -237,7 +231,7 @@ public sealed record MemberPeerEntry(
     string Endpoint,
     RoutingId? RoutingId,
     long Value,
-    AdmissionState AdmissionState)
+    uint Weight)
 {
     internal static unsafe MemberPeerEntry FromNative(ref ZlinkMemberPeerEntry native)
     {
@@ -251,7 +245,7 @@ public sealed record MemberPeerEntry(
                 RoutingIdCodec.ToRoutingId(
                     NativeHelpers.ReadRoutingId(ref native.RoutingId)),
                 native.Value,
-                (AdmissionState)native.AdmissionState);
+                native.Weight);
         }
     }
 }
@@ -293,7 +287,7 @@ public sealed record SpotNodePeerEntry(
     string PeerEndpoint,
     SpotPeerSource Source,
     SpotPeerState State,
-    AdmissionState AdmissionState,
+    uint Weight,
     ulong ConnectedSinceMs,
     ulong LastChangedMs)
 {
@@ -309,7 +303,7 @@ public sealed record SpotNodePeerEntry(
                 NativeHelpers.ReadFixedString(local, 256),
                 NativeHelpers.ReadFixedString(peer, 256),
                 (SpotPeerSource)native.Source, (SpotPeerState)native.State,
-                (AdmissionState)native.AdmissionState,
+                native.Weight,
                 native.ConnectedSinceMs, native.LastChangedMs);
         }
     }

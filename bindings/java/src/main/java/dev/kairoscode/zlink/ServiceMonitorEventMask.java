@@ -8,7 +8,7 @@ public enum ServiceMonitorEventMask {
     DISCOVERY_SERVICE_UP(1L << 5),
     DISCOVERY_SERVICE_DOWN(1L << 6),
     DISCOVERY_PROVIDERS_CHANGED(1L << 7),
-    PEER_ADMISSION_CHANGED(1L << 8),
+    PEER_WEIGHT_CHANGED(1L << 8),
     CLOSED(1L << 17),
     ALL((1L << 4) | (1L << 5) | (1L << 6) | (1L << 7) | (1L << 8)
       | (1L << 17));

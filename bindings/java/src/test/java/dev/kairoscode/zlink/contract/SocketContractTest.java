@@ -1,7 +1,6 @@
 package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.AdmissionState;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorSocket;
@@ -287,12 +286,12 @@ public class SocketContractTest {
 
     @Test
     public void admissionSurfaceMatchesJavaSpec() {
-        assertTrue(hasPublicMethod(PairSocket.class, "getAdmissionState"));
-        assertTrue(hasPublicMethod(PairSocket.class, "setAdmissionState",
-            AdmissionState.class));
-        assertTrue(hasPublicMethod(Spot.class, "getAdmissionState"));
-        assertTrue(hasPublicMethod(Spot.class, "setAdmissionState",
-            AdmissionState.class));
+        assertFalse(hasPublicMethod(PairSocket.class, "getAdmissionState"));
+        assertFalse(hasPublicMethod(PairSocket.class, "setAdmissionState",
+            int.class));
+        assertFalse(hasPublicMethod(Spot.class, "getAdmissionState"));
+        assertFalse(hasPublicMethod(Spot.class, "setAdmissionState",
+            int.class));
     }
 
     @Test
@@ -599,7 +598,7 @@ public class SocketContractTest {
             dev.kairoscode.zlink.service.registry.ServiceEvent.class,
             "fromNative", java.lang.foreign.MemorySegment.class));
         assertEquals(7, MemberPeerEntry.class.getRecordComponents().length);
-        assertEquals("admissionState",
+        assertEquals("weight",
             MemberPeerEntry.class.getRecordComponents()[6].getName());
     }
 

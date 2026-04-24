@@ -63,12 +63,6 @@ export {
   ConfigError
 };
 
-export const AdmissionState = Object.freeze({
-  Serving: 1,
-  Draining: 2
-} as const);
-export type AdmissionState = typeof AdmissionState[keyof typeof AdmissionState];
-
 const ContextOption = Object.freeze({
   IO_THREADS: 1,
   MAX_SOCKETS: 2,
@@ -80,7 +74,10 @@ const ContextOption = Object.freeze({
   THREAD_AFFINITY_CPU_ADD: 7,
   THREAD_AFFINITY_CPU_REMOVE: 8,
   THREAD_NAME_PREFIX: 9,
-  BLOCKY: 10
+  BLOCKY: 10,
+  SPOT_WORKER_THREADS: 11,
+  AUTO_HWM_ENABLE: 12,
+  AUTO_HWM_TOTAL_MEMORY_BUDGET_MB: 13
 } as const);
 
 const MonitorSourceKind = Object.freeze({ SOCKET: 1, SPOT_PUB: 3, SPOT_SUB: 4 } as const);
@@ -136,7 +133,7 @@ export class MonitorEvent {
   static readonly CONNECTION_READY = 0x1000;
   static readonly HANDSHAKE_FAILED_PROTOCOL = 0x2000;
   static readonly HANDSHAKE_FAILED_AUTH = 0x4000;
-  static readonly PEER_ADMISSION_CHANGED = 0x8000;
+  static readonly PEER_WEIGHT_CHANGED = 0x8000;
   static readonly ALL = 0xFFFF;
 
   readonly event: MonitorEventType;
@@ -161,7 +158,7 @@ export const ServiceMonitorEventMask = Object.freeze({
   discoveryServiceUp: 1 << 5,
   discoveryServiceDown: 1 << 6,
   discoveryProvidersChanged: 1 << 7,
-  peerAdmissionChanged: 1 << 8,
+  peerWeightChanged: 1 << 8,
   closed: 1 << 17,
   all: (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 17)
 } as const);
@@ -193,7 +190,7 @@ export interface MemberPeerEntry {
   readonly serviceName: string;
   readonly endpoint: string;
   readonly routingId: RoutingId;
-  readonly admissionState: AdmissionState;
+  readonly weight: number;
   readonly value: bigint;
 }
 
@@ -255,7 +252,7 @@ export interface SpotNodePeerEntry {
   readonly peerEndpoint: string;
   readonly source: number;
   readonly state: number;
-  readonly admissionState: AdmissionState;
+  readonly weight: number;
   readonly connectedSinceMs: bigint;
   readonly lastChangedMs: bigint;
 }
@@ -522,7 +519,7 @@ function mapMemberPeerEntry(entry: {
   serviceName: string;
   endpoint: string;
   routingId: Buffer;
-  admissionState: number;
+  weight: number;
   value: number | bigint;
 }): MemberPeerEntry {
   return {
@@ -531,7 +528,7 @@ function mapMemberPeerEntry(entry: {
     serviceName: entry.serviceName,
     endpoint: entry.endpoint,
     routingId: RoutingId.fromBytes(entry.routingId),
-    admissionState: entry.admissionState as AdmissionState,
+    weight: entry.weight,
     value: BigInt(entry.value)
   };
 }
@@ -649,7 +646,7 @@ function mapSpotNodePeerEntry(entry: {
   peerEndpoint: string;
   source: number;
   state: number;
-  admissionState: number;
+  weight: number;
   connectedSinceMs: number | bigint;
   lastChangedMs: number | bigint;
 }): SpotNodePeerEntry {
@@ -659,7 +656,7 @@ function mapSpotNodePeerEntry(entry: {
     peerEndpoint: entry.peerEndpoint,
     source: entry.source,
     state: entry.state,
-    admissionState: entry.admissionState as AdmissionState,
+    weight: entry.weight,
     connectedSinceMs: BigInt(entry.connectedSinceMs),
     lastChangedMs: BigInt(entry.lastChangedMs)
   };
@@ -810,14 +807,6 @@ class BaseSocket extends NativeHandle {
 
   monitorOpen(events: number = MonitorEvent.ALL): MonitorSocket {
     return new MonitorSocket(requireNative().monitorOpen(this.nativeHandle(), events | 0));
-  }
-
-  getAdmissionState(): AdmissionState {
-    return requireNative().handleGetAdmissionState(this.nativeHandle()) as AdmissionState;
-  }
-
-  setAdmissionState(state: AdmissionState): void {
-    requireNative().handleSetAdmissionState(this.nativeHandle(), state | 0);
   }
 
   setChannelName(channelName: string): void {
@@ -1781,12 +1770,6 @@ export class Spot extends NativeHandle {
   }
   get routingId(): RoutingId {
     return RoutingId.fromBytes(requireNative().handleGetRoutingId(this._native) as Buffer);
-  }
-  getAdmissionState(): AdmissionState {
-    return requireNative().handleGetAdmissionState(this._native) as AdmissionState;
-  }
-  setAdmissionState(state: AdmissionState): void {
-    requireNative().handleSetAdmissionState(this._native, state | 0);
   }
   publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): boolean;
   publish(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): boolean;

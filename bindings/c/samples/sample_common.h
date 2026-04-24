@@ -456,12 +456,12 @@ static inline int wait_spot_ready (void *sub_monitor, void *pub_monitor,
     (void) endpoint;
     if (!wait_for_service_monitor_event (
           sub_monitor,
-          ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED, -1,
+          ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED, -1,
           timeout_ms))
         return 0;
     if (!wait_for_service_monitor_event (
           pub_monitor,
-          ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED, -1,
+          ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED, -1,
           timeout_ms))
         return 0;
     return 1;

@@ -301,19 +301,12 @@ public sealed class test_socket_surface
             typeof(ServiceMonitorEvents)));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "SetAdmissionState",
-            typeof(AdmissionState)));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "GetAdmissionState"));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealer",
             typeof(Discovery), typeof(DealerSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealerManual",
             typeof(string), typeof(DealerSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachPubIngress",
             typeof(PubSocket)));
-        Assert.True(HasPublicInstanceMethod(typeof(Spot),
-            nameof(Spot.SetAdmissionState), typeof(AdmissionState)));
-        Assert.True(HasPublicInstanceMethod(typeof(Spot),
-            nameof(Spot.GetAdmissionState)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.Publish),
             typeof(string), typeof(string), typeof(Message),
             typeof(SendFlags)));
@@ -483,16 +476,16 @@ public sealed class test_socket_surface
             nameof(SubmitResult.NotAdmitted)));
         Assert.Equal(13, (int)SubmitResult.NotAdmitted);
         Assert.True(Enum.IsDefined(typeof(SocketEvent),
-            nameof(SocketEvent.PeerAdmissionChanged)));
-        Assert.Equal(0x8000, (int)SocketEvent.PeerAdmissionChanged);
+            nameof(SocketEvent.PeerWeightChanged)));
+        Assert.Equal(0x8000, (int)SocketEvent.PeerWeightChanged);
         Assert.True(Enum.IsDefined(typeof(MonitorEventType),
-            nameof(MonitorEventType.PeerAdmissionChanged)));
-        Assert.Equal(0x8000, (int)MonitorEventType.PeerAdmissionChanged);
+            nameof(MonitorEventType.PeerWeightChanged)));
+        Assert.Equal(0x8000, (int)MonitorEventType.PeerWeightChanged);
         Assert.True(Enum.IsDefined(typeof(ServiceMonitorEventMask),
-            nameof(ServiceMonitorEventMask.PeerAdmissionChanged)));
-        Assert.Equal(1u << 8, (uint)ServiceMonitorEventMask.PeerAdmissionChanged);
+            nameof(ServiceMonitorEventMask.PeerWeightChanged)));
+        Assert.Equal(1u << 8, (uint)ServiceMonitorEventMask.PeerWeightChanged);
         Assert.True(Enum.IsDefined(typeof(ServiceEventType),
-            nameof(ServiceEventType.PeerAdmissionChanged)));
-        Assert.Equal(1u << 8, (uint)ServiceEventType.PeerAdmissionChanged);
+            nameof(ServiceEventType.PeerWeightChanged)));
+        Assert.Equal(1u << 8, (uint)ServiceEventType.PeerWeightChanged);
     }
 }

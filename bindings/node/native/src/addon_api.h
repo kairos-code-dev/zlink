@@ -72,8 +72,6 @@ napi_value socket_set_channel_name(napi_env env, napi_callback_info info);
 napi_value socket_get_channel_name(napi_env env, napi_callback_info info);
 napi_value handle_set_routing_id(napi_env env, napi_callback_info info);
 napi_value handle_get_routing_id(napi_env env, napi_callback_info info);
-napi_value handle_set_admission_state(napi_env env, napi_callback_info info);
-napi_value handle_get_admission_state(napi_env env, napi_callback_info info);
 napi_value dealer_request(napi_env env, napi_callback_info info);
 napi_value socket_request_progress(napi_env env, napi_callback_info info);
 napi_value router_request(napi_env env, napi_callback_info info);

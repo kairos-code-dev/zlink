@@ -38,8 +38,6 @@ fn spot_node_snapshot_surfaces_exist() {
     let node = SpotNode::new(&ctx).unwrap();
     let endpoint = format!("tcp://127.0.0.1:{}", reserve_tcp_port());
     node.bind(&endpoint).unwrap();
-    let _ = node.admission_state().unwrap();
-    let _ = node.set_admission_state(AdmissionState::Serving);
     let _ = node.status_snapshot().unwrap();
     let _ = node.peers_snapshot().unwrap();
     let _ = node.subjects_snapshot(None).unwrap();
@@ -57,8 +55,6 @@ fn spot_callback_surfaces_exist() {
     let spot = node.create_spot().unwrap();
     spot.set_routing_id(&RoutingId::from_bytes(b"spot-surface"))
         .unwrap();
-    let _ = spot.admission_state().unwrap();
-    let _ = spot.set_admission_state(AdmissionState::Serving);
     let _ = spot.routing_id().unwrap();
     let _ = spot.publish(
         "svc-surface",

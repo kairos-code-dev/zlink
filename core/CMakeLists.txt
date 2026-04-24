@@ -1002,6 +1002,8 @@ set(api-sources
     src/api/socket_request_reply_internal.cpp
     src/api/socket_request_reply_router_api.cpp
     src/api/socket_request_reply_api.cpp
+    src/api/socket_request_reply_pending_api.cpp
+    src/api/socket_request_reply_submit_api.cpp
     src/api/socket_api.cpp
     src/api/timer_api.cpp
     src/api/timer_scheduler_backend.cpp
@@ -1075,11 +1077,13 @@ set(discovery-sources
     src/services/discovery/discovery_service_state.cpp
     src/services/discovery/socket_discovery_attachment.cpp
     src/services/discovery/socket_discovery_attachment_lifecycle.cpp
+    src/services/discovery/socket_discovery_attachment_registration.cpp
     src/services/discovery/discovery_registration_propagation.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
     src/services/discovery/discovery_uplink_socket_owner.cpp
-    src/services/discovery/discovery_update.cpp)
+    src/services/discovery/discovery_update.cpp
+    src/services/discovery/socket_discovery_attachment_peer.cpp)
 
 set(spot-sources
     src/services/spot/spot_data_plane.cpp
@@ -1100,6 +1104,8 @@ set(spot-sources
     src/services/spot/spot_node_access.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp
+    src/services/spot/spot_node_control_peer.cpp
+    src/services/spot/spot_node_control_ready.cpp
     src/services/spot/spot_node_control_task.cpp
     src/services/spot/spot_node_control_policy.cpp
     src/services/spot/spot_node_defaults.cpp
@@ -1141,7 +1147,8 @@ set(socket-sources
     src/sockets/dealer.cpp
     src/sockets/router_admission.cpp
     src/sockets/router.cpp
-    src/sockets/router_data_path.cpp
+    src/sockets/router_recv_path.cpp
+    src/sockets/router_send_path.cpp
     src/sockets/stream.cpp
     src/sockets/stream_dispatch_send.cpp
     src/sockets/stream_dispatch_context.cpp

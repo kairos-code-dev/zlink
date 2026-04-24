@@ -9,6 +9,7 @@
 #include "api/service_mode_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
+#include "api/socket_request_reply_wait_internal.hpp"
 #include "core/socket_poller.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
@@ -34,63 +35,6 @@ int validate_socket_type (void *socket_, int expected_type_)
     }
 
     return 0;
-}
-
-void drain_router_completion_queues (
-  void *router_,
-  const std::shared_ptr<reqrep::socket_request_reply_state_t> &socket_state_,
-  const std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-    &router_spot_state_)
-{
-    if (socket_state_)
-        (void) reqrep::drain_reply_completions (socket_state_, router_);
-    if (router_spot_state_)
-        (void) zlink::spot_reqrep_internal::drain_router_reply_completions (
-          router_spot_state_, router_);
-}
-
-int wait_router_input_or_completion (
-  zlink::socket_base_t *input_,
-  zlink::socket_base_t *socket_signal_,
-  zlink::socket_base_t *router_spot_signal_,
-  long timeout_ms_,
-  bool *input_ready_out_,
-  bool *socket_signal_ready_out_,
-  bool *router_spot_signal_ready_out_)
-{
-    if (!input_ || !input_ready_out_ || !socket_signal_ready_out_
-        || !router_spot_signal_ready_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    *input_ready_out_ = false;
-    *socket_signal_ready_out_ = false;
-    *router_spot_signal_ready_out_ = false;
-
-    zlink::socket_poller_t poller;
-    if (poller.add (input_, NULL, ZLINK_POLLIN) != 0)
-        return -1;
-    if (socket_signal_ && poller.add (socket_signal_, NULL, ZLINK_POLLIN) != 0)
-        return -1;
-    if (router_spot_signal_
-        && poller.add (router_spot_signal_, NULL, ZLINK_POLLIN) != 0)
-        return -1;
-
-    zlink::socket_poller_t::event_t events[3];
-    const int rc = poller.wait (events, 3, timeout_ms_);
-    if (rc <= 0)
-        return rc;
-
-    for (int i = 0; i < rc; ++i) {
-        if (events[i].socket == input_)
-            *input_ready_out_ = true;
-        else if (events[i].socket == socket_signal_)
-            *socket_signal_ready_out_ = true;
-        else if (events[i].socket == router_spot_signal_)
-            *router_spot_signal_ready_out_ = true;
-    }
-    return rc;
 }
 
 void export_router_recv_part_metadata_view (
@@ -190,7 +134,8 @@ zlink_recv_result_t zlink_router_recv_part (
            uint64_t *request_seq_out,
            zlink_msg_t **parts_out,
            size_t *part_count_out) -> zlink_recv_result_t {
-        drain_router_completion_queues (router_, state, router_spot_state);
+        reqrep::drain_router_completion_queues (router_, state,
+                                                router_spot_state);
 
         const zlink_recv_flags_t try_flags =
           static_cast<zlink_recv_flags_t> (flags_ | ZLINK_DONTWAIT);
@@ -228,7 +173,7 @@ zlink_recv_result_t zlink_router_recv_part (
             bool input_ready = false;
             bool socket_signal_ready = false;
             bool router_spot_signal_ready = false;
-            const int wait_rc = wait_router_input_or_completion (
+            const int wait_rc = reqrep::wait_router_input_or_completion (
               input_socket, socket_signal, router_spot_signal, -1, &input_ready,
               &socket_signal_ready, &router_spot_signal_ready);
             if (wait_rc <= 0) {
@@ -238,8 +183,8 @@ zlink_recv_result_t zlink_router_recv_part (
             }
 
             if (socket_signal_ready || router_spot_signal_ready)
-                drain_router_completion_queues (router_, state,
-                                                router_spot_state);
+                reqrep::drain_router_completion_queues (router_, state,
+                                                        router_spot_state);
             if (!input_ready && !socket_signal_ready
                 && !router_spot_signal_ready) {
                 errno = EAGAIN;

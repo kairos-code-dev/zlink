@@ -983,10 +983,12 @@ set(api-sources
     src/api/service_spot_request_reply_local_direct.cpp
     src/api/service_spot_request_reply_completion.cpp
     src/api/service_spot_request_reply_callback_api.cpp
+    src/api/service_spot_request_reply_ingress_api.cpp
     src/api/service_spot_request_reply_part_submit.cpp
     src/api/service_spot_request_reply_routed_delivery.cpp
     src/api/service_spot_request_reply_progress.cpp
     src/api/service_spot_request_reply_api.cpp
+    src/api/service_spot_request_reply_submit_api.cpp
     src/api/service_spot_subject_option_api.cpp
     src/api/service_spot_subject_subscription_api.cpp
     src/api/service_spot_subject_api.cpp
@@ -1084,6 +1086,7 @@ set(spot-sources
     src/services/spot/spot_data_plane_forwarding.cpp
     src/services/spot/spot_data_plane_loop.cpp
     src/services/spot/spot_data_plane_control.cpp
+    src/services/spot/spot_data_plane_mesh.cpp
     src/services/spot/spot_data_plane_message_io.cpp
     src/services/spot/spot_data_plane_runtime.cpp
     src/services/spot/spot_data_plane_protocol.cpp
@@ -1110,6 +1113,9 @@ set(spot-sources
     src/services/spot/spot_pub.cpp
     src/services/spot/spot_dispatch_context.cpp
     src/services/spot/spot_runtime.cpp
+    src/services/spot/spot_runtime_attachment.cpp
+    src/services/spot/spot_runtime_execution.cpp
+    src/services/spot/spot_runtime_sender.cpp
     src/services/spot/spot_runtime_shutdown.cpp
     src/services/spot/spot_sub_lifecycle.cpp
     src/services/spot/spot_sub_option.cpp
@@ -1135,6 +1141,7 @@ set(socket-sources
     src/sockets/dealer.cpp
     src/sockets/router_admission.cpp
     src/sockets/router.cpp
+    src/sockets/router_data_path.cpp
     src/sockets/stream.cpp
     src/sockets/stream_dispatch_send.cpp
     src/sockets/stream_dispatch_context.cpp

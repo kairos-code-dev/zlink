@@ -83,7 +83,7 @@ These are expected outcomes that callers may handle directly.
 | `BACKPRESSURED` | `EAGAIN` | Send queue full (HWM) or not writable yet |
 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | Target peer or path is not connected |
 | `NOT_FOUND` | `ENOENT` | Target peer, spot, or routed destination was not found |
-| `NOT_ADMITTED` | `ECONNREFUSED`-class | The local peer knows the remote admission state is `DRAINING`, so admission denied a new outbound. The connection itself may still be alive; the failure is an admission refusal that lifts when the peer returns to `SERVING`. State propagation is best-effort, so under races the same situation may surface first as `NOT_CONNECTED` or `NOT_FOUND`. |
+| `NOT_ADMITTED` | `ECONNREFUSED`-class | The local peer knows the remote weight is `0`, so new outbound is refused. The connection itself may still be alive; the failure lifts when the peer returns to a positive weight. State propagation is best-effort, so under races the same situation may surface first as `NOT_CONNECTED` or `NOT_FOUND`. |
 
 #### Runtime / lifecycle failure
 
@@ -439,9 +439,7 @@ not directly return `zlink_config_result_t`.
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | -- | -- | -- |
 
-`zlink_send` returns `NOT_ADMITTED` when every ROUTER known to the DEALER is
-`DRAINING`. `zlink_send_rid` returns `NOT_ADMITTED` when the target RID is
-`DRAINING`.
+`zlink_send` returns `NOT_ADMITTED` when every ROUTER known to the DEALER has weight `0`. `zlink_send_rid` returns `NOT_ADMITTED` when the target RID has weight `0`.
 
 ### Socket request functions
 
@@ -462,9 +460,8 @@ not directly return `zlink_config_result_t`.
 | `SEQ_EXHAUSTED` | Y | Y |
 | `INTERNAL_ERROR` | Y | Y |
 
-`zlink_dealer_request` fails with `NOT_ADMITTED` when every known ROUTER is
-`DRAINING`. `zlink_router_request` fails with `NOT_ADMITTED` when the target
-RID is `DRAINING`.
+`zlink_dealer_request` fails with `NOT_ADMITTED` when every known ROUTER has weight `0`. `zlink_router_request` fails with `NOT_ADMITTED` when the target
+RID has weight `0`.
 
 ### Socket reply function
 
@@ -508,7 +505,7 @@ Replies answer in-flight requests, so admission is not re-evaluated for them.
 | `INTERNAL_ERROR` | Y | Y | Y |
 
 SPOT request paths return `NOT_ADMITTED` when the destination SpotNode or
-ROUTER is `DRAINING`. `zlink_spot_request_channel` may also fail with the same
+ROUTER has weight `0`. `zlink_spot_request_channel` may also fail with the same
 class of error when the attached channel path is draining or no callable dealer
 path remains.
 
@@ -531,9 +528,9 @@ path remains.
 | `SEQ_EXHAUSTED` | -- | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y | Y |
 
-`zlink_spot_publish` is fan-out, so a single peer's admission state never
-fails it. The other routed/direct send functions return `NOT_ADMITTED` when
-the destination SpotNode or ROUTER is `DRAINING`.
+`zlink_spot_publish` is fan-out, so a single peer's weight never fails it.
+The other routed/direct send functions return `NOT_ADMITTED` when the
+destination SpotNode or ROUTER has weight `0`.
 
 ### SPOT reply functions
 

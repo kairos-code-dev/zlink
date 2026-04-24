@@ -767,7 +767,7 @@ ingress 경로다.
 
 - `SpotNode` 상태 관찰은 `zlink_service_monitor_open()` /
   `zlink_service_monitor_recv()`와 snapshot/query API를 사용한다.
-- peer state, admission 변경, topology 이벤트가 monitor를 통해 노출된다.
+- peer state, 가중치 변경, topology 이벤트가 monitor를 통해 노출된다.
 - monitor event는 Spot dispatch readable plane에 섞이지 않는다.
 
 ### 11.6 Active set 유지
@@ -780,26 +780,27 @@ ingress 경로다.
   유효 후보가 자동으로 갱신된다.
 - 수동 attachment는 socket 상태가 정상인 동안 active로 유지된다.
 
-### 11.7 Admission state 전파
+### 11.7 가중치 전파
 
-`zlink_set_admission_state()`로 SpotNode 자신이 `SERVING`/`DRAINING`을 바꾸면,
-변경은 SpotNode 내부 peer control 경로(`peer_ctrl_pub` / `peer_ctrl_sub`)
-를 통해 best-effort runtime 신호로 다른 SpotNode peer에게 advertise된다.
+`zlink_set_spot_node_option(..., ZLINK_SPOT_NODE_OPT_WEIGHT, ...)`로 SpotNode의
+가중치를 양수 값과 `0` 사이에서 바꾸면, 변경은 SpotNode 내부 peer control
+경로(`peer_ctrl_pub` / `peer_ctrl_sub`)를 통해 best-effort runtime 신호로
+다른 SpotNode peer에게 advertise된다.
 
 - 각 peer는 자신의 SpotNode peer cache(§2.2 참조)에서 해당 항목의
-  admission state를 갱신한다. 이 cache는 `zlink_spot_node_peers_snapshot()`
-  과 `zlink_spot_node_peers_query()`가 돌려주는
-  `zlink_spot_node_peer_entry_t.admission_state`의 source이기도 하다.
-- 같은 cache는 service-aware ROUTER 후보 선택에도 쓰인다. 따라서 peer가
-  `DRAINING`으로 보이면 service-aware send/request는 그 peer를 후보에서
-  제외하고, 후보가 모두 `DRAINING`이면 submit은
+  가중치를 갱신한다. 이 cache는 `zlink_spot_node_peers_snapshot()`과
+  `zlink_spot_node_peers_query()`가 돌려주는
+  `zlink_spot_node_peer_entry_t.weight` 필드의 source이기도 하다.
+- 같은 cache는 service-aware ROUTER 후보 선택에도 쓰인다. 따라서 peer의
+  가중치가 `0`으로 보이면 service-aware send/request는 그 peer를 후보에서
+  제외하고, 후보가 모두 `0`이면 submit은
   `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화되어 반환된다. 직접 SPOT request도
-  대상 SpotNode가 `DRAINING`이면 같은 결과를 낸다.
+  대상 SpotNode의 가중치가 `0`이면 같은 결과를 낸다.
 - 변경은 service monitor의
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로도 함께 노출된다.
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로도 함께 노출된다.
   같은 raw socket 쪽 변경은 별도로 socket monitor의
-  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로 surface된다.
-- peer 재연결 후에는 현재 admission state를 한 번 더 advertise해서 stale
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 surface된다.
+- peer 재연결 후에는 현재 가중치를 한 번 더 advertise해서 stale
   cache로 인한 잘못된 후보 선택을 줄인다.
 
 ## 12. Peer rid disconnect

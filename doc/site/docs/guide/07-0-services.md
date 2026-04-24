@@ -1,3 +1,4 @@
+[English](07-0-services.md) | [한국어](07-0-services.ko.md)
 
 # Service Layer Overview
 
@@ -66,15 +67,31 @@ A service registration/discovery system based on a Registry cluster. When a serv
 
 See the [Service Discovery Guide](07-1-discovery.md) and the [Registry Guide](07-4-registry.md) for details.
 
-### 3.2 SPOT -- Location-Transparent Topic PUB/SUB
+### 3.2 SPOT -- Channel-Based Routed + PUB/SUB Hub
 
-Automatically constructs a PUB/SUB Mesh based on Discovery to publish/subscribe topic messages across the entire cluster.
+A `SpotNode` is the core runtime of the SPOT topology. It attaches one SPOT
+channel Discovery view to form a mesh with other `SpotNode` peers in the same
+channel, and attaches `DEALER` sockets separately when it needs to call other
+channels. A single public `Spot` facade sits on top of the node and drives
+channel send/request, peer routed communication, and publish/subscribe.
 
-- Topic-based publish/subscribe
-- Pattern (wildcard) subscriptions
-- Discovery-based automatic Mesh construction
-- **Thread-safe** -- a single `spot` / `spot_node` handle allows concurrent operational API calls from multiple threads
-- Internal modules: `spot_node_access` · `spot_subject_access` (API seam) · `spot_handle` · `spot_data_plane` (forwarding · protocol) · `spot_pub` · `spot_sub` (option · recv)
+- SPOT mesh: `zlink_spot_node_attach_discovery()` attaches one Discovery
+  with a SPOT channel view; peers in the same channel auto-connect.
+- Channel-call dealers:
+  `zlink_spot_node_attach_channel_dealer()` (automatic) /
+  `zlink_spot_node_attach_channel_dealer_manual()` (manual) register a
+  `DEALER` that sends requests to a channel's `ROUTER(server)` set.
+- External publish ingress: `zlink_spot_node_attach_pub_ingress()` feeds
+  an external `PUB` into the SPOT topic plane.
+- Data plane:
+  `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
+  `zlink_spot_publish()` / `zlink_spot_subscribe()` /
+  `zlink_spot_subscription_event()`.
+- Readable notifications share one callback surface:
+  `zlink_spot_dispatch_event_handler()`.
+- Monitoring uses the generic service monitor plus snapshot/query APIs.
+- **Thread-safe** -- a single `spot` / `spot_node` handle admits concurrent
+  operational API calls from multiple threads.
 
 See the [SPOT Guide](07-3-spot.md) for details.
 
@@ -106,7 +123,7 @@ All services follow a common access layer pattern:
 
 ```mermaid
 flowchart LR
-    A["C API<br/>(zlink_spot_publish, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    A["C API<br/>(zlink_discovery_*, zlink_registry_*, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
     B --> C["*_access.hpp<br/>(service-local seam)"]
     C --> D["Service Runtime<br/>(concrete implementation)"]
 ```
@@ -126,6 +143,52 @@ This structure ensures the API layer does not know concrete service
 implementations, and adding a new service only requires changes to
 `api/service_*_api.cpp`, the corresponding `*_access` file, and the
 service implementation files.
+
+## 4.1 Graceful Maintenance (weight)
+
+When you need to take a SPOT Node or raw ROUTER offline for maintenance,
+prefer a graceful drain over an abrupt disconnect. Marking the node as
+weight `0` lets in-flight work finish while peers automatically stop
+selecting it as a target for new outbound work.
+
+Recommended sequence:
+
+1. Set the handle-specific weight option to `0`.
+2. Allow connected peers a moment to update their weight caches. You
+   can observe this via the socket monitor event
+   `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. If you need the service-layer
+   view, observe the `Discovery` handle for the same peers through
+   `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`.
+3. Wait long enough for in-flight replies to drain. In production this
+   wait is typically driven by your request SLA.
+4. Restart or replace the node, then rejoin the service with a positive
+   weight, usually `100`.
+
+```c
+int drain_weight = 0;
+zlink_set_spot_node_option(
+    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    &drain_weight, sizeof(drain_weight));
+
+/* 2) Wait for in-flight requests to complete (for example, SLA + small
+      margin) while peers re-route new work to other orders-exec nodes. */
+sleep_seconds(60);
+
+/* 3) Restart or replace this node ... */
+
+/* 4) Rejoin the service */
+int serve_weight = 100;
+zlink_set_spot_node_option(
+    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    &serve_weight, sizeof(serve_weight));
+```
+
+A node with weight `0` keeps serving recv/send/reply/handler traffic
+normally. Weight is a peer-side advisory ("do not pick me for
+new work"), not a local halt. Peer submits that see weight `0` are
+rejected with `ZLINK_SUBMIT_NOT_ADMITTED`. The connection itself
+stays alive, so the node automatically becomes a candidate again once it
+returns to a positive weight.
 
 ## 5. Relationships Between Services
 

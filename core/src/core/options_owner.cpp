@@ -92,6 +92,7 @@ zlink::options_owner_t zlink::option_owner_of (int option_)
         case ZLINK_INTERNAL_OPT_TYPE:
         case ZLINK_INTERNAL_OPT_ZMP_METADATA:
         case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
+        case ZLINK_INTERNAL_OPT_PEER_WEIGHT:
         case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
         case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
             return options_owner_core_socket;
@@ -183,6 +184,8 @@ zlink::router_option_owner_of (zlink_router_option_t option_)
         case ZLINK_ROUTER_OPT_PROBE:
         case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
             return options_owner_service_specific;
+        case ZLINK_ROUTER_OPT_WEIGHT:
+            return options_owner_core_socket;
         default:
             return options_owner_unknown;
     }
@@ -194,6 +197,8 @@ zlink::dealer_option_owner_of (zlink_dealer_option_t option_)
     switch (option_) {
         case ZLINK_DEALER_OPT_PROBE:
             return options_owner_service_specific;
+        case ZLINK_DEALER_OPT_WEIGHT:
+            return options_owner_core_socket;
         default:
             return options_owner_unknown;
     }

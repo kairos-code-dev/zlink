@@ -288,23 +288,26 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 
 여러 피어가 연결된 경우 메시지는 라운드 로빈으로 순환 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
 
-### Admission 기반 송신 대상 선택
+### 가중치 기반 송신 대상 선택
 
-원격 ROUTER는 자신의 admission 상태(`ZLINK_ADMISSION_SERVING` 또는
-`ZLINK_ADMISSION_DRAINING`)를 함께 광고한다. DEALER는 `DRAINING` 상태의
-ROUTER를 round-robin 후보에서 자동으로 제외하며, `SERVING` ROUTER들
-사이에서만 순환 분배한다. 연결 자체는 유지되므로, ROUTER가 다시
-`SERVING`으로 돌아오면 재연결 없이 후보에 복귀한다.
+원격 ROUTER는 자신의 peer 가중치(`0..100`)를 함께 광고한다. DEALER는
+가중치가 `0`인 ROUTER를 round-robin 후보 집합에서 자동으로 제외하고,
+양수 가중치를 가진 ROUTER들 사이에서만 outbound 대상을 고른다.
 
-알고 있는 ROUTER가 모두 `DRAINING`이면 `zlink_send()`와
+- 모든 ROUTER의 양수 가중치가 같으면 기존과 같은 round-robin 분배를 유지한다.
+- 양수 가중치가 서로 다르면 더 큰 가중치를 가진 ROUTER가 그 비율만큼 더 자주 선택된다.
+- 연결 자체는 유지되므로, 가중치가 `0`이던 ROUTER가 다시 양수 값으로 돌아오면
+  재연결 없이 후보 집합에 복귀한다.
+
+알고 있는 ROUTER가 모두 `0`이면 `zlink_send()`와
 `zlink_dealer_request()`는 `ZLINK_SUBMIT_NOT_ADMITTED`를 반환한다.
-호출자는 최소 한 대의 ROUTER가 `SERVING`으로 돌아올 때까지 대기한 뒤
-재시도하는 것이 맞다. `NOT_ADMITTED`를 최종 실패로 처리하면 운영상
-일시적으로 막힌 메시지를 불필요하게 버리게 된다.
+이 경우 연결이 끊긴 것이 아니라 잠시 보낼 대상이 없는 상태이므로,
+호출자는 최소 한 대의 ROUTER가 양수 가중치로 돌아올 때까지 기다렸다가
+재시도해야 한다.
 
 > 상세 규약은 DEALER spec
-> [dealer.ko.md](../spec/core/socket/dealer.ko.md) 의 Admission-aware
-> outbound 선택 섹션을 참고.
+> [dealer.ko.md](../spec/core/socket/dealer.ko.md)의 "가중치 기반 outbound 선택"
+> 섹션을 참고.
 
 ### routing_id는 connect 전에 설정
 

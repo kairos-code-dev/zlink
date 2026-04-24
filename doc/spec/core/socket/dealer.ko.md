@@ -16,23 +16,26 @@ DEALER는 request-reply 패턴에서 요청 측입니다.
 |---|---|
 | `ZLINK_DEALER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`; 0 또는 1) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | `zlink_dealer_request()` 기본 요청 타임아웃 (ms, `uint32_t`) |
+| `ZLINK_DEALER_OPT_WEIGHT` | 연결된 peer에게 광고하는 로컬 peer 가중치 (`int`; `0..100`, 기본값 `100`) |
 
-## Admission-aware outbound 선택
+## 가중치 기반 outbound 선택
 
-DEALER는 연결된 ROUTER 중 admission state가 `ZLINK_ADMISSION_DRAINING`인
-대상을 round-robin 후보 집합에서 자동으로 제외합니다. 기본 admission state
-인 `ZLINK_ADMISSION_SERVING` ROUTER만 outbound 후보로 사용됩니다.
+DEALER는 연결된 peer 중 광고된 가중치가 `0`인 대상을 후보 집합에서
+자동으로 제외합니다. 양수 가중치를 가진 peer만 outbound 후보로 사용됩니다.
 
-- 일부 ROUTER만 `DRAINING`이면 DEALER는 남은 `SERVING` ROUTER들 사이에서
-  계속 round-robin을 돕니다.
-- 알고 있는 ROUTER가 모두 `DRAINING`이면 `zlink_send()`와
+- 알려진 peer의 양수 가중치가 모두 같으면 기존 round-robin 동작을 유지합니다.
+- peer들의 양수 가중치가 서로 다르면 DEALER는 가중치 비율에 맞는
+  weighted schedule을 사용합니다. 예를 들어 가중치 `100` peer는
+  가중치 `50` peer보다 두 배 자주 선택됩니다.
+- 일부 peer만 `0`이면 DEALER는 남은 양수 가중치 peer들 사이에서만 분배합니다.
+- 알고 있는 peer가 모두 `0`이면 `zlink_send()`와
   `zlink_dealer_request()`는 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
-  연결 자체가 끊긴 것이 아니라 admission 거절이므로, 어떤 ROUTER 하나라도
-  `SERVING`으로 돌아오면 자동으로 다시 후보가 됩니다.
-- ROUTER admission state는 best-effort runtime 신호로 전파됩니다. 경합 상황
-  에서는 같은 거절이 `ZLINK_SUBMIT_NOT_CONNECTED`로 먼저 관찰될 수도 있습니다.
-- ROUTER 쪽 admission state 변화는 socket monitor의
-  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로 관찰할 수 있으며, peer는
+  연결 자체는 유지되므로, 어떤 peer든 다시 양수 가중치로 돌아오면
+  자동으로 후보가 됩니다.
+- peer 가중치는 best-effort runtime 신호로 전파됩니다. 경합 상황에서는
+  같은 거절이 `ZLINK_SUBMIT_NOT_CONNECTED`로 먼저 관찰될 수도 있습니다.
+- peer 가중치 변화는 socket monitor의
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 관찰할 수 있으며, peer는
   `routing_id`로 식별합니다.
 
 ## 함수
@@ -76,7 +79,7 @@ zlink_submit_result_t zlink_send (void *s_,
 **반환값:** 성공 시 `ZLINK_SUBMIT_OK`, 실패 시 실패 이유를 나타내는 `zlink_submit_result_t` 값. [errno-map.ko.md](../errno-map.ko.md) 참조.
 
 **에러:** `BACKPRESSURED` 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우.
-`NOT_ADMITTED` 알고 있는 ROUTER가 모두 `DRAINING`인 경우.
+`NOT_ADMITTED` 알고 있는 peer가 모두 가중치 `0`인 경우.
 `TERMINATED` context가 종료된 경우. [errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조한다.
 
 **참고:** `zlink_send`, `zlink_recv`
@@ -97,7 +100,7 @@ zlink_submit_result_t zlink_send (void *s_,
 논블로킹 전송은 `zlink_send(..., ZLINK_DONTWAIT)` 로 처리합니다.
 `ZLINK_SUBMIT_BACKPRESSURED`는 작업이 블로킹되는 경우,
 `ZLINK_SUBMIT_NOT_CONNECTED`는 peer에 도달할 수 없는 경우,
-`ZLINK_SUBMIT_NOT_ADMITTED`는 알고 있는 ROUTER가 모두 `DRAINING`인 경우에
+`ZLINK_SUBMIT_NOT_ADMITTED`는 알고 있는 ROUTER의 가중치가 모두 `0`인 경우에
 반환됩니다. [errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를
 참조한다.
 

@@ -157,7 +157,7 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | raw socket의 ready edge. 지원 raw socket 패밀리에서는 이 이벤트 이후 즉시 메시징을 시작할 수 있음. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러로 핸드셰이크 실패. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패로 핸드셰이크 실패. |
-| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | `0x8000` | 연결된 raw peer의 admission 상태 변화. `value`에 새 admission 상태가 들어간다. `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`의 별칭이다. |
+| `ZLINK_EVENT_PEER_WEIGHT_CHANGED` | `0x8000` | 연결된 raw peer의 가중치 변화. `value`에 새 `0..100` 가중치가 들어간다. `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`의 별칭이다. |
 | `ZLINK_EVENT_ALL` | `0xFFFF` | 모든 이벤트 구독. |
 
 ### 연결 해제 사유
@@ -428,8 +428,8 @@ handle에 대해서만 정의된다. 모니터 대상 식별자는
 - `..._DISCOVERY_PROVIDERS_CHANGED` -> `ZLINK_DISCOVERY_PROVIDERS_CHANGED`
 
 **서비스 공통:**
-- `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (`1u << 8`) --
-  Discovery service monitor가 추적 중인 peer의 admission 상태가 바뀌면
+- `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` (`1u << 8`) --
+  Discovery service monitor가 추적 중인 peer의 가중치가 바뀌면
   이 비트를 사용합니다. 현재 `Spot` / `SpotNode` generic service monitor는
   이 이벤트를 방출하지 않습니다.
 

@@ -20,10 +20,11 @@ with the rules here, this section wins.
 
 - `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
   plane. Remove `on_receive(...)` from their public contract.
-- Every socket and `Spot` exposes `set_admission_state(state)` and
-  `admission_state()` using the typed enum
-  `AdmissionState::Serving` / `AdmissionState::Draining`. Submit to a drained
-  peer returns `Err(SubmitError { code: SubmitResult::NotAdmitted, .. })`.
+- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
+  and `Spot` through typed option/property surfaces. The value range is
+  `0..100`, default `100`; `0` drains new outbound selection. Submit to a
+  weight-`0` peer returns
+  `Err(SubmitError { code: SubmitResult::NotAdmitted, .. })`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
@@ -205,11 +206,8 @@ pair through `CommonSocketOptions` (or an equivalent inherent method):
 
 ```rust
 impl<'a, S> CommonSocketOptions<'a, S> {
-    /// # Errors: ConfigError
-    pub fn admission_state(&self) -> Result<AdmissionState, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn set_admission_state(&self, state: AdmissionState)
-        -> Result<(), ConfigError>;
+    // No common peer-weight accessor. Bindings expose weight only on
+    // RouterSocket, DealerSocket, SpotNode, and Spot.
 }
 ```
 
@@ -830,7 +828,7 @@ pub enum SubmitResult {
     OutOfMemory = 10,
     SeqExhausted = 11,
     InternalError = 12,
-    NotAdmitted = 13,   // target peer is in AdmissionState::Draining
+    NotAdmitted = 13,   // target peer has weight 0
 }
 ```
 
@@ -1262,17 +1260,17 @@ bindings.
 
 ```rust
 pub struct MonitorEvent {
-    pub event: MonitorEventType,         // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, PeerAdmissionChanged, ...)
-    pub value: u32,                      // event-specific detail (PeerAdmissionChanged carries the new AdmissionState)
+    pub event: MonitorEventType,         // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, PeerWeightChanged, ...)
+    pub value: u32,                      // event-specific detail (PeerWeightChanged carries the new 0..100 weight)
     pub routing_id: Option<RoutingId>,   // peer routing id when the event carries one
     pub local_addr: String,              // local endpoint
     pub remote_addr: String,             // remote endpoint
 }
 ```
 
-`MonitorEventType` includes `PeerAdmissionChanged` (bit 15). Service
+`MonitorEventType` includes `PeerWeightChanged` (bit 15). Service
 monitors surface the same change through
-`ServiceMonitorEventMask::PeerAdmissionChanged` (bit 8).
+`ServiceMonitorEventMask::PeerWeightChanged` (bit 8).
 
 ### ServiceEvent
 
@@ -1632,7 +1630,7 @@ pub struct MemberPeerEntry {
     pub endpoint: String,
     pub routing_id: RoutingId,
     pub value: i64,
-    pub admission_state: AdmissionState,
+    pub weight: u32,
 }
 
 pub struct RegistryTopologyEntry {
@@ -1697,7 +1695,7 @@ pub struct SpotNodePeerEntry {
     pub peer_endpoint: String,
     pub source: SpotPeerSource,
     pub state: SpotPeerState,
-    pub admission_state: AdmissionState,
+    pub weight: u32,
     pub connected_since_ms: u64,
     pub last_changed_ms: u64,
 }
@@ -1738,11 +1736,6 @@ pub struct SpotNodeSubjectFilter {
     pub subject_kind: Option<u32>,
 }
 
-#[repr(i32)]
-pub enum AdmissionState {
-    Serving  = 1,
-    Draining = 2,
-}
 ```
 
 ---

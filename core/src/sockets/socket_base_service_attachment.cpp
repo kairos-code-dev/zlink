@@ -6,9 +6,9 @@
 #include "services/discovery/socket_discovery_attachment.hpp"
 #include "utils/likely.hpp"
 
-int zlink::socket_base_t::set_admission_state (zlink_admission_state_t state_)
+int zlink::socket_base_t::set_peer_weight (uint32_t weight_)
 {
-    if (state_ != ZLINK_ADMISSION_SERVING && state_ != ZLINK_ADMISSION_DRAINING) {
+    if (weight_ > 100) {
         errno = EINVAL;
         return -1;
     }
@@ -25,20 +25,20 @@ int zlink::socket_base_t::set_admission_state (zlink_admission_state_t state_)
 
     {
         socket_public_api_lock_scope_t guard (lifecycle);
-        if (_local_admission_state == state_)
+        if (_local_peer_weight == weight_)
             return 0;
-        _local_admission_state = state_;
+        _local_peer_weight = weight_;
+        options.peer_weight = static_cast<int> (weight_);
         if (_service_attachment)
-            _service_attachment->on_local_admission_state_changed ();
-        xlocal_admission_state_changed ();
+            _service_attachment->on_local_peer_weight_changed ();
+        xlocal_peer_weight_changed ();
     }
     return 0;
 }
 
-int zlink::socket_base_t::get_admission_state (
-  zlink_admission_state_t *state_out_) const
+int zlink::socket_base_t::get_peer_weight (uint32_t *weight_out_) const
 {
-    if (!state_out_) {
+    if (!weight_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -55,13 +55,13 @@ int zlink::socket_base_t::get_admission_state (
     }
 
     socket_public_api_lock_scope_t guard (lifecycle);
-    *state_out_ = _local_admission_state;
+    *weight_out_ = _local_peer_weight;
     return 0;
 }
 
-zlink_admission_state_t zlink::socket_base_t::local_admission_state () const
+uint32_t zlink::socket_base_t::local_peer_weight () const
 {
-    return _local_admission_state;
+    return _local_peer_weight;
 }
 
 int zlink::socket_base_t::close ()

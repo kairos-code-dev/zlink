@@ -1,3 +1,4 @@
+[English](06-monitoring.md) | [한국어](06-monitoring.ko.md)
 
 # 모니터링 API 사용법
 
@@ -31,7 +32,7 @@ void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
     }
 }
 
-void *server = zlink_socket(ctx, ZLINK_ROUTER);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 
 /* Create monitor with options */
@@ -91,6 +92,7 @@ raw 소켓의 transport/session 상태를 알려준다.
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | 양쪽 |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | 양쪽 |
 | `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | 양쪽 |
+| `PEER_WEIGHT_CHANGED` | `0x8000` | 연결된 peer의 가중치 변화 | 새 `0..100` 가중치 | 양쪽 |
 
 - `CONNECTION_READY`: 모든 소켓에서 `routing_id`에 peer id 포함
 
@@ -134,6 +136,45 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 형식의 ZMP HELLO 커맨드. |
+
+### Peer 가중치 변화 감지
+
+ROUTER 또는 DEALER에 연결된 peer가 자기 가중치를 바꾸면
+`ZLINK_EVENT_PEER_WEIGHT_CHANGED` 이벤트가 raw socket monitor로
+들어온다. 이벤트의 `routing_id`가 바뀐 peer를 식별하고,
+`value`에 새 `0..100` 가중치가 들어간다.
+
+```c
+void on_weight(const zlink_monitor_event_t *ev, void *userdata)
+{
+    if (!(ev->event & ZLINK_EVENT_PEER_WEIGHT_CHANGED))
+        return;
+
+    printf("orders-exec peer weight -> %" PRIu64 "\n", ev->value);
+}
+
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_connect(dealer, "tcp://orders-exec-1:7100");
+
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+            | ZLINK_EVENT_DISCONNECTED
+            | ZLINK_EVENT_PEER_WEIGHT_CHANGED,
+};
+void *mon = zlink_socket_monitor_open(dealer, &opts);
+zlink_socket_monitor_handler(mon, on_weight, NULL);
+```
+
+DEALER는 가중치가 `0`인 ROUTER를 후보에서 자동으로 제외하므로,
+응용은 이 이벤트로 진단이나 대시보드 표시를 갱신하면 된다. 알고 있는
+ROUTER가 모두 `0`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
+실패하기 시작한다.
+
+서비스 계층에서 같은 변화를 보고 싶다면 그 peer를 관리하는
+`Discovery` handle에 service monitor를 연다. 그 monitor는
+`ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를 내보낼 수 있고,
+`zlink_service_monitor_recv()`로 바뀐 peer의 endpoint, routing id,
+새 가중치를 읽을 수 있다.
 
 ## 5. 이벤트 흐름 다이어그램
 
@@ -336,18 +377,18 @@ zlink_service_monitor_open_options_t opts = {
 void *mon = zlink_service_monitor_open(discovery, &opts);
 ```
 
-공개 service monitor를 제공하는 handle을 넘기면 된다.
-SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 않는다.
+공개 service monitor 를 제공하는 handle 을 넘기면 된다.
+SPOT 과 SpotNode 는 공개 service-monitor surface 를 제공하지 않는다.
 
 ### 콜백 모드
 
 ```c
 void on_service_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_DISCOVERY_PROVIDERS_CHANGED) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED) {
         printf("provider set changed\n");
     }
-    if (ev->event_type & ZLINK_MONITOR_EVENT_ERROR) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_ERROR) {
         printf("service error: %d\n", ev->error_code);
     }
 }
@@ -359,8 +400,8 @@ zlink_service_monitor_handler(mon, on_service_event, NULL);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
+if (rc == ZLINK_RECV_OK) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
 ```
@@ -374,18 +415,18 @@ if (rc == 0) {
 
 | 상수 | 설명 | `value` | 이후 가능한 동작 |
 |---|---|---|---|
-| `DISCOVERY_SERVICE_UP` | 검색된 서비스 활성화 | — | — |
-| `DISCOVERY_SERVICE_DOWN` | 검색된 서비스 비활성화 | — | — |
-| `DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | 검색된 서비스 활성화 | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | 검색된 서비스 비활성화 | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 | — | — |
 
 #### 공통 이벤트 (모든 서비스)
 
 | 상수 | 설명 |
 |---|---|
-| `MONITOR_EVENT_ERROR` | 에러 발생 |
-| `MONITOR_EVENT_CLOSED` | 모니터 닫힘 |
+| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | 에러 발생 |
+| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | 모니터 닫힘 |
 
-상세 이벤트 목록은 [events.ko.md](../api/events.ko.md)를 참고한다.
+상세 이벤트 목록은 [events.ko.md](../spec/core/events.ko.md)를 참고한다.
 
 ## 9. 다중 소켓 모니터링
 
@@ -428,7 +469,7 @@ zlink_monitor_close(&mon_b);
 
 ```c
 /* Open a monitor from an application thread */
-void *socket = zlink_socket(ctx, ZLINK_ROUTER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
@@ -454,8 +495,8 @@ zlink_monitor_snapshot(mon, &snapshot);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
+if (rc == ZLINK_RECV_OK) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
 ```
@@ -586,8 +627,8 @@ printf("sndq=%llu, rcvq=%llu\n",
 
 ### 11.4 서비스 — SPOT
 
-SPOT은 더 이상 공개 service-monitor surface를 제공하지 않는다.
-SPOT perf는 monitor event 대신 명시적 benchmark control barrier를 사용한다.
+SPOT 은 공개 service-monitor surface 를 제공하지 않는다.
+SPOT perf 는 monitor event 대신 명시적 benchmark control barrier 를 사용한다.
 
 ```c
 /* SPOT perf gate: explicit READY/START barrier */
@@ -610,9 +651,9 @@ snapshot/status 조회는 운영 관찰/디버깅용이며, aggregate ready coun
 현재 상태를 조회하는 용도다. 운영 대시보드, health check, 디버깅에 활용한다.
 
 ```c
-/* Check current discovery health */
-zlink_discovery_status_t status;
-zlink_discovery_status_snapshot(discovery, &status);
+/* Check current registry health */
+zlink_registry_status_t status;
+zlink_registry_status_snapshot(registry, &status);
 printf("state=%d\n", status.state);
 ```
 

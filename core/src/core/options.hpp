@@ -216,6 +216,9 @@ struct options_t
     // Duplicate peer routing id policy for sockets that can observe peer ids.
     int rid_duplicate_policy;
 
+    // Local peer selection weight advertised to connected peers.
+    int peer_weight;
+
 #ifdef ZLINK_HAVE_TLS
     //  TLS protocol options
     std::string tls_cert;              // Server certificate file path

@@ -793,28 +793,28 @@ dealer map for cross-channel calls, and an external publish ingress path.
   update the dealer's effective candidates.
 - Manual attachments stay active as long as the socket is healthy.
 
-### 11.7 Admission state propagation
+### 11.7 Weight propagation
 
-When `zlink_set_admission_state()` switches a SpotNode between `SERVING`
-and `DRAINING`, the change is advertised to other SpotNode peers through
-the SpotNode peer control path (`peer_ctrl_pub` / `peer_ctrl_sub`) as a
-best-effort runtime signal.
+When `zlink_set_spot_node_option(..., ZLINK_SPOT_NODE_OPT_WEIGHT, ...)`
+switches a SpotNode weight between positive values and `0`, the change is
+advertised to other SpotNode peers through the SpotNode peer control path
+(`peer_ctrl_pub` / `peer_ctrl_sub`) as a best-effort runtime signal.
 
 - Each peer updates the matching entry inside its SpotNode peer cache
-  (see §2.2). That cache is also the source for the `admission_state`
+  (see §2.2). That cache is also the source for the `weight`
   field returned by `zlink_spot_node_peers_snapshot()` and
   `zlink_spot_node_peers_query()`.
 - The same cache drives service-aware ROUTER candidate selection. A peer
-  marked `DRAINING` is excluded from candidates, and when every candidate
-  is `DRAINING` the submit path normalizes the result to
+  marked with weight `0` is excluded from candidates, and when every
+  candidate is `0` the submit path normalizes the result to
   `ZLINK_SUBMIT_NOT_ADMITTED`. Direct SPOT requests targeting a
-  `DRAINING` SpotNode return the same result.
+  weight-`0` SpotNode return the same result.
 - The change is also surfaced via the service monitor event
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. The corresponding
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. The corresponding
   raw socket transition is exposed separately through the socket monitor
-  event `ZLINK_EVENT_PEER_ADMISSION_CHANGED`.
+  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.
 - After a peer reconnects, the SpotNode re-advertises its current
-  admission state once so that stale caches do not cause incorrect
+  weight once so that stale caches do not cause incorrect
   candidate selection.
 
 ## 12. Peer RID Disconnect

@@ -327,9 +327,8 @@ void zlink::socket_base_t::emit_socket_monitor_value_event (
     event (endpoint_uri_pair_, NULL, 0, values, 1, event_);
 }
 
-void zlink::socket_base_t::emit_peer_admission_changed (
-  pipe_t *pipe_,
-  zlink_admission_state_t state_)
+void zlink::socket_base_t::emit_peer_weight_changed (pipe_t *pipe_,
+                                                     uint32_t weight_)
 {
     if (!pipe_)
         return;
@@ -337,9 +336,9 @@ void zlink::socket_base_t::emit_peer_admission_changed (
     const blob_t &routing_id = pipe_->get_routing_id ();
     const unsigned char *routing_id_data =
       routing_id.size () > 0 ? routing_id.data () : NULL;
-    uint64_t values[1] = {static_cast<uint64_t> (state_)};
+    uint64_t values[1] = {static_cast<uint64_t> (weight_)};
     event (pipe_->get_endpoint_pair (), routing_id_data, routing_id.size (),
-           values, 1, ZLINK_EVENT_PEER_ADMISSION_CHANGED);
+           values, 1, ZLINK_EVENT_PEER_WEIGHT_CHANGED);
 }
 
 void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,

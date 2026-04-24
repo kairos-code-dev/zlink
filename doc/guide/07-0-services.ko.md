@@ -151,30 +151,30 @@ lifecycle gate(destroy 시 `EBUSY`/`ESHUTDOWN` 계약)를 제공한다.
 service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
 해당 service 구현 파일만 수정하면 된다.
 
-## 4.1 점검을 위한 graceful maintenance (admission state)
+## 4.1 점검을 위한 graceful maintenance (가중치)
 
 운영 환경에서 SPOT Node나 raw ROUTER를 잠시 내려야 할 때, 연결을 즉시
-끊는 대신 admission state로 "이미 들어온 작업은 마무리하고, 새 요청은
-받지 않는" 단계를 거치는 것을 권장한다. peer가 `DRAINING` 상태의 노드를
+끊는 대신 가중치를 `0`으로 바꿔 "이미 들어온 작업은 마무리하고, 새 요청은
+받지 않는" 단계를 거치는 것을 권장한다. peer가 가중치 `0`인 노드를
 새 outbound 후보에서 자동으로 제외해 준다.
 
 권장 절차:
 
-1. `zlink_set_admission_state(handle, ZLINK_ADMISSION_DRAINING)` 호출.
-2. 연결된 peer가 자신의 admission cache를 갱신할 시간을 둔다. 이 갱신은
-   socket monitor의 `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로 볼 수 있다.
+1. handle 전용 가중치 옵션을 `0`으로 설정한다.
+2. 연결된 peer가 자신의 가중치 cache를 갱신할 시간을 둔다. 이 갱신은
+   socket monitor의 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 볼 수 있다.
    서비스 계층 관점이 필요하면 같은 peer를 관리하는 `Discovery`
-   handle에서 `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`를
+   handle에서 `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를
    관찰한다.
 3. 진행 중인 reply가 빠질 때까지 기다린다. 운영 시 이 시간은 보통 SLA
    기반으로 설정한다.
-4. 노드를 재시작/교체한 뒤,
-   `zlink_set_admission_state(handle, ZLINK_ADMISSION_SERVING)`로 다시
-   서비스에 합류시킨다.
+4. 노드를 재시작/교체한 뒤 양수 가중치로 다시 서비스에 합류시킨다.
 
 ```c
-/* 1) Drain orders-exec-1 before maintenance */
-zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_DRAINING);
+int drain_weight = 0;
+zlink_set_spot_node_option(
+    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    &drain_weight, sizeof(drain_weight));
 
 /* 2) Wait for in-flight requests to complete (e.g. SLA + small margin)
       while peers re-route new work to other orders-exec nodes. */
@@ -183,14 +183,17 @@ sleep_seconds(60);
 /* 3) Restart or replace this node ... */
 
 /* 4) Rejoin the service */
-zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_SERVING);
+int serve_weight = 100;
+zlink_set_spot_node_option(
+    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    &serve_weight, sizeof(serve_weight));
 ```
 
-`DRAINING` 상태에서도 로컬 노드는 평소처럼 recv/send/reply/handler를
-처리한다. admission state는 "남이 나를 새 작업 대상으로 고르지 않게"
-하는 신호이지, 로컬 동작을 강제로 멈추는 신호가 아니다. peer 쪽의 새
-submit이 `DRAINING` 상태를 만나면 `ZLINK_SUBMIT_NOT_ADMITTED`로 거절되며,
-연결 자체가 끊긴 것은 아니므로 다시 `SERVING`이 되면 자동으로 후보로
+가중치 `0` 상태에서도 로컬 노드는 평소처럼 recv/send/reply/handler를
+처리한다. 가중치는 "남이 나를 새 작업 대상으로 고르지 않게" 하는
+신호이지, 로컬 동작을 강제로 멈추는 신호가 아니다. peer 쪽의 새
+submit이 가중치 `0`을 만나면 `ZLINK_SUBMIT_NOT_ADMITTED`로 거절되며,
+연결 자체는 유지되므로 다시 양수 가중치가 되면 자동으로 후보로
 돌아간다.
 
 ## 5. 서비스 간 관계

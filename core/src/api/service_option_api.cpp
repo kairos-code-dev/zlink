@@ -123,8 +123,8 @@ int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
     return -1;
 }
 
-int zlink_service_set_admission_state (void *handle_,
-                                       zlink_admission_state_t state_)
+int zlink_service_set_weight (void *handle_,
+                                       uint32_t state_)
 {
     const zlink::service_handle_resolution_t resolved =
       zlink::resolve_service_handle (handle_);
@@ -133,7 +133,7 @@ int zlink_service_set_admission_state (void *handle_,
         errno = EFAULT;
         return -1;
     }
-    if (zlink_service_spot_set_admission_state_internal (handle_, state_) == 0)
+    if (zlink_service_spot_set_weight_internal (handle_, state_) == 0)
         return 0;
     if (errno != EFAULT)
         return -1;
@@ -142,8 +142,8 @@ int zlink_service_set_admission_state (void *handle_,
     return -1;
 }
 
-int zlink_service_get_admission_state (void *handle_,
-                                       zlink_admission_state_t *state_out_)
+int zlink_service_get_weight (void *handle_,
+                                       uint32_t *state_out_)
 {
     const zlink::service_handle_resolution_t resolved =
       zlink::resolve_service_handle (handle_);
@@ -152,7 +152,7 @@ int zlink_service_get_admission_state (void *handle_,
         errno = EFAULT;
         return -1;
     }
-    if (zlink_service_spot_get_admission_state_internal (handle_, state_out_)
+    if (zlink_service_spot_get_weight_internal (handle_, state_out_)
         == 0) {
         return 0;
     }

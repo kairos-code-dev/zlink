@@ -85,7 +85,7 @@ Recommended perf gates:
 | `ZLINK_EVENT_CONNECTION_READY` | Ready edge after transport handshake / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | Protocol handshake error |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | Auth handshake error |
-| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | A connected raw peer's admission state changed. `routing_id` identifies the peer and `value` carries the new state (`ZLINK_ADMISSION_SERVING` or `ZLINK_ADMISSION_DRAINING`). Alias for `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. |
+| `ZLINK_EVENT_PEER_WEIGHT_CHANGED` | A connected raw peer's weight changed. `routing_id` identifies the peer and `value` carries the new `0..100` weight. Alias for `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. |
 
 Disconnect reasons:
 - `ZLINK_DISCONNECT_UNKNOWN`
@@ -114,7 +114,7 @@ Disconnect reasons:
 
 | Constant | Meaning |
 |---|---|
-| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Peer admission decision changed for a service. The socket-side counterpart is `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (aliased as `ZLINK_EVENT_PEER_ADMISSION_CHANGED`). |
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` | Peer weight changed for a service. The socket-side counterpart is `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED` (aliased as `ZLINK_EVENT_PEER_WEIGHT_CHANGED`). |
 
 Service monitors are opened against one of the targets in
 `zlink_monitor_target_kind_t`: `ZLINK_MONITOR_TARGET_DISCOVERY` and

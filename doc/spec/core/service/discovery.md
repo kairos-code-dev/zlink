@@ -173,15 +173,14 @@ each pair initiates the connect.
   `zlink_connect()` calls made through the raw API are not mediated by the
   library; the caller remains responsible for connection direction.
 
-### Auto-connected peer entries and admission state
+### Auto-connected peer entries and weight
 
-Peer entries surfaced by Discovery carry admission state.
-`zlink_member_peer_entry_t.admission_state` shows whether each peer is
-currently `ZLINK_ADMISSION_SERVING` or `ZLINK_ADMISSION_DRAINING`. DEALER
-attachments exclude `DRAINING` ROUTERs from round-robin selection and fail
-submit with `ZLINK_SUBMIT_NOT_ADMITTED` when every known peer is
-`DRAINING`. See [router.md](../socket/router.md) and [spot.md](spot.md) for
-the admission contract and the API used to change the state.
+Peer entries surfaced by Discovery carry peer weight.
+`zlink_member_peer_entry_t.weight` stores the current `0..100` value for
+each peer. DEALER attachments exclude peers with weight `0` from candidate
+selection and fail submit with `ZLINK_SUBMIT_NOT_ADMITTED` when every known
+peer has weight `0`. See [router.md](../socket/router.md) and [spot.md](spot.md)
+for the weight contract and the typed option APIs used to change it.
 
 DEALER is the only exception that may be changed by service-level policy. If a
 service explicitly switches its DEALER peer mode, the service may use

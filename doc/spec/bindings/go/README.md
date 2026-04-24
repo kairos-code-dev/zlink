@@ -44,11 +44,11 @@ with the rules here, this section wins.
   until `EAGAIN`.
 - `Spot.OnRoutedReceive(...)` and `OnDispatchEvent(...)` are mutually exclusive
   on the routed axis.
-- Every socket and `Spot` exposes `SetAdmissionState(state)` and
-  `AdmissionState()` using the typed enum
-  `AdmissionState` with constants `AdmissionStateServing = 1` and
-  `AdmissionStateDraining = 2`. Submit attempts to a drained peer return
-  `*SubmitError` whose `Code()` is `SubmitResultNotAdmitted`.
+- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
+  and `Spot` through typed option/property surfaces. The value range is
+  `0..100`, default `100`; `0` drains new outbound selection. Submit
+  attempts to a weight-`0` peer return `*SubmitError` whose `Code()` is
+  `SubmitResultNotAdmitted`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `OnSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `Mandatory =
@@ -135,15 +135,12 @@ Go nonblocking data-plane helpers follow this rule:
   `(nil, false, nil)` when no message is currently available, and a non-nil
   error for real recv failures.
 
-Every socket type (and `*Spot`) exposes the admission-state accessor pair:
+Peer weight is not a common-socket accessor. Bindings expose it only on the
+implemented weight-bearing handles (`RouterSocket`, `DealerSocket`,
+`SpotNode`, and `Spot`) through their typed option/property surfaces.
 
 ```go
-// AdmissionState returns the current admission state for the handle.
-// Returns *ConfigError on failure.
-func (s *<Socket>) AdmissionState() (AdmissionState, error)
-// SetAdmissionState updates the admission state for the handle.
-// Returns *ConfigError on failure.
-func (s *<Socket>) SetAdmissionState(state AdmissionState) error
+// No common peer-weight accessor.
 ```
 
 ### PairSocket
@@ -700,7 +697,7 @@ const (
     SubmitOutOfMemory     SubmitResult = 10
     SubmitSeqExhausted    SubmitResult = 11
     SubmitInternalError   SubmitResult = 12
-    SubmitNotAdmitted     SubmitResult = 13   // target peer is in AdmissionStateDraining
+    SubmitNotAdmitted     SubmitResult = 13   // target peer has weight 0
 )
 ```
 
@@ -997,16 +994,16 @@ event has no peer (check with `HasRoutingID`).
 
 ```go
 type MonitorEvent struct {
-    Event      MonitorEventType // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...)
-    Value      uint32           // event-specific detail (PEER_ADMISSION_CHANGED carries the new AdmissionState)
+    Event      MonitorEventType // event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_WEIGHT_CHANGED, ...)
+    Value      uint32           // event-specific detail (PEER_WEIGHT_CHANGED carries the new 0..100 weight)
     RoutingID  RoutingID        // peer routing id (empty when not applicable)
     LocalAddr  string           // local endpoint
     RemoteAddr string           // remote endpoint
 }
 
-// MonitorEventType includes MonitorEventPeerAdmissionChanged (bit 15).
+// MonitorEventType includes MonitorEventPeerWeightChanged (bit 15).
 // Service monitors surface the same change through
-// ServiceMonitorEventPeerAdmissionChanged (bit 8).
+// ServiceMonitorEventPeerWeightChanged (bit 8).
 
 func (e *MonitorEvent) HasRoutingID() bool
 
@@ -1258,7 +1255,7 @@ type MemberPeerEntry struct {
     Endpoint       string
     RoutingID      RoutingID
     Value          int64
-    AdmissionState AdmissionState
+    Weight uint32
 }
 
 func (e *MemberPeerEntry) HasRoutingID() bool
@@ -1346,7 +1343,7 @@ type SpotNodePeerEntry struct {
     PeerEndpoint     string
     Source           SpotPeerSource
     State            SpotPeerState
-    AdmissionState   AdmissionState
+    Weight           uint32
     ConnectedSinceMs uint64
     LastChangedMs    uint64
 }
@@ -1360,13 +1357,6 @@ type SpotNodeSubjectEntry struct {
     ActivePeerCount  uint32
     LastChangedMs    uint64
 }
-
-type AdmissionState int
-
-const (
-    AdmissionStateServing  AdmissionState = 1
-    AdmissionStateDraining AdmissionState = 2
-)
 
 // RegistryServiceSummaryFilter — optional filter for Registry.ServiceSummarySnapshot.
 type RegistryServiceSummaryFilter struct {

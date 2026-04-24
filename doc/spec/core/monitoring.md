@@ -154,7 +154,7 @@ bitwise OR.
 | `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | Ready edge for raw sockets. Messaging may start immediately after this event on supported raw socket families. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed due to a protocol error. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed due to authentication failure. |
-| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | `0x8000` | A connected raw peer's admission state changed. `value` carries the new admission state. Alias for `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. |
+| `ZLINK_EVENT_PEER_WEIGHT_CHANGED` | `0x8000` | A connected raw peer's weight changed. `value` carries the new `0..100` weight. Alias for `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. |
 | `ZLINK_EVENT_ALL` | `0xFFFF` | Subscribe to all events. |
 
 ### Disconnect Reasons
@@ -426,7 +426,7 @@ They map to the same underlying bits as the per-service constants above.
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | Bit `1u << 8`. Discovery service monitors use this bit when a tracked peer's admission state changes. `Spot` / `SpotNode` generic service monitors do not currently emit it. |
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` | Bit `1u << 8`. Discovery service monitors use this bit when a tracked peer's weight changes. `Spot` / `SpotNode` generic service monitors do not currently emit it. |
 | `ZLINK_SERVICE_MONITOR_EVENT_ALL` | All service events |
 
 ### Spot / SpotNode Generic Events

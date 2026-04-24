@@ -1,3 +1,4 @@
+[English](06-monitoring.md) | [한국어](06-monitoring.ko.md)
 
 # Monitoring API Usage
 
@@ -30,7 +31,7 @@ void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
     }
 }
 
-void *server = zlink_socket(ctx, ZLINK_ROUTER);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 
 /* Create monitor with options */
@@ -90,6 +91,7 @@ These report transport/session state for raw sockets.
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed (protocol error) | error code | — | Both | check version/config |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed (auth) | — | — | Both | check TLS/auth config |
 | `MONITOR_STOPPED` | `0x0400` | Monitor stopped | — | — | Both | `zlink_monitor_close()` |
+| `PEER_WEIGHT_CHANGED` | `0x8000` | Connected peer's weight changed | new `0..100` weight | peer id | Both | re-evaluate dispatch / dashboard |
 
 ### Connection flow
 
@@ -130,6 +132,45 @@ When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these 
 | Constant | Value | Description |
 |---|---|---|
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | Malformed ZMP HELLO command. |
+
+### Peer weight changes
+
+When a peer connected to a ROUTER or DEALER changes its own weight,
+`ZLINK_EVENT_PEER_WEIGHT_CHANGED` is delivered through the raw socket
+monitor. The event's `routing_id` identifies the peer that changed;
+`value` holds the new `0..100` weight.
+
+```c
+void on_weight(const zlink_monitor_event_t *ev, void *userdata)
+{
+    if (!(ev->event & ZLINK_EVENT_PEER_WEIGHT_CHANGED))
+        return;
+
+    printf("orders-exec peer weight -> %" PRIu64 "\n", ev->value);
+}
+
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_connect(dealer, "tcp://orders-exec-1:7100");
+
+zlink_socket_monitor_open_options_t opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+            | ZLINK_EVENT_DISCONNECTED
+            | ZLINK_EVENT_PEER_WEIGHT_CHANGED,
+};
+void *mon = zlink_socket_monitor_open(dealer, &opts);
+zlink_socket_monitor_handler(mon, on_weight, NULL);
+```
+
+DEALER automatically excludes weight-`0` peers from its candidate set, so
+the application typically only needs this event to update diagnostics or
+dashboards. Once every known peer is `0`, new
+submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
+
+If you want the service-layer view of the same change, open a service
+monitor against the `Discovery` handle that manages those peers. That
+monitor can emit `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`, and
+`zlink_service_monitor_recv()` returns the changed peer endpoint,
+routing id, and new weight.
 
 ## 5. Event Flow Diagrams
 
@@ -336,17 +377,17 @@ void *mon = zlink_service_monitor_open(discovery, &opts);
 ```
 
 Pass a service handle that supports public service monitoring.
-SPOT and SpotNode no longer expose a public service-monitor surface.
+SPOT and SpotNode do not expose a public service-monitor surface.
 
 ### Callback mode
 
 ```c
 void on_service_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_DISCOVERY_PROVIDERS_CHANGED) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED) {
         printf("provider set changed\n");
     }
-    if (ev->event_type & ZLINK_MONITOR_EVENT_ERROR) {
+    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_ERROR) {
         printf("service error: %d\n", ev->error_code);
     }
 }
@@ -358,8 +399,8 @@ zlink_service_monitor_handler(mon, on_service_event, NULL);
 
 ```c
 zlink_service_event_t ev;
-int rc = zlink_service_monitor_recv(mon, &ev);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
+if (rc == ZLINK_RECV_OK) {
     printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
 }
 ```
@@ -373,18 +414,18 @@ Different services emit different events.
 
 | Constant | Description | `value` | After this event |
 |---|---|---|---|
-| `DISCOVERY_SERVICE_UP` | discovered service came up | — | — |
-| `DISCOVERY_SERVICE_DOWN` | discovered service went down | — | — |
-| `DISCOVERY_PROVIDERS_CHANGED` | provider set changed | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | discovered service came up | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | discovered service went down | — | — |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | provider set changed | — | — |
 
 #### Common events (all services)
 
 | Constant | Description |
 |---|---|
-| `MONITOR_EVENT_ERROR` | error occurred |
-| `MONITOR_EVENT_CLOSED` | monitor closed |
+| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | error occurred |
+| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | monitor closed |
 
-See [events.md](../api/events.md) for the full event catalog.
+See [events.md](../spec/core/events.md) for the full event catalog.
 
 ## 9. Multi-Socket Monitoring
 
@@ -426,7 +467,7 @@ I/O path, so slow callback work should be offloaded to a user queue.
 
 ```c
 /* Open a monitor from an application thread */
-void *socket = zlink_socket(ctx, ZLINK_ROUTER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
@@ -550,7 +591,7 @@ zlink_monitor_close(&sub_mon);
 
 ### 11.4 Services — SPOT
 
-SPOT no longer exposes a public service-monitor surface. For internal
+SPOT does not expose a public service-monitor surface. For internal
 perf on SPOT, use an explicit benchmark control barrier instead of
 monitor events.
 
@@ -573,9 +614,9 @@ a point-in-time view of the current state. Use them for dashboards,
 health checks, and debugging.
 
 ```c
-/* Check current discovery health */
-zlink_discovery_status_t status;
-zlink_discovery_status_snapshot(discovery, &status);
+/* Check current registry health */
+zlink_registry_status_t status;
+zlink_registry_status_snapshot(registry, &status);
 printf("state=%d\n", status.state);
 ```
 

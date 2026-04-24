@@ -87,7 +87,7 @@ detail flag:
 | `ZLINK_EVENT_CONNECTION_READY` | transport handshake 이후 ready edge / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | protocol handshake 오류 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | auth handshake 오류 |
-| `ZLINK_EVENT_PEER_ADMISSION_CHANGED` | 연결된 raw peer의 admission 상태가 바뀜. `routing_id`가 그 peer를 식별하고, `value`에 새 상태(`ZLINK_ADMISSION_SERVING` 또는 `ZLINK_ADMISSION_DRAINING`)가 들어간다. `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`의 별칭이다. |
+| `ZLINK_EVENT_PEER_WEIGHT_CHANGED` | 연결된 raw peer의 가중치가 바뀜. `routing_id`가 그 peer를 식별하고, `value`에 새 `0..100` 가중치가 들어간다. `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`의 별칭이다. |
 
 disconnect reason:
 - `ZLINK_DISCONNECT_UNKNOWN`
@@ -116,7 +116,7 @@ disconnect reason:
 
 | 상수 | 의미 |
 |---|---|
-| `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` | 같은 서비스의 peer admission 결과가 바뀜. 소켓 쪽 대응 이벤트는 `ZLINK_SOCKET_MONITOR_EVENT_PEER_ADMISSION_CHANGED`(= `ZLINK_EVENT_PEER_ADMISSION_CHANGED`)이다 |
+| `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` | 같은 서비스의 peer 가중치가 바뀜. 소켓 쪽 대응 이벤트는 `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`(= `ZLINK_EVENT_PEER_WEIGHT_CHANGED`)이다 |
 
 service monitor는 `zlink_monitor_target_kind_t`의
 `ZLINK_MONITOR_TARGET_DISCOVERY`와 `ZLINK_MONITOR_TARGET_SPOT_NODE`를 대상으로

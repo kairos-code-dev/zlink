@@ -36,7 +36,7 @@ int discovery_t::propagate_registered_service_updates (
         if (update_service_attributes (services_[i].service_type,
                                        services_[i].service_name.c_str (),
                                        services_[i].endpoint.c_str (),
-                                       services_[i].admission_state, value_,
+                                       services_[i].weight, value_,
                                        &metadata_, services_[i].service_role)
             != 0) {
             return -1;

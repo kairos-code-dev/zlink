@@ -151,6 +151,15 @@ void test_typed_raw_socket_options ()
       router, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, &value, &size));
     TEST_ASSERT_EQUAL_INT (4321, value);
 
+    value = 50;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      router, ZLINK_ROUTER_OPT_WEIGHT, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
+      router, ZLINK_ROUTER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_EQUAL_INT (50, value);
+
     value = 1;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
       dealer, ZLINK_DEALER_OPT_PROBE, &value, sizeof (value)));
@@ -158,6 +167,10 @@ void test_typed_raw_socket_options ()
     value = 3210;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
       dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value)));
+
+    value = 25;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
+      dealer, ZLINK_DEALER_OPT_WEIGHT, &value, sizeof (value)));
 
     value = 1;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_stream_option (
@@ -222,6 +235,25 @@ void test_typed_spot_node_unified_options ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (node, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof (nodrop)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "alpha"));
+
+    int weight = 30;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_WEIGHT, &weight, sizeof (weight)));
+    weight = 0;
+    size = sizeof (weight);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_WEIGHT, &weight, &size));
+    TEST_ASSERT_EQUAL_INT (30, weight);
+
+    weight = 45;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_spot_option (spot, ZLINK_SPOT_OPT_WEIGHT, &weight,
+                             sizeof (weight)));
+    weight = 0;
+    size = sizeof (weight);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_spot_option (spot, ZLINK_SPOT_OPT_WEIGHT, &weight, &size));
+    TEST_ASSERT_EQUAL_INT (45, weight);
 
     int got = 0;
     size = sizeof (got);
@@ -432,8 +464,14 @@ void test_option_owner_map_matches_domains ()
       zlink::options_owner_service_specific,
       zlink::router_option_owner_of (ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID));
     TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::router_option_owner_of (ZLINK_ROUTER_OPT_WEIGHT));
+    TEST_ASSERT_EQUAL_INT (
       zlink::options_owner_service_specific,
       zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_PROBE));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_WEIGHT));
     TEST_ASSERT_EQUAL_INT (
       zlink::options_owner_core_socket,
       zlink::stream_option_owner_of (ZLINK_STREAM_OPT_NOTIFY));

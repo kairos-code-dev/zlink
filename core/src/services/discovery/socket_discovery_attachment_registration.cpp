@@ -76,7 +76,7 @@ int socket_discovery_attachment_t::register_bound_endpoint (
     return discovery_owned_service::register_endpoint (
       discovery_, discovery_protocol::service_type_socket, endpoint_.c_str (),
       resolved_endpoint_out_, routing_id_ptr, local_role_,
-      _socket->local_admission_state ());
+      _socket->local_peer_weight ());
 }
 
 bool socket_discovery_attachment_t::ensure_socket_routing_id (

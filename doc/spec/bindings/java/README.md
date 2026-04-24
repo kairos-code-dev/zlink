@@ -56,10 +56,11 @@ with the rules here, this section wins.
 - `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
   samples must drain until the recv path reports `EAGAIN`.
-- Every socket and `Spot` exposes `setAdmissionState(state)` /
-  `getAdmissionState()` using the typed enum
-  `AdmissionState { SERVING, DRAINING }`. Submit attempts to a drained peer
-  raise `SubmitException` with `getCode() == SubmitResult.NOT_ADMITTED`.
+- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
+  and `Spot` through typed option/property surfaces. The value range is
+  `0..100`, default `100`; `0` drains new outbound selection. Submit
+  attempts to a weight-`0` peer raise `SubmitException` with
+  `getCode() == SubmitResult.NOT_ADMITTED`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `onSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
@@ -130,8 +131,8 @@ All socket types inherit from `Socket` and expose these common operations.
 void close();                                                    // @throws CloseException
 MonitorSocket monitorOpen();                                    // @throws ConfigException
 MonitorSocket monitorOpen(MonitorEventType... events);          // @throws ConfigException
-AdmissionState getAdmissionState();                              // @throws ConfigException
-void setAdmissionState(AdmissionState state);                    // @throws ConfigException
+// No common peer-weight accessor. Bindings expose weight only on
+// RouterSocket, DealerSocket, SpotNode, and Spot.
 
 // Available on message-capable sockets
 boolean send(Message part, SendFlags flags);                            // @throws SubmitException
@@ -882,7 +883,7 @@ public enum SubmitResult {
     OUT_OF_MEMORY(10),
     SEQ_EXHAUSTED(11),
     INTERNAL_ERROR(12),
-    NOT_ADMITTED(13);  // target peer is in AdmissionState.DRAINING
+    NOT_ADMITTED(13);  // target peer has weight 0
 
     SubmitResult(int value);
     public int value();
@@ -1138,10 +1139,10 @@ public record MonitorEvent(MonitorEventType event,
                            String remoteAddr) {}
 ```
 
-`MonitorEventType` includes `PEER_ADMISSION_CHANGED` (bit 15). When this
-event fires, `value` carries the new `AdmissionState` for the peer. Service
+`MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15). When this
+event fires, `value` carries the new `0..100` weight for the peer. Service
 monitors surface the same change through
-`ServiceMonitorEventMask.PEER_ADMISSION_CHANGED` (bit 8).
+`ServiceMonitorEventMask.PEER_WEIGHT_CHANGED` (bit 8).
 
 ### MonitorSnapshot
 
@@ -1503,7 +1504,7 @@ public record MemberPeerEntry(ServiceType serviceType,
                               String endpoint,
                               RoutingId routingId,
                               long value,
-                              AdmissionState admissionState) {}
+                              int weight) {}
 ```
 
 ### RegistryTopologyEntry
@@ -1619,7 +1620,7 @@ public record SpotNodePeerEntry(String serviceName,
                                 String peerEndpoint,
                                 SpotPeerSource source,
                                 SpotPeerState state,
-                                AdmissionState admissionState,
+                                int weight,
                                 long connectedSinceMs,
                                 long lastChangedMs) {}
 ```
@@ -1638,10 +1639,6 @@ public record SpotNodeSubjectEntry(SpotRole role,
                                    long lastChangedMs) {}
 
 
-public enum AdmissionState {
-    SERVING,   // value = 1
-    DRAINING   // value = 2
-}
 ```
 
 ### SpotNodePeerFilter

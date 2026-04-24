@@ -698,61 +698,66 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
 
-### 점진적 유지보수를 위한 admission 상태
+### 점진적 유지보수를 위한 가중치
 
-롤링 재시작이나 설정 리로드 직전, 로컬 ROUTER의 admission 상태를
+롤링 재시작이나 설정 리로드 직전, 로컬 ROUTER의 가중치를 `0`으로
 바꿔 원격 peer들이 이 ROUTER를 새 outbound 대상으로 선택하지 않도록
 만들 수 있다.
 
 ```c
-/* 유지보수 진입: DRAINING 으로 전환 */
-zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING);
+/* 유지보수 진입: 가중치 0으로 전환 */
+int drain_weight = 0;
+zlink_set_router_option(
+  router, ZLINK_ROUTER_OPT_WEIGHT, &drain_weight, sizeof(drain_weight));
 
 /* ... in-flight 작업/응답이 소진될 때까지 대기 ... */
 
-/* 재시작 또는 재설정 후 SERVING 복귀 */
-zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING);
+/* 재시작 또는 재설정 후 서비스 복귀 */
+int serve_weight = 100;
+zlink_set_router_option(
+  router, ZLINK_ROUTER_OPT_WEIGHT, &serve_weight, sizeof(serve_weight));
 
-/* 현재 상태 조회 */
-zlink_admission_state_t cur;
-zlink_get_admission_state(router, &cur);
+/* 현재 가중치 조회 */
+int cur = 0;
+size_t cur_size = sizeof(cur);
+zlink_get_router_option(
+  router, ZLINK_ROUTER_OPT_WEIGHT, &cur, &cur_size);
 ```
 
-`DRAINING` 은 로컬 halt 가 아니라 peer-side advisory 다. 로컬 핸들은
-평상시와 같이 inbound 를 처리한다 — `zlink_router_recv()`,
+가중치 `0`은 로컬 halt가 아니라 peer-side advisory다. 로컬 핸들은
+평상시와 같이 inbound를 처리한다. 즉 `zlink_router_recv()`,
 `zlink_send_rid()`, `zlink_router_reply()` 모두 정상 동작하므로 진행
 중인 request 는 마저 완료할 수 있다. 달라지는 부분은 원격 peer 가 이
-ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다:
+ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 
 - 원격 DEALER는 이 ROUTER를 round-robin 후보에서 제외한다.
 - 원격 ROUTER가 이 RID로 `zlink_send_rid()` 또는
   `zlink_router_request()`를 호출하면 `ZLINK_SUBMIT_NOT_ADMITTED`로
   즉시 실패한다.
 - `zlink_router_reply()`는 admission 검사 대상이 아니다. 이미 받은
-  request에는 `DRAINING` 상태에서도 응답할 수 있다.
+  request에는 가중치 `0` 상태에서도 응답할 수 있다.
 
 송신 쪽 규칙은 반대 방향에서도 동일하다. 로컬 ROUTER가
 `zlink_send_rid()` 또는 `zlink_router_request()`로 원격 RID에 보낼
-때, 해당 RID의 광고된 admission 상태가 `DRAINING`이면
-`ZLINK_SUBMIT_NOT_ADMITTED`로 실패한다. Admission 캐시 전파는
-best-effort이므로, 경합 상황에서는 같은 거절이 먼저
+때, 해당 RID의 광고된 가중치가 `0`이면 `ZLINK_SUBMIT_NOT_ADMITTED`로
+실패한다. 가중치 cache 전파는 best-effort이므로, 경합 상황에서는 같은 거절이 먼저
 `ZLINK_SUBMIT_NOT_CONNECTED`로 관찰될 수도 있다.
 
 일반적인 유지보수 순서:
 
-1. `zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING)`
+1. `ZLINK_ROUTER_OPT_WEIGHT`를 `0`으로 설정.
 2. In-flight request/reply가 소진될 때까지 대기.
 3. 인스턴스 재시작 또는 재설정.
-4. `zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING)`.
+4. `ZLINK_ROUTER_OPT_WEIGHT`를 다시 양수 값으로 설정. 보통 `100`.
 
-연결된 peer의 admission 전이는 socket monitor의
-`ZLINK_EVENT_PEER_ADMISSION_CHANGED`로 surface 된다. 이벤트 형태는
-[모니터링 가이드](06-monitoring.ko.md)의 "Peer admission 상태 변화 감지"
+연결된 peer의 가중치 전이는 socket monitor의
+`ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 surface 된다. 이벤트 형태는
+[모니터링 가이드](06-monitoring.ko.md)의 "Peer 가중치 변화 감지"
 섹션을 참고.
 
 > 상세 규약은 ROUTER spec
-> [router.ko.md](../spec/core/socket/router.ko.md) 의 "Admission 상태"
-> 와 "ROUTER에서 시작하는 directed send와 admission" 섹션을 참고.
+> [router.ko.md](../spec/core/socket/router.ko.md)의 "Peer 가중치"
+> 와 "ROUTER에서 시작하는 directed send와 peer 가중치" 섹션을 참고.
 
 ---
 [← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)

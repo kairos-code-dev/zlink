@@ -259,9 +259,9 @@ class socket_base_t : public own_t,
     void socket_bound_endpoints (std::set<std::string> *out_) const;
     bool socket_has_attached_pipes () const;
     bool socket_has_manual_connect_endpoints () const;
-    int set_admission_state (zlink_admission_state_t state_);
-    int get_admission_state (zlink_admission_state_t *state_out_) const;
-    zlink_admission_state_t local_admission_state () const;
+    int set_peer_weight (uint32_t weight_);
+    int get_peer_weight (uint32_t *weight_out_) const;
+    uint32_t local_peer_weight () const;
     int socket_id () const;
     std::shared_ptr<void> router_spot_request_reply_state () const;
     void set_router_spot_request_reply_state (
@@ -321,7 +321,7 @@ class socket_base_t : public own_t,
                                       zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int xpeer_command (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
-    virtual void xlocal_admission_state_changed ();
+    virtual void xlocal_peer_weight_changed ();
     virtual void xarm_socket_msg_dispatch ();
     virtual void xdispatch_io ();
     virtual uint32_t monitor_ready_count () const;
@@ -342,11 +342,9 @@ class socket_base_t : public own_t,
                                     size_t part_count_);
     static void store_socket_msg_part (std::vector<zlink_msg_t> *parts_,
                                        zlink::msg_t *msg_);
-    static int init_peer_admission_command (zlink::msg_t *msg_,
-                                            zlink_admission_state_t state_);
-    static bool decode_peer_admission_command (
-      const zlink::msg_t &msg_,
-      zlink_admission_state_t *state_out_);
+    static int init_peer_weight_command (zlink::msg_t *msg_, uint32_t weight_);
+    static bool decode_peer_weight_command (const zlink::msg_t &msg_,
+                                            uint32_t *weight_out_);
 
     //  Delay actual destruction of the socket.
     void process_destroy () ZLINK_FINAL;
@@ -393,8 +391,7 @@ class socket_base_t : public own_t,
       uint64_t event_,
       uint64_t value_,
       const endpoint_uri_pair_t &endpoint_uri_pair_);
-    void emit_peer_admission_changed (pipe_t *pipe_,
-                                      zlink_admission_state_t state_);
+    void emit_peer_weight_changed (pipe_t *pipe_, uint32_t weight_);
     void snapshot_attached_pipes (std::vector<pipe_t *> *out_);
     bool has_attached_pipes () const;
 
@@ -627,7 +624,7 @@ class socket_base_t : public own_t,
     //  Improves efficiency of time measurement.
     clock_t _clock;
     socket_runtime_t _runtime;
-    zlink_admission_state_t _local_admission_state;
+    uint32_t _local_peer_weight;
     socket_discovery_attachment_t *_service_attachment;
     std::shared_ptr<void> _router_spot_request_reply_state;
     std::shared_ptr<void> _request_reply_state;
@@ -658,7 +655,7 @@ class routing_socket_base_t : public socket_base_t
     {
         pipe_t *pipe;
         bool active;
-        zlink_admission_state_t admission_state;
+        uint32_t weight;
     };
 
     void add_out_pipe (blob_t routing_id_, pipe_t *pipe_);

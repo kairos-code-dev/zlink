@@ -41,10 +41,10 @@ with the rules here, this section wins.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters. Binding docs and samples must drain
   until the recv path reports no data / `EAGAIN`.
-- Every socket and `Spot` exposes `setAdmissionState(state)` /
-  `getAdmissionState()` using the typed enum-like object
-  `AdmissionState.Serving` (1) and `AdmissionState.Draining` (2). Submit
-  attempts to a drained peer throw `SubmitError` whose `code` equals
+- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
+  and `Spot` through typed option/property surfaces. The value range is
+  `0..100`, default `100`; `0` drains new outbound selection. Submit
+  attempts to a weight-`0` peer throw `SubmitError` whose `code` equals
   `SubmitResult.NotAdmitted`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `onSendReady(...)`. It is not a "transport writable" bit.
@@ -149,12 +149,8 @@ Node / TypeScript nonblocking data-plane helpers follow this rule:
 All sockets (and `Spot`) also expose the admission-state accessor pair:
 
 ```typescript
-interface AdmissionGates {
-    /** @throws {ConfigError} */
-    getAdmissionState(): AdmissionState;
-    /** @throws {ConfigError} */
-    setAdmissionState(state: AdmissionState): void;
-}
+// No common peer-weight accessor. Bindings expose weight only on
+// RouterSocket, DealerSocket, SpotNode, and Spot.
 ```
 
 ### PairSocket
@@ -808,7 +804,7 @@ const SubmitResult = {
     OutOfMemory: 10,
     SeqExhausted: 11,
     InternalError: 12,
-    NotAdmitted: 13,     // target peer is in AdmissionState.Draining
+    NotAdmitted: 13,     // target peer has weight 0
 } as const;
 
 type SubmitResult = typeof SubmitResult[keyof typeof SubmitResult];
@@ -1090,8 +1086,8 @@ Socket monitor event. Canonical shape shared with every other binding.
 
 ```typescript
 class MonitorEvent {
-    readonly event: MonitorEventType;        // CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...
-    readonly value: number;                  // uint32 — event-specific payload (PEER_ADMISSION_CHANGED carries the new AdmissionState)
+    readonly event: MonitorEventType;        // CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_WEIGHT_CHANGED, ...
+    readonly value: number;                  // uint32 — event-specific payload (PEER_WEIGHT_CHANGED carries the new 0..100 weight)
     readonly routingId: RoutingId | null;    // peer routing id (null when not applicable)
     readonly localAddr: string;              // local endpoint
     readonly remoteAddr: string;             // remote endpoint
@@ -1473,7 +1469,7 @@ interface MemberPeerEntry {
     readonly endpoint: string;
     readonly routingId: RoutingId;
     readonly value: bigint;                  // int64 user value
-    readonly admissionState: AdmissionState; // Serving | Draining
+    readonly weight: number;                 // uint32, 0..100
 }
 
 /** Registry topology entry (full topology view). */
@@ -1543,7 +1539,7 @@ interface SpotNodePeerEntry {
     readonly peerEndpoint: string;
     readonly source: number;                 // zlink_spot_peer_source_t
     readonly state: number;                  // zlink_spot_peer_state_t
-    readonly admissionState: AdmissionState; // Serving | Draining
+    readonly weight: number;                 // uint32, 0..100
     readonly connectedSinceMs: bigint;       // uint64 epoch ms
     readonly lastChangedMs: bigint;          // uint64 epoch ms
 }
@@ -1557,14 +1553,6 @@ interface SpotNodeSubjectEntry {
     readonly activePeerCount: number;        // uint32
     readonly lastChangedMs: bigint;          // uint64 epoch ms
 }
-
-/** Admission state for a peer. */
-const AdmissionState = {
-    Serving: 1,
-    Draining: 2,
-} as const;
-
-type AdmissionState = typeof AdmissionState[keyof typeof AdmissionState];
 
 /** Filter for Registry service summary snapshot. */
 interface RegistryServiceSummaryFilter {

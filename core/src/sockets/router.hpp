@@ -52,7 +52,7 @@ class router_t : public routing_socket_base_t
     {
         return terminate_out_pipe_by_routing_id (peer_rid_);
     }
-    void xlocal_admission_state_changed () ZLINK_OVERRIDE;
+    void xlocal_peer_weight_changed () ZLINK_OVERRIDE;
     void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;
     int get_peer_state (const void *routing_id_,
@@ -67,10 +67,9 @@ class router_t : public routing_socket_base_t
     bool identify_peer (pipe_t *pipe_, bool locally_initiated_);
     bool adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_);
     void promote_anonymous_pipe_for_dispatch (pipe_t *pipe_);
-    void broadcast_local_admission_state ();
-    void send_local_admission_state (pipe_t *pipe_);
-    int apply_peer_admission_state (pipe_t *pipe_,
-                                    zlink_admission_state_t state_);
+    void broadcast_local_peer_weight ();
+    void send_local_peer_weight (pipe_t *pipe_);
+    int apply_peer_weight (pipe_t *pipe_, uint32_t weight_);
 
     //  Fair queueing object for inbound pipes.
     fq_t _fq;

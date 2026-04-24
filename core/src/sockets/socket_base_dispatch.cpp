@@ -606,7 +606,7 @@ int zlink::socket_base_t::xpeer_command (msg_t *msg_, pipe_t *pipe_)
     return 0;
 }
 
-void zlink::socket_base_t::xlocal_admission_state_changed ()
+void zlink::socket_base_t::xlocal_peer_weight_changed ()
 {
 }
 

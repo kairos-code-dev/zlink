@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "sockets/socket_base.hpp"
+#include "services/discovery/socket_discovery_attachment.hpp"
 #include "core/mailbox.hpp"
 #include "core/msg.hpp"
 #include "core/options.hpp"
@@ -121,6 +122,12 @@ int zlink::socket_base_t::setsockopt (int option_,
     {
         socket_public_api_lock_scope_t guard (lifecycle);
         rc = options.setsockopt (option_, optval_, optvallen_);
+        if (rc == 0 && option_ == ZLINK_INTERNAL_OPT_PEER_WEIGHT) {
+            _local_peer_weight = static_cast<uint32_t> (options.peer_weight);
+            if (_service_attachment)
+                _service_attachment->on_local_peer_weight_changed ();
+            xlocal_peer_weight_changed ();
+        }
         update_pipe_options (option_);
     }
     return rc;

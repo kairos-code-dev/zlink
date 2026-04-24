@@ -137,8 +137,8 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_)
         fprintf (stderr, "router identify_peer: add out pipe rid=%s\n",
                  rid_text);
     }
-    if (local_admission_state () != ZLINK_ADMISSION_SERVING)
-        send_local_admission_state (pipe_);
+    if (local_peer_weight () != 100)
+        send_local_peer_weight (pipe_);
 
     return true;
 }
@@ -162,26 +162,26 @@ void router_t::promote_anonymous_pipe_for_dispatch (pipe_t *pipe_)
 
 int router_t::xpeer_command (msg_t *msg_, pipe_t *pipe_)
 {
-    zlink_admission_state_t state = ZLINK_ADMISSION_SERVING;
-    if (!decode_peer_admission_command (*msg_, &state))
+    uint32_t weight = 100;
+    if (!decode_peer_weight_command (*msg_, &weight))
         return 0;
-    return apply_peer_admission_state (pipe_, state);
+    return apply_peer_weight (pipe_, weight);
 }
 
-void router_t::xlocal_admission_state_changed ()
+void router_t::xlocal_peer_weight_changed ()
 {
-    broadcast_local_admission_state ();
+    broadcast_local_peer_weight ();
 }
 
-void router_t::broadcast_local_admission_state ()
+void router_t::broadcast_local_peer_weight ()
 {
     std::vector<pipe_t *> pipes;
     snapshot_attached_pipes (&pipes);
     for (size_t i = 0; i < pipes.size (); ++i)
-        send_local_admission_state (pipes[i]);
+        send_local_peer_weight (pipes[i]);
 }
 
-void router_t::send_local_admission_state (pipe_t *pipe_)
+void router_t::send_local_peer_weight (pipe_t *pipe_)
 {
     if (!pipe_)
         return;
@@ -189,7 +189,7 @@ void router_t::send_local_admission_state (pipe_t *pipe_)
     msg_t msg;
     if (msg.init () != 0)
         return;
-    if (init_peer_admission_command (&msg, local_admission_state ()) != 0) {
+    if (init_peer_weight_command (&msg, local_peer_weight ()) != 0) {
         const int close_rc = msg.close ();
         errno_assert (close_rc == 0);
         return;
@@ -200,8 +200,7 @@ void router_t::send_local_admission_state (pipe_t *pipe_)
     errno_assert (close_rc == 0);
 }
 
-int router_t::apply_peer_admission_state (pipe_t *pipe_,
-                                          zlink_admission_state_t state_)
+int router_t::apply_peer_weight (pipe_t *pipe_, uint32_t weight_)
 {
     if (!pipe_)
         return 1;
@@ -210,11 +209,11 @@ int router_t::apply_peer_admission_state (pipe_t *pipe_,
     out_pipe_t *out_pipe = lookup_out_pipe (routing_id);
     if (!out_pipe || out_pipe->pipe != pipe_)
         return 1;
-    if (out_pipe->admission_state == state_)
+    if (out_pipe->weight == weight_)
         return 1;
 
-    out_pipe->admission_state = state_;
-    emit_peer_admission_changed (pipe_, state_);
+    out_pipe->weight = weight_;
+    emit_peer_weight_changed (pipe_, weight_);
     return 1;
 }
 }

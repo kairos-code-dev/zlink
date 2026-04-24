@@ -694,38 +694,37 @@ traffic through the same framing):
 - Frame 3: `request_seq` (8 bytes Big Endian; `0` for fire-and-forget)
 - Frame 4+: Payload parts
 
-## 10. Admission state propagation
+## 10. Weight propagation
 
-Both raw ROUTER and SpotNode drive their own admission state through
-`zlink_set_admission_state()`. Internally each subject advertises the
-change to its connected peers as a **best-effort runtime signal**, and
-each peer updates its admission cache so outbound candidate selection
-reflects the new state.
+Both raw ROUTER and SpotNode drive their own local weight through typed
+option APIs. Internally each subject advertises the change to its connected
+peers as a **best-effort runtime signal**, and each peer updates its weight
+cache so outbound candidate selection reflects the new value.
 
 Baseline behavior:
 
-- A state change is applied to the local cache immediately. Other local
+- A local weight change is applied to the local cache immediately. Other local
   outbound paths on the same node (e.g. local spot or router send) see the
-  new state right away.
+  new value right away.
 - Peer-side propagation flows through the SpotNode peer control path
   (`peer_ctrl_pub` / `peer_ctrl_sub`) and through the dedicated raw socket
-  admission signal path. The signal is a best-effort runtime control
+  weight signal path. The signal is a best-effort runtime control
   message; no strong synchronous model is provided.
-- After reconnect the admission state resyncs. When a new session becomes
-  ready the subject re-advertises its current admission state once so a
+- After reconnect the weight resyncs. When a new session becomes
+  ready the subject re-advertises its current weight once so a
   stale cache does not cause incorrect candidate selection.
-- When a peer's cache shows `DRAINING`, the peer drops that target from
-  outbound candidate selection. If every candidate is `DRAINING`, the
+- When a peer's cache shows weight `0`, the peer drops that target from
+  outbound candidate selection. If every candidate is `0`, the
   submit path normalizes to `ZLINK_SUBMIT_NOT_ADMITTED`. Under races where
-  connection state changes are observed before the admission cache update,
+  connection state changes are observed before the weight cache update,
   the same refusal may surface first as `ZLINK_SUBMIT_NOT_CONNECTED` or
   `ZLINK_SUBMIT_NOT_FOUND`.
 - Raw socket changes are exposed to the application via the socket monitor
-  event `ZLINK_EVENT_PEER_ADMISSION_CHANGED`. SpotNode changes use the
+  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. SpotNode changes use the
   service monitor event
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`. The implementation
-  carries both the peer identifier (`routing_id`) and the new admission
-  state inside the same event payload.
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. The implementation
+  carries both the peer identifier (`routing_id`) and the new weight inside
+  the same event payload.
 
 ## 11. Pairwise initiator rule (Discovery auto-connect)
 

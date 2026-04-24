@@ -31,8 +31,8 @@ void spot_node_t::refresh_discovery_peers ()
     discovery->snapshot_providers (service, &providers);
 
     std::set<std::string> new_endpoints;
-    std::map<std::string, zlink_admission_state_t> new_admission_by_endpoint;
-    std::map<std::string, zlink_admission_state_t> new_admission_by_rid;
+    std::map<std::string, uint32_t> new_weight_by_endpoint;
+    std::map<std::string, uint32_t> new_weight_by_rid;
     std::map<std::string, std::set<std::string> > new_endpoints_by_rid;
     std::string self_endpoint;
     {
@@ -43,13 +43,13 @@ void spot_node_t::refresh_discovery_peers ()
         if (!providers[i].endpoint.empty ()
             && self_endpoint != providers[i].endpoint) {
             new_endpoints.insert (providers[i].endpoint);
-            new_admission_by_endpoint[providers[i].endpoint] =
-              providers[i].admission_state;
+            new_weight_by_endpoint[providers[i].endpoint] =
+              providers[i].weight;
             if (providers[i].routing_id.size > 0) {
                 const std::string rid_key (
                   reinterpret_cast<const char *> (providers[i].routing_id.data),
                   providers[i].routing_id.size);
-                new_admission_by_rid[rid_key] = providers[i].admission_state;
+                new_weight_by_rid[rid_key] = providers[i].weight;
                 new_endpoints_by_rid[rid_key].insert (providers[i].endpoint);
             }
         }
@@ -102,8 +102,8 @@ void spot_node_t::refresh_discovery_peers ()
     {
         scoped_lock_t lock (_sync);
         _peer_state.discovery_endpoints.swap (new_endpoints);
-        _peer_state.peer_admission_by_endpoint.swap (new_admission_by_endpoint);
-        _peer_state.peer_admission_by_rid.swap (new_admission_by_rid);
+        _peer_state.peer_weight_by_endpoint.swap (new_weight_by_endpoint);
+        _peer_state.peer_weight_by_rid.swap (new_weight_by_rid);
         _peer_state.peer_endpoints_by_rid.swap (new_endpoints_by_rid);
         new_active_count = _peer_state.active_endpoints.size ();
     }

@@ -52,6 +52,8 @@ void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
         _fq.deactivate (pipe_);
     }
     _lb.attach (pipe_);
+    if (local_peer_weight () != 100)
+        send_local_peer_weight (pipe_);
 }
 
 int zlink::dealer_t::xsetsockopt (int option_,
@@ -163,14 +165,15 @@ int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
 int zlink::dealer_t::xpeer_command (msg_t *msg_, pipe_t *pipe_)
 {
-    zlink_admission_state_t state = ZLINK_ADMISSION_SERVING;
-    if (!decode_peer_admission_command (*msg_, &state))
+    uint32_t weight = 100;
+    if (!decode_peer_weight_command (*msg_, &weight))
         return 0;
-    return apply_peer_admission_state (pipe_, state);
+    return apply_peer_weight (pipe_, weight);
 }
 
-void zlink::dealer_t::xlocal_admission_state_changed ()
+void zlink::dealer_t::xlocal_peer_weight_changed ()
 {
+    broadcast_local_peer_weight ();
 }
 
 void zlink::dealer_t::xarm_socket_msg_dispatch ()
@@ -191,17 +194,42 @@ void zlink::dealer_t::xdispatch_io ()
       });
 }
 
-int zlink::dealer_t::apply_peer_admission_state (pipe_t *pipe_,
-                                                 zlink_admission_state_t state_)
+int zlink::dealer_t::apply_peer_weight (pipe_t *pipe_, uint32_t weight_)
 {
     if (!pipe_)
         return 1;
 
-    const bool admitted = state_ == ZLINK_ADMISSION_SERVING;
-    const bool changed = _lb.admitted (pipe_) != admitted;
-    _lb.set_admitted (pipe_, admitted);
+    const bool changed = _lb.weight (pipe_) != weight_;
+    _lb.set_weight (pipe_, weight_);
     if (!changed)
         return 1;
-    emit_peer_admission_changed (pipe_, state_);
+    emit_peer_weight_changed (pipe_, weight_);
     return 1;
+}
+
+void zlink::dealer_t::broadcast_local_peer_weight ()
+{
+    std::vector<pipe_t *> pipes;
+    snapshot_attached_pipes (&pipes);
+    for (size_t i = 0; i < pipes.size (); ++i)
+        send_local_peer_weight (pipes[i]);
+}
+
+void zlink::dealer_t::send_local_peer_weight (pipe_t *pipe_)
+{
+    if (!pipe_)
+        return;
+
+    msg_t msg;
+    if (msg.init () != 0)
+        return;
+    if (init_peer_weight_command (&msg, local_peer_weight ()) != 0) {
+        const int close_rc = msg.close ();
+        errno_assert (close_rc == 0);
+        return;
+    }
+    const int rc = pipe_->write_and_flush (&msg);
+    LIBZLINK_UNUSED (rc);
+    const int close_rc = msg.close ();
+    errno_assert (close_rc == 0);
 }

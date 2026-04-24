@@ -101,11 +101,11 @@ bool has_local_spot_route_target (uint8_t destination_class_,
                  find_router_state_by_rid (destination_endpoint_rid_));
 }
 
-bool spot_destination_is_admitted (void *spot_,
+bool spot_destination_has_positive_weight (void *spot_,
                                    const zlink_routing_id_t *dest_node_rid_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
-    return !spot || !spot->node || spot->node->peer_is_admitted (dest_node_rid_);
+    return !spot || !spot->node || spot->node->peer_has_positive_weight (dest_node_rid_);
 }
 
 uint64_t allocate_request_seq (
@@ -227,7 +227,7 @@ int start_spot_request_to_spot (void *spot_,
         errno = EINVAL;
         return -1;
     }
-    if (!spot_destination_is_admitted (spot_, dest_node_rid_)) {
+    if (!spot_destination_has_positive_weight (spot_, dest_node_rid_)) {
         errno = ECONNREFUSED;
         return -1;
     }

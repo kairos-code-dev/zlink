@@ -712,35 +712,37 @@ ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 RO
 - Frame 3: `request_seq` (8바이트 Big Endian; fire-and-forget 이면 `0`)
 - Frame 4+: Payload parts
 
-## 10. Admission state 전파
+## 10. 가중치 전파
 
-raw ROUTER와 SpotNode는 모두 `zlink_set_admission_state()`로 자기
-admission 상태를 바꾼다. 내부 구현은 그 변경을 연결된 peer에게
-**최선 노력의 runtime 신호**로 알리고, peer는 자신의 admission cache를
-갱신해서 outbound 후보 선택에 반영한다.
+raw ROUTER와 SpotNode는 모두 자기 가중치를 바꿀 수 있다. ROUTER는
+`zlink_set_router_option(..., ZLINK_ROUTER_OPT_WEIGHT, ...)`, SpotNode는
+`zlink_set_spot_node_option(..., ZLINK_SPOT_NODE_OPT_WEIGHT, ...)`로 값을
+바꾼다. 내부 구현은 그 변경을 연결된 peer에게 **최선 노력의 runtime
+신호**로 알리고, peer는 자신의 가중치 cache를 갱신해서 outbound 후보
+선택에 반영한다.
 
 기본 동작 약속:
 
-- 상태 변경은 즉시 로컬 캐시에 반영된다. 같은 노드에서 동작하는 다른
-  outbound 경로(예: 로컬 spot 또는 router send)는 그 즉시 새 상태를
+- 가중치 변경은 즉시 로컬 캐시에 반영된다. 같은 노드에서 동작하는 다른
+  outbound 경로(예: 로컬 spot 또는 router send)는 그 즉시 새 값을
   본다.
 - peer 쪽 전파는 SpotNode peer control 경로(`peer_ctrl_pub`/
-  `peer_ctrl_sub`)와 raw socket 쪽 전용 admission 신호 경로를 통해
+  `peer_ctrl_sub`)와 raw socket 쪽 전용 weight 신호 경로를 통해
   이루어진다. 이 신호는 누락 가능성을 가정한 best-effort runtime
   control 신호이며, 강한 동기 모델은 보장하지 않는다.
-- 재연결 시에는 admission 상태가 다시 동기화된다. 새 세션이 ready
-  되면 현재 admission 상태를 한 번 더 advertise해서 stale cache로 인한
+- 재연결 시에는 가중치가 다시 동기화된다. 새 세션이 ready
+  되면 현재 가중치를 한 번 더 advertise해서 stale cache로 인한
   잘못된 후보 선택을 줄인다.
-- peer 쪽 admission cache가 `DRAINING`을 보면 outbound 후보에서 그 peer
-  를 제외하고, 후보가 모두 `DRAINING`이면 submit을
+- peer 쪽 가중치 cache가 `0`을 보면 outbound 후보에서 그 peer를
+  제외하고, 후보가 모두 `0`이면 submit을
   `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화해 반환한다. 상태 캐시 전파보다
   연결 변화가 먼저 관찰되는 경합 상황에서는 같은 거절이
   `ZLINK_SUBMIT_NOT_CONNECTED` 또는 `ZLINK_SUBMIT_NOT_FOUND`로 먼저 보일
   수 있다.
 - raw socket 쪽 변경은 socket monitor의
-  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`로, SpotNode 쪽 변경은
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`로 외부에 노출된다.
-  내부 구현은 peer 식별자(`routing_id`)와 새 admission 상태를 같은
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로, SpotNode 쪽 변경은
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다.
+  내부 구현은 peer 식별자(`routing_id`)와 새 가중치를 같은
   이벤트 payload에 함께 싣는다.
 
 ## 11. Pairwise initiator 규칙 (Discovery 자동 연결)

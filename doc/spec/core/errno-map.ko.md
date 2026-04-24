@@ -82,7 +82,7 @@ typedef enum zlink_submit_result_t
 | `BACKPRESSURED` | `EAGAIN` | send 큐가 가득 찼거나 (HWM) 아직 쓰기 준비가 안 됨 |
 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 대상 peer 또는 경로가 연결되지 않음 |
 | `NOT_FOUND` | `ENOENT` | 대상 peer, spot, routed destination을 찾지 못함 |
-| `NOT_ADMITTED` | `ECONNREFUSED` 계열 | local peer가 알고 있는 remote의 admission state가 `DRAINING`이라 새 outbound가 거부됨. 연결이 끊긴 것이 아니라 admission 거절이며, peer가 다시 `SERVING`으로 돌아오면 자동으로 풀린다. 상태 전파는 최선 노력이라 경합 상황에서는 같은 실패가 `NOT_CONNECTED` 또는 `NOT_FOUND`로 먼저 관찰될 수 있다. |
+| `NOT_ADMITTED` | `ECONNREFUSED` 계열 | local peer가 알고 있는 remote의 가중치가 `0`이라 새 outbound가 거부됨. 연결이 끊긴 것이 아니라 가중치 기반 거절이며, peer가 다시 양수 가중치로 돌아오면 자동으로 풀린다. 상태 전파는 최선 노력이라 경합 상황에서는 같은 실패가 `NOT_CONNECTED` 또는 `NOT_FOUND`로 먼저 관찰될 수 있다. |
 
 #### 런타임 / 수명주기 실패
 
@@ -436,9 +436,9 @@ typedef enum zlink_config_result_t
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | -- | -- | -- |
 
-`zlink_send`의 `NOT_ADMITTED`는 DEALER가 알고 있는 ROUTER가 모두
-`DRAINING`일 때 발생한다. `zlink_send_rid`의 `NOT_ADMITTED`는 ROUTER가
-`DRAINING` 상태의 target RID로 보내려 할 때 발생한다.
+`zlink_send`의 `NOT_ADMITTED`는 DEALER가 알고 있는 ROUTER의 가중치가 모두
+`0`일 때 발생한다. `zlink_send_rid`의 `NOT_ADMITTED`는 ROUTER가
+가중치 `0`인 target RID로 보내려 할 때 발생한다.
 
 ### Socket request 함수
 
@@ -459,9 +459,9 @@ typedef enum zlink_config_result_t
 | `SEQ_EXHAUSTED` | Y | Y |
 | `INTERNAL_ERROR` | Y | Y |
 
-`zlink_dealer_request`는 알고 있는 ROUTER가 모두 `DRAINING`일 때
-`NOT_ADMITTED`로 실패한다. `zlink_router_request`는 target RID가
-`DRAINING` 상태일 때 `NOT_ADMITTED`로 실패한다.
+`zlink_dealer_request`는 알고 있는 ROUTER의 가중치가 모두 `0`일 때
+`NOT_ADMITTED`로 실패한다. `zlink_router_request`는 target RID의 가중치가
+`0`일 때 `NOT_ADMITTED`로 실패한다.
 
 ### Socket reply 함수
 
@@ -504,9 +504,9 @@ reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새
 | `SEQ_EXHAUSTED` | Y | Y | Y |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
-대상 SpotNode 또는 ROUTER가 `DRAINING`이면 SPOT request 계열은
+대상 SpotNode 또는 ROUTER의 가중치가 `0`이면 SPOT request 계열은
 `NOT_ADMITTED`로 실패한다. `zlink_spot_request_channel`은 attach된 channel
-경로가 `DRAINING`이거나 호출 가능한 dealer 경로가 없을 때 같은 계열 오류를 낼 수
+경로의 가중치가 `0`이거나 호출 가능한 dealer 경로가 없을 때 같은 계열 오류를 낼 수
 있다.
 
 ### SPOT send 함수
@@ -528,9 +528,9 @@ reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새
 | `SEQ_EXHAUSTED` | -- | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y | Y |
 
-`zlink_spot_publish`는 fan-out 의미를 가지므로 단일 peer admission으로
+`zlink_spot_publish`는 fan-out 의미를 가지므로 단일 peer 가중치만으로
 거절하지 않는다. 다른 routed/direct send 함수는 대상 SpotNode 또는
-ROUTER가 `DRAINING`이면 `NOT_ADMITTED`를 낸다.
+ROUTER의 가중치가 `0`이면 `NOT_ADMITTED`를 낸다.
 
 ### SPOT reply 함수
 

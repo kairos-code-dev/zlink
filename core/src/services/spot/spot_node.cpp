@@ -56,7 +56,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
     _runtime (NULL),
-    _admission_state (ZLINK_ADMISSION_SERVING),
+    _weight (100),
     _bound_endpoint (_endpoint_state.bound_endpoint),
     _subject_last_changed_ms (_summary_state.subject_last_changed_ms),
     _last_summary_error (_summary_state.last_summary_error),
@@ -139,9 +139,9 @@ bool spot_node_t::check_tag () const
     return _tag == spot_node_tag_value;
 }
 
-int spot_node_t::set_admission_state (zlink_admission_state_t state_)
+int spot_node_t::set_weight (uint32_t weight_)
 {
-    if (state_ != ZLINK_ADMISSION_SERVING && state_ != ZLINK_ADMISSION_DRAINING) {
+    if (weight_ > 100) {
         errno = EINVAL;
         return -1;
     }
@@ -157,9 +157,9 @@ int spot_node_t::set_admission_state (zlink_admission_state_t state_)
     bool registered = false;
     {
         scoped_lock_t lock (_sync);
-        if (_admission_state == state_)
+        if (_weight == weight_)
             return 0;
-        _admission_state = state_;
+        _weight = weight_;
         discovery = _discovery;
         advertise = _advertise_endpoint;
         registered = _registered;
@@ -168,7 +168,7 @@ int spot_node_t::set_admission_state (zlink_admission_state_t state_)
     if (registered && discovery && !advertise.empty ()) {
         if (discovery_owned_service::update_attributes (
               discovery, discovery_protocol::service_type_spot_node,
-              advertise.c_str (), 0, state_)
+              advertise.c_str (), 0, weight_)
             != 0) {
             return -1;
         }
@@ -177,10 +177,10 @@ int spot_node_t::set_admission_state (zlink_admission_state_t state_)
     return 0;
 }
 
-int spot_node_t::get_admission_state (
-  zlink_admission_state_t *state_out_) const
+int spot_node_t::get_weight (
+  uint32_t *weight_out_) const
 {
-    if (!state_out_) {
+    if (!weight_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -193,11 +193,11 @@ int spot_node_t::get_admission_state (
         return -1;
 
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    *state_out_ = _admission_state;
+    *weight_out_ = _weight;
     return 0;
 }
 
-bool spot_node_t::peer_is_admitted (const zlink_routing_id_t *peer_rid_) const
+bool spot_node_t::peer_has_positive_weight (const zlink_routing_id_t *peer_rid_) const
 {
     if (!peer_rid_ || peer_rid_->size == 0)
         return true;
@@ -205,10 +205,9 @@ bool spot_node_t::peer_is_admitted (const zlink_routing_id_t *peer_rid_) const
     const std::string key (
       reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    std::map<std::string, zlink_admission_state_t>::const_iterator it =
-      _peer_state.peer_admission_by_rid.find (key);
-    return it == _peer_state.peer_admission_by_rid.end ()
-           || it->second == ZLINK_ADMISSION_SERVING;
+    std::map<std::string, uint32_t>::const_iterator it =
+      _peer_state.peer_weight_by_rid.find (key);
+    return it == _peer_state.peer_weight_by_rid.end () || it->second > 0;
 }
 
 int spot_node_t::apply_tls_server (socket_base_t *socket_,

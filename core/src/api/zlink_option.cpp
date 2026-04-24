@@ -37,11 +37,6 @@ int socket_type_of (zlink::socket_base_t *socket_)
     return type;
 }
 
-bool socket_supports_admission_state (zlink::socket_base_t *socket_)
-{
-    return socket_ && socket_type_of (socket_) == ZLINK_CORE_SOCKET_ROUTER;
-}
-
 int map_common_option (zlink_option_t option_)
 {
     switch (option_) {
@@ -158,6 +153,8 @@ int map_router_option (zlink_router_option_t option_)
             return ZLINK_INTERNAL_OPT_PROBE_ROUTER;
         case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
             return ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID;
+        case ZLINK_ROUTER_OPT_WEIGHT:
+            return ZLINK_INTERNAL_OPT_PEER_WEIGHT;
         default:
             errno = EINVAL;
             return -1;
@@ -169,6 +166,8 @@ int map_dealer_option (zlink_dealer_option_t option_)
     switch (option_) {
         case ZLINK_DEALER_OPT_PROBE:
             return ZLINK_INTERNAL_OPT_PROBE_ROUTER;
+        case ZLINK_DEALER_OPT_WEIGHT:
+            return ZLINK_INTERNAL_OPT_PEER_WEIGHT;
         default:
             errno = EINVAL;
             return -1;
@@ -421,59 +420,6 @@ zlink_config_result_t zlink_socket_get_channel_name (
       socket->get_channel_name_metadata (channel_name_buf_,
                                          channel_name_capacity_,
                                          channel_name_len_out_));
-}
-
-zlink_config_result_t zlink_set_admission_state (void *handle_,
-                                                 zlink_admission_state_t state_)
-{
-    if (!handle_) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-
-    errno = 0;
-    if (zlink_service_set_admission_state (handle_, state_) == 0)
-        return ZLINK_CONFIG_OK;
-    if (errno != EFAULT)
-        return zlink::config_result_internal::from_rc (-1);
-
-    if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        if (!socket_supports_admission_state (socket)) {
-            errno = EINVAL;
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
-        }
-        return zlink::config_result_internal::from_rc (
-          socket->set_admission_state (state_));
-    }
-    errno = EFAULT;
-    return ZLINK_CONFIG_INVALID_HANDLE;
-}
-
-zlink_config_result_t zlink_get_admission_state (
-  void *handle_,
-  zlink_admission_state_t *state_out_)
-{
-    if (!state_out_) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-
-    errno = 0;
-    if (zlink_service_get_admission_state (handle_, state_out_) == 0)
-        return ZLINK_CONFIG_OK;
-    if (errno != EFAULT)
-        return zlink::config_result_internal::from_rc (-1);
-
-    if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        if (!socket_supports_admission_state (socket)) {
-            errno = EINVAL;
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
-        }
-        return zlink::config_result_internal::from_rc (
-          socket->get_admission_state (state_out_));
-    }
-    errno = EFAULT;
-    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_set_tls_server (void *handle_,

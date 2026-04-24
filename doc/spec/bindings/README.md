@@ -230,11 +230,11 @@ public shape를 기준으로 고정한다.
   send-recovery readiness 축을 가리킨다. 바인딩 문서도 같은 의미로 설명해야
   한다. `ZLINK_POLLOUT` 은 "transport writable" 이 아니라
   "send recovery readiness / backpressure recovery notification" 으로 설명한다.
-- 바인딩은 `zlink_set_admission_state()` / `zlink_get_admission_state()` 와
-  `ZLINK_ADMISSION_SERVING` / `ZLINK_ADMISSION_DRAINING` enum 을 언어별
-  typed surface 로 노출해야 한다. 대응하는 제출 실패 코드는
-  `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) 이며, 모든 바인딩의 `SubmitError`
-  매핑에 포함되어야 한다.
+- 바인딩은 peer 가중치 surface 를 언어별 typed option/property 로 노출해야
+  한다. 대상은 `ROUTER`, `DEALER`, `SpotNode`, `Spot`이며 값 범위는
+  `0..100`, 기본값은 `100`이다. `0`은 새 outbound 선택에서 제외를 뜻한다.
+  대응하는 제출 실패 코드는 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) 이며,
+  모든 바인딩의 `SubmitError` 매핑에 포함되어야 한다.
 - core raw `STREAM` 은 다음 세 수신 모드 중 하나만 선택할 수 있다:
   (a) `zlink_recv()` blocking/non-blocking recv, (b) `zlink_recv_handler()`
   raw direct callback, (c) `zlink_stream_packet_handler()` 빅엔디언
@@ -1998,7 +1998,7 @@ int zlink_service_monitor_recv(void *monitor,
 - `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` — Discovery가 본 서비스 활성화
 - `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` — Discovery가 본 서비스 비활성화
 - `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` — provider 집합 변경
-- `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` — Discovery가 추적하는 peer admission 상태 변경
+- `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` — Discovery가 추적하는 peer 가중치 변경
 
 바인딩 규칙:
 - monitor 는 typed handle 로 노출한다.
@@ -2294,33 +2294,32 @@ Repository placement and distribution units for codec extension modules:
 - public 도메인 객체를 만들 때 불필요한 중간 컬렉션 생성은 피한다.
 - helper나 sample이 느린 경로를 canonical path처럼 보이게 만들면 안 된다.
 
-## Admission State Policy
+## Peer Weight Policy
 
-`AdmissionState` 는 peer-level 수용/드레인 상태를 제어하는 canonical surface 다.
-모든 바인딩이 공개해야 한다.
+peer 가중치는 peer-level outbound 선택 비율과 drain 상태를 제어하는 canonical
+surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개해야 한다.
 
-핵심 API:
-- `zlink_set_admission_state(handle, state)` / `zlink_get_admission_state(handle, state_out)`
-- enum `zlink_admission_state_t { SERVING = 1, DRAINING = 2 }`
-- submit 결과 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) — drain 상태의 peer 로 submit 시 반환
-- socket monitor 이벤트 `ZLINK_EVENT_PEER_ADMISSION_CHANGED` (bit 15)
-- service monitor 이벤트 `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED` (bit 8)
-- `zlink_spot_node_peer_entry_t.admission_state` / `zlink_member_peer_entry_t.admission_state`
+핵심 API/계약:
+- `ZLINK_ROUTER_OPT_WEIGHT`
+- `ZLINK_DEALER_OPT_WEIGHT`
+- `ZLINK_SPOT_NODE_OPT_WEIGHT`
+- `ZLINK_SPOT_OPT_WEIGHT`
+- 값 범위 `0..100`, 기본값 `100`
+- submit 결과 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) — target peer 가중치가 `0`이면 반환
+- socket monitor 이벤트 `ZLINK_EVENT_PEER_WEIGHT_CHANGED` (bit 15)
+- service monitor 이벤트 `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` (bit 8)
+- `zlink_spot_node_peer_entry_t.weight` / `zlink_member_peer_entry_t.weight`
 
 바인딩 규칙:
-- `AdmissionState` 를 typed enum 으로 노출한다 (`SERVING`, `DRAINING`).
-  언어별 스타일: `AdmissionState.Serving` (C#/.NET), `AdmissionState::Serving`
-  (C++/Rust), `ADMISSION_STATE_SERVING` (Go), `admission_state.serving`
-  (Python), `AdmissionState.SERVING` (Java), `AdmissionState.Serving`
-  (Node/TS).
-- `setAdmissionState(state)` / `getAdmissionState()` 또는 언어 관례에 맞는
-  property/method 로 SOCKET / SPOT handle 에 노출한다.
-- `NOT_ADMITTED` 를 `SubmitError` 계열에 포함하여 caller 가 drain 상태 거부를
-  구분할 수 있게 한다.
-- `PEER_ADMISSION_CHANGED` 이벤트 bit 은 기존 socket monitor / service
-  monitor surface 에 typed value 로 노출한다. raw bit 값만 내보내지 않는다.
-- `SpotNodePeerEntry` / `MemberPeerEntry` 도메인 객체는 `admissionState` /
-  `admission_state` 필드를 포함해야 한다.
+- `weight`는 언어 관례에 맞는 typed option/property surface로 노출한다.
+  대상은 `ROUTER`, `DEALER`, `SpotNode`, `Spot`이다.
+- `NOT_ADMITTED` 를 `SubmitError` 계열에 포함하여 caller 가
+  가중치 `0` 거부를 구분할 수 있게 한다.
+- `PEER_WEIGHT_CHANGED` 이벤트 bit 은 기존 socket monitor / service
+  monitor surface 에 typed value 로 노출한다. `value`는 새 `0..100`
+  가중치다.
+- `SpotNodePeerEntry` / `MemberPeerEntry` 도메인 객체는 `weight` 필드를
+  포함해야 한다.
 
 ## Monitor Policy
 - monitor plane도 같은 규칙을 따른다.
@@ -2416,7 +2415,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 1 | `BACKPRESSURED` | `EAGAIN` | 제어 흐름 | send 큐 포화 (HWM) |
 | 2 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 제어 흐름 | 대상 peer/경로 미연결 |
 | 3 | `NOT_FOUND` | `ENOENT` | 제어 흐름 | 대상 peer/spot/route 없음 |
-| 13 | `NOT_ADMITTED` | — | 제어 흐름 | peer 가 `ZLINK_ADMISSION_DRAINING` 상태라 신규 submit 거부 |
+| 13 | `NOT_ADMITTED` | — | 제어 흐름 | target peer 가중치가 `0`이라 신규 submit 거부 |
 | 4 | `TERMINATED` | `ETERM` | 런타임/생명주기 | context 종료됨 |
 | 5 | `INVALID_HANDLE` | `EFAULT` | caller 계약 위반 | NULL handle / invalid pointer |
 | 6 | `INVALID_ARGUMENT` | `EINVAL` | caller 계약 위반 | 잘못된 인자 |

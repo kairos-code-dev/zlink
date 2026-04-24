@@ -1,15 +1,16 @@
+[English](03-3-dealer.md) | [한국어](03-3-dealer.ko.md)
 
 # DEALER 소켓
 
 ## 1. 개요
 
 DEALER 소켓은 비동기 요청 소켓이다.
-여러 피어에 **Round-robin** 분배로 송신하고, **Fair-queue**로 수신한다.
+여러 피어에 **라운드 로빈(round-robin, 순환 분배)** 방식으로 송신하고, **페어 큐잉(fair-queuing, 균등 수신 분배)** 방식으로 수신한다.
 send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하다.
 
 **핵심 특성:**
-- 송신: Round-robin (`lb_t`) — 연결된 피어에 순환 분배
-- 수신: Fair-queue (`fq_t`) — 모든 피어에서 공정하게 수신
+- 송신: 라운드 로빈 — 연결된 피어에 순환 분배
+- 수신: 페어 큐잉 — 모든 피어에서 공정하게 수신
 - send/recv 순서 강제 없음 (비동기)
 
 **유효한 소켓 조합:** DEALER ↔ ROUTER, DEALER ↔ DEALER
@@ -33,7 +34,7 @@ zlink_send(dealer, parts, 2, 0);
 ### 구체적 시나리오: 3개 DEALER가 1개 ROUTER로 전송
 
 3개의 DEALER 클라이언트가 하나의 ROUTER 서버에 연결한다. 각 DEALER는
-독립적으로 요청을 전송하며, ROUTER는 fair-queue로 수신하고
+독립적으로 요청을 전송하며, ROUTER는 페어 큐잉으로 수신하고
 `source_rid`로 각 송신자를 구분한다.
 
 | 송신자 | routing_id | 메시지 | ROUTER 수신 |
@@ -43,8 +44,8 @@ zlink_send(dealer, parts, 2, 0);
 | DEALER 3 | `D3` | `"buy MSFT 200"` | source_rid=`D3`, data=`"buy MSFT 200"` |
 
 ROUTER는 `zlink_send_rid()`에 해당 `source_rid`를 전달하여 각 DEALER에
-응답한다. DEALER는 *송신* 연결에 round-robin을 사용하므로, 하나의
-DEALER가 여러 ROUTER에 연결하면 메시지가 순환 분배된다
+응답한다. DEALER는 *송신* 연결에 라운드 로빈을 사용하므로, 하나의
+DEALER가 여러 ROUTER에 연결하면 메시지가 라운드 로빈으로 순환 분배된다
 (msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 
 ## 2. 기본 사용법
@@ -52,7 +53,7 @@ DEALER가 여러 ROUTER에 연결하면 메시지가 순환 분배된다
 ### 생성 및 연결
 
 ```c
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 
 /* Set routing_id (optional, used for identification by ROUTER) */
 zlink_set_routing_id(dealer, "client-1", 8);
@@ -78,7 +79,8 @@ zlink_msg_init_size(&msg3, 9);
 memcpy(zlink_msg_data(&msg3), "request-3", 9);
 zlink_send(dealer, &msg3, 1, 0);
 
-/* Responses are dispatched to the handler callback registered at creation */
+/* Responses are drained with zlink_recv() in a poller loop,
+   or (for zlink_dealer_request()) delivered through its reply callback */
 ```
 
 ### 수신 모드
@@ -89,15 +91,18 @@ DEALER는 `zlink_recv()`로 동기 수신한다.
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    dealer, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
+/* 그 밖의 rc 값: ZLINK_RECV_NO_DATA (EAGAIN),
+   TERMINATED, INVALID_HANDLE, NOT_SUPPORTED */
 ```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
-> `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code -- Recv"
@@ -120,8 +125,8 @@ if (rc == 0) {
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "data", 4);
-int rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
-if (rc == -1 && errno == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM exceeded or no peer connected */
 }
 ```
@@ -132,6 +137,7 @@ if (rc == -1 && errno == EAGAIN) {
 |------|------|--------|------|
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER에서 식별할 ID (전용 함수) |
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
+| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_dealer_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
@@ -149,7 +155,53 @@ zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+> 참고: `core/tests/integration/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+
+### 4.1 request-reply 시작
+
+`DEALER` 가 응답을 기다리는 흐름은 ordinary `send/recv` 와 별도로
+`zlink_dealer_request()` 를 사용한다. 이 함수는 ZMP request-reply envelope 를
+붙여 보내고, reply 는 callback 으로 완료된다.
+
+> ZMP request-reply envelope wire 형식은
+> [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
+
+```c
+static void on_reply(zlink_request_result_t result,
+                     zlink_msg_t *parts,
+                     size_t part_count,
+                     void *userdata)
+{
+    if (result != ZLINK_REQUEST_OK) {
+        /* result 값: ZLINK_REQUEST_TIMED_OUT, NOT_FOUND,
+           TERMINATED, PROTOCOL_ERROR */
+        fprintf(stderr, "request failed: %d\n", (int)result);
+        return;
+    }
+
+    for (size_t i = 0; i < part_count; ++i)
+        zlink_msg_close(&parts[i]);
+}
+
+int timeout_ms = 1000;
+zlink_set_dealer_option(
+  dealer,
+  ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+  &timeout_ms,
+  sizeof(timeout_ms));
+
+zlink_msg_t req;
+zlink_msg_init_size(&req, 4);
+memcpy(zlink_msg_data(&req), "ping", 4);
+/* 시그니처: zlink_dealer_request(dealer, parts, count, handler,
+   userdata, flags, timeout_ms) */
+zlink_submit_result_t rc = zlink_dealer_request(
+    dealer, &req, 1, on_reply, NULL, 0 /* flags */, 0 /* timeout_ms */);
+if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
+```
+
+이때 `timeout_ms = 0` 은 socket 기본값을 뜻하고, socket 기본값도 `0` 이면
+구현 기본값 `5000ms` 를 쓴다.
 
 ## 5. 사용 패턴
 
@@ -159,11 +211,11 @@ PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필�
 (routing_id가 없으므로 1:N에서는 어떤 피어가 응답했는지 구분할 수 없다.)
 
 ```c
-void *a = zlink_socket(ctx, ZLINK_DEALER);
+void *a = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive with zlink_recv() */
 zlink_bind(a, "tcp://*:5558");
 
-void *b = zlink_socket(ctx, ZLINK_DEALER);
+void *b = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* Receive with zlink_recv() */
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
@@ -181,13 +233,13 @@ zlink_send(b, &pong, 1, 0);
 /* on_message_b receives "ping", on_message_a receives "pong" */
 ```
 
-### 패턴 2: 1:N Round-robin 작업 분배
+### 패턴 2: 1:N 라운드 로빈 작업 분배
 
-PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
+PUSH/PULL 없이 작업을 N개 워커에 라운드 로빈으로 순환 분배하는 패턴.
 응답이 필요 없는 작업 분배 또는 파이프라인 단계 간 전달에 사용한다.
 
 ```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 /* ROUTER receives with zlink_recv() and distinguishes each DEALER by source_rid */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
@@ -195,11 +247,11 @@ char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer1 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer1, "D1", 2);
 zlink_connect(dealer1, endpoint);
 
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer2 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
@@ -224,7 +276,7 @@ zlink_send(dealer2, &m2, 1, 0);
 
 ### 피어 없으면 큐잉
 
-연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 블록(기본) 또는 `EAGAIN` 반환(`ZLINK_DONTWAIT`).
+연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 블록(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
 
 ```c
 /* Correct order */
@@ -232,9 +284,30 @@ zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 
-### Round-robin 분배
+### 라운드 로빈 분배
 
-여러 피어가 연결된 경우 메시지는 순환적으로 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
+여러 피어가 연결된 경우 메시지는 라운드 로빈으로 순환 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
+
+### 가중치 기반 송신 대상 선택
+
+원격 ROUTER는 자신의 peer 가중치(`0..100`)를 함께 광고한다. DEALER는
+가중치가 `0`인 ROUTER를 round-robin 후보 집합에서 자동으로 제외하고,
+양수 가중치를 가진 ROUTER들 사이에서만 outbound 대상을 고른다.
+
+- 모든 ROUTER의 양수 가중치가 같으면 기존과 같은 round-robin 분배를 유지한다.
+- 양수 가중치가 서로 다르면 더 큰 가중치를 가진 ROUTER가 그 비율만큼 더 자주 선택된다.
+- 연결 자체는 유지되므로, 가중치가 `0`이던 ROUTER가 다시 양수 값으로 돌아오면
+  재연결 없이 후보 집합에 복귀한다.
+
+알고 있는 ROUTER가 모두 `0`이면 `zlink_send()`와
+`zlink_dealer_request()`는 `ZLINK_SUBMIT_NOT_ADMITTED`를 반환한다.
+이 경우 연결이 끊긴 것이 아니라 잠시 보낼 대상이 없는 상태이므로,
+호출자는 최소 한 대의 ROUTER가 양수 가중치로 돌아올 때까지 기다렸다가
+재시도해야 한다.
+
+> 상세 규약은 DEALER spec
+> [dealer.ko.md](../spec/core/socket/dealer.ko.md)의 "가중치 기반 outbound 선택"
+> 섹션을 참고.
 
 ### routing_id는 connect 전에 설정
 
@@ -242,11 +315,11 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 
 ```c
 /* Frontend: clients connect here */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+void *frontend = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(frontend, "tcp://*:5558");
 
 /* Backend: worker threads connect here */
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
+void *backend = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_bind(backend, "inproc://backend");
 
 /* Start worker threads then run proxy */

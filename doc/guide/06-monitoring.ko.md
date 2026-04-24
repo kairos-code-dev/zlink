@@ -92,7 +92,7 @@ raw 소켓의 transport/session 상태를 알려준다.
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | 양쪽 |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | 양쪽 |
 | `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | 양쪽 |
-| `PEER_ADMISSION_CHANGED` | `0x8000` | 연결된 peer의 admission 상태 변화 | 새 admission 상태 | 양쪽 |
+| `PEER_WEIGHT_CHANGED` | `0x8000` | 연결된 peer의 가중치 변화 | 새 `0..100` 가중치 | 양쪽 |
 
 - `CONNECTION_READY`: 모든 소켓에서 `routing_id`에 peer id 포함
 
@@ -137,23 +137,20 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
 |------|-----|------|
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 형식의 ZMP HELLO 커맨드. |
 
-### Peer admission 상태 변화 감지
+### Peer 가중치 변화 감지
 
-ROUTER 또는 DEALER에 연결된 peer가 자기 admission 상태를 바꾸면
-`ZLINK_EVENT_PEER_ADMISSION_CHANGED` 이벤트가 raw socket monitor로
-들어온다. 이벤트의 `routing_id`가 상태가 바뀐 peer를 식별하고,
-`value`에 새 admission 상태(`ZLINK_ADMISSION_SERVING` 또는
-`ZLINK_ADMISSION_DRAINING`)가 들어간다.
+ROUTER 또는 DEALER에 연결된 peer가 자기 가중치를 바꾸면
+`ZLINK_EVENT_PEER_WEIGHT_CHANGED` 이벤트가 raw socket monitor로
+들어온다. 이벤트의 `routing_id`가 바뀐 peer를 식별하고,
+`value`에 새 `0..100` 가중치가 들어간다.
 
 ```c
-void on_admission(const zlink_monitor_event_t *ev, void *userdata)
+void on_weight(const zlink_monitor_event_t *ev, void *userdata)
 {
-    if (!(ev->event & ZLINK_EVENT_PEER_ADMISSION_CHANGED))
+    if (!(ev->event & ZLINK_EVENT_PEER_WEIGHT_CHANGED))
         return;
 
-    const char *state =
-        (ev->value == ZLINK_ADMISSION_DRAINING) ? "DRAINING" : "SERVING";
-    printf("orders-exec peer admission -> %s\n", state);
+    printf("orders-exec peer weight -> %" PRIu64 "\n", ev->value);
 }
 
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -162,22 +159,22 @@ zlink_connect(dealer, "tcp://orders-exec-1:7100");
 zlink_socket_monitor_open_options_t opts = {
     .events = ZLINK_EVENT_CONNECTION_READY
             | ZLINK_EVENT_DISCONNECTED
-            | ZLINK_EVENT_PEER_ADMISSION_CHANGED,
+            | ZLINK_EVENT_PEER_WEIGHT_CHANGED,
 };
 void *mon = zlink_socket_monitor_open(dealer, &opts);
-zlink_socket_monitor_handler(mon, on_admission, NULL);
+zlink_socket_monitor_handler(mon, on_weight, NULL);
 ```
 
-DEALER는 `DRAINING` ROUTER를 round-robin 후보에서 자동으로 제외하므로,
-응용은 이 이벤트로 진단/대시보드 표시만 갱신해도 충분하다. 알고 있는
-ROUTER가 모두 `DRAINING`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
+DEALER는 가중치가 `0`인 ROUTER를 후보에서 자동으로 제외하므로,
+응용은 이 이벤트로 진단이나 대시보드 표시를 갱신하면 된다. 알고 있는
+ROUTER가 모두 `0`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
 실패하기 시작한다.
 
 서비스 계층에서 같은 변화를 보고 싶다면 그 peer를 관리하는
 `Discovery` handle에 service monitor를 연다. 그 monitor는
-`ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`를 내보낼 수 있고,
+`ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를 내보낼 수 있고,
 `zlink_service_monitor_recv()`로 바뀐 peer의 endpoint, routing id,
-새 admission 상태를 읽을 수 있다.
+새 가중치를 읽을 수 있다.
 
 ## 5. 이벤트 흐름 다이어그램
 

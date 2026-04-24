@@ -57,10 +57,10 @@ with the rules here, this section wins.
 - `SpotDispatchEvent.SubscribeReadable` and `.RoutedReadable` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
   samples must drain until the recv API reports `EAGAIN`.
-- Every socket and `Spot` exposes `SetAdmissionState(state)` and
-  `GetAdmissionState()` backed by the typed enum
-  `AdmissionState { Serving = 1, Draining = 2 }`. Submit attempts to a
-  drained peer throw `ZlinkSubmitException` with `Code =
+- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
+  and `Spot` through typed option/property surfaces. The value range is
+  `0..100`, default `100`; `0` drains new outbound selection. Submit
+  attempts to a weight-`0` peer throw `ZlinkSubmitException` with `Code =
   SubmitResult.NotAdmitted`.
 - `Pollout` is a send-recovery readiness signal, shared with
   `OnSendReady(...)`. It is not a "transport writable" bit.
@@ -149,7 +149,8 @@ void Unbind(string address);
 /// <exception cref="ZlinkConfigException"/>
 SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All);
 /// <exception cref="ZlinkConfigException"/>
-AdmissionState GetAdmissionState();
+// No common peer-weight accessor. Bindings expose weight only on
+// RouterSocket, DealerSocket, SpotNode, and Spot.
 /// <exception cref="ZlinkConfigException"/>
 void SetTlsServer(string certPath, string keyPath,
                   bool requireClientCert = false);
@@ -161,7 +162,7 @@ void SetChannelName(string channelName);
 /// <exception cref="ZlinkConfigException"/>
 string GetChannelName();
 /// <exception cref="ZlinkConfigException"/>
-void SetAdmissionState(AdmissionState state);
+// Weight-bearing handles use typed option/property surfaces instead.
 /// <exception cref="ZlinkCloseException"/>
 void Close();
 /// <exception cref="ZlinkCloseException"/>
@@ -1015,7 +1016,7 @@ public enum SubmitResult
     OutOfMemory = 10,
     SeqExhausted = 11,
     InternalError = 12,
-    NotAdmitted = 13   // target peer is in AdmissionState.Draining
+    NotAdmitted = 13   // target peer has weight 0
 }
 ```
 
@@ -1291,7 +1292,7 @@ public enum SocketEvent
     ConnectionReady = 0x1000,
     HandshakeFailedProtocol = 0x2000,
     HandshakeFailedAuth = 0x4000,
-    PeerAdmissionChanged = 0x8000,
+    PeerWeightChanged = 0x8000,
     All = 0xFFFF
 }
 
@@ -1312,7 +1313,7 @@ public enum MonitorEventType
     ConnectionReady = 0x1000,
     HandshakeFailedProtocol = 0x2000,
     HandshakeFailedAuth = 0x4000,
-    PeerAdmissionChanged = 0x8000
+    PeerWeightChanged = 0x8000
 }
 ```
 
@@ -1373,14 +1374,14 @@ public enum ServiceMonitorEventMask : uint
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
-    PeerAdmissionChanged = 1u << 8,
+    PeerWeightChanged = 1u << 8,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
-        | PeerAdmissionChanged
+        | PeerWeightChanged
 }
 ```
 
@@ -1410,17 +1411,17 @@ Socket monitor event. Pure value object.
 
 ```csharp
 public sealed record MonitorEvent(
-    MonitorEventType Event,                  // CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...
-    uint Value,                              // per-event detail (e.g. disconnect reason code, PEER_ADMISSION_CHANGED carries the new AdmissionState)
+    MonitorEventType Event,                  // CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_WEIGHT_CHANGED, ...
+    uint Value,                              // per-event detail (e.g. disconnect reason code, PEER_WEIGHT_CHANGED carries the new 0..100 weight)
     RoutingId? RoutingId,                    // null when event has no associated peer
     string LocalAddr,
     string RemoteAddr);
 ```
 
-`MonitorEventType` includes `PeerAdmissionChanged` (bit 15). When this event
-fires, `Value` carries the new `AdmissionState` for the peer. The same
+`MonitorEventType` includes `PeerWeightChanged` (bit 15). When this event
+fires, `Value` carries the new `0..100` weight for the peer. The same
 change is also surfaced via service monitors as
-`ServiceMonitorEventMask.PeerAdmissionChanged` (bit 8).
+`ServiceMonitorEventMask.PeerWeightChanged` (bit 8).
 
 ### MonitorSnapshot
 
@@ -1847,7 +1848,7 @@ public sealed record MemberPeerEntry(
     string Endpoint,
     RoutingId? RoutingId,
     long Value,
-    AdmissionState AdmissionState);
+    uint Weight);
 ```
 
 #### RegistryTopologyEntry
@@ -1935,7 +1936,7 @@ public sealed record SpotNodePeerEntry(
     string PeerEndpoint,
     SpotPeerSource Source,
     SpotPeerState State,
-    AdmissionState AdmissionState,
+    uint Weight,
     ulong ConnectedSinceMs,
     ulong LastChangedMs);
 ```
@@ -1952,12 +1953,6 @@ public sealed record SpotNodeSubjectEntry(
     uint ReadyPeerCount,
     uint ActivePeerCount,
     ulong LastChangedMs);
-
-public enum AdmissionState
-{
-    Serving = 1,
-    Draining = 2
-}
 
 public sealed record RegistryServiceSummaryFilter(
     ServiceKind? ServiceKind = null,

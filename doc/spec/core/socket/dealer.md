@@ -13,25 +13,31 @@ Used with `zlink_set_dealer_option()`.
 |---|---|
 | `ZLINK_DEALER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_dealer_request()` (`uint32_t`) |
+| `ZLINK_DEALER_OPT_WEIGHT` | Local peer weight advertised to connected peers (`int`; `0..100`, default `100`) |
 
-## Admission-aware outbound selection
+## Weight-aware outbound selection
 
-DEALER excludes any connected ROUTER whose admission state is
-`ZLINK_ADMISSION_DRAINING` from its round-robin candidate set. Only ROUTERs
-in the default `ZLINK_ADMISSION_SERVING` state are eligible for outbound.
+DEALER excludes any connected peer whose advertised weight is `0` from its
+candidate set. Positive weights stay eligible for outbound, and unequal
+positive weights change the send ratio.
 
-- When some ROUTERs are `DRAINING`, DEALER keeps round-robining over the
-  remaining `SERVING` ROUTERs.
-- When every known ROUTER is `DRAINING`, `zlink_send()` and
+- When every known peer has the same positive weight, DEALER keeps the
+  existing round-robin behavior.
+- When peers have different positive weights, DEALER uses a weighted
+  schedule. A peer with weight `100` is selected twice as often as a peer
+  with weight `50`.
+- When some peers are `0`, DEALER keeps distributing only across the
+  remaining positive-weight peers.
+- When every known peer is `0`, `zlink_send()` and
   `zlink_dealer_request()` fail with `ZLINK_SUBMIT_NOT_ADMITTED`. The
-  underlying connections are still alive; a ROUTER that returns to
-  `SERVING` becomes a candidate again automatically.
-- ROUTER admission state is propagated as a best-effort runtime signal.
+  underlying connections are still alive; a peer that returns to a positive
+  weight becomes a candidate again automatically.
+- Peer weight is propagated as a best-effort runtime signal.
   Under races the same refusal may surface first as
   `ZLINK_SUBMIT_NOT_CONNECTED`.
-- Admission state changes on connected ROUTERs are observable through the
-  socket monitor event `ZLINK_EVENT_PEER_ADMISSION_CHANGED`. The peer is
-  identified by `routing_id`.
+- Weight changes on connected peers are observable through the socket
+  monitor event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. The peer is identified by
+  `routing_id`, and `value` carries the new weight.
 
 ## Functions
 
@@ -75,7 +81,7 @@ parameter may be 0 or `ZLINK_DONTWAIT`.
 **Returns:** `ZLINK_SUBMIT_OK` on success, or a `zlink_submit_result_t` value indicating the failure reason. See [errno-map.md](../errno-map.md).
 
 **Errors:** `BACKPRESSURED` if the operation would block and `ZLINK_DONTWAIT` was set.
-`NOT_ADMITTED` when every known ROUTER is in `DRAINING` admission state.
+`NOT_ADMITTED` when every known peer has weight `0`.
 `TERMINATED` if the context was terminated. See [errno-map.md](../errno-map.md) for the full result matrix.
 
 **See also:** `zlink_send`, `zlink_recv`
@@ -97,8 +103,8 @@ zlink_submit_result_t zlink_send (void *s_,
 Use `zlink_send(..., ZLINK_DONTWAIT)` for non-blocking send. Non-blocking
 send returns `ZLINK_SUBMIT_BACKPRESSURED` when the operation would block,
 `ZLINK_SUBMIT_NOT_CONNECTED` when the peer is not reachable, and
-`ZLINK_SUBMIT_NOT_ADMITTED` when every known ROUTER is in `DRAINING`
-admission state. See [errno-map.md](../errno-map.md) for the full result matrix.
+`ZLINK_SUBMIT_NOT_ADMITTED` when every known peer has weight `0`. See
+[errno-map.md](../errno-map.md) for the full result matrix.
 
 **See also:** `zlink_send`
 

@@ -4,6 +4,7 @@
 #define __ZLINK_LB_HPP_INCLUDED__
 
 #include <map>
+#include <vector>
 
 #include "utils/array.hpp"
 
@@ -24,9 +25,9 @@ class lb_t
     void attach (pipe_t *pipe_);
     void activated (pipe_t *pipe_);
     void pipe_terminated (pipe_t *pipe_);
-    void set_admitted (pipe_t *pipe_, bool admitted_);
-    bool admitted (pipe_t *pipe_) const;
-    bool has_admitted_pipe () const;
+    void set_weight (pipe_t *pipe_, uint32_t weight_);
+    uint32_t weight (pipe_t *pipe_) const;
+    bool has_positive_weight_pipe () const;
 
     int send (msg_t *msg_);
 
@@ -55,7 +56,15 @@ class lb_t
 
     //  True if we are dropping current message.
     bool _dropping;
-    std::map<pipe_t *, bool> _admitted;
+    std::map<pipe_t *, uint32_t> _weights;
+    bool _weighted_dirty;
+    bool _weighted_enabled;
+    std::vector<pipe_t *> _weighted_schedule;
+    size_t _weighted_current;
+    pipe_t *_weighted_multipart_pipe;
+
+    void mark_weighted_dirty ();
+    void rebuild_weighted_schedule ();
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (lb_t)
 };

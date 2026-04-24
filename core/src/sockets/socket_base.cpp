@@ -23,8 +23,8 @@
 
 namespace
 {
-const char peer_admission_cmd_name[] = "ADMISSION";
-const size_t peer_admission_cmd_name_size = sizeof (peer_admission_cmd_name) - 1;
+const char peer_weight_cmd_name[] = "WEIGHT";
+const size_t peer_weight_cmd_name_size = sizeof (peer_weight_cmd_name) - 1;
 
 static void generate_default_routing_id (unsigned char out_[16])
 {
@@ -105,7 +105,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _tag (0xbaddecaf),
     _ctx_terminated (false),
     _runtime (),
-    _local_admission_state (ZLINK_ADMISSION_SERVING),
+    _local_peer_weight (100),
     _service_attachment (NULL),
     _channel_name_locked (false)
 {
@@ -173,49 +173,54 @@ void zlink::socket_base_t::store_socket_msg_part (
     parts_->push_back (stored);
 }
 
-int zlink::socket_base_t::init_peer_admission_command (
-  zlink::msg_t *msg_,
-  zlink_admission_state_t state_)
+int zlink::socket_base_t::init_peer_weight_command (zlink::msg_t *msg_,
+                                                    uint32_t weight_)
 {
     if (!msg_) {
         errno = EFAULT;
         return -1;
     }
 
-    const int rc = msg_->init_size (peer_admission_cmd_name_size + 1);
+    const int rc = msg_->init_size (peer_weight_cmd_name_size + 4);
     if (rc != 0)
         return -1;
 
-    memcpy (msg_->data (), peer_admission_cmd_name,
-            peer_admission_cmd_name_size);
-    static_cast<unsigned char *> (msg_->data ())[
-      peer_admission_cmd_name_size] = static_cast<unsigned char> (state_);
+    memcpy (msg_->data (), peer_weight_cmd_name, peer_weight_cmd_name_size);
+    unsigned char *payload =
+      static_cast<unsigned char *> (msg_->data ()) + peer_weight_cmd_name_size;
+    payload[0] = static_cast<unsigned char> ((weight_ >> 24) & 0xffu);
+    payload[1] = static_cast<unsigned char> ((weight_ >> 16) & 0xffu);
+    payload[2] = static_cast<unsigned char> ((weight_ >> 8) & 0xffu);
+    payload[3] = static_cast<unsigned char> (weight_ & 0xffu);
     msg_->set_flags (zlink::msg_t::command);
     return 0;
 }
 
-bool zlink::socket_base_t::decode_peer_admission_command (
-  const zlink::msg_t &msg_,
-  zlink_admission_state_t *state_out_)
+bool zlink::socket_base_t::decode_peer_weight_command (const zlink::msg_t &msg_,
+                                                       uint32_t *weight_out_)
 {
     if (!(msg_.flags () & zlink::msg_t::command))
         return false;
-    if (msg_.size () != peer_admission_cmd_name_size + 1)
+    if (msg_.size () != peer_weight_cmd_name_size + 4)
         return false;
     if (memcmp (const_cast<zlink::msg_t &> (msg_).data (),
-                peer_admission_cmd_name, peer_admission_cmd_name_size)
+                peer_weight_cmd_name, peer_weight_cmd_name_size)
         != 0) {
         return false;
     }
 
-    const unsigned char state =
-      static_cast<unsigned char *> (const_cast<zlink::msg_t &> (msg_).data ())[
-        peer_admission_cmd_name_size];
-    if (state != ZLINK_ADMISSION_SERVING && state != ZLINK_ADMISSION_DRAINING)
+    const unsigned char *payload =
+      static_cast<unsigned char *> (const_cast<zlink::msg_t &> (msg_).data ())
+      + peer_weight_cmd_name_size;
+    const uint32_t weight = (static_cast<uint32_t> (payload[0]) << 24)
+                            | (static_cast<uint32_t> (payload[1]) << 16)
+                            | (static_cast<uint32_t> (payload[2]) << 8)
+                            | static_cast<uint32_t> (payload[3]);
+    if (weight > 100)
         return false;
 
-    if (state_out_)
-        *state_out_ = static_cast<zlink_admission_state_t> (state);
+    if (weight_out_)
+        *weight_out_ = weight;
     return true;
 }
 

@@ -397,27 +397,30 @@ If two DEALERs with the same routing_id connect simultaneously, the second conne
 
 > For a detailed explanation of routing_id concepts, see [08-routing-id.md](08-routing-id.md).
 
-### Admission state for graceful maintenance
+### Weight for graceful maintenance
 
 Before a ROUTER is taken down for a rolling restart or config reload,
-flip its local admission state so remote peers stop selecting it for new
+set its local weight to `0` so remote peers stop selecting it for new
 outbound:
 
 ```c
-/* Enter DRAINING before maintenance */
-zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING);
+int drain_weight = 0;
+zlink_set_router_option(
+  router, ZLINK_ROUTER_OPT_WEIGHT, &drain_weight, sizeof(drain_weight));
 
 /* ... let in-flight work finish / reply ... */
 
-/* Restart or reconfigure, then return to SERVING */
-zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING);
+int serve_weight = 100;
+zlink_set_router_option(
+  router, ZLINK_ROUTER_OPT_WEIGHT, &serve_weight, sizeof(serve_weight));
 
-/* Readback */
-zlink_admission_state_t cur;
-zlink_get_admission_state(router, &cur);
+int cur = 0;
+size_t cur_size = sizeof(cur);
+zlink_get_router_option(
+  router, ZLINK_ROUTER_OPT_WEIGHT, &cur, &cur_size);
 ```
 
-`DRAINING` is a peer-side advisory, not a local halt. The local handle
+Weight `0` is a peer-side advisory, not a local halt. The local handle
 keeps draining inbound work normally -- `zlink_router_recv()`,
 `zlink_send_rid()`, and `zlink_router_reply()` all keep functioning, so
 in-flight requests can still be completed. Connected peers simply stop
@@ -426,30 +429,30 @@ picking this ROUTER as a target for new work:
 - Remote DEALERs drop this ROUTER from their round-robin candidate set.
 - Remote ROUTERs that call `zlink_send_rid()` or `zlink_router_request()`
   toward this RID get `ZLINK_SUBMIT_NOT_ADMITTED` right away.
-- `zlink_router_reply()` is not subject to admission; already-received
-  requests can still be answered while `DRAINING`.
+- `zlink_router_reply()` is not blocked by this check; already-received
+  requests can still be answered while the local weight is `0`.
 
 The same send-side rule applies in the opposite direction: a local
 ROUTER that calls `zlink_send_rid()` or `zlink_router_request()`
-targeting a remote RID whose advertised admission state is `DRAINING`
+targeting a remote RID whose advertised weight is `0`
 fails with `ZLINK_SUBMIT_NOT_ADMITTED`. Admission cache propagation is
 best-effort, so races may surface the same refusal first as
 `ZLINK_SUBMIT_NOT_CONNECTED`.
 
 Typical maintenance pattern:
 
-1. `zlink_set_admission_state(router, ZLINK_ADMISSION_DRAINING)`
+1. Set `ZLINK_ROUTER_OPT_WEIGHT` to `0`.
 2. Wait for in-flight requests/replies to drain.
 3. Restart or reconfigure the instance.
-4. `zlink_set_admission_state(router, ZLINK_ADMISSION_SERVING)`.
+4. Set `ZLINK_ROUTER_OPT_WEIGHT` back to a positive value, usually `100`.
 
-Admission transitions on connected peers surface on the socket monitor
-as `ZLINK_EVENT_PEER_ADMISSION_CHANGED`; see
-[monitoring guide](06-monitoring.md#peer-admission-changes) for the
+Weight transitions on connected peers surface on the socket monitor
+as `ZLINK_EVENT_PEER_WEIGHT_CHANGED`; see
+[monitoring guide](06-monitoring.md#peer-weight-changes) for the
 event shape.
 
 > For the full contract, see
-> [Admission state](../spec/core/socket/router.md#admission-state) and
+> [Peer weight](../spec/core/socket/router.md#peer-weight) and
 > [Peer outbound from ROUTER](../spec/core/socket/router.md#peer-outbound-from-router)
 > in the ROUTER spec.
 

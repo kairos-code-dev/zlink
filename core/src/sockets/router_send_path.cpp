@@ -65,7 +65,7 @@ int zlink::router_t::xsend (msg_t *msg_)
                       msg_->size (), zlink::reference_tag_t ()));
 
             if (out_pipe) {
-                if (out_pipe->admission_state == ZLINK_ADMISSION_DRAINING) {
+                if (out_pipe->weight == 0) {
                     _more_out = false;
                     errno = ECONNREFUSED;
                     return -1;
@@ -154,7 +154,7 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
       blob_t (const_cast<unsigned char *> (target_rid_->data),
               target_rid_->size, zlink::reference_tag_t ()));
     if (out_pipe) {
-        if (out_pipe->admission_state == ZLINK_ADMISSION_DRAINING) {
+        if (out_pipe->weight == 0) {
             _more_out = false;
             errno = ECONNREFUSED;
             if (router_debug_enabled ()) {
@@ -229,7 +229,6 @@ bool zlink::router_t::xhas_out ()
         return true;
 
     return any_of_out_pipes ([] (const out_pipe_t &out_pipe_) {
-        return out_pipe_.admission_state == ZLINK_ADMISSION_SERVING
-               && check_pipe_hwm (*out_pipe_.pipe);
+        return out_pipe_.weight > 0 && check_pipe_hwm (*out_pipe_.pipe);
     });
 }

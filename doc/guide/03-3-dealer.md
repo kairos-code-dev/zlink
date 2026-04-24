@@ -366,22 +366,22 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 
 When multiple peers are connected, messages are distributed in a round-robin fashion. To send to a specific peer, use ROUTER instead.
 
-### Admission-Aware Outbound Selection
+### Weight-Aware Outbound Selection
 
-Remote ROUTERs advertise an admission state (`ZLINK_ADMISSION_SERVING` or
-`ZLINK_ADMISSION_DRAINING`). DEALER automatically drops `DRAINING` peers
-from its round-robin candidate set -- new sends cycle only across the
-`SERVING` ROUTERs. The underlying connections stay alive, so a ROUTER
-that flips back to `SERVING` rejoins the rotation without reconnect.
+Remote peers advertise a weight (`0..100`). DEALER automatically drops
+weight-`0` peers from its candidate set. Positive peers remain eligible,
+and unequal positive weights change the send ratio. The underlying
+connections stay alive, so a peer that flips back to a positive weight
+rejoins the rotation without reconnect.
 
-If every known ROUTER is `DRAINING`, `zlink_send()` and
+If every known peer is `0`, `zlink_send()` and
 `zlink_dealer_request()` return `ZLINK_SUBMIT_NOT_ADMITTED`. The caller
-should wait for at least one ROUTER to return to `SERVING` before
+should wait for at least one peer to return to a positive weight before
 retrying; treating `NOT_ADMITTED` as a hard failure would discard
 messages that are expected to succeed once maintenance ends.
 
 > For the full contract, see
-> [Admission-aware outbound selection](../spec/core/socket/dealer.md#admission-aware-outbound-selection)
+> [Weight-aware outbound selection](../spec/core/socket/dealer.md#weight-aware-outbound-selection)
 > in the DEALER spec.
 
 ### Set routing_id Before connect

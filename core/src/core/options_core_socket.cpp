@@ -115,6 +115,13 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             }
             break;
 
+        case ZLINK_INTERNAL_OPT_PEER_WEIGHT:
+            if (is_int_ && value_ >= 0 && value_ <= 100) {
+                self_->peer_weight = value_;
+                return 0;
+            }
+            break;
+
         case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
             if (is_int_ && value_ >= 0) {
                 self_->heartbeat_interval = value_;
@@ -247,6 +254,12 @@ int zlink::options_getsockopt_core_socket (const options_t *self_,
         case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
             if (is_int_) {
                 *value_ = self_->rid_duplicate_policy;
+                return 0;
+            }
+            break;
+        case ZLINK_INTERNAL_OPT_PEER_WEIGHT:
+            if (is_int_) {
+                *value_ = self_->peer_weight;
                 return 0;
             }
             break;

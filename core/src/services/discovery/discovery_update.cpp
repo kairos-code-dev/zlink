@@ -89,15 +89,15 @@ static void append_peer_admission_events_local (
                            peer_admission_key_hash_t>::const_iterator it =
           before_map.find (key);
         if (it == before_map.end ()
-            || it->second.admission_state == provider.admission_state) {
+            || it->second.weight == provider.weight) {
             continue;
         }
 
         zlink_service_event_t event;
         memset (&event, 0, sizeof (event));
         event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
-        event.event_type = ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED;
-        event.value = static_cast<uint32_t> (provider.admission_state);
+        event.event_type = ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED;
+        event.value = static_cast<uint32_t> (provider.weight);
         event.detail_flags = static_cast<zlink_service_event_detail_mask_t> (
           ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
           | ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT
@@ -244,14 +244,14 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             info.endpoint = discovery_protocol::read_string (frames_[index++]);
             discovery_protocol::read_routing_id (frames_[index++],
                                                  &info.routing_id);
-            uint16_t raw_admission_state = 0;
+            uint16_t raw_weight = 0;
             if (!discovery_protocol::read_u16 (frames_[index++],
-                                               &raw_admission_state))
+                                               &raw_weight))
                 break;
-            info.admission_state =
-              raw_admission_state == ZLINK_ADMISSION_DRAINING
-                ? ZLINK_ADMISSION_DRAINING
-                : ZLINK_ADMISSION_SERVING;
+            info.weight =
+              raw_weight == 0
+                ? 0
+                : 100;
             discovery_protocol::read_i64 (frames_[index++], &info.value);
             const size_t metadata_size = zlink_msg_size (&frames_[index]);
             info.metadata.resize (metadata_size);

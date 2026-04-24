@@ -6,7 +6,28 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
-zlink::lb_t::lb_t () : _active (0), _current (0), _more (false), _dropping (false)
+namespace
+{
+uint32_t gcd_u32 (uint32_t lhs_, uint32_t rhs_)
+{
+    while (rhs_ != 0) {
+        const uint32_t rem = lhs_ % rhs_;
+        lhs_ = rhs_;
+        rhs_ = rem;
+    }
+    return lhs_;
+}
+}
+
+zlink::lb_t::lb_t () :
+    _active (0),
+    _current (0),
+    _more (false),
+    _dropping (false),
+    _weighted_dirty (true),
+    _weighted_enabled (false),
+    _weighted_current (0),
+    _weighted_multipart_pipe (NULL)
 {
 }
 
@@ -18,7 +39,8 @@ zlink::lb_t::~lb_t ()
 void zlink::lb_t::attach (pipe_t *pipe_)
 {
     _pipes.push_back (pipe_);
-    _admitted[pipe_] = true;
+    _weights[pipe_] = 100;
+    mark_weighted_dirty ();
     activated (pipe_);
 }
 
@@ -30,24 +52,28 @@ void zlink::lb_t::pipe_terminated (pipe_t *pipe_)
     //  have disconnected, we have to drop the remainder of the message.
     if (index == _current && _more)
         _dropping = true;
+    if (pipe_ == _weighted_multipart_pipe && _more)
+        _dropping = true;
 
     //  Remove the pipe from the list; adjust number of active pipes
     //  accordingly.
     if (index < _active) {
-        _active--;
-        _pipes.swap (index, _active);
-        if (_current == _active)
-            _current = 0;
-    }
+            _active--;
+            _pipes.swap (index, _active);
+            if (_current == _active)
+                _current = 0;
+            mark_weighted_dirty ();
+        }
     _pipes.erase (pipe_);
-    _admitted.erase (pipe_);
+    _weights.erase (pipe_);
+    mark_weighted_dirty ();
 }
 
 void zlink::lb_t::activated (pipe_t *pipe_)
 {
-    const std::map<pipe_t *, bool>::const_iterator admitted_it =
-      _admitted.find (pipe_);
-    if (admitted_it != _admitted.end () && !admitted_it->second)
+    const std::map<pipe_t *, uint32_t>::const_iterator weight_it =
+      _weights.find (pipe_);
+    if (weight_it != _weights.end () && weight_it->second == 0)
         return;
 
     const pipes_t::size_type index = _pipes.index (pipe_);
@@ -57,24 +83,31 @@ void zlink::lb_t::activated (pipe_t *pipe_)
     //  Move the pipe to the list of active pipes.
     _pipes.swap (index, _active);
     _active++;
+    mark_weighted_dirty ();
 }
 
-void zlink::lb_t::set_admitted (pipe_t *pipe_, bool admitted_)
+void zlink::lb_t::set_weight (pipe_t *pipe_, uint32_t weight_)
 {
     if (!pipe_)
         return;
 
-    std::map<pipe_t *, bool>::iterator it = _admitted.find (pipe_);
-    if (it == _admitted.end ())
+    if (weight_ > 100)
+        weight_ = 100;
+
+    std::map<pipe_t *, uint32_t>::iterator it = _weights.find (pipe_);
+    if (it == _weights.end ())
         return;
-    if (it->second == admitted_)
+    if (it->second == weight_)
         return;
 
-    it->second = admitted_;
+    it->second = weight_;
+    mark_weighted_dirty ();
 
     const pipes_t::size_type index = _pipes.index (pipe_);
-    if (!admitted_) {
+    if (weight_ == 0) {
         if (index == _current && _more)
+            _dropping = true;
+        if (pipe_ == _weighted_multipart_pipe && _more)
             _dropping = true;
 
         if (index < _active) {
@@ -84,6 +117,7 @@ void zlink::lb_t::set_admitted (pipe_t *pipe_, bool admitted_)
                 _current = 0;
             else if (_current > index && _current <= _active)
                 --_current;
+            mark_weighted_dirty ();
         }
         return;
     }
@@ -91,23 +125,72 @@ void zlink::lb_t::set_admitted (pipe_t *pipe_, bool admitted_)
     if (index >= _active && pipe_->check_write ()) {
         _pipes.swap (index, _active);
         _active++;
+        mark_weighted_dirty ();
     }
 }
 
-bool zlink::lb_t::admitted (pipe_t *pipe_) const
+uint32_t zlink::lb_t::weight (pipe_t *pipe_) const
 {
-    std::map<pipe_t *, bool>::const_iterator it = _admitted.find (pipe_);
-    return it != _admitted.end () && it->second;
+    std::map<pipe_t *, uint32_t>::const_iterator it = _weights.find (pipe_);
+    return it != _weights.end () ? it->second : 0;
 }
 
-bool zlink::lb_t::has_admitted_pipe () const
+bool zlink::lb_t::has_positive_weight_pipe () const
 {
-    for (std::map<pipe_t *, bool>::const_iterator it = _admitted.begin ();
-         it != _admitted.end (); ++it) {
-        if (it->second)
+    for (std::map<pipe_t *, uint32_t>::const_iterator it = _weights.begin ();
+         it != _weights.end (); ++it) {
+        if (it->second > 0)
             return true;
     }
     return false;
+}
+
+void zlink::lb_t::mark_weighted_dirty ()
+{
+    _weighted_dirty = true;
+}
+
+void zlink::lb_t::rebuild_weighted_schedule ()
+{
+    if (!_weighted_dirty)
+        return;
+
+    _weighted_schedule.clear ();
+    _weighted_enabled = false;
+
+    uint32_t first_weight = 0;
+    uint32_t weight_gcd = 0;
+    bool have_first = false;
+    bool all_equal = true;
+    for (pipes_t::size_type i = 0; i < _active; ++i) {
+        const uint32_t pipe_weight = weight (_pipes[i]);
+        if (pipe_weight > 0)
+            weight_gcd =
+              weight_gcd == 0 ? pipe_weight : gcd_u32 (weight_gcd, pipe_weight);
+        if (!have_first) {
+            first_weight = pipe_weight;
+            have_first = true;
+        } else if (pipe_weight != first_weight) {
+            all_equal = false;
+        }
+    }
+
+    if (_active > 1 && !all_equal) {
+        for (pipes_t::size_type i = 0; i < _active; ++i) {
+            const uint32_t pipe_weight = weight (_pipes[i]);
+            const uint32_t slots =
+              weight_gcd > 0 ? pipe_weight / weight_gcd : pipe_weight;
+            for (uint32_t n = 0; n < slots; ++n)
+                _weighted_schedule.push_back (_pipes[i]);
+        }
+        _weighted_enabled = !_weighted_schedule.empty ();
+        if (_weighted_current >= _weighted_schedule.size ())
+            _weighted_current = 0;
+    } else {
+        _weighted_current = 0;
+    }
+
+    _weighted_dirty = false;
 }
 
 int zlink::lb_t::send (msg_t *msg_)
@@ -126,6 +209,28 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
         int rc = msg_->close ();
         errno_assert (rc == 0);
         rc = msg_->init ();
+        errno_assert (rc == 0);
+        return 0;
+    }
+
+    if (_more && _weighted_multipart_pipe) {
+        const bool more = (msg_->flags () & msg_t::more) != 0;
+        const bool ok = more ? _weighted_multipart_pipe->write (msg_)
+                             : _weighted_multipart_pipe->write_and_flush (msg_);
+        if (!ok) {
+            _weighted_multipart_pipe->rollback ();
+            _weighted_multipart_pipe = NULL;
+            _dropping = more;
+            _more = false;
+            errno = EAGAIN;
+            return -2;
+        }
+        if (pipe_)
+            *pipe_ = _weighted_multipart_pipe;
+        _more = more;
+        if (!_more)
+            _weighted_multipart_pipe = NULL;
+        const int rc = msg_->init ();
         errno_assert (rc == 0);
         return 0;
     }
@@ -150,6 +255,34 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
         const int rc = msg_->init ();
         errno_assert (rc == 0);
         return 0;
+    }
+
+    rebuild_weighted_schedule ();
+
+    if (!_more && _weighted_enabled) {
+        while (_active > 0 && !_weighted_schedule.empty ()) {
+            pipe_t *pipe = _weighted_schedule[_weighted_current];
+            const bool more = (msg_->flags () & msg_t::more) != 0;
+            const bool ok = more ? pipe->write (msg_)
+                                 : pipe->write_and_flush (msg_);
+            if (ok) {
+                if (pipe_)
+                    *pipe_ = pipe;
+                _more = more;
+                _weighted_multipart_pipe = more ? pipe : NULL;
+                if (++_weighted_current >= _weighted_schedule.size ())
+                    _weighted_current = 0;
+                const int rc = msg_->init ();
+                errno_assert (rc == 0);
+                return 0;
+            }
+
+            set_weight (pipe, 0);
+            rebuild_weighted_schedule ();
+        }
+
+        errno = has_positive_weight_pipe () ? EAGAIN : ECONNREFUSED;
+        return -1;
     }
 
     while (_active > 0) {
@@ -196,7 +329,7 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
 
     //  If there are no pipes we cannot send the message.
     if (_active == 0) {
-        errno = has_admitted_pipe () ? EAGAIN : ECONNREFUSED;
+        errno = has_positive_weight_pipe () ? EAGAIN : ECONNREFUSED;
         return -1;
     }
 
@@ -227,6 +360,7 @@ bool zlink::lb_t::has_out ()
             return true;
 
         _active = 0;
+        mark_weighted_dirty ();
         return false;
     }
 
@@ -238,6 +372,7 @@ bool zlink::lb_t::has_out ()
         //  Deactivate the pipe.
         _active--;
         _pipes.swap (_current, _active);
+        mark_weighted_dirty ();
         if (_current == _active)
             _current = 0;
     }

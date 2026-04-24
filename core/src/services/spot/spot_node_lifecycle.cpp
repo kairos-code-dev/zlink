@@ -253,7 +253,7 @@ int spot_node_t::disconnect_peer_pub_rid (
                 _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
             _peer_state.manual_endpoints.erase (endpoints[i]);
             _peer_state.discovery_endpoints.erase (endpoints[i]);
-            _peer_state.peer_admission_by_endpoint.erase (endpoints[i]);
+            _peer_state.peer_weight_by_endpoint.erase (endpoints[i]);
             _peer_state.observations[endpoints[i]].last_changed_ms =
               zlink::clock_t ().now_ms ();
             _peer_state.observations[endpoints[i]].connected_since_ms = 0;
@@ -263,7 +263,7 @@ int spot_node_t::disconnect_peer_pub_rid (
 
     {
         scoped_lock_t lock (_sync);
-        _peer_state.peer_admission_by_rid.erase (rid_key);
+        _peer_state.peer_weight_by_rid.erase (rid_key);
         _peer_state.peer_endpoints_by_rid.erase (rid_key);
     }
 
@@ -315,7 +315,7 @@ int spot_node_t::ensure_registered ()
     if (discovery_owned_service::register_endpoint (
           discovery, discovery_protocol::service_type_spot_node,
           advertise.c_str (), &resolved, &node_rid,
-          discovery_protocol::service_role_spot, _admission_state)
+          discovery_protocol::service_role_spot, _weight)
         != 0) {
         return -1;
     }
@@ -410,8 +410,8 @@ void spot_node_t::reset_spot_discovery_state_locked ()
     _pending_service_updates.clear ();
     _peer_state.discovery_endpoints.clear ();
     _peer_state.connected_endpoints.clear ();
-    _peer_state.peer_admission_by_endpoint.clear ();
-    _peer_state.peer_admission_by_rid.clear ();
+    _peer_state.peer_weight_by_endpoint.clear ();
+    _peer_state.peer_weight_by_rid.clear ();
     _peer_state.peer_endpoints_by_rid.clear ();
     _registered = false;
     _advertise_endpoint.clear ();
@@ -454,8 +454,8 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         _discovery_seq = 0;
         _pending_service_updates.insert (_discovery_service);
         _peer_state.discovery_endpoints.clear ();
-        _peer_state.peer_admission_by_endpoint.clear ();
-        _peer_state.peer_admission_by_rid.clear ();
+        _peer_state.peer_weight_by_endpoint.clear ();
+        _peer_state.peer_weight_by_rid.clear ();
         _peer_state.peer_endpoints_by_rid.clear ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_register = !_bound_endpoint.empty ();

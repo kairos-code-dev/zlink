@@ -144,6 +144,7 @@ zlink::options_t::options_t () :
     monitor_event_version (1),
     busy_poll (0),
     rid_duplicate_policy (ZLINK_RID_DUPLICATE_REJECT),
+    peer_weight (100),
     zmp_metadata (false)
 #ifdef ZLINK_HAVE_TLS
     ,

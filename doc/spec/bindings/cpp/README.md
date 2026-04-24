@@ -47,10 +47,11 @@ conflicts with the rules here, this section wins.
 - `service::spot_t::on_routed_receive(...)` and
   `service::spot_t::on_dispatch_event(...)` are mutually exclusive on the
   routed axis.
-- Every socket and `service::spot_t` exposes `set_admission_state(...)` /
-  `get_admission_state(...)` returning the typed enum
-  `admission_state_t { serving = 1, draining = 2 }`. Submit attempts to a
-  drained peer fail with `submit_error_t{.code = submit_result_t::not_admitted}`.
+- Peer weight is exposed only on `router_socket_t`, `dealer_socket_t`,
+  `service::spot_node_t`, and `service::spot_t` through typed option/property
+  surfaces. The value range is `0..100`, default `100`; `0` drains new
+  outbound selection. Submit attempts to a weight-`0` peer fail with
+  `submit_error_t{.code = submit_result_t::not_admitted}`.
 - `pollout` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header:
@@ -185,10 +186,8 @@ void bind(const std::string& endpoint);
 void unbind(const std::string& endpoint);
 /// @throws config_error_t
 common_socket_options_t options();
-/// @throws config_error_t
-void set_admission_state(admission_state_t state);
-/// @throws config_error_t
-admission_state_t get_admission_state() const;
+// No common peer-weight accessor. Bindings expose weight only on
+// router_socket_t, dealer_socket_t, service::spot_node_t, and service::spot_t.
 /// @throws config_error_t
 void set_tls_server(const std::string& cert, const std::string& key,
                     bool require_client_cert = false);
@@ -1023,16 +1022,16 @@ Socket monitor event payload. Value struct returned by
 
 ```cpp
 struct monitor_event_t {
-    monitor_event_type_t event;               // event kind (CONNECTED, DISCONNECTED, CONNECTION_READY, PEER_ADMISSION_CHANGED, ...)
-    uint32_t value;                           // event-specific detail (e.g., DISCONNECTED reason code, PEER_ADMISSION_CHANGED -> admission_state_t)
+    monitor_event_type_t event;               // event kind (CONNECTED, DISCONNECTED, CONNECTION_READY, PEER_WEIGHT_CHANGED, ...)
+    uint32_t value;                           // event-specific detail (e.g., DISCONNECTED reason code, PEER_WEIGHT_CHANGED -> 0..100 weight)
     std::optional<routing_id_t> routing_id;   // peer routing id; nullopt when event carries none
     std::string local_addr;                   // local endpoint
     std::string remote_addr;                  // remote endpoint
 };
 ```
 
-`monitor_event_type_t` includes `peer_admission_changed` (bit 15). When this
-event fires, `value` holds the new `admission_state_t` for the peer.
+`monitor_event_type_t` includes `peer_weight_changed` (bit 15). When this
+event fires, `value` holds the new `0..100` weight for the peer.
 
 ### monitor_snapshot_t
 
@@ -1295,7 +1294,7 @@ enum class submit_result_t : int {
     out_of_memory    = 10,
     seq_exhausted    = 11,
     internal_error   = 12,
-    not_admitted     = 13  // target peer is in admission_state_t::draining
+    not_admitted     = 13  // target peer has weight 0
 };
 ```
 
@@ -1746,7 +1745,7 @@ struct member_peer_entry_t {
     std::string endpoint;
     std::optional<routing_id_t> routing_id;   // nullopt when peer carries no routing id
     int64_t value;
-    admission_state_t admission_state;
+    uint32_t weight;
 };
 ```
 
@@ -1849,7 +1848,7 @@ struct spot_node_peer_entry_t {
     std::string peer_endpoint;
     spot_peer_source_t source;
     spot_peer_state_t state;
-    admission_state_t admission_state;
+    uint32_t weight;
     uint64_t connected_since_ms;
     uint64_t last_changed_ms;
 };
@@ -1879,11 +1878,6 @@ enum class spot_service_attachment_role_t {
     router = 1,
     pub = 2,
     sub = 3,
-};
-
-enum class admission_state_t {
-    serving  = 1,
-    draining = 2,
 };
 
 struct spot_service_attachment_stats_t {

@@ -66,7 +66,7 @@ class discovery_t
     int register_service (uint16_t service_type_,
                           const char *service_name_,
                           const char *endpoint_,
-                          zlink_admission_state_t admission_state_,
+                          uint32_t weight_,
                           int64_t value_,
                           const std::vector<unsigned char> *metadata_,
                           std::string *resolved_endpoint_out_,
@@ -75,7 +75,7 @@ class discovery_t
     int update_service_attributes (uint16_t service_type_,
                                    const char *service_name_,
                                    const char *endpoint_,
-                                   zlink_admission_state_t admission_state_,
+                                   uint32_t weight_,
                                    int64_t value_,
                                    const std::vector<unsigned char> *metadata_,
                                    uint16_t service_role_ = 0);
@@ -207,7 +207,7 @@ class discovery_t
         std::string service_name;
         std::string endpoint;
         std::string uplink_endpoint;
-        zlink_admission_state_t admission_state;
+        uint32_t weight;
         int64_t value;
         std::vector<unsigned char> metadata;
         uint64_t last_heartbeat_ms;
@@ -215,7 +215,7 @@ class discovery_t
         registered_service_t () :
             service_type (0),
             service_role (0),
-            admission_state (ZLINK_ADMISSION_SERVING),
+            weight (100),
             value (0),
             last_heartbeat_ms (0)
         {

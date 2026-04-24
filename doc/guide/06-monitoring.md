@@ -91,7 +91,7 @@ These report transport/session state for raw sockets.
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed (protocol error) | error code | — | Both | check version/config |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed (auth) | — | — | Both | check TLS/auth config |
 | `MONITOR_STOPPED` | `0x0400` | Monitor stopped | — | — | Both | `zlink_monitor_close()` |
-| `PEER_ADMISSION_CHANGED` | `0x8000` | Connected peer's admission state changed | new admission state | peer id | Both | re-evaluate dispatch / dashboard |
+| `PEER_WEIGHT_CHANGED` | `0x8000` | Connected peer's weight changed | new `0..100` weight | peer id | Both | re-evaluate dispatch / dashboard |
 
 ### Connection flow
 
@@ -133,23 +133,20 @@ When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these 
 |---|---|---|
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | Malformed ZMP HELLO command. |
 
-### Peer admission changes
+### Peer weight changes
 
-When a peer connected to a ROUTER or DEALER changes its own admission
-state, `ZLINK_EVENT_PEER_ADMISSION_CHANGED` is delivered through the raw
-socket monitor. The event's `routing_id` identifies the peer that
-changed; `value` holds the new admission state
-(`ZLINK_ADMISSION_SERVING` or `ZLINK_ADMISSION_DRAINING`).
+When a peer connected to a ROUTER or DEALER changes its own weight,
+`ZLINK_EVENT_PEER_WEIGHT_CHANGED` is delivered through the raw socket
+monitor. The event's `routing_id` identifies the peer that changed;
+`value` holds the new `0..100` weight.
 
 ```c
-void on_admission(const zlink_monitor_event_t *ev, void *userdata)
+void on_weight(const zlink_monitor_event_t *ev, void *userdata)
 {
-    if (!(ev->event & ZLINK_EVENT_PEER_ADMISSION_CHANGED))
+    if (!(ev->event & ZLINK_EVENT_PEER_WEIGHT_CHANGED))
         return;
 
-    const char *state =
-        (ev->value == ZLINK_ADMISSION_DRAINING) ? "DRAINING" : "SERVING";
-    printf("orders-exec peer admission -> %s\n", state);
+    printf("orders-exec peer weight -> %" PRIu64 "\n", ev->value);
 }
 
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -158,22 +155,22 @@ zlink_connect(dealer, "tcp://orders-exec-1:7100");
 zlink_socket_monitor_open_options_t opts = {
     .events = ZLINK_EVENT_CONNECTION_READY
             | ZLINK_EVENT_DISCONNECTED
-            | ZLINK_EVENT_PEER_ADMISSION_CHANGED,
+            | ZLINK_EVENT_PEER_WEIGHT_CHANGED,
 };
 void *mon = zlink_socket_monitor_open(dealer, &opts);
-zlink_socket_monitor_handler(mon, on_admission, NULL);
+zlink_socket_monitor_handler(mon, on_weight, NULL);
 ```
 
-DEALER automatically excludes `DRAINING` ROUTERs from its round-robin
-candidates, so the application typically only needs this event to update
-diagnostics or dashboards. Once every known ROUTER is `DRAINING`, new
+DEALER automatically excludes weight-`0` peers from its candidate set, so
+the application typically only needs this event to update diagnostics or
+dashboards. Once every known peer is `0`, new
 submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
 
 If you want the service-layer view of the same change, open a service
 monitor against the `Discovery` handle that manages those peers. That
-monitor can emit `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`,
-and `zlink_service_monitor_recv()` returns the changed peer endpoint,
-routing id, and new admission state.
+monitor can emit `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`, and
+`zlink_service_monitor_recv()` returns the changed peer endpoint,
+routing id, and new weight.
 
 ## 5. Event Flow Diagrams
 

@@ -252,7 +252,7 @@ boundaries normalize those values into this public contract.
 | `ZLINK_SUBMIT_BACKPRESSURED` | 1 | Send queue is full (HWM reached) |
 | `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | Target path or peer is not connected |
 | `ZLINK_SUBMIT_NOT_FOUND` | 3 | Target peer, spot, or routed destination was not found |
-| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow result. DRAINING target refuses new outbound; caller should pick another peer or wait |
+| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow result. weight-0 target refuses new outbound; caller should pick another peer or wait |
 | `ZLINK_SUBMIT_TERMINATED` | 4 | Context was terminated |
 | `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | Handle is NULL or invalid |
 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | 6 | Argument is invalid for the API contract |

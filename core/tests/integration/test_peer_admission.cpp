@@ -109,6 +109,12 @@ zlink_submit_result_t send_text_local (void *socket_,
     return zlink_send (socket_, &part, 1, flags_);
 }
 
+zlink_config_result_t set_router_weight_local (void *router_, int weight_)
+{
+    return zlink_set_router_option (router_, ZLINK_ROUTER_OPT_WEIGHT, &weight_,
+                                    sizeof (weight_));
+}
+
 zlink_submit_result_t send_text_rid_local (void *socket_,
                                            const zlink_routing_id_t *rid_,
                                            const char *text_,
@@ -206,6 +212,23 @@ bool recv_router_text_local (void *router_,
     return true;
 }
 
+bool recv_router_any_local (void *router_, int timeout_ms_)
+{
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const zlink_recv_result_t rc =
+      zlink_router_recv (router_, &source_rid, &source_spot_rid, &request_seq,
+                         &parts, &part_count,
+                         timeout_ms_ <= 0 ? ZLINK_DONTWAIT : 0);
+    if (rc != ZLINK_RECV_OK)
+        return false;
+    zlink_multipart_close (parts, part_count);
+    return true;
+}
+
 bool recv_buffer_text_local (void *socket_,
                              const char *expected_,
                              int timeout_ms_)
@@ -287,10 +310,10 @@ bool wait_for_router_envelope_delivery_local (void *sender_,
     return false;
 }
 
-bool wait_for_socket_peer_admission_event_local (
+bool wait_for_socket_peer_weight_event_local (
   void *monitor_,
   const zlink_routing_id_t *expected_rid_,
-  zlink_admission_state_t expected_state_,
+  uint32_t expected_weight_,
   int timeout_ms_)
 {
     const int attempts = timeout_ms_ / 25;
@@ -302,8 +325,8 @@ bool wait_for_socket_peer_admission_event_local (
             const bool routing_id_ok =
               !expected_rid_ || event.routing_id.size == 0
               || routing_id_equals_local (&event.routing_id, expected_rid_);
-            if (event.event == ZLINK_EVENT_PEER_ADMISSION_CHANGED
-                && event.value == static_cast<uint64_t> (expected_state_)
+            if (event.event == ZLINK_EVENT_PEER_WEIGHT_CHANGED
+                && event.value == static_cast<uint64_t> (expected_weight_)
                 && routing_id_ok) {
                 return true;
             }
@@ -315,11 +338,11 @@ bool wait_for_socket_peer_admission_event_local (
     return false;
 }
 
-bool wait_for_service_peer_admission_event_local (
+bool wait_for_service_peer_weight_event_local (
   void *monitor_,
   const char *expected_endpoint_,
   const zlink_routing_id_t *expected_rid_,
-  zlink_admission_state_t expected_state_,
+  uint32_t expected_weight_,
   int timeout_ms_)
 {
     const int attempts = timeout_ms_ / 25;
@@ -332,8 +355,8 @@ bool wait_for_service_peer_admission_event_local (
               !expected_rid_ || event.routing_id.size == 0
               || routing_id_equals_local (&event.routing_id, expected_rid_);
             if (event.event_type
-                  == ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED
-                && event.value == static_cast<uint32_t> (expected_state_)
+                  == ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED
+                && event.value == static_cast<uint32_t> (expected_weight_)
                 && strcmp (event.endpoint, expected_endpoint_) == 0
                 && routing_id_ok) {
                 return true;
@@ -346,9 +369,9 @@ bool wait_for_service_peer_admission_event_local (
     return false;
 }
 
-bool wait_for_discovery_peer_state_local (void *discovery_,
+bool wait_for_discovery_peer_weight_local (void *discovery_,
                                           const char *endpoint_,
-                                          zlink_admission_state_t expected_,
+                                          uint32_t expected_,
                                           int timeout_ms_)
 {
     const int attempts = timeout_ms_ / 25;
@@ -359,7 +382,7 @@ bool wait_for_discovery_peer_state_local (void *discovery_,
             == ZLINK_CONFIG_OK) {
             for (size_t j = 0; j < count; ++j) {
                 if (strcmp (entries[j].endpoint, endpoint_) == 0
-                    && entries[j].admission_state == expected_) {
+                    && entries[j].weight == expected_) {
                     return true;
                 }
             }
@@ -443,6 +466,44 @@ bool connect_discovery_registry_with_retry_local (void *discovery_,
     }
     return false;
 }
+
+void send_weight_sample_local (void *sender_, int count_)
+{
+    for (int i = 0; i < count_; ++i) {
+        bool sent = false;
+        for (int attempt = 0; attempt < 100 && !sent; ++attempt) {
+            sent = send_text_local (sender_, "m", ZLINK_DONTWAIT)
+                   == ZLINK_SUBMIT_OK;
+            if (!sent)
+                msleep (1);
+        }
+        TEST_ASSERT_TRUE (sent);
+    }
+}
+
+int drain_dealer_messages_local (void *dealer_, int max_count_)
+{
+    int count = 0;
+    for (int i = 0; i < max_count_; ++i) {
+        if (recv_text_local (dealer_, "m", NULL, 1))
+            ++count;
+        else
+            break;
+    }
+    return count;
+}
+
+int drain_router_messages_local (void *router_, int max_count_)
+{
+    int count = 0;
+    for (int i = 0; i < max_count_; ++i) {
+        if (recv_router_any_local (router_, 0))
+            ++count;
+        else
+            break;
+    }
+    return count;
+}
 } // namespace
 
 void test_socket_default_options_are_enabled ()
@@ -467,10 +528,138 @@ void test_socket_default_options_are_enabled ()
       router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value, &size));
     TEST_ASSERT_EQUAL_INT (ZLINK_RID_DUPLICATE_REJECT, value);
 
+    value = -1;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
+      router, ZLINK_ROUTER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_EQUAL_INT (100, value);
+
     test_context_socket_close (router);
 }
 
-void test_router_admission_blocks_dealer_outbound_and_emits_monitor_event ()
+void test_invalid_weight_option_is_rejected ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    int value = 101;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_WEIGHT, &value,
+                               sizeof (value)));
+    value = -1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_WEIGHT, &value,
+                               sizeof (value)));
+    test_context_socket_close (router);
+}
+
+void test_dealer_router_weighted_ratio_100_50 ()
+{
+    char endpoint_a[MAX_SOCKET_STRING];
+    char endpoint_b[MAX_SOCKET_STRING];
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *router_a = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *router_b = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_a, "router-a", 8));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_b, "router-b", 8));
+
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events = ZLINK_EVENT_PEER_WEIGHT_CHANGED;
+    void *dealer_monitor = zlink_socket_monitor_open (dealer, &monitor_opts);
+    TEST_ASSERT_NOT_NULL (dealer_monitor);
+
+    bind_loopback_ipv4 (router_a, endpoint_a, sizeof (endpoint_a));
+    bind_loopback_ipv4 (router_b, endpoint_b, sizeof (endpoint_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint_b));
+    zlink_routing_id_t rid_b;
+    memset (&rid_b, 0, sizeof (rid_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router_b, &rid_b));
+    bool saw_a = false;
+    bool saw_b = false;
+    for (int i = 0; i < 10 && (!saw_a || !saw_b); ++i) {
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_SUBMIT_OK,
+          send_text_local (dealer, "warmup", ZLINK_DONTWAIT));
+        msleep (5);
+        saw_a = drain_router_messages_local (router_a, 2) > 0 || saw_a;
+        saw_b = drain_router_messages_local (router_b, 2) > 0 || saw_b;
+    }
+    TEST_ASSERT_TRUE (saw_a);
+    TEST_ASSERT_TRUE (saw_b);
+    TEST_ASSERT_SUCCESS_ERRNO (set_router_weight_local (router_b, 50));
+    TEST_ASSERT_TRUE (
+      wait_for_socket_peer_weight_event_local (dealer_monitor, &rid_b, 50,
+                                               5000));
+
+    send_weight_sample_local (dealer, 15);
+    msleep (25);
+    const int count_a = drain_router_messages_local (router_a, 15);
+    const int count_b = drain_router_messages_local (router_b, 15);
+    TEST_ASSERT_EQUAL_INT (10, count_a);
+    TEST_ASSERT_EQUAL_INT (5, count_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&dealer_monitor));
+    test_context_socket_close (router_b);
+    test_context_socket_close (router_a);
+    test_context_socket_close (dealer);
+}
+
+void test_dealer_dealer_weighted_ratio_100_50 ()
+{
+    char endpoint_a[MAX_SOCKET_STRING];
+    char endpoint_b[MAX_SOCKET_STRING];
+    void *sender = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *dealer_a = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *dealer_b = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer_a, "dealer-a", 8));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer_b, "dealer-b", 8));
+
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events = ZLINK_EVENT_PEER_WEIGHT_CHANGED;
+    void *sender_monitor = zlink_socket_monitor_open (sender, &monitor_opts);
+    TEST_ASSERT_NOT_NULL (sender_monitor);
+
+    bind_loopback_ipv4 (dealer_a, endpoint_a, sizeof (endpoint_a));
+    bind_loopback_ipv4 (dealer_b, endpoint_b, sizeof (endpoint_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, endpoint_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, endpoint_b));
+    zlink_routing_id_t rid_b;
+    memset (&rid_b, 0, sizeof (rid_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (dealer_b, &rid_b));
+    bool saw_a = false;
+    bool saw_b = false;
+    for (int i = 0; i < 10 && (!saw_a || !saw_b); ++i) {
+        send_weight_sample_local (sender, 1);
+        msleep (5);
+        saw_a = drain_dealer_messages_local (dealer_a, 2) > 0 || saw_a;
+        saw_b = drain_dealer_messages_local (dealer_b, 2) > 0 || saw_b;
+    }
+    TEST_ASSERT_TRUE (saw_a);
+    TEST_ASSERT_TRUE (saw_b);
+    int weight_b = 50;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
+      dealer_b, ZLINK_DEALER_OPT_WEIGHT, &weight_b, sizeof (weight_b)));
+    TEST_ASSERT_TRUE (
+      wait_for_socket_peer_weight_event_local (sender_monitor, &rid_b, 50,
+                                               5000));
+
+    send_weight_sample_local (sender, 15);
+    msleep (25);
+    const int count_a = drain_dealer_messages_local (dealer_a, 15);
+    const int count_b = drain_dealer_messages_local (dealer_b, 15);
+    TEST_ASSERT_EQUAL_INT (10, count_a);
+    TEST_ASSERT_EQUAL_INT (5, count_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&sender_monitor));
+    test_context_socket_close (dealer_b);
+    test_context_socket_close (dealer_a);
+    test_context_socket_close (sender);
+}
+
+void test_router_weight_blocks_dealer_outbound_and_emits_monitor_event ()
 {
     char endpoint[MAX_SOCKET_STRING];
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -480,7 +669,7 @@ void test_router_admission_blocks_dealer_outbound_and_emits_monitor_event ()
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_PEER_ADMISSION_CHANGED;
+    monitor_opts.events = ZLINK_EVENT_PEER_WEIGHT_CHANGED;
     void *dealer_monitor = zlink_socket_monitor_open (dealer, &monitor_opts);
     TEST_ASSERT_NOT_NULL (dealer_monitor);
 
@@ -494,9 +683,9 @@ void test_router_admission_blocks_dealer_outbound_and_emits_monitor_event ()
     recv_string_expect_success (router, "warmup", 0);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_admission_state (router, ZLINK_ADMISSION_DRAINING));
-    TEST_ASSERT_TRUE (wait_for_socket_peer_admission_event_local (
-      dealer_monitor, &router_rid, ZLINK_ADMISSION_DRAINING, 5000));
+      set_router_weight_local (router, 0));
+    TEST_ASSERT_TRUE (wait_for_socket_peer_weight_event_local (
+      dealer_monitor, &router_rid, 0, 5000));
 
     TEST_ASSERT_TRUE (wait_for_submit_result_local (
       dealer, "blocked", ZLINK_SUBMIT_NOT_ADMITTED, 4000));
@@ -504,9 +693,9 @@ void test_router_admission_blocks_dealer_outbound_and_emits_monitor_event ()
       dealer, "request-blocked", ZLINK_SUBMIT_NOT_ADMITTED, 4000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_admission_state (router, ZLINK_ADMISSION_SERVING));
-    TEST_ASSERT_TRUE (wait_for_socket_peer_admission_event_local (
-      dealer_monitor, &router_rid, ZLINK_ADMISSION_SERVING, 5000));
+      set_router_weight_local (router, 100));
+    TEST_ASSERT_TRUE (wait_for_socket_peer_weight_event_local (
+      dealer_monitor, &router_rid, 100, 5000));
     msleep (SETTLE_TIME);
     send_string_expect_success (dealer, "after-serving", 0);
     recv_string_expect_success (router, "dealer-a", 0);
@@ -517,7 +706,7 @@ void test_router_admission_blocks_dealer_outbound_and_emits_monitor_event ()
     test_context_socket_close (router);
 }
 
-void test_router_admission_blocks_router_outbound_and_emits_monitor_event ()
+void test_router_weight_blocks_router_outbound_and_emits_monitor_event ()
 {
     char endpoint[MAX_SOCKET_STRING];
     void *router_a = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -527,7 +716,7 @@ void test_router_admission_blocks_router_outbound_and_emits_monitor_event ()
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_PEER_ADMISSION_CHANGED;
+    monitor_opts.events = ZLINK_EVENT_PEER_WEIGHT_CHANGED;
     void *router_a_monitor = zlink_socket_monitor_open (router_a, &monitor_opts);
     TEST_ASSERT_NOT_NULL (router_a_monitor);
 
@@ -541,9 +730,9 @@ void test_router_admission_blocks_router_outbound_and_emits_monitor_event ()
       router_a, &rid_b, router_b, "router-a", "warmup", 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_admission_state (router_b, ZLINK_ADMISSION_DRAINING));
-    TEST_ASSERT_TRUE (wait_for_socket_peer_admission_event_local (
-      router_a_monitor, &rid_b, ZLINK_ADMISSION_DRAINING, 5000));
+      set_router_weight_local (router_b, 0));
+    TEST_ASSERT_TRUE (wait_for_socket_peer_weight_event_local (
+      router_a_monitor, &rid_b, 0, 5000));
 
     TEST_ASSERT_TRUE (wait_for_router_submit_result_local (
       router_a, &rid_b, "blocked", ZLINK_SUBMIT_NOT_ADMITTED, 4000));
@@ -551,9 +740,9 @@ void test_router_admission_blocks_router_outbound_and_emits_monitor_event ()
       router_a, &rid_b, "request-blocked", ZLINK_SUBMIT_NOT_ADMITTED, 4000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_admission_state (router_b, ZLINK_ADMISSION_SERVING));
-    TEST_ASSERT_TRUE (wait_for_socket_peer_admission_event_local (
-      router_a_monitor, &rid_b, ZLINK_ADMISSION_SERVING, 5000));
+      set_router_weight_local (router_b, 100));
+    TEST_ASSERT_TRUE (wait_for_socket_peer_weight_event_local (
+      router_a_monitor, &rid_b, 100, 5000));
     msleep (SETTLE_TIME);
     TEST_ASSERT_TRUE (wait_for_router_envelope_delivery_local (
       router_a, &rid_b, router_b, "router-a", "after-serving", 5000));
@@ -563,7 +752,7 @@ void test_router_admission_blocks_router_outbound_and_emits_monitor_event ()
     test_context_socket_close (router_a);
 }
 
-void test_discovery_member_peers_reports_admission_and_service_monitor_event ()
+void test_discovery_member_peers_reports_weight_and_service_monitor_event ()
 {
     if (!zlink_has ("tcp")) {
         TEST_IGNORE_MESSAGE ("TCP not available");
@@ -588,9 +777,9 @@ void test_discovery_member_peers_reports_admission_and_service_monitor_event ()
       sizeof (registry_router)));
 
     void *router_discovery = zlink_discovery_new (
-      ctx, ZLINK_SERVICE_TYPE_SOCKET, "peer-admission-socket");
+      ctx, ZLINK_SERVICE_TYPE_SOCKET, "peer-weight-socket");
     void *dealer_discovery = zlink_discovery_new (
-      ctx, ZLINK_SERVICE_TYPE_SOCKET, "peer-admission-socket");
+      ctx, ZLINK_SERVICE_TYPE_SOCKET, "peer-weight-socket");
     TEST_ASSERT_NOT_NULL (router_discovery);
     TEST_ASSERT_NOT_NULL (dealer_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -601,7 +790,7 @@ void test_discovery_member_peers_reports_admission_and_service_monitor_event ()
     zlink_service_monitor_open_options_t service_monitor_opts;
     memset (&service_monitor_opts, 0, sizeof (service_monitor_opts));
     service_monitor_opts.events =
-      ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED;
+      ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED;
     void *service_monitor =
       zlink_service_monitor_open (dealer_discovery, &service_monitor_opts);
     TEST_ASSERT_NOT_NULL (service_monitor);
@@ -626,23 +815,23 @@ void test_discovery_member_peers_reports_admission_and_service_monitor_event ()
     memset (&router_rid, 0, sizeof (router_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router, &router_rid));
 
-    TEST_ASSERT_TRUE (wait_for_discovery_peer_state_local (
-      dealer_discovery, router_endpoint, ZLINK_ADMISSION_SERVING, 5000));
+    TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
+      dealer_discovery, router_endpoint, 100, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_admission_state (router, ZLINK_ADMISSION_DRAINING));
-    TEST_ASSERT_TRUE (wait_for_discovery_peer_state_local (
-      dealer_discovery, router_endpoint, ZLINK_ADMISSION_DRAINING, 5000));
-    TEST_ASSERT_TRUE (wait_for_service_peer_admission_event_local (
-      service_monitor, router_endpoint, &router_rid, ZLINK_ADMISSION_DRAINING,
+      set_router_weight_local (router, 0));
+    TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
+      dealer_discovery, router_endpoint, 0, 5000));
+    TEST_ASSERT_TRUE (wait_for_service_peer_weight_event_local (
+      service_monitor, router_endpoint, &router_rid, 0,
       5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_admission_state (router, ZLINK_ADMISSION_SERVING));
-    TEST_ASSERT_TRUE (wait_for_discovery_peer_state_local (
-      dealer_discovery, router_endpoint, ZLINK_ADMISSION_SERVING, 5000));
-    TEST_ASSERT_TRUE (wait_for_service_peer_admission_event_local (
-      service_monitor, router_endpoint, &router_rid, ZLINK_ADMISSION_SERVING,
+      set_router_weight_local (router, 100));
+    TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
+      dealer_discovery, router_endpoint, 100, 5000));
+    TEST_ASSERT_TRUE (wait_for_service_peer_weight_event_local (
+      service_monitor, router_endpoint, &router_rid, 100,
       5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&service_monitor));
@@ -658,9 +847,12 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_socket_default_options_are_enabled);
-    RUN_TEST (test_router_admission_blocks_dealer_outbound_and_emits_monitor_event);
-    RUN_TEST (test_router_admission_blocks_router_outbound_and_emits_monitor_event);
+    RUN_TEST (test_invalid_weight_option_is_rejected);
+    RUN_TEST (test_dealer_router_weighted_ratio_100_50);
+    RUN_TEST (test_dealer_dealer_weighted_ratio_100_50);
+    RUN_TEST (test_router_weight_blocks_dealer_outbound_and_emits_monitor_event);
+    RUN_TEST (test_router_weight_blocks_router_outbound_and_emits_monitor_event);
     RUN_TEST (
-      test_discovery_member_peers_reports_admission_and_service_monitor_event);
+      test_discovery_member_peers_reports_weight_and_service_monitor_event);
     return UNITY_END ();
 }

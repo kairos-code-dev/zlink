@@ -1,3 +1,4 @@
+[English](services-internals.md) | [한국어](services-internals.ko.md)
 
 # 서비스 계층 내부 설계
 
@@ -255,3 +256,526 @@ Frame 4~N: Service entries (repeated service_count times)
   (ROUTER=3, DEALER=4, PUB=5, SUB=6) — 역할 기반 피어 매칭용
 - 역할 매칭은 `service_roles_match()`가 강제한다 — PUB은 SUB과 짝,
   ROUTER/DEALER는 서로 짝을 이룬다
+
+## 6. SPOT 내부 아키텍처
+
+SPOT/SpotNode 내부 아키텍처의 상세 내용 — 컴포넌트 다이어그램, 11개 내부
+소켓 (타입/endpoint/HWM), 토픽 및 routed 메시지 흐름 시퀀스, control plane,
+data plane polling — 은 별도 문서를 참고: **[SPOT 내부 구조](spot-internals.ko.md)**.
+
+### 6.1 컴포넌트 다이어그램
+
+```mermaid
+flowchart TB
+    subgraph PublicAPI["Public C API"]
+        spot_handle["spot_handle_t<br/>(unified facade)"]
+        spot_node_api["spot_node API"]
+    end
+
+    subgraph AccessLayer["Access Layer"]
+        subject_access["spot_subject_access"]
+        node_access["spot_node_access"]
+    end
+
+    subgraph ControlPlane["Control Plane"]
+        spot_node["spot_node_t<br/>peer state, lifecycle,<br/>handle management"]
+        control_task["control_task (10ms)<br/>구독 replay,<br/>ready refresh"]
+    end
+
+    subgraph Runtime["Runtime"]
+        spot_runtime["spot_runtime_t<br/>socket attachments,<br/>batch/HWM config"]
+    end
+
+    subgraph DataPlane["Data Plane (별도 스레드)"]
+        dp_loop["spot_data_plane_loop<br/>main polling loop"]
+        dp_forwarding["forwarding<br/>batching, encoding"]
+        dp_protocol["protocol<br/>control msgs, bootstrap"]
+    end
+
+    subgraph InprocSockets["Inproc Socket Network"]
+        pub_ingress["pub_ingress (SUB)"]
+        sub_fanout["sub_fanout (XPUB)"]
+        mesh_pub["mesh_pub (PUB)"]
+        mesh_xsub["mesh_xsub (XSUB)"]
+        route_ingress["route_ingress (ROUTER)"]
+        node_router["node_router (ROUTER)"]
+        ctrl_pair["ctrl (PAIR)"]
+    end
+
+    spot_handle --> subject_access
+    spot_node_api --> node_access
+    subject_access --> spot_node
+    node_access --> spot_node
+    spot_node --> control_task
+    spot_node --> spot_runtime
+    spot_runtime --> dp_loop
+    dp_loop --> dp_forwarding
+    dp_loop --> dp_protocol
+    dp_loop --> pub_ingress
+    dp_loop --> sub_fanout
+    dp_loop --> mesh_pub
+    dp_loop --> mesh_xsub
+    dp_loop --> route_ingress
+    dp_loop --> node_router
+    dp_loop --> ctrl_pair
+```
+
+### 6.2 Inproc 소켓 토폴로지
+
+모든 inproc 경로: `inproc://zlink.spot.{node_id}.{purpose}`
+
+| Endpoint | 소켓 타입 | 방향 | 용도 |
+|----------|----------|------|------|
+| `.pub-in` | SUB | local pub → data plane | 토픽 publish 수신 |
+| `.sub-out` | XPUB | data plane → local sub | 토픽 subscribe 배포 |
+| `.route-in` | ROUTER | local sender → data plane | Routed 메시지 수신 |
+| `.node-router` | ROUTER | data plane → local receiver | Routed 메시지 전달 |
+| `.ctrl` | PAIR | control plane ↔ data plane | 내부 명령 |
+
+### 6.3 토픽 메시지 내부 흐름
+
+```mermaid
+sequenceDiagram
+    participant Pub as spot_pub_t
+    participant Ingress as pub_ingress (SUB)
+    participant DP as Data Plane Loop
+    participant MeshPub as mesh_pub (PUB)
+    participant Fanout as sub_fanout (XPUB)
+    participant Sub as spot_sub_t
+
+    Pub->>Ingress: publish(topic, parts) via inproc
+    Ingress->>DP: poll readable → 메시지 수신
+    DP->>Fanout: 로컬 fanout (즉시)
+    Fanout->>Sub: 매칭되는 구독자에게 전달
+    DP->>MeshPub: 즉시 송신
+    Note over MeshPub: → tcp mesh를 통해 원격 peer로
+```
+
+### 6.4 Routed 메시지 내부 흐름
+
+```mermaid
+sequenceDiagram
+    participant Sender as spot_send_router()
+    participant RouteIn as route_ingress (ROUTER)
+    participant DP as Data Plane Loop
+    participant NodeRouter as node_router (ROUTER)
+    participant Receiver as spot_recv / spot_handler
+
+    Sender->>RouteIn: SPOT routed envelope (8 parts) 전송
+    RouteIn->>DP: poll readable → routed 메시지 수신
+    DP->>DP: SPOT envelope 파싱 → 대상 식별
+    alt 대상이 로컬
+        DP->>NodeRouter: inproc으로 포워딩
+        NodeRouter->>Receiver: spot_handler 또는 recv 큐로 전달
+    else 대상이 원격
+        DP->>DP: peer ROUTER-ROUTER transport로 포워딩
+        Note over DP: 원격 data plane이 로컬 전달 수행
+    end
+```
+
+### 6.5 SPOT Request-Reply Dispatch
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant API as spot_request_router()
+    participant State as spot_request_reply_state
+    participant Sched as Timeout Scheduler
+    participant DP as Data Plane
+    participant Remote as Remote Spot
+
+    App->>API: request(dest_node, dest_spot, payload, timeout)
+    API->>API: SPOT envelope (8) + RR envelope (4) 생성
+    API->>State: pending[key] 등록
+    API->>Sched: schedule(deadline, on_timeout)
+    API->>DP: [12 control parts] + [payload] 전송
+    DP->>Remote: 대상으로 포워딩
+
+    Remote->>DP: reply [12 control parts] + [reply payload]
+    DP->>API: internal dispatch
+    API->>State: pending[key] 조회
+    API->>Sched: timeout 취소
+    API->>State: pending[key] 삭제
+    API->>App: reply_handler(0, reply_parts)
+```
+
+### 6.6 SPOT routed request-reply 조합
+
+SPOT request-reply 는 topic fanout 경로와 별도 상태를 가진다. 구현은 local
+runtime 에서 다음 세 단계를 거친다.
+
+1. SPOT routed envelope 8개 part decode
+2. 남은 payload 앞의 request-reply envelope 4개 part decode
+3. request 면 local handler dispatch, reply 면 pending map completion
+
+의미를 나눠 보면 다음과 같다.
+
+- SPOT routed envelope: source/destination node, spot, router 주소
+- request-reply envelope: `message_type`, `request_seq`
+- payload: application body
+
+### 6.7 pending 구조
+
+socket request-reply 와 SPOT request-reply 는 각자 다른 pending key 를 쓴다.
+
+```cpp
+struct pending_key_t {
+    std::string peer_rid;
+    uint64_t request_seq;
+};
+
+struct pending_spot_key_t {
+    uint8_t source_class;
+    std::string source_rid;
+    std::string source_spot_rid;
+    uint64_t request_seq;
+};
+```
+
+정리:
+
+- `DEALER` 는 `request_seq` 만으로 reply 를 찾는다.
+- `ROUTER` 는 `source_node_rid + request_seq` 조합으로 reply 를 찾는다.
+  SPOT 에서 시작된 routed 트래픽에서는 `source_spot_rid` 가 함께 실려서
+  통합된 router handler 가 일반 호출자와 SPOT 발원 호출자를 구분한다.
+- `spot -> spot` 은 source class 와 source 주소까지 함께 본다.
+- `router -> spot` 은 local router state 에서 `request_seq` 로 관리한다.
+
+이렇게 나누는 이유는 같은 `request_seq` 가 다른 상대 주소에서 동시에 보일 수
+있기 때문이다.
+
+### 6.8 timeout 과 완료
+
+각 request 시작 시 pending entry 를 넣고 timeout thread 를 함께 건다.
+
+- per-call timeout 이 있으면 그 값을 사용
+- 없으면 socket 기본 timeout 사용
+- 둘 다 없으면 `5000ms`
+
+timeout 이 먼저 오면 pending entry 를 지우고 `ETIMEDOUT` 로 callback 한다.
+reply 가 먼저 오면 pending entry 를 지우고 timeout thread 는 나중에 깨어나도
+아무 일도 하지 않는다.
+
+추가 reply 처리 규칙:
+
+- 첫 reply 로 이미 완료된 key 는 pending map 에서 제거된다.
+- 이후 같은 key 로 reply 가 와도 조용히 drop 한다.
+- `error reply` 는 payload 첫 part 의 4바이트 errno 를 읽어 실패 completion 으로
+  바꾼다.
+
+## 7. Request-Reply Dispatch 아키텍처
+
+### 7.1 소켓 수준 Dispatch 컴포넌트
+
+```mermaid
+flowchart TB
+    subgraph PublicAPI["Public API"]
+        dealer_req["zlink_dealer_request()"]
+        router_req["zlink_router_request()"]
+        router_reply["zlink_router_reply()"]
+        router_recv["zlink_router_recv()"]
+    end
+
+    subgraph State["Per-Socket State"]
+        rr_state["socket_request_reply_state_t<br/>pending_sequences,<br/>pending_requests map"]
+    end
+
+    subgraph Dispatch["Internal Dispatch"]
+        msg_dispatch["socket_request_reply_dispatch()<br/>socket msg handler로 설치"]
+        envelope_parse["parse_envelope()<br/>protocol_id, message_type,<br/>request_seq 추출"]
+    end
+
+    subgraph Queue["Internal Pair Queue"]
+        tx["tx (PAIR sender)"]
+        rx["rx (PAIR receiver)"]
+    end
+
+    subgraph Scheduler["Timeout Scheduler"]
+        timeout_thread["global timeout thread"]
+        timeout_schedule["deadline multimap"]
+    end
+
+    dealer_req --> rr_state
+    router_req --> rr_state
+    rr_state --> msg_dispatch
+    msg_dispatch --> envelope_parse
+
+    envelope_parse -->|request| tx
+    tx -.->|inproc PAIR| rx
+    router_recv --> rx
+
+    envelope_parse -->|reply| rr_state
+    rr_state -->|pending 매칭| timeout_schedule
+    rr_state -->|invoke| dealer_req
+
+    router_req --> timeout_schedule
+    dealer_req --> timeout_schedule
+```
+
+### 7.2 Dispatch 시퀀스 (Reply 완료)
+
+```mermaid
+sequenceDiagram
+    participant Net as Network
+    participant Socket as ROUTER/DEALER Socket
+    participant Dispatch as request_reply_dispatch
+
+    Net->>Socket: 수신 메시지
+    Socket->>Dispatch: msg_handler callback
+    Dispatch->>Dispatch: parse_envelope()
+    alt message_type = reply
+        Dispatch->>Dispatch: pending[source_node_rid + seq] 조회
+        Dispatch->>Dispatch: timeout task 취소
+        Dispatch->>Dispatch: reply_handler(errno, parts, userdata) 호출
+    else message_type = error_reply
+        Dispatch->>Dispatch: 첫 payload part에서 errno decode
+        Dispatch->>Dispatch: reply_handler(errno, NULL, userdata) 호출
+    end
+```
+
+### 7.3 Dispatch 시퀀스 (Router Recv 경로)
+
+```mermaid
+sequenceDiagram
+    participant Net as Network
+    participant Socket as ROUTER Socket
+    participant Dispatch as request_reply_dispatch
+    participant Queue as Internal Pair Queue
+    participant App as zlink_router_recv()
+
+    Net->>Socket: 수신 routed 메시지
+    Socket->>Dispatch: msg_handler callback
+    Dispatch->>Dispatch: parse_envelope() → request 또는 plain routed
+    Dispatch->>Queue: enqueue [source_node_rid, source_spot_rid, request_seq, payload]
+    Note over Queue: internal PAIR socket (inproc) 경유
+
+    App->>Queue: internal PAIR에서 recv
+    Queue->>App: [source_node_rid, source_spot_rid, request_seq, payload]
+    App->>App: caller에게 반환
+```
+
+## 8. Timer 및 Scheduler 아키텍처
+
+### 8.1 컴포넌트 다이어그램
+
+```mermaid
+flowchart TB
+    subgraph PublicAPI["Public Timer API"]
+        timer_new["zlink_timer_new()"]
+        spot_timer["zlink_spot_timer_new(spot)"]
+        timer_start["zlink_timer_start()"]
+        timer_recv["zlink_timer_recv()"]
+        timer_handler["zlink_timer_handler()"]
+    end
+
+    subgraph TimerHandle["timer_handle_t"]
+        state["interval_ns, repeat_count,<br/>running, stop_requested"]
+        fired["fired_counts deque"]
+        signaler["signaler_t (eventfd)"]
+        handler_fn["handler callback"]
+    end
+
+    subgraph GlobalSched["Global Shared Scheduler"]
+        g_thread["worker thread"]
+        g_schedule["deadline multimap"]
+        g_cv["condition variable"]
+    end
+
+    subgraph SpotSched["SpotNode-Local Schedulers"]
+        s_thread["worker thread (per node)"]
+        s_schedule["deadline multimap"]
+    end
+
+    subgraph Poller["Poller 통합"]
+        poller["zlink_poller_wait()"]
+        fd_reg["FD registration"]
+    end
+
+    timer_new --> GlobalSched
+    spot_timer --> SpotSched
+    timer_start --> TimerHandle
+    TimerHandle --> GlobalSched
+    TimerHandle --> SpotSched
+
+    g_thread -->|fire| handler_fn
+    g_thread -->|fire, handler 없음| fired
+    fired --> signaler
+    signaler --> fd_reg
+    fd_reg --> poller
+
+    timer_recv --> fired
+    timer_handler --> handler_fn
+```
+
+### 8.2 Timer Fire 시퀀스
+
+```mermaid
+sequenceDiagram
+    participant Sched as Scheduler Thread
+    participant Timer as timer_handle_t
+    participant App as Application
+
+    Sched->>Sched: cv.wait_for(next deadline)
+    Sched->>Timer: scheduler_fire_timer()
+
+    alt Callback 모드 (handler 설정)
+        Timer->>App: handler(timer, fire_count, userdata)
+    else Recv/Poller 모드 (handler 없음)
+        Timer->>Timer: fire_count를 deque에 push
+        Timer->>Timer: signaler.send() (eventfd)
+        Note over Timer: poller를 깨우거나 recv unblock
+    end
+
+    Sched->>Sched: repeat_count 확인
+    alt repeat_count > 0이고 미소진
+        Sched->>Sched: deadline + interval로 재스케줄
+    else repeat_count 소진
+        Sched->>Timer: stopped 표시
+    end
+```
+
+### 8.3 Request Timeout Scheduler
+
+Request timeout scheduler는 timer scheduler와 **별도**이다.
+Request-reply timeout 전용 스케줄러이다.
+
+```mermaid
+flowchart LR
+    subgraph TimeoutSched["Global Timeout Scheduler"]
+        thread["single worker thread"]
+        schedule["deadline multimap<br/>(deadline → task)"]
+        cv["condition variable"]
+    end
+
+    subgraph Task["timeout_task_t"]
+        deadline["deadline_ns"]
+        handler["on_timeout callback"]
+        state_t["registered, canceled,<br/>firing, completed"]
+    end
+
+    start_request -->|schedule| TimeoutSched
+    TimeoutSched -->|fires| Task
+    Task -->|callback| remove_pending
+    cancel_timeout -->|cancel| Task
+```
+
+- 모든 request timeout을 위한 단일 global thread
+- 다수의 단기 timeout에 효율적
+- 취소 지원 및 fire/cancel 경합 해소
+
+## 9. Internal Pair Queue 메커니즘
+
+Internal pair queue는 I/O 스레드의 internal dispatch와 application 스레드의
+user recv 호출 사이를 중계한다.
+
+```mermaid
+flowchart LR
+    subgraph IOThread["I/O Thread"]
+        dispatch["request_reply_dispatch()"]
+    end
+
+    subgraph PairQueue["Internal Pair Queue"]
+        tx["tx (PAIR)"]
+        inproc["inproc://zlink.{type}.reqrep.recv-{ptr}"]
+        rx["rx (PAIR)"]
+    end
+
+    subgraph AppThread["Application Thread"]
+        recv["zlink_router_recv()"]
+    end
+
+    dispatch -->|frame 전송| tx
+    tx ---|inproc PAIR| rx
+    rx -->|frame 수신| recv
+```
+
+구조:
+
+```cpp
+struct internal_pair_queue_t {
+    socket_base_t *rx;     // 수신 (application thread)
+    socket_base_t *tx;     // 송신 (dispatch thread)
+    std::string endpoint;  // 고유 inproc endpoint
+};
+```
+
+Queue 생성 (`ensure()`):
+1. 고유 inproc endpoint 생성
+2. PAIR 소켓 2개 생성: rx (bind), tx (connect)
+3. 양방향 handshake (0x11 → 0x22 → back)
+4. linger = 0 설정 (clean shutdown)
+
+ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 ROUTER
+트래픽과 SPOT 에서 시작된 routed 트래픽을 같은 framing 으로 전달한다):
+- Frame 1: `source_node_rid` 바이트
+- Frame 2: `source_spot_rid` 바이트 (일반 ROUTER 트래픽이면 길이 0)
+- Frame 3: `request_seq` (8바이트 Big Endian; fire-and-forget 이면 `0`)
+- Frame 4+: Payload parts
+
+## 10. 가중치 전파
+
+raw ROUTER와 SpotNode는 모두 자기 가중치를 바꿀 수 있다. ROUTER는
+`zlink_set_router_option(..., ZLINK_ROUTER_OPT_WEIGHT, ...)`, SpotNode는
+`zlink_set_spot_node_option(..., ZLINK_SPOT_NODE_OPT_WEIGHT, ...)`로 값을
+바꾼다. 내부 구현은 그 변경을 연결된 peer에게 **최선 노력의 runtime
+신호**로 알리고, peer는 자신의 가중치 cache를 갱신해서 outbound 후보
+선택에 반영한다.
+
+기본 동작 약속:
+
+- 가중치 변경은 즉시 로컬 캐시에 반영된다. 같은 노드에서 동작하는 다른
+  outbound 경로(예: 로컬 spot 또는 router send)는 그 즉시 새 값을
+  본다.
+- peer 쪽 전파는 SpotNode peer control 경로(`peer_ctrl_pub`/
+  `peer_ctrl_sub`)와 raw socket 쪽 전용 weight 신호 경로를 통해
+  이루어진다. 이 신호는 누락 가능성을 가정한 best-effort runtime
+  control 신호이며, 강한 동기 모델은 보장하지 않는다.
+- 재연결 시에는 가중치가 다시 동기화된다. 새 세션이 ready
+  되면 현재 가중치를 한 번 더 advertise해서 stale cache로 인한
+  잘못된 후보 선택을 줄인다.
+- peer 쪽 가중치 cache가 `0`을 보면 outbound 후보에서 그 peer를
+  제외하고, 후보가 모두 `0`이면 submit을
+  `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화해 반환한다. 상태 캐시 전파보다
+  연결 변화가 먼저 관찰되는 경합 상황에서는 같은 거절이
+  `ZLINK_SUBMIT_NOT_CONNECTED` 또는 `ZLINK_SUBMIT_NOT_FOUND`로 먼저 보일
+  수 있다.
+- raw socket 쪽 변경은 socket monitor의
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로, SpotNode 쪽 변경은
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다.
+  내부 구현은 peer 식별자(`routing_id`)와 새 가중치를 같은
+  이벤트 payload에 함께 싣는다.
+
+## 11. Pairwise initiator 규칙 (Discovery 자동 연결)
+
+같은 서비스의 두 ROUTER가 Discovery에서 서로를 발견하면, 한쪽만 dial하도록
+라이브러리 내부에서 결정한다. 이 결정은 사용자 설정이 아니라 Discovery
+auto-connect path 내부 규칙이다.
+
+비교 절차:
+
+1. local과 remote가 같은 `service_name`이고 둘 다 ROUTER 역할인지 확인한다.
+2. 두 peer를 정렬할 stable key를 만든다. 우선 비교 기준은 `routing_id`
+   이고, `routing_id`가 같으면 advertise endpoint 문자열로 타이브레이크
+   한다.
+3. local key가 remote key보다 작으면 local이 initiator로 정해진다. 그렇지
+   않으면 local은 dial을 만들지 않는다.
+4. 두 peer 모두 같은 입력으로 같은 total order를 계산하므로, pair마다
+   initiator가 정확히 하나만 정해진다.
+
+provider snapshot과의 상호작용:
+
+- Discovery는 SERVICE_LIST 갱신마다 새 provider 집합을 본다. 같은 pair에
+  대해 매번 같은 비교 결과가 나오므로, snapshot이 갱신되어도 initiator
+  방향이 흔들리지 않는다.
+- `routing_id`가 재시작 후 바뀌는 환경에서는 다음 실행에서 initiator
+  방향이 바뀔 수 있다. 이는 오류가 아니다. 같은 시점 안에서 pair마다
+  한쪽만 dial한다는 보장이 핵심 계약이다.
+
+수동 연결과 handover:
+
+- 이 규칙은 Discovery-managed 자동 연결에만 적용된다. 사용자가 raw API로
+  직접 `zlink_connect()`를 호출한 수동 연결은 라이브러리가 중재하지 않는다.
+- 서로 다른 peer가 우연히 같은 `routing_id`를 쓰는 충돌 자체는 이 규칙이
+  해결하지 않는다. 그런 충돌은 기존 ROUTER handover 정책으로 처리한다.
+- pairwise initiator는 duplicate dial을 사전에 줄이고, handover는 그래도
+  생긴 duplicate를 사후에 정리하는 두 개의 분리된 계층이다.

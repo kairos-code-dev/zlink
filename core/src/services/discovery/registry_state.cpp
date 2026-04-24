@@ -131,14 +131,11 @@ void registry_t::handle_peer (void *sub_)
             entry.endpoint = discovery_protocol::read_string (frames[index++]);
             discovery_protocol::read_routing_id (frames[index++],
                                                  &entry.routing_id);
-            uint16_t raw_admission_state = 0;
+            uint16_t raw_weight = 0;
             if (!discovery_protocol::read_u16 (frames[index++],
-                                               &raw_admission_state))
+                                               &raw_weight))
                 break;
-            entry.admission_state =
-              raw_admission_state == ZLINK_ADMISSION_DRAINING
-                ? ZLINK_ADMISSION_DRAINING
-                : ZLINK_ADMISSION_SERVING;
+            entry.weight = raw_weight <= 100 ? raw_weight : 100;
             int64_t value = 0;
             discovery_protocol::read_i64 (frames[index++], &value);
             entry.value = value;
@@ -193,8 +190,8 @@ void registry_t::handle_peer (void *sub_)
                         const provider_entry_t &incoming_entry = pit->second;
                         match =
                           cur.service_role == incoming_entry.service_role
-                          && cur.admission_state
-                               == incoming_entry.admission_state
+                          && cur.weight
+                               == incoming_entry.weight
                           &&
                           cur.value == incoming_entry.value
                           && cur.metadata == incoming_entry.metadata
@@ -329,14 +326,12 @@ void registry_t::handle_register (void *router_,
         return;
     }
 
-    zlink_admission_state_t admission_state = ZLINK_ADMISSION_SERVING;
+    uint32_t weight = 100;
     if (frame_count_ >= 6) {
-        uint16_t raw_admission_state = 0;
-        if (discovery_protocol::read_u16 (frames_[5], &raw_admission_state)
-            && (raw_admission_state == ZLINK_ADMISSION_SERVING
-                || raw_admission_state == ZLINK_ADMISSION_DRAINING)) {
-            admission_state =
-              static_cast<zlink_admission_state_t> (raw_admission_state);
+        uint16_t raw_weight = 0;
+        if (discovery_protocol::read_u16 (frames_[5], &raw_weight)
+            && raw_weight <= 100) {
+            weight = static_cast<uint32_t> (raw_weight);
         }
     }
     int64_t value = 0;
@@ -365,7 +360,7 @@ void registry_t::handle_register (void *router_,
     entry.service_role = service_role;
     entry.endpoint = endpoint;
     entry.routing_id = sender_id_;
-    entry.admission_state = admission_state;
+    entry.weight = weight;
     entry.value = value;
     entry.metadata = metadata;
     entry.registered_at = now;
@@ -502,13 +497,11 @@ void registry_t::handle_update_attributes (void *router_,
       discovery_protocol::read_string (frames_[3]);
     const std::string endpoint =
       discovery_protocol::read_string (frames_[4]);
-    zlink_admission_state_t admission_state = ZLINK_ADMISSION_SERVING;
-    uint16_t raw_admission_state = 0;
-    if (discovery_protocol::read_u16 (frames_[5], &raw_admission_state)
-        && (raw_admission_state == ZLINK_ADMISSION_SERVING
-            || raw_admission_state == ZLINK_ADMISSION_DRAINING)) {
-        admission_state =
-          static_cast<zlink_admission_state_t> (raw_admission_state);
+    uint32_t weight = 100;
+    uint16_t raw_weight = 0;
+    if (discovery_protocol::read_u16 (frames_[5], &raw_weight)
+        && raw_weight <= 100) {
+        weight = static_cast<uint32_t> (raw_weight);
     }
     int64_t value = 0;
     discovery_protocol::read_i64 (frames_[6], &value);
@@ -547,7 +540,7 @@ void registry_t::handle_update_attributes (void *router_,
         return;
     }
 
-    pit->second.admission_state = admission_state;
+    pit->second.weight = weight;
     pit->second.value = value;
     pit->second.metadata = metadata;
     _list_seq++;

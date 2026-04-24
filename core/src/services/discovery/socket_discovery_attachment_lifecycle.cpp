@@ -10,7 +10,7 @@
 
 namespace zlink
 {
-void socket_discovery_attachment_t::on_local_admission_state_changed ()
+void socket_discovery_attachment_t::on_local_peer_weight_changed ()
 {
     discovery_t *discovery = NULL;
     uint16_t local_role = discovery_protocol::service_role_invalid;
@@ -29,7 +29,7 @@ void socket_discovery_attachment_t::on_local_admission_state_changed ()
 
     (void) discovery_owned_service::update_attributes (
       discovery, discovery_protocol::service_type_socket,
-      advertise_endpoint.c_str (), local_role, _socket->local_admission_state ());
+      advertise_endpoint.c_str (), local_role, _socket->local_peer_weight ());
 }
 
 int socket_discovery_attachment_t::attach (discovery_t *discovery_)

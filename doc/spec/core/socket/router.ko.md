@@ -19,6 +19,7 @@ request-reply 패턴에서 응답 측입니다.
 | `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`; 0 또는 1) |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 발신 연결의 routing id 설정 (`binary`) |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | `zlink_router_request()` 기본 요청 타임아웃 (ms, `uint32_t`) |
+| `ZLINK_ROUTER_OPT_WEIGHT` | 연결된 peer에게 광고하는 로컬 peer 가중치 (`int`; `0..100`, 기본값 `100`) |
 
 `ZLINK_ROUTER_OPT_MANDATORY`의 기본값은 `1`입니다.
 `ZLINK_ROUTER_OPT_HANDOVER`는 `ZLINK_OPT_RID_DUPLICATE_POLICY`의 ROUTER
@@ -35,57 +36,62 @@ request-reply 패턴에서 응답 측입니다.
 호출자가 다른 동작(peer 미도달 시 조용한 drop, 중복 identity 도착 시 새
 pipe 인수)을 원하면 해당 옵션을 명시적으로 설정해야 합니다.
 
-## Admission 상태
+## Peer 가중치
 
-ROUTER는 peer가 자신을 새 작업 대상으로 사용할지 여부를 알리는 admission
-상태를 가집니다. 기본값은 `ZLINK_ADMISSION_SERVING`이며, 점검이나 롤링
-재시작처럼 새 요청을 더 이상 받지 않으려는 시점에는
-`ZLINK_ADMISSION_DRAINING`으로 바꿀 수 있습니다.
+ROUTER는 peer가 자신을 새 작업 대상으로 얼마나 자주 선택해야 하는지를
+알리는 peer 가중치를 가집니다. 기본값은 `100`입니다. 점검이나 롤링
+재시작 직전에는 가중치를 `0`으로 바꿔 peer가 새 작업을 더 이상 이
+ROUTER로 보내지 않게 할 수 있습니다.
 
 ```c
-zlink_config_result_t zlink_set_admission_state (
+zlink_config_result_t zlink_set_router_option (
   void *handle_,
-  zlink_admission_state_t state_);
+  zlink_router_option_t option_,
+  const void *optval_,
+  size_t optvallen_);
 
-zlink_config_result_t zlink_get_admission_state (
+zlink_config_result_t zlink_get_router_option (
   void *handle_,
-  zlink_admission_state_t *state_out_);
+  zlink_router_option_t option_,
+  void *optval_,
+  size_t *optvallen_);
 ```
 
-상태 값:
+가중치 규약:
 
-| 상수 | 값 | 의미 |
-|---|---|---|
-| `ZLINK_ADMISSION_SERVING` | `1` | peer가 이 ROUTER를 새 outbound 대상으로 사용할 수 있음. 기본값. |
-| `ZLINK_ADMISSION_DRAINING` | `2` | peer가 이 ROUTER를 새 outbound 대상에서 제외해야 함. 이미 들어온 작업 처리는 정상 진행. |
+| 값 | 의미 |
+|---|---|
+| `100` | 기본 가중치. 양수 가중치가 모두 같으면 peer는 round-robin 동작을 유지합니다. |
+| `1..99` | 양수이지만 선호도가 더 낮습니다. 후보에는 남아 있고 비율만 낮아집니다. |
+| `0` | 새 outbound 선택 대상에서 제외됩니다. 이미 들어온 작업은 계속 처리합니다. |
 
 특징:
 
-- `SERVING ↔ DRAINING` 전환은 runtime에 양방향으로 허용됩니다.
-- 로컬 ROUTER 자체의 recv/send/reply/handler-dispatch 동작은 admission
-  상태와 무관하게 평소처럼 진행됩니다. 즉 `DRAINING`은 "내가 멈춘다"가
-  아니라 "남이 나를 새 작업 대상으로 고르면 안 된다"는 신호입니다.
-- 상태 변화는 연결된 peer에게 best-effort runtime 신호로 전파됩니다.
-  peer는 자신의 상태 캐시를 갱신하며, 재연결 시 다시 동기화됩니다.
-- 상태 전환은 socket monitor의
-  `ZLINK_EVENT_PEER_ADMISSION_CHANGED` 이벤트로 관찰할 수 있습니다.
-  `routing_id`로 peer를 식별하고, `value`에는 새 상태가 들어갑니다.
+- `0..100` 전환은 runtime에 양방향으로 허용됩니다.
+- 로컬 ROUTER 자체의 recv/send/reply/handler-dispatch 동작은 peer 가중치와
+  무관하게 평소처럼 진행됩니다. 즉 `0`은 "내가 멈춘다"가 아니라
+  "남이 나를 새 작업 대상으로 고르지 말라"는 신호입니다.
+- 가중치 변화는 연결된 peer에게 best-effort runtime 신호로 전파됩니다.
+  peer는 자신의 가중치 cache를 갱신하며, 재연결 시 다시 동기화됩니다.
+- 가중치 전환은 socket monitor의
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED` 이벤트로 관찰할 수 있습니다.
+  `routing_id`로 peer를 식별하고, `value`에는 새 `0..100` 가중치가 들어갑니다.
 
-## ROUTER에서 시작하는 directed send와 admission
+## ROUTER에서 시작하는 directed send와 peer 가중치
 
 ROUTER가 다른 ROUTER에 directed send/request를 보낼 때는 target RID의
-admission 상태를 먼저 확인합니다.
+cache된 가중치를 먼저 확인합니다.
 
-- target RID가 `SERVING`이면 평소처럼 submit합니다.
-- target RID가 `DRAINING`이면 `zlink_send_rid()`와
+- target RID의 가중치가 양수면 평소처럼 submit합니다.
+- target RID의 가중치가 `0`이면 `zlink_send_rid()`와
   `zlink_router_request()`는 모두 `ZLINK_SUBMIT_NOT_ADMITTED`로 즉시
   실패합니다.
-- 상태 캐시 전파는 best-effort이므로, 경합 상황에서는 같은 거절이
+- 가중치 cache 전파는 best-effort이므로, 경합 상황에서는 같은 거절이
   `ZLINK_SUBMIT_NOT_CONNECTED`로 먼저 관찰될 수도 있습니다.
 
-reply 경로에는 admission 판정을 적용하지 않습니다.
-`zlink_router_reply()`는 이미 들어온 request에 대한 응답이라 admission
-상태와 관계없이 보낼 수 있습니다.
+reply 경로에는 이 판정을 적용하지 않습니다.
+`zlink_router_reply()`는 이미 들어온 request에 대한 응답이라 peer
+가중치와 관계없이 보낼 수 있습니다.
 
 ## 함수
 
@@ -153,7 +159,7 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 **에러:** `s_`가 NULL이면 `INVALID_HANDLE`. 작업이 블로킹되고
 `ZLINK_DONTWAIT`가 설정된 경우 `BACKPRESSURED`. 대상 피어가 연결되지 않은 경우
 `NOT_CONNECTED` (`ROUTER_MANDATORY=1`이 기본이므로 옵션을 명시적으로 끄지
-않았다면 이 결과를 더 자주 보게 됩니다). 대상 RID가 `DRAINING` 상태이면
+않았다면 이 결과를 더 자주 보게 됩니다). 대상 RID의 가중치가 `0`이면
 `NOT_ADMITTED`. Context가 종료된 경우 `TERMINATED`.
 [errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조.
 
@@ -176,7 +182,7 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 논블로킹 routed 전송은 `zlink_send_rid(..., ZLINK_DONTWAIT)` 로 처리합니다.
 `ZLINK_SUBMIT_BACKPRESSURED`는 작업이 블로킹되는 경우,
 `ZLINK_SUBMIT_NOT_CONNECTED`는 peer에 도달할 수 없는 경우,
-`ZLINK_SUBMIT_NOT_ADMITTED`는 대상 RID가 `DRAINING` 상태인 경우에
+`ZLINK_SUBMIT_NOT_ADMITTED`는 대상 RID의 가중치가 `0`인 경우에
 반환됩니다. [errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를 참조.
 
 성공하면 모든 파트의 소유권이 라이브러리로 이전됩니다. 실패하면

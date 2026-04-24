@@ -16,6 +16,7 @@ Used with `zlink_set_router_option()` / `zlink_get_router_option()`.
 | `ZLINK_ROUTER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_router_request()` (`uint32_t`) |
+| `ZLINK_ROUTER_OPT_WEIGHT` | Local peer weight advertised to connected peers (`int`; `0..100`, default `100`) |
 
 `ZLINK_ROUTER_OPT_MANDATORY` defaults to `1`.
 `ZLINK_ROUTER_OPT_HANDOVER` is the ROUTER-specific compatibility option for
@@ -34,57 +35,61 @@ Callers that want the alternative behavior (silent drop when no peer is
 reachable, or new pipe takeover for duplicate identity) must set these
 options explicitly.
 
-## Admission state
+## Peer Weight
 
-A ROUTER carries an admission state that tells peers whether they may pick
-this ROUTER as a target for new work. The default is
-`ZLINK_ADMISSION_SERVING`. Operators can switch to
-`ZLINK_ADMISSION_DRAINING` before maintenance or a rolling restart so peers
-stop dispatching new work to this ROUTER while in-flight work finishes.
+A ROUTER carries a peer weight that tells other peers how often they should
+pick this ROUTER as a target for new work. The default is `100`. Operators
+can switch to `0` before maintenance or a rolling restart so peers stop
+dispatching new work to this ROUTER while in-flight work finishes.
 
 ```c
-zlink_config_result_t zlink_set_admission_state (
+zlink_config_result_t zlink_set_router_option (
   void *handle_,
-  zlink_admission_state_t state_);
+  zlink_router_option_t option_,
+  const void *optval_,
+  size_t optvallen_);
 
-zlink_config_result_t zlink_get_admission_state (
+zlink_config_result_t zlink_get_router_option (
   void *handle_,
-  zlink_admission_state_t *state_out_);
+  zlink_router_option_t option_,
+  void *optval_,
+  size_t *optvallen_);
 ```
 
-States:
+Weight contract:
 
-| Constant | Value | Meaning |
+| Value | Meaning |
 |---|---|---|
-| `ZLINK_ADMISSION_SERVING` | `1` | Peers may select this ROUTER as a target for new outbound. Default. |
-| `ZLINK_ADMISSION_DRAINING` | `2` | Peers must exclude this ROUTER from new outbound selection. The local ROUTER continues to serve work that has already arrived. |
+| `100` | Default weight. Peers with equal positive weights keep round-robin behavior. |
+| `1..99` | Positive but lower preference. Peers remain eligible and are selected proportionally less often. |
+| `0` | Excluded from new outbound selection. The local ROUTER continues to serve work that has already arrived. |
 
 Behavior:
 
-- `SERVING ↔ DRAINING` transitions are allowed at runtime in either direction.
+- `0..100` transitions are allowed at runtime.
 - The local ROUTER's own recv/send/reply/handler-dispatch behavior is
-  unchanged by admission state. `DRAINING` is a peer-side advisory ("do not
+  unchanged by peer weight. `0` is a peer-side advisory ("do not
   pick me for new work"), not a local halt.
 - Changes are propagated to connected peers as a best-effort runtime signal.
-  Each peer updates its admission cache, and state resyncs after reconnect.
+  Each peer updates its weight cache, and state resyncs after reconnect.
 - Transitions are observable via the socket monitor event
-  `ZLINK_EVENT_PEER_ADMISSION_CHANGED`. The peer is identified by
-  `routing_id`, and `value` carries the new admission state.
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. The peer is identified by
+  `routing_id`, and `value` carries the new weight.
 
 ## Peer outbound from ROUTER
 
 When a ROUTER sends a directed message or request to another ROUTER, it
-checks the target RID's admission state before submit.
+checks the target RID's cached weight before submit.
 
-- If the target RID is `SERVING`, submit proceeds normally.
-- If the target RID is `DRAINING`, both `zlink_send_rid()` and
+- If the target RID has a positive weight, submit proceeds normally.
+- If the target RID has weight `0`, both `zlink_send_rid()` and
   `zlink_router_request()` fail immediately with
   `ZLINK_SUBMIT_NOT_ADMITTED`.
-- Because admission cache propagation is best-effort, a race can surface
+- Because weight-cache propagation is best-effort, a race can surface
   the same refusal first as `ZLINK_SUBMIT_NOT_CONNECTED`.
 
-Replies are not subject to admission. `zlink_router_reply()` answers an
-already-received request and is allowed regardless of admission state.
+Replies are not subject to this check. `zlink_router_reply()` answers an
+already-received request and is allowed regardless of peer weight.
 
 ## Functions
 
@@ -154,7 +159,7 @@ through `zlink_errno()` for diagnostics.
 and `ZLINK_DONTWAIT` was set. `NOT_CONNECTED` if the target peer is not
 connected (`ROUTER_MANDATORY` defaults to `1`, so this result is observable
 by default unless the option is explicitly disabled). `NOT_ADMITTED` if the
-target RID is in `DRAINING` admission state. `TERMINATED` if the
+target RID has weight `0`. `TERMINATED` if the
 context was terminated. See [errno-map.md](../errno-map.md) for the full
 result matrix.
 
@@ -177,8 +182,8 @@ zlink_submit_result_t zlink_send_rid (void *s_,
 Use `zlink_send_rid(..., ZLINK_DONTWAIT)` for non-blocking routed send.
 Non-blocking send returns `ZLINK_SUBMIT_BACKPRESSURED` when the operation
 would block, `ZLINK_SUBMIT_NOT_CONNECTED` when the peer is not reachable,
-and `ZLINK_SUBMIT_NOT_ADMITTED` when the target RID is in `DRAINING`
-admission state. See [errno-map.md](../errno-map.md) for the full result matrix.
+and `ZLINK_SUBMIT_NOT_ADMITTED` when the target RID has weight `0`. See
+[errno-map.md](../errno-map.md) for the full result matrix.
 
 On success, ownership of all parts is transferred to the library. On
 failure, ownership remains with the caller.

@@ -176,6 +176,21 @@ zlink_config_result_t zlink_set_spot_option (void *handle_,
                                             const void *optval_,
                                             size_t optvallen_)
 {
+    if (option_ == ZLINK_SPOT_OPT_WEIGHT) {
+        if (!optval_ || optvallen_ != sizeof (int)) {
+            errno = EINVAL;
+            return ZLINK_CONFIG_INVALID_ARGUMENT;
+        }
+        int value = 0;
+        memcpy (&value, optval_, sizeof (value));
+        if (value < 0 || value > 100) {
+            errno = EINVAL;
+            return ZLINK_CONFIG_INVALID_ARGUMENT;
+        }
+        return zlink::config_result_internal::from_rc (
+          zlink_service_set_weight (handle_, static_cast<uint32_t> (value)));
+    }
+
     if (option_ != ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
@@ -196,6 +211,21 @@ zlink_config_result_t zlink_get_spot_option (void *handle_,
                                             void *optval_,
                                             size_t *optvallen_)
 {
+    if (option_ == ZLINK_SPOT_OPT_WEIGHT) {
+        if (!optval_ || !optvallen_ || *optvallen_ < sizeof (int)) {
+            errno = EINVAL;
+            return ZLINK_CONFIG_INVALID_ARGUMENT;
+        }
+        uint32_t weight = 0;
+        const int rc = zlink_service_get_weight (handle_, &weight);
+        if (rc != 0)
+            return zlink::config_result_internal::from_rc (rc);
+        const int value = static_cast<int> (weight);
+        memcpy (optval_, &value, sizeof (value));
+        *optvallen_ = sizeof (value);
+        return ZLINK_CONFIG_OK;
+    }
+
     if (option_ != ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;

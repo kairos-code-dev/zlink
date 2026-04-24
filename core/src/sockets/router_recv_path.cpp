@@ -128,8 +128,8 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
     }
     if (routing_id_ok) {
         _fq.attach (pipe_);
-        if (local_admission_state () != ZLINK_ADMISSION_SERVING)
-            send_local_admission_state (pipe_);
+        if (local_peer_weight () != 100)
+            send_local_peer_weight (pipe_);
         (void) pipe_->check_read ();
         if (socket_msg_dispatch_active ())
             _fq.deactivate (pipe_);
@@ -360,7 +360,7 @@ int zlink::router_t::get_peer_state (const void *routing_id_,
         return -1;
     }
 
-    if (out_pipe->admission_state != ZLINK_ADMISSION_SERVING)
+    if (out_pipe->weight == 0)
         return 0;
 
     if (out_pipe->pipe->check_hwm ())

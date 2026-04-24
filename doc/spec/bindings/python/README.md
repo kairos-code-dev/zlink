@@ -44,10 +44,10 @@ with the rules here, this section wins.
   samples must drain until the recv path reports `EAGAIN`.
 - `Spot.on_routed_receive(...)` and `on_dispatch_event(...)` are mutually
   exclusive on the routed axis.
-- Every socket and `Spot` exposes `set_admission_state(state)` and
-  `get_admission_state()` using the typed enum
-  `AdmissionState.serving` (1) and `AdmissionState.draining` (2). Submit
-  attempts to a drained peer raise `SubmitError` whose `code` is
+- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
+  and `Spot` through typed option/property surfaces. The value range is
+  `0..100`, default `100`; `0` drains new outbound selection. Submit
+  attempts to a weight-`0` peer raise `SubmitError` whose `code` is
   `SubmitResult.NOT_ADMITTED`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
@@ -126,13 +126,9 @@ Python nonblocking data-plane helpers follow this rule:
   `DONTWAIT` and no message is currently available, and still raise
   `RecvError` for real recv failures.
 
-All sockets (and `Spot`) expose the admission-state accessor pair:
-
-```python
-# Inherited on every socket type (and on Spot):
-def get_admission_state(self) -> AdmissionState: ...                         # Raises: ConfigError
-def set_admission_state(self, state: AdmissionState) -> None: ...            # Raises: ConfigError
-```
+Peer weight is not a common-socket accessor. Bindings expose it only on the
+implemented weight-bearing handles (`RouterSocket`, `DealerSocket`,
+`SpotNode`, and `Spot`) through their typed option/property surfaces.
 
 ### PairSocket
 
@@ -679,7 +675,7 @@ class SubmitResult(IntEnum):
     OUT_OF_MEMORY = 10
     SEQ_EXHAUSTED = 11
     INTERNAL_ERROR = 12
-    NOT_ADMITTED = 13   # target peer is in AdmissionState.DRAINING
+    NOT_ADMITTED = 13   # target peer has weight 0
 ```
 
 ### RequestResult
@@ -973,8 +969,8 @@ alias for backward compatibility.
 
 ```python
 class MonitorEvent:
-    event: MonitorEventType          # enum (CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_ADMISSION_CHANGED, ...)
-    value: int                       # event-specific detail (PEER_ADMISSION_CHANGED carries the new AdmissionState)
+    event: MonitorEventType          # enum (CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_WEIGHT_CHANGED, ...)
+    value: int                       # event-specific detail (PEER_WEIGHT_CHANGED carries the new 0..100 weight)
     routing_id: RoutingId | None     # peer routing id when carried by the event, else None
     local_addr: str                  # local endpoint
     remote_addr: str                 # remote endpoint
@@ -982,9 +978,9 @@ class MonitorEvent:
 SocketMonitorEvent = MonitorEvent    # backward-compat alias; prefer MonitorEvent
 ```
 
-`MonitorEventType` includes `PEER_ADMISSION_CHANGED` (bit 15). Service
+`MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15). Service
 monitors surface the same change through
-`ServiceMonitorMask.PEER_ADMISSION_CHANGED` (bit 8).
+`ServiceMonitorMask.PEER_WEIGHT_CHANGED` (bit 8).
 
 ### MonitorEventMask
 
@@ -1253,7 +1249,7 @@ class MemberPeerEntry:
     endpoint: str
     routing_id: RoutingId
     value: int                       # int64
-    admission_state: AdmissionState  # SERVING | DRAINING
+    weight: int                      # uint32, 0..100
 
 @dataclass(frozen=True)
 class RegistryTopologyEntry:
@@ -1318,7 +1314,7 @@ class SpotNodePeerEntry:
     peer_endpoint: str
     source: int                      # zlink_spot_peer_source_t
     state: int                       # zlink_spot_peer_state_t
-    admission_state: AdmissionState  # SERVING | DRAINING
+    weight: int                      # uint32, 0..100
     connected_since_ms: int
     last_changed_ms: int
 
@@ -1330,10 +1326,6 @@ class SpotNodeSubjectEntry:
     ready_peer_count: int
     active_peer_count: int
     last_changed_ms: int
-
-class AdmissionState(IntEnum):
-    SERVING = 1
-    DRAINING = 2
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryFilter:

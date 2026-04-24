@@ -670,7 +670,7 @@ typedef struct zlink_member_peer_entry_t
     char service_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
-    zlink_admission_state_t admission_state;
+    uint32_t weight;
     int64_t value;
 } zlink_member_peer_entry_t;
 ```
@@ -682,7 +682,7 @@ typedef struct zlink_member_peer_entry_t
 | `service_name` | null 종료 서비스 이름. |
 | `endpoint` | null 종료 엔드포인트. |
 | `routing_id` | 피어의 라우팅 아이덴티티. |
-| `admission_state` | `zlink_admission_state_t`. `SERVING` 은 provider 가 신규 outbound 를 수락함을 의미하고, `DRAINING` 은 신규 outbound 를 거부하며 auto-connect outbound 후보에서 제외됨을 의미한다. |
+| `weight` | 현재 peer 가중치 (`0..100`). `0`은 provider를 새 outbound 후보에서 제외함을 뜻하고, 양수 값은 후보에 남되 값 비율에 맞게 더 자주 또는 덜 자주 선택됨을 뜻한다. |
 | `value` | 서비스별 숫자 값. |
 
 ---

@@ -249,7 +249,7 @@ send, request submit, reply submit API의 공개 결과를 정규화할 때
 | `ZLINK_SUBMIT_BACKPRESSURED` | 1 | 송신 큐가 가득 참 (HWM 도달) |
 | `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | 대상 경로나 peer가 아직 연결되지 않음 |
 | `ZLINK_SUBMIT_NOT_FOUND` | 3 | 대상 peer, spot, routed destination을 찾지 못함 |
-| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow 결과. DRAINING 대상이 신규 outbound를 거부함; 호출자는 다른 peer를 선택하거나 대기해야 함 |
+| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow 결과. 가중치 `0` 대상이 신규 outbound를 거부함; 호출자는 다른 peer를 선택하거나 대기해야 함 |
 | `ZLINK_SUBMIT_TERMINATED` | 4 | context가 종료됨 |
 | `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | 핸들이 NULL이거나 유효하지 않음 |
 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | 6 | API 계약에 맞지 않는 인자 |

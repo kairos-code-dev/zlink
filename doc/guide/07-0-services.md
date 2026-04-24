@@ -144,29 +144,31 @@ implementations, and adding a new service only requires changes to
 `api/service_*_api.cpp`, the corresponding `*_access` file, and the
 service implementation files.
 
-## 4.1 Graceful Maintenance (admission state)
+## 4.1 Graceful Maintenance (weight)
 
 When you need to take a SPOT Node or raw ROUTER offline for maintenance,
 prefer a graceful drain over an abrupt disconnect. Marking the node as
-`DRAINING` lets in-flight work finish while peers automatically stop
+weight `0` lets in-flight work finish while peers automatically stop
 selecting it as a target for new outbound work.
 
 Recommended sequence:
 
-1. Call `zlink_set_admission_state(handle, ZLINK_ADMISSION_DRAINING)`.
-2. Allow connected peers a moment to update their admission caches. You
+1. Set the handle-specific weight option to `0`.
+2. Allow connected peers a moment to update their weight caches. You
    can observe this via the socket monitor event
-   `ZLINK_EVENT_PEER_ADMISSION_CHANGED`. If you need the service-layer
+   `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. If you need the service-layer
    view, observe the `Discovery` handle for the same peers through
-   `ZLINK_SERVICE_MONITOR_EVENT_PEER_ADMISSION_CHANGED`.
+   `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`.
 3. Wait long enough for in-flight replies to drain. In production this
    wait is typically driven by your request SLA.
-4. Restart or replace the node, then rejoin the service with
-   `zlink_set_admission_state(handle, ZLINK_ADMISSION_SERVING)`.
+4. Restart or replace the node, then rejoin the service with a positive
+   weight, usually `100`.
 
 ```c
-/* 1) Drain orders-exec-1 before maintenance */
-zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_DRAINING);
+int drain_weight = 0;
+zlink_set_spot_node_option(
+    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    &drain_weight, sizeof(drain_weight));
 
 /* 2) Wait for in-flight requests to complete (for example, SLA + small
       margin) while peers re-route new work to other orders-exec nodes. */
@@ -175,15 +177,18 @@ sleep_seconds(60);
 /* 3) Restart or replace this node ... */
 
 /* 4) Rejoin the service */
-zlink_set_admission_state(orders_exec_node, ZLINK_ADMISSION_SERVING);
+int serve_weight = 100;
+zlink_set_spot_node_option(
+    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    &serve_weight, sizeof(serve_weight));
 ```
 
-A node in `DRAINING` keeps serving recv/send/reply/handler traffic
-normally. Admission state is a peer-side advisory ("do not pick me for
-new work"), not a local halt. Peer submits that meet the `DRAINING` state
-are rejected with `ZLINK_SUBMIT_NOT_ADMITTED`. The connection itself
+A node with weight `0` keeps serving recv/send/reply/handler traffic
+normally. Weight is a peer-side advisory ("do not pick me for
+new work"), not a local halt. Peer submits that see weight `0` are
+rejected with `ZLINK_SUBMIT_NOT_ADMITTED`. The connection itself
 stays alive, so the node automatically becomes a candidate again once it
-returns to `SERVING`.
+returns to a positive weight.
 
 ## 5. Relationships Between Services
 

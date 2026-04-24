@@ -168,14 +168,13 @@ dial하도록 내부에서 결정합니다.
   `zlink_connect()`를 호출하는 수동 연결은 라이브러리가 중재하지 않으며,
   연결 방향 책임은 호출자에게 남습니다.
 
-### 자동 연결 peer 항목과 admission 상태
+### 자동 연결 peer 항목과 가중치
 
-Discovery가 노출하는 peer 항목은 admission 상태를 함께 가집니다.
-`zlink_member_peer_entry_t.admission_state`는 그 peer가 현재
-`ZLINK_ADMISSION_SERVING`인지 `ZLINK_ADMISSION_DRAINING`인지를 나타냅니다.
-DEALER attachment는 `DRAINING` ROUTER를 round-robin 후보에서 제외하고,
-모두 `DRAINING`이면 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
-admission 상태의 의미와 변경 방법은 [router.ko.md](../socket/router.ko.md)와
+Discovery가 노출하는 peer 항목은 peer 가중치를 함께 가집니다.
+`zlink_member_peer_entry_t.weight`는 각 peer의 현재 `0..100` 값을 나타냅니다.
+DEALER attachment는 가중치가 `0`인 peer를 후보에서 제외하고,
+모두 `0`이면 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
+가중치 규약과 변경 방법은 [router.ko.md](../socket/router.ko.md)와
 [spot.ko.md](spot.ko.md)에 정리되어 있습니다.
 
 DEALER는 예외적으로 서비스 단위 정책 변경을 허용할 수 있습니다. 서비스가

@@ -84,10 +84,12 @@ void test_timer_poller_and_recv ()
     bool got_event = false;
     for (int attempt = 0; attempt < 5; ++attempt) {
         const int rc = zlink_poller_wait (poller, &ev, 500, NULL);
-        if (rc != -1) {
+        if (rc == 1) {
             got_event = true;
             break;
         }
+        if (rc == 0)
+            continue;
 
         TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
     }

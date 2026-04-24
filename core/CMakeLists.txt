@@ -982,6 +982,7 @@ set(api-sources
     src/api/service_spot_request_reply_local_request.cpp
     src/api/service_spot_request_reply_local_direct.cpp
     src/api/service_spot_request_reply_completion.cpp
+    src/api/service_spot_request_reply_callback_api.cpp
     src/api/service_spot_request_reply_part_submit.cpp
     src/api/service_spot_request_reply_routed_delivery.cpp
     src/api/service_spot_request_reply_progress.cpp
@@ -997,6 +998,7 @@ set(api-sources
     src/api/socket_message_send_api.cpp
     src/api/socket_request_reply_dispatch.cpp
     src/api/socket_request_reply_internal.cpp
+    src/api/socket_request_reply_router_api.cpp
     src/api/socket_request_reply_api.cpp
     src/api/socket_api.cpp
     src/api/timer_api.cpp
@@ -1070,6 +1072,7 @@ set(discovery-sources
     src/services/discovery/discovery_registry_client.cpp
     src/services/discovery/discovery_service_state.cpp
     src/services/discovery/socket_discovery_attachment.cpp
+    src/services/discovery/socket_discovery_attachment_lifecycle.cpp
     src/services/discovery/discovery_registration_propagation.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
@@ -1080,6 +1083,7 @@ set(spot-sources
     src/services/spot/spot_data_plane.cpp
     src/services/spot/spot_data_plane_forwarding.cpp
     src/services/spot/spot_data_plane_loop.cpp
+    src/services/spot/spot_data_plane_control.cpp
     src/services/spot/spot_data_plane_message_io.cpp
     src/services/spot/spot_data_plane_runtime.cpp
     src/services/spot/spot_data_plane_protocol.cpp
@@ -1093,6 +1097,7 @@ set(spot-sources
     src/services/spot/spot_node_access.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp
+    src/services/spot/spot_node_control_task.cpp
     src/services/spot/spot_node_control_policy.cpp
     src/services/spot/spot_node_defaults.cpp
     src/services/spot/spot_node_handles.cpp
@@ -1105,6 +1110,7 @@ set(spot-sources
     src/services/spot/spot_pub.cpp
     src/services/spot/spot_dispatch_context.cpp
     src/services/spot/spot_runtime.cpp
+    src/services/spot/spot_runtime_shutdown.cpp
     src/services/spot/spot_sub_lifecycle.cpp
     src/services/spot/spot_sub_option.cpp
     src/services/spot/spot_sub_recv.cpp
@@ -1127,6 +1133,7 @@ set(socket-sources
     src/sockets/socket_base_routing.cpp
     src/sockets/socket_runtime.cpp
     src/sockets/dealer.cpp
+    src/sockets/router_admission.cpp
     src/sockets/router.cpp
     src/sockets/stream.cpp
     src/sockets/stream_dispatch_send.cpp

@@ -142,7 +142,8 @@ template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
     bool probe (bool (*fn_) (const T &))
     {
         const bool rc = check_read ();
-        zlink_assert (rc);
+        if (!rc)
+            return false;
 
         return (*fn_) (_queue.front ());
     }

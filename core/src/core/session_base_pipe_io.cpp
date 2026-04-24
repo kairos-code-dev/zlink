@@ -153,7 +153,16 @@ void zlink::session_base_t::clean_pipes ()
         int rc = msg.init ();
         errno_assert (rc == 0);
         rc = pull_msg (&msg);
-        errno_assert (rc == 0);
+        if (rc != 0) {
+            const int saved_errno = errno;
+            rc = msg.close ();
+            errno_assert (rc == 0);
+            if (saved_errno == EAGAIN) {
+                _incomplete_in = false;
+                break;
+            }
+            errno_assert (false);
+        }
         rc = msg.close ();
         errno_assert (rc == 0);
     }

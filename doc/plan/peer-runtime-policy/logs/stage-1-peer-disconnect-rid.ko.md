@@ -64,4 +64,4 @@
 ## 커밋과 push
 - 기능 커밋: `7d8b3af7` (`core: add peer disconnect by routing id`)
 - 단계 로그 hash 기록은 별도 follow-up commit으로 남긴다.
-- push: 진행 예정
+- push: 성공, `main` -> `github.com-kairos:kairos-code-dev/zlink.git`, `924f8f0a..bb2b20fe`

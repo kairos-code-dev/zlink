@@ -95,7 +95,7 @@ jobs:
             -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_SHARED=ON `
-            -DBUILD_STATIC=OFF `
+            -DBUILD_STATIC=ON `
             -DBUILD_TESTS=ON `
             -DZLINK_CXX_STANDARD=17 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"

@@ -111,7 +111,9 @@ static inline const char *endpoint_3 ()
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <io.h>
 #include <stdexcept>
+// Import the CRT close declaration before aliasing socket closes on Windows.
 #define close closesocket
 typedef int socket_size_t;
 inline const char *as_setsockopt_opt_t (const void *opt)

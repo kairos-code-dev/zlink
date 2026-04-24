@@ -17,27 +17,77 @@ void tearDown ()
 
 namespace
 {
+bool allocate_loopback_tcp_endpoint_local (std::string *endpoint_out_)
+{
+    if (!endpoint_out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 256; ++attempt) {
+        fd_t fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (fd == retired_fd)
+            continue;
+
+        int reuse = 1;
+        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, as_setsockopt_opt_t (&reuse),
+                    sizeof (reuse));
+
+        struct sockaddr_in addr;
+        memset (&addr, 0, sizeof (addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+        addr.sin_port = 0;
+
+        if (bind (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                  sizeof (addr))
+            == 0) {
+#if defined ZLINK_HAVE_WINDOWS
+            int addr_len = sizeof (addr);
+#else
+            socklen_t addr_len = sizeof (addr);
+#endif
+            if (getsockname (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                             &addr_len)
+                == 0) {
+                close (fd);
+                std::ostringstream endpoint;
+                endpoint << "tcp://127.0.0.1:" << ntohs (addr.sin_port);
+                *endpoint_out_ = endpoint.str ();
+                return true;
+            }
+        }
+
+        close (fd);
+    }
+
+    errno = EADDRINUSE;
+    return false;
+}
+
 bool bind_registry_test_endpoints_local (void *registry_,
                                          std::string *pub_out_,
                                          std::string *router_out_)
 {
-    const int base_port = 47000 + test_port_offset ();
-    for (int i = 0; i < 128; ++i) {
-        std::ostringstream pub_endpoint;
-        std::ostringstream router_endpoint;
-        pub_endpoint << "tcp://127.0.0.1:" << (base_port + i * 2);
-        router_endpoint << "tcp://127.0.0.1:" << (base_port + i * 2 + 1);
-        if (zlink_registry_bind (
-              registry_, pub_endpoint.str ().c_str (),
-              router_endpoint.str ().c_str ())
+    for (int i = 0; i < 256; ++i) {
+        std::string pub_endpoint;
+        std::string router_endpoint;
+        if (!allocate_loopback_tcp_endpoint_local (&pub_endpoint)
+            || !allocate_loopback_tcp_endpoint_local (&router_endpoint)
+            || pub_endpoint == router_endpoint) {
+            continue;
+        }
+        if (zlink_registry_bind (registry_, pub_endpoint.c_str (),
+                                 router_endpoint.c_str ())
             == ZLINK_BIND_OK) {
             if (pub_out_)
-                *pub_out_ = pub_endpoint.str ();
+                *pub_out_ = pub_endpoint;
             if (router_out_)
-                *router_out_ = router_endpoint.str ();
+                *router_out_ = router_endpoint;
             return true;
         }
     }
+    errno = EADDRINUSE;
     return false;
 }
 
@@ -46,16 +96,17 @@ bool bind_spot_test_endpoint_local (void *node_, std::string *endpoint_out_)
     if (!node_)
         return false;
 
-    const int base_port = 48000 + test_port_offset ();
-    for (int i = 0; i < 128; ++i) {
-        std::ostringstream endpoint;
-        endpoint << "tcp://127.0.0.1:" << (base_port + i);
-        if (zlink_spot_node_bind (node_, endpoint.str ().c_str ()) == 0) {
+    for (int i = 0; i < 256; ++i) {
+        std::string endpoint;
+        if (!allocate_loopback_tcp_endpoint_local (&endpoint))
+            continue;
+        if (zlink_spot_node_bind (node_, endpoint.c_str ()) == 0) {
             if (endpoint_out_)
-                *endpoint_out_ = endpoint.str ();
+                *endpoint_out_ = endpoint;
             return true;
         }
     }
+    errno = EADDRINUSE;
     return false;
 }
 

@@ -17,6 +17,54 @@ void tearDown ()
 
 namespace
 {
+bool allocate_loopback_tcp_endpoint_local (char *endpoint_out_,
+                                           size_t endpoint_size_)
+{
+    if (!endpoint_out_ || endpoint_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 256; ++attempt) {
+        fd_t fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (fd == retired_fd)
+            continue;
+
+        int reuse = 1;
+        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, as_setsockopt_opt_t (&reuse),
+                    sizeof (reuse));
+
+        struct sockaddr_in addr;
+        memset (&addr, 0, sizeof (addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+        addr.sin_port = 0;
+
+        if (bind (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                  sizeof (addr))
+            == 0) {
+ #if defined ZLINK_HAVE_WINDOWS
+            int addr_len = sizeof (addr);
+ #else
+            socklen_t addr_len = sizeof (addr);
+ #endif
+            if (getsockname (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                             &addr_len)
+                == 0) {
+                close (fd);
+                snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%u",
+                          static_cast<unsigned> (ntohs (addr.sin_port)));
+                return true;
+            }
+        }
+
+        close (fd);
+    }
+
+    errno = EADDRINUSE;
+    return false;
+}
+
 bool bind_registry_test_endpoints_local (void *registry_,
                                          int base_port_,
                                          char *pub_out_,
@@ -30,19 +78,20 @@ bool bind_registry_test_endpoints_local (void *registry_,
         return false;
     }
 
-    const int base = base_port_ + test_port_offset ();
-    for (int i = 0; i < 1024; ++i) {
-        snprintf (pub_out_, pub_size_, "tcp://127.0.0.1:%d", base + i * 2);
-        snprintf (router_out_, router_size_, "tcp://127.0.0.1:%d",
-                  base + i * 2 + 1);
-        if (zlink_registry_bind (registry_, pub_out_, router_out_)
-            == ZLINK_BIND_OK) {
-            return true;
-        }
-        if (errno == EADDRINUSE)
+    LIBZLINK_UNUSED (base_port_);
+
+    for (int i = 0; i < 256; ++i) {
+        if (!allocate_loopback_tcp_endpoint_local (pub_out_, pub_size_)
+            || !allocate_loopback_tcp_endpoint_local (router_out_, router_size_)
+            || strcmp (pub_out_, router_out_) == 0) {
             continue;
+        }
+        if (zlink_registry_bind (registry_, pub_out_, router_out_)
+            == ZLINK_BIND_OK)
+            return true;
     }
 
+    errno = EADDRINUSE;
     return false;
 }
 
@@ -56,16 +105,16 @@ bool bind_socket_test_endpoint_local (void *socket_,
         return false;
     }
 
-    const int base = base_port_ + test_port_offset ();
-    for (int i = 0; i < 1024; ++i) {
-        snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%d",
-                  base + i);
+    LIBZLINK_UNUSED (base_port_);
+
+    for (int i = 0; i < 256; ++i) {
+        if (!allocate_loopback_tcp_endpoint_local (endpoint_out_, endpoint_size_))
+            continue;
         if (zlink_bind (socket_, endpoint_out_) == ZLINK_BIND_OK)
             return true;
-        if (errno == EADDRINUSE)
-            continue;
     }
 
+    errno = EADDRINUSE;
     return false;
 }
 
@@ -92,6 +141,31 @@ bool destroy_discovery_with_retry_local (void **discovery_p_, int timeout_ms_)
             return true;
         if (zlink_errno () != EBUSY)
             return false;
+        msleep (25);
+    }
+    return false;
+}
+
+bool wait_for_discovery_member_role_count_local (
+  void *discovery_,
+  zlink_service_role_t service_role_,
+  size_t expected_count_,
+  int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_member_peer_entry_t entries[8];
+        size_t count = 8;
+        if (zlink_discovery_member_peers (discovery_, entries, &count)
+            == ZLINK_CONFIG_OK) {
+            size_t matched = 0;
+            for (size_t j = 0; j < count; ++j) {
+                if (entries[j].service_role == service_role_)
+                    ++matched;
+            }
+            if (matched >= expected_count_)
+                return true;
+        }
         msleep (25);
     }
     return false;
@@ -195,6 +269,10 @@ void test_socket_discovery_default_dealer_mode_targets_router ()
     memset (&dealer_rid, 0, sizeof (dealer_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router, &router_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (dealer, &dealer_rid));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      dealer_discovery, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      router_discovery, ZLINK_SERVICE_ROLE_DEALER, 1, 10000));
 
     zlink_registry_topology_filter_t dealer_filter;
     init_socket_topology_filter_local (&dealer_filter, "socket-auto-router",
@@ -278,6 +356,10 @@ void test_socket_discovery_default_dealer_mode_ignores_dealer_peers ()
     memset (&dealer_b_rid, 0, sizeof (dealer_b_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (dealer_a, &dealer_a_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (dealer_b, &dealer_b_rid));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_a, ZLINK_SERVICE_ROLE_DEALER, 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_b, ZLINK_SERVICE_ROLE_DEALER, 1, 10000));
 
     zlink_registry_topology_filter_t filter_a;
     init_socket_topology_filter_local (&filter_a, "socket-auto-default",
@@ -365,6 +447,10 @@ void test_socket_discovery_explicit_dealer_mode_targets_dealer ()
     memset (&dealer_b_rid, 0, sizeof (dealer_b_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (dealer_a, &dealer_a_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (dealer_b, &dealer_b_rid));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_a, ZLINK_SERVICE_ROLE_DEALER, 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_b, ZLINK_SERVICE_ROLE_DEALER, 1, 10000));
 
     zlink_registry_topology_filter_t filter_a;
     init_socket_topology_filter_local (&filter_a, "socket-auto-dealer",
@@ -446,6 +532,10 @@ void test_socket_discovery_router_router_uses_single_initiator ()
     memset (&rid_b, 0, sizeof (rid_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router_a, &rid_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router_b, &rid_b));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_a, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_b, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
 
     zlink_registry_topology_filter_t filter_a;
     init_socket_topology_filter_local (&filter_a, "socket-auto-router-router",

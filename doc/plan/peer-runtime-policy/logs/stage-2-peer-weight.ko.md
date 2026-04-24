@@ -56,4 +56,5 @@
   - 내부 lifecycle 용어만 남아 있음. stage 2 제거 대상 아님.
 
 ## 커밋과 push
-- 기능 커밋, push 결과는 stage 종료 시 별도 commit으로 기록한다.
+- 기능 커밋: `383d1c79` (`core: add peer weight routing policy`)
+- push: 성공, `main` -> `github.com-kairos:kairos-code-dev/zlink.git`, `db1c01f9..383d1c79`

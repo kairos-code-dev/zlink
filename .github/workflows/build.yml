@@ -87,6 +87,7 @@ jobs:
         shell: pwsh
         run: |
           $buildDir = "build-win-x64"
+          $distDir = "core\dist\windows-x64"
           New-Item -ItemType Directory -Force -Path $buildDir
           cd $buildDir
           cmake ..\core `
@@ -99,7 +100,17 @@ jobs:
             -DZLINK_CXX_STANDARD=17 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
           cmake --build . --config Release --parallel
-          cmake --install . --config Release --prefix ../core/dist/windows-x64
+
+          New-Item -ItemType Directory -Force -Path "..\$distDir\bin", "..\$distDir\lib", "..\$distDir\include", "..\$distDir\lib\pkgconfig" | Out-Null
+          Copy-Item ".\bin\Release\zlink.dll" "..\$distDir\bin\zlink.dll" -Force
+          Copy-Item ".\lib\Release\zlink.lib" "..\$distDir\lib\zlink.lib" -Force
+          if (Test-Path ".\bin\Release\zlink.pdb") {
+            Copy-Item ".\bin\Release\zlink.pdb" "..\$distDir\bin\zlink.pdb" -Force
+          }
+          if (Test-Path ".\libzlink.pc") {
+            Copy-Item ".\libzlink.pc" "..\$distDir\lib\pkgconfig\libzlink.pc" -Force
+          }
+          Copy-Item "..\core\include\*.h" "..\$distDir\include\" -Force
 
       - name: Install Visual C++ Redistributable
         shell: pwsh
@@ -122,8 +133,16 @@ jobs:
           $distDir = "core\dist\windows-x64"
           $ucrtPath = "C:\Windows\System32\ucrtbase.dll"
           if (Test-Path $ucrtPath) {
-            Copy-Item $ucrtPath "$distDir\ucrtbase.dll" -Force
+            Copy-Item $ucrtPath "$distDir\bin\ucrtbase.dll" -Force
             Write-Host "Copied ucrtbase.dll to $distDir"
+          }
+
+          $opensslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
+          foreach ($dllPattern in @("libssl-*.dll", "libcrypto-*.dll")) {
+            Get-ChildItem $opensslBin -Filter $dllPattern -ErrorAction SilentlyContinue | ForEach-Object {
+              Copy-Item $_.FullName "$distDir\bin\" -Force
+              Write-Host "Copied $($_.Name) to $distDir\bin"
+            }
           }
 
       - name: Check DLL dependencies
@@ -164,6 +183,7 @@ jobs:
         shell: pwsh
         run: |
           $buildDir = "build-win-arm64"
+          $distDir = "core\dist\windows-arm64"
           New-Item -ItemType Directory -Force -Path $buildDir
           cd $buildDir
           cmake ..\core `
@@ -178,7 +198,17 @@ jobs:
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           cmake --build . --config Release --parallel
-          cmake --install . --config Release --prefix ../core/dist/windows-arm64
+
+          New-Item -ItemType Directory -Force -Path "..\$distDir\bin", "..\$distDir\lib", "..\$distDir\include", "..\$distDir\lib\pkgconfig" | Out-Null
+          Copy-Item ".\bin\Release\zlink.dll" "..\$distDir\bin\zlink.dll" -Force
+          Copy-Item ".\lib\Release\zlink.lib" "..\$distDir\lib\zlink.lib" -Force
+          if (Test-Path ".\bin\Release\zlink.pdb") {
+            Copy-Item ".\bin\Release\zlink.pdb" "..\$distDir\bin\zlink.pdb" -Force
+          }
+          if (Test-Path ".\libzlink.pc") {
+            Copy-Item ".\libzlink.pc" "..\$distDir\lib\pkgconfig\libzlink.pc" -Force
+          }
+          Copy-Item "..\core\include\*.h" "..\$distDir\include\" -Force
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

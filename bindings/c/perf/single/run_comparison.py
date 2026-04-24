@@ -595,6 +595,7 @@ def run_single_test(
     env = get_env_for_lib(current_lib_dir)
     cmd = build_bench_cmd(binary_path, [lib_name, transport, str(size)], pin_cpu)
     timeout_retry_limit = max(0, parse_env_int("PERF_SINGLE_TIMEOUT_RETRIES", 1))
+    failure_retry_limit = max(0, parse_env_int("PERF_SINGLE_FAILURE_RETRIES", 1))
     last_outcome = RunOutcome(status="fail", reason="no_data")
 
     for attempt in range(timeout_retry_limit + 1):
@@ -639,12 +640,16 @@ def run_single_test(
         special = detect_special_status(stdout, lib_name, pattern, transport)
         return_code = int(sampled.get("returncode") or 0)
         if return_code != 0:
-            return RunOutcome(
+            last_outcome = RunOutcome(
                 status="fail",
                 reason=f"non_zero_exit_{return_code}",
                 warnings=warnings or None,
                 stderr=stderr,
             )
+            if attempt < failure_retry_limit:
+                time.sleep(1.0)
+                continue
+            return last_outcome
 
         if "throughput" in metrics and "bandwidth" in metrics and "latency" in metrics:
             latency_mean, latency_p95, latency_p99 = resolve_latency_triplet(

@@ -15,7 +15,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace zlink
 {
@@ -23,6 +27,18 @@ namespace spot_reqrep_internal
 {
 namespace
 {
+#ifdef _WIN32
+int current_process_id ()
+{
+    return _getpid ();
+}
+#else
+int current_process_id ()
+{
+    return getpid ();
+}
+#endif
+
 enum : uint8_t
 {
     zmp_router_class = 0x02
@@ -61,7 +77,7 @@ struct spot_route_stats_t
         std::fflush (stderr);
         char path[128];
         std::snprintf (path, sizeof (path), "/tmp/zlink_spot_route_publish_%d.log",
-                       static_cast<int> (getpid ()));
+                       current_process_id ());
         FILE *fp = std::fopen (path, "a");
         if (fp) {
             std::fprintf (fp, "count=%llu ns=%llu avg_ns=%llu\n", count,

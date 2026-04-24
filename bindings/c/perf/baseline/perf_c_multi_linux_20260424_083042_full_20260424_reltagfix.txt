@@ -1,0 +1,1292 @@
+META,os,Linux 6.6.87.2-microsoft-standard-WSL2
+META,cpu,Intel(R) Core(TM) Ultra 7 265K
+META,cores,20
+META,build,Release
+META,commit,5e2941be
+META,timestamp,2026-04-24T08:30:42+09:00
+META,load_avg,12.91 10.46 6.16
+META,runs,1
+META,clients,100
+
+## Effective Options (start)
+- lang: c
+- suite: multi
+- runs: 1
+- patterns: MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM
+- transports: tcp,tls,ws,wss
+- msg_sizes: 64,256,1024,65536,131072,262144
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: mixed-default(10,100)
+- sndhwm: mixed-default(10,100)
+- rcvhwm: mixed-default(10,100)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- connect_concurrency: 128 (default)
+- connect_ready_timeout_ms: 5000
+- monitor_hwm: 1000
+- server_ready_timeout_ms: 10000
+- server_shutdown_timeout_ms: 5000
+- server_bind_port: 0
+- transport_transition_ms: 3000
+- pattern_transition_ms: 3000
+- lat_timeout_ms: 5000
+- stream_non_tcp_clients_max: 10000
+- disable_resource_metrics: 0
+- timeout_seconds: auto
+## PATTERN: MULTI_DEALER_DEALER (one-way)
+  > Benchmarking current for MULTI_DEALER_DEALER...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |  3779.829 Kmsg/s |    241.909 MB/s |     0.114 ms |     0.159 ms |     0.308 ms |
+    Testing tcp | 256B:
+      | 256B     |  1689.142 Kmsg/s |    432.420 MB/s |     0.180 ms |     0.390 ms |     0.625 ms |
+    Testing tcp | 1024B:
+      | 1024B    |  1355.800 Kmsg/s |   1388.339 MB/s |     3.056 ms |     8.023 ms |    10.377 ms |
+    Testing tcp | 65536B:
+      | 65536B   |   186.708 Kmsg/s |  12236.122 MB/s |    40.324 ms |    87.024 ms |    94.972 ms |
+    Testing tcp | 131072B:
+      | 131072B  |    92.328 Kmsg/s |  12101.616 MB/s |    80.877 ms |   146.530 ms |   163.309 ms |
+    Testing tcp | 262144B:
+      | 262144B  |    50.046 Kmsg/s |  13119.311 MB/s |   149.022 ms |   290.383 ms |   373.660 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |  3778.092 Kmsg/s |    241.798 MB/s |     0.123 ms |     0.194 ms |     0.339 ms |
+    Testing tls | 256B:
+      | 256B     |  1722.051 Kmsg/s |    440.845 MB/s |     0.290 ms |     0.793 ms |     1.303 ms |
+    Testing tls | 1024B:
+      | 1024B    |  1408.932 Kmsg/s |   1442.746 MB/s |     0.552 ms |     2.013 ms |     5.351 ms |
+    Testing tls | 65536B:
+      | 65536B   |    70.186 Kmsg/s |   4599.683 MB/s |   158.721 ms |   326.284 ms |   395.767 ms |
+    Testing tls | 131072B:
+      | 131072B  |    37.011 Kmsg/s |   4851.158 MB/s |   223.908 ms |   414.102 ms |   520.001 ms |
+    Testing tls | 262144B:
+      | 262144B  |    25.081 Kmsg/s |   6574.781 MB/s |   294.139 ms |   474.181 ms |   540.727 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing ws | 64B:
+      | 64B      |  3768.295 Kmsg/s |    241.171 MB/s |     0.400 ms |     1.479 ms |     7.217 ms |
+    Testing ws | 256B:
+      | 256B     |  1799.460 Kmsg/s |    460.662 MB/s |     0.304 ms |     0.812 ms |     1.739 ms |
+    Testing ws | 1024B:
+      | 1024B    |  1498.274 Kmsg/s |   1534.233 MB/s |     0.608 ms |     2.087 ms |     4.757 ms |
+    Testing ws | 65536B:
+      | 65536B   |   150.989 Kmsg/s |   9895.241 MB/s |    49.969 ms |    82.207 ms |    90.638 ms |
+    Testing ws | 131072B:
+      | 131072B  |    35.609 Kmsg/s |   4667.317 MB/s |   399.708 ms |   670.816 ms |   805.929 ms |
+    Testing ws | 262144B:
+      | 262144B  |    18.732 Kmsg/s |   4910.429 MB/s |   579.126 ms |   872.472 ms |  1040.887 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing wss | 64B:
+      | 64B      |  3678.755 Kmsg/s |    235.440 MB/s |     3.171 ms |    22.735 ms |    34.781 ms |
+    Testing wss | 256B:
+      | 256B     |  1761.234 Kmsg/s |    450.876 MB/s |     0.558 ms |     1.837 ms |     4.590 ms |
+    Testing wss | 1024B:
+      | 1024B    |  1127.083 Kmsg/s |   1154.133 MB/s |     6.653 ms |    10.906 ms |    14.160 ms |
+    Testing wss | 65536B:
+      | 65536B   |    54.185 Kmsg/s |   3551.042 MB/s |   140.169 ms |   200.129 ms |   218.045 ms |
+    Testing wss | 131072B:
+      | 131072B  |    27.910 Kmsg/s |   3658.193 MB/s |   267.518 ms |   419.642 ms |   478.643 ms |
+    Testing wss | 262144B:
+      | 262144B  |    14.707 Kmsg/s |   3855.247 MB/s |   489.092 ms |   756.602 ms |   859.631 ms |
+    Testing wss: Done
+[pattern cooldown 3000ms]
+
+===============================================================================
+
+## PATTERN: MULTI_DEALER_ROUTER (echo)
+  > Benchmarking current for MULTI_DEALER_ROUTER...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |   358.347 Kops/s |     45.868 MB/s |     0.129 ms |     0.201 ms |     0.283 ms |
+    Testing tcp | 256B:
+      | 256B     |   414.316 Kops/s |    212.130 MB/s |     0.110 ms |     0.166 ms |     0.207 ms |
+    Testing tcp | 1024B:
+      | 1024B    |   420.252 Kops/s |    860.676 MB/s |     0.109 ms |     0.165 ms |     0.201 ms |
+    Testing tcp | 65536B:
+      | 65536B   |   148.250 Kops/s |  19431.398 MB/s |     0.329 ms |     0.562 ms |     0.686 ms |
+    Testing tcp | 131072B:
+      | 131072B  |    66.414 Kops/s |  17409.979 MB/s |     0.743 ms |     1.218 ms |     1.484 ms |
+    Testing tcp | 262144B:
+      | 262144B  |    26.071 Kops/s |  13668.608 MB/s |     1.884 ms |     4.195 ms |     5.083 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |   372.300 Kops/s |     47.654 MB/s |     0.124 ms |     0.193 ms |     0.232 ms |
+    Testing tls | 256B:
+      | 256B     |   353.473 Kops/s |    180.978 MB/s |     0.131 ms |     0.204 ms |     0.243 ms |
+    Testing tls | 1024B:
+      | 1024B    |   337.307 Kops/s |    690.804 MB/s |     0.136 ms |     0.212 ms |     0.254 ms |
+    Testing tls | 65536B:
+      | 65536B   |    45.389 Kops/s |   5949.175 MB/s |     1.086 ms |     1.615 ms |     1.851 ms |
+    Testing tls | 131072B:
+      | 131072B  |    23.079 Kops/s |   6049.917 MB/s |     2.145 ms |     2.888 ms |     3.233 ms |
+    Testing tls | 262144B:
+      | 262144B  |    11.248 Kops/s |   5897.296 MB/s |     4.412 ms |     5.780 ms |     6.447 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing ws | 64B:
+      | 64B      |   406.001 Kops/s |     51.968 MB/s |     0.112 ms |     0.174 ms |     0.214 ms |
+    Testing ws | 256B:
+      | 256B     |   415.221 Kops/s |    212.593 MB/s |     0.111 ms |     0.173 ms |     0.217 ms |
+    Testing ws | 1024B:
+      | 1024B    |   393.516 Kops/s |    805.920 MB/s |     0.115 ms |     0.179 ms |     0.224 ms |
+    Testing ws | 65536B:
+      | 65536B   |    85.420 Kops/s |  11196.170 MB/s |     0.510 ms |     0.807 ms |     0.987 ms |
+    Testing ws | 131072B:
+      | 131072B  |    37.919 Kops/s |   9940.133 MB/s |     1.281 ms |     2.245 ms |     2.627 ms |
+    Testing ws | 262144B:
+      | 262144B  |    16.180 Kops/s |   8482.770 MB/s |     2.949 ms |     4.525 ms |     5.342 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing wss | 64B:
+      | 64B      |   355.735 Kops/s |     45.534 MB/s |     0.132 ms |     0.214 ms |     0.260 ms |
+    Testing wss | 256B:
+      | 256B     |   344.365 Kops/s |    176.315 MB/s |     0.136 ms |     0.217 ms |     0.263 ms |
+    Testing wss | 1024B:
+      | 1024B    |   332.726 Kops/s |    681.422 MB/s |     0.140 ms |     0.226 ms |     0.275 ms |
+    Testing wss | 65536B:
+      | 65536B   |    30.666 Kops/s |   4019.480 MB/s |     1.622 ms |     2.350 ms |     2.713 ms |
+    Testing wss | 131072B:
+      | 131072B  |    15.263 Kops/s |   4001.104 MB/s |     3.262 ms |     4.408 ms |     4.915 ms |
+    Testing wss | 262144B:
+      | 262144B  |     8.831 Kops/s |   4630.197 MB/s |     5.642 ms |     6.956 ms |     7.562 ms |
+    Testing wss: Done
+[pattern cooldown 3000ms]
+
+===============================================================================
+
+## PATTERN: MULTI_ROUTER_ROUTER (echo)
+  > Benchmarking current for MULTI_ROUTER_ROUTER...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |   391.747 Kops/s |     50.144 MB/s |     0.116 ms |     0.171 ms |     0.202 ms |
+    Testing tcp | 256B:
+      | 256B     |   398.713 Kops/s |    204.141 MB/s |     0.114 ms |     0.168 ms |     0.203 ms |
+    Testing tcp | 1024B:
+      | 1024B    |   380.797 Kops/s |    779.873 MB/s |     0.120 ms |     0.176 ms |     0.208 ms |
+    Testing tcp | 65536B:
+      | 65536B   |   146.386 Kops/s |  19187.106 MB/s |     0.333 ms |     0.530 ms |     0.638 ms |
+    Testing tcp | 131072B:
+      | 131072B  |    65.670 Kops/s |  17215.049 MB/s |     0.752 ms |     1.195 ms |     1.415 ms |
+    Testing tcp | 262144B:
+      | 262144B  |    28.616 Kops/s |  15002.921 MB/s |     1.721 ms |     2.794 ms |     3.393 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |   345.382 Kops/s |     44.209 MB/s |     0.133 ms |     0.202 ms |     0.241 ms |
+    Testing tls | 256B:
+      | 256B     |   353.174 Kops/s |    180.825 MB/s |     0.131 ms |     0.200 ms |     0.236 ms |
+    Testing tls | 1024B:
+      | 1024B    |   330.231 Kops/s |    676.314 MB/s |     0.138 ms |     0.216 ms |     0.263 ms |
+    Testing tls | 65536B:
+      | 65536B   |    47.391 Kops/s |   6211.607 MB/s |     1.038 ms |     1.576 ms |     1.804 ms |
+    Testing tls | 131072B:
+      | 131072B  |    23.003 Kops/s |   6030.098 MB/s |     2.153 ms |     2.870 ms |     3.217 ms |
+    Testing tls | 262144B:
+      | 262144B  |    11.176 Kops/s |   5859.548 MB/s |     4.443 ms |     6.024 ms |     7.146 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing ws | 64B:
+      | 64B      |   381.776 Kops/s |     48.867 MB/s |     0.119 ms |     0.181 ms |     0.223 ms |
+    Testing ws | 256B:
+      | 256B     |   372.081 Kops/s |    190.505 MB/s |     0.121 ms |     0.185 ms |     0.229 ms |
+    Testing ws | 1024B:
+      | 1024B    |   348.834 Kops/s |    714.413 MB/s |     0.130 ms |     0.193 ms |     0.228 ms |
+    Testing ws | 65536B:
+      | 65536B   |    84.992 Kops/s |  11140.124 MB/s |     0.534 ms |     0.949 ms |     1.143 ms |
+    Testing ws | 131072B:
+      | 131072B  |    35.280 Kops/s |   9248.388 MB/s |     1.329 ms |     2.319 ms |     2.767 ms |
+    Testing ws | 262144B:
+      | 262144B  |    16.233 Kops/s |   8510.662 MB/s |     2.925 ms |     4.621 ms |     5.500 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing wss | 64B:
+      | 64B      |   333.466 Kops/s |     42.684 MB/s |     0.140 ms |     0.214 ms |     0.254 ms |
+    Testing wss | 256B:
+      | 256B     |   324.427 Kops/s |    166.107 MB/s |     0.144 ms |     0.221 ms |     0.263 ms |
+    Testing wss | 1024B:
+      | 1024B    |   319.883 Kops/s |    655.120 MB/s |     0.145 ms |     0.225 ms |     0.270 ms |
+    Testing wss | 65536B:
+      | 65536B   |    29.366 Kops/s |   3849.113 MB/s |     1.692 ms |     2.492 ms |     2.870 ms |
+    Testing wss | 131072B:
+      | 131072B  |    13.823 Kops/s |   3623.512 MB/s |     3.601 ms |     4.747 ms |     5.243 ms |
+    Testing wss | 262144B:
+      | 262144B  |     8.567 Kops/s |   4491.575 MB/s |     5.816 ms |     7.360 ms |     8.194 ms |
+    Testing wss: Done
+[pattern cooldown 3000ms]
+
+===============================================================================
+
+## PATTERN: MULTI_PUBSUB (one-way)
+  > Benchmarking current for MULTI_PUBSUB...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |  3487.152 Kmsg/s |    223.178 MB/s |   869.748 ms |  1591.590 ms |  1672.884 ms |
+    Testing tcp | 256B:
+      | 256B     |  3315.248 Kmsg/s |    848.703 MB/s |   623.732 ms |  1228.353 ms |  1308.535 ms |
+    Testing tcp | 1024B:
+      | 1024B    |  2735.936 Kmsg/s |   2801.599 MB/s |   290.855 ms |   356.704 ms |   366.597 ms |
+    Testing tcp | 65536B:
+      | 65536B   |   210.117 Kmsg/s |  13770.215 MB/s |    31.622 ms |    89.207 ms |    94.806 ms |
+    Testing tcp | 131072B:
+      | 131072B  |    78.277 Kmsg/s |  10259.923 MB/s |    74.450 ms |   197.071 ms |   212.683 ms |
+    Testing tcp | 262144B:
+      | 262144B  |    35.954 Kmsg/s |   9425.021 MB/s |   126.019 ms |   352.332 ms |   395.510 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |  2406.643 Kmsg/s |    154.025 MB/s |   741.500 ms |  1560.834 ms |  1660.439 ms |
+    Testing tls | 256B:
+      | 256B     |  2490.418 Kmsg/s |    637.547 MB/s |   939.860 ms |  1537.083 ms |  1573.104 ms |
+    Testing tls | 1024B:
+      | 1024B    |  2264.425 Kmsg/s |   2318.771 MB/s |   531.856 ms |   685.042 ms |   705.013 ms |
+    Testing tls | 65536B:
+      | 65536B   |    88.261 Kmsg/s |   5784.273 MB/s |    91.549 ms |   206.341 ms |   236.160 ms |
+    Testing tls | 131072B:
+      | 131072B  |    39.805 Kmsg/s |   5217.321 MB/s |   103.147 ms |   265.163 ms |   308.010 ms |
+    Testing tls | 262144B:
+      | 262144B  |    22.264 Kmsg/s |   5836.322 MB/s |   204.838 ms |   483.807 ms |   559.776 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing ws | 64B:
+      | 64B      |  2477.920 Kmsg/s |    158.587 MB/s |  1388.225 ms |  2581.755 ms |  2677.858 ms |
+    Testing ws | 256B:
+      | 256B     |  2918.592 Kmsg/s |    747.160 MB/s |   238.947 ms |   456.551 ms |   623.033 ms |
+    Testing ws | 1024B:
+      | 1024B    |  2365.485 Kmsg/s |   2422.256 MB/s |   548.194 ms |   718.098 ms |   739.199 ms |
+    Testing ws | 65536B:
+      | 65536B   |   169.975 Kmsg/s |  11139.495 MB/s |    64.772 ms |   111.801 ms |   117.620 ms |
+    Testing ws | 131072B:
+      | 131072B  |    58.453 Kmsg/s |   7661.604 MB/s |    88.156 ms |   248.623 ms |   270.528 ms |
+    Testing ws | 262144B:
+      | 262144B  |    31.830 Kmsg/s |   8344.044 MB/s |   183.768 ms |   426.373 ms |   572.730 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing wss | 64B:
+      | 64B      |  2999.868 Kmsg/s |    191.992 MB/s |   683.965 ms |  1216.465 ms |  1295.171 ms |
+    Testing wss | 256B:
+      | 256B     |  3025.188 Kmsg/s |    774.448 MB/s |   529.851 ms |   970.453 ms |  1017.924 ms |
+    Testing wss | 1024B:
+      | 1024B    |  2274.048 Kmsg/s |   2328.625 MB/s |   432.795 ms |   670.166 ms |   693.977 ms |
+    Testing wss | 65536B:
+      | 65536B   |    60.400 Kmsg/s |   3958.374 MB/s |    94.258 ms |   277.410 ms |   303.840 ms |
+    Testing wss | 131072B:
+      | 131072B  |    33.030 Kmsg/s |   4329.308 MB/s |   170.804 ms |   354.461 ms |   425.289 ms |
+    Testing wss | 262144B:
+      | 262144B  |    16.561 Kmsg/s |   4341.314 MB/s |   253.594 ms |   705.346 ms |   833.735 ms |
+    Testing wss: Done
+[pattern cooldown 3000ms]
+
+===============================================================================
+
+## PATTERN: MULTI_SPOT (one-way)
+  > Benchmarking current for MULTI_SPOT...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |  4590.438 Kmsg/s |    293.788 MB/s |   828.572 ms |  2128.587 ms |  2519.401 ms |
+    Testing tcp | 256B:
+      | 256B     |  4568.257 Kmsg/s |   1169.474 MB/s |   449.088 ms |  1214.976 ms |  1681.039 ms |
+    Testing tcp | 1024B:
+      | 1024B    |  3069.796 Kmsg/s |   3143.471 MB/s |   157.338 ms |   432.018 ms |   693.701 ms |
+    Testing tcp | 65536B:
+      | 65536B   |   136.325 Kmsg/s |   8934.195 MB/s |   631.491 ms |  1397.345 ms |  1513.972 ms |
+    Testing tcp | 131072B:
+      | 131072B  |    74.440 Kmsg/s |   9756.947 MB/s |  1294.248 ms |  2439.974 ms |  2599.202 ms |
+    Testing tcp | 262144B:
+      | 262144B  |    34.194 Kmsg/s |   8963.700 MB/s |  2166.147 ms |  4536.166 ms |  4873.877 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |  4689.833 Kmsg/s |    300.149 MB/s |   714.084 ms |  2787.834 ms |  3392.101 ms |
+    Testing tls | 256B:
+      | 256B     |  3791.535 Kmsg/s |    970.633 MB/s |   227.043 ms |   939.599 ms |  1486.288 ms |
+    Testing tls | 1024B:
+      | 1024B    |  2830.952 Kmsg/s |   2898.895 MB/s |    42.689 ms |    63.089 ms |    72.590 ms |
+    Testing tls | 65536B:
+      | 65536B   |    69.364 Kmsg/s |   4545.865 MB/s |  1488.716 ms |  2490.490 ms |  2710.273 ms |
+    Testing tls | 131072B:
+      | 131072B  |    32.928 Kmsg/s |   4315.991 MB/s |  2180.004 ms |  4429.401 ms |  5003.291 ms |
+    Testing tls | 262144B:
+      | 262144B  |    20.604 Kmsg/s |   5401.320 MB/s |  2549.048 ms |  4864.356 ms |  5077.187 ms |
+    Testing tls: Done
+[pattern cooldown 3000ms]
+
+===============================================================================
+
+## PATTERN: MULTI_SPOT_REQREP (echo)
+  > Benchmarking current for MULTI_SPOT_REQREP...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |   210.776 Kops/s |     26.979 MB/s |     0.185 ms |     0.252 ms |     0.290 ms |
+    Testing tcp | 256B:
+      | 256B     |   195.791 Kops/s |    100.245 MB/s |     0.204 ms |     0.297 ms |     0.367 ms |
+    Testing tcp | 1024B:
+      | 1024B    |   193.857 Kops/s |    397.018 MB/s |     0.204 ms |     0.293 ms |     0.355 ms |
+    Testing tcp | 65536B:
+      | 65536B   |    78.350 Kops/s |  10269.439 MB/s |     0.627 ms |     0.803 ms |     0.916 ms |
+    Testing tcp | 131072B:
+      | 131072B  |    51.004 Kops/s |  13370.497 MB/s |     0.973 ms |     1.218 ms |     1.389 ms |
+    Testing tcp | 262144B:
+      | 262144B  |    24.209 Kops/s |  12692.593 MB/s |     2.057 ms |     2.367 ms |     2.564 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |   180.895 Kops/s |     23.155 MB/s |     0.227 ms |     0.318 ms |     0.379 ms |
+    Testing tls | 256B:
+      | 256B     |   176.162 Kops/s |     90.195 MB/s |     0.232 ms |     0.327 ms |     0.388 ms |
+    Testing tls | 1024B:
+      | 1024B    |   173.757 Kops/s |    355.854 MB/s |     0.236 ms |     0.338 ms |     0.403 ms |
+    Testing tls | 65536B:
+      | 65536B   |    31.907 Kops/s |   4182.114 MB/s |     1.561 ms |     1.871 ms |     2.020 ms |
+    Testing tls | 131072B:
+      | 131072B  |    17.303 Kops/s |   4535.773 MB/s |     2.878 ms |     3.413 ms |     3.672 ms |
+    Testing tls | 262144B:
+      | 262144B  |     9.154 Kops/s |   4799.123 MB/s |     5.441 ms |     6.087 ms |     6.481 ms |
+    Testing tls: Done
+[pattern cooldown 3000ms]
+
+===============================================================================
+
+## PATTERN: MULTI_SPOT_SENDSEND (echo)
+  > Benchmarking current for MULTI_SPOT_SENDSEND...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |   133.944 Kops/s |     17.145 MB/s |     0.094 ms |     0.163 ms |     0.208 ms |
+    Testing tcp | 256B:
+      | 256B     |   136.114 Kops/s |     69.690 MB/s |     0.091 ms |     0.156 ms |     0.216 ms |
+    Testing tcp | 1024B:
+      | 1024B    |   128.889 Kops/s |    263.964 MB/s |     0.100 ms |     0.177 ms |     0.232 ms |
+    Testing tcp | 65536B:
+      | 65536B   |    56.884 Kops/s |   7455.952 MB/s |     0.265 ms |     0.331 ms |     0.383 ms |
+    Testing tcp | 131072B:
+      | 131072B  |    46.610 Kops/s |  12218.427 MB/s |     0.234 ms |     0.323 ms |     0.388 ms |
+    Testing tcp | 262144B:
+      | 262144B  |     4.670 Kops/s |   2448.425 MB/s |     0.097 ms |     0.150 ms |     0.198 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |   141.480 Kops/s |     18.109 MB/s |     0.090 ms |     0.134 ms |     0.180 ms |
+    Testing tls | 256B:
+      | 256B     |   137.978 Kops/s |     70.645 MB/s |     0.093 ms |     0.131 ms |     0.173 ms |
+    Testing tls | 1024B:
+      | 1024B    |   136.979 Kops/s |    280.534 MB/s |     0.095 ms |     0.137 ms |     0.180 ms |
+    Testing tls | 65536B:
+      | 65536B   |    37.399 Kops/s |   4901.988 MB/s |     0.417 ms |     0.515 ms |     0.586 ms |
+    Testing tls | 131072B:
+      | 131072B  |    21.089 Kops/s |   5528.250 MB/s |     0.748 ms |     0.832 ms |     0.917 ms |
+    Testing tls | 262144B:
+      | 262144B  |     8.845 Kops/s |   4637.223 MB/s |     1.738 ms |     2.052 ms |     2.200 ms |
+    Testing tls: Done
+[pattern cooldown 3000ms]
+
+===============================================================================
+
+## PATTERN: MULTI_STREAM (echo)
+  > Benchmarking current for MULTI_STREAM...
+    Testing tcp:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tcp | 64B:
+      | 64B      |   381.904 Kops/s |     48.884 MB/s |    26.071 ms |    26.967 ms |    28.436 ms |
+    Testing tcp | 256B:
+      | 256B     |   361.960 Kops/s |    185.323 MB/s |    27.557 ms |    28.232 ms |    29.470 ms |
+    Testing tcp | 1024B:
+      | 1024B    |   349.520 Kops/s |    715.817 MB/s |    28.473 ms |    29.123 ms |    29.870 ms |
+    Testing tcp | 65536B:
+      | 65536B   |    57.039 Kops/s |   7476.268 MB/s |   152.204 ms |   172.041 ms |   259.204 ms |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing tls | 64B:
+      | 64B      |   238.711 Kops/s |     30.555 MB/s |    42.071 ms |    45.970 ms |    50.204 ms |
+    Testing tls | 256B:
+      | 256B     |   224.717 Kops/s |    115.055 MB/s |    44.450 ms |    48.332 ms |    51.135 ms |
+    Testing tls | 1024B:
+      | 1024B    |   207.144 Kops/s |    424.232 MB/s |    47.968 ms |    53.271 ms |    55.643 ms |
+    Testing tls | 65536B:
+      | 65536B   |    17.833 Kops/s |   2337.459 MB/s |   518.431 ms |   671.830 ms |   823.097 ms |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing ws | 64B:
+      | 64B      |   339.101 Kops/s |     43.405 MB/s |    29.717 ms |    32.475 ms |    34.031 ms |
+    Testing ws | 256B:
+      | 256B     |   341.209 Kops/s |    174.699 MB/s |    29.126 ms |    30.010 ms |    31.242 ms |
+    Testing ws | 1024B:
+      | 1024B    |   324.741 Kops/s |    665.069 MB/s |    30.860 ms |    32.736 ms |    34.984 ms |
+    Testing ws | 65536B:
+      | 65536B   |    13.213 Kops/s |   1731.854 MB/s |   702.862 ms |  1387.511 ms |  1679.652 ms |
+    Testing ws: Done
+    [transport cooldown 3000ms]
+    Testing wss:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |
+      |----------|--------------------|----------------|---------------|---------------|---------------|
+    Testing wss | 64B:
+      | 64B      |   204.969 Kops/s |     26.236 MB/s |    48.435 ms |    54.708 ms |    61.598 ms |
+    Testing wss | 256B:
+      | 256B     |   199.783 Kops/s |    102.289 MB/s |    49.673 ms |    55.732 ms |    59.013 ms |
+    Testing wss | 1024B:
+      | 1024B    |   179.772 Kops/s |    368.173 MB/s |    55.167 ms |    60.881 ms |    63.432 ms |
+    Testing wss | 65536B:
+      | 65536B   |     6.993 Kops/s |    916.534 MB/s |  1264.499 ms |  2156.486 ms |  2303.875 ms |
+    Testing wss: Done
+
+## Effective Options (result)
+- lang: c
+- suite: multi
+- runs: 1
+- patterns: MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM
+- transports: tcp,tls,ws,wss
+- msg_sizes: 64,256,1024,65536,131072,262144
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: mixed-default(10,100)
+- sndhwm: mixed-default(10,100)
+- rcvhwm: mixed-default(10,100)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- connect_concurrency: 128 (default)
+- connect_ready_timeout_ms: 5000
+- monitor_hwm: 1000
+- server_ready_timeout_ms: 10000
+- server_shutdown_timeout_ms: 5000
+- server_bind_port: 0
+- transport_transition_ms: 3000
+- pattern_transition_ms: 3000
+- lat_timeout_ms: 5000
+- stream_non_tcp_clients_max: 10000
+- disable_resource_metrics: 0
+- timeout_seconds: auto
+
+## Result Data
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,241.909
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,0.114
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p95,0.159
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p99,0.308
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,3779828.800
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,bandwidth,432.420
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,latency,0.180
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,latency_p95,0.390
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,latency_p99,0.625
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,throughput,1689141.800
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,bandwidth,1388.339
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency,3.056
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p95,8.023
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p99,10.377
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,throughput,1355799.800
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,bandwidth,12236.122
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency,40.324
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency_p95,87.024
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency_p99,94.972
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,throughput,186708.400
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,bandwidth,12101.616
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,latency,80.877
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,latency_p95,146.530
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,latency_p99,163.309
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,throughput,92328.000
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,bandwidth,13119.311
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,latency,149.022
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,latency_p95,290.383
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,latency_p99,373.660
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,throughput,50046.200
+RESULT,current,MULTI_DEALER_DEALER,tls,64,bandwidth,241.798
+RESULT,current,MULTI_DEALER_DEALER,tls,64,latency,0.123
+RESULT,current,MULTI_DEALER_DEALER,tls,64,latency_p95,0.194
+RESULT,current,MULTI_DEALER_DEALER,tls,64,latency_p99,0.339
+RESULT,current,MULTI_DEALER_DEALER,tls,64,throughput,3778091.800
+RESULT,current,MULTI_DEALER_DEALER,tls,256,bandwidth,440.845
+RESULT,current,MULTI_DEALER_DEALER,tls,256,latency,0.290
+RESULT,current,MULTI_DEALER_DEALER,tls,256,latency_p95,0.793
+RESULT,current,MULTI_DEALER_DEALER,tls,256,latency_p99,1.303
+RESULT,current,MULTI_DEALER_DEALER,tls,256,throughput,1722051.200
+RESULT,current,MULTI_DEALER_DEALER,tls,1024,bandwidth,1442.746
+RESULT,current,MULTI_DEALER_DEALER,tls,1024,latency,0.552
+RESULT,current,MULTI_DEALER_DEALER,tls,1024,latency_p95,2.013
+RESULT,current,MULTI_DEALER_DEALER,tls,1024,latency_p99,5.351
+RESULT,current,MULTI_DEALER_DEALER,tls,1024,throughput,1408931.800
+RESULT,current,MULTI_DEALER_DEALER,tls,65536,bandwidth,4599.683
+RESULT,current,MULTI_DEALER_DEALER,tls,65536,latency,158.721
+RESULT,current,MULTI_DEALER_DEALER,tls,65536,latency_p95,326.284
+RESULT,current,MULTI_DEALER_DEALER,tls,65536,latency_p99,395.767
+RESULT,current,MULTI_DEALER_DEALER,tls,65536,throughput,70185.600
+RESULT,current,MULTI_DEALER_DEALER,tls,131072,bandwidth,4851.158
+RESULT,current,MULTI_DEALER_DEALER,tls,131072,latency,223.908
+RESULT,current,MULTI_DEALER_DEALER,tls,131072,latency_p95,414.102
+RESULT,current,MULTI_DEALER_DEALER,tls,131072,latency_p99,520.001
+RESULT,current,MULTI_DEALER_DEALER,tls,131072,throughput,37011.400
+RESULT,current,MULTI_DEALER_DEALER,tls,262144,bandwidth,6574.781
+RESULT,current,MULTI_DEALER_DEALER,tls,262144,latency,294.139
+RESULT,current,MULTI_DEALER_DEALER,tls,262144,latency_p95,474.181
+RESULT,current,MULTI_DEALER_DEALER,tls,262144,latency_p99,540.727
+RESULT,current,MULTI_DEALER_DEALER,tls,262144,throughput,25080.800
+RESULT,current,MULTI_DEALER_DEALER,ws,64,bandwidth,241.171
+RESULT,current,MULTI_DEALER_DEALER,ws,64,latency,0.400
+RESULT,current,MULTI_DEALER_DEALER,ws,64,latency_p95,1.479
+RESULT,current,MULTI_DEALER_DEALER,ws,64,latency_p99,7.217
+RESULT,current,MULTI_DEALER_DEALER,ws,64,throughput,3768294.800
+RESULT,current,MULTI_DEALER_DEALER,ws,256,bandwidth,460.662
+RESULT,current,MULTI_DEALER_DEALER,ws,256,latency,0.304
+RESULT,current,MULTI_DEALER_DEALER,ws,256,latency_p95,0.812
+RESULT,current,MULTI_DEALER_DEALER,ws,256,latency_p99,1.739
+RESULT,current,MULTI_DEALER_DEALER,ws,256,throughput,1799459.800
+RESULT,current,MULTI_DEALER_DEALER,ws,1024,bandwidth,1534.233
+RESULT,current,MULTI_DEALER_DEALER,ws,1024,latency,0.608
+RESULT,current,MULTI_DEALER_DEALER,ws,1024,latency_p95,2.087
+RESULT,current,MULTI_DEALER_DEALER,ws,1024,latency_p99,4.757
+RESULT,current,MULTI_DEALER_DEALER,ws,1024,throughput,1498274.400
+RESULT,current,MULTI_DEALER_DEALER,ws,65536,bandwidth,9895.241
+RESULT,current,MULTI_DEALER_DEALER,ws,65536,latency,49.969
+RESULT,current,MULTI_DEALER_DEALER,ws,65536,latency_p95,82.207
+RESULT,current,MULTI_DEALER_DEALER,ws,65536,latency_p99,90.638
+RESULT,current,MULTI_DEALER_DEALER,ws,65536,throughput,150989.400
+RESULT,current,MULTI_DEALER_DEALER,ws,131072,bandwidth,4667.317
+RESULT,current,MULTI_DEALER_DEALER,ws,131072,latency,399.708
+RESULT,current,MULTI_DEALER_DEALER,ws,131072,latency_p95,670.816
+RESULT,current,MULTI_DEALER_DEALER,ws,131072,latency_p99,805.929
+RESULT,current,MULTI_DEALER_DEALER,ws,131072,throughput,35608.800
+RESULT,current,MULTI_DEALER_DEALER,ws,262144,bandwidth,4910.429
+RESULT,current,MULTI_DEALER_DEALER,ws,262144,latency,579.126
+RESULT,current,MULTI_DEALER_DEALER,ws,262144,latency_p95,872.472
+RESULT,current,MULTI_DEALER_DEALER,ws,262144,latency_p99,1040.887
+RESULT,current,MULTI_DEALER_DEALER,ws,262144,throughput,18731.800
+RESULT,current,MULTI_DEALER_DEALER,wss,64,bandwidth,235.440
+RESULT,current,MULTI_DEALER_DEALER,wss,64,latency,3.171
+RESULT,current,MULTI_DEALER_DEALER,wss,64,latency_p95,22.735
+RESULT,current,MULTI_DEALER_DEALER,wss,64,latency_p99,34.781
+RESULT,current,MULTI_DEALER_DEALER,wss,64,throughput,3678755.000
+RESULT,current,MULTI_DEALER_DEALER,wss,256,bandwidth,450.876
+RESULT,current,MULTI_DEALER_DEALER,wss,256,latency,0.558
+RESULT,current,MULTI_DEALER_DEALER,wss,256,latency_p95,1.837
+RESULT,current,MULTI_DEALER_DEALER,wss,256,latency_p99,4.590
+RESULT,current,MULTI_DEALER_DEALER,wss,256,throughput,1761233.600
+RESULT,current,MULTI_DEALER_DEALER,wss,1024,bandwidth,1154.133
+RESULT,current,MULTI_DEALER_DEALER,wss,1024,latency,6.653
+RESULT,current,MULTI_DEALER_DEALER,wss,1024,latency_p95,10.906
+RESULT,current,MULTI_DEALER_DEALER,wss,1024,latency_p99,14.160
+RESULT,current,MULTI_DEALER_DEALER,wss,1024,throughput,1127083.400
+RESULT,current,MULTI_DEALER_DEALER,wss,65536,bandwidth,3551.042
+RESULT,current,MULTI_DEALER_DEALER,wss,65536,latency,140.169
+RESULT,current,MULTI_DEALER_DEALER,wss,65536,latency_p95,200.129
+RESULT,current,MULTI_DEALER_DEALER,wss,65536,latency_p99,218.045
+RESULT,current,MULTI_DEALER_DEALER,wss,65536,throughput,54184.600
+RESULT,current,MULTI_DEALER_DEALER,wss,131072,bandwidth,3658.193
+RESULT,current,MULTI_DEALER_DEALER,wss,131072,latency,267.518
+RESULT,current,MULTI_DEALER_DEALER,wss,131072,latency_p95,419.642
+RESULT,current,MULTI_DEALER_DEALER,wss,131072,latency_p99,478.643
+RESULT,current,MULTI_DEALER_DEALER,wss,131072,throughput,27909.800
+RESULT,current,MULTI_DEALER_DEALER,wss,262144,bandwidth,3855.247
+RESULT,current,MULTI_DEALER_DEALER,wss,262144,latency,489.092
+RESULT,current,MULTI_DEALER_DEALER,wss,262144,latency_p95,756.602
+RESULT,current,MULTI_DEALER_DEALER,wss,262144,latency_p99,859.631
+RESULT,current,MULTI_DEALER_DEALER,wss,262144,throughput,14706.600
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,bandwidth,45.868
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency,0.129
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p95,0.201
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p99,0.283
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,throughput,358347.200
+RESULT,current,MULTI_DEALER_ROUTER,tcp,256,bandwidth,212.130
+RESULT,current,MULTI_DEALER_ROUTER,tcp,256,latency,0.110
+RESULT,current,MULTI_DEALER_ROUTER,tcp,256,latency_p95,0.166
+RESULT,current,MULTI_DEALER_ROUTER,tcp,256,latency_p99,0.207
+RESULT,current,MULTI_DEALER_ROUTER,tcp,256,throughput,414316.400
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,bandwidth,860.676
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,latency,0.109
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,latency_p95,0.165
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,latency_p99,0.201
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,throughput,420252.000
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,bandwidth,19431.398
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,latency,0.329
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,latency_p95,0.562
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,latency_p99,0.686
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,throughput,148249.800
+RESULT,current,MULTI_DEALER_ROUTER,tcp,131072,bandwidth,17409.979
+RESULT,current,MULTI_DEALER_ROUTER,tcp,131072,latency,0.743
+RESULT,current,MULTI_DEALER_ROUTER,tcp,131072,latency_p95,1.218
+RESULT,current,MULTI_DEALER_ROUTER,tcp,131072,latency_p99,1.484
+RESULT,current,MULTI_DEALER_ROUTER,tcp,131072,throughput,66413.800
+RESULT,current,MULTI_DEALER_ROUTER,tcp,262144,bandwidth,13668.608
+RESULT,current,MULTI_DEALER_ROUTER,tcp,262144,latency,1.884
+RESULT,current,MULTI_DEALER_ROUTER,tcp,262144,latency_p95,4.195
+RESULT,current,MULTI_DEALER_ROUTER,tcp,262144,latency_p99,5.083
+RESULT,current,MULTI_DEALER_ROUTER,tcp,262144,throughput,26070.800
+RESULT,current,MULTI_DEALER_ROUTER,tls,64,bandwidth,47.654
+RESULT,current,MULTI_DEALER_ROUTER,tls,64,latency,0.124
+RESULT,current,MULTI_DEALER_ROUTER,tls,64,latency_p95,0.193
+RESULT,current,MULTI_DEALER_ROUTER,tls,64,latency_p99,0.232
+RESULT,current,MULTI_DEALER_ROUTER,tls,64,throughput,372300.400
+RESULT,current,MULTI_DEALER_ROUTER,tls,256,bandwidth,180.978
+RESULT,current,MULTI_DEALER_ROUTER,tls,256,latency,0.131
+RESULT,current,MULTI_DEALER_ROUTER,tls,256,latency_p95,0.204
+RESULT,current,MULTI_DEALER_ROUTER,tls,256,latency_p99,0.243
+RESULT,current,MULTI_DEALER_ROUTER,tls,256,throughput,353473.400
+RESULT,current,MULTI_DEALER_ROUTER,tls,1024,bandwidth,690.804
+RESULT,current,MULTI_DEALER_ROUTER,tls,1024,latency,0.136
+RESULT,current,MULTI_DEALER_ROUTER,tls,1024,latency_p95,0.212
+RESULT,current,MULTI_DEALER_ROUTER,tls,1024,latency_p99,0.254
+RESULT,current,MULTI_DEALER_ROUTER,tls,1024,throughput,337306.800
+RESULT,current,MULTI_DEALER_ROUTER,tls,65536,bandwidth,5949.175
+RESULT,current,MULTI_DEALER_ROUTER,tls,65536,latency,1.086
+RESULT,current,MULTI_DEALER_ROUTER,tls,65536,latency_p95,1.615
+RESULT,current,MULTI_DEALER_ROUTER,tls,65536,latency_p99,1.851
+RESULT,current,MULTI_DEALER_ROUTER,tls,65536,throughput,45388.600
+RESULT,current,MULTI_DEALER_ROUTER,tls,131072,bandwidth,6049.917
+RESULT,current,MULTI_DEALER_ROUTER,tls,131072,latency,2.145
+RESULT,current,MULTI_DEALER_ROUTER,tls,131072,latency_p95,2.888
+RESULT,current,MULTI_DEALER_ROUTER,tls,131072,latency_p99,3.233
+RESULT,current,MULTI_DEALER_ROUTER,tls,131072,throughput,23078.600
+RESULT,current,MULTI_DEALER_ROUTER,tls,262144,bandwidth,5897.296
+RESULT,current,MULTI_DEALER_ROUTER,tls,262144,latency,4.412
+RESULT,current,MULTI_DEALER_ROUTER,tls,262144,latency_p95,5.780
+RESULT,current,MULTI_DEALER_ROUTER,tls,262144,latency_p99,6.447
+RESULT,current,MULTI_DEALER_ROUTER,tls,262144,throughput,11248.200
+RESULT,current,MULTI_DEALER_ROUTER,ws,64,bandwidth,51.968
+RESULT,current,MULTI_DEALER_ROUTER,ws,64,latency,0.112
+RESULT,current,MULTI_DEALER_ROUTER,ws,64,latency_p95,0.174
+RESULT,current,MULTI_DEALER_ROUTER,ws,64,latency_p99,0.214
+RESULT,current,MULTI_DEALER_ROUTER,ws,64,throughput,406000.800
+RESULT,current,MULTI_DEALER_ROUTER,ws,256,bandwidth,212.593
+RESULT,current,MULTI_DEALER_ROUTER,ws,256,latency,0.111
+RESULT,current,MULTI_DEALER_ROUTER,ws,256,latency_p95,0.173
+RESULT,current,MULTI_DEALER_ROUTER,ws,256,latency_p99,0.217
+RESULT,current,MULTI_DEALER_ROUTER,ws,256,throughput,415221.200
+RESULT,current,MULTI_DEALER_ROUTER,ws,1024,bandwidth,805.920
+RESULT,current,MULTI_DEALER_ROUTER,ws,1024,latency,0.115
+RESULT,current,MULTI_DEALER_ROUTER,ws,1024,latency_p95,0.179
+RESULT,current,MULTI_DEALER_ROUTER,ws,1024,latency_p99,0.224
+RESULT,current,MULTI_DEALER_ROUTER,ws,1024,throughput,393515.800
+RESULT,current,MULTI_DEALER_ROUTER,ws,65536,bandwidth,11196.170
+RESULT,current,MULTI_DEALER_ROUTER,ws,65536,latency,0.510
+RESULT,current,MULTI_DEALER_ROUTER,ws,65536,latency_p95,0.807
+RESULT,current,MULTI_DEALER_ROUTER,ws,65536,latency_p99,0.987
+RESULT,current,MULTI_DEALER_ROUTER,ws,65536,throughput,85420.000
+RESULT,current,MULTI_DEALER_ROUTER,ws,131072,bandwidth,9940.133
+RESULT,current,MULTI_DEALER_ROUTER,ws,131072,latency,1.281
+RESULT,current,MULTI_DEALER_ROUTER,ws,131072,latency_p95,2.245
+RESULT,current,MULTI_DEALER_ROUTER,ws,131072,latency_p99,2.627
+RESULT,current,MULTI_DEALER_ROUTER,ws,131072,throughput,37918.600
+RESULT,current,MULTI_DEALER_ROUTER,ws,262144,bandwidth,8482.770
+RESULT,current,MULTI_DEALER_ROUTER,ws,262144,latency,2.949
+RESULT,current,MULTI_DEALER_ROUTER,ws,262144,latency_p95,4.525
+RESULT,current,MULTI_DEALER_ROUTER,ws,262144,latency_p99,5.342
+RESULT,current,MULTI_DEALER_ROUTER,ws,262144,throughput,16179.600
+RESULT,current,MULTI_DEALER_ROUTER,wss,64,bandwidth,45.534
+RESULT,current,MULTI_DEALER_ROUTER,wss,64,latency,0.132
+RESULT,current,MULTI_DEALER_ROUTER,wss,64,latency_p95,0.214
+RESULT,current,MULTI_DEALER_ROUTER,wss,64,latency_p99,0.260
+RESULT,current,MULTI_DEALER_ROUTER,wss,64,throughput,355734.800
+RESULT,current,MULTI_DEALER_ROUTER,wss,256,bandwidth,176.315
+RESULT,current,MULTI_DEALER_ROUTER,wss,256,latency,0.136
+RESULT,current,MULTI_DEALER_ROUTER,wss,256,latency_p95,0.217
+RESULT,current,MULTI_DEALER_ROUTER,wss,256,latency_p99,0.263
+RESULT,current,MULTI_DEALER_ROUTER,wss,256,throughput,344365.200
+RESULT,current,MULTI_DEALER_ROUTER,wss,1024,bandwidth,681.422
+RESULT,current,MULTI_DEALER_ROUTER,wss,1024,latency,0.140
+RESULT,current,MULTI_DEALER_ROUTER,wss,1024,latency_p95,0.226
+RESULT,current,MULTI_DEALER_ROUTER,wss,1024,latency_p99,0.275
+RESULT,current,MULTI_DEALER_ROUTER,wss,1024,throughput,332725.800
+RESULT,current,MULTI_DEALER_ROUTER,wss,65536,bandwidth,4019.480
+RESULT,current,MULTI_DEALER_ROUTER,wss,65536,latency,1.622
+RESULT,current,MULTI_DEALER_ROUTER,wss,65536,latency_p95,2.350
+RESULT,current,MULTI_DEALER_ROUTER,wss,65536,latency_p99,2.713
+RESULT,current,MULTI_DEALER_ROUTER,wss,65536,throughput,30666.200
+RESULT,current,MULTI_DEALER_ROUTER,wss,131072,bandwidth,4001.104
+RESULT,current,MULTI_DEALER_ROUTER,wss,131072,latency,3.262
+RESULT,current,MULTI_DEALER_ROUTER,wss,131072,latency_p95,4.408
+RESULT,current,MULTI_DEALER_ROUTER,wss,131072,latency_p99,4.915
+RESULT,current,MULTI_DEALER_ROUTER,wss,131072,throughput,15263.000
+RESULT,current,MULTI_DEALER_ROUTER,wss,262144,bandwidth,4630.197
+RESULT,current,MULTI_DEALER_ROUTER,wss,262144,latency,5.642
+RESULT,current,MULTI_DEALER_ROUTER,wss,262144,latency_p95,6.956
+RESULT,current,MULTI_DEALER_ROUTER,wss,262144,latency_p99,7.562
+RESULT,current,MULTI_DEALER_ROUTER,wss,262144,throughput,8831.400
+RESULT,current,MULTI_PUBSUB,tcp,64,bandwidth,223.178
+RESULT,current,MULTI_PUBSUB,tcp,64,latency,869.748
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p95,1591.590
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p99,1672.884
+RESULT,current,MULTI_PUBSUB,tcp,64,throughput,3487151.800
+RESULT,current,MULTI_PUBSUB,tcp,256,bandwidth,848.703
+RESULT,current,MULTI_PUBSUB,tcp,256,latency,623.732
+RESULT,current,MULTI_PUBSUB,tcp,256,latency_p95,1228.353
+RESULT,current,MULTI_PUBSUB,tcp,256,latency_p99,1308.535
+RESULT,current,MULTI_PUBSUB,tcp,256,throughput,3315247.600
+RESULT,current,MULTI_PUBSUB,tcp,1024,bandwidth,2801.599
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency,290.855
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency_p95,356.704
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency_p99,366.597
+RESULT,current,MULTI_PUBSUB,tcp,1024,throughput,2735936.200
+RESULT,current,MULTI_PUBSUB,tcp,65536,bandwidth,13770.215
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency,31.622
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency_p95,89.207
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency_p99,94.806
+RESULT,current,MULTI_PUBSUB,tcp,65536,throughput,210116.800
+RESULT,current,MULTI_PUBSUB,tcp,131072,bandwidth,10259.923
+RESULT,current,MULTI_PUBSUB,tcp,131072,latency,74.450
+RESULT,current,MULTI_PUBSUB,tcp,131072,latency_p95,197.071
+RESULT,current,MULTI_PUBSUB,tcp,131072,latency_p99,212.683
+RESULT,current,MULTI_PUBSUB,tcp,131072,throughput,78277.000
+RESULT,current,MULTI_PUBSUB,tcp,262144,bandwidth,9425.021
+RESULT,current,MULTI_PUBSUB,tcp,262144,latency,126.019
+RESULT,current,MULTI_PUBSUB,tcp,262144,latency_p95,352.332
+RESULT,current,MULTI_PUBSUB,tcp,262144,latency_p99,395.510
+RESULT,current,MULTI_PUBSUB,tcp,262144,throughput,35953.600
+RESULT,current,MULTI_PUBSUB,tls,64,bandwidth,154.025
+RESULT,current,MULTI_PUBSUB,tls,64,latency,741.500
+RESULT,current,MULTI_PUBSUB,tls,64,latency_p95,1560.834
+RESULT,current,MULTI_PUBSUB,tls,64,latency_p99,1660.439
+RESULT,current,MULTI_PUBSUB,tls,64,throughput,2406642.800
+RESULT,current,MULTI_PUBSUB,tls,256,bandwidth,637.547
+RESULT,current,MULTI_PUBSUB,tls,256,latency,939.860
+RESULT,current,MULTI_PUBSUB,tls,256,latency_p95,1537.083
+RESULT,current,MULTI_PUBSUB,tls,256,latency_p99,1573.104
+RESULT,current,MULTI_PUBSUB,tls,256,throughput,2490417.600
+RESULT,current,MULTI_PUBSUB,tls,1024,bandwidth,2318.771
+RESULT,current,MULTI_PUBSUB,tls,1024,latency,531.856
+RESULT,current,MULTI_PUBSUB,tls,1024,latency_p95,685.042
+RESULT,current,MULTI_PUBSUB,tls,1024,latency_p99,705.013
+RESULT,current,MULTI_PUBSUB,tls,1024,throughput,2264425.200
+RESULT,current,MULTI_PUBSUB,tls,65536,bandwidth,5784.273
+RESULT,current,MULTI_PUBSUB,tls,65536,latency,91.549
+RESULT,current,MULTI_PUBSUB,tls,65536,latency_p95,206.341
+RESULT,current,MULTI_PUBSUB,tls,65536,latency_p99,236.160
+RESULT,current,MULTI_PUBSUB,tls,65536,throughput,88261.000
+RESULT,current,MULTI_PUBSUB,tls,131072,bandwidth,5217.321
+RESULT,current,MULTI_PUBSUB,tls,131072,latency,103.147
+RESULT,current,MULTI_PUBSUB,tls,131072,latency_p95,265.163
+RESULT,current,MULTI_PUBSUB,tls,131072,latency_p99,308.010
+RESULT,current,MULTI_PUBSUB,tls,131072,throughput,39805.000
+RESULT,current,MULTI_PUBSUB,tls,262144,bandwidth,5836.322
+RESULT,current,MULTI_PUBSUB,tls,262144,latency,204.838
+RESULT,current,MULTI_PUBSUB,tls,262144,latency_p95,483.807
+RESULT,current,MULTI_PUBSUB,tls,262144,latency_p99,559.776
+RESULT,current,MULTI_PUBSUB,tls,262144,throughput,22263.800
+RESULT,current,MULTI_PUBSUB,ws,64,bandwidth,158.587
+RESULT,current,MULTI_PUBSUB,ws,64,latency,1388.225
+RESULT,current,MULTI_PUBSUB,ws,64,latency_p95,2581.755
+RESULT,current,MULTI_PUBSUB,ws,64,latency_p99,2677.858
+RESULT,current,MULTI_PUBSUB,ws,64,throughput,2477920.400
+RESULT,current,MULTI_PUBSUB,ws,256,bandwidth,747.160
+RESULT,current,MULTI_PUBSUB,ws,256,latency,238.947
+RESULT,current,MULTI_PUBSUB,ws,256,latency_p95,456.551
+RESULT,current,MULTI_PUBSUB,ws,256,latency_p99,623.033
+RESULT,current,MULTI_PUBSUB,ws,256,throughput,2918592.000
+RESULT,current,MULTI_PUBSUB,ws,1024,bandwidth,2422.256
+RESULT,current,MULTI_PUBSUB,ws,1024,latency,548.194
+RESULT,current,MULTI_PUBSUB,ws,1024,latency_p95,718.098
+RESULT,current,MULTI_PUBSUB,ws,1024,latency_p99,739.199
+RESULT,current,MULTI_PUBSUB,ws,1024,throughput,2365484.800
+RESULT,current,MULTI_PUBSUB,ws,65536,bandwidth,11139.495
+RESULT,current,MULTI_PUBSUB,ws,65536,latency,64.772
+RESULT,current,MULTI_PUBSUB,ws,65536,latency_p95,111.801
+RESULT,current,MULTI_PUBSUB,ws,65536,latency_p99,117.620
+RESULT,current,MULTI_PUBSUB,ws,65536,throughput,169975.200
+RESULT,current,MULTI_PUBSUB,ws,131072,bandwidth,7661.604
+RESULT,current,MULTI_PUBSUB,ws,131072,latency,88.156
+RESULT,current,MULTI_PUBSUB,ws,131072,latency_p95,248.623
+RESULT,current,MULTI_PUBSUB,ws,131072,latency_p99,270.528
+RESULT,current,MULTI_PUBSUB,ws,131072,throughput,58453.400
+RESULT,current,MULTI_PUBSUB,ws,262144,bandwidth,8344.044
+RESULT,current,MULTI_PUBSUB,ws,262144,latency,183.768
+RESULT,current,MULTI_PUBSUB,ws,262144,latency_p95,426.373
+RESULT,current,MULTI_PUBSUB,ws,262144,latency_p99,572.730
+RESULT,current,MULTI_PUBSUB,ws,262144,throughput,31830.000
+RESULT,current,MULTI_PUBSUB,wss,64,bandwidth,191.992
+RESULT,current,MULTI_PUBSUB,wss,64,latency,683.965
+RESULT,current,MULTI_PUBSUB,wss,64,latency_p95,1216.465
+RESULT,current,MULTI_PUBSUB,wss,64,latency_p99,1295.171
+RESULT,current,MULTI_PUBSUB,wss,64,throughput,2999867.600
+RESULT,current,MULTI_PUBSUB,wss,256,bandwidth,774.448
+RESULT,current,MULTI_PUBSUB,wss,256,latency,529.851
+RESULT,current,MULTI_PUBSUB,wss,256,latency_p95,970.453
+RESULT,current,MULTI_PUBSUB,wss,256,latency_p99,1017.924
+RESULT,current,MULTI_PUBSUB,wss,256,throughput,3025188.000
+RESULT,current,MULTI_PUBSUB,wss,1024,bandwidth,2328.625
+RESULT,current,MULTI_PUBSUB,wss,1024,latency,432.795
+RESULT,current,MULTI_PUBSUB,wss,1024,latency_p95,670.166
+RESULT,current,MULTI_PUBSUB,wss,1024,latency_p99,693.977
+RESULT,current,MULTI_PUBSUB,wss,1024,throughput,2274048.200
+RESULT,current,MULTI_PUBSUB,wss,65536,bandwidth,3958.374
+RESULT,current,MULTI_PUBSUB,wss,65536,latency,94.258
+RESULT,current,MULTI_PUBSUB,wss,65536,latency_p95,277.410
+RESULT,current,MULTI_PUBSUB,wss,65536,latency_p99,303.840
+RESULT,current,MULTI_PUBSUB,wss,65536,throughput,60400.000
+RESULT,current,MULTI_PUBSUB,wss,131072,bandwidth,4329.308
+RESULT,current,MULTI_PUBSUB,wss,131072,latency,170.804
+RESULT,current,MULTI_PUBSUB,wss,131072,latency_p95,354.461
+RESULT,current,MULTI_PUBSUB,wss,131072,latency_p99,425.289
+RESULT,current,MULTI_PUBSUB,wss,131072,throughput,33030.000
+RESULT,current,MULTI_PUBSUB,wss,262144,bandwidth,4341.314
+RESULT,current,MULTI_PUBSUB,wss,262144,latency,253.594
+RESULT,current,MULTI_PUBSUB,wss,262144,latency_p95,705.346
+RESULT,current,MULTI_PUBSUB,wss,262144,latency_p99,833.735
+RESULT,current,MULTI_PUBSUB,wss,262144,throughput,16560.800
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,bandwidth,50.144
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency,0.116
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p95,0.171
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p99,0.202
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,throughput,391746.600
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,bandwidth,204.141
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,latency,0.114
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,latency_p95,0.168
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,latency_p99,0.203
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,throughput,398713.000
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,bandwidth,779.873
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency,0.120
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency_p95,0.176
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency_p99,0.208
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,throughput,380797.200
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,bandwidth,19187.106
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,latency,0.333
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,latency_p95,0.530
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,latency_p99,0.638
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,throughput,146386.000
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,131072,bandwidth,17215.049
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,131072,latency,0.752
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,131072,latency_p95,1.195
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,131072,latency_p99,1.415
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,131072,throughput,65670.200
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,262144,bandwidth,15002.921
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,262144,latency,1.721
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,262144,latency_p95,2.794
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,262144,latency_p99,3.393
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,262144,throughput,28615.800
+RESULT,current,MULTI_ROUTER_ROUTER,tls,64,bandwidth,44.209
+RESULT,current,MULTI_ROUTER_ROUTER,tls,64,latency,0.133
+RESULT,current,MULTI_ROUTER_ROUTER,tls,64,latency_p95,0.202
+RESULT,current,MULTI_ROUTER_ROUTER,tls,64,latency_p99,0.241
+RESULT,current,MULTI_ROUTER_ROUTER,tls,64,throughput,345382.200
+RESULT,current,MULTI_ROUTER_ROUTER,tls,256,bandwidth,180.825
+RESULT,current,MULTI_ROUTER_ROUTER,tls,256,latency,0.131
+RESULT,current,MULTI_ROUTER_ROUTER,tls,256,latency_p95,0.200
+RESULT,current,MULTI_ROUTER_ROUTER,tls,256,latency_p99,0.236
+RESULT,current,MULTI_ROUTER_ROUTER,tls,256,throughput,353174.200
+RESULT,current,MULTI_ROUTER_ROUTER,tls,1024,bandwidth,676.314
+RESULT,current,MULTI_ROUTER_ROUTER,tls,1024,latency,0.138
+RESULT,current,MULTI_ROUTER_ROUTER,tls,1024,latency_p95,0.216
+RESULT,current,MULTI_ROUTER_ROUTER,tls,1024,latency_p99,0.263
+RESULT,current,MULTI_ROUTER_ROUTER,tls,1024,throughput,330231.400
+RESULT,current,MULTI_ROUTER_ROUTER,tls,65536,bandwidth,6211.607
+RESULT,current,MULTI_ROUTER_ROUTER,tls,65536,latency,1.038
+RESULT,current,MULTI_ROUTER_ROUTER,tls,65536,latency_p95,1.576
+RESULT,current,MULTI_ROUTER_ROUTER,tls,65536,latency_p99,1.804
+RESULT,current,MULTI_ROUTER_ROUTER,tls,65536,throughput,47390.800
+RESULT,current,MULTI_ROUTER_ROUTER,tls,131072,bandwidth,6030.098
+RESULT,current,MULTI_ROUTER_ROUTER,tls,131072,latency,2.153
+RESULT,current,MULTI_ROUTER_ROUTER,tls,131072,latency_p95,2.870
+RESULT,current,MULTI_ROUTER_ROUTER,tls,131072,latency_p99,3.217
+RESULT,current,MULTI_ROUTER_ROUTER,tls,131072,throughput,23003.000
+RESULT,current,MULTI_ROUTER_ROUTER,tls,262144,bandwidth,5859.548
+RESULT,current,MULTI_ROUTER_ROUTER,tls,262144,latency,4.443
+RESULT,current,MULTI_ROUTER_ROUTER,tls,262144,latency_p95,6.024
+RESULT,current,MULTI_ROUTER_ROUTER,tls,262144,latency_p99,7.146
+RESULT,current,MULTI_ROUTER_ROUTER,tls,262144,throughput,11176.200
+RESULT,current,MULTI_ROUTER_ROUTER,ws,64,bandwidth,48.867
+RESULT,current,MULTI_ROUTER_ROUTER,ws,64,latency,0.119
+RESULT,current,MULTI_ROUTER_ROUTER,ws,64,latency_p95,0.181
+RESULT,current,MULTI_ROUTER_ROUTER,ws,64,latency_p99,0.223
+RESULT,current,MULTI_ROUTER_ROUTER,ws,64,throughput,381775.800
+RESULT,current,MULTI_ROUTER_ROUTER,ws,256,bandwidth,190.505
+RESULT,current,MULTI_ROUTER_ROUTER,ws,256,latency,0.121
+RESULT,current,MULTI_ROUTER_ROUTER,ws,256,latency_p95,0.185
+RESULT,current,MULTI_ROUTER_ROUTER,ws,256,latency_p99,0.229
+RESULT,current,MULTI_ROUTER_ROUTER,ws,256,throughput,372080.600
+RESULT,current,MULTI_ROUTER_ROUTER,ws,1024,bandwidth,714.413
+RESULT,current,MULTI_ROUTER_ROUTER,ws,1024,latency,0.130
+RESULT,current,MULTI_ROUTER_ROUTER,ws,1024,latency_p95,0.193
+RESULT,current,MULTI_ROUTER_ROUTER,ws,1024,latency_p99,0.228
+RESULT,current,MULTI_ROUTER_ROUTER,ws,1024,throughput,348834.400
+RESULT,current,MULTI_ROUTER_ROUTER,ws,65536,bandwidth,11140.124
+RESULT,current,MULTI_ROUTER_ROUTER,ws,65536,latency,0.534
+RESULT,current,MULTI_ROUTER_ROUTER,ws,65536,latency_p95,0.949
+RESULT,current,MULTI_ROUTER_ROUTER,ws,65536,latency_p99,1.143
+RESULT,current,MULTI_ROUTER_ROUTER,ws,65536,throughput,84992.400
+RESULT,current,MULTI_ROUTER_ROUTER,ws,131072,bandwidth,9248.388
+RESULT,current,MULTI_ROUTER_ROUTER,ws,131072,latency,1.329
+RESULT,current,MULTI_ROUTER_ROUTER,ws,131072,latency_p95,2.319
+RESULT,current,MULTI_ROUTER_ROUTER,ws,131072,latency_p99,2.767
+RESULT,current,MULTI_ROUTER_ROUTER,ws,131072,throughput,35279.800
+RESULT,current,MULTI_ROUTER_ROUTER,ws,262144,bandwidth,8510.662
+RESULT,current,MULTI_ROUTER_ROUTER,ws,262144,latency,2.925
+RESULT,current,MULTI_ROUTER_ROUTER,ws,262144,latency_p95,4.621
+RESULT,current,MULTI_ROUTER_ROUTER,ws,262144,latency_p99,5.500
+RESULT,current,MULTI_ROUTER_ROUTER,ws,262144,throughput,16232.800
+RESULT,current,MULTI_ROUTER_ROUTER,wss,64,bandwidth,42.684
+RESULT,current,MULTI_ROUTER_ROUTER,wss,64,latency,0.140
+RESULT,current,MULTI_ROUTER_ROUTER,wss,64,latency_p95,0.214
+RESULT,current,MULTI_ROUTER_ROUTER,wss,64,latency_p99,0.254
+RESULT,current,MULTI_ROUTER_ROUTER,wss,64,throughput,333466.000
+RESULT,current,MULTI_ROUTER_ROUTER,wss,256,bandwidth,166.107
+RESULT,current,MULTI_ROUTER_ROUTER,wss,256,latency,0.144
+RESULT,current,MULTI_ROUTER_ROUTER,wss,256,latency_p95,0.221
+RESULT,current,MULTI_ROUTER_ROUTER,wss,256,latency_p99,0.263
+RESULT,current,MULTI_ROUTER_ROUTER,wss,256,throughput,324426.800
+RESULT,current,MULTI_ROUTER_ROUTER,wss,1024,bandwidth,655.120
+RESULT,current,MULTI_ROUTER_ROUTER,wss,1024,latency,0.145
+RESULT,current,MULTI_ROUTER_ROUTER,wss,1024,latency_p95,0.225
+RESULT,current,MULTI_ROUTER_ROUTER,wss,1024,latency_p99,0.270
+RESULT,current,MULTI_ROUTER_ROUTER,wss,1024,throughput,319883.000
+RESULT,current,MULTI_ROUTER_ROUTER,wss,65536,bandwidth,3849.113
+RESULT,current,MULTI_ROUTER_ROUTER,wss,65536,latency,1.692
+RESULT,current,MULTI_ROUTER_ROUTER,wss,65536,latency_p95,2.492
+RESULT,current,MULTI_ROUTER_ROUTER,wss,65536,latency_p99,2.870
+RESULT,current,MULTI_ROUTER_ROUTER,wss,65536,throughput,29366.400
+RESULT,current,MULTI_ROUTER_ROUTER,wss,131072,bandwidth,3623.512
+RESULT,current,MULTI_ROUTER_ROUTER,wss,131072,latency,3.601
+RESULT,current,MULTI_ROUTER_ROUTER,wss,131072,latency_p95,4.747
+RESULT,current,MULTI_ROUTER_ROUTER,wss,131072,latency_p99,5.243
+RESULT,current,MULTI_ROUTER_ROUTER,wss,131072,throughput,13822.600
+RESULT,current,MULTI_ROUTER_ROUTER,wss,262144,bandwidth,4491.575
+RESULT,current,MULTI_ROUTER_ROUTER,wss,262144,latency,5.816
+RESULT,current,MULTI_ROUTER_ROUTER,wss,262144,latency_p95,7.360
+RESULT,current,MULTI_ROUTER_ROUTER,wss,262144,latency_p99,8.194
+RESULT,current,MULTI_ROUTER_ROUTER,wss,262144,throughput,8567.000
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,293.788
+RESULT,current,MULTI_SPOT,tcp,64,latency,828.572
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,2128.587
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,2519.401
+RESULT,current,MULTI_SPOT,tcp,64,throughput,4590438.400
+RESULT,current,MULTI_SPOT,tcp,256,bandwidth,1169.474
+RESULT,current,MULTI_SPOT,tcp,256,latency,449.088
+RESULT,current,MULTI_SPOT,tcp,256,latency_p95,1214.976
+RESULT,current,MULTI_SPOT,tcp,256,latency_p99,1681.039
+RESULT,current,MULTI_SPOT,tcp,256,throughput,4568257.400
+RESULT,current,MULTI_SPOT,tcp,1024,bandwidth,3143.471
+RESULT,current,MULTI_SPOT,tcp,1024,latency,157.338
+RESULT,current,MULTI_SPOT,tcp,1024,latency_p95,432.018
+RESULT,current,MULTI_SPOT,tcp,1024,latency_p99,693.701
+RESULT,current,MULTI_SPOT,tcp,1024,throughput,3069795.600
+RESULT,current,MULTI_SPOT,tcp,65536,bandwidth,8934.195
+RESULT,current,MULTI_SPOT,tcp,65536,latency,631.491
+RESULT,current,MULTI_SPOT,tcp,65536,latency_p95,1397.345
+RESULT,current,MULTI_SPOT,tcp,65536,latency_p99,1513.972
+RESULT,current,MULTI_SPOT,tcp,65536,throughput,136325.000
+RESULT,current,MULTI_SPOT,tcp,131072,bandwidth,9756.947
+RESULT,current,MULTI_SPOT,tcp,131072,latency,1294.248
+RESULT,current,MULTI_SPOT,tcp,131072,latency_p95,2439.974
+RESULT,current,MULTI_SPOT,tcp,131072,latency_p99,2599.202
+RESULT,current,MULTI_SPOT,tcp,131072,throughput,74439.600
+RESULT,current,MULTI_SPOT,tcp,262144,bandwidth,8963.700
+RESULT,current,MULTI_SPOT,tcp,262144,latency,2166.147
+RESULT,current,MULTI_SPOT,tcp,262144,latency_p95,4536.166
+RESULT,current,MULTI_SPOT,tcp,262144,latency_p99,4873.877
+RESULT,current,MULTI_SPOT,tcp,262144,throughput,34193.800
+RESULT,current,MULTI_SPOT,tls,64,bandwidth,300.149
+RESULT,current,MULTI_SPOT,tls,64,latency,714.084
+RESULT,current,MULTI_SPOT,tls,64,latency_p95,2787.834
+RESULT,current,MULTI_SPOT,tls,64,latency_p99,3392.101
+RESULT,current,MULTI_SPOT,tls,64,throughput,4689833.200
+RESULT,current,MULTI_SPOT,tls,256,bandwidth,970.633
+RESULT,current,MULTI_SPOT,tls,256,latency,227.043
+RESULT,current,MULTI_SPOT,tls,256,latency_p95,939.599
+RESULT,current,MULTI_SPOT,tls,256,latency_p99,1486.288
+RESULT,current,MULTI_SPOT,tls,256,throughput,3791535.200
+RESULT,current,MULTI_SPOT,tls,1024,bandwidth,2898.895
+RESULT,current,MULTI_SPOT,tls,1024,latency,42.689
+RESULT,current,MULTI_SPOT,tls,1024,latency_p95,63.089
+RESULT,current,MULTI_SPOT,tls,1024,latency_p99,72.590
+RESULT,current,MULTI_SPOT,tls,1024,throughput,2830952.400
+RESULT,current,MULTI_SPOT,tls,65536,bandwidth,4545.865
+RESULT,current,MULTI_SPOT,tls,65536,latency,1488.716
+RESULT,current,MULTI_SPOT,tls,65536,latency_p95,2490.490
+RESULT,current,MULTI_SPOT,tls,65536,latency_p99,2710.273
+RESULT,current,MULTI_SPOT,tls,65536,throughput,69364.400
+RESULT,current,MULTI_SPOT,tls,131072,bandwidth,4315.991
+RESULT,current,MULTI_SPOT,tls,131072,latency,2180.004
+RESULT,current,MULTI_SPOT,tls,131072,latency_p95,4429.401
+RESULT,current,MULTI_SPOT,tls,131072,latency_p99,5003.291
+RESULT,current,MULTI_SPOT,tls,131072,throughput,32928.400
+RESULT,current,MULTI_SPOT,tls,262144,bandwidth,5401.320
+RESULT,current,MULTI_SPOT,tls,262144,latency,2549.048
+RESULT,current,MULTI_SPOT,tls,262144,latency_p95,4864.356
+RESULT,current,MULTI_SPOT,tls,262144,latency_p99,5077.187
+RESULT,current,MULTI_SPOT,tls,262144,throughput,20604.400
+RESULT,current,MULTI_SPOT_REQREP,tcp,64,bandwidth,26.979
+RESULT,current,MULTI_SPOT_REQREP,tcp,64,latency,0.185
+RESULT,current,MULTI_SPOT_REQREP,tcp,64,latency_p95,0.252
+RESULT,current,MULTI_SPOT_REQREP,tcp,64,latency_p99,0.290
+RESULT,current,MULTI_SPOT_REQREP,tcp,64,throughput,210776.400
+RESULT,current,MULTI_SPOT_REQREP,tcp,256,bandwidth,100.245
+RESULT,current,MULTI_SPOT_REQREP,tcp,256,latency,0.204
+RESULT,current,MULTI_SPOT_REQREP,tcp,256,latency_p95,0.297
+RESULT,current,MULTI_SPOT_REQREP,tcp,256,latency_p99,0.367
+RESULT,current,MULTI_SPOT_REQREP,tcp,256,throughput,195790.800
+RESULT,current,MULTI_SPOT_REQREP,tcp,1024,bandwidth,397.018
+RESULT,current,MULTI_SPOT_REQREP,tcp,1024,latency,0.204
+RESULT,current,MULTI_SPOT_REQREP,tcp,1024,latency_p95,0.293
+RESULT,current,MULTI_SPOT_REQREP,tcp,1024,latency_p99,0.355
+RESULT,current,MULTI_SPOT_REQREP,tcp,1024,throughput,193856.600
+RESULT,current,MULTI_SPOT_REQREP,tcp,65536,bandwidth,10269.439
+RESULT,current,MULTI_SPOT_REQREP,tcp,65536,latency,0.627
+RESULT,current,MULTI_SPOT_REQREP,tcp,65536,latency_p95,0.803
+RESULT,current,MULTI_SPOT_REQREP,tcp,65536,latency_p99,0.916
+RESULT,current,MULTI_SPOT_REQREP,tcp,65536,throughput,78349.600
+RESULT,current,MULTI_SPOT_REQREP,tcp,131072,bandwidth,13370.497
+RESULT,current,MULTI_SPOT_REQREP,tcp,131072,latency,0.973
+RESULT,current,MULTI_SPOT_REQREP,tcp,131072,latency_p95,1.218
+RESULT,current,MULTI_SPOT_REQREP,tcp,131072,latency_p99,1.389
+RESULT,current,MULTI_SPOT_REQREP,tcp,131072,throughput,51004.400
+RESULT,current,MULTI_SPOT_REQREP,tcp,262144,bandwidth,12692.593
+RESULT,current,MULTI_SPOT_REQREP,tcp,262144,latency,2.057
+RESULT,current,MULTI_SPOT_REQREP,tcp,262144,latency_p95,2.367
+RESULT,current,MULTI_SPOT_REQREP,tcp,262144,latency_p99,2.564
+RESULT,current,MULTI_SPOT_REQREP,tcp,262144,throughput,24209.200
+RESULT,current,MULTI_SPOT_REQREP,tls,64,bandwidth,23.155
+RESULT,current,MULTI_SPOT_REQREP,tls,64,latency,0.227
+RESULT,current,MULTI_SPOT_REQREP,tls,64,latency_p95,0.318
+RESULT,current,MULTI_SPOT_REQREP,tls,64,latency_p99,0.379
+RESULT,current,MULTI_SPOT_REQREP,tls,64,throughput,180895.000
+RESULT,current,MULTI_SPOT_REQREP,tls,256,bandwidth,90.195
+RESULT,current,MULTI_SPOT_REQREP,tls,256,latency,0.232
+RESULT,current,MULTI_SPOT_REQREP,tls,256,latency_p95,0.327
+RESULT,current,MULTI_SPOT_REQREP,tls,256,latency_p99,0.388
+RESULT,current,MULTI_SPOT_REQREP,tls,256,throughput,176162.400
+RESULT,current,MULTI_SPOT_REQREP,tls,1024,bandwidth,355.854
+RESULT,current,MULTI_SPOT_REQREP,tls,1024,latency,0.236
+RESULT,current,MULTI_SPOT_REQREP,tls,1024,latency_p95,0.338
+RESULT,current,MULTI_SPOT_REQREP,tls,1024,latency_p99,0.403
+RESULT,current,MULTI_SPOT_REQREP,tls,1024,throughput,173756.800
+RESULT,current,MULTI_SPOT_REQREP,tls,65536,bandwidth,4182.114
+RESULT,current,MULTI_SPOT_REQREP,tls,65536,latency,1.561
+RESULT,current,MULTI_SPOT_REQREP,tls,65536,latency_p95,1.871
+RESULT,current,MULTI_SPOT_REQREP,tls,65536,latency_p99,2.020
+RESULT,current,MULTI_SPOT_REQREP,tls,65536,throughput,31907.000
+RESULT,current,MULTI_SPOT_REQREP,tls,131072,bandwidth,4535.773
+RESULT,current,MULTI_SPOT_REQREP,tls,131072,latency,2.878
+RESULT,current,MULTI_SPOT_REQREP,tls,131072,latency_p95,3.413
+RESULT,current,MULTI_SPOT_REQREP,tls,131072,latency_p99,3.672
+RESULT,current,MULTI_SPOT_REQREP,tls,131072,throughput,17302.600
+RESULT,current,MULTI_SPOT_REQREP,tls,262144,bandwidth,4799.123
+RESULT,current,MULTI_SPOT_REQREP,tls,262144,latency,5.441
+RESULT,current,MULTI_SPOT_REQREP,tls,262144,latency_p95,6.087
+RESULT,current,MULTI_SPOT_REQREP,tls,262144,latency_p99,6.481
+RESULT,current,MULTI_SPOT_REQREP,tls,262144,throughput,9153.600
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,64,bandwidth,17.145
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,64,latency,0.094
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,64,latency_p95,0.163
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,64,latency_p99,0.208
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,64,throughput,133944.400
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,256,bandwidth,69.690
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,256,latency,0.091
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,256,latency_p95,0.156
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,256,latency_p99,0.216
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,256,throughput,136114.000
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,1024,bandwidth,263.964
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,1024,latency,0.100
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,1024,latency_p95,0.177
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,1024,latency_p99,0.232
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,1024,throughput,128888.600
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,65536,bandwidth,7455.952
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,65536,latency,0.265
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,65536,latency_p95,0.331
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,65536,latency_p99,0.383
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,65536,throughput,56884.400
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,131072,bandwidth,12218.427
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,131072,latency,0.234
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,131072,latency_p95,0.323
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,131072,latency_p99,0.388
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,131072,throughput,46609.600
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,262144,bandwidth,2448.425
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,262144,latency,0.097
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,262144,latency_p95,0.150
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,262144,latency_p99,0.198
+RESULT,current,MULTI_SPOT_SENDSEND,tcp,262144,throughput,4670.000
+RESULT,current,MULTI_SPOT_SENDSEND,tls,64,bandwidth,18.109
+RESULT,current,MULTI_SPOT_SENDSEND,tls,64,latency,0.090
+RESULT,current,MULTI_SPOT_SENDSEND,tls,64,latency_p95,0.134
+RESULT,current,MULTI_SPOT_SENDSEND,tls,64,latency_p99,0.180
+RESULT,current,MULTI_SPOT_SENDSEND,tls,64,throughput,141480.000
+RESULT,current,MULTI_SPOT_SENDSEND,tls,256,bandwidth,70.645
+RESULT,current,MULTI_SPOT_SENDSEND,tls,256,latency,0.093
+RESULT,current,MULTI_SPOT_SENDSEND,tls,256,latency_p95,0.131
+RESULT,current,MULTI_SPOT_SENDSEND,tls,256,latency_p99,0.173
+RESULT,current,MULTI_SPOT_SENDSEND,tls,256,throughput,137978.200
+RESULT,current,MULTI_SPOT_SENDSEND,tls,1024,bandwidth,280.534
+RESULT,current,MULTI_SPOT_SENDSEND,tls,1024,latency,0.095
+RESULT,current,MULTI_SPOT_SENDSEND,tls,1024,latency_p95,0.137
+RESULT,current,MULTI_SPOT_SENDSEND,tls,1024,latency_p99,0.180
+RESULT,current,MULTI_SPOT_SENDSEND,tls,1024,throughput,136979.400
+RESULT,current,MULTI_SPOT_SENDSEND,tls,65536,bandwidth,4901.988
+RESULT,current,MULTI_SPOT_SENDSEND,tls,65536,latency,0.417
+RESULT,current,MULTI_SPOT_SENDSEND,tls,65536,latency_p95,0.515
+RESULT,current,MULTI_SPOT_SENDSEND,tls,65536,latency_p99,0.586
+RESULT,current,MULTI_SPOT_SENDSEND,tls,65536,throughput,37399.200
+RESULT,current,MULTI_SPOT_SENDSEND,tls,131072,bandwidth,5528.250
+RESULT,current,MULTI_SPOT_SENDSEND,tls,131072,latency,0.748
+RESULT,current,MULTI_SPOT_SENDSEND,tls,131072,latency_p95,0.832
+RESULT,current,MULTI_SPOT_SENDSEND,tls,131072,latency_p99,0.917
+RESULT,current,MULTI_SPOT_SENDSEND,tls,131072,throughput,21088.600
+RESULT,current,MULTI_SPOT_SENDSEND,tls,262144,bandwidth,4637.223
+RESULT,current,MULTI_SPOT_SENDSEND,tls,262144,latency,1.738
+RESULT,current,MULTI_SPOT_SENDSEND,tls,262144,latency_p95,2.052
+RESULT,current,MULTI_SPOT_SENDSEND,tls,262144,latency_p99,2.200
+RESULT,current,MULTI_SPOT_SENDSEND,tls,262144,throughput,8844.800
+RESULT,current,MULTI_STREAM,tcp,64,bandwidth,48.884
+RESULT,current,MULTI_STREAM,tcp,64,latency,26.071
+RESULT,current,MULTI_STREAM,tcp,64,latency_p95,26.967
+RESULT,current,MULTI_STREAM,tcp,64,latency_p99,28.436
+RESULT,current,MULTI_STREAM,tcp,64,throughput,381903.800
+RESULT,current,MULTI_STREAM,tcp,256,bandwidth,185.323
+RESULT,current,MULTI_STREAM,tcp,256,latency,27.557
+RESULT,current,MULTI_STREAM,tcp,256,latency_p95,28.232
+RESULT,current,MULTI_STREAM,tcp,256,latency_p99,29.470
+RESULT,current,MULTI_STREAM,tcp,256,throughput,361959.800
+RESULT,current,MULTI_STREAM,tcp,1024,bandwidth,715.817
+RESULT,current,MULTI_STREAM,tcp,1024,latency,28.473
+RESULT,current,MULTI_STREAM,tcp,1024,latency_p95,29.123
+RESULT,current,MULTI_STREAM,tcp,1024,latency_p99,29.870
+RESULT,current,MULTI_STREAM,tcp,1024,throughput,349519.800
+RESULT,current,MULTI_STREAM,tcp,65536,bandwidth,7476.268
+RESULT,current,MULTI_STREAM,tcp,65536,latency,152.204
+RESULT,current,MULTI_STREAM,tcp,65536,latency_p95,172.041
+RESULT,current,MULTI_STREAM,tcp,65536,latency_p99,259.204
+RESULT,current,MULTI_STREAM,tcp,65536,throughput,57039.400
+RESULT,current,MULTI_STREAM,tls,64,bandwidth,30.555
+RESULT,current,MULTI_STREAM,tls,64,latency,42.071
+RESULT,current,MULTI_STREAM,tls,64,latency_p95,45.970
+RESULT,current,MULTI_STREAM,tls,64,latency_p99,50.204
+RESULT,current,MULTI_STREAM,tls,64,throughput,238711.400
+RESULT,current,MULTI_STREAM,tls,256,bandwidth,115.055
+RESULT,current,MULTI_STREAM,tls,256,latency,44.450
+RESULT,current,MULTI_STREAM,tls,256,latency_p95,48.332
+RESULT,current,MULTI_STREAM,tls,256,latency_p99,51.135
+RESULT,current,MULTI_STREAM,tls,256,throughput,224716.800
+RESULT,current,MULTI_STREAM,tls,1024,bandwidth,424.232
+RESULT,current,MULTI_STREAM,tls,1024,latency,47.968
+RESULT,current,MULTI_STREAM,tls,1024,latency_p95,53.271
+RESULT,current,MULTI_STREAM,tls,1024,latency_p99,55.643
+RESULT,current,MULTI_STREAM,tls,1024,throughput,207144.400
+RESULT,current,MULTI_STREAM,tls,65536,bandwidth,2337.459
+RESULT,current,MULTI_STREAM,tls,65536,latency,518.431
+RESULT,current,MULTI_STREAM,tls,65536,latency_p95,671.830
+RESULT,current,MULTI_STREAM,tls,65536,latency_p99,823.097
+RESULT,current,MULTI_STREAM,tls,65536,throughput,17833.400
+RESULT,current,MULTI_STREAM,ws,64,bandwidth,43.405
+RESULT,current,MULTI_STREAM,ws,64,latency,29.717
+RESULT,current,MULTI_STREAM,ws,64,latency_p95,32.475
+RESULT,current,MULTI_STREAM,ws,64,latency_p99,34.031
+RESULT,current,MULTI_STREAM,ws,64,throughput,339100.800
+RESULT,current,MULTI_STREAM,ws,256,bandwidth,174.699
+RESULT,current,MULTI_STREAM,ws,256,latency,29.126
+RESULT,current,MULTI_STREAM,ws,256,latency_p95,30.010
+RESULT,current,MULTI_STREAM,ws,256,latency_p99,31.242
+RESULT,current,MULTI_STREAM,ws,256,throughput,341208.600
+RESULT,current,MULTI_STREAM,ws,1024,bandwidth,665.069
+RESULT,current,MULTI_STREAM,ws,1024,latency,30.860
+RESULT,current,MULTI_STREAM,ws,1024,latency_p95,32.736
+RESULT,current,MULTI_STREAM,ws,1024,latency_p99,34.984
+RESULT,current,MULTI_STREAM,ws,1024,throughput,324740.600
+RESULT,current,MULTI_STREAM,ws,65536,bandwidth,1731.854
+RESULT,current,MULTI_STREAM,ws,65536,latency,702.862
+RESULT,current,MULTI_STREAM,ws,65536,latency_p95,1387.511
+RESULT,current,MULTI_STREAM,ws,65536,latency_p99,1679.652
+RESULT,current,MULTI_STREAM,ws,65536,throughput,13213.000
+RESULT,current,MULTI_STREAM,wss,64,bandwidth,26.236
+RESULT,current,MULTI_STREAM,wss,64,latency,48.435
+RESULT,current,MULTI_STREAM,wss,64,latency_p95,54.708
+RESULT,current,MULTI_STREAM,wss,64,latency_p99,61.598
+RESULT,current,MULTI_STREAM,wss,64,throughput,204968.800
+RESULT,current,MULTI_STREAM,wss,256,bandwidth,102.289
+RESULT,current,MULTI_STREAM,wss,256,latency,49.673
+RESULT,current,MULTI_STREAM,wss,256,latency_p95,55.732
+RESULT,current,MULTI_STREAM,wss,256,latency_p99,59.013
+RESULT,current,MULTI_STREAM,wss,256,throughput,199783.000
+RESULT,current,MULTI_STREAM,wss,1024,bandwidth,368.173
+RESULT,current,MULTI_STREAM,wss,1024,latency,55.167
+RESULT,current,MULTI_STREAM,wss,1024,latency_p95,60.881
+RESULT,current,MULTI_STREAM,wss,1024,latency_p99,63.432
+RESULT,current,MULTI_STREAM,wss,1024,throughput,179772.000
+RESULT,current,MULTI_STREAM,wss,65536,bandwidth,916.534
+RESULT,current,MULTI_STREAM,wss,65536,latency,1264.499
+RESULT,current,MULTI_STREAM,wss,65536,latency_p95,2156.486
+RESULT,current,MULTI_STREAM,wss,65536,latency_p99,2303.875
+RESULT,current,MULTI_STREAM,wss,65536,throughput,6992.600
+
+Saved result file: /home/hep7/project/kairos/zlink/bindings/c/perf/results/multi/report/perf_c_multi_linux_20260424_083042_full_20260424_reltagfix.txt (status=complete)
+
+## Status Summary
+- success: 148
+- unsupported: 0
+- skip: 0
+- fail: 0
+- expected result lines: 740
+- actual result lines: 740
+- status: complete

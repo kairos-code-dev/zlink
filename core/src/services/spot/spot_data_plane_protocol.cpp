@@ -21,7 +21,11 @@
 #include <errno.h>
 #include <atomic>
 #include <chrono>
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 #include <map>
 #include <set>
 #include <stdarg.h>
@@ -33,6 +37,18 @@ namespace zlink
 {
 namespace
 {
+#ifdef _WIN32
+static int current_process_id ()
+{
+    return _getpid ();
+}
+#else
+static int current_process_id ()
+{
+    return getpid ();
+}
+#endif
+
 static const unsigned int mesh_xsub_forward_batch_limit = 16384;
 // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
 // data-plane thread long enough to inflate delivery tail latency.
@@ -66,7 +82,7 @@ struct spot_route_recv_stats_t
         std::fflush (stderr);
         char path[128];
         std::snprintf (path, sizeof (path), "/tmp/zlink_spot_route_recv_%d.log",
-                       static_cast<int> (getpid ()));
+                       current_process_id ());
         FILE *fp = std::fopen (path, "a");
         if (fp) {
             std::fprintf (fp, "count=%llu ns=%llu avg_ns=%llu\n", count,

@@ -31,6 +31,7 @@ struct spot_peer_state_t
     std::map<std::string, spot_peer_observation_t> observations;
     std::map<std::string, zlink_admission_state_t> peer_admission_by_endpoint;
     std::map<std::string, zlink_admission_state_t> peer_admission_by_rid;
+    std::map<std::string, std::set<std::string> > peer_endpoints_by_rid;
     bool subscription_ready_refresh_pending;
     unsigned int subscription_ready_refresh_holdoff_ticks;
     bool subscription_replay_pending;

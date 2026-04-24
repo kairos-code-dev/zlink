@@ -554,6 +554,16 @@ ZLINK_EXPORT zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
 ZLINK_EXPORT zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
 
 /**
+ * @brief Disconnect the connected peer whose source routing id matches peer_rid_.
+ *
+ * Success means the matching pipe was asked to terminate asynchronously.
+ * Discovery-attached sockets reject this manual lifecycle change.
+ */
+ZLINK_EXPORT zlink_connect_result_t zlink_disconnect_rid (
+  void *s_,
+  const zlink_routing_id_t *peer_rid_);
+
+/**
  * @brief Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery service view.
  *
  * Attached sockets delegate provider registration, peer refresh, and shutdown
@@ -1091,6 +1101,8 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
   void *node, const char *peer_endpoint);
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
+  void *node, const zlink_routing_id_t *target_node_rid);
 
 /**
  * @brief Attach a Discovery instance for discovery-owned SPOT peer connection.

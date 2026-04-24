@@ -53,14 +53,22 @@ zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
                                                        const char *peer_endpoint);
+zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
+  void *node,
+  const zlink_routing_id_t *target_node_rid);
 zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
 - `zlink_spot_node_bind()` binds the node endpoint.
 - `zlink_spot_node_connect_peer()` and `disconnect_peer()` are for manual SPOT
-  mesh wiring only.
+  mesh wiring when the endpoint is known.
+- `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target
+  node routing id. It does not target an individual spot routing id under that
+  node.
 - They fail with `EBUSY` when a discovery is already attached.
+- The `Spot` facade has no separate peer-rid disconnect function because peer
+  connections are owned by the `SpotNode` runtime.
 - `zlink_spot_node_attach_discovery()` requires a discovery handle that exposes
   a SPOT channel view.
 - A node may have only one active SPOT discovery view at a time.

@@ -76,6 +76,7 @@
 | [protocol-zmp.ko.md](internals/protocol-zmp.ko.md) | ZMP v1.0 프로토콜 상세 |
 | [protocol-raw.ko.md](internals/protocol-raw.ko.md) | RAW (STREAM) 프로토콜 상세 |
 | [stream-socket.ko.md](internals/stream-socket.ko.md) | STREAM 소켓 내부 구조, WS/WSS 최적화, 런타임 기본값 |
+| [peer-disconnect-rid.ko.md](internals/peer-disconnect-rid.ko.md) | routing id 기준 peer disconnect 내부 구조 |
 | [socket-option-defaults.ko.md](internals/socket-option-defaults.ko.md) | 코드 기준 소켓 옵션 실효 기본값 |
 | [threading-model.ko.md](internals/threading-model.ko.md) | 스레딩 및 동시성 모델 |
 | [services-internals.ko.md](internals/services-internals.ko.md) | 서비스 계층 내부 설계 |

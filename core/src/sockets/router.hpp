@@ -48,6 +48,10 @@ class router_t : public routing_socket_base_t
                               zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int xpeer_command (zlink::msg_t *msg_,
                        zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xterm_peer_rid (const zlink_routing_id_t *peer_rid_) ZLINK_OVERRIDE
+    {
+        return terminate_out_pipe_by_routing_id (peer_rid_);
+    }
     void xlocal_admission_state_changed () ZLINK_OVERRIDE;
     void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;

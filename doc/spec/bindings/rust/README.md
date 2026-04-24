@@ -1861,3 +1861,10 @@ that are idiomatic and superior to the C thread API for all use cases.
 
 Not wrapped: Rust provides `std::sync::atomic` in the standard library,
 which covers the same use case idiomatically.
+
+## Peer Disconnect by Routing ID
+
+Rust bindings expose `disconnect_rid(rid)` on raw sockets and
+`disconnect_peer_rid(target_node_rid)` on `SpotNode`. The duplicate policy
+option and `NotFound` / `Conflict` / `Busy` connect errors mirror the C core.
+`Spot` does not expose a peer-rid disconnect method.

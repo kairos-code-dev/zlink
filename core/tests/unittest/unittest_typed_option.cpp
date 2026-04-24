@@ -115,6 +115,24 @@ void test_typed_raw_socket_options ()
       zlink_get_option (xpub, ZLINK_OPT_TYPE, &value, &size));
     TEST_ASSERT_EQUAL_INT (ZLINK_CORE_SOCKET_XPUB, value);
 
+    value = -1;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value,
+                        &size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RID_DUPLICATE_REJECT, value);
+
+    value = ZLINK_RID_DUPLICATE_HANDOVER;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value,
+                        sizeof (value)));
+    value = -1;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value,
+                        &size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RID_DUPLICATE_HANDOVER, value);
+
     value = 1;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
@@ -394,6 +412,9 @@ void test_option_owner_map_matches_domains ()
     TEST_ASSERT_EQUAL_INT (
       zlink::options_owner_core_socket,
       zlink::common_option_owner_of (ZLINK_OPT_SNDHWM));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::common_option_owner_of (ZLINK_OPT_RID_DUPLICATE_POLICY));
     TEST_ASSERT_EQUAL_INT (
       zlink::options_owner_transport_network,
       zlink::common_option_owner_of (ZLINK_OPT_TCP_NODELAY));

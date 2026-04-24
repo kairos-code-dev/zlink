@@ -139,7 +139,7 @@ zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _next_integral_routing_id (generate_random ()),
     _mandatory (true),
     _probe_router (false),
-    _handover (true),
+    _handover (options.rid_duplicate_policy == ZLINK_RID_DUPLICATE_HANDOVER),
     _dispatch_source_rid_valid (false)
 {
     options.type = ZLINK_CORE_SOCKET_ROUTER;
@@ -186,8 +186,15 @@ int zlink::router_t::xsetsockopt (int option_,
             break;
 
         case ZLINK_INTERNAL_OPT_ROUTER_HANDOVER:
+        case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
             if (is_int && value >= 0) {
-                _handover = (value != 0);
+                if (option_ == ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY
+                    && value != ZLINK_RID_DUPLICATE_REJECT
+                    && value != ZLINK_RID_DUPLICATE_HANDOVER)
+                    break;
+                _handover = option_ == ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY
+                               ? value == ZLINK_RID_DUPLICATE_HANDOVER
+                               : value != 0;
                 return 0;
             }
             break;
@@ -219,6 +226,10 @@ int zlink::router_t::xgetsockopt (int option_,
             return 0;
         case ZLINK_INTERNAL_OPT_ROUTER_HANDOVER:
             *value = _handover ? 1 : 0;
+            return 0;
+        case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
+            *value = _handover ? ZLINK_RID_DUPLICATE_HANDOVER
+                               : ZLINK_RID_DUPLICATE_REJECT;
             return 0;
         default:
             return routing_socket_base_t::xgetsockopt (option_, optval_,

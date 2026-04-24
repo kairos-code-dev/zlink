@@ -184,6 +184,29 @@ monitor `zlink_*_monitor_recv` 함수들이 이 플래그를 사용합니다.
 | `ZLINK_RECV_FLAGS_NONE` | 플래그 없음; 블로킹 수신 동작. |
 | `ZLINK_RECV_FLAGS_DONTWAIT` | 논블로킹 수신; 수신할 메시지가 없으면 `ZLINK_RECV_NO_DATA` 를 즉시 반환. |
 
+### rid 중복 정책
+
+```c
+typedef enum zlink_rid_duplicate_policy_t
+{
+    ZLINK_RID_DUPLICATE_REJECT = 0,
+    ZLINK_RID_DUPLICATE_HANDOVER = 1
+} zlink_rid_duplicate_policy_t;
+```
+
+`ZLINK_OPT_RID_DUPLICATE_POLICY`는 같은 local socket에 동일한 peer
+routing id가 들어왔을 때의 정책을 정합니다. 값은 `int`로 설정하며,
+기본값은 `ZLINK_RID_DUPLICATE_REJECT`입니다.
+
+| 값 | 의미 |
+|---|---|
+| `ZLINK_RID_DUPLICATE_REJECT` | 기존 pipe를 유지하고 새 중복 pipe를 등록하지 않음 |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 pipe가 같은 routing id의 기존 pipe를 인수 |
+
+이 옵션은 peer가 광고한 routing id를 관찰할 수 있는 socket에서만 의미가
+있습니다. STREAM은 서버가 연결별 4바이트 routing id를 직접 만들기 때문에
+이 옵션의 영향을 받지 않습니다.
+
 ### 송신 결과
 
 ```c
@@ -682,6 +705,37 @@ zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
 **반환값:** 성공 시 `ZLINK_CONNECT_OK`, 실패 시 `zlink_connect_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_connect`
+
+---
+
+### zlink_disconnect_rid
+
+소켓에 연결된 peer를 routing id로 찾아 종료합니다.
+
+```c
+zlink_connect_result_t zlink_disconnect_rid (
+  void *s_,
+  const zlink_routing_id_t *peer_rid_);
+```
+
+`peer_rid_`는 비어 있으면 안 됩니다. 성공하면 해당 peer pipe는 비동기
+종료 절차에 들어갑니다. 성공 반환은 remote peer가 종료 이벤트를 이미
+처리했다는 뜻이 아닙니다.
+
+ROUTER와 STREAM은 routing map을 사용해 대상을 찾습니다. STREAM에서는
+`peer_rid_`가 반드시 4바이트 연결 routing id여야 합니다. 그 외 socket은
+현재 연결된 pipe의 source routing id snapshot에서 일치하는 peer를 찾습니다.
+동일한 routing id가 둘 이상이면 대상을 확정할 수 없으므로 실패합니다.
+
+Discovery에 attach된 socket에서는 수동 연결 제어를 허용하지 않으므로
+`ZLINK_CONNECT_BUSY`로 실패합니다.
+
+**반환값:** 성공 시 `ZLINK_CONNECT_OK`. 대상 없음은
+`ZLINK_CONNECT_NOT_FOUND`, 중복 routing id는 `ZLINK_CONNECT_CONFLICT`,
+lifecycle 소유권 충돌은 `ZLINK_CONNECT_BUSY`입니다. `zlink_errno()`는
+진단용 내부 errno를 그대로 유지합니다.
+
+**참고:** `zlink_disconnect`, `ZLINK_OPT_RID_DUPLICATE_POLICY`
 
 ---
 

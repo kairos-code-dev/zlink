@@ -61,6 +61,8 @@ STREAM-specific behavior:
 
 - `source_rid` is auto-assigned per connection by the server,
   always fixed 4 bytes (`uint32`, big-endian).
+- To close one client, pass the `source_rid` received from callback or recv
+  to `zlink_disconnect_rid()`. STREAM target routing ids must be 4 bytes.
 - Connect/disconnect events are delivered as messages:
 
 | payload | meaning |

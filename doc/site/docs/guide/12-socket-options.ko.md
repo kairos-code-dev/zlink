@@ -1,3 +1,4 @@
+[English](12-socket-options.md) | [한국어](12-socket-options.ko.md)
 
 # 소켓 옵션 상세 가이드
 
@@ -18,6 +19,31 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 
 ---
 
+## peer routing id 중복 정책
+
+`ZLINK_OPT_RID_DUPLICATE_POLICY`는 같은 socket에 동일한 peer routing id가
+다시 들어왔을 때 기존 연결을 유지할지, 새 연결로 바꿀지를 정합니다.
+
+| 값 | 동작 |
+|----|------|
+| `ZLINK_RID_DUPLICATE_REJECT` | 기본값. 기존 연결을 유지하고 중복 연결은 등록하지 않습니다. |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 연결이 기존 연결을 인수합니다. rolling restart처럼 같은 identity가 잠깐 겹치는 상황에 씁니다. |
+
+이 옵션은 `zlink_set_option()`으로 설정하는 공통 socket 옵션입니다.
+기존 ROUTER 전용 `ZLINK_ROUTER_OPT_HANDOVER`는 호환성을 위해 남아 있지만,
+새 코드에서는 공통 옵션을 우선 사용합니다.
+
+STREAM은 서버가 연결별 4바이트 routing id를 직접 부여하므로 이 중복 정책의
+대상이 아닙니다.
+
+```c
+int policy = ZLINK_RID_DUPLICATE_HANDOVER;
+zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
+                 &policy, sizeof(policy));
+```
+
+---
+
 ## 1. 메시지 큐 — SNDHWM / RCVHWM
 
 | 항목 | 설명 |
@@ -26,7 +52,7 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 | **적용 위치** | `pipe_t::check_write()` |
 | **기본값** | `1000` (메시지 수) |
 | **0** | 무제한 |
-| **영향** | HWM 도달 시 block 또는 `EAGAIN` 반환. LWM 이하로 drain되면 복구 |
+| **영향** | HWM 도달 시 block 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환. LWM 이하로 drain되면 복구 |
 
 **LWM (Low Water Mark) 공식:** `(HWM + 1) / 2`
 
@@ -79,7 +105,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 | **적용 위치** | `zlink_send()` / `zlink_recv()` blocking 경로 |
 | **기본값** | `-1` (무한 대기) |
 | **0** | non-blocking과 동일 (즉시 반환) |
-| **>0** | 지정 시간(ms)까지 대기 후 `EAGAIN` 반환 |
+| **>0** | 지정 시간(ms)까지 대기 후 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
 
 **서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.
 
@@ -235,7 +261,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 가능하고, 메시지는 큐에 쌓인다.
 
 **`1`:** 연결이 실제로 완료된 후에만 pipe가 attach된다. 연결 전 `send()`는
-block되거나 `EAGAIN`을 반환한다. 또한 hiccup(일시적 연결 끊김) 시 pipe가 즉시
+block 되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 hiccup(일시적 연결 끊김) 시 pipe가 즉시
 제거된다.
 
 ---
@@ -404,9 +430,29 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 | 소켓 타입 | override 옵션 | 값 | 이유 |
 |-----------|---------------|-----|------|
 | `SUB` / `XSUB` | `LINGER` | `0` | 구독 소켓은 종료 시 대기 불필요 |
+| `ROUTER` | `ROUTER_MANDATORY` | `1` | 미연결 peer 대상 전송 실패를 surface |
+| `ROUTER` | `ROUTER_HANDOVER` | `1` | duplicate peer identity 시 새 연결이 인수 |
+| `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
 | `STREAM` | `SNDBUF` | `262144` (미설정 시) | 대용량 RAW 전송 대응 |
 | `STREAM` | `RCVBUF` | `262144` (미설정 시) | 대용량 RAW 수신 대응 |
+
+> **기본값과 관찰 가능한 동작:**
+>
+> - `ROUTER_MANDATORY` 기본값은 `1` 이다. 옵션을 명시하지 않은 ROUTER 에서
+>   `zlink_send_rid()` 로 미연결 peer 를 지정하면 조용히 넘어가지 않고
+>   `ZLINK_SUBMIT_NOT_CONNECTED` 가 반환된다. writable / `ZLINK_POLLOUT`
+>   관찰값도 실제로 쓸 수 있는 peer 가 있을 때만 surface 된다. 조용한 drop
+>   이 필요하면 옵션을 `0` 으로 명시 설정한다.
+> - `ROUTER_HANDOVER` 기본값은 `1` 이다. duplicate peer identity 로 새 연결
+>   이 들어오면 새 연결이 기존 pipe 를 인수한다. 기존 연결을 유지하고
+>   새 연결을 거부하려면 `0` 으로 명시 설정한다.
+> - `PUB_NODROP` 기본값은 `1` 이다. HWM 상황에서 `zlink_publish()` 가 조용히
+>   drop 하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 진행률을 위해
+>   drop 이 필요한 loss-tolerant workload 는 `0` 으로 명시 설정한다.
+>
+> 이 기본값은 **기본 프로파일** 에만 영향을 주며 옵션 상수 이름이나 on/off
+> 의미는 그대로다.
 
 ## 소켓 타입별 전용 옵션
 
@@ -414,9 +460,9 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 
 | 소켓 | API | 대표 옵션 |
 |------|-----|-----------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY`, `HANDOVER`, `PROBE`, `CONNECT_ROUTING_ID` |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `HANDOVER` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID` |
 | DEALER | `zlink_set_dealer_option()` | `PROBE` |
-| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP`, `MANUAL`, `WELCOME_MSG` |
+| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | 구독 관련 |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 

@@ -102,6 +102,7 @@ class socket_base_t : public own_t,
     int attach_discovery (discovery_t *discovery_);
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
+    int term_peer_rid (const zlink_routing_id_t *peer_rid_);
     int service_attachment_connect (const char *endpoint_uri_);
     int service_attachment_term_endpoint (const char *endpoint_uri_);
     int send (zlink::msg_t *msg_, int flags_);
@@ -315,6 +316,7 @@ class socket_base_t : public own_t,
     virtual int xrecv (zlink::msg_t *msg_);
     virtual int xrecv_routed (zlink::msg_t *msg_,
                               zlink_routing_id_t *source_rid_out_);
+    virtual int xterm_peer_rid (const zlink_routing_id_t *peer_rid_);
     virtual int xsocket_msg_dispatch (zlink::msg_t *msg_,
                                       zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -664,6 +666,7 @@ class routing_socket_base_t : public socket_base_t
     out_pipe_t *lookup_out_pipe (const blob_t &routing_id_);
     const out_pipe_t *lookup_out_pipe (const blob_t &routing_id_) const;
     void erase_out_pipe (const pipe_t *pipe_);
+    int terminate_out_pipe_by_routing_id (const zlink_routing_id_t *peer_rid_);
     out_pipe_t try_erase_out_pipe (const blob_t &routing_id_);
     template <typename Func> bool any_of_out_pipes (Func func_)
     {

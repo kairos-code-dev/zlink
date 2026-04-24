@@ -137,7 +137,8 @@ if (zlink_router_recv(router,
 | Option | Type | Default | Description |
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | Return `ZLINK_SUBMIT_NOT_CONNECTED` for undeliverable messages. With the default of `1`, `zlink_send_rid()` to an unconnected peer surfaces the failure. Set to `0` explicitly to silently drop instead. |
-| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | Allow a new connection to take over an existing routing_id. With the default of `1`, duplicate peer identities trigger handover. Set to `0` explicitly to keep the existing pipe and reject the new one. |
+| `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | Controls whether duplicate routing_id arrivals keep the existing pipe or let the new pipe take over. |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | ROUTER-specific compatibility option. New code should prefer `ZLINK_OPT_RID_DUPLICATE_POLICY`. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM |
@@ -168,8 +169,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 
 > **Observable behavior:** with `MANDATORY=1`, ROUTER's writable /
 > `ZLINK_POLLOUT` observation surfaces send-recovery readiness only while
-> a reachable peer exists. With `HANDOVER=1`, a duplicate peer identity
-> takes over the existing pipe instead of being rejected. `NOT_CONNECTED`
+> a reachable peer exists. With the default duplicate policy, a duplicate
+> peer identity keeps the existing pipe and the duplicate pipe is not registered. `NOT_CONNECTED`
 > from `send_rid` is therefore a common return path when peers come and
 > go.
 
@@ -392,7 +393,7 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 ### routing_id Conflicts
 
-If two DEALERs with the same routing_id connect simultaneously, the second connection is rejected by default. Enable `ROUTER_HANDOVER` to replace the existing connection instead.
+If two DEALERs with the same routing_id connect simultaneously, the second connection is rejected by default. Set `ZLINK_OPT_RID_DUPLICATE_POLICY` to `ZLINK_RID_DUPLICATE_HANDOVER` to replace the existing connection instead.
 
 > For a detailed explanation of routing_id concepts, see [08-routing-id.md](08-routing-id.md).
 

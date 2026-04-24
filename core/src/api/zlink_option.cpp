@@ -139,6 +139,8 @@ int map_common_option (zlink_option_t option_)
             return ZLINK_INTERNAL_OPT_ZMP_METADATA;
         case ZLINK_OPT_TCP_NODELAY:
             return ZLINK_INTERNAL_OPT_TCP_NODELAY;
+        case ZLINK_OPT_RID_DUPLICATE_POLICY:
+            return ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY;
         default:
             errno = EINVAL;
             return -1;

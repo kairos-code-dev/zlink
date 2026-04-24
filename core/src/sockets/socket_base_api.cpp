@@ -27,6 +27,55 @@ int zlink::socket_base_t::get_peer_state (const void *routing_id_,
     return -1;
 }
 
+int zlink::socket_base_t::xterm_peer_rid (
+  const zlink_routing_id_t *peer_rid_)
+{
+    if (!peer_rid_ || peer_rid_->size == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<pipe_t *> pipes;
+    snapshot_attached_pipes (&pipes);
+
+    pipe_t *match = NULL;
+    for (size_t i = 0; i < pipes.size (); ++i) {
+        pipe_t *pipe = pipes[i];
+        if (!pipe)
+            continue;
+
+        const blob_t &routing_id = pipe->get_routing_id ();
+        bool matches = routing_id.size () == peer_rid_->size
+                       && routing_id.size () > 0
+                       && memcmp (routing_id.data (), peer_rid_->data,
+                                  peer_rid_->size)
+                            == 0;
+        if (!matches && pipe->get_peer ()) {
+            const blob_t &peer_routing_id = pipe->get_peer ()->get_routing_id ();
+            matches = peer_routing_id.size () == peer_rid_->size
+                      && peer_routing_id.size () > 0
+                      && memcmp (peer_routing_id.data (), peer_rid_->data,
+                                 peer_rid_->size)
+                           == 0;
+        }
+        if (!matches)
+            continue;
+        if (match && match != pipe) {
+            errno = EADDRINUSE;
+            return -1;
+        }
+        match = pipe;
+    }
+
+    if (!match) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    match->terminate (false);
+    return 0;
+}
+
 void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
                                         bool subscribe_to_all_,
                                         bool locally_initiated_)

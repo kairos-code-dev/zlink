@@ -89,6 +89,7 @@ internal context, link to the internals document instead.
 | [protocol-zmp.md](internals/protocol-zmp.md) | ZMP v1.0 protocol details |
 | [protocol-raw.md](internals/protocol-raw.md) | RAW (STREAM) protocol details |
 | [stream-socket.md](internals/stream-socket.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
+| [peer-disconnect-rid.md](internals/peer-disconnect-rid.md) | Peer disconnect by routing id internals |
 | [socket-option-defaults.md](internals/socket-option-defaults.md) | Effective socket option defaults from code |
 | [threading-model.md](internals/threading-model.md) | Threading and concurrency model |
 | [services-internals.md](internals/services-internals.md) | Service layer internal design (overview) |

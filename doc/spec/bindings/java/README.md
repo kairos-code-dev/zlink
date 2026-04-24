@@ -85,6 +85,13 @@ public final class Context implements AutoCloseable {
 }
 ```
 
+## Peer Disconnect by Routing ID
+
+Java bindings expose `disconnectRid(routingId)` on raw sockets and
+`disconnectPeerRid(targetNodeRid)` on `SpotNode`. The duplicate policy option
+and `NOT_FOUND` / `CONFLICT` / `BUSY` connect errors mirror the C core. `Spot`
+does not expose a peer-rid disconnect method.
+
 ### ContextOptions
 
 Typed facade for context configuration options.

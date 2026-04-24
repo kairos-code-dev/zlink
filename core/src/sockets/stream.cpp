@@ -244,6 +244,15 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
     _fq.pipe_terminated (pipe_);
 }
 
+int zlink::stream_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
+{
+    if (!peer_rid_ || peer_rid_->size != sizeof (uint32_t)) {
+        errno = EINVAL;
+        return -1;
+    }
+    return terminate_out_pipe_by_routing_id (peer_rid_);
+}
+
 void zlink::stream_t::xread_activated (pipe_t *pipe_)
 {
     _fq.activated (pipe_);

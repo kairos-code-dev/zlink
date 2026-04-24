@@ -211,6 +211,69 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
     return 0;
 }
 
+int spot_node_t::disconnect_peer_pub_rid (
+  const zlink_routing_id_t *target_node_rid_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!target_node_rid_ || target_node_rid_->size == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (ensure_healthy () != 0)
+        return -1;
+
+    const std::string rid_key (
+      reinterpret_cast<const char *> (target_node_rid_->data),
+      target_node_rid_->size);
+
+    std::vector<std::string> endpoints;
+    {
+        scoped_lock_t lock (_sync);
+        std::map<std::string, std::set<std::string> >::const_iterator it =
+          _peer_state.peer_endpoints_by_rid.find (rid_key);
+        if (it != _peer_state.peer_endpoints_by_rid.end ())
+            endpoints.assign (it->second.begin (), it->second.end ());
+    }
+
+    if (endpoints.empty ()) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    bool any_disconnected = false;
+    for (size_t i = 0; i < endpoints.size (); ++i) {
+        if (send_data_plane_command ("disconnect_peer_pub", endpoints[i].c_str ())
+            == 0) {
+            any_disconnected = true;
+            scoped_lock_t lock (_sync);
+            if (_peer_state.active_endpoints.erase (endpoints[i]) != 0)
+                _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
+            _peer_state.manual_endpoints.erase (endpoints[i]);
+            _peer_state.discovery_endpoints.erase (endpoints[i]);
+            _peer_state.peer_admission_by_endpoint.erase (endpoints[i]);
+            _peer_state.observations[endpoints[i]].last_changed_ms =
+              zlink::clock_t ().now_ms ();
+            _peer_state.observations[endpoints[i]].connected_since_ms = 0;
+            _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        }
+    }
+
+    {
+        scoped_lock_t lock (_sync);
+        _peer_state.peer_admission_by_rid.erase (rid_key);
+        _peer_state.peer_endpoints_by_rid.erase (rid_key);
+    }
+
+    if (!any_disconnected) {
+        errno = ENOENT;
+        return -1;
+    }
+    return 0;
+}
+
 int spot_node_t::ensure_registered ()
 {
     if (ensure_healthy () != 0)
@@ -349,6 +412,7 @@ void spot_node_t::reset_spot_discovery_state_locked ()
     _peer_state.connected_endpoints.clear ();
     _peer_state.peer_admission_by_endpoint.clear ();
     _peer_state.peer_admission_by_rid.clear ();
+    _peer_state.peer_endpoints_by_rid.clear ();
     _registered = false;
     _advertise_endpoint.clear ();
     _registration_uplink_endpoint.clear ();
@@ -392,6 +456,7 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         _peer_state.discovery_endpoints.clear ();
         _peer_state.peer_admission_by_endpoint.clear ();
         _peer_state.peer_admission_by_rid.clear ();
+        _peer_state.peer_endpoints_by_rid.clear ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_register = !_bound_endpoint.empty ();
     }

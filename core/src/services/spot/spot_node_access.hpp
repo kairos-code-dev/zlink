@@ -37,6 +37,8 @@ struct spot_node_access_t
     static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
     static int disconnect_peer (spot_node_t *node_,
                                 const char *peer_endpoint_);
+    static int disconnect_peer_rid (spot_node_t *node_,
+                                    const zlink_routing_id_t *target_node_rid_);
     static int set_node_option (spot_node_t *node_,
                                 zlink_spot_node_option_t option_,
                                 const void *optval_,

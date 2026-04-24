@@ -96,7 +96,21 @@ Is the communication peer an external client (browser, game)?
 | [03-4-router.ko.md](03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
 | [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
 
-## 7. 공통 수신 인터페이스
+## 7. peer를 routing id로 끊기
+
+수신 경로에서 `source_rid`를 받은 뒤 같은 peer 연결만 종료해야 하면
+`zlink_disconnect_rid()`를 사용한다. endpoint 문자열을 저장하지 않아도
+수신자가 본 peer identity로 연결 종료를 요청할 수 있다.
+
+```c
+zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
+```
+
+대상이 없으면 `ZLINK_CONNECT_NOT_FOUND`, 같은 routing id를 가진 peer가 둘
+이상이면 `ZLINK_CONNECT_CONFLICT`, discovery가 소유한 attached socket이면
+`ZLINK_CONNECT_BUSY`가 반환된다.
+
+## 8. 공통 수신 인터페이스
 
 zlink는 raw socket family의 기본 수신 모델을 `recv + poller` 조합으로
 고정한다. 서버 루프가 poller로 `ZLINK_POLLIN`을 관찰한 뒤, 그 소켓에 맞는

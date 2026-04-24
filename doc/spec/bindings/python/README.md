@@ -1519,3 +1519,10 @@ def multipart_close(parts: list[Message]) -> None:
     """
     ...
 ```
+
+## Peer Disconnect by Routing ID
+
+Python bindings expose `Socket.disconnect_rid(routing_id)` and
+`SpotNode.disconnect_peer_rid(target_node_rid)`. The duplicate policy option
+and `NOT_FOUND` / `CONFLICT` / `BUSY` connect errors mirror the C core. `Spot`
+does not expose a peer-rid disconnect method.

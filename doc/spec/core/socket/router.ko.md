@@ -15,23 +15,25 @@ request-reply 패턴에서 응답 측입니다.
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가 시 `EHOSTUNREACH` 반환 (`int`; 0 또는 1, 기본값 `1`) |
-| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수 허용 (`int`; 0 또는 1, 기본값 `1`) |
+| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수 허용 (`int`; 0 또는 1, 기본값 `0`, 호환 옵션) |
 | `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`; 0 또는 1) |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 발신 연결의 routing id 설정 (`binary`) |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | `zlink_router_request()` 기본 요청 타임아웃 (ms, `uint32_t`) |
 
-`ZLINK_ROUTER_OPT_MANDATORY`와 `ZLINK_ROUTER_OPT_HANDOVER`의 기본값은
-각각 `1`입니다.
+`ZLINK_ROUTER_OPT_MANDATORY`의 기본값은 `1`입니다.
+`ZLINK_ROUTER_OPT_HANDOVER`는 `ZLINK_OPT_RID_DUPLICATE_POLICY`의 ROUTER
+전용 호환 옵션이며, 기본값은 `0`입니다. 새 코드는 공통 옵션인
+`ZLINK_OPT_RID_DUPLICATE_POLICY`를 사용해야 합니다.
 
 - `MANDATORY=1`이 기본이므로 `zlink_send_rid()`는 연결되지 않은 peer를
   대상으로 지정하면 조용히 넘어가지 않고 `ZLINK_SUBMIT_NOT_CONNECTED`를
   반환합니다. 같은 이유로 ROUTER의 writable/`ZLINK_POLLOUT` 관찰값은
   실제로 보낼 수 있는 peer가 있을 때만 readiness로 surface됩니다.
-- `HANDOVER=1`이 기본이므로 동일한 peer identity로 새 연결이 들어오면
-  새 연결이 기존 pipe를 인수합니다.
+- `HANDOVER=0`이 기본이므로 동일한 peer identity로 새 연결이 들어오면
+  기존 pipe를 유지하고 새 중복 pipe는 등록하지 않습니다.
 
-호출자가 다른 동작(peer 미도달 시 조용한 drop, 중복 identity 도착 시 기존
-pipe 유지)을 원하면 해당 옵션을 명시적으로 `0`으로 설정해야 합니다.
+호출자가 다른 동작(peer 미도달 시 조용한 drop, 중복 identity 도착 시 새
+pipe 인수)을 원하면 해당 옵션을 명시적으로 설정해야 합니다.
 
 ## Admission 상태
 

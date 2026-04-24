@@ -263,6 +263,20 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer (void *node_, const char 
       zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_));
 }
 
+zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
+  void *node_,
+  const zlink_routing_id_t *target_node_rid_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONNECT_INVALID_HANDLE;
+    }
+    return zlink::connect_result_internal::from_rc (
+      zlink::spot_node_access_t::disconnect_peer_rid (node,
+                                                      target_node_rid_));
+}
+
 zlink_config_result_t zlink_spot_node_status_snapshot (void *node_,
                                                        zlink_spot_node_status_t *out_)
 {

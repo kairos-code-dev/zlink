@@ -95,7 +95,21 @@ See the individual documents for detailed usage of each socket type.
 | [03-4-router.md](03-4-router.md) | ROUTER | ID-based routing |
 | [03-5-stream.md](03-5-stream.md) | STREAM | External client RAW communication |
 
-## 7. Common Receive Interface
+## 7. Disconnecting a Peer by Routing ID
+
+When a receive path gives you `source_rid` and you need to close only that
+peer connection, use `zlink_disconnect_rid()`. You do not need to keep the
+endpoint string just to close the peer you observed.
+
+```c
+zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
+```
+
+Missing targets return `ZLINK_CONNECT_NOT_FOUND`, duplicate peer routing ids
+return `ZLINK_CONNECT_CONFLICT`, and Discovery-owned attached sockets return
+`ZLINK_CONNECT_BUSY`.
+
+## 8. Common Receive Interface
 
 The primary receive model for the raw socket family is `recv + poller`.
 The server loop watches `ZLINK_POLLIN` on a poller and then pulls data

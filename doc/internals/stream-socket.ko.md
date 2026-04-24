@@ -221,3 +221,9 @@ STREAM 외 공통 소켓 기본값은
 - `ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP`: 기본 `4096`
 - `ZLINK_ASIO_STREAM_BATCH_SIZE`: 기본 `4096`
 - `ZLINK_ASIO_STREAM_BATCH_HEADROOM`: 기본 `64`
+
+## 8. Peer rid disconnect
+
+STREAM의 public routing id는 서버가 연결별로 부여한 4바이트 connection id다.
+`zlink_disconnect_rid()`는 이 id를 `uint32_t`로 해석해 STREAM route map에서
+pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된 인자로 실패한다.

@@ -1,350 +1,444 @@
+[English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
 
-# SPOT 토픽 PUB/SUB (위치투명 발행/구독)
+# SPOT 사용 가이드
 
-> 이 가이드는 recv-first public surface 기준으로 작성되었다.
-> `SpotNode`와 unified `Spot`은 recv 모드로 시작하고,
-> readable 알림은 `zlink_spot_dispatch_event_handler()` 하나로 받는다.
-> 실제 payload는 대응 recv 함수로 drain한다.
+이 문서는 애플리케이션 개발자가 SPOT을 어떻게 쓰는지 설명한다.
+정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
-## 1. 개요
+## 1. SPOT이 하는 일
 
-SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다.
-Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여,
-클러스터 전체에서 토픽 메시지를 발행/구독할 수 있다.
+SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 
-SPOT이 없다면, 여러 노드에 걸친 토픽 기반 메시징을 사용하는 애플리케이션은 어떤 노드에 구독자가 있는지 직접 추적하고, PUB/SUB mesh 연결을 관리하고, 구독 포워딩을 처리해야 한다. SPOT은 이를 자동화한다 -- 어떤 노드에서든 토픽에 publish하면, 클러스터 전체의 모든 구독자가 메시지를 수신한다.
+- `SpotNode`
+  노드 토폴로지와 discovery 기반 연결, 수동 peer 연결, channel 호출용
+  `DEALER`, 외부 publish ingress를 관리한다.
+- `Spot`
+  애플리케이션이 실제로 쓰는 facade다. 토픽 publish/subscribe, routed recv,
+  channel send/request를 제공한다.
 
-> **명칭에 대하여**: SPOT은 "위치(spot)"에서 유래한 이름이다. 각 객체(노드)가 자신의 위치에서 토픽을 발행하고, 다른 위치의 토픽을 구독하는 객체 단위의 위치투명한(location-transparent) pub/sub 메시 시스템이다.
+보통 순서는 이렇다.
 
-### 핵심 용어
+1. `SpotNode`를 만든다.
+2. bind 또는 discovery attach로 node를 네트워크에 올린다.
+3. 필요하면 channel 호출용 `DEALER`를 붙인다.
+4. `Spot` facade를 만든다.
+5. `Spot`으로 publish/subscribe 또는 channel 호출을 사용한다.
 
-| 용어 | 설명 |
-|------|------|
-| **SPOT Node** | PUB/SUB Mesh 참여 에이전트 (노드별 1개) |
-| **SPOT Pub** | 토픽 발행 경로 (`spot` / `spot_node`의 hot path) |
-| **SPOT Sub** | 토픽 구독/수신 핸들 |
-| **Topic** | 문자열 키 기반 메시지 채널 |
-| **Pattern** | 접두어 + `*` 와일드카드 구독 |
-| **Handler** | callback 수신 시 자동 호출되는 콜백 함수 |
+`zlink_spot_new()`가 성공하면 그 `Spot`의 routed recv 평면은 이미 준비된 상태다.
+따라서 첫 `zlink_spot_recv()`가 숨은 activation이나 숨은 자원 생성을 수행한다고
+가정하면 안 된다.
 
-## 2. 아키텍처
-
-### 로컬 publish — 같은 노드 안에서 전달
-
-```mermaid
-sequenceDiagram
-    participant SpotPub
-    participant Worker as SPOT Node (worker)
-    participant SpotSub
-
-    SpotPub->>Worker: publish (inproc)
-    Worker->>SpotSub: deliver (inproc)
-```
-
-SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 SpotSub에게
-바로 전달한다. SpotSub은 callback 또는 recv 두 가지 방식으로 메시지를 수신할 수
-있다.
-
-### 원격 전파 — 클러스터 노드 간 전달
-
-```mermaid
-sequenceDiagram
-    participant SpotPub as SpotPub (Node 1)
-    participant W1 as Node 1 Worker
-    participant W2 as Node 2 Worker
-    participant SpotSub as SpotSub (Node 2)
-
-    SpotPub->>W1: publish (inproc)
-    W1->>W2: PUB (tcp mesh)
-    W2->>SpotSub: deliver (inproc)
-```
-
-로컬 publish는 worker가 두 갈래로 분기한다:
-1. 같은 노드의 SpotSub에게 전달 (위의 로컬 경로)
-2. mesh PUB 소켓으로 원격 노드에 송출
-
-원격 노드의 worker는 mesh에서 수신한 메시지를 자기 SpotSub에게만 전달하고,
-**다시 mesh로 재발행하지 않는다** (루프 방지).
-
-### 전체 구조 요약
-
-```mermaid
-flowchart LR
-    subgraph Node1["Node 1"]
-        P1[SpotPub] --> W1[Worker] --> S1[SpotSub]
-    end
-    subgraph Node2["Node 2"]
-        P2[SpotPub] --> W2[Worker] --> S2[SpotSub]
-    end
-    W1 -- "PUB (tcp)" --> W2
-    W2 -- "PUB (tcp)" --> W1
-```
-
-- 각 Node의 worker는 **PUB 소켓**으로 송출하고, 다른 노드의 **SUB 소켓**으로 수신한다
-- 로컬 publish만 mesh로 나가고, 원격 수신은 재발행하지 않는다 (루프 방지)
-- Discovery 연결 시 이 mesh 토폴로지가 자동 구성된다
-
-**예시:** 노드 1이 토픽 `price.USD.JPY`를 publish한다. 노드 2에는 `price.*` 구독자가 있다.
-
-1. 노드 1의 SpotPub이 로컬 SPOT worker에게 메시지를 전송한다.
-2. Worker가 `price.*`에 매칭되는 로컬 SpotSub에게 전달한다 (로컬 경로).
-3. Worker가 PUB 소켓을 통해 tcp로 노드 2에 송출한다.
-4. 노드 2의 worker가 SUB로 수신하여, `price.*`에 매칭한 뒤 SpotSub에게 전달한다.
-5. 노드 2에서 mesh로 재발행하지 않는다 (루프 방지).
-
-## 3. SPOT Node 설정
-
-### 3.1 Discovery 기반 자동 Mesh
+## 2. 가장 단순한 흐름
 
 ```c
 void *ctx = zlink_ctx_new();
-
-/* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
-void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SPOT, "spot-node");
-zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
-
-/* SPOT Node setup */
 void *node = zlink_spot_node_new(ctx);
-zlink_spot_node_bind(node, "tcp://*:9000");
+zlink_spot_node_bind(node, "tcp://127.0.0.1:7001");
 
-/* Attach Discovery */
+void *spot = zlink_spot_new(node);
+
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 5);
+memcpy(zlink_msg_data(&msg), "hello", 5);
+
+zlink_spot_publish(spot, "market", "price.usdkrw", &msg, 1, 0);
+zlink_msg_close(&msg);
+
+zlink_spot_destroy(&spot);
+zlink_spot_node_destroy(&node);
+zlink_ctx_term(&ctx);
+```
+
+이 예제는 한 프로세스 안에서 SPOT node를 만들고, unified `Spot` facade로
+토픽 하나를 발행하는 가장 작은 흐름이다.
+
+## 3. Node를 네트워크에 올리는 방법
+
+### 3.1 수동 peer 연결
+
+고정된 endpoint를 알고 있으면 node끼리 직접 연결할 수 있다.
+
+```c
+void *a = zlink_spot_node_new(ctx);
+void *b = zlink_spot_node_new(ctx);
+
+zlink_spot_node_bind(a, "tcp://127.0.0.1:7101");
+zlink_spot_node_bind(b, "tcp://127.0.0.1:7102");
+
+zlink_spot_node_connect_peer(a, "tcp://127.0.0.1:7102");
+zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
+```
+
+이 방식은 테스트나 작은 고정 토폴로지에 적합하다.
+
+### 3.2 discovery 기반 연결
+
+운영 환경에서는 discovery를 붙여 SPOT mesh를 자동으로 구성하는 쪽이 보통 낫다.
+
+```c
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
+
+void *discovery = zlink_discovery_new(
+  ctx,
+  ZLINK_SERVICE_TYPE_SPOT,
+  "alpha");
+zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
+
 zlink_spot_node_attach_discovery(node, discovery);
 ```
 
-> `SpotNode`는 mesh 참여를 위한 토폴로지 및 라이프사이클 소유자이다.
-> 범용 data-plane facade(publish/subscribe)를 노출하지 않는다.
-> publish/subscribe를 사용하려면 `zlink_spot_new(node)`로 facade를 만든다.
+여기서 `"alpha"`는 이 discovery view가 보는 SPOT channel 이름이다.
+같은 channel view를 공유하는 다른 SPOT peer끼리 자동 연결된다.
 
-**주의:** `attach_discovery()`는 bind 이후에 호출하는 것을 권장한다.
-Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 연결한다.
+`attach_discovery()`를 쓴 뒤에는 같은 node에 `connect_peer()`나
+`disconnect_peer()`를 같이 섞지 않는 편이 좋다. 현재 계약도 discovery attach
+후 수동 peer connect를 `EBUSY`로 막는다.
 
-**임시 포트:** `zlink_spot_node_bind()`는 포트 0을 지원하여 OS가 포트를
-자동 할당한다. `zlink_spot_node_status_snapshot()`의 `local_endpoint`로
-실제 할당된 endpoint를 조회할 수 있다:
+peer endpoint를 모르고 target node의 routing id만 알고 있으면
+`zlink_spot_node_disconnect_peer_rid()`로 해당 peer node 연결을 종료할 수 있다.
+이 함수는 `SpotNode`에 호출한다. `Spot` facade는 개별 peer 연결을 직접
+소유하지 않으므로 별도 rid disconnect 함수를 제공하지 않는다.
 
-```c
-zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
-zlink_spot_node_status_t status;
-zlink_spot_node_status_snapshot(node, &status);
-/* status.local_endpoint contains e.g. "tcp://127.0.0.1:43521" */
-```
+## 4. 토픽 publish/subscribe
 
-### 3.2 수동 Mesh
+SPOT topic plane은 `service_name + topic_id`를 함께 사용한다.
+현재 공개 함수 인자 이름은 `service_name`이지만, 실질적으로는 topic namespace를
+구분하는 이름으로 보면 된다.
 
-```c
-void *node = zlink_spot_node_new(ctx);
-zlink_spot_node_bind(node, "tcp://*:9000");
-
-/* Directly connect to other nodes' PUB */
-zlink_spot_node_connect_peer(node, "tcp://node2:9000");
-zlink_spot_node_connect_peer(node, "tcp://node3:9000");
-```
-
-**주의:** 수동 Mesh에서는 Discovery가 없으므로 Registry topology visibility도
-없다. 이는 의도된 제한이다.
-
-## 4. Unified SPOT 사용
-
-### 4.1 생성
-
-```c
-void *spot = zlink_spot_new(node);
-```
-
-`zlink_spot_new(node)`는 기존 spot node를 빌리는 unified facade를
-생성한다. publish와 subscribe를 함께 제공한다. public standalone
-`spot_pub` / `spot_sub` 생성자는 제공하지 않는다.
-
-transport security는 unified `spot`에서 설정하지 않는다. `tls://` 또는
-`wss://`를 써야 하면 먼저 backing `SpotNode`에 TLS를 설정해야 한다.
-unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
-
-### 4.2 발행
+### 4.1 publish
 
 ```c
 zlink_msg_t part;
-zlink_msg_init_size(&part, 11);
-memcpy(zlink_msg_data(&part), "hello world", 11);
-zlink_publish(spot, "chat:room1:message", &part, 1, 0);
+zlink_msg_init_size(&part, 4);
+memcpy(zlink_msg_data(&part), "tick", 4);
+
+zlink_spot_publish(spot, "market", "price.btcusd", &part, 1, 0);
+zlink_msg_close(&part);
 ```
 
-### 4.3 구독 / 해제
+### 4.2 subscribe
 
 ```c
-zlink_set_subscription(spot, "chat:room1:message");
-zlink_set_subscription(spot, "chat:room1:*");
+zlink_set_subscription(spot, "price.*");
 
-zlink_unset_subscription(spot, "chat:room1:message");
-zlink_unset_subscription(spot, "chat:room1:*");
-```
-
-### 4.4 메시지 수신
-
-`SpotNode`와 unified `Spot` 모두 **recv 모드**로 시작한다. 메시지를 직접
-수신하거나, topic/routed/timer readable 알림을 하나의 dispatch callback으로
-받을 수 있다. 실제 payload는 대응 recv 함수로 꺼낸다. send-ready는 별도 축이다.
-
-#### Recv 모드 (기본)
-
-recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
-
-```c
-void *spot = zlink_spot_new(node);
-zlink_set_subscription(spot, "chat:room1:message");
-
-/* Pull next message */
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-char topic_buf[256];
-size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe(spot, &source_rid, &parts, &part_count,
-                              topic_buf, &topic_len, 0);
-if (rc == 0) {
-    printf("Topic: %.*s, Parts: %zu\n",
-           (int)topic_len, topic_buf, part_count);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
+char service_name[256];
+size_t service_name_len = sizeof(service_name);
+char topic_id[256];
+size_t topic_id_len = sizeof(topic_id);
+
+int rc = zlink_spot_subscribe(
+  spot,
+  &source_rid,
+  &parts,
+  &part_count,
+  service_name,
+  &service_name_len,
+  topic_id,
+  &topic_id_len,
+  0);
 ```
 
-??? example "Full Sample Code"
+성공하면 source routing id, topic 이름, multipart payload를 함께 받는다.
 
-    | Language | Source |
-    |----------|--------|
-    | C | [spot_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/spot_recv_sample.c) |
-    | C++ | [spot_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/spot_recv_sample.cpp) |
-    | Java | [SpotRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/SpotRecvSample.java) |
-    | Python | [spot_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/spot_recv.py) |
-    | Node | [spot_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/spot_recv_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/SpotRecv/Program.cs) |
-    | Rust | [spot_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/spot_recv_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/spot_recv_sample/main.go) |
+## 5. 다른 channel 호출
 
-#### Dispatch callback 모드
+`Spot`에서 다른 channel의 서비스 처리자 집합으로 요청을 보내려면
+`SpotNode`에 `DEALER`를 attach해야 한다.
 
-`zlink_spot_dispatch_event_handler()`를 호출하면 recv 모드에서 dispatch
-callback 모드로 일방 전환된다. callback은 readable event kind만 알려 주고,
-실제 payload는 대응 recv 함수로 drain한다.
+핵심 규칙은 두 가지다.
+
+- channel 호출은 항상 attach된 `DEALER`로만 나간다.
+- attach 함수는 socket 생성이나 connect를 대신하지 않는다.
+
+### 5.1 자동 연결 경로
+
+이 방식은 discovery가 관리하는 `DEALER`를 node에 등록한다.
 
 ```c
-/* Define callback function */
-void on_spot_event(void *spot,
-                   zlink_spot_dispatch_event_t event,
-                   void *userdata)
-{
-    if (event == ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE) {
-        zlink_routing_id_t source_rid;
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        char topic_buf[256];
-        size_t topic_len = sizeof(topic_buf);
+void *node = zlink_spot_node_new(ctx);
 
-        if (zlink_subscribe(spot, &source_rid, &parts, &part_count,
-                            topic_buf, &topic_len, ZLINK_DONTWAIT) == 0) {
-            printf("Topic: %.*s, Parts: %zu\n",
-                   (int)topic_len, topic_buf, part_count);
-        }
+void *spot_discovery = zlink_discovery_new(
+  ctx,
+  ZLINK_SERVICE_TYPE_SPOT,
+  "alpha");
+zlink_discovery_connect_registry(spot_discovery, "tcp://127.0.0.1:5551");
+zlink_spot_node_attach_discovery(node, spot_discovery);
+
+void *orders_discovery = zlink_discovery_new(
+  ctx,
+  ZLINK_SERVICE_TYPE_SOCKET,
+  "orders");
+zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
+
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_socket_attach_discovery(dealer, orders_discovery);
+
+zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
+```
+
+여기서는 `SpotNode` 자신이 보는 SPOT channel은 `"alpha"`이고,
+attach하는 `DEALER`는 `"orders"` channel을 바라본다.
+같은 이름을 써도 계약 위반은 아니지만, 예시에서는 헷갈리지 않게 다른 이름을
+사용하는 편이 낫다.
+
+### 5.2 수동 연결 경로
+
+고정 endpoint를 아는 경우에는 호출자가 `connect()`를 먼저 끝낸 뒤 attach한다.
+
+```c
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_connect(dealer, "tcp://127.0.0.1:7201");
+zlink_connect(dealer, "tcp://127.0.0.1:7202");
+
+zlink_spot_node_attach_channel_dealer_manual(node, "orders", dealer);
+```
+
+### 5.3 channel 호출
+
+```c
+zlink_msg_t req;
+zlink_msg_init_size(&req, 5);
+memcpy(zlink_msg_data(&req), "hello", 5);
+
+zlink_spot_send_channel(spot, "orders", &req, 1, 0);
+
+zlink_spot_request_channel(
+  spot,
+  "orders",
+  &req,
+  1,
+  my_reply_handler,
+  my_userdata,
+  0,
+  2000);
+```
+
+같은 `channel_name`에 `DEALER`를 두 개 등록할 수는 없다. 자동 attach와 수동
+attach도 같은 이름이면 충돌로 취급한다.
+
+## 6. Dispatch event handler로 통합 소비
+
+`zlink_spot_dispatch_event_handler()`를 등록하면 subscribe, routed, channel reply,
+timer를 하나의 callback으로 받을 수 있다. callback signature는 아래처럼 `event`뿐
+아니라 `subject_kind`와 `subject`도 전달한다.
+
+```c
+void my_dispatch_handler(
+  void *spot_,
+  const zlink_spot_dispatch_info_t *info_,
+  void *userdata_)
+{
+    switch (info_->event) {
+    case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
+        /* zlink_spot_subscribe() 로 drain */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
+        /* zlink_spot_recv() 로 drain */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE:
+        /* subject가 attached dealer handle */
+        zlink_spot_channel_reply_progress_from(spot_, info_->subject);
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
+        /* subject가 timer handle */
+        zlink_timer_recv(info_->subject, NULL, 0);
+        break;
     }
 }
-
-/* Register handler at unified spot creation */
-void *spot = zlink_spot_new(node);
-zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
 ```
 
-**중요:** 하나의 `spot` / `spot_node` handle을 여러 스레드에서 동시에
-사용할 수 있다 (thread-safe). `publish`는 hot path(고빈도 데이터 경로)로서 여러 스레드에서 동시 호출을 허용하고,
-subscribe/unsubscribe/attach/peer connect/monitor는 control path(저빈도 설정/관리 경로)로
-호출할 수 있다. `zlink_spot_dispatch_event_handler()` callback은 I/O thread에서
-직접 실행되지 않고, 전용 SPOT worker runtime에서 실행된다. worker 수는
-context 옵션 `ZLINK_SPOT_WORKER_THREADS`로 조절한다.
+dispatch 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
+`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` 순이다. 같은 callback 안에서
+모든 event를 처리하므로, 한 spot의 routed handler, subscription handler, timer
+handler, channel reply callback은 같은 실행 문맥에서 순차 실행된다.
 
-**제약 사항:**
+### 6.1 dispatch event는 readiness다
 
-- recv 모드에서는 `zlink_subscribe()`를 사용한다
-- topic/routed/timer readable 알림은 `zlink_spot_dispatch_event_handler()`로 받는다
-- dispatch callback 모드에서는 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`이 일반 문맥에서 `EBUSY`로 실패한다
-- 같은 `spot`의 활성 dispatch callback 안에서는 해당 readable plane을 비우기 위해 recv 함수를 호출할 수 있다
-- `zlink_send_ready_handler()`는 receive callback 선행 조건이 없다
-- send-ready attach 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다
-- 전환 후 callback 교체나 해제는 지원하지 않는다
-- callback은 전용 SPOT worker runtime에서 실행된다
-- 같은 `Spot`의 callback은 직렬 실행되고, 다른 `Spot`은 병렬 실행될 수 있다
-- `ZLINK_SPOT_WORKER_THREADS=0`이면 `min(visible logical cores, 8)`을 사용하고, 알 수 없으면 `1`을 사용한다
-- 이 옵션은 runtime 시작 전에 설정해야 하며, 시작 후 변경은 `EINVAL`로 실패한다
-- `destroy`는 fail-fast lifecycle gate(사용 중이면 `EBUSY`, 종료 후 `ESHUTDOWN`)를 가지므로, 외부 사용을 중단한 뒤
-  정리하는 것이 가장 단순하다
+`SUBSCRIBE_READABLE`과 `ROUTED_READABLE`은 "메시지 1개가 도착했다"는 뜻이 아니라
+"지금 읽을 것이 있다"는 뜻이다.
 
-> 전체 three-tier 계약과 추가 패턴은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
+즉 아래처럼 이해해야 한다.
 
-## 5. 토픽 규칙
+- callback 1회가 메시지 1개를 뜻하지 않는다.
+- 같은 plane이 이미 readable인 동안 메시지가 더 들어와도 callback 개수는 메시지
+  개수와 1:1로 맞지 않을 수 있다.
+- callback 안에서는 해당 plane을 `EAGAIN`이 나올 때까지 반복해서 drain하는 편이
+  맞다.
 
-### 명명 규칙
-
-`<domain>:<entity>:<action>` 형식 권장.
-
-예시:
-- `chat:room1:message`
-- `metrics:zone1:cpu`
-- `game:world1:player_move`
-
-### 패턴 구독 규칙
-
-- `*`는 한 개만 허용, 문자열 끝에만
-- 대소문자 구분
-- 예: `chat:*` → `chat:room1:message`, `chat:room2:join` 모두 매칭
-
-## 내부 모듈 구조
-
-SPOT의 내부 구현은 data plane과 control plane이 분리된 모듈 구조를 가진다.
-공개 C API는 변경 없이 유지되며, 내부 변경이 좁은 범위에서 이루어진다.
-
-| 모듈 | 역할 |
-|------|------|
-| `spot_node_access` · `spot_subject_access` | API 계층과의 seam |
-| `spot_handle` | 공개 handle 구조체 |
-| `spot_node` | SpotNode orchestration, discovery integration |
-| `spot_pub` | publish 경로 |
-| `spot_sub` | subscribe 경로 (option · recv 분리) |
-| `spot_data_plane` | data plane 코어 |
-| `spot_data_plane_forwarding` | ingress/egress 메시지 포워딩 |
-| `spot_data_plane_protocol` | 제어 메시지, 구독 업데이트, bootstrap |
-| `spot_runtime` | runtime lifecycle |
-
-멀티파트 publish는 공통 `multipart_send_txn` 모듈을 사용하여
-whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
-
-## 7. 전달 정책
-
-- 로컬 publish (`spot`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
-- 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
-- 재발행 없음으로 메시지 루프/중복 방지
-- `subscribe()` / `unsubscribe()` 반환은 local socket filter 적용 의미이며,
-  클러스터 전체 전파 완료를 보장하지 않는다
-- 같은 `spot` handle에서 연속 publish된 메시지의 순서는 보존된다
-- 서로 다른 `spot` handle 사이의 전역 순서는 보장하지 않는다
-- 동일 subscriber에 exact topic + pattern이 둘 다 매칭되더라도 메시지는 1회만 전달된다
-
-SPOT은 live pub/sub이며, durable delivery, ack/retry, exactly-once,
-late join에 대한 과거 메시지 재전송은 보장하지 않는다.
-
-## 8. 정리
+예를 들면 routed plane은 아래처럼 처리한다.
 
 ```c
-zlink_spot_destroy(&spot);
-zlink_spot_node_destroy(&node);
-zlink_discovery_destroy(&discovery);
+for (;;) {
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+
+    int rc = zlink_spot_recv(
+      spot_,
+      &source_rid,
+      &spot_rid,
+      &request_seq,
+      &parts,
+      &part_count,
+      ZLINK_DONTWAIT);
+
+    if (rc == ZLINK_RECV_NO_DATA && zlink_errno() == EAGAIN)
+        break;
+    if (rc != ZLINK_RECV_OK)
+        break;
+
+    /* parts 처리 */
+    zlink_multipart_close(parts, part_count);
+}
 ```
 
-**정리 순서:** `spot`을 먼저 destroy하고, 그 다음 `SpotNode`, 마지막으로
-`Discovery` 순서로 정리한다. `SpotNode` destroy 전에 관련 `spot`의 외부 사용을
-중단해야 한다.
+subscribe plane도 같은 방식으로 drain한다.
 
-> `zlink_spot_destroy()`는 빌린 facade만 정리한다. backing `SpotNode`가
-> lifecycle owner이며, Discovery에 attach된 spot node의 경우
-> `zlink_discovery_destroy()`가 attach된 참여자에게 종료를 전파한다.
+### 6.2 channel request reply가 dispatch stream에 포함되는 이유
 
----
-[← Discovery](07-1-discovery.ko.md) | [Registry →](07-4-registry.ko.md) | [Routing ID →](08-routing-id.ko.md)
+`zlink_spot_request_channel()`로 시작한 request의 reply는 transport 경로상으로는
+attach된 `DEALER`를 통해 돌아오지만, **최종 callback 실행은 해당 `Spot`의 dispatch
+stream에서 처리된다**.
+
+- network reply → attached `DEALER` completion → bridge → `Spot` dealer source queue
+- `CHANNEL_REPLY_READABLE` dispatch event → `zlink_spot_channel_reply_progress_from()`
+  → user reply callback
+
+이 때문에 binding이 attached dealer별 별도 progress pump를 돌릴 필요가 없다.
+
+## 7. 지금 공개된 poller와의 관계
+
+현재 public poller는 `Spot` 전용 event kind와 subject를 함께 돌려주지 않는다.
+즉 지금 공개 계약에서는 `Spot`을 poller에 등록해서 dispatch callback과 같은 의미를
+그대로 받는 표면이 아직 없다.
+
+따라서 SPOT의 subscribe, routed recv, channel reply, timer를 한 owner 기준으로
+순차 처리하려면 현재는 `zlink_spot_dispatch_event_handler()`를 사용하는 쪽이 맞다.
+`Spot` progress 하나만으로 channel reply completion을 포함한 모든 work가 진전된다.
+
+## 8. Routed receive와 reply
+
+SPOT routed plane은 수신 시 source node rid, source spot rid, request sequence를
+함께 준다.
+
+```c
+const zlink_routing_id_t *source_node_rid = NULL;
+const zlink_routing_id_t *source_spot_rid = NULL;
+uint64_t request_seq = 0;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+
+int rc = zlink_spot_recv(
+  spot,
+  &source_node_rid,
+  &source_spot_rid,
+  &request_seq,
+  &parts,
+  &part_count,
+  0);
+```
+
+수신한 요청에 답할 때는 들어온 주소를 그대로 사용한다.
+
+- 상대가 SPOT이면 `zlink_spot_reply_spot()`
+- 상대가 ROUTER면 `zlink_spot_reply_router()`
+
+## 9. Spot에서 routed request 시작하기
+
+`Spot`은 routed request와 one-way direct send를 직접 시작할 수 있다.
+기본 경로는 `send_channel()` / `request_channel()`이지만, 특정 peer를 직접
+지목할 때는 아래 API를 사용한다.
+
+### 9.1 다른 Spot으로 request 보내기
+
+```c
+zlink_spot_request_spot(
+  spot,
+  &dest_node_rid,    /* 대상 SpotNode의 routing id */
+  &dest_spot_rid,    /* 대상 Spot의 routing id */
+  &part,
+  1,
+  my_reply_handler,
+  my_userdata,
+  0,
+  2000);
+```
+
+reply는 대상 Spot이 `zlink_spot_reply_spot()`으로 보낸다.
+
+### 9.2 Router peer로 request 보내기
+
+```c
+zlink_spot_request_router(
+  spot,
+  &peer_rid,         /* 대상 ROUTER peer의 routing id */
+  &part,
+  1,
+  my_reply_handler,
+  my_userdata,
+  0,
+  2000);
+```
+
+reply는 대상 ROUTER가 `zlink_router_reply_spot()`으로 보낸다.
+
+### 9.3 Spot에서 Spot으로 one-way direct send
+
+`Spot`에서 `rid`를 직접 지정해 다른 `Spot`으로 one-way send를 하려면
+`zlink_spot_send_spot()` (C API) 또는 내부 substrate `zlink_spot_send_spot_part()`를
+사용한다.
+
+ROUTER peer로 one-way send는 현재 공개 표면에 없다. 필요하면 `RouterSocket`
+또는 raw ROUTER API를 쓴다.
+
+## 10. Router에서 SPOT으로 직접 보내기
+
+특정 destination node rid와 spot rid를 직접 지정해 ROUTER에서 SPOT으로
+one-way send 또는 request를 보낼 때는 `RouterSocket` 또는 raw ROUTER API를 쓴다.
+
+```c
+zlink_router_request_spot(
+  router,
+  &dest_node_rid,
+  &dest_spot_rid,
+  &part,
+  1,
+  my_reply_handler,
+  my_userdata,
+  0,
+  2000);
+```
+
+## 11. 일반 PUB에서 SPOT으로 publish 넣기
+
+외부 일반 `PUB`에서 SPOT topic plane으로 publish를 넣고 싶다면 ingress용 `PUB`를
+등록한다.
+
+```c
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
+zlink_spot_node_attach_pub_ingress(node, pub);
+```
+
+이 `PUB`는 `SpotNode` 전용 ingress source로 취급한다. node당 하나만 붙일 수 있고,
+attach 뒤에는 다른 일반 용도로 함께 쓰지 않는 편이 맞다.
+
+## 12. 상태 확인
+
+디버깅이나 운영 상태 확인에는 node snapshot과 service monitor를 사용한다.
+
+```c
+zlink_spot_node_status_t status;
+zlink_spot_node_status_snapshot(node, &status);
+
+size_t peer_count = 0;
+zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
+```
+
+좀 더 자세한 상태 이벤트가 필요하면 `zlink_service_monitor_open()`으로 monitor를
+열고 `zlink_service_monitor_recv()` 또는 handler를 사용한다.

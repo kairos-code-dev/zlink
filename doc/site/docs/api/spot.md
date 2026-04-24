@@ -1,514 +1,484 @@
+[English](spot.md) | [한국어](spot.ko.md)
+
+[Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](README.md)
 
 # SPOT
 
-The public SPOT API is organized into two layers:
+This document describes only the current public SPOT contract in
+`core/include/zlink.h`. Pre-implementation design notes belong under
+`doc/spec/draft/`.
 
-- `SpotNode`: bind/connect/discovery/TLS wiring owner
-- `Spot`: unified pub/sub facade attached to a `SpotNode`
+## Overview
 
-There are no public standalone `zlink_spot_pub_*` or `zlink_spot_sub_*`
-constructors, destroy functions, option setters, or monitor entrypoints.
+The public SPOT surface is split into two handles.
 
-## I/O Model
+- `SpotNode`
+  Owns SPOT topology, discovery-backed peer wiring, manual peer wiring,
+  channel-call `DEALER` registration, and external publish ingress.
+- `Spot`
+  A data-plane facade created on top of an existing `SpotNode`.
 
-Both `SpotNode` and unified `Spot` handles start in **recv model**. Topic,
-routed, and timer readable notifications are delivered through one callback:
-`zlink_spot_dispatch_event_handler()`. Payloads are drained from the matching
-recv function. Send-ready is a separate axis.
+Destroying a `Spot` facade does not destroy the backing `SpotNode`.
 
-| | Recv Model (default) | Receive Callback Active |
-|---|---|---|
-| **SpotNode receive** | *(not exposed — use unified Spot)* | *(not exposed — use unified Spot)* |
-| **Spot receive** | `zlink_subscribe()` / `zlink_spot_subscribe()` / `zlink_spot_recv()` | `zlink_spot_dispatch_event_handler()` notification followed by recv |
-| **Readable poller** | `ZLINK_POLLIN` | `EBUSY` |
-| **Send-ready** | `ZLINK_POLLOUT` poller or `zlink_send_ready_handler()` | `ZLINK_POLLOUT` poller or `zlink_send_ready_handler()` |
-
-- `zlink_send_ready_handler()` does not require receive callback mode first.
-- Once send-ready is attached, data-plane `ZLINK_POLLOUT` poller use fails with `EBUSY`.
-- In dispatch callback mode, `zlink_subscribe()` and data-plane `ZLINK_POLLIN` fail with `EBUSY` outside the active dispatch callback.
-- The caller may still use the matching recv function inside the active `zlink_spot_dispatch_event_handler()` callback for the same `spot_`.
-- `publish()` works in both models.
-
-## Current public surface
-
-### SpotNode
+## Construction and teardown
 
 ```c
 void *zlink_spot_node_new(void *ctx);
-int zlink_spot_node_destroy(void **node_p);
+zlink_close_result_t zlink_spot_node_destroy(void **node_p);
 
-int zlink_spot_node_bind(void *node, const char *endpoint);
-int zlink_spot_node_connect_peer(void *node, const char *endpoint);
-int zlink_spot_node_disconnect_peer(void *node,
-                                        const char *endpoint);
-int zlink_spot_node_attach_discovery(void *node, void *discovery);
-
-int zlink_set_tls_server(void *node,
-                         const char *cert,
-                         const char *key,
-                         int require_client_cert);
-int zlink_set_tls_client(void *node,
-                         const char *ca_cert,
-                         const char *hostname,
-                         int trust_system);
-
-int zlink_set_option(void *node,
-                     zlink_option_t option,
-                     const void *optval,
-                     size_t optvallen);
-int zlink_get_option(void *node,
-                     zlink_option_t option,
-                     void *optval,
-                     size_t *optvallen);
-
-int zlink_set_routing_id(void *node,
-                         const void *data,
-                         size_t size);
-int zlink_get_routing_id(void *node,
-                         zlink_routing_id_t *out);
+void *zlink_spot_new(void *node);
+zlink_close_result_t zlink_spot_destroy(void **spot_p);
 ```
 
-`SpotNode` is the topology and lifecycle owner. Its `service_name` is
-determined by the attached Discovery instance. SpotNode does not expose
-the generic data-plane facade directly. Create a unified `Spot` facade
-with `zlink_spot_new(node)` for publish/subscribe/recv callback APIs.
-TLS/WSS configuration is also owned by `SpotNode`; use
-`zlink_set_tls_server()` / `zlink_set_tls_client()` with the node handle
-before bind/connect.
+- `zlink_spot_node_new()` creates a SPOT node runtime.
+- `zlink_spot_new()` borrows an existing `SpotNode` and returns a unified
+  facade.
+- A successful `zlink_spot_new()` means the Spot's routed receive plane is
+  already prepared. The first `zlink_spot_recv()` must not perform hidden
+  activation or hidden socket creation.
+- `zlink_spot_destroy()` closes only the facade.
+- `zlink_spot_destroy()` unregisters routed target lookup before closing owned
+  subjects. Unread routed messages that were already queued for that Spot may
+  be dropped during teardown; callers are not required to drain everything
+  before destroy.
+- `zlink_spot_node_destroy()` tears down the node runtime.
 
-### Unified Spot
+## SpotNode contract
+
+### Topology and discovery
 
 ```c
-void *zlink_spot_new(void *node);
-int zlink_spot_destroy(void **spot_p);
+zlink_bind_result_t zlink_spot_node_bind(void *node, const char *endpoint);
+zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
+                                                    const char *peer_endpoint);
+zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
+                                                       const char *peer_endpoint);
+zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
+  void *node,
+  const zlink_routing_id_t *target_node_rid);
+zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
+                                                       void *discovery);
+```
 
-int zlink_publish(void *spot,
-                       const char *topic_id,
-                       zlink_msg_t *parts,
-                       size_t part_count,
-                       zlink_send_flags_t flags);
-int zlink_subscribe(void *subject_,
-                    zlink_routing_id_t *source_rid_out_,
-                    zlink_msg_t **parts_out_,
-                    size_t *part_count_out_,
-                    char *topic_id_out_,
-                    size_t *topic_id_len_out_,
-                    zlink_send_flags_t flags_);
-int zlink_set_subscription (void *spot, const char *filter);
-int zlink_unset_subscription (void *spot, const char *filter);
-int zlink_subscription_at(void *spot, size_t index,
-                          char *buf, size_t *len,
-                          int *is_pattern);
+- `zlink_spot_node_bind()` binds the node endpoint.
+- `zlink_spot_node_connect_peer()` and `disconnect_peer()` are for manual SPOT
+  mesh wiring when the endpoint is known.
+- `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target
+  node routing id. It does not target an individual spot routing id under that
+  node.
+- They fail with `EBUSY` when a discovery is already attached.
+- The `Spot` facade has no separate peer-rid disconnect function because peer
+  connections are owned by the `SpotNode` runtime.
+- `zlink_spot_node_attach_discovery()` requires a discovery handle that exposes
+  a SPOT channel view.
+- A node may have only one active SPOT discovery view at a time.
 
-int zlink_send_ready_handler(
+### Channel-call socket registration
+
+```c
+zlink_config_result_t zlink_spot_node_attach_channel_dealer(
+  void *node,
+  void *discovery,
+  void *dealer);
+
+zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual(
+  void *node,
+  const char *channel_name,
+  void *dealer);
+
+zlink_config_result_t zlink_spot_node_attach_pub_ingress(
+  void *node,
+  void *pub);
+```
+
+- `attach_channel_dealer()` registers a discovery-managed `DEALER`.
+- `attach_channel_dealer_manual()` registers a caller-connected `DEALER` under
+  the given `channel_name`.
+- Automatic and manual attach share the same channel namespace. A second dealer
+  for the same channel fails with `EBUSY`.
+- Attach functions do not create sockets and do not call `connect()` for you.
+- Attached dealers are dedicated to the `SpotNode`. The caller keeps ownership,
+  but the socket must not be reused as a generic client elsewhere.
+- `zlink_spot_node_attach_pub_ingress()` registers one external `PUB` as the
+  node's publish ingress source.
+- Only one ingress `PUB` may be attached to a node.
+
+## Spot data-plane contract
+
+### Channel send/request
+
+```c
+zlink_submit_result_t zlink_spot_send_channel(
   void *spot,
-  zlink_send_ready_handler_fn handler,
+  const char *channel_name,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+zlink_submit_result_t zlink_spot_request_channel(
+  void *spot,
+  const char *channel_name,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_reply_handler_fn handler,
+  void *userdata,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+```
+
+- Channel calls always use an attached `DEALER`.
+- Lookup is keyed by `channel_name`.
+- The request reply is bound to the specific dealer selected for that request.
+- Channel request reply has separate owners:
+  transport owner is the selected attached `DEALER`, while delivery owner is
+  the originating `Spot` dispatch stream.
+- A matched channel reply is delivered through
+  `ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE` and the final callback
+  runs from `zlink_spot_channel_reply_progress_from()`.
+- Attached channel dealer metadata may be queried with
+  `zlink_socket_get_channel_name()`. Manual setups may pre-set the same fixed
+  metadata with `zlink_socket_set_channel_name()`.
+- `Spot` does not expose ordinary one-way send targeting a `ROUTER` by direct `rid`.
+  For direct routed request initiation see the dedicated section below.
+
+### Topic publish/subscribe
+
+```c
+zlink_submit_result_t zlink_spot_publish(
+  void *spot,
+  const char *service_name,
+  const char *topic_id,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+zlink_recv_result_t zlink_spot_subscribe(
+  void *spot,
+  zlink_routing_id_t *source_rid_out,
+  zlink_msg_t **parts_out,
+  size_t *part_count_out,
+  char *service_name_out,
+  size_t *service_name_len_out,
+  char *topic_id_out,
+  size_t *topic_id_len_out,
+  zlink_recv_flags_t flags);
+
+zlink_recv_result_t zlink_spot_subscription_event(
+  void *spot,
+  zlink_routing_id_t *source_rid_out,
+  int *subscribed_out,
+  char *service_name_out,
+  size_t *service_name_len_out,
+  char *topic_id_out,
+  size_t *topic_id_len_out,
+  zlink_recv_flags_t flags);
+```
+
+The topic plane still uses the public parameter name `service_name`.
+That is the current contract name for the topic namespace.
+
+- `zlink_spot_node_attach_pub_ingress()` joins this same topic ingress path.
+
+### Routed recv/reply
+
+```c
+zlink_recv_result_t zlink_spot_recv(
+  void *spot,
+  const zlink_routing_id_t **source_rid_out,
+  const zlink_routing_id_t **spot_rid_out,
+  uint64_t *request_seq_out,
+  zlink_msg_t **parts_out,
+  size_t *part_count_out,
+  zlink_recv_flags_t flags);
+
+zlink_submit_result_t zlink_spot_reply_spot(
+  void *spot,
+  const zlink_routing_id_t *dest_node_rid,
+  const zlink_routing_id_t *dest_spot_rid,
+  uint64_t request_seq,
+  zlink_msg_t *parts,
+  size_t part_count);
+
+zlink_submit_result_t zlink_spot_reply_router(
+  void *spot,
+  const zlink_routing_id_t *peer_rid,
+  uint64_t request_seq,
+  zlink_msg_t *parts,
+  size_t part_count);
+```
+
+- `zlink_spot_recv()` reads the routed receive plane.
+- `zlink_spot_recv()` reads only the routed ingress owned by that Spot.
+- The first `zlink_spot_recv()` must not bootstrap registration or open a
+  hidden queue.
+- `ZLINK_DONTWAIT` with `EAGAIN` means that Spot-owned routed ingress has no
+  readable data at that moment.
+- Reply with `zlink_spot_reply_spot()` when the origin is another SPOT.
+- Reply with `zlink_spot_reply_router()` when the origin is a ROUTER.
+- Routed receive metadata (`source_rid`, `spot_rid`, `request_seq`) must stay
+  intact across local forward as well as remote delivery.
+
+### Handlers
+
+#### Dispatch event types
+
+```c
+typedef enum zlink_spot_dispatch_event_t {
+  ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+  ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
+  ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
+  ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4
+} zlink_spot_dispatch_event_t;
+
+typedef enum zlink_spot_dispatch_subject_kind_t {
+  ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1,
+  ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2,
+  ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3
+} zlink_spot_dispatch_subject_kind_t;
+
+typedef struct zlink_spot_dispatch_info_t {
+  zlink_spot_dispatch_event_t event;
+  zlink_spot_dispatch_subject_kind_t subject_kind;
+  void *subject;
+} zlink_spot_dispatch_info_t;
+
+typedef void (*zlink_spot_dispatch_event_handler_fn)(
+  void *spot,
+  const zlink_spot_dispatch_info_t *info,
+  void *userdata);
+```
+
+- `event` identifies the readable work plane.
+- `subject_kind` tells the caller how to interpret `subject`.
+- `subject` is the concrete drain target instance.
+- `CHANNEL_REPLY_READABLE` means a channel request completion is ready for the
+  originating `Spot`. It does not expose raw dealer receive.
+- `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
+  one-event-per-message delivery counters.
+
+Drain rules by dispatch subject:
+
+| event | subject_kind | subject | drain |
+|-------|--------------|---------|-------|
+| `SUBSCRIBE_READABLE` | `SPOT` | `spot` | `zlink_spot_subscribe()` / `zlink_spot_subscription_event()` |
+| `ROUTED_READABLE` | `SPOT` | `spot` | `zlink_spot_recv()` |
+| `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
+| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | `zlink_spot_channel_reply_progress_from()` |
+
+Dispatch priority is fixed as:
+
+1. `SUBSCRIBE_READABLE`
+2. `ROUTED_READABLE`
+3. `CHANNEL_REPLY_READABLE`
+4. `TIMER_READABLE`
+
+```c
+zlink_handler_result_t zlink_spot_handler(
+  void *spot,
+  zlink_spot_handler_fn handler,
   void *userdata);
 
-int zlink_set_pub_option(void *spot,
-                         zlink_pub_option_t option,
-                         const void *optval,
-                         size_t optvallen);
-int zlink_get_pub_option(void *spot,
-                         zlink_pub_option_t option,
-                         void *optval,
-                         size_t *optvallen);
-int zlink_set_sub_option(void *spot,
-                         zlink_sub_option_t option,
-                         const void *optval,
-                         size_t optvallen);
-int zlink_get_sub_option(void *spot,
-                         zlink_sub_option_t option,
-                         void *optval,
-                         size_t *optvallen);
+zlink_handler_result_t zlink_spot_dispatch_event_handler(
+  void *spot,
+  zlink_spot_dispatch_event_handler_fn handler,
+  void *userdata);
 
-int zlink_set_option(void *spot,
-                     zlink_option_t option,
-                     const void *optval,
-                     size_t optvallen);
-int zlink_get_option(void *spot,
-                     zlink_option_t option,
-                     void *optval,
-                     size_t *optvallen);
+int zlink_spot_channel_reply_progress_from(
+  void *spot,
+  void *dealer);
 
-int zlink_set_routing_id(void *spot,
-                         const void *data,
-                         size_t size);
-int zlink_get_routing_id(void *spot,
-                         zlink_routing_id_t *out);
+zlink_config_result_t zlink_socket_set_channel_name(
+  void *socket,
+  const char *channel_name);
+
+zlink_config_result_t zlink_socket_get_channel_name(
+  void *socket,
+  char *channel_name_buf,
+  size_t channel_name_capacity,
+  size_t *channel_name_len_out);
 ```
 
-`zlink_spot_new(node)` creates a unified facade that borrows an existing
-spot node. It provides both publish and subscribe behavior. There is no
-separate public publish-only or subscribe-only child handle.
+- `zlink_spot_dispatch_event_handler()` serializes all dispatch callbacks for
+  the same `Spot`.
+- After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
+  corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
+- Node-wide broad subscribe fan-out is not part of the public contract.
+- `zlink_spot_channel_reply_progress_from()` drains channel reply completions
+  for the attached dealer identified by the dispatch `subject`.
+- `zlink_socket_set_channel_name()` stores fixed logical channel metadata on a
+  socket. It does not change transport routing or discovery by itself.
+- `zlink_socket_get_channel_name()` returns that fixed metadata and fails with
+  `ENOENT` when the socket has no channel binding metadata.
 
-Unified `Spot` is not a transport-security configuration surface. Calling
-`zlink_set_tls_server()` or `zlink_set_tls_client()` with a unified `Spot`
-handle fails with `ENOTSUP`. Configure TLS/WSS on the backing `SpotNode`
-before the node participates in bind/connect/discovery.
+## Spot routed request initiation
 
-`zlink_subscribe()` provides synchronous pull-style receive in recv
-model. It returns the next available message with its source routing ID and
-topic. `source_rid_out_`, `parts_out_`, and `topic_id_out_` are filled on
-success. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking operation.
-Returns `EBUSY` in ordinary call sites once dispatch callback mode is active.
+`Spot` can initiate routed requests and one-way direct sends.
+The following paths are exposed.
 
-Use `zlink_spot_node_status_snapshot()`, `zlink_spot_node_peers_snapshot()`,
-and `zlink_spot_node_subjects_snapshot()` for observability.
-
-## SpotNode Internal Data-Plane HWM
-
-SpotNode owns an internal data-plane made of:
-
-- `ingress` receive queue
-- `fanout` local publish queue
-- `mesh_pub` peer publish queue
-- `mesh_xsub` peer receive queue
-
-The default data-plane HWM is `1000`. When `SNDHWM` / `RCVHWM` are set on a
-`SpotNode` handle, the value is also used as the internal data-plane budget in
-the matching direction:
-
-- `SNDHWM` on `SpotNode`
-  - default SpotNode pub handles
-  - internal `fanout` send HWM
-  - internal `mesh_pub` send HWM
-- `RCVHWM` on `SpotNode`
-  - default SpotNode sub handles
-  - internal `ingress` receive HWM
-  - internal `mesh_xsub` receive HWM
-
-This internal data-plane budget is separate from public `SNDHWM` / `RCVHWM`
-options applied to unified `Spot` handles. `peer_ctrl` remains on its own
-control-plane default and is not grouped into the SpotNode data-plane HWM.
-
-- Default internal data-plane HWM: `1000`
-- Transport-specific default expansion is not applied
-- Fine-grained internal overrides remain available only for diagnostics:
-  - `ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM`
-  - `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM`
-  - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
-  - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
-
-## Spot dispatch event callback contract
+### Core helper substrate
 
 ```c
-typedef void (*zlink_spot_dispatch_event_handler_fn) (
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_spot_part (
   void *spot_,
-  zlink_spot_dispatch_event_t event_,
-  void *userdata_);
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_router_part (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_spot_part (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
 ```
 
-- Install the callback with `zlink_spot_dispatch_event_handler(spot, handler, userdata)`.
-- Handles start in recv model and switch one-way to dispatch callback model.
-- The callback reports only the event kind. Drain payload through the matching recv function.
-- `zlink_spot_dispatch_event_handler()` callbacks are not invoked directly on the I/O thread; they run on a dedicated Spot worker runtime.
-- The worker count is controlled by the context option `ZLINK_SPOT_WORKER_THREADS`. A value of `0` means `min(visible logical cores, 8)` with fallback `1`.
-- The option applies only to the dispatch event callback path, not to send-ready, monitor, or other callback families.
-- Set the option before runtime startup. Changes after startup fail with `EINVAL`.
-
-## Option summary
-
-| Target | Setter / Getter | Supported namespace |
-|---|---|---|
-| unified `spot` publish side | `zlink_set_pub_option()` / `zlink_get_pub_option()` | `ZLINK_PUB_OPT_*` |
-| unified `spot` subscribe side | `zlink_set_sub_option()` / `zlink_get_sub_option()` | `ZLINK_SUB_OPT_*` |
-| common options (pub-side) | `zlink_set_option()` / `zlink_get_option()` | `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_SNDTIMEO`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF` |
-| common options (sub-side) | `zlink_set_option()` / `zlink_get_option()` | `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_RCVTIMEO`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF` |
-| routing_id (pub-side) | `zlink_set_routing_id()` / `zlink_get_routing_id()` | — |
-| subscription management | `zlink_set_subscription()` / `zlink_unset_subscription()` / `zlink_subscription_at()` | — |
-
-## Monitoring
-
-SPOT no longer exposes a public service-monitor surface. Use SpotNode
-status/query APIs instead of `zlink_service_monitor_open()`.
-
-## Snapshot / Introspection
-
-SpotNode provides lock-free, point-in-time snapshot APIs for operational
-health monitoring and diagnostics. These complement the event-driven monitor
-by offering pull-style inspection.
-
-### SpotNode Status Snapshot
+### C API wrapper
 
 ```c
-int zlink_spot_node_status_snapshot(void *node,
-                                    zlink_spot_node_status_t *out);
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_request_router (
+  void *spot_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_spot (
+  void *spot_,
+  const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
 ```
 
-Returns a single-row operational health summary of the SpotNode.
+- `zlink_spot_request_spot()` pairs with `zlink_spot_reply_spot(_part)` on the replier side.
+- `zlink_spot_request_router()` pairs with `zlink_router_reply_spot(_part)`.
+- On `ZLINK_SUBMIT_OK` the handler is registered and called exactly once.
+- On any other return value the handler is not registered.
+- For the full result-code mapping see `doc/draft/spot-routed-request-api.ko.md` §8.
+- `zlink_spot_send_spot()` performs a one-way routed send to a destination `Spot`. No handler, no reply wait.
+- Returns `ZLINK_SUBMIT_OK` when the message is accepted into the send path.
 
-#### zlink_spot_node_status_t
+## Router-side direct SPOT addressing
+
+ROUTER supports explicit destination addressing for one-way send and request.
 
 ```c
-typedef struct zlink_spot_node_status_t
-{
-    char service_name[256];
-    char local_endpoint[256];
-    zlink_routing_id_t node_routing_id;
-    zlink_spot_node_state_t state;
-    uint32_t configured_peer_count;
-    uint32_t active_peer_count;
-    uint32_t connected_peer_count;
-    uint32_t subject_count;
-    uint32_t ready_subject_count;
-    int32_t last_error;
-    uint64_t last_changed_ms;
-} zlink_spot_node_status_t;
+zlink_submit_result_t zlink_router_send_spot(
+  void *router,
+  const zlink_routing_id_t *dest_node_rid,
+  const zlink_routing_id_t *dest_spot_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+zlink_submit_result_t zlink_router_request_spot(
+  void *router,
+  const zlink_routing_id_t *dest_node_rid,
+  const zlink_routing_id_t *dest_spot_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_reply_handler_fn handler,
+  void *userdata,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+
+zlink_submit_result_t zlink_router_reply_spot(
+  void *router,
+  const zlink_routing_id_t *dest_node_rid,
+  const zlink_routing_id_t *dest_spot_rid,
+  uint64_t request_seq,
+  zlink_msg_t *parts,
+  size_t part_count);
 ```
 
-| Field | Description |
-|-------|-------------|
-| `service_name` | Null-terminated service name from the attached Discovery. |
-| `local_endpoint` | Null-terminated local bind endpoint. |
-| `node_routing_id` | Routing identity of this SpotNode. |
-| `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, or `ERROR`. |
-| `configured_peer_count` | Number of peers configured (manual + discovery). |
-| `active_peer_count` | Number of peers actively connecting or connected. |
-| `connected_peer_count` | Number of peers currently connected. |
-| `subject_count` | Total subscribed subjects. |
-| `ready_subject_count` | Subjects with at least one ready peer. |
-| `last_error` | Last recorded error code, or 0. |
-| `last_changed_ms` | Epoch ms of the last state change. |
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Safe to call from any thread.
-
----
-
-### SpotNode Peers Snapshot / Query
+## Monitoring and snapshots
 
 ```c
-int zlink_spot_node_peers_snapshot(void *node,
-                                   zlink_spot_node_peer_entry_t *entries,
-                                   size_t *count);
+void *zlink_service_monitor_open(
+  void *target,
+  const zlink_service_monitor_open_options_t *options);
 
-int zlink_spot_node_peers_query(void *node,
-                                const zlink_spot_node_peer_filter_t *filter,
-                                zlink_spot_node_peer_entry_t *entries,
-                                size_t *count);
+zlink_handler_result_t zlink_service_monitor_handler(
+  void *monitor,
+  zlink_service_monitor_handler_fn handler,
+  void *userdata);
+
+zlink_recv_result_t zlink_service_monitor_recv(
+  void *monitor,
+  zlink_service_monitor_event_t *out,
+  zlink_recv_flags_t flags);
+
+zlink_config_result_t zlink_spot_node_status_snapshot(
+  void *node,
+  zlink_spot_node_status_t *out);
+
+zlink_config_result_t zlink_spot_node_peers_snapshot(
+  void *node,
+  zlink_spot_node_peer_entry_t *entries,
+  size_t *count);
+
+zlink_config_result_t zlink_spot_node_peers_query(
+  void *node,
+  const zlink_spot_node_peer_filter_t *filter,
+  zlink_spot_node_peer_entry_t *entries,
+  size_t *count);
+
+zlink_config_result_t zlink_spot_node_subjects_snapshot(
+  void *node,
+  const zlink_spot_node_subject_filter_t *filter,
+  zlink_spot_node_subject_entry_t *entries,
+  size_t *count);
 ```
 
-`peers_snapshot` returns all peers. `peers_query` supports filtering by
-endpoint, source, or state.
+There is no dedicated public SPOT-node monitor recv API. Use the generic
+service monitor plus snapshot/query functions.
 
-**Buffer convention:** Pass `entries = NULL` to query the required count.
-Provide a caller-allocated buffer on the next call. If the buffer is too
-small, the call returns `-1` with `errno = ENOBUFS` and `*count` set to the
-needed capacity.
+## Relationship to Poller
 
-Results are ordered by `peer_endpoint` ascending.
+The current public poller API is unchanged by this SPOT runtime work.
 
-#### zlink_spot_node_peer_entry_t
+- `zlink_poller_event_t` does not currently carry owner Spot, dispatch event
+  kind, or drain subject together.
+- A future Spot-aware poller extension may add that richer result surface, but
+  it is not part of the current public contract.
+- Today, the canonical unified readable-notification surface for SPOT is
+  `zlink_spot_dispatch_event_handler()`.
 
-```c
-typedef struct zlink_spot_node_peer_entry_t
-{
-    char service_name[256];
-    char local_endpoint[256];
-    char peer_endpoint[256];
-    zlink_spot_peer_source_t source;
-    zlink_spot_peer_state_t state;
-    uint64_t connected_since_ms;
-    uint64_t last_changed_ms;
-} zlink_spot_node_peer_entry_t;
-```
+## Constraint summary
 
-| Field | Description |
-|-------|-------------|
-| `service_name` | Null-terminated service name. |
-| `local_endpoint` | Null-terminated local endpoint. |
-| `peer_endpoint` | Null-terminated peer endpoint. |
-| `source` | `MANUAL`, `DISCOVERY`, or `MIXED`. |
-| `state` | `CONFIGURED`, `CONNECTING`, or `CONNECTED`. |
-| `connected_since_ms` | Epoch ms when the peer connected (0 if not connected). |
-| `last_changed_ms` | Epoch ms of the last state change for this peer. |
-
-#### zlink_spot_node_peer_filter_t
-
-```c
-typedef struct zlink_spot_node_peer_filter_t
-{
-    char peer_endpoint[256];
-    zlink_spot_peer_source_t source;
-    zlink_spot_peer_state_t state;
-} zlink_spot_node_peer_filter_t;
-```
-
-Set fields to non-zero values to filter. Zero-valued fields are wildcards.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Safe to call from any thread.
-
----
-
-### SpotNode Subjects Snapshot
-
-```c
-int zlink_spot_node_subjects_snapshot(void *node,
-                                      const zlink_spot_node_subject_filter_t *filter,
-                                      zlink_spot_node_subject_entry_t *entries,
-                                      size_t *count);
-```
-
-Returns SUB subject readiness information. v1 supports `ZLINK_SPOT_ROLE_SUB`
-only; calling with PUB role in the filter returns `ENOTSUP`.
-
-**Buffer convention:** Same as peers snapshot -- pass `entries = NULL` for
-count query; `ENOBUFS` with needed count if the buffer is too small.
-
-#### zlink_spot_node_subject_entry_t
-
-```c
-typedef struct zlink_spot_node_subject_entry_t
-{
-    zlink_spot_role_t role;
-    char subject[256];
-    uint32_t subject_kind;
-    uint32_t ready_peer_count;
-    uint32_t active_peer_count;
-    uint64_t last_changed_ms;
-} zlink_spot_node_subject_entry_t;
-```
-
-| Field | Description |
-|-------|-------------|
-| `role` | `ZLINK_SPOT_ROLE_SUB` (v1 only). |
-| `subject` | Null-terminated subject string. |
-| `subject_kind` | Subject kind identifier. |
-| `ready_peer_count` | Peers with this subject in ready state. |
-| `active_peer_count` | Peers actively serving this subject. |
-| `last_changed_ms` | Epoch ms of the last readiness change. |
-
-#### zlink_spot_node_subject_filter_t
-
-```c
-typedef struct zlink_spot_node_subject_filter_t
-{
-    zlink_spot_role_t role;
-    char subject[256];
-    uint32_t subject_kind;
-} zlink_spot_node_subject_filter_t;
-```
-
-Set fields to non-zero values to filter. Zero-valued fields are wildcards.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Safe to call from any thread.
-
----
-
-### Recommended monitoring flow
-
-1. `zlink_spot_node_status_snapshot()` -- check overall health first.
-2. `zlink_spot_node_peers_snapshot()` -- inspect peer connectivity.
-3. `zlink_spot_node_subjects_snapshot()` -- verify subject readiness.
-
-## SpotNode Options
-
-SpotNode node-level options are set via `zlink_set_spot_node_option()` on the
-SpotNode handle.
-
-### zlink_spot_node_option_t
-
-```c
-typedef enum zlink_spot_node_option_t {
-    ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM                   = 0x3608,
-    ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM                   = 0x3609,
-    ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM                  = 0x360A,
-    ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM                  = 0x360B
-} zlink_spot_node_option_t;
-```
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `TOPIC_SEND_HWM` | `int` | 0 (unlimited) | Send high water mark for topic (pub/sub) messages. |
-| `TOPIC_RECV_HWM` | `int` | 0 (unlimited) | Receive high water mark for topic (pub/sub) messages. |
-| `ROUTED_SEND_HWM` | `int` | 0 (unlimited) | Send high water mark for routed (request-reply) messages. |
-| `ROUTED_RECV_HWM` | `int` | 0 (unlimited) | Receive high water mark for routed (request-reply) messages. |
-
-**Returns:** `zlink_set_spot_node_option` / `zlink_get_spot_node_option`
-return 0 on success, -1 on failure (errno is set).
-
-**Thread safety:** Options should be set before bind/connect.
-
-## Removed public APIs
-
-The following families are not part of the current public SPOT surface:
-
-- `zlink_spot_pub_*`
-- `zlink_spot_sub_*`
-- `zlink_spot_publish_bytes`
-- `zlink_spot_node_publish_bytes`
-- `zlink_spot_sub_set_handler`
-- `zlink_spot_node_default_pub`
-- `zlink_spot_node_default_sub`
-- `zlink_spot_set_pub_option` / `zlink_spot_set_sub_option`
-- `zlink_spot_node_set_pub_option` / `zlink_spot_node_set_sub_option`
-- `zlink_spot_send_ready_handler` / `zlink_spot_node_send_ready_handler`
-- `zlink_spot_node_set_tls_server` / `zlink_spot_node_set_tls_client`
-
-## Example
-
-### Dispatch callback model
-
-```c
-void on_spot_event(void *spot,
-                   zlink_spot_dispatch_event_t event,
-                   void *userdata);
-
-void *ctx = zlink_ctx_new();
-void *node = zlink_spot_node_new(ctx);
-zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
-
-void *spot = zlink_spot_new(node);
-zlink_spot_dispatch_event_handler(spot, on_spot_event, NULL);
-zlink_set_subscription (spot, "room:lobby");
-
-zlink_msg_t part;
-zlink_msg_init_size(&part, 5);
-memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_publish(spot, "room:lobby", &part, 1, 0);
-
-/* zlink_spot_destroy destroys only the borrowed spot facade */
-zlink_spot_destroy(&spot);
-zlink_spot_node_destroy(&node);
-```
-
-### Recv model
-
-```c
-void *ctx = zlink_ctx_new();
-void *node = zlink_spot_node_new(ctx);
-zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
-
-void *spot = zlink_spot_new(node);
-zlink_set_subscription (spot, "room:lobby");
-
-/* publish */
-zlink_msg_t part;
-zlink_msg_init_size(&part, 5);
-memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_publish(spot, "room:lobby", &part, 1, 0);
-
-/* recv on unified spot */
-zlink_routing_id_t source_rid;
-zlink_msg_t *recv_parts = NULL;
-size_t recv_count = 0;
-char topic_buf[256];
-size_t topic_len = sizeof(topic_buf);
-int rc = zlink_subscribe(spot, &source_rid, &recv_parts, &recv_count,
-                         topic_buf, &topic_len, 0);
-if (rc == 0) {
-    printf("Topic: %.*s\n", (int)topic_len, topic_buf);
-    for (size_t i = 0; i < recv_count; i++)
-        zlink_msg_close(&recv_parts[i]);
-}
-
-/* zlink_spot_destroy destroys only the borrowed spot facade */
-zlink_spot_destroy(&spot);
-zlink_spot_node_destroy(&node);
-```
+- SPOT mesh auto-connect applies only to SPOT discovery peers.
+- Generic socket providers do not become SPOT mesh peers.
+- Channel calls always go through attached `DEALER` sockets.
+- `SpotNode` routed topology is not a substitute for channel calls.
+- Attach functions never create sockets or perform `connect()` for the caller.

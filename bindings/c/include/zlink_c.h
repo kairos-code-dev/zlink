@@ -29,6 +29,10 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_send_rid (
   size_t part_count_,
   zlink_send_flags_t flags_);
 
+ZLINK_C_EXPORT zlink_connect_result_t zlink_disconnect_rid (
+  void *s_,
+  const zlink_routing_id_t *peer_rid_);
+
 ZLINK_C_EXPORT zlink_submit_result_t zlink_publish (void *subject_,
                                                     const char *topic_id_,
                                                     zlink_msg_t *parts_,

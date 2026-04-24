@@ -93,6 +93,13 @@ public sealed class Context : IDisposable, IAsyncDisposable
 }
 ```
 
+## Peer Disconnect by Routing ID
+
+.NET bindings expose `DisconnectRid(RoutingId rid)` on raw sockets and
+`DisconnectPeerRid(RoutingId targetNodeRid)` on `SpotNode`. The duplicate
+policy option and `NotFound` / `Conflict` / `Busy` connect errors mirror the C
+core. `Spot` does not expose a peer-rid disconnect method.
+
 ### ContextOptions
 
 Typed facade for context configuration options.

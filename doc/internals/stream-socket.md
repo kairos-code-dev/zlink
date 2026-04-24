@@ -231,3 +231,10 @@ These values are fixed as internal constants and not controlled by STREAM env kn
 - `ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP`: default `4096`
 - `ZLINK_ASIO_STREAM_BATCH_SIZE`: default `4096`
 - `ZLINK_ASIO_STREAM_BATCH_HEADROOM`: default `64`
+
+## 8. Peer RID Disconnect
+
+STREAM's public routing id is the 4-byte connection id assigned by the server
+for each connection. `zlink_disconnect_rid()` interprets that id as a
+`uint32_t`, looks up the pipe in the STREAM route map, and requests
+termination. Any rid that is not 4 bytes fails as an invalid argument.

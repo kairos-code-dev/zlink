@@ -72,6 +72,13 @@ int spot_node_access_t::disconnect_peer (spot_node_t *node_,
     return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
 }
 
+int spot_node_access_t::disconnect_peer_rid (
+  spot_node_t *node_,
+  const zlink_routing_id_t *target_node_rid_)
+{
+    return node_ ? node_->disconnect_peer_pub_rid (target_node_rid_) : -1;
+}
+
 int spot_node_access_t::set_node_option (spot_node_t *node_,
                                          zlink_spot_node_option_t option_,
                                          const void *optval_,

@@ -248,7 +248,8 @@ public shape를 기준으로 고정한다.
   내부 정책이 `(routing_id, advertise endpoint)` 전순서로 initiator 를
   선정한다. 사용자가 설정하는 옵션이 아니다.
 - socket 기본값: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
-  `ZLINK_ROUTER_OPT_HANDOVER` = `1`, `ZLINK_PUB_OPT_NODROP` = `1`.
+  `ZLINK_ROUTER_OPT_HANDOVER` = `0`, `ZLINK_OPT_RID_DUPLICATE_POLICY` =
+  `ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_PUB_OPT_NODROP` = `1`.
   바인딩 예제는 이 기본값을 기준으로 작성한다.
 
 ## 문서 해석 규칙
@@ -3369,6 +3370,30 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - 생성 명령은 각 바인딩 디렉터리에서 실행한다.
 - 출력 디렉터리는 `.gitignore`로 추적에서 제외한다.
 - 각 바인딩의 `README.*.md` 파일에 상세 생성 절차와 스코프가 명시되어 있다.
+
+## Peer Disconnect by Routing ID
+
+All bindings expose the core peer-rid disconnect surface. The raw socket API
+maps to `zlink_disconnect_rid()`, and the SpotNode API maps to
+`zlink_spot_node_disconnect_peer_rid()`. Spot facade types do not expose a
+separate peer-rid disconnect method because peer mesh ownership belongs to
+SpotNode.
+
+| Language | Raw socket name | SpotNode name |
+|---|---|---|
+| C | `zlink_disconnect_rid` | `zlink_spot_node_disconnect_peer_rid` |
+| C++ | `disconnect_rid` | `disconnect_peer_rid` |
+| Python | `disconnect_rid` | `disconnect_peer_rid` |
+| Node | `disconnectRid` | `disconnectPeerRid` |
+| Go | `DisconnectRID` | `DisconnectPeerRID` |
+| Rust | `disconnect_rid` | `disconnect_peer_rid` |
+| Java | `disconnectRid` | `disconnectPeerRid` |
+| .NET | `DisconnectRid` | `DisconnectPeerRid` |
+
+Bindings must expose `ZLINK_OPT_RID_DUPLICATE_POLICY`,
+`ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_RID_DUPLICATE_HANDOVER`, and the connect
+result values `NOT_FOUND`, `CONFLICT`, and `BUSY` using each language's
+normal enum/error mapping style.
 
 ## Related Docs
 - `bindings/cpp/`

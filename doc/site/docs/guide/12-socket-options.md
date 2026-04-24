@@ -1,3 +1,4 @@
+[English](12-socket-options.md) | [한국어](12-socket-options.ko.md)
 
 # Socket Options Detailed Guide
 
@@ -19,6 +20,32 @@ Internally, options are classified into three categories:
 
 ---
 
+## Peer Routing ID Duplicate Policy
+
+`ZLINK_OPT_RID_DUPLICATE_POLICY` controls whether a socket keeps an existing
+peer connection or lets a new connection replace it when the same peer routing
+id appears again.
+
+| Value | Behavior |
+|-------|----------|
+| `ZLINK_RID_DUPLICATE_REJECT` | Default. Keep the existing connection and do not register the duplicate connection. |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | Let the new connection take over the existing one. Use this for rolling restart overlap where the same identity may briefly appear twice. |
+
+This is a common socket option used with `zlink_set_option()`. The older
+ROUTER-specific `ZLINK_ROUTER_OPT_HANDOVER` remains for compatibility, but new
+code should prefer the common option.
+
+STREAM is not affected by this policy because the server assigns its own
+4-byte routing id for each connection.
+
+```c
+int policy = ZLINK_RID_DUPLICATE_HANDOVER;
+zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
+                 &policy, sizeof(policy));
+```
+
+---
+
 ## 1. Message Queue — SNDHWM / RCVHWM
 
 | | |
@@ -27,7 +54,7 @@ Internally, options are classified into three categories:
 | **Applied at** | `pipe_t::check_write()` — checks HWM when writing to pipe |
 | **Default** | `1000` (message count) |
 | **0** | Unlimited |
-| **Effect** | When HWM is reached, `zlink_send()` blocks or returns `EAGAIN`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
+| **Effect** | When HWM is reached, `zlink_send()` blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
 
 **LWM (Low Water Mark) formula:** `(HWM + 1) / 2`
 
@@ -77,7 +104,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 | **Applied at** | `zlink_send()` / `zlink_recv()` blocking paths, logical multipart send module |
 | **Default** | `-1` (infinite wait) |
 | **0** | Equivalent to non-blocking (immediate return) |
-| **>0** | Wait up to specified time (ms), then return `EAGAIN` |
+| **>0** | Wait up to specified time (ms), then return `ZLINK_SUBMIT_BACKPRESSURED` |
 
 **Service application:** Propagated to SPOT pub/sub internal sockets.
 
@@ -226,7 +253,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 **`0` (default):** Pipe attached immediately on `connect()`. `send()` is possible before connection completes; messages queue up.
 
-**`1`:** Pipe attached only after connection actually completes. `send()` before connection blocks or returns `EAGAIN`. Also, on hiccup (temporary disconnection), pipe is immediately removed.
+**`1`:** Pipe attached only after connection actually completes. `send()` before connection blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. Also, on hiccup (temporary disconnection), pipe is immediately removed.
 
 ---
 
@@ -389,9 +416,30 @@ Some socket types override common defaults at creation time:
 | Socket Type | Overridden Option | Value | Reason |
 |-------------|-------------------|-------|--------|
 | `SUB` / `XSUB` | `LINGER` | `0` | Subscription sockets have nothing to drain on close |
+| `ROUTER` | `ROUTER_MANDATORY` | `1` | Surface failures to unconnected peers instead of silently dropping |
+| `ROUTER` | `ROUTER_HANDOVER` | `1` | Let a new connection take over an existing peer identity |
+| `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
 | `STREAM` | `SNDBUF` | `262144` (if unset) | Large RAW transfer support |
 | `STREAM` | `RCVBUF` | `262144` (if unset) | Large RAW receive support |
+
+> **Defaults and observable behavior:**
+>
+> - `ROUTER_MANDATORY` defaults to `1`. An unset ROUTER returns
+>   `ZLINK_SUBMIT_NOT_CONNECTED` for sends to unconnected peers instead
+>   of silently dropping. Writable / `ZLINK_POLLOUT` observation also
+>   surfaces readiness only while a reachable peer exists. Set the
+>   option to `0` explicitly if silent-drop is required.
+> - `ROUTER_HANDOVER` defaults to `1`. When a duplicate peer identity
+>   arrives, the new connection takes over the existing pipe. Set it
+>   explicitly to `0` to keep the old pipe and reject the new one.
+> - `PUB_NODROP` defaults to `1`. `zlink_publish()` returns
+>   `ZLINK_SUBMIT_BACKPRESSURED` on HWM instead of silently dropping.
+>   Loss-tolerant workloads that prefer dropping on HWM must set this
+>   option to `0` explicitly.
+>
+> These defaults only govern the **default profile**; the option
+> constants and their on/off semantics are unchanged.
 
 ## Per-Socket-Type Dedicated Options
 
@@ -399,9 +447,9 @@ Beyond common options, socket-type-specific options use dedicated APIs:
 
 | Socket | API | Representative Options |
 |--------|-----|----------------------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY`, `HANDOVER`, `PROBE`, `CONNECT_ROUTING_ID` |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (default `1`), `HANDOVER` (default `1`), `PROBE`, `CONNECT_ROUTING_ID` |
 | DEALER | `zlink_set_dealer_option()` | `PROBE` |
-| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP`, `MANUAL`, `WELCOME_MSG` |
+| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (default `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | Subscription-related |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 

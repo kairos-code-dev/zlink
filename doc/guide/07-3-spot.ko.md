@@ -95,6 +95,11 @@ zlink_spot_node_attach_discovery(node, discovery);
 `disconnect_peer()`를 같이 섞지 않는 편이 좋다. 현재 계약도 discovery attach
 후 수동 peer connect를 `EBUSY`로 막는다.
 
+peer endpoint를 모르고 target node의 routing id만 알고 있으면
+`zlink_spot_node_disconnect_peer_rid()`로 해당 peer node 연결을 종료할 수 있다.
+이 함수는 `SpotNode`에 호출한다. `Spot` facade는 개별 peer 연결을 직접
+소유하지 않으므로 별도 rid disconnect 함수를 제공하지 않는다.
+
 ## 4. 토픽 publish/subscribe
 
 SPOT topic plane은 `service_name + topic_id`를 함께 사용한다.

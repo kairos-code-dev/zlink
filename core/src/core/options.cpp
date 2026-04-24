@@ -143,6 +143,7 @@ zlink::options_t::options_t () :
     zero_copy (true),
     monitor_event_version (1),
     busy_poll (0),
+    rid_duplicate_policy (ZLINK_RID_DUPLICATE_REJECT),
     zmp_metadata (false)
 #ifdef ZLINK_HAVE_TLS
     ,

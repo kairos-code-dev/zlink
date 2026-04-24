@@ -459,7 +459,13 @@ void test_socket_default_options_are_enabled ()
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
       router, ZLINK_ROUTER_OPT_HANDOVER, &value, &size));
-    TEST_ASSERT_EQUAL_INT (1, value);
+    TEST_ASSERT_EQUAL_INT (0, value);
+
+    value = -1;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (
+      router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value, &size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RID_DUPLICATE_REJECT, value);
 
     test_context_socket_close (router);
 }

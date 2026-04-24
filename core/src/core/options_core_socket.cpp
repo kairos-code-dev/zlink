@@ -106,6 +106,15 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &self_->zmp_metadata);
 
+        case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
+            if (is_int_
+                && (value_ == ZLINK_RID_DUPLICATE_REJECT
+                    || value_ == ZLINK_RID_DUPLICATE_HANDOVER)) {
+                self_->rid_duplicate_policy = value_;
+                return 0;
+            }
+            break;
+
         case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
             if (is_int_ && value_ >= 0) {
                 self_->heartbeat_interval = value_;
@@ -232,6 +241,12 @@ int zlink::options_getsockopt_core_socket (const options_t *self_,
         case ZLINK_INTERNAL_OPT_ZMP_METADATA:
             if (is_int_) {
                 *value_ = self_->zmp_metadata ? 1 : 0;
+                return 0;
+            }
+            break;
+        case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
+            if (is_int_) {
+                *value_ = self_->rid_duplicate_policy;
                 return 0;
             }
             break;

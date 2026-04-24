@@ -190,6 +190,10 @@ void test_duplicate_connect_rid_without_handover ()
     bind_loopback_ipv4 (server_one, endpoint_one, sizeof endpoint_one);
     bind_loopback_ipv4 (server_two, endpoint_two, sizeof endpoint_two);
 
+    int duplicate_policy = ZLINK_RID_DUPLICATE_REJECT;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_RID_DUPLICATE_POLICY,
+                        &duplicate_policy, sizeof (duplicate_policy)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
       client, client_routing_id, strlen (client_routing_id)));
 
@@ -258,8 +262,8 @@ void test_duplicate_connect_rid_with_handover ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
       client, client_routing_id, strlen (client_routing_id)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_HANDOVER, &handover, sizeof (handover)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      client, ZLINK_OPT_RID_DUPLICATE_POLICY, &handover, sizeof (handover)));
 
     //  First connect using CONNECT_ROUTING_ID.
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
@@ -301,6 +305,70 @@ void test_duplicate_connect_rid_with_handover ()
     test_context_socket_close (server_one);
 }
 
+static void copy_rid (zlink_routing_id_t *rid_, const char *value_)
+{
+    memset (rid_, 0, sizeof (*rid_));
+    rid_->size = static_cast<uint8_t> (strlen (value_));
+    memcpy (rid_->data, value_, rid_->size);
+}
+
+void test_disconnect_rid_rejects_invalid_and_missing_peer ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    zlink_routing_id_t rid;
+    copy_rid (&rid, "missing");
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INVALID_ARGUMENT,
+                           zlink_disconnect_rid (router, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_NOT_FOUND,
+                           zlink_disconnect_rid (router, &rid));
+    TEST_ASSERT_EQUAL_INT (ENOENT, errno);
+
+    test_context_socket_close (router);
+}
+
+void test_router_disconnect_rid_terminates_matching_peer ()
+{
+    const int zero = 0;
+    char endpoint[MAX_SOCKET_STRING];
+    char buffer[256];
+    zlink_routing_id_t rid;
+    copy_rid (&rid, client_routing_id);
+
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
+      dealer, client_routing_id, strlen (client_routing_id)));
+
+    bind_loopback_ipv4 (router, endpoint, sizeof endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+
+    send_string_expect_success (dealer, "hello", 0);
+    recv_string_expect_success (router, client_routing_id, 0);
+    recv_string_expect_success (router, "hello", 0);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK,
+                           zlink_disconnect_rid (router, &rid));
+    msleep (SETTLE_TIME);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1,
+                           zlink_recv (router, buffer, sizeof (buffer),
+                                      ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+
+    test_context_socket_close (dealer);
+    test_context_socket_close (router);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -311,5 +379,7 @@ int main ()
     RUN_TEST (test_router_2_router_while_receiving);
     RUN_TEST (test_duplicate_connect_rid_without_handover);
     RUN_TEST (test_duplicate_connect_rid_with_handover);
+    RUN_TEST (test_disconnect_rid_rejects_invalid_and_missing_peer);
+    RUN_TEST (test_router_disconnect_rid_terminates_matching_peer);
     return UNITY_END ();
 }

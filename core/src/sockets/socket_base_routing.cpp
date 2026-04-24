@@ -128,6 +128,25 @@ void zlink::routing_socket_base_t::erase_out_pipe (const pipe_t *pipe_)
     }
 }
 
+int zlink::routing_socket_base_t::terminate_out_pipe_by_routing_id (
+  const zlink_routing_id_t *peer_rid_)
+{
+    if (!peer_rid_ || peer_rid_->size == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    blob_t routing_id (peer_rid_->data, peer_rid_->size);
+    out_pipe_t *outpipe = lookup_out_pipe (routing_id);
+    if (!outpipe || !outpipe->pipe) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    outpipe->pipe->terminate (false);
+    return 0;
+}
+
 zlink::routing_socket_base_t::out_pipe_t
 zlink::routing_socket_base_t::try_erase_out_pipe (const blob_t &routing_id_)
 {

@@ -454,6 +454,34 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
     return term_endpoint_internal (endpoint_uri_);
 }
 
+int zlink::socket_base_t::term_peer_rid (const zlink_routing_id_t *peer_rid_)
+{
+    if (_service_attachment
+        && _service_attachment->on_public_term_endpoint () != 0) {
+        return -1;
+    }
+
+    if (!peer_rid_ || peer_rid_->size == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    socket_public_api_scope_t admission (lifecycle_coordinator ());
+    if (!admission.acquired ())
+        return -1;
+
+    if (unlikely (_ctx_terminated)) {
+        errno = ETERM;
+        return -1;
+    }
+
+    const int rc = process_commands (0, false);
+    if (unlikely (rc != 0))
+        return -1;
+
+    return xterm_peer_rid (peer_rid_);
+}
+
 int zlink::socket_base_t::service_attachment_term_endpoint (
   const char *endpoint_uri_)
 {

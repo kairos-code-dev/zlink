@@ -1752,3 +1752,10 @@ for parallelism and `setTimeout`/`setInterval` for scheduling.
 Not wrapped: Node.js is single-threaded; concurrent atomic operations
 are not applicable. Use a plain variable or `SharedArrayBuffer` with
 `Atomics` in worker-thread scenarios.
+
+## Peer Disconnect by Routing ID
+
+Node bindings expose `socket.disconnectRid(routingId)` and
+`spotNode.disconnectPeerRid(targetNodeRid)`. The duplicate policy option and
+`NOT_FOUND` / `CONFLICT` / `BUSY` connect errors mirror the C core. `Spot`
+does not expose a peer-rid disconnect method.

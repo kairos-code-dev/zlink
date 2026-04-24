@@ -429,3 +429,12 @@ C is intentionally different from higher-level bindings here.
 
 This difference is acceptable because the policy goal is shared meaning, not
 identical surface syntax across languages.
+
+## Peer Disconnect by Routing ID
+
+C exposes `zlink_disconnect_rid(void *s, const zlink_routing_id_t *peer_rid)`
+and `zlink_spot_node_disconnect_peer_rid(void *node, const zlink_routing_id_t *target_node_rid)`.
+It also exposes `ZLINK_OPT_RID_DUPLICATE_POLICY`,
+`ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_RID_DUPLICATE_HANDOVER`,
+`ZLINK_CONNECT_NOT_FOUND`, `ZLINK_CONNECT_CONFLICT`, and
+`ZLINK_CONNECT_BUSY`.

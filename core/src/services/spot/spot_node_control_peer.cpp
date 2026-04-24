@@ -33,6 +33,7 @@ void spot_node_t::refresh_discovery_peers ()
     std::set<std::string> new_endpoints;
     std::map<std::string, zlink_admission_state_t> new_admission_by_endpoint;
     std::map<std::string, zlink_admission_state_t> new_admission_by_rid;
+    std::map<std::string, std::set<std::string> > new_endpoints_by_rid;
     std::string self_endpoint;
     {
         scoped_lock_t lock (_sync);
@@ -45,9 +46,11 @@ void spot_node_t::refresh_discovery_peers ()
             new_admission_by_endpoint[providers[i].endpoint] =
               providers[i].admission_state;
             if (providers[i].routing_id.size > 0) {
-                new_admission_by_rid[std::string (
+                const std::string rid_key (
                   reinterpret_cast<const char *> (providers[i].routing_id.data),
-                  providers[i].routing_id.size)] = providers[i].admission_state;
+                  providers[i].routing_id.size);
+                new_admission_by_rid[rid_key] = providers[i].admission_state;
+                new_endpoints_by_rid[rid_key].insert (providers[i].endpoint);
             }
         }
     }
@@ -101,6 +104,7 @@ void spot_node_t::refresh_discovery_peers ()
         _peer_state.discovery_endpoints.swap (new_endpoints);
         _peer_state.peer_admission_by_endpoint.swap (new_admission_by_endpoint);
         _peer_state.peer_admission_by_rid.swap (new_admission_by_rid);
+        _peer_state.peer_endpoints_by_rid.swap (new_endpoints_by_rid);
         new_active_count = _peer_state.active_endpoints.size ();
     }
 

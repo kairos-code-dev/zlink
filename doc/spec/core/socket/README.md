@@ -187,6 +187,29 @@ Used by `zlink_recv`, `zlink_subscribe`, the socket-specific
 | `ZLINK_RECV_FLAGS_NONE` | No flags; blocking recv semantics. |
 | `ZLINK_RECV_FLAGS_DONTWAIT` | Non-blocking recv; return immediately with `ZLINK_RECV_NO_DATA` if no message is available. |
 
+### Routing ID Duplicate Policy
+
+```c
+typedef enum zlink_rid_duplicate_policy_t
+{
+    ZLINK_RID_DUPLICATE_REJECT = 0,
+    ZLINK_RID_DUPLICATE_HANDOVER = 1
+} zlink_rid_duplicate_policy_t;
+```
+
+`ZLINK_OPT_RID_DUPLICATE_POLICY` controls what happens when a local socket
+observes another peer with the same routing id. The option value is an
+`int`; the default is `ZLINK_RID_DUPLICATE_REJECT`.
+
+| Value | Meaning |
+|---|---|
+| `ZLINK_RID_DUPLICATE_REJECT` | Keep the existing pipe and do not register the duplicate pipe |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | Let the new pipe take over the existing pipe with the same routing id |
+
+This option is meaningful only for sockets that can observe a peer-advertised
+routing id. STREAM assigns its own 4-byte connection routing ids, so this
+option does not affect STREAM.
+
 ### Send Result
 
 ```c
@@ -691,6 +714,38 @@ Removes a previously established connection.
 **Returns:** `ZLINK_CONNECT_OK` on success; otherwise a `zlink_connect_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_connect`
+
+---
+
+### zlink_disconnect_rid
+
+Disconnect a connected peer by routing id.
+
+```c
+zlink_connect_result_t zlink_disconnect_rid (
+  void *s_,
+  const zlink_routing_id_t *peer_rid_);
+```
+
+`peer_rid_` must not be empty. On success, the matched peer pipe enters the
+asynchronous termination flow. A successful return does not mean the remote
+peer has already processed the termination event.
+
+ROUTER and STREAM use their routing maps for lookup. For STREAM,
+`peer_rid_` must be the 4-byte connection routing id. Other socket types scan
+the current connected-pipe source routing id snapshot. If more than one pipe
+has the same routing id, the target is ambiguous and the call fails.
+
+On sockets attached to Discovery, manual connection control is rejected with
+`ZLINK_CONNECT_BUSY`.
+
+**Returns:** `ZLINK_CONNECT_OK` on success. Missing target maps to
+`ZLINK_CONNECT_NOT_FOUND`, duplicate routing id maps to
+`ZLINK_CONNECT_CONFLICT`, and lifecycle ownership conflict maps to
+`ZLINK_CONNECT_BUSY`. `zlink_errno()` keeps the detailed internal errno for
+diagnostics.
+
+**See also:** `zlink_disconnect`, `ZLINK_OPT_RID_DUPLICATE_POLICY`
 
 ---
 

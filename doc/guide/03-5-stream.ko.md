@@ -60,6 +60,8 @@ STREAM만의 고유 동작은 다음과 같다.
 
 - `source_rid`는 서버가 연결별로 자동 할당하며,
   고정 4바이트(`uint32`, big-endian)이다.
+- 특정 client를 끊어야 하면 callback이나 recv에서 받은 `source_rid`를
+  `zlink_disconnect_rid()`에 넘긴다. STREAM의 대상 rid는 반드시 4바이트다.
 - 연결/해제 이벤트가 메시지로 전달된다:
 
 | payload 값 | 의미 |

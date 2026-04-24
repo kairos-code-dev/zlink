@@ -20,6 +20,32 @@ Internally, options are classified into three categories:
 
 ---
 
+## Peer Routing ID Duplicate Policy
+
+`ZLINK_OPT_RID_DUPLICATE_POLICY` controls whether a socket keeps an existing
+peer connection or lets a new connection replace it when the same peer routing
+id appears again.
+
+| Value | Behavior |
+|-------|----------|
+| `ZLINK_RID_DUPLICATE_REJECT` | Default. Keep the existing connection and do not register the duplicate connection. |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | Let the new connection take over the existing one. Use this for rolling restart overlap where the same identity may briefly appear twice. |
+
+This is a common socket option used with `zlink_set_option()`. The older
+ROUTER-specific `ZLINK_ROUTER_OPT_HANDOVER` remains for compatibility, but new
+code should prefer the common option.
+
+STREAM is not affected by this policy because the server assigns its own
+4-byte routing id for each connection.
+
+```c
+int policy = ZLINK_RID_DUPLICATE_HANDOVER;
+zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
+                 &policy, sizeof(policy));
+```
+
+---
+
 ## 1. Message Queue — SNDHWM / RCVHWM
 
 | | |

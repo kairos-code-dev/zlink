@@ -69,6 +69,19 @@ void test_connect_bind_close_unknown_errno_map_to_internal_error ()
       zlink::close_result_internal::from_errno (EINTR));
 }
 
+void test_connect_result_maps_peer_disconnect_errnos ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONNECT_NOT_FOUND,
+      zlink::connect_result_internal::from_errno (ENOENT));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONNECT_CONFLICT,
+      zlink::connect_result_internal::from_errno (EADDRINUSE));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONNECT_BUSY,
+      zlink::connect_result_internal::from_errno (EBUSY));
+}
+
 void test_submit_unknown_errno_is_normalized ()
 {
     TEST_ASSERT_EQUAL_INT (
@@ -87,6 +100,7 @@ int main (int argc, char *argv[])
     RUN_TEST (test_config_unknown_errno_maps_to_internal_error);
     RUN_TEST (test_handler_unknown_errno_maps_to_internal_error);
     RUN_TEST (test_connect_bind_close_unknown_errno_map_to_internal_error);
+    RUN_TEST (test_connect_result_maps_peer_disconnect_errnos);
     RUN_TEST (test_submit_unknown_errno_is_normalized);
     return UNITY_END ();
 }

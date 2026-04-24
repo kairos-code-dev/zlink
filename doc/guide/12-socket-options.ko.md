@@ -19,6 +19,31 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 
 ---
 
+## peer routing id 중복 정책
+
+`ZLINK_OPT_RID_DUPLICATE_POLICY`는 같은 socket에 동일한 peer routing id가
+다시 들어왔을 때 기존 연결을 유지할지, 새 연결로 바꿀지를 정합니다.
+
+| 값 | 동작 |
+|----|------|
+| `ZLINK_RID_DUPLICATE_REJECT` | 기본값. 기존 연결을 유지하고 중복 연결은 등록하지 않습니다. |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 연결이 기존 연결을 인수합니다. rolling restart처럼 같은 identity가 잠깐 겹치는 상황에 씁니다. |
+
+이 옵션은 `zlink_set_option()`으로 설정하는 공통 socket 옵션입니다.
+기존 ROUTER 전용 `ZLINK_ROUTER_OPT_HANDOVER`는 호환성을 위해 남아 있지만,
+새 코드에서는 공통 옵션을 우선 사용합니다.
+
+STREAM은 서버가 연결별 4바이트 routing id를 직접 부여하므로 이 중복 정책의
+대상이 아닙니다.
+
+```c
+int policy = ZLINK_RID_DUPLICATE_HANDOVER;
+zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
+                 &policy, sizeof(policy));
+```
+
+---
+
 ## 1. 메시지 큐 — SNDHWM / RCVHWM
 
 | 항목 | 설명 |

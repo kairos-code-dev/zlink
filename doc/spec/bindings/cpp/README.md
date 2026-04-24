@@ -2465,3 +2465,11 @@ void sleep(int seconds);
 /// Close all parts in a multipart message array.
 void multipart_close(zlink_msg_t* parts, size_t count);
 ```
+
+## Peer Disconnect by Routing ID
+
+C++ bindings expose raw socket `disconnect_rid(routing_id_t)` and SpotNode
+`disconnect_peer_rid(routing_id_t)`. They map the duplicate policy option and
+the connect result values `not_found`, `conflict`, and `busy` to the same
+contract as the C core. Spot facades do not expose a peer-rid disconnect
+method.

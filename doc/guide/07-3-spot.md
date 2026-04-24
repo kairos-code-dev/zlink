@@ -86,6 +86,11 @@ Here `"alpha"` is the SPOT channel view for this node.
 After `attach_discovery()`, do not mix in manual `connect_peer()` calls for the
 same node. The current contract blocks that with `EBUSY`.
 
+If you do not have the peer endpoint but you know the target node routing id,
+call `zlink_spot_node_disconnect_peer_rid()` on the `SpotNode` to close that
+peer node connection. The `Spot` facade does not expose a separate rid
+disconnect function because it does not directly own peer connections.
+
 ## 4. Topic publish/subscribe
 
 The SPOT topic plane uses `service_name + topic_id`.

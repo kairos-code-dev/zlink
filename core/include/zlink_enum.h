@@ -96,7 +96,14 @@ typedef enum zlink_option_t
     ZLINK_OPT_LAST_ENDPOINT = 0x3014,
     ZLINK_OPT_ZMP_METADATA = 0x3030,
     ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE = 0x3032,
+    ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033
 } zlink_option_t;
+
+typedef enum zlink_rid_duplicate_policy_t
+{
+    ZLINK_RID_DUPLICATE_REJECT = 0,
+    ZLINK_RID_DUPLICATE_HANDOVER = 1
+} zlink_rid_duplicate_policy_t;
 
 typedef enum zlink_router_option_t
 {

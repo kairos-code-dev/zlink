@@ -334,7 +334,10 @@ typedef enum zlink_connect_result_t
     ZLINK_CONNECT_INVALID_ARGUMENT = 601, /* EINVAL    */
     ZLINK_CONNECT_NOT_SUPPORTED   = 602,  /* ENOTSUP   */
     ZLINK_CONNECT_INVALID_HANDLE  = 603,  /* EFAULT    */
-    ZLINK_CONNECT_INTERNAL_ERROR  = 604   /* internal errno */
+    ZLINK_CONNECT_INTERNAL_ERROR  = 604,  /* internal errno */
+    ZLINK_CONNECT_NOT_FOUND       = 605,  /* ENOENT    */
+    ZLINK_CONNECT_CONFLICT        = 606,  /* EADDRINUSE */
+    ZLINK_CONNECT_BUSY            = 607   /* EBUSY     */
 } zlink_connect_result_t;
 ```
 
@@ -346,6 +349,9 @@ typedef enum zlink_connect_result_t
 | `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
 | `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 transport |
 | `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
+| `NOT_FOUND` | `ENOENT` | endpoint 또는 peer routing id를 찾지 못함 |
+| `CONFLICT` | `EADDRINUSE` | 같은 peer routing id가 둘 이상이라 대상을 확정할 수 없음 |
+| `BUSY` | `EBUSY` | Discovery attached socket처럼 lifecycle owner가 수동 변경을 거부함 |
 | `INTERNAL_ERROR` | 그 외 내부 connect 실패 | 더 세분화된 public bucket 없이 connect/disconnect/unbind가 실패함 |
 
 ### 적용 대상 함수
@@ -353,7 +359,7 @@ typedef enum zlink_connect_result_t
 | 분류 | 함수 |
 |---|---|
 | Connect | `zlink_connect` |
-| Disconnect | `zlink_disconnect` |
+| Disconnect | `zlink_disconnect`, `zlink_disconnect_rid` |
 | Unbind | `zlink_unbind` |
 
 ---
@@ -560,5 +566,5 @@ reply는 이미 진행 중인 request에 대한 응답이라 admission 판정을
 | `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
-| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |
+| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_unbind`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid` |
 | `zlink_config_result_t` | `zlink_ctx_set`, 메시지 lifecycle/config 함수, socket/TLS/routing/subscription 설정 함수, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress`, registry/discovery/snapshot/query 함수, poller 변경 함수, proxy 함수, `zlink_timer_start` / `zlink_timer_stop` |

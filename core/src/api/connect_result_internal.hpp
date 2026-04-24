@@ -23,6 +23,12 @@ inline zlink_connect_result_t from_errno (int err_)
             return ZLINK_CONNECT_NOT_SUPPORTED;
         case EFAULT:
             return ZLINK_CONNECT_INVALID_HANDLE;
+        case ENOENT:
+            return ZLINK_CONNECT_NOT_FOUND;
+        case EADDRINUSE:
+            return ZLINK_CONNECT_CONFLICT;
+        case EBUSY:
+            return ZLINK_CONNECT_BUSY;
         default:
             return ZLINK_CONNECT_INTERNAL_ERROR;
     }

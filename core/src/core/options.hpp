@@ -213,6 +213,9 @@ struct options_t
     // Transport setup applies it; options_t only stores the chosen value.
     int busy_poll;
 
+    // Duplicate peer routing id policy for sockets that can observe peer ids.
+    int rid_duplicate_policy;
+
 #ifdef ZLINK_HAVE_TLS
     //  TLS protocol options
     std::string tls_cert;              // Server certificate file path

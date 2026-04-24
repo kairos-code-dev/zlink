@@ -156,7 +156,8 @@ if (zlink_router_recv(router,
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 peer 를 지정하면 실패가 surface 된다. 조용한 drop 이 필요하면 `0` 으로 설정한다. |
-| `ZLINK_ROUTER_OPT_HANDOVER` | int | 1 | routing_id 충돌 시 새 연결이 기존 pipe 를 인수. 기본값이 `1` 이므로 duplicate peer identity 가 들어오면 handover 가 발생한다. 기존 연결을 유지하고 새 연결을 거부하려면 `0` 으로 설정한다. |
+| `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | routing_id 충돌 시 기존 pipe를 유지할지 새 pipe가 인수할지 정한다. |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | ROUTER 전용 호환 옵션. 새 코드에서는 `ZLINK_OPT_RID_DUPLICATE_POLICY`를 우선 사용한다. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
@@ -188,8 +189,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 
 > **관찰 가능한 동작:** `MANDATORY=1` 기본값에서는 writable / `ZLINK_POLLOUT`
 > 관찰값이 실제로 쓸 수 있는 peer 가 있을 때만 send-recovery readiness 로
-> surface 된다. `HANDOVER=1` 기본값에서는 duplicate peer identity 가
-> 들어오면 새 연결이 기존 pipe 를 인수하고 거부되지 않는다. peer 가
+> surface 된다. duplicate peer identity가 들어오면 기본값에서는 기존 pipe를
+> 유지하고 새 중복 pipe는 등록하지 않는다. peer 가
 > 들고 날 때 `send_rid` 가 `NOT_CONNECTED` 를 반환하는 일이 흔하다.
 
 > 참고: `core/tests/integration/test_router_mandatory.cpp` — `test_basic()`
@@ -693,7 +694,7 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 ### routing_id 충돌
 
-같은 routing_id를 가진 두 DEALER가 동시에 연결되면, 기본적으로 두 번째 연결이 거부된다. `ROUTER_HANDOVER`를 활성화하면 기존 연결을 대체한다.
+같은 routing_id를 가진 두 DEALER가 동시에 연결되면, 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 연결이 기존 연결을 대체한다.
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
 

@@ -336,7 +336,10 @@ typedef enum zlink_connect_result_t
     ZLINK_CONNECT_INVALID_ARGUMENT = 601, /* EINVAL    */
     ZLINK_CONNECT_NOT_SUPPORTED   = 602,  /* ENOTSUP   */
     ZLINK_CONNECT_INVALID_HANDLE  = 603,  /* EFAULT    */
-    ZLINK_CONNECT_INTERNAL_ERROR  = 604   /* internal errno */
+    ZLINK_CONNECT_INTERNAL_ERROR  = 604,  /* internal errno */
+    ZLINK_CONNECT_NOT_FOUND       = 605,  /* ENOENT    */
+    ZLINK_CONNECT_CONFLICT        = 606,  /* EADDRINUSE */
+    ZLINK_CONNECT_BUSY            = 607   /* EBUSY     */
 } zlink_connect_result_t;
 ```
 
@@ -348,6 +351,9 @@ typedef enum zlink_connect_result_t
 | `INVALID_ARGUMENT` | `EINVAL` | Invalid endpoint |
 | `NOT_SUPPORTED` | `ENOTSUP` | Unsupported transport |
 | `INVALID_HANDLE` | `EFAULT` | NULL or invalid handle |
+| `NOT_FOUND` | `ENOENT` | Endpoint or peer routing id was not found |
+| `CONFLICT` | `EADDRINUSE` | More than one peer has the same routing id, so the target is ambiguous |
+| `BUSY` | `EBUSY` | Lifecycle owner, such as Discovery attachment, rejected the manual change |
 | `INTERNAL_ERROR` | other internal connect failures | Connect/disconnect/unbind failed without a finer public bucket |
 
 ### Applicable functions
@@ -355,7 +361,7 @@ typedef enum zlink_connect_result_t
 | Category | Functions |
 |---|---|
 | Connect | `zlink_connect` |
-| Disconnect | `zlink_disconnect` |
+| Disconnect | `zlink_disconnect`, `zlink_disconnect_rid` |
 | Unbind | `zlink_unbind` |
 
 ---
@@ -563,5 +569,5 @@ for them. None of the SPOT reply functions return `NOT_ADMITTED`.
 | `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_service_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind` |
-| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_unbind` |
+| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_unbind`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid` |
 | `zlink_config_result_t` | `zlink_ctx_set`, message lifecycle/config functions, socket/TLS/routing/subscription configuration functions, `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress`, registry/discovery/snapshot/query functions, poller mutation functions, proxy functions, and `zlink_timer_start` / `zlink_timer_stop` |

@@ -55,6 +55,7 @@ class spot_node_t : public discovery_observer_t
     int bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
+    int disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_rid_);
     int attach_discovery (discovery_t *discovery_);
     int attach_channel_dealer (discovery_t *discovery_, socket_base_t *dealer_);
     int attach_channel_dealer_manual (const char *channel_name_,

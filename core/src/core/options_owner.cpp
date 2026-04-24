@@ -26,6 +26,7 @@ zlink::options_owner_t common_option_owner_lookup (zlink_option_t option_)
         case ZLINK_OPT_HEARTBEAT_IVL:
         case ZLINK_OPT_HEARTBEAT_TIMEOUT:
         case ZLINK_OPT_ZMP_METADATA:
+        case ZLINK_OPT_RID_DUPLICATE_POLICY:
             return zlink::options_owner_core_socket;
 
         case ZLINK_OPT_SNDBUF:
@@ -90,6 +91,7 @@ zlink::options_owner_t zlink::option_owner_of (int option_)
         case ZLINK_INTERNAL_OPT_STREAM_NOTIFY:
         case ZLINK_INTERNAL_OPT_TYPE:
         case ZLINK_INTERNAL_OPT_ZMP_METADATA:
+        case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
         case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
         case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
             return options_owner_core_socket;

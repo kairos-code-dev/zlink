@@ -62,5 +62,6 @@
 - `rg -n "admission" doc/spec doc/guide doc/internals doc/site/docs`: 기존 admission 공개 기능과 문서 문맥 다수 확인. stage 1에서는 기존 문맥으로 유지하고, stage 2에서 제거/weight 교체 대상으로 재검토한다.
 
 ## 커밋과 push
-- 커밋: `12a62d97` (`core: add peer disconnect by routing id`)
+- 기능 커밋: `7d8b3af7` (`core: add peer disconnect by routing id`)
+- 단계 로그 hash 기록은 별도 follow-up commit으로 남긴다.
 - push: 진행 예정

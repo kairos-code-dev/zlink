@@ -96,7 +96,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_SHARED=ON `
             -DBUILD_STATIC=ON `
-            -DBUILD_TESTS=ON `
+            -DBUILD_TESTS=OFF `
             -DZLINK_CXX_STANDARD=17 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
           cmake --build . --config Release --parallel

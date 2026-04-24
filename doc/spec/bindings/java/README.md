@@ -113,6 +113,10 @@ public final class ContextOptions {
     int msgTSize();                                                  // @throws ConfigException
     boolean blocky();                                                // @throws ConfigException
     void blocky(boolean enabled);                                    // @throws ConfigException
+    boolean autoHwmEnabled();                                        // @throws ConfigException
+    void autoHwmEnabled(boolean enabled);                            // @throws ConfigException
+    int autoHwmTotalMemoryBudgetMb();                                // @throws ConfigException
+    void autoHwmTotalMemoryBudgetMb(int value);                      // @throws ConfigException
     void addThreadAffinity(int cpu);                                 // @throws ConfigException
     void removeThreadAffinity(int cpu);                              // @throws ConfigException
 }
@@ -1154,7 +1158,26 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               int stateFlags,
                               int detailFlags,
                               long sndPendingMsgs,
-                              long rcvPendingMsgs) {
+                              long rcvPendingMsgs,
+                              boolean autoHwmEnabled,
+                              int autoHwmRole,
+                              int autoHwmManagedConnections,
+                              int autoHwmActiveHwmConnections,
+                              int autoHwmPlanningTransportConnections,
+                              int autoHwmBaseFloorPerConnection,
+                              int autoHwmAppliedSndhwm,
+                              int autoHwmAppliedRcvhwm,
+                              int autoHwmRequestedSndbuf,
+                              int autoHwmRequestedRcvbuf,
+                              int autoHwmEffectiveSndbuf,
+                              int autoHwmEffectiveRcvbuf,
+                              long autoHwmTotalMemoryBudgetBytes,
+                              long autoHwmQueueBudgetBytes,
+                              long autoHwmTransportBudgetBytes,
+                              long autoHwmRuntimeReserveBytes,
+                              long autoHwmGroupBudgetBytes,
+                              long autoHwmGroupMessageSlots,
+                              long autoHwmEffectiveMessageBytes) {
     // Raw socket monitor source에서만 ready 의미를 사용한다.
     boolean isReady();
 }

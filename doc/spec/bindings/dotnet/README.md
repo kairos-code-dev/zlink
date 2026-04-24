@@ -123,6 +123,10 @@ public sealed class ContextOptions
     int MessageThreadSize { get; }
     /// <exception cref="ZlinkConfigException"/>
     bool Blocky { get; set; }
+    /// <exception cref="ZlinkConfigException"/>
+    bool AutoHwmEnabled { get; set; }
+    /// <exception cref="ZlinkConfigException"/>
+    int AutoHwmTotalMemoryBudgetMb { get; set; }
 
     /// <exception cref="ZlinkConfigException"/>
     void AddThreadAffinityCpu(int cpu);

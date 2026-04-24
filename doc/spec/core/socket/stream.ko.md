@@ -21,6 +21,14 @@ handle에서 이 세 모델 중 정확히 하나만 활성화할 수 있습니�
 한 handle에서 두 번째 모드로 전환하려 하면 `EBUSY`로 실패합니다. 즉 모드
 전환은 한 방향으로만 일어나며, 세 모델은 상호 배타입니다.
 
+## 자동 HWM 기본값
+
+STREAM은 context auto HWM 정책에서 `routed` 역할로 분류됩니다.
+기본 context 설정에서는 `SNDHWM` / `RCVHWM`이 floor `8`에서 시작합니다.
+`SNDBUF` / `RCVBUF`는 같은 context 예산과 STREAM transport 계획 연결 수를
+기준으로 자동 계산됩니다. 자동 HWM을 끄고도 `SNDBUF` / `RCVBUF`를 직접
+주지 않으면 STREAM은 호환 기본값 `262144`를 사용합니다.
+
 ## Stream 옵션 (`zlink_stream_option_t`)
 
 `zlink_set_stream_option()` / `zlink_get_stream_option()`과 함께 사용합니다.

@@ -18,7 +18,9 @@ typedef enum zlink_ctx_option_t
     ZLINK_THREAD_AFFINITY_CPU_REMOVE = 8,
     ZLINK_THREAD_NAME_PREFIX = 9,
     ZLINK_CTX_OPT_BLOCKY = 10,
-    ZLINK_SPOT_WORKER_THREADS = 11
+    ZLINK_SPOT_WORKER_THREADS = 11,
+    ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
+    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13
 } zlink_ctx_option_t;
 
 typedef enum zlink_socket_type_t
@@ -253,7 +255,9 @@ typedef enum zlink_monitor_state_flag_e
 typedef enum zlink_monitor_snapshot_detail_flag_e
 {
     ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS = 1u << 1,
-    ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS = 1u << 2
+    ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS = 1u << 2,
+    ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET = 1u << 3,
+    ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS = 1u << 4
 } zlink_monitor_snapshot_detail_flag_e;
 
 typedef enum zlink_service_type_t

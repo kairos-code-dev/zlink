@@ -1025,6 +1025,7 @@ set(core-sources
     src/core/ctx_runtime_resources.cpp
     src/core/ctx_socket_registry.cpp
     src/core/ctx_termination.cpp
+    src/core/auto_hwm_policy.cpp
     src/core/pipe.cpp
     src/core/mailbox.cpp
     src/core/object.cpp

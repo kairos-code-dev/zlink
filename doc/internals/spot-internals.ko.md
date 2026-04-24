@@ -434,7 +434,13 @@ identity lookup 정보가 함께 묶여 있다. 이 routed ingress는 `zlink_spo
 +------------------------------------------------------------------+
 ```
 
-기본 내부 data-plane HWM: `1000`
+기본 내부 data-plane HWM은 고정 `1000`이 아니다. SpotNode runtime은
+context auto HWM 정책에서 나온 역할별 값을 쓴다.
+
+- `fanout`, `mesh_pub`: 기본 floor `16`
+- `ingress`, `mesh_xsub`: 기본 floor `8`
+- `node_router`, `route_ingress`: 기본 floor `8`
+- `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: control 역할로 분리되며 기본 floor `4`
 
 Topic과 routed HWM은 `zlink_set_spot_node_option()`으로 독립 설정 가능:
 - `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`

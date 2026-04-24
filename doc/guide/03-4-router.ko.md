@@ -160,8 +160,8 @@ if (zlink_router_recv(router,
 | `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | ROUTER 전용 호환 옵션. 새 코드에서는 `ZLINK_OPT_RID_DUPLICATE_POLICY`를 우선 사용한다. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
-| `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
-| `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 HWM |
+| `ZLINK_OPT_SNDHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
+| `ZLINK_OPT_RCVHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ### ROUTER_MANDATORY

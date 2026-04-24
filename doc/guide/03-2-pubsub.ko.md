@@ -229,8 +229,8 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM (PUB) |
-| `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 HWM (SUB) |
+| `ZLINK_OPT_SNDHWM` | int | 자동 (fanout 기본 floor 16) | PUB 계열 기본값. 연결 수가 늘면 같은 role budget 안에서 자동 조정 |
+| `ZLINK_OPT_RCVHWM` | int | 자동 (recv_ingress 기본 floor 8) | SUB 계열 기본값. 연결 수가 늘면 같은 role budget 안에서 자동 조정 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ## 6. PUB/SUB 사용 패턴

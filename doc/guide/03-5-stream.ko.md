@@ -242,8 +242,9 @@ recv(fd, body, body_len, MSG_WAITALL);
 
 현재 STREAM 내부 기본값:
 - `ZLINK_OPT_BACKLOG`: `65536`
-- `ZLINK_OPT_SNDBUF`: 미지정(`-1`)이면 `262144`
-- `ZLINK_OPT_RCVBUF`: 미지정(`-1`)이면 `262144`
+- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: 자동 HWM 정책의 routed 역할 기본 floor를 사용
+- `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`: 자동 HWM 정책이 context 예산과 STREAM transport 계획 연결 수를 기준으로 계산
+- auto HWM을 끄고 `SNDBUF` / `RCVBUF`도 주지 않으면 호환 기본값 `262144` 사용
 - STREAM 배치 크기 기본값: `4096`
 - STREAM 읽기 여유 공간 기본값: `64`
 - STREAM accept 동시성 기본값: `4` (최대 `128`로 제한)

@@ -8,12 +8,37 @@
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "sockets/socket_base.hpp"
+#include "core/auto_hwm_policy.hpp"
 
 namespace zlink
 {
 namespace
 {
-static const int default_mesh_pub_sndhwm = 1000;
+int default_mesh_pub_sndhwm ()
+{
+    auto_hwm_context_plan_t context_plan;
+    auto_hwm_context_plan_from_budget_mb (
+      ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0,
+      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT, &context_plan);
+    auto_hwm_socket_plan_t socket_plan;
+    auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_fanout,
+                                   ZLINK_CORE_SOCKET_PUB, 0, 0, &socket_plan);
+    return socket_plan.sndhwm;
+}
+
+int current_socket_sndhwm (socket_base_t *socket_)
+{
+    if (!socket_)
+        return default_mesh_pub_sndhwm ();
+
+    int value = default_mesh_pub_sndhwm ();
+    size_t value_size = sizeof (value);
+    if (socket_->getsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &value, &value_size) == 0
+        && value_size == sizeof (value)) {
+        return value;
+    }
+    return default_mesh_pub_sndhwm ();
+}
 }
 
 int spot_mesh_pub_budget_t::resolve_default (const std::string &endpoint_,
@@ -21,7 +46,7 @@ int spot_mesh_pub_budget_t::resolve_default (const std::string &endpoint_,
 {
     (void) endpoint_;
     (void) ready_peers_;
-    return default_mesh_pub_sndhwm;
+    return default_mesh_pub_sndhwm ();
 }
 
 bool spot_mesh_pub_budget_t::should_refresh (
@@ -79,6 +104,9 @@ int spot_mesh_pub_budget_t::resolve_runtime_default (
         }
     }
 
+    if (runtime_->mesh_pub)
+        return current_socket_sndhwm (runtime_->mesh_pub);
+
     const uint32_t ready_peers =
       mesh_pub_ready_peer_count (&runtime_->execution.mesh_peer_state);
     return resolve_default (runtime_->bound_endpoint, ready_peers);
@@ -88,6 +116,9 @@ int spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (
   const spot_runtime_t *runtime_,
   const std::string &endpoint_)
 {
+    if (runtime_ && runtime_->mesh_pub)
+        return current_socket_sndhwm (runtime_->mesh_pub);
+
     unsigned int ready_peers = 0;
     if (runtime_)
         ready_peers =

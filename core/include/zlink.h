@@ -119,6 +119,8 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_THREAD_PRIORITY_DFLT -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT 0
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT 1
+#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
 
 /**
  * @brief Create a new zlink context.
@@ -872,6 +874,25 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_snapshot_detail_mask_t detail_flags;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
+    uint32_t auto_hwm_enabled;
+    uint32_t auto_hwm_role;
+    uint32_t auto_hwm_managed_connections;
+    uint32_t auto_hwm_active_hwm_connections;
+    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_base_floor_per_connection;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_requested_sndbuf;
+    int32_t auto_hwm_requested_rcvbuf;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
+    uint64_t auto_hwm_total_memory_budget_bytes;
+    uint64_t auto_hwm_queue_budget_bytes;
+    uint64_t auto_hwm_transport_budget_bytes;
+    uint64_t auto_hwm_runtime_reserve_bytes;
+    uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_effective_message_bytes;
 } zlink_monitor_snapshot_t;
 
 /**

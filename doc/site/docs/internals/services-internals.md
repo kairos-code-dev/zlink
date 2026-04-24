@@ -230,7 +230,10 @@ Frame 4~N: Service entries (repeated service_count times)
 - `SpotNode` HWM is the internal data-plane budget and is applied by direction:
   - `SNDHWM` → `fanout`, `mesh_pub`
   - `RCVHWM` → `ingress`, `mesh_xsub`
-- The default SpotNode internal data-plane HWM is `1000`.
+- The default SpotNode internal data-plane HWM is no longer a fixed `1000`.
+  It comes from the context auto-HWM role buckets. With the default context
+  settings, topic send starts at `16`, while topic recv and routed send/recv
+  start at `8`.
 - `peer_ctrl` is a control-plane socket and is not grouped into the SpotNode
   data-plane HWM family.
 

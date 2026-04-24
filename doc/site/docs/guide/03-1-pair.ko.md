@@ -164,8 +164,8 @@ zlink_send(server, parts, 2, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_OPT_SNDHWM` | int | 자동 (기본 floor 4) | control 역할의 자동 HWM 기본값. 수동 설정 시 자동값보다 우선 |
+| `ZLINK_OPT_RCVHWM` | int | 자동 (기본 floor 4) | control 역할의 자동 HWM 기본값. 수동 설정 시 자동값보다 우선 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 미전송 메시지 대기 시간 (ms), -1=무한 |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms), -1=무한 |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms), -1=무한 |

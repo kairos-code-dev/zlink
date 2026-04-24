@@ -233,8 +233,8 @@ assemble topic frames manually.
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM (PUB) |
-| `ZLINK_OPT_RCVHWM` | int | 1000 | Receive HWM (SUB) |
+| `ZLINK_OPT_SNDHWM` | int | automatic (fanout floor 16 by default) | Default for PUB-family sockets. Recomputed within the same role budget as connections grow |
+| `ZLINK_OPT_RCVHWM` | int | automatic (recv_ingress floor 8 by default) | Default for SUB-family sockets. Recomputed within the same role budget as connections grow |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 
 ## 6. PUB/SUB Usage Patterns

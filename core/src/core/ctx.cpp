@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "core/ctx.hpp"
+#include "core/auto_hwm_policy.hpp"
 #include "core/ctx_bootstrap.hpp"
 #include "core/ctx_termination.hpp"
 #include "sockets/socket_base.hpp"
@@ -82,6 +83,9 @@ zlink::ctx_t::ctx_t () :
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
     _spot_worker_thread_count (ZLINK_SPOT_WORKER_THREADS_DFLT),
+    _auto_hwm_enabled (ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0),
+    _auto_hwm_total_memory_budget_mb (
+      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT),
     _blocky (true),
     _ipv6 (false)
 {
@@ -202,6 +206,8 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
     if (is_int)
         memcpy (&value, optval_, sizeof (int));
 
+    bool refresh_auto_hwm = false;
+
     switch (option_) {
         case ZLINK_MAX_SOCKETS:
             if (is_int && value >= 1 && value == clipped_maxsocket (value)) {
@@ -229,6 +235,24 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
                 scoped_lock_t locker (_opt_sync);
                 _spot_worker_thread_count = value;
                 return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
+            if (is_int && (value == 0 || value == 1)) {
+                scoped_lock_t locker (_opt_sync);
+                _auto_hwm_enabled = (value != 0);
+                refresh_auto_hwm = true;
+                break;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
+            if (is_int && value >= 1) {
+                scoped_lock_t locker (_opt_sync);
+                _auto_hwm_total_memory_budget_mb = value;
+                refresh_auto_hwm = true;
+                break;
             }
             break;
 
@@ -260,6 +284,17 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
         default: {
             return thread_ctx_t::set (option_, optval_, optvallen_);
         }
+    }
+
+    if (refresh_auto_hwm) {
+        std::vector<socket_base_t *> sockets;
+        scoped_lock_t runtime_lock (_slot_sync);
+        _socket_registry.collect_sockets (&sockets);
+        for (size_t i = 0; i < sockets.size (); ++i) {
+            if (sockets[i])
+                sockets[i]->refresh_auto_hwm_policy ();
+        }
+        return 0;
     }
 
     errno = EINVAL;
@@ -299,6 +334,22 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _spot_worker_thread_count;
+                return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _auto_hwm_enabled ? 1 : 0;
+                return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _auto_hwm_total_memory_budget_mb;
                 return 0;
             }
             break;

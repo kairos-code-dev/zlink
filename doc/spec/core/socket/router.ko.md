@@ -93,6 +93,14 @@ reply 경로에는 이 판정을 적용하지 않습니다.
 `zlink_router_reply()`는 이미 들어온 request에 대한 응답이라 peer
 가중치와 관계없이 보낼 수 있습니다.
 
+## 자동 HWM 기본값
+
+ROUTER는 context auto HWM 정책에서 `routed` 역할로 분류됩니다.
+기본 context 설정에서는 `SNDHWM` / `RCVHWM`이 floor `8`에서 시작하고,
+연결 수가 늘면 같은 context 예산 안에서 다시 계산됩니다. 사용자가
+`SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`를 직접 설정하면 자동값보다 그 값이
+우선합니다.
+
 ## 함수
 
 ### zlink_set_router_option

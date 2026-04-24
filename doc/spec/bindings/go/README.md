@@ -103,6 +103,10 @@ func (o *ContextOptions) MaxMessageSize() (int, error)
 func (o *ContextOptions) MessageStructSize() (int, error)
 func (o *ContextOptions) SetBlocky(value bool) error
 func (o *ContextOptions) Blocky() (bool, error)
+func (o *ContextOptions) SetAutoHwmEnabled(value bool) error
+func (o *ContextOptions) AutoHwmEnabled() (bool, error)
+func (o *ContextOptions) SetAutoHwmTotalMemoryBudgetMb(value int) error
+func (o *ContextOptions) AutoHwmTotalMemoryBudgetMb() (int, error)
 func (o *ContextOptions) AddThreadAffinity(cpu int) error
 func (o *ContextOptions) RemoveThreadAffinity(cpu int) error
 ```

@@ -39,6 +39,14 @@ positive weights change the send ratio.
   monitor event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. The peer is identified by
   `routing_id`, and `value` carries the new weight.
 
+## Automatic HWM defaults
+
+DEALER is classified as the `routed` role by the context automatic HWM
+policy. With the default context settings, `SNDHWM` / `RCVHWM` start from
+floor `8` and are recalculated within the same context budget as connection
+counts grow. Manual `SNDHWM`, `RCVHWM`, `SNDBUF`, and `RCVBUF` settings
+override the automatic values.
+
 ## Functions
 
 ### zlink_set_dealer_option

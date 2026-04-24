@@ -83,6 +83,8 @@ class ContextOptions {
     threadPriority: number;     // get / set — @throws {ConfigError}
     threadSchedulingPolicy: number; // get / set — @throws {ConfigError}
     blocky: boolean;            // get / set — @throws {ConfigError}
+    autoHwmEnabled: boolean;    // get / set — @throws {ConfigError}
+    autoHwmTotalMemoryBudgetMb: number; // get / set — @throws {ConfigError}
     /** @throws {ConfigError} */
     addThreadAffinity(cpu: number): void;
     /** @throws {ConfigError} */
@@ -1128,6 +1130,25 @@ interface MonitorSnapshot {
     readonly detailFlags: number;            // uint32 bitmask
     readonly sndPendingMsgs: bigint;         // uint64 send-queue depth
     readonly rcvPendingMsgs: bigint;         // uint64 recv-queue depth
+    readonly autoHwmEnabled: boolean;
+    readonly autoHwmRole: number;
+    readonly autoHwmManagedConnections: number;
+    readonly autoHwmActiveHwmConnections: number;
+    readonly autoHwmPlanningTransportConnections: number;
+    readonly autoHwmBaseFloorPerConnection: number;
+    readonly autoHwmAppliedSndhwm: number;
+    readonly autoHwmAppliedRcvhwm: number;
+    readonly autoHwmRequestedSndbuf: number;
+    readonly autoHwmRequestedRcvbuf: number;
+    readonly autoHwmEffectiveSndbuf: number;
+    readonly autoHwmEffectiveRcvbuf: number;
+    readonly autoHwmTotalMemoryBudgetBytes: bigint;
+    readonly autoHwmQueueBudgetBytes: bigint;
+    readonly autoHwmTransportBudgetBytes: bigint;
+    readonly autoHwmRuntimeReserveBytes: bigint;
+    readonly autoHwmGroupBudgetBytes: bigint;
+    readonly autoHwmGroupMessageSlots: bigint;
+    readonly autoHwmEffectiveMessageBytes: bigint;
     /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
     isReady(): boolean;
 }

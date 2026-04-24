@@ -50,7 +50,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |------|------|
 | **하는 일** | pipe의 최대 메시지 수를 제한 |
 | **적용 위치** | `pipe_t::check_write()` |
-| **기본값** | `1000` (메시지 수) |
+| **기본값** | 자동 HWM 정책이 context 예산, 소켓 역할, 연결 수를 기준으로 계산 |
 | **0** | 무제한 |
 | **영향** | HWM 도달 시 block 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환. LWM 이하로 drain되면 복구 |
 
@@ -59,8 +59,21 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 재개된다.
 이 간격이 writable/non-writable 진동을 방지하는 히스테리시스다.
 
-**소켓 타입별 차이:** 모든 소켓에 동일하게 적용. 서비스(SPOT)도
-내부 소켓에 fan-out으로 적용.
+**소켓 타입별 차이:** 역할 묶음은 다르지만 의미는 같다. 기본 역할은
+`PAIR=control`, `DEALER/ROUTER/STREAM=routed`, `PUB/XPUB=fanout`,
+`SUB/XSUB=recv_ingress`다. 서비스(SPOT) 내부 소켓도 같은 역할 묶음으로
+자동 계산한다.
+
+기본 context 설정에서는 아래 floor에서 시작한다.
+
+| 역할 | 기본 floor |
+|------|------------|
+| `control` | `4` |
+| `routed` | `8` |
+| `fanout` | `16` |
+| `recv_ingress` | `8` |
+
+사용자가 `SNDHWM` / `RCVHWM`을 직접 설정하면 자동 HWM보다 그 값이 항상 우선한다.
 
 ```c
 int sndhwm = 5000;
@@ -294,7 +307,9 @@ HWM과 독립적이다. HWM은 zlink pipe 수준의 메시지 수 제한이고,
 SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기이다.
 
 **소켓 타입별 차이:**
-- `STREAM`: 미설정(`<0`)이면 `262144` (256KB)로 자동 override
+- `STREAM`: auto HWM 정책이 context 예산과 연결 계획 수를 기준으로 계산한다.
+  auto HWM을 끄고도 `SNDBUF` / `RCVBUF`를 주지 않으면 호환 기본값 `262144`
+  를 사용한다.
 
 ---
 
@@ -434,8 +449,8 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 | `ROUTER` | `ROUTER_HANDOVER` | `1` | duplicate peer identity 시 새 연결이 인수 |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
-| `STREAM` | `SNDBUF` | `262144` (미설정 시) | 대용량 RAW 전송 대응 |
-| `STREAM` | `RCVBUF` | `262144` (미설정 시) | 대용량 RAW 수신 대응 |
+| `STREAM` | `SNDBUF` | 자동 (auto HWM 비활성 + 미설정이면 `262144`) | context 예산 기준 transport buffer 계산 |
+| `STREAM` | `RCVBUF` | 자동 (auto HWM 비활성 + 미설정이면 `262144`) | context 예산 기준 transport buffer 계산 |
 
 > **기본값과 관찰 가능한 동작:**
 >

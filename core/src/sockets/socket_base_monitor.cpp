@@ -21,7 +21,9 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     out_->source_kind = ZLINK_MONITOR_SOURCE_SOCKET;
     out_->detail_flags =
       ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
-      | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
+      | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS
+      | ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET
+      | ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         if (monitor_ready_count () > 0)
@@ -34,6 +36,37 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
             out_->rcv_pending_msgs += pipe->get_rcv_pending_msgs_approx ();
         }
     }
+    out_->auto_hwm_enabled = _auto_hwm_context_plan.enabled ? 1u : 0u;
+    out_->auto_hwm_role = static_cast<uint32_t> (_auto_hwm_socket_plan.role);
+    out_->auto_hwm_managed_connections =
+      _auto_hwm_socket_plan.managed_connections;
+    out_->auto_hwm_active_hwm_connections =
+      _auto_hwm_socket_plan.active_hwm_connections;
+    out_->auto_hwm_planning_transport_connections =
+      _auto_hwm_socket_plan.planning_transport_connections;
+    out_->auto_hwm_base_floor_per_connection =
+      _auto_hwm_socket_plan.base_floor_per_connection;
+    out_->auto_hwm_applied_sndhwm = options.sndhwm;
+    out_->auto_hwm_applied_rcvhwm = options.rcvhwm;
+    out_->auto_hwm_requested_sndbuf =
+      _manual_sndbuf ? options.sndbuf : _auto_hwm_socket_plan.requested_sndbuf;
+    out_->auto_hwm_requested_rcvbuf =
+      _manual_rcvbuf ? options.rcvbuf : _auto_hwm_socket_plan.requested_rcvbuf;
+    out_->auto_hwm_effective_sndbuf = options.sndbuf;
+    out_->auto_hwm_effective_rcvbuf = options.rcvbuf;
+    out_->auto_hwm_total_memory_budget_bytes =
+      _auto_hwm_context_plan.total_memory_budget_bytes;
+    out_->auto_hwm_queue_budget_bytes =
+      _auto_hwm_context_plan.queue_budget_bytes;
+    out_->auto_hwm_transport_budget_bytes =
+      _auto_hwm_context_plan.transport_budget_bytes;
+    out_->auto_hwm_runtime_reserve_bytes =
+      _auto_hwm_context_plan.runtime_reserve_bytes;
+    out_->auto_hwm_group_budget_bytes = _auto_hwm_socket_plan.group_budget_bytes;
+    out_->auto_hwm_group_message_slots =
+      _auto_hwm_socket_plan.group_message_slots;
+    out_->auto_hwm_effective_message_bytes =
+      _auto_hwm_context_plan.effective_message_bytes;
 
     return 0;
 }

@@ -20,6 +20,15 @@ A second attempt to activate a different mode on the same handle fails
 with `EBUSY`. Mode transitions are one-way only, and the three models are
 mutually exclusive.
 
+## Automatic HWM defaults
+
+STREAM is classified as the `routed` role by the context automatic HWM
+policy. With the default context settings, `SNDHWM` / `RCVHWM` start from
+floor `8`. `SNDBUF` / `RCVBUF` are calculated from the same context budget
+using STREAM transport planning connections. If automatic HWM is disabled
+and the application still leaves `SNDBUF` / `RCVBUF` unset, STREAM falls
+back to the compatibility default `262144`.
+
 ## Stream Options (`zlink_stream_option_t`)
 
 Used with `zlink_set_stream_option()` / `zlink_get_stream_option()`.

@@ -188,6 +188,9 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     // Number of Spot dispatch worker runtimes to launch. 0 means auto.
     int _spot_worker_thread_count;
 
+    bool _auto_hwm_enabled;
+    int _auto_hwm_total_memory_budget_mb;
+
     //  Does context wait (possibly forever) on termination?
     bool _blocky;
 

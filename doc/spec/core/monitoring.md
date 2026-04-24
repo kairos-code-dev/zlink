@@ -92,6 +92,25 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_snapshot_detail_mask_t detail_flags;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
+    uint32_t auto_hwm_enabled;
+    uint32_t auto_hwm_role;
+    uint32_t auto_hwm_managed_connections;
+    uint32_t auto_hwm_active_hwm_connections;
+    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_base_floor_per_connection;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_requested_sndbuf;
+    int32_t auto_hwm_requested_rcvbuf;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
+    uint64_t auto_hwm_total_memory_budget_bytes;
+    uint64_t auto_hwm_queue_budget_bytes;
+    uint64_t auto_hwm_transport_budget_bytes;
+    uint64_t auto_hwm_runtime_reserve_bytes;
+    uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_effective_message_bytes;
 } zlink_monitor_snapshot_t;
 ```
 
@@ -102,6 +121,25 @@ typedef struct zlink_monitor_snapshot_t
 | `detail_flags` | Indicates which numeric fields are populated. |
 | `snd_pending_msgs` | Aggregate local outbound backlog in messages when supported. |
 | `rcv_pending_msgs` | Aggregate local inbound backlog snapshot when supported. |
+| `auto_hwm_enabled` | `1` when this source is currently using automatic HWM policy, otherwise `0`. |
+| `auto_hwm_role` | Diagnostic role-bucket id. Current values are `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`; callers must tolerate future values. |
+| `auto_hwm_managed_connections` | Connection count used by the current policy calculation. |
+| `auto_hwm_active_hwm_connections` | Connection count actually used to divide HWM slots. |
+| `auto_hwm_planning_transport_connections` | Connection count used for transport-buffer planning. |
+| `auto_hwm_base_floor_per_connection` | Role-specific minimum HWM floor per connection. |
+| `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
+| `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |
+| `auto_hwm_requested_sndbuf` | `SNDBUF` value requested by automatic policy. |
+| `auto_hwm_requested_rcvbuf` | `RCVBUF` value requested by automatic policy. |
+| `auto_hwm_effective_sndbuf` | Effective send buffer value reported in the snapshot. |
+| `auto_hwm_effective_rcvbuf` | Effective recv buffer value reported in the snapshot. |
+| `auto_hwm_total_memory_budget_bytes` | Total context memory budget. |
+| `auto_hwm_queue_budget_bytes` | Queue-budget portion used for HWM planning. |
+| `auto_hwm_transport_budget_bytes` | Transport-buffer budget portion. |
+| `auto_hwm_runtime_reserve_bytes` | Runtime reserve portion. |
+| `auto_hwm_group_budget_bytes` | Queue budget assigned to the current role bucket. |
+| `auto_hwm_group_message_slots` | Message slots available to the current role bucket after dividing by effective message size. |
+| `auto_hwm_effective_message_bytes` | Effective message size used by the current policy calculation. |
 
 ## Constants
 
@@ -130,6 +168,8 @@ typedef enum zlink_monitor_source_kind_t
 |----------|-------|-------------|
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | Auto-HWM role, budget, and applied-HWM fields are populated. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | Auto-HWM transport-buffer fields are populated. |
 
 ### Event Flags
 
@@ -250,7 +290,9 @@ zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
 Reads the current aggregate snapshot for a socket or service monitor handle.
 The snapshot is queried from the monitor source at call time. Queue counts are
 local message counts, and `rcv_pending_msgs` is approximate. Works in
-both recv model and callback model.
+both recv model and callback model. When automatic HWM is enabled on the
+target, the same snapshot also exposes the current role bucket, applied HWM
+values, and the queue/transport budget used for the calculation.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

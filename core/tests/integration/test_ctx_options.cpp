@@ -257,6 +257,33 @@ void test_ctx_option_blocky ()
     test_context_socket_close (router);
 }
 
+void test_ctx_option_auto_hwm_defaults ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CTX_AUTO_HWM_ENABLE_DFLT,
+      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, NULL));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT,
+      zlink_ctx_get (get_test_context (),
+                     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB, NULL));
+}
+
+void test_ctx_option_auto_hwm_round_trip ()
+{
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, 0));
+    TEST_ASSERT_EQUAL_INT (
+      0, zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
+                        NULL));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
+      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB, 256));
+    TEST_ASSERT_EQUAL_INT (
+      256,
+      zlink_ctx_get (get_test_context (),
+                     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB, NULL));
+}
+
 void test_ctx_option_invalid ()
 {
     TEST_ASSERT_EQUAL_INT (
@@ -282,6 +309,8 @@ int main (void)
     RUN_TEST (test_ctx_thread_opts);
     RUN_TEST (test_ctx_zero_copy);
     RUN_TEST (test_ctx_option_blocky);
+    RUN_TEST (test_ctx_option_auto_hwm_defaults);
+    RUN_TEST (test_ctx_option_auto_hwm_round_trip);
     RUN_TEST (test_ctx_option_invalid);
     return UNITY_END ();
 }

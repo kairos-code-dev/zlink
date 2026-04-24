@@ -26,6 +26,13 @@ Used with `zlink_set_pub_option()` / `zlink_get_pub_option()`.
 dropping. Callers that want silent-drop behavior must set this
 option explicitly to `0`.
 
+## Automatic HWM defaults
+
+PUB is classified as the `fanout` role by the context automatic HWM
+policy. With the default context settings, send HWM starts from floor `16`
+and is recalculated within the same context budget as connection counts
+grow. Manual `SNDHWM` or `SNDBUF` settings override the automatic values.
+
 ## Functions
 
 ### zlink_set_pub_option

@@ -148,6 +148,14 @@ class context_options_t {
     /// @throws config_error_t
     void blocky(bool enabled);
     /// @throws config_error_t
+    bool autoHwmEnabled() const;
+    /// @throws config_error_t
+    void autoHwmEnabled(bool enabled);
+    /// @throws config_error_t
+    int autoHwmTotalMemoryBudgetMb() const;
+    /// @throws config_error_t
+    void autoHwmTotalMemoryBudgetMb(int value);
+    /// @throws config_error_t
     int socketLimit() const;
     /// @throws config_error_t
     int msgTSize() const;
@@ -1045,6 +1053,25 @@ struct monitor_snapshot_t {
     uint32_t detail_flags;                    // detail bitmask
     uint64_t snd_pending_msgs;                // send-queue pending message count
     uint64_t rcv_pending_msgs;                // recv-queue pending message count
+    bool auto_hwm_enabled;                    // automatic HWM currently active
+    uint32_t auto_hwm_role;                   // diagnostic role bucket
+    uint32_t auto_hwm_managed_connections;    // connection count used for HWM planning
+    uint32_t auto_hwm_active_hwm_connections; // connection count used to divide HWM slots
+    uint32_t auto_hwm_planning_transport_connections; // connection count used for transport buffers
+    uint32_t auto_hwm_base_floor_per_connection;      // role floor
+    int32_t auto_hwm_applied_sndhwm;          // applied send HWM
+    int32_t auto_hwm_applied_rcvhwm;          // applied recv HWM
+    int32_t auto_hwm_requested_sndbuf;        // requested send buffer
+    int32_t auto_hwm_requested_rcvbuf;        // requested recv buffer
+    int32_t auto_hwm_effective_sndbuf;        // effective send buffer
+    int32_t auto_hwm_effective_rcvbuf;        // effective recv buffer
+    uint64_t auto_hwm_total_memory_budget_bytes;
+    uint64_t auto_hwm_queue_budget_bytes;
+    uint64_t auto_hwm_transport_budget_bytes;
+    uint64_t auto_hwm_runtime_reserve_bytes;
+    uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_effective_message_bytes;
 
     bool is_ready() const noexcept;           // convenience: checks ready bit in state_flags
 };
@@ -1096,7 +1123,9 @@ enum class context_option : int {
     thread_affinity_cpu_add,
     thread_affinity_cpu_remove,
     thread_name_prefix,
-    blocky
+    blocky,
+    auto_hwm_enable,
+    auto_hwm_total_memory_budget_mb
 };
 
 enum class send_result_t : int {
@@ -1140,7 +1169,9 @@ enum class monitor_state : uint32_t {
 
 enum class monitor_snapshot_detail : uint32_t {
     snd_pending_msgs,
-    rcv_pending_msgs
+    rcv_pending_msgs,
+    auto_hwm_budget,
+    auto_hwm_buffers
 };
 
 enum class disconnect_reason : int {

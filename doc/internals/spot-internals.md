@@ -429,7 +429,14 @@ Each handle has its own pub/sub pair, mode state, and request-reply state.
 +------------------------------------------------------------------+
 ```
 
-Default internal data-plane HWM: `1000`
+The internal data-plane HWM is no longer a fixed `1000`. SpotNode runtime
+uses the role-bucket values from the context auto-HWM policy.
+
+- `fanout`, `mesh_pub`: default floor `16`
+- `ingress`, `mesh_xsub`: default floor `8`
+- `node_router`, `route_ingress`: default floor `8`
+- `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: separated into the control role
+  with default floor `4`
 
 Topic and routed HWM can be configured independently via
 `zlink_set_spot_node_option()`:

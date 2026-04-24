@@ -178,16 +178,22 @@ void zlink::socket_base_t::set_all_pipes_nodelay ()
     }
 }
 
+void zlink::socket_base_t::refresh_attached_pipe_hwms ()
+{
+    scoped_lock_t lock (monitor_runtime ().sync);
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+         i != size; ++i) {
+        pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
+        pipe->set_hwms (options.rcvhwm, options.sndhwm);
+        pipe->send_hwms_to_peer (options.sndhwm, options.rcvhwm);
+    }
+}
+
 void zlink::socket_base_t::update_pipe_options (int option_)
 {
     if (option_ == ZLINK_INTERNAL_OPT_SNDHWM
         || option_ == ZLINK_INTERNAL_OPT_RCVHWM) {
-        for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
-             i != size; ++i) {
-            pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
-            pipe->set_hwms (options.rcvhwm, options.sndhwm);
-            pipe->send_hwms_to_peer (options.sndhwm, options.rcvhwm);
-        }
+        refresh_attached_pipe_hwms ();
     }
 }
 

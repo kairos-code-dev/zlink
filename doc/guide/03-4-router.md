@@ -141,8 +141,8 @@ if (zlink_router_recv(router,
 | `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | ROUTER-specific compatibility option. New code should prefer `ZLINK_OPT_RID_DUPLICATE_POLICY`. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
-| `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM |
-| `ZLINK_OPT_RCVHWM` | int | 1000 | Receive HWM |
+| `ZLINK_OPT_SNDHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
+| `ZLINK_OPT_RCVHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 
 ### ROUTER_MANDATORY

@@ -46,6 +46,16 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 ## SpotNode 계약
 
+SpotNode와 Spot의 내부 raw 소켓 기본 HWM은 고정 숫자가 아니라 context
+auto HWM 정책에서 계산됩니다. 사용자가
+`ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM`,
+`ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`,
+`ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`,
+`ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`를 직접 설정하면 그 값이 자동값보다
+우선합니다. 기본 context 설정에서는 topic send 경로가 `fanout` floor `16`,
+topic recv와 routed send/recv 경로가 `8`에서 시작합니다.
+
+
 ### 토폴로지와 discovery
 
 ```c

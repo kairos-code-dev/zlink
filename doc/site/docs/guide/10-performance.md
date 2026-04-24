@@ -59,8 +59,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | Setting | Default | Description |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | 1000 | Maximum messages in each connection's send queue |
-| `ZLINK_OPT_RCVHWM` | 1000 | Maximum messages in each connection's receive queue |
+| `ZLINK_OPT_SNDHWM` | automatic | Calculated by the context auto-HWM policy from the socket role and connection count |
+| `ZLINK_OPT_RCVHWM` | automatic | Calculated by the context auto-HWM policy from the socket role and connection count |
 
 ### Backpressure Behavior
 
@@ -109,8 +109,10 @@ sequenceDiagram
 | Scenario | Recommended HWM | Rationale |
 |----------|-----------------|-----------|
 | Regular sockets/services | ~100 | Limits per-connection memory while absorbing bursts |
-| STREAM (1000+ CCU) | ~10 | Caps total memory proportional to connection count |
-| Default | 1000 | Sufficient for small-scale connections; adjust as connections grow |
+| control (`PAIR`, internal control sockets) | floor `4` | Buffers short management bursts conservatively |
+| routed (`DEALER`, `ROUTER`, `STREAM`) | floor `8` | Baseline burst absorption for request/reply paths |
+| fanout (`PUB`, `XPUB`) | floor `16` | Allows short publish fan-out bursts |
+| recv_ingress (`SUB`, `XSUB`) | floor `8` | Keeps inbound backlog conservative |
 
 ### HWM Behavior by Socket Type
 
@@ -390,8 +392,8 @@ int main(void)
 | `ZLINK_OPT_LINGER` | -1 (infinite) | Testing: 0, Production: 1000~5000ms |
 | `ZLINK_OPT_SNDTIMEO` | -1 (infinite) | Set according to response time requirements |
 | `ZLINK_OPT_RCVTIMEO` | -1 (infinite) | Set when used in polling loops |
-| `ZLINK_OPT_SNDHWM` | 1000 | Adjust to match throughput |
-| `ZLINK_OPT_RCVHWM` | 1000 | Adjust to match throughput |
+| `ZLINK_OPT_SNDHWM` | automatic | Leave auto HWM on unless the workload needs a fixed queue depth |
+| `ZLINK_OPT_RCVHWM` | automatic | Leave auto HWM on unless the workload needs a fixed queue depth |
 | `ZLINK_OPT_MAXMSGSIZE` | -1 (unlimited) | Set for security on STREAM sockets |
 
 ### LINGER Setting

@@ -22,6 +22,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_THREAD_NAME_PREFIX      9
 #define ZLINK_CTX_OPT_BLOCKY          10
 #define ZLINK_SPOT_WORKER_THREADS     11
+#define ZLINK_CTX_OPT_AUTO_HWM_ENABLE 12
+#define ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB 13
 ```
 
 | 상수 | 값 | 설명 |
@@ -38,6 +40,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | I/O 스레드 이름 접두사 |
 | `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작 제어 |
 | `ZLINK_SPOT_WORKER_THREADS` | 11 | `zlink_spot_dispatch_event_handler()` 전용 worker 수 (`0` = 자동) |
+| `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
+| `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | 13 | 자동 HWM 정책이 계산에 사용하는 context 총 메모리 예산 (MB, `>= 1`) |
 
 ## 기본값
 
@@ -47,6 +51,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
+#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
 ```
 
 | 상수 | 값 | 설명 |
@@ -56,6 +62,8 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | 기본 Spot worker 수 (`0` = 자동) |
+| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책 기본 활성 |
+| `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 128 | 자동 HWM 정책의 기본 context 총 메모리 예산 (MB) |
 
 ## 함수
 

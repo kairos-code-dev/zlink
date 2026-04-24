@@ -122,6 +122,14 @@ impl<'a> ContextOptions<'a> {
     /// # Errors: ConfigError
     pub fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
+    pub fn auto_hwm_enabled(&self) -> Result<bool, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn auto_hwm_total_memory_budget_mb(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_auto_hwm_total_memory_budget_mb(&self, value: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
@@ -1243,6 +1251,25 @@ pub struct MonitorSnapshot {
     pub detail_flags: u32,                // detail bitmask
     pub snd_pending_msgs: u64,            // pending send-queue message count
     pub rcv_pending_msgs: u64,            // pending recv-queue message count
+    pub auto_hwm_enabled: bool,
+    pub auto_hwm_role: u32,
+    pub auto_hwm_managed_connections: u32,
+    pub auto_hwm_active_hwm_connections: u32,
+    pub auto_hwm_planning_transport_connections: u32,
+    pub auto_hwm_base_floor_per_connection: u32,
+    pub auto_hwm_applied_sndhwm: i32,
+    pub auto_hwm_applied_rcvhwm: i32,
+    pub auto_hwm_requested_sndbuf: i32,
+    pub auto_hwm_requested_rcvbuf: i32,
+    pub auto_hwm_effective_sndbuf: i32,
+    pub auto_hwm_effective_rcvbuf: i32,
+    pub auto_hwm_total_memory_budget_bytes: u64,
+    pub auto_hwm_queue_budget_bytes: u64,
+    pub auto_hwm_transport_budget_bytes: u64,
+    pub auto_hwm_runtime_reserve_bytes: u64,
+    pub auto_hwm_group_budget_bytes: u64,
+    pub auto_hwm_group_message_slots: u64,
+    pub auto_hwm_effective_message_bytes: u64,
 }
 
 impl MonitorSnapshot {

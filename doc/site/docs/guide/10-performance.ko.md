@@ -61,8 +61,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | 1000 | 각 연결의 송신 큐 최대 메시지 수 |
-| `ZLINK_OPT_RCVHWM` | 1000 | 각 연결의 수신 큐 최대 메시지 수 |
+| `ZLINK_OPT_SNDHWM` | 자동 | context auto HWM 정책이 역할과 연결 수를 기준으로 계산 |
+| `ZLINK_OPT_RCVHWM` | 자동 | context auto HWM 정책이 역할과 연결 수를 기준으로 계산 |
 
 ### Backpressure 동작
 
@@ -114,8 +114,10 @@ sequenceDiagram
 | 시나리오 | 권장 HWM | 근거 |
 |----------|----------|------|
 | 일반 소켓/서비스 | ~100 | 연결당 메모리 사용량을 제한하면서 버스트 흡수 |
-| STREAM (1000+ CCU) | ~10 | 대규모 동시 접속 시 총 메모리를 연결 수에 비례하여 제한 |
-| 기본값 | 1000 | 소규모 연결에서는 충분하지만, 연결 수 증가 시 조정 필요 |
+| control (`PAIR`, 내부 제어 소켓) | floor `4` | 작은 관리 메시지를 짧게 버퍼링 |
+| routed (`DEALER`, `ROUTER`, `STREAM`) | floor `8` | 요청/응답 경로의 기본 버스트 흡수 |
+| fanout (`PUB`, `XPUB`) | floor `16` | publish 분배 경로의 짧은 fan-out 버스트 흡수 |
+| recv_ingress (`SUB`, `XSUB`) | floor `8` | 수신 경로 backlog를 보수적으로 제한 |
 
 ### HWM 동작 패턴
 
@@ -388,8 +390,8 @@ int main(void)
 | `ZLINK_OPT_LINGER` | -1 (무한) | 테스트: 0, 프로덕션: 1000~5000ms |
 | `ZLINK_OPT_SNDTIMEO` | -1 (무한) | 응답 시간 요구사항에 맞춰 설정 |
 | `ZLINK_OPT_RCVTIMEO` | -1 (무한) | 폴링 루프에서 사용 시 설정 |
-| `ZLINK_OPT_SNDHWM` | 1000 | 처리량에 맞춰 조정 |
-| `ZLINK_OPT_RCVHWM` | 1000 | 처리량에 맞춰 조정 |
+| `ZLINK_OPT_SNDHWM` | 자동 | 기본은 auto HWM, 고정 큐 깊이가 필요할 때만 수동 설정 |
+| `ZLINK_OPT_RCVHWM` | 자동 | 기본은 auto HWM, 고정 큐 깊이가 필요할 때만 수동 설정 |
 | `ZLINK_OPT_MAXMSGSIZE` | -1 (무제한) | STREAM 소켓에서 보안 설정 |
 
 ### LINGER 설정

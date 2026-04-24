@@ -239,7 +239,9 @@ Frame 4~N: Service entries (repeated service_count times)
 - `SpotNode` HWM 은 internal data-plane budget 이며 방향별로 적용된다.
   - `SNDHWM` → `fanout`, `mesh_pub`
   - `RCVHWM` → `ingress`, `mesh_xsub`
-- SpotNode internal data-plane HWM 기본값은 `1000` 이다.
+- SpotNode internal data-plane HWM 기본값은 고정 `1000`이 아니라
+  context auto HWM 정책에서 나온 role별 값이다. 기본 context에서는
+  `topic send=16`, `topic recv=8`, `routed send=8`, `routed recv=8`로 시작한다.
 - `peer_ctrl` 는 control-plane 소켓이므로 SpotNode data-plane HWM 묶음에
   포함하지 않는다.
 

@@ -30,6 +30,7 @@ zlink::pair_t::pair_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_), _pipe (NULL)
 {
     options.type = ZLINK_CORE_SOCKET_PAIR;
+    refresh_auto_hwm_policy ();
 }
 
 zlink::pair_t::~pair_t ()

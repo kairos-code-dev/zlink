@@ -6,13 +6,12 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
+#include "core/auto_hwm_policy.hpp"
 
 namespace zlink
 {
 namespace
 {
-static const int spot_node_hwm_default = 1000;
-
 static void preserve_first_error_local (int rc_, int *first_error_)
 {
     if (rc_ == 0 || !first_error_ || *first_error_ != 0)
@@ -129,7 +128,60 @@ static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
     }
 }
 
-static bool read_runtime_hwm_option (const spot_node_hwm_config_t &config_,
+static bool read_socket_hwm (socket_base_t *socket_,
+                             int option_,
+                             int *value_out_)
+{
+    if (!socket_ || !value_out_)
+        return false;
+
+    size_t value_size = sizeof (*value_out_);
+    return socket_->getsockopt (option_, value_out_, &value_size) == 0
+           && value_size == sizeof (*value_out_);
+}
+
+static int compute_default_node_hwm (ctx_t *ctx_, int option_)
+{
+    if (!ctx_)
+        return 0;
+
+    auto_hwm_context_plan_t context_plan;
+    auto_hwm_context_plan_from_budget_mb (
+      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0,
+      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB), &context_plan);
+
+    auto_hwm_role_t role = auto_hwm_role_none;
+    int socket_type = ZLINK_CORE_SOCKET_PAIR;
+    switch (option_) {
+        case ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM:
+            role = auto_hwm_role_fanout;
+            socket_type = ZLINK_CORE_SOCKET_PUB;
+            break;
+        case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
+            role = auto_hwm_role_recv_ingress;
+            socket_type = ZLINK_CORE_SOCKET_SUB;
+            break;
+        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
+        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
+            role = auto_hwm_role_routed;
+            socket_type = ZLINK_CORE_SOCKET_ROUTER;
+            break;
+        default:
+            return 0;
+    }
+
+    auto_hwm_socket_plan_t socket_plan;
+    auto_hwm_socket_plan_for_role (context_plan, role, socket_type, 0, 0,
+                                   &socket_plan);
+    return option_ == ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM
+             || option_ == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
+             ? socket_plan.rcvhwm
+             : socket_plan.sndhwm;
+}
+
+static bool read_runtime_hwm_option (ctx_t *ctx_,
+                                     const spot_runtime_t *runtime_,
+                                     const spot_node_hwm_config_t &config_,
                                      int option_,
                                      int *value_out_)
 {
@@ -138,20 +190,52 @@ static bool read_runtime_hwm_option (const spot_node_hwm_config_t &config_,
 
     switch (option_) {
         case ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM:
-            *value_out_ = config_.topic_send_enabled ? config_.topic_send_hwm
-                                                     : spot_node_hwm_default;
+            if (config_.topic_send_enabled) {
+                *value_out_ = config_.topic_send_hwm;
+                return true;
+            }
+            if (runtime_
+                && read_socket_hwm (runtime_->mesh_pub, ZLINK_INTERNAL_OPT_SNDHWM,
+                                    value_out_)) {
+                return true;
+            }
+            *value_out_ = compute_default_node_hwm (ctx_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
-            *value_out_ = config_.topic_recv_enabled ? config_.topic_recv_hwm
-                                                     : spot_node_hwm_default;
+            if (config_.topic_recv_enabled) {
+                *value_out_ = config_.topic_recv_hwm;
+                return true;
+            }
+            if (runtime_
+                && read_socket_hwm (runtime_->mesh_xsub, ZLINK_INTERNAL_OPT_RCVHWM,
+                                    value_out_)) {
+                return true;
+            }
+            *value_out_ = compute_default_node_hwm (ctx_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
-            *value_out_ = config_.routed_send_enabled ? config_.routed_send_hwm
-                                                      : spot_node_hwm_default;
+            if (config_.routed_send_enabled) {
+                *value_out_ = config_.routed_send_hwm;
+                return true;
+            }
+            if (runtime_
+                && read_socket_hwm (runtime_->node_router,
+                                    ZLINK_INTERNAL_OPT_SNDHWM, value_out_)) {
+                return true;
+            }
+            *value_out_ = compute_default_node_hwm (ctx_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
-            *value_out_ = config_.routed_recv_enabled ? config_.routed_recv_hwm
-                                                      : spot_node_hwm_default;
+            if (config_.routed_recv_enabled) {
+                *value_out_ = config_.routed_recv_hwm;
+                return true;
+            }
+            if (runtime_
+                && read_socket_hwm (runtime_->route_ingress,
+                                    ZLINK_INTERNAL_OPT_RCVHWM, value_out_)) {
+                return true;
+            }
+            *value_out_ = compute_default_node_hwm (ctx_, option_);
             return true;
         default:
             return false;
@@ -614,7 +698,7 @@ int spot_node_t::get_node_option (int option_,
 
     int value = 0;
     const spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
-    if (!read_runtime_hwm_option (hwm_config, option_, &value)) {
+    if (!read_runtime_hwm_option (_ctx, _runtime, hwm_config, option_, &value)) {
         errno = EINVAL;
         return -1;
     }

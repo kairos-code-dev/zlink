@@ -91,6 +91,14 @@ checks the target RID's cached weight before submit.
 Replies are not subject to this check. `zlink_router_reply()` answers an
 already-received request and is allowed regardless of peer weight.
 
+## Automatic HWM defaults
+
+ROUTER is classified as the `routed` role by the context automatic HWM
+policy. With the default context settings, `SNDHWM` / `RCVHWM` start from
+floor `8` and are recalculated within the same context budget as connection
+counts grow. Manual `SNDHWM`, `RCVHWM`, `SNDBUF`, and `RCVBUF` settings
+override the automatic values.
+
 ## Functions
 
 ### zlink_set_router_option

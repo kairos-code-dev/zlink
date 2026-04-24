@@ -306,9 +306,14 @@ Query the current aggregate state from a monitor handle at any time.
 |-------|-------------|
 | `snd_pending_msgs` | Messages pending in send queue (capped by SNDHWM) |
 | `rcv_pending_msgs` | Messages pending in receive queue (capped by RCVHWM, approximate) |
+| `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | Automatically applied HWM values on the socket |
+| `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | Transport-buffer values requested by the automatic policy |
+| `auto_hwm_total_memory_budget_bytes` and related budget fields | Current context budget split and role allocation |
 
 `snd_pending_msgs` and `rcv_pending_msgs` are directly related to HWM settings.
 When these values approach the HWM, backpressure is occurring.
+When automatic HWM is enabled, the same snapshot also tells you why the
+current HWM was chosen through the budget fields.
 
 **Note — pending values can exceed the HWM setting:**
 

@@ -5,6 +5,13 @@
 Subscribe socket with topic filtering. SUB is receive-only for data;
 subscription management is the control plane.
 
+## Automatic HWM defaults
+
+SUB is classified as the `recv_ingress` role by the context automatic HWM
+policy. With the default context settings, recv HWM starts from floor `8`
+and is recalculated within the same context budget as connection counts
+grow. Manual `RCVHWM` or `RCVBUF` settings override the automatic values.
+
 ## Sub Options (`zlink_sub_option_t`)
 
 Used with `zlink_set_sub_option()` / `zlink_get_sub_option()`.

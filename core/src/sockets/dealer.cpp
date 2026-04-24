@@ -17,6 +17,7 @@ zlink::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     options.type = ZLINK_CORE_SOCKET_DEALER;
     options.can_send_hello_msg = true;
     options.can_recv_hiccup_msg = true;
+    refresh_auto_hwm_policy ();
 }
 
 zlink::dealer_t::~dealer_t ()

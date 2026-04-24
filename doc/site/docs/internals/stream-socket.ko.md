@@ -205,8 +205,9 @@ STREAM 외 공통 소켓 기본값은
 ### 7.2 소켓/리스너 기본값
 
 - backlog: `65536`
-- `sndbuf` 미지정 시 기본값: `262144`
-- `rcvbuf` 미지정 시 기본값: `262144`
+- `sndhwm` / `rcvhwm`: routed 역할 auto HWM floor에서 시작
+- `sndbuf` / `rcvbuf`: auto HWM transport budget 계산값 사용
+- auto HWM 비활성 + `sndbuf` / `rcvbuf` 미설정 시 호환 기본값 `262144`
 - accept 동시성(STREAM 전용): 기본 `4`, 최대 `128`
 - 세션 스케줄러(STREAM): 기본 `rr`
 

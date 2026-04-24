@@ -88,6 +88,7 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
     }
 
     xattach_pipe (pipe_, subscribe_to_all_, locally_initiated_);
+    refresh_auto_hwm_policy ();
 
     if (is_terminating ()) {
         register_term_acks (1);
@@ -122,11 +123,22 @@ int zlink::socket_base_t::setsockopt (int option_,
     {
         socket_public_api_lock_scope_t guard (lifecycle);
         rc = options.setsockopt (option_, optval_, optvallen_);
-        if (rc == 0 && option_ == ZLINK_INTERNAL_OPT_PEER_WEIGHT) {
-            _local_peer_weight = static_cast<uint32_t> (options.peer_weight);
-            if (_service_attachment)
-                _service_attachment->on_local_peer_weight_changed ();
-            xlocal_peer_weight_changed ();
+        if (rc == 0) {
+            if (option_ == ZLINK_INTERNAL_OPT_SNDHWM)
+                _manual_sndhwm = true;
+            else if (option_ == ZLINK_INTERNAL_OPT_RCVHWM)
+                _manual_rcvhwm = true;
+            else if (option_ == ZLINK_INTERNAL_OPT_SNDBUF)
+                _manual_sndbuf = true;
+            else if (option_ == ZLINK_INTERNAL_OPT_RCVBUF)
+                _manual_rcvbuf = true;
+
+            if (option_ == ZLINK_INTERNAL_OPT_PEER_WEIGHT) {
+                _local_peer_weight = static_cast<uint32_t> (options.peer_weight);
+                if (_service_attachment)
+                    _service_attachment->on_local_peer_weight_changed ();
+                xlocal_peer_weight_changed ();
+            }
         }
         update_pipe_options (option_);
     }
@@ -348,6 +360,8 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
         ++_term_pipe_acks_received;
         unregister_term_ack ();
     }
+
+    refresh_auto_hwm_policy ();
 }
 
 int zlink::socket_base_t::socket_id () const

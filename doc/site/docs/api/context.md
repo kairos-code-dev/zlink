@@ -24,7 +24,9 @@ typedef enum zlink_ctx_option_t
     ZLINK_THREAD_AFFINITY_CPU_REMOVE   = 8,
     ZLINK_THREAD_NAME_PREFIX      = 9,
     ZLINK_CTX_OPT_BLOCKY          = 10,
-    ZLINK_SPOT_WORKER_THREADS     = 11
+    ZLINK_SPOT_WORKER_THREADS     = 11,
+    ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
+    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13
 } zlink_ctx_option_t;
 ```
 
@@ -42,6 +44,8 @@ typedef enum zlink_ctx_option_t
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | Prefix for I/O thread names |
 | `ZLINK_CTX_OPT_BLOCKY` | 10 | Legacy option for blocking behavior on context termination (`int`; default 1) |
 | `ZLINK_SPOT_WORKER_THREADS` | 11 | Worker count for `zlink_spot_dispatch_event_handler()` callbacks (`0` = auto) |
+| `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | Whether automatic HWM policy is enabled (`0` = disabled, `1` = enabled) |
+| `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | 13 | Total context memory budget in MB used by the automatic HWM policy (`>= 1`) |
 
 ## Default Values
 
@@ -51,6 +55,8 @@ typedef enum zlink_ctx_option_t
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
+#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
 ```
 
 | Constant | Value | Description |
@@ -60,6 +66,8 @@ typedef enum zlink_ctx_option_t
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | Default thread priority (OS default) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | Default scheduling policy (OS default) |
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | Default Spot worker count (`0` = auto) |
+| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | Automatic HWM policy enabled by default |
+| `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 128 | Default total context memory budget used by automatic HWM policy (MB) |
 
 ## Functions
 

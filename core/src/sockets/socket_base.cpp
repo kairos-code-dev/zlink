@@ -105,6 +105,14 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _tag (0xbaddecaf),
     _ctx_terminated (false),
     _runtime (),
+    _auto_hwm_role (auto_hwm_role_none),
+    _auto_hwm_role_override (false),
+    _manual_sndhwm (false),
+    _manual_rcvhwm (false),
+    _manual_sndbuf (false),
+    _manual_rcvbuf (false),
+    _auto_hwm_context_plan (),
+    _auto_hwm_socket_plan (),
     _local_peer_weight (100),
     _service_attachment (NULL),
     _channel_name_locked (false)
@@ -125,6 +133,61 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     mailbox_t *m = new (std::nothrow) mailbox_t ();
     zlink_assert (m);
     _mailbox = m;
+}
+
+void zlink::socket_base_t::set_auto_hwm_role (auto_hwm_role_t role_)
+{
+    _auto_hwm_role = role_;
+    _auto_hwm_role_override = role_ != auto_hwm_role_none;
+    refresh_auto_hwm_policy ();
+}
+
+void zlink::socket_base_t::refresh_auto_hwm_policy ()
+{
+    ctx_t *ctx = get_ctx ();
+    if (!ctx)
+        return;
+
+    const bool enabled = ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0;
+    const int total_memory_budget_mb =
+      ctx->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB);
+    auto_hwm_context_plan_from_budget_mb (enabled, total_memory_budget_mb,
+                                          &_auto_hwm_context_plan);
+
+    auto_hwm_role_t role = _auto_hwm_role_override ? _auto_hwm_role
+                                                   : auto_hwm_role_none;
+    if (role == auto_hwm_role_none)
+        role = auto_hwm_default_role_for_socket_type (options.type);
+    _auto_hwm_role = role;
+
+    size_t managed_connections = 0;
+    {
+        scoped_lock_t lock (monitor_runtime ().sync);
+        managed_connections = endpoint_runtime ().attached_pipe_count ();
+    }
+    auto_hwm_socket_plan_for_role (_auto_hwm_context_plan, role, options.type,
+                                   managed_connections, managed_connections,
+                                   &_auto_hwm_socket_plan);
+
+    if (!_auto_hwm_context_plan.enabled)
+        return;
+
+    bool refresh_hwms = false;
+    if (!_manual_sndhwm && options.sndhwm != _auto_hwm_socket_plan.sndhwm) {
+        options.sndhwm = _auto_hwm_socket_plan.sndhwm;
+        refresh_hwms = true;
+    }
+    if (!_manual_rcvhwm && options.rcvhwm != _auto_hwm_socket_plan.rcvhwm) {
+        options.rcvhwm = _auto_hwm_socket_plan.rcvhwm;
+        refresh_hwms = true;
+    }
+    if (!_manual_sndbuf)
+        options.sndbuf = _auto_hwm_socket_plan.requested_sndbuf;
+    if (!_manual_rcvbuf)
+        options.rcvbuf = _auto_hwm_socket_plan.requested_rcvbuf;
+
+    if (refresh_hwms)
+        refresh_attached_pipe_hwms ();
 }
 
 static void copy_routing_id (zlink_routing_id_t *out_,

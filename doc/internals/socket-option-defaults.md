@@ -23,8 +23,8 @@ For detailed behavior and scope of each option, see the
 |---|---:|---|
 | `ZLINK_OPT_AFFINITY` | `0` | No I/O thread affinity mask |
 | `zlink_get_routing_id()` | auto | 16-byte random ID per socket (set via `zlink_set_routing_id()`) |
-| `ZLINK_OPT_SNDHWM` | `1000` | Send queue HWM |
-| `ZLINK_OPT_RCVHWM` | `1000` | Receive queue HWM |
+| `ZLINK_OPT_SNDHWM` | auto-HWM floor | Defaults come from the role floors (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
+| `ZLINK_OPT_RCVHWM` | auto-HWM floor | Defaults come from the role floors (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
 | `ZLINK_OPT_RATE` | `100` | Multicast rate (kb/s) |
 | `ZLINK_OPT_RECOVERY_IVL` | `10000` | Multicast recovery interval (ms) |
 | `ZLINK_OPT_SNDBUF` | `-1` | Do not force `SO_SNDBUF` |
@@ -77,8 +77,8 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_SOCKET_SUB` | `ZLINK_OPT_LINGER` override | forced to `0` (inherits the XSUB constructor path) |
 | `ZLINK_SOCKET_SUB` | Subscription set | empty at creation |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | `262144` if unset (`<0`) |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | `262144` if unset (`<0`) |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | Auto-HWM transport-budget result by default; `262144` only when auto HWM is disabled and the option stays unset (`<0`) |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | Auto-HWM transport-budget result by default; `262144` only when auto HWM is disabled and the option stays unset (`<0`) |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | not supported (`EOPNOTSUPP`) |
 
 ## 3. Read-Only Initial State Values
@@ -103,6 +103,8 @@ The helper call itself supplies policy values such as
 ## 5. Important Notes
 
 - The default `ZLINK_OPT_LINGER` value comes from the context's blocky mode.
+- The default `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` values come from the
+  context automatic HWM policy. Manual settings override them.
 - `ZLINK_OPT_CONFLATE` is only effective for `ZLINK_SOCKET_DEALER`,
   `ZLINK_SOCKET_PUB`, and `ZLINK_SOCKET_SUB`.
 - STREAM has additional runtime tuning knobs documented in

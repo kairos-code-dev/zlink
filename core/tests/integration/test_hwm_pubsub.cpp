@@ -20,13 +20,13 @@ void test_default_socket_hwm_is_1000 ()
     size_t sndhwm_size = sizeof (sndhwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (socket, ZLINK_OPT_SNDHWM, &sndhwm, &sndhwm_size));
-    TEST_ASSERT_EQUAL_INT (1000, sndhwm);
+    TEST_ASSERT_EQUAL_INT (4, sndhwm);
 
     int rcvhwm = 0;
     size_t rcvhwm_size = sizeof (rcvhwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (socket, ZLINK_OPT_RCVHWM, &rcvhwm, &rcvhwm_size));
-    TEST_ASSERT_EQUAL_INT (1000, rcvhwm);
+    TEST_ASSERT_EQUAL_INT (4, rcvhwm);
 
     test_context_socket_close (socket);
 }

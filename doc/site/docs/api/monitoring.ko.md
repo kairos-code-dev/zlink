@@ -93,6 +93,25 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_snapshot_detail_mask_t detail_flags;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
+    uint32_t auto_hwm_enabled;
+    uint32_t auto_hwm_role;
+    uint32_t auto_hwm_managed_connections;
+    uint32_t auto_hwm_active_hwm_connections;
+    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_base_floor_per_connection;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_requested_sndbuf;
+    int32_t auto_hwm_requested_rcvbuf;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
+    uint64_t auto_hwm_total_memory_budget_bytes;
+    uint64_t auto_hwm_queue_budget_bytes;
+    uint64_t auto_hwm_transport_budget_bytes;
+    uint64_t auto_hwm_runtime_reserve_bytes;
+    uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_effective_message_bytes;
 } zlink_monitor_snapshot_t;
 ```
 
@@ -103,6 +122,25 @@ typedef struct zlink_monitor_snapshot_t
 | `detail_flags` | 어떤 numeric field가 채워졌는지 표시 |
 | `snd_pending_msgs` | 지원되는 경우 aggregate 로컬 송신 backlog |
 | `rcv_pending_msgs` | 지원되는 경우 aggregate 로컬 수신 backlog snapshot |
+| `auto_hwm_enabled` | 이 source가 자동 HWM 정책을 기준으로 계산 중이면 `1`, 아니면 `0` |
+| `auto_hwm_role` | 자동 HWM 진단용 역할 묶음 번호. 현재 `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`이며 새 값이 추가될 수 있음 |
+| `auto_hwm_managed_connections` | 현재 정책이 계산에 사용한 연결 수 |
+| `auto_hwm_active_hwm_connections` | HWM 분배에 실제로 나눈 연결 수 |
+| `auto_hwm_planning_transport_connections` | transport buffer 계획에 사용한 연결 수 |
+| `auto_hwm_base_floor_per_connection` | 역할별 최소 floor 값 |
+| `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
+| `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |
+| `auto_hwm_requested_sndbuf` | 자동 정책이 요청한 `SNDBUF` 값 |
+| `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 `RCVBUF` 값 |
+| `auto_hwm_effective_sndbuf` | 현재 snapshot에서 보는 유효 `SNDBUF` 값 |
+| `auto_hwm_effective_rcvbuf` | 현재 snapshot에서 보는 유효 `RCVBUF` 값 |
+| `auto_hwm_total_memory_budget_bytes` | context 총 메모리 예산 |
+| `auto_hwm_queue_budget_bytes` | HWM 계산에 쓴 큐 예산 |
+| `auto_hwm_transport_budget_bytes` | transport buffer 계산에 쓴 예산 |
+| `auto_hwm_runtime_reserve_bytes` | runtime reserve 예산 |
+| `auto_hwm_group_budget_bytes` | 현재 역할 묶음에 배정된 큐 예산 |
+| `auto_hwm_group_message_slots` | 현재 역할 묶음 예산을 실효 메시지 크기로 나눈 슬롯 수 |
+| `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 바이트 |
 
 ## 상수
 
@@ -131,6 +169,8 @@ typedef enum zlink_monitor_source_kind_t
 |------|-----|------|
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | auto HWM budget/role/HWM 관련 필드가 채워짐. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | auto HWM transport buffer 관련 필드가 채워짐. |
 
 ### 이벤트 플래그
 

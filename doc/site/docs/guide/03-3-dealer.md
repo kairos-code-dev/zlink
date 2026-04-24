@@ -125,8 +125,8 @@ zlink_send(dealer, parts, 2, 0);
 | `zlink_set_routing_id()` | binary | Auto (UUID) | ID for identification by ROUTER (dedicated function) |
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | Send empty message on connect (connection notification) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_dealer_request()`. `0` uses the implementation default of `5000ms` |
-| `ZLINK_OPT_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
-| `ZLINK_OPT_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
+| `ZLINK_OPT_SNDHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
+| `ZLINK_OPT_RCVHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms) |

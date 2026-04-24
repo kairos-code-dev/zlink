@@ -236,8 +236,9 @@ Unsupported/changed:
 
 Defaults currently used by STREAM internals:
 - `ZLINK_OPT_BACKLOG`: `65536`
-- `ZLINK_OPT_SNDBUF`: `262144` when unset (`-1`)
-- `ZLINK_OPT_RCVBUF`: `262144` when unset (`-1`)
+- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: automatic HWM routed-role floor
+- `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`: calculated from the context budget and STREAM transport planning connections
+- if auto HWM is disabled and `SNDBUF` / `RCVBUF` still stay unset, STREAM falls back to the compatibility default `262144`
 - STREAM batch size default: `4096`
 - STREAM read headroom default: `64`
 - STREAM accept concurrency default: `4` (clamped to max `128`)

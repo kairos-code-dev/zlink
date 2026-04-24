@@ -11,6 +11,7 @@
 #include "services/spot/spot_runtime.hpp"
 
 #include "api/service_surface_internal.hpp"
+#include "core/auto_hwm_policy.hpp"
 #include "core/socket_poller.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
 #include "sockets/socket_base.hpp"
@@ -22,18 +23,38 @@ namespace zlink
 {
 namespace
 {
-static const int spot_data_plane_hwm_default = 1000;
-static const int spot_internal_ingress_rcvhwm_default = 1000;
-static const int spot_internal_mesh_xsub_rcvhwm_default = 1000;
-static const int spot_internal_peer_ctrl_rcvhwm_default = 1024;
-static const int spot_internal_route_ingress_rcvhwm_default = 1000;
-static const int spot_internal_node_router_rcvhwm_default = 1000;
-static const int spot_internal_node_router_sndhwm_default = 1000;
+static bool read_socket_int_option (socket_base_t *socket_,
+                                    int option_,
+                                    int *value_out_)
+{
+    if (!socket_ || !value_out_)
+        return false;
 
-static int resolve_node_pub_sndhwm_default (const spot_runtime_t *runtime_)
+    size_t value_size = sizeof (*value_out_);
+    return socket_->getsockopt (option_, value_out_, &value_size) == 0
+           && value_size == sizeof (*value_out_);
+}
+
+static bool read_env_hwm_override (const char *env_name_,
+                                   int fallback_value_,
+                                   int *value_out_)
+{
+    if (!env_name_ || env_name_[0] == '\0' || !value_out_)
+        return false;
+
+    const char *value = getenv (env_name_);
+    if (!value || value[0] == '\0')
+        return false;
+
+    *value_out_ = spot_data_plane_forwarder_t::resolve_internal_hwm_override (
+      env_name_, fallback_value_);
+    return true;
+}
+
+static int resolve_node_pub_sndhwm_override (const spot_runtime_t *runtime_)
 {
     if (!runtime_ || !runtime_->owner)
-        return spot_data_plane_hwm_default;
+        return 0;
 
     const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
     if (hwm.topic_send_enabled)
@@ -42,18 +63,18 @@ static int resolve_node_pub_sndhwm_default (const spot_runtime_t *runtime_)
     const spot_node_t::pub_defaults_t defaults =
       runtime_->owner->load_pub_defaults ();
     if (!defaults.sndhwm.enabled || defaults.sndhwm.size == 0)
-        return spot_data_plane_hwm_default;
+        return 0;
 
-    int value = spot_data_plane_hwm_default;
+    int value = 0;
     memcpy (&value, &defaults.sndhwm.value,
             std::min (defaults.sndhwm.size, sizeof (value)));
     return value > 0 ? value : 0;
 }
 
-static int resolve_node_sub_rcvhwm_default (const spot_runtime_t *runtime_)
+static int resolve_node_sub_rcvhwm_override (const spot_runtime_t *runtime_)
 {
     if (!runtime_ || !runtime_->owner)
-        return spot_data_plane_hwm_default;
+        return 0;
 
     const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
     if (hwm.topic_recv_enabled)
@@ -62,9 +83,9 @@ static int resolve_node_sub_rcvhwm_default (const spot_runtime_t *runtime_)
     const spot_node_t::sub_defaults_t defaults =
       runtime_->owner->load_sub_defaults ();
     if (!defaults.rcvhwm.enabled || defaults.rcvhwm.size == 0)
-        return spot_data_plane_hwm_default;
+        return 0;
 
-    int value = spot_data_plane_hwm_default;
+    int value = 0;
     memcpy (&value, &defaults.rcvhwm.value,
             std::min (defaults.rcvhwm.size, sizeof (value)));
     return value > 0 ? value : 0;
@@ -146,51 +167,52 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     const int zero = 0;
     const int neg_one = -1;
     const int one = 1;
-    const int node_pub_sndhwm = resolve_node_pub_sndhwm_default (runtime_);
-    const int node_sub_rcvhwm = resolve_node_sub_rcvhwm_default (runtime_);
+    const int node_pub_sndhwm = resolve_node_pub_sndhwm_override (runtime_);
+    const int node_sub_rcvhwm = resolve_node_sub_rcvhwm_override (runtime_);
     const int routed_send_hwm =
       resolve_routed_send_hwm_default (runtime_, node_pub_sndhwm);
     const int routed_recv_hwm =
       resolve_routed_recv_hwm_default (runtime_, node_sub_rcvhwm);
-    const int ingress_rcvhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM",
-        node_sub_rcvhwm > 0 ? node_sub_rcvhwm
-                            : spot_internal_ingress_rcvhwm_default);
-    const int mesh_xsub_rcvhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM",
-        node_sub_rcvhwm > 0 ? node_sub_rcvhwm
-                            : spot_internal_mesh_xsub_rcvhwm_default);
-    const int mesh_pub_sndhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
-        node_pub_sndhwm > 0 ? node_pub_sndhwm
-                            : spot_mesh_pub_budget_t::resolve_default (
-                                std::string (), 0));
-    const int peer_ctrl_rcvhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_PEER_CTRL_RCVHWM",
-        spot_internal_peer_ctrl_rcvhwm_default);
-    const int route_ingress_rcvhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_ROUTE_INGRESS_RCVHWM",
-        routed_recv_hwm > 0 ? routed_recv_hwm
-                            : spot_internal_route_ingress_rcvhwm_default);
-    const int node_router_rcvhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_NODE_ROUTER_RCVHWM",
-        routed_recv_hwm > 0 ? routed_recv_hwm
-                            : spot_internal_node_router_rcvhwm_default);
-    const int node_router_sndhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_NODE_ROUTER_SNDHWM",
-        routed_send_hwm > 0 ? routed_send_hwm
-                            : spot_internal_node_router_sndhwm_default);
-    const int fanout_sndhwm =
-      spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-        "ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM",
-        node_pub_sndhwm > 0 ? node_pub_sndhwm : spot_data_plane_hwm_default);
+    int ingress_rcvhwm = node_sub_rcvhwm;
+    int mesh_xsub_rcvhwm = node_sub_rcvhwm;
+    int mesh_pub_sndhwm = node_pub_sndhwm;
+    int peer_ctrl_rcvhwm = 0;
+    int route_ingress_rcvhwm = routed_recv_hwm;
+    int node_router_rcvhwm = routed_recv_hwm;
+    int node_router_sndhwm = routed_send_hwm;
+    int fanout_sndhwm = node_pub_sndhwm;
+
+    const bool ingress_rcvhwm_override =
+      read_env_hwm_override ("ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM",
+                             ingress_rcvhwm, &ingress_rcvhwm)
+      || ingress_rcvhwm > 0;
+    const bool mesh_xsub_rcvhwm_override =
+      read_env_hwm_override ("ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM",
+                             mesh_xsub_rcvhwm, &mesh_xsub_rcvhwm)
+      || mesh_xsub_rcvhwm > 0;
+    const bool mesh_pub_sndhwm_override =
+      read_env_hwm_override ("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
+                             mesh_pub_sndhwm, &mesh_pub_sndhwm)
+      || mesh_pub_sndhwm > 0;
+    const bool peer_ctrl_rcvhwm_override = read_env_hwm_override (
+      "ZLINK_SPOT_INTERNAL_PEER_CTRL_RCVHWM", peer_ctrl_rcvhwm,
+      &peer_ctrl_rcvhwm);
+    const bool route_ingress_rcvhwm_override =
+      read_env_hwm_override ("ZLINK_SPOT_INTERNAL_ROUTE_INGRESS_RCVHWM",
+                             route_ingress_rcvhwm, &route_ingress_rcvhwm)
+      || route_ingress_rcvhwm > 0;
+    const bool node_router_rcvhwm_override =
+      read_env_hwm_override ("ZLINK_SPOT_INTERNAL_NODE_ROUTER_RCVHWM",
+                             node_router_rcvhwm, &node_router_rcvhwm)
+      || node_router_rcvhwm > 0;
+    const bool node_router_sndhwm_override =
+      read_env_hwm_override ("ZLINK_SPOT_INTERNAL_NODE_ROUTER_SNDHWM",
+                             node_router_sndhwm, &node_router_sndhwm)
+      || node_router_sndhwm > 0;
+    const bool fanout_sndhwm_override =
+      read_env_hwm_override ("ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM",
+                             fanout_sndhwm, &fanout_sndhwm)
+      || fanout_sndhwm > 0;
 
     apply_common_internal_opts (state_->ctrl, linger);
     apply_common_internal_opts (state_->mesh_pub, linger);
@@ -204,59 +226,74 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     apply_common_internal_opts (state_->fanout, linger);
 
     state_->ctrl->connect (runtime_->data_ctrl_endpoint.c_str ());
-    state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &ingress_rcvhwm,
-                                 sizeof (ingress_rcvhwm));
+    if (ingress_rcvhwm_override)
+        state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                     &ingress_rcvhwm,
+                                     sizeof (ingress_rcvhwm));
     state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
                                  sizeof (neg_one));
     state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "", 0);
-    state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &fanout_sndhwm,
-                                sizeof (fanout_sndhwm));
+    if (fanout_sndhwm_override)
+        state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &fanout_sndhwm,
+                                    sizeof (fanout_sndhwm));
     state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                 sizeof (neg_one));
     state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero,
                                 sizeof (zero));
     state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_XPUB_NODROP, &one,
                                 sizeof (one));
-    state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &mesh_pub_sndhwm,
-                                  sizeof (mesh_pub_sndhwm));
+    if (mesh_pub_sndhwm_override)
+        state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                      &mesh_pub_sndhwm,
+                                      sizeof (mesh_pub_sndhwm));
     state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                   sizeof (neg_one));
-    state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                   &mesh_xsub_rcvhwm,
-                                   sizeof (mesh_xsub_rcvhwm));
+    if (mesh_xsub_rcvhwm_override)
+        state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                       &mesh_xsub_rcvhwm,
+                                       sizeof (mesh_xsub_rcvhwm));
     state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                    sizeof (neg_one));
     state_->peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                        sizeof (neg_one));
-    state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                       &peer_ctrl_rcvhwm,
-                                       sizeof (peer_ctrl_rcvhwm));
+    if (peer_ctrl_rcvhwm_override)
+        state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                           &peer_ctrl_rcvhwm,
+                                           sizeof (peer_ctrl_rcvhwm));
     state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE,
                                        spot_control_protocol::ctrl_prefix,
                                        strlen (
                                          spot_control_protocol::ctrl_prefix));
-    state_->route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                       &route_ingress_rcvhwm,
-                                       sizeof (route_ingress_rcvhwm));
+    if (route_ingress_rcvhwm_override)
+        state_->route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                           &route_ingress_rcvhwm,
+                                           sizeof (route_ingress_rcvhwm));
     state_->route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
                                        sizeof (neg_one));
-    state_->peer_route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                            &route_ingress_rcvhwm,
-                                            sizeof (route_ingress_rcvhwm));
+    if (route_ingress_rcvhwm_override)
+        state_->peer_route_ingress->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &route_ingress_rcvhwm,
+          sizeof (route_ingress_rcvhwm));
     state_->peer_route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO,
                                             &neg_one,
                                             sizeof (neg_one));
-    state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                     &node_router_rcvhwm,
-                                     sizeof (node_router_rcvhwm));
-    state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                     &node_router_sndhwm,
-                                     sizeof (node_router_sndhwm));
+    if (node_router_rcvhwm_override)
+        state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                         &node_router_rcvhwm,
+                                         sizeof (node_router_rcvhwm));
+    if (node_router_sndhwm_override)
+        state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                         &node_router_sndhwm,
+                                         sizeof (node_router_sndhwm));
     state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
                                      sizeof (neg_one));
     state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                      sizeof (neg_one));
-    state_->current_mesh_pub_sndhwm = mesh_pub_sndhwm;
+    state_->current_mesh_pub_sndhwm =
+      read_socket_int_option (state_->mesh_pub, ZLINK_INTERNAL_OPT_SNDHWM,
+                              &mesh_pub_sndhwm)
+        ? mesh_pub_sndhwm
+        : 0;
     return 0;
 }
 
@@ -383,6 +420,17 @@ int spot_data_plane_t::initialize_runtime (
         node_->track_owned_socket (state_out_->ingress);
         node_->track_owned_socket (state_out_->fanout);
     }
+
+    state_out_->ctrl->set_auto_hwm_role (auto_hwm_role_control);
+    state_out_->peer_ctrl_pub->set_auto_hwm_role (auto_hwm_role_control);
+    state_out_->peer_ctrl_sub->set_auto_hwm_role (auto_hwm_role_control);
+    state_out_->node_router->set_auto_hwm_role (auto_hwm_role_routed);
+    state_out_->route_ingress->set_auto_hwm_role (auto_hwm_role_routed);
+    state_out_->peer_route_ingress->set_auto_hwm_role (auto_hwm_role_routed);
+    state_out_->fanout->set_auto_hwm_role (auto_hwm_role_fanout);
+    state_out_->mesh_pub->set_auto_hwm_role (auto_hwm_role_fanout);
+    state_out_->ingress->set_auto_hwm_role (auto_hwm_role_recv_ingress);
+    state_out_->mesh_xsub->set_auto_hwm_role (auto_hwm_role_recv_ingress);
 
     if (zlink_spot_install_peer_route_dispatch (node_,
                                                 state_out_->peer_route_ingress)

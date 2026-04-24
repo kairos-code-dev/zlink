@@ -22,8 +22,8 @@
 |---|---:|---|
 | `ZLINK_OPT_AFFINITY` | `0` | I/O 스레드 어피니티 미설정 |
 | `zlink_get_routing_id()` | 자동 | 소켓별 16바이트 랜덤 ID (`zlink_set_routing_id()`로 설정) |
-| `ZLINK_OPT_SNDHWM` | `1000` | 송신 큐 HWM |
-| `ZLINK_OPT_RCVHWM` | `1000` | 수신 큐 HWM |
+| `ZLINK_OPT_SNDHWM` | 자동 HWM floor | 기본은 역할별 floor (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
+| `ZLINK_OPT_RCVHWM` | 자동 HWM floor | 기본은 역할별 floor (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
 | `ZLINK_OPT_RATE` | `100` | 멀티캐스트 rate (kb/s) |
 | `ZLINK_OPT_RECOVERY_IVL` | `10000` | 멀티캐스트 recovery interval (ms) |
 | `ZLINK_OPT_SNDBUF` | `-1` | `SO_SNDBUF` 강제 설정 안 함 |
@@ -76,8 +76,8 @@
 | `ZLINK_SOCKET_SUB` | `ZLINK_OPT_LINGER` override | 강제로 `0` (XSUB 생성 경로 상속) |
 | `ZLINK_SOCKET_SUB` | 구독 집합 | 생성 시 빈 상태 |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | 미설정(` <0`)이면 `262144` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | 미설정(` <0`)이면 `262144` |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | 기본은 auto HWM transport budget 계산값, auto HWM 비활성 + 미설정(` <0`)이면 `262144` |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | 기본은 auto HWM transport budget 계산값, auto HWM 비활성 + 미설정(` <0`)이면 `262144` |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 미지원 (`EOPNOTSUPP`) |
 
 ## 3. 읽기 전용 옵션의 초기 상태값
@@ -102,6 +102,8 @@ helper API를 호출하기 전까지는 인증서 경로와 CA 경로가 비어 
 ## 5. 주의 사항
 
 - 기본 `ZLINK_OPT_LINGER` 값은 컨텍스트의 blocky 모드에서 온다.
+- 기본 `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`은 context auto HWM 정책이
+  계산한다. 수동 설정이 있으면 자동값을 덮어쓴다.
 - `ZLINK_OPT_CONFLATE`는 `ZLINK_SOCKET_DEALER`,
   `ZLINK_SOCKET_PUB`, `ZLINK_SOCKET_SUB`에서만 실질적으로 동작한다.
 - STREAM의 추가 런타임 튜닝 항목은 `stream-socket.ko.md`를 참고한다.

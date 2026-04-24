@@ -310,9 +310,14 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 |------|------|
 | `snd_pending_msgs` | 송신 큐에 대기 중인 메시지 수 (SNDHWM에 의해 상한 제한) |
 | `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, approximate) |
+| `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | 현재 적용된 자동 HWM 값 |
+| `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 transport buffer 값 |
+| `auto_hwm_total_memory_budget_bytes` 등 budget 필드 | 현재 context 예산과 role별 배분 상태 |
 
 `snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
 이 값이 HWM에 근접하면 백프레셔가 발생하고 있다는 의미이다.
+자동 HWM을 쓰는 경우에는 같은 snapshot에서 "왜 이 HWM이 나왔는지"를
+budget 필드로 함께 확인할 수 있다.
 
 **주의 — pending 값이 HWM 설정보다 클 수 있는 경우:**
 

@@ -28,6 +28,8 @@ static bool is_public_ctx_set_option (int option_)
         case ZLINK_THREAD_NAME_PREFIX:
         case ZLINK_CTX_OPT_BLOCKY:
         case ZLINK_SPOT_WORKER_THREADS:
+        case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
+        case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
             return true;
         default:
             return false;
@@ -44,7 +46,9 @@ static bool is_public_ctx_get_option (int option_)
            || option_ == ZLINK_THREAD_AFFINITY_CPU_REMOVE
            || option_ == ZLINK_THREAD_NAME_PREFIX
            || option_ == ZLINK_CTX_OPT_BLOCKY
-           || option_ == ZLINK_SPOT_WORKER_THREADS;
+           || option_ == ZLINK_SPOT_WORKER_THREADS
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_ENABLE
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB;
 }
 }
 

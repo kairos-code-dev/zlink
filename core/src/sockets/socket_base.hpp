@@ -21,6 +21,7 @@
 #include "core/i_poll_events.hpp"
 #include "core/i_mailbox.hpp"
 #include "core/thread.hpp"
+#include "core/auto_hwm_policy.hpp"
 #include "utils/clock.hpp"
 #include "core/pipe.hpp"
 #include "core/endpoint.hpp"
@@ -254,6 +255,8 @@ class socket_base_t : public own_t,
                                 size_t routing_id_size_) const;
 
     int monitor_snapshot (zlink_monitor_snapshot_t *out_);
+    void refresh_auto_hwm_policy ();
+    void set_auto_hwm_role (auto_hwm_role_t role_);
     bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
     void socket_bound_endpoints (std::set<std::string> *out_) const;
@@ -607,6 +610,7 @@ class socket_base_t : public own_t,
     void process_term (int linger_) ZLINK_FINAL;
     void process_term_endpoint (std::string *endpoint_) ZLINK_FINAL;
 
+    void refresh_attached_pipe_hwms ();
     void update_pipe_options (int option_);
 
     std::string resolve_tcp_addr (std::string endpoint_uri_,
@@ -624,6 +628,14 @@ class socket_base_t : public own_t,
     //  Improves efficiency of time measurement.
     clock_t _clock;
     socket_runtime_t _runtime;
+    auto_hwm_role_t _auto_hwm_role;
+    bool _auto_hwm_role_override;
+    bool _manual_sndhwm;
+    bool _manual_rcvhwm;
+    bool _manual_sndbuf;
+    bool _manual_rcvbuf;
+    auto_hwm_context_plan_t _auto_hwm_context_plan;
+    auto_hwm_socket_plan_t _auto_hwm_socket_plan;
     uint32_t _local_peer_weight;
     socket_discovery_attachment_t *_service_attachment;
     std::shared_ptr<void> _router_spot_request_reply_state;

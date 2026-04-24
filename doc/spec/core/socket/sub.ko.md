@@ -8,6 +8,13 @@
 토픽 필터링을 사용하는 구독 소켓. SUB는 데이터 수신 전용이며,
 구독 관리가 제어 플레인입니다.
 
+## 자동 HWM 기본값
+
+SUB는 context auto HWM 정책에서 `recv_ingress` 역할로 분류됩니다.
+기본 context 설정에서는 수신 HWM이 floor `8`에서 시작하고, 연결 수가 늘면
+같은 context 예산 안에서 다시 계산됩니다. 사용자가 `RCVHWM`이나 `RCVBUF`를
+직접 설정하면 자동값보다 그 값이 우선합니다.
+
 ## Sub 옵션 (`zlink_sub_option_t`)
 
 `zlink_set_sub_option()` / `zlink_get_sub_option()`과 함께 사용합니다.

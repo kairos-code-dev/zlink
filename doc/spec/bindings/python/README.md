@@ -103,6 +103,14 @@ class ContextOptions:
     @blocky.setter
     def blocky(self, value: bool) -> None: ...
     @property
+    def auto_hwm_enabled(self) -> bool: ...
+    @auto_hwm_enabled.setter
+    def auto_hwm_enabled(self, value: bool) -> None: ...
+    @property
+    def auto_hwm_total_memory_budget_mb(self) -> int: ...
+    @auto_hwm_total_memory_budget_mb.setter
+    def auto_hwm_total_memory_budget_mb(self, value: int) -> None: ...
+    @property
     def socket_limit(self) -> int: ...       # read-only
     @property
     def msg_t_size(self) -> int: ...          # read-only
@@ -957,6 +965,25 @@ class MonitorSnapshot:
     detail_flags: int                # detail bitmask
     snd_pending_msgs: int            # pending send-queue messages
     rcv_pending_msgs: int            # pending receive-queue messages
+    auto_hwm_enabled: bool
+    auto_hwm_role: int
+    auto_hwm_managed_connections: int
+    auto_hwm_active_hwm_connections: int
+    auto_hwm_planning_transport_connections: int
+    auto_hwm_base_floor_per_connection: int
+    auto_hwm_applied_sndhwm: int
+    auto_hwm_applied_rcvhwm: int
+    auto_hwm_requested_sndbuf: int
+    auto_hwm_requested_rcvbuf: int
+    auto_hwm_effective_sndbuf: int
+    auto_hwm_effective_rcvbuf: int
+    auto_hwm_total_memory_budget_bytes: int
+    auto_hwm_queue_budget_bytes: int
+    auto_hwm_transport_budget_bytes: int
+    auto_hwm_runtime_reserve_bytes: int
+    auto_hwm_group_budget_bytes: int
+    auto_hwm_group_message_slots: int
+    auto_hwm_effective_message_bytes: int
 
     def is_ready(self) -> bool: ...  # True when the ready bit is set in state_flags
 ```

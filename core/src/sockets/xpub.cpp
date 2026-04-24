@@ -29,6 +29,7 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 {
     _last_pipe = NULL;
     options.type = ZLINK_CORE_SOCKET_XPUB;
+    refresh_auto_hwm_policy ();
     _welcome_msg.init ();
 }
 

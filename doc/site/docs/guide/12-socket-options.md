@@ -52,7 +52,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |---|---|
 | **What it does** | Limits the maximum number of messages in the pipe's outbound/inbound direction |
 | **Applied at** | `pipe_t::check_write()` — checks HWM when writing to pipe |
-| **Default** | `1000` (message count) |
+| **Default** | Calculated by the automatic HWM policy from the context budget, socket role, and connection count |
 | **0** | Unlimited |
 | **Effect** | When HWM is reached, `zlink_send()` blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
 
@@ -283,7 +283,10 @@ When enabled, HWM settings are ignored. Multipart messages cannot be received in
 Independent of HWM. HWM limits message count in the zlink pipe; SNDBUF/RCVBUF limits byte size in the OS kernel socket buffer.
 
 **Per-socket-type:**
-- `STREAM`: Auto-overridden to `262144` (256KB) if unset (`< 0`)
+- `STREAM`: calculated by the auto-HWM policy from the context budget and
+  planning connection count. If auto HWM is disabled and the application still
+  leaves the options unset, STREAM falls back to the compatibility default
+  `262144`
 
 ---
 
@@ -420,8 +423,8 @@ Some socket types override common defaults at creation time:
 | `ROUTER` | `ROUTER_HANDOVER` | `1` | Let a new connection take over an existing peer identity |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
-| `STREAM` | `SNDBUF` | `262144` (if unset) | Large RAW transfer support |
-| `STREAM` | `RCVBUF` | `262144` (if unset) | Large RAW receive support |
+| `STREAM` | `SNDBUF` | automatic (`262144` only when auto HWM is disabled and the option stays unset) | Transport buffer sizing from the context budget |
+| `STREAM` | `RCVBUF` | automatic (`262144` only when auto HWM is disabled and the option stays unset) | Transport buffer sizing from the context budget |
 
 > **Defaults and observable behavior:**
 >

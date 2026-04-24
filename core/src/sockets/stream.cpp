@@ -182,6 +182,7 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 {
     options.type = ZLINK_CORE_SOCKET_STREAM;
     options.backlog = 65536;
+    refresh_auto_hwm_policy ();
     if (options.sndbuf < 0)
         options.sndbuf = 262144;
     if (options.rcvbuf < 0)

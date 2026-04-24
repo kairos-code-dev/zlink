@@ -28,6 +28,13 @@
 대신 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를 반환합니다. 호출자가
 조용한 drop 동작을 원하면 명시적으로 `0`으로 설정해야 합니다.
 
+## 자동 HWM 기본값
+
+PUB는 context auto HWM 정책에서 `fanout` 역할로 분류됩니다.
+기본 context 설정에서는 송신 HWM이 floor `16`에서 시작하고, 연결 수가 늘면
+같은 context 예산 안에서 다시 계산됩니다. 사용자가 `SNDHWM`이나 `SNDBUF`를
+직접 설정하면 자동값보다 그 값이 우선합니다.
+
 ## 함수
 
 ### zlink_set_pub_option

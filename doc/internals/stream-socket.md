@@ -215,8 +215,10 @@ These values are fixed as internal constants and not controlled by STREAM env kn
 ### 7.2 Effective socket/listener defaults
 
 - backlog: `65536`
-- `sndbuf` default when unset: `262144`
-- `rcvbuf` default when unset: `262144`
+- `sndhwm` / `rcvhwm`: start from the routed-role auto-HWM floor
+- `sndbuf` / `rcvbuf`: use the auto-HWM transport-budget result
+- if auto HWM is disabled and `sndbuf` / `rcvbuf` stay unset, STREAM falls
+  back to the compatibility default `262144`
 - accept concurrency (STREAM only): default `4`, max `128`
 - session scheduler (STREAM): default `rr`
 

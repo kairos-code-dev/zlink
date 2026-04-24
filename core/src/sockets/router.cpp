@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
 #include "sockets/router.hpp"
+#include "sockets/socket_dispatch_loop_internal.hpp"
 #include "core/pipe.hpp"
 #include "protocol/wire.hpp"
 #include "utils/random.hpp"
@@ -747,20 +748,13 @@ void zlink::router_t::xdispatch_io ()
 {
     if (!socket_msg_dispatch_active ())
         return;
-
-    msg_t msg;
-    const int init_rc = msg.init ();
-    errno_assert (init_rc == 0);
-
-    pipe_t *dispatch_pipe = NULL;
-    while (_fq.recvpipe (&msg, &dispatch_pipe) == 0) {
-        const int dispatch_rc = xsocket_msg_dispatch (&msg, dispatch_pipe);
-        if (dispatch_rc <= 0)
-            break;
-    }
-
-    const int close_rc = msg.close ();
-    errno_assert (close_rc == 0);
+    zlink::drain_socket_dispatch_loop (
+      [this] (msg_t *msg_, pipe_t **pipe_out_) {
+          return _fq.recvpipe (msg_, pipe_out_);
+      },
+      [this] (msg_t *msg_, pipe_t *pipe_) {
+          return xsocket_msg_dispatch (msg_, pipe_);
+      });
 }
 
 int zlink::router_t::rollback ()

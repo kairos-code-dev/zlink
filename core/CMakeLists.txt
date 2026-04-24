@@ -981,6 +981,8 @@ set(api-sources
     src/api/service_spot_request_reply_local_reply.cpp
     src/api/service_spot_request_reply_local_request.cpp
     src/api/service_spot_request_reply_local_direct.cpp
+    src/api/service_spot_request_reply_completion.cpp
+    src/api/service_spot_request_reply_part_submit.cpp
     src/api/service_spot_request_reply_routed_delivery.cpp
     src/api/service_spot_request_reply_progress.cpp
     src/api/service_spot_request_reply_api.cpp
@@ -1078,6 +1080,7 @@ set(spot-sources
     src/services/spot/spot_data_plane.cpp
     src/services/spot/spot_data_plane_forwarding.cpp
     src/services/spot/spot_data_plane_loop.cpp
+    src/services/spot/spot_data_plane_message_io.cpp
     src/services/spot/spot_data_plane_runtime.cpp
     src/services/spot/spot_data_plane_protocol.cpp
     src/services/spot/spot_mesh_pub_budget.cpp

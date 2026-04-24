@@ -123,6 +123,61 @@ static const std::string &sender_target_endpoint_local (
              : runtime_->route_ingress_endpoint;
 }
 
+struct runtime_socket_slot_ref_t
+{
+    socket_base_t **slot;
+    const std::string *endpoint;
+    bool close_directly;
+};
+
+size_t fill_runtime_socket_slot_refs (spot_runtime_t *runtime_,
+                                      runtime_socket_slot_ref_t *out_)
+{
+    if (!runtime_ || !out_)
+        return 0;
+
+    size_t count = 0;
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->data_ctrl_front,
+                                &runtime_->data_ctrl_endpoint, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->data_ctrl_back,
+                                &runtime_->data_ctrl_endpoint, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->mesh_pub, NULL, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->mesh_xsub, NULL, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->peer_ctrl_pub,
+                                &runtime_->peer_ctrl_endpoint, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->peer_ctrl_sub, NULL, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->route_ingress,
+                                &runtime_->route_ingress_endpoint, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->peer_route_ingress, NULL, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->node_router,
+                                &runtime_->node_router_endpoint, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->route_ingress_tx,
+                                &runtime_->route_ingress_sender_endpoint, true};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->node_router_tx,
+                                &runtime_->node_router_sender_endpoint, true};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->peer_route_tx,
+                                &runtime_->peer_route_sender_endpoint, true};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->local_pub_ingress_sub,
+                                &runtime_->pub_ingress_endpoint, false};
+    out_[count++] =
+      runtime_socket_slot_ref_t{&runtime_->local_fanout_xpub,
+                                &runtime_->sub_fanout_endpoint, false};
+    return count;
+}
+
 }
 
 spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
@@ -412,222 +467,87 @@ int spot_runtime_t::ensure_healthy () const
 
 void spot_runtime_t::stop_sockets ()
 {
-    socket_base_t *ctrl_front = NULL;
-    socket_base_t *ctrl_back = NULL;
-    socket_base_t *mesh_pub_local = NULL;
-    socket_base_t *mesh_xsub_local = NULL;
-    socket_base_t *peer_ctrl_pub_local = NULL;
-    socket_base_t *peer_ctrl_sub_local = NULL;
-    socket_base_t *route_ingress_local = NULL;
-    socket_base_t *peer_route_ingress_local = NULL;
-    socket_base_t *node_router_local = NULL;
-    socket_base_t *route_ingress_tx_local = NULL;
-    socket_base_t *node_router_tx_local = NULL;
-    socket_base_t *peer_route_tx_local = NULL;
-    socket_base_t *ingress = NULL;
-    socket_base_t *fanout = NULL;
+    runtime_socket_slot_ref_t refs[14];
+    socket_base_t *sockets[14];
+    const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
 
     {
         scoped_lock_t lock (owner->_sync);
-        ctrl_front = data_ctrl_front;
-        ctrl_back = data_ctrl_back;
-        mesh_pub_local = mesh_pub;
-        mesh_xsub_local = mesh_xsub;
-        peer_ctrl_pub_local = peer_ctrl_pub;
-        peer_ctrl_sub_local = peer_ctrl_sub;
-        route_ingress_local = route_ingress;
-        peer_route_ingress_local = peer_route_ingress;
-        node_router_local = node_router;
-        route_ingress_tx_local = route_ingress_tx;
-        node_router_tx_local = node_router_tx;
-        peer_route_tx_local = peer_route_tx;
-        ingress = local_pub_ingress_sub;
-        fanout = local_fanout_xpub;
+        for (size_t i = 0; i < slot_count; ++i)
+            sockets[i] = refs[i].slot ? *refs[i].slot : NULL;
     }
 
-    if (ctrl_front)
-        ctrl_front->stop ();
-    if (ctrl_back)
-        ctrl_back->stop ();
-    if (mesh_pub_local)
-        mesh_pub_local->stop ();
-    if (mesh_xsub_local)
-        mesh_xsub_local->stop ();
-    if (peer_ctrl_pub_local)
-        peer_ctrl_pub_local->stop ();
-    if (peer_ctrl_sub_local)
-        peer_ctrl_sub_local->stop ();
-    if (route_ingress_local)
-        route_ingress_local->stop ();
-    if (peer_route_ingress_local)
-        peer_route_ingress_local->stop ();
-    if (node_router_local)
-        node_router_local->stop ();
-    if (route_ingress_tx_local)
-        route_ingress_tx_local->stop ();
-    if (node_router_tx_local)
-        node_router_tx_local->stop ();
-    if (peer_route_tx_local)
-        peer_route_tx_local->stop ();
-    if (ingress)
-        ingress->stop ();
-    if (fanout)
-        fanout->stop ();
+    for (size_t i = 0; i < slot_count; ++i) {
+        if (sockets[i])
+            sockets[i]->stop ();
+    }
 }
 
 int spot_runtime_t::close_control_sockets ()
 {
     int first_error = 0;
-    socket_base_t *ctrl_front = NULL;
-    socket_base_t *ctrl_back = NULL;
-    socket_base_t *mesh_pub_local = NULL;
-    socket_base_t *mesh_xsub_local = NULL;
-    socket_base_t *peer_ctrl_pub_local = NULL;
-    socket_base_t *peer_ctrl_sub_local = NULL;
-    socket_base_t *route_ingress_local = NULL;
-    socket_base_t *peer_route_ingress_local = NULL;
-    socket_base_t *node_router_local = NULL;
-    socket_base_t *route_ingress_tx_local = NULL;
-    socket_base_t *node_router_tx_local = NULL;
-    socket_base_t *peer_route_tx_local = NULL;
-    socket_base_t *ingress = NULL;
-    socket_base_t *fanout = NULL;
+    runtime_socket_slot_ref_t refs[14];
+    socket_base_t *sockets[14];
+    const std::string *endpoints[14];
+    const bool close_directly[14] = {
+      false, false, false, false, false, false, false,
+      false, false, true,  true,  true,  false, false};
+    const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
     {
         scoped_lock_t lock (owner->_sync);
-        ctrl_front = data_ctrl_front;
-        ctrl_back = data_ctrl_back;
-        mesh_pub_local = mesh_pub;
-        mesh_xsub_local = mesh_xsub;
-        peer_ctrl_pub_local = peer_ctrl_pub;
-        peer_ctrl_sub_local = peer_ctrl_sub;
-        route_ingress_local = route_ingress;
-        peer_route_ingress_local = peer_route_ingress;
-        node_router_local = node_router;
-        route_ingress_tx_local = route_ingress_tx;
-        node_router_tx_local = node_router_tx;
-        peer_route_tx_local = peer_route_tx;
-        ingress = local_pub_ingress_sub;
-        fanout = local_fanout_xpub;
-        data_ctrl_front = NULL;
-        data_ctrl_back = NULL;
-        mesh_pub = NULL;
-        mesh_xsub = NULL;
-        peer_ctrl_pub = NULL;
-        peer_ctrl_sub = NULL;
-        route_ingress = NULL;
-        peer_route_ingress = NULL;
-        node_router = NULL;
-        route_ingress_tx = NULL;
-        node_router_tx = NULL;
-        peer_route_tx = NULL;
-        local_pub_ingress_sub = NULL;
-        local_fanout_xpub = NULL;
+        for (size_t i = 0; i < slot_count; ++i) {
+            sockets[i] = refs[i].slot ? *refs[i].slot : NULL;
+            endpoints[i] = refs[i].endpoint;
+            if (refs[i].slot)
+                *refs[i].slot = NULL;
+        }
     }
 
     if (spot_shutdown_debug_enabled_local ()) {
         std::fprintf (
           stderr,
           "[spot-close] ctrl_front=%d ctrl_back=%d mesh_pub=%d mesh_xsub=%d peer_ctrl_pub=%d peer_ctrl_sub=%d route_ingress=%d peer_route_ingress=%d node_router=%d route_ingress_tx=%d node_router_tx=%d peer_route_tx=%d ingress=%d fanout=%d\n",
-          ctrl_front ? ctrl_front->socket_id () : -1,
-          ctrl_back ? ctrl_back->socket_id () : -1,
-          mesh_pub_local ? mesh_pub_local->socket_id () : -1,
-          mesh_xsub_local ? mesh_xsub_local->socket_id () : -1,
-          peer_ctrl_pub_local ? peer_ctrl_pub_local->socket_id () : -1,
-          peer_ctrl_sub_local ? peer_ctrl_sub_local->socket_id () : -1,
-          route_ingress_local ? route_ingress_local->socket_id () : -1,
-          peer_route_ingress_local ? peer_route_ingress_local->socket_id () : -1,
-          node_router_local ? node_router_local->socket_id () : -1,
-          route_ingress_tx_local ? route_ingress_tx_local->socket_id () : -1,
-          node_router_tx_local ? node_router_tx_local->socket_id () : -1,
-          peer_route_tx_local ? peer_route_tx_local->socket_id () : -1,
-          ingress ? ingress->socket_id () : -1,
-          fanout ? fanout->socket_id () : -1);
+          sockets[0] ? sockets[0]->socket_id () : -1,
+          sockets[1] ? sockets[1]->socket_id () : -1,
+          sockets[2] ? sockets[2]->socket_id () : -1,
+          sockets[3] ? sockets[3]->socket_id () : -1,
+          sockets[4] ? sockets[4]->socket_id () : -1,
+          sockets[5] ? sockets[5]->socket_id () : -1,
+          sockets[6] ? sockets[6]->socket_id () : -1,
+          sockets[7] ? sockets[7]->socket_id () : -1,
+          sockets[8] ? sockets[8]->socket_id () : -1,
+          sockets[9] ? sockets[9]->socket_id () : -1,
+          sockets[10] ? sockets[10]->socket_id () : -1,
+          sockets[11] ? sockets[11]->socket_id () : -1,
+          sockets[12] ? sockets[12]->socket_id () : -1,
+          sockets[13] ? sockets[13]->socket_id () : -1);
         std::fflush (stderr);
     }
 
     if (owner && owner->_ctx) {
-        if (ctrl_front && !data_ctrl_endpoint.empty ())
-            (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
-        if (ctrl_back && !data_ctrl_endpoint.empty ())
-            (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
-        if (route_ingress_local && !route_ingress_endpoint.empty ())
-            (void) route_ingress_local->term_endpoint (
-              route_ingress_endpoint.c_str ());
-        if (node_router_local && !node_router_endpoint.empty ())
-            (void) node_router_local->term_endpoint (
-              node_router_endpoint.c_str ());
-        if (node_router_local && !peer_route_bind_endpoint.empty ())
-            (void) node_router_local->term_endpoint (
-              peer_route_bind_endpoint.c_str ());
-        if (ingress && !pub_ingress_endpoint.empty ())
-            (void) ingress->term_endpoint (pub_ingress_endpoint.c_str ());
-        if (fanout && !sub_fanout_endpoint.empty ())
-            (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
-        if (ctrl_front)
-            ctrl_front->set_all_pipes_nodelay ();
-        if (ctrl_back)
-            ctrl_back->set_all_pipes_nodelay ();
-        if (mesh_pub_local)
-            mesh_pub_local->set_all_pipes_nodelay ();
-        if (mesh_xsub_local)
-            mesh_xsub_local->set_all_pipes_nodelay ();
-        if (peer_ctrl_pub_local)
-            peer_ctrl_pub_local->set_all_pipes_nodelay ();
-        if (peer_ctrl_sub_local)
-            peer_ctrl_sub_local->set_all_pipes_nodelay ();
-        if (route_ingress_local)
-            route_ingress_local->set_all_pipes_nodelay ();
-        if (peer_route_ingress_local)
-            peer_route_ingress_local->set_all_pipes_nodelay ();
-        if (node_router_local)
-            node_router_local->set_all_pipes_nodelay ();
-        if (ingress)
-            ingress->set_all_pipes_nodelay ();
-        if (fanout)
-            fanout->set_all_pipes_nodelay ();
-        if (route_ingress_tx_local)
-            close_socket_ptr_local (&route_ingress_tx_local);
-        if (node_router_tx_local)
-            close_socket_ptr_local (&node_router_tx_local);
-        if (peer_route_tx_local)
-            close_socket_ptr_local (&peer_route_tx_local);
-        preserve_first_error_local (close_runtime_socket (ctrl_front, 2000),
-                                    &first_error);
-        preserve_first_error_local (close_runtime_socket (ctrl_back, 2000),
-                                    &first_error);
-        preserve_first_error_local (close_runtime_socket (mesh_pub_local, 2000),
-                                    &first_error);
-        preserve_first_error_local (close_runtime_socket (mesh_xsub_local, 2000),
-                                    &first_error);
-        preserve_first_error_local (
-          close_runtime_socket (peer_ctrl_pub_local, 2000), &first_error);
-        preserve_first_error_local (
-          close_runtime_socket (peer_ctrl_sub_local, 2000), &first_error);
-        preserve_first_error_local (
-          close_runtime_socket (route_ingress_local, 2000), &first_error);
-        preserve_first_error_local (
-          close_runtime_socket (peer_route_ingress_local, 2000), &first_error);
-        preserve_first_error_local (
-          close_runtime_socket (node_router_local, 2000), &first_error);
-        preserve_first_error_local (close_runtime_socket (ingress, 2000),
-                                    &first_error);
-        preserve_first_error_local (close_runtime_socket (fanout, 2000),
-                                    &first_error);
+        for (size_t i = 0; i < slot_count; ++i) {
+            if (sockets[i] && endpoints[i] && !endpoints[i]->empty ())
+                (void) sockets[i]->term_endpoint (endpoints[i]->c_str ());
+        }
+        if (sockets[8] && !peer_route_bind_endpoint.empty ())
+            (void) sockets[8]->term_endpoint (peer_route_bind_endpoint.c_str ());
+        for (size_t i = 0; i < slot_count; ++i) {
+            if (sockets[i])
+                sockets[i]->set_all_pipes_nodelay ();
+        }
+        for (size_t i = 0; i < slot_count; ++i) {
+            if (!sockets[i])
+                continue;
+            if (close_directly[i]) {
+                close_socket_ptr_local (&sockets[i]);
+                continue;
+            }
+            preserve_first_error_local (close_runtime_socket (sockets[i], 2000),
+                                        &first_error);
+        }
     } else {
-        close_socket_ptr_local (&ctrl_front);
-        close_socket_ptr_local (&ctrl_back);
-        close_socket_ptr_local (&mesh_pub_local);
-        close_socket_ptr_local (&mesh_xsub_local);
-        close_socket_ptr_local (&peer_ctrl_pub_local);
-        close_socket_ptr_local (&peer_ctrl_sub_local);
-        close_socket_ptr_local (&route_ingress_local);
-        close_socket_ptr_local (&peer_route_ingress_local);
-        close_socket_ptr_local (&node_router_local);
-        close_socket_ptr_local (&route_ingress_tx_local);
-        close_socket_ptr_local (&node_router_tx_local);
-        close_socket_ptr_local (&peer_route_tx_local);
-        close_socket_ptr_local (&ingress);
-        close_socket_ptr_local (&fanout);
+        for (size_t i = 0; i < slot_count; ++i)
+            close_socket_ptr_local (&sockets[i]);
     }
 
     if (first_error != 0) {
@@ -1025,21 +945,12 @@ int spot_runtime_t::stop_and_join ()
 size_t spot_runtime_t::live_socket_slot_count () const
 {
     size_t count = 0;
+    runtime_socket_slot_ref_t refs[14];
+    const size_t slot_count =
+      fill_runtime_socket_slot_refs (const_cast<spot_runtime_t *> (this), refs);
     scoped_lock_t lock (const_cast<mutex_t &> (owner->_sync));
-    count += data_ctrl_front != NULL ? 1 : 0;
-    count += data_ctrl_back != NULL ? 1 : 0;
-    count += mesh_pub != NULL ? 1 : 0;
-    count += mesh_xsub != NULL ? 1 : 0;
-    count += peer_ctrl_pub != NULL ? 1 : 0;
-    count += peer_ctrl_sub != NULL ? 1 : 0;
-    count += route_ingress != NULL ? 1 : 0;
-    count += peer_route_ingress != NULL ? 1 : 0;
-    count += node_router != NULL ? 1 : 0;
-    count += route_ingress_tx != NULL ? 1 : 0;
-    count += node_router_tx != NULL ? 1 : 0;
-    count += peer_route_tx != NULL ? 1 : 0;
-    count += local_pub_ingress_sub != NULL ? 1 : 0;
-    count += local_fanout_xpub != NULL ? 1 : 0;
+    for (size_t i = 0; i < slot_count; ++i)
+        count += refs[i].slot && *refs[i].slot != NULL ? 1 : 0;
     return count;
 }
 

@@ -4,54 +4,9 @@
 
 #include "sockets/stream.hpp"
 #include "sockets/stream_dispatch_internal.hpp"
+#include "sockets/stream_dispatch_send_policy_internal.hpp"
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
-
-#include <chrono>
-#include <thread>
-
-namespace
-{
-bool wait_dispatch_send_retry (
-  const std::chrono::steady_clock::time_point &deadline_, bool dontwait_)
-{
-    if (dontwait_)
-        return false;
-
-    unsigned int spin_count = 0;
-    while (std::chrono::steady_clock::now () < deadline_) {
-        if (spin_count < 32) {
-            ++spin_count;
-            std::this_thread::yield ();
-            return true;
-        }
-
-        std::this_thread::sleep_for (std::chrono::microseconds (100));
-        return true;
-    }
-
-    return false;
-}
-
-zlink::pipe_t *resolve_direct_dispatch_output_pipe_local (
-  const zlink::stream_t *socket_,
-  uint32_t routing_id_)
-{
-    if (!socket_ || !zlink::stream_dispatch_owns_socket (socket_))
-        return NULL;
-
-    if (zlink::stream_dispatch_context_t::current_routing_id () != routing_id_)
-        return NULL;
-
-    zlink::pipe_t *dispatch_pipe =
-      zlink::stream_dispatch_context_t::current_pipe ();
-    if (!dispatch_pipe)
-        return NULL;
-
-    zlink::pipe_t *out = dispatch_pipe->get_peer ();
-    return out ? out : dispatch_pipe;
-}
-}
 
 int zlink::stream_t::stream_dispatch_send_from_io (
   const zlink_routing_id_t *rid_,
@@ -68,18 +23,14 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         return -1;
     }
 
-    const uint32_t routing_id =
-      (static_cast<uint32_t> (rid_->data[0]) << 24)
-      | (static_cast<uint32_t> (rid_->data[1]) << 16)
-      | (static_cast<uint32_t> (rid_->data[2]) << 8)
-      | static_cast<uint32_t> (rid_->data[3]);
+    const uint32_t routing_id = stream_dispatch_decode_routing_id (rid_);
     if (routing_id == 0) {
         errno = EINVAL;
         return -1;
     }
 
     pipe_t *const direct_out =
-      resolve_direct_dispatch_output_pipe_local (this, routing_id);
+      resolve_direct_dispatch_output_pipe (this, routing_id);
 
     if (size_ == 0) {
         if (direct_out) {
@@ -110,13 +61,7 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         return 1;
     }
 
-    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0 || options.sndtimeo == 0;
-    const int sndtimeo = options.sndtimeo;
-    const std::chrono::steady_clock::time_point deadline =
-      sndtimeo < 0
-        ? std::chrono::steady_clock::time_point::max ()
-        : std::chrono::steady_clock::now ()
-            + std::chrono::milliseconds (sndtimeo);
+    const stream_dispatch_send_policy_t policy (flags_, options.sndtimeo);
 
     for (;;) {
         {
@@ -140,21 +85,21 @@ int zlink::stream_t::stream_dispatch_send_from_io (
             }
         }
 
-        if (dontwait) {
+        if (policy.dontwait ()) {
             const int rc = out_msg.close ();
             errno_assert (rc == 0);
             errno = EAGAIN;
             return -1;
         }
 
-        if (sndtimeo >= 0 && std::chrono::steady_clock::now () >= deadline) {
+        if (policy.timed_out ()) {
             const int rc = out_msg.close ();
             errno_assert (rc == 0);
             errno = EAGAIN;
             return -1;
         }
 
-        if (!wait_dispatch_send_retry (deadline, dontwait))
+        if (!policy.wait_retry ())
             break;
     }
 
@@ -174,18 +119,14 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
         return -1;
     }
 
-    const uint32_t routing_id =
-      (static_cast<uint32_t> (rid_->data[0]) << 24)
-      | (static_cast<uint32_t> (rid_->data[1]) << 16)
-      | (static_cast<uint32_t> (rid_->data[2]) << 8)
-      | static_cast<uint32_t> (rid_->data[3]);
+    const uint32_t routing_id = stream_dispatch_decode_routing_id (rid_);
     if (routing_id == 0) {
         errno = EINVAL;
         return -1;
     }
 
     pipe_t *const direct_out =
-      resolve_direct_dispatch_output_pipe_local (this, routing_id);
+      resolve_direct_dispatch_output_pipe (this, routing_id);
 
     if (direct_out) {
         if (msg_->size () == 0) {
@@ -203,13 +144,7 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
         }
     }
 
-    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0 || options.sndtimeo == 0;
-    const int sndtimeo = options.sndtimeo;
-    const std::chrono::steady_clock::time_point deadline =
-      sndtimeo < 0
-        ? std::chrono::steady_clock::time_point::max ()
-        : std::chrono::steady_clock::now ()
-            + std::chrono::milliseconds (sndtimeo);
+    const stream_dispatch_send_policy_t policy (flags_, options.sndtimeo);
 
     for (;;) {
         {
@@ -238,17 +173,17 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
             }
         }
 
-        if (dontwait) {
+        if (policy.dontwait ()) {
             errno = EAGAIN;
             return -1;
         }
 
-        if (sndtimeo >= 0 && std::chrono::steady_clock::now () >= deadline) {
+        if (policy.timed_out ()) {
             errno = EAGAIN;
             return -1;
         }
 
-        if (!wait_dispatch_send_retry (deadline, dontwait))
+        if (!policy.wait_retry ())
             break;
     }
 
@@ -265,9 +200,7 @@ int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
     }
 
     pipe_t *dispatch_pipe = zlink::stream_dispatch_context_t::current_pipe ();
-    pipe_t *direct_out = dispatch_pipe ? dispatch_pipe->get_peer () : NULL;
-    if (!direct_out && dispatch_pipe)
-        direct_out = dispatch_pipe;
+    pipe_t *direct_out = resolve_current_dispatch_output_pipe ();
     if (!direct_out) {
         errno = EAGAIN;
         return -1;

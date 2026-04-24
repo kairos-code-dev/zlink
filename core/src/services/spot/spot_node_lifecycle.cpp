@@ -7,6 +7,8 @@
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
 
+#include "services/common/monitor_decode.hpp"
+#include "services/common/socket_monitor_bridge.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_owned_service.hpp"
 #include "services/discovery/discovery_protocol.hpp"
@@ -566,8 +568,46 @@ int spot_node_t::attach_pub_ingress (socket_base_t *pub_)
         }
     }
 
-    if (pub_->connect (endpoint.c_str ()) != 0)
+    socket_base_t *monitor_socket = static_cast<socket_base_t *> (
+      open_socket_monitor_bridge (
+        pub_, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
+
+    if (pub_->connect (endpoint.c_str ()) != 0) {
+        if (monitor_socket) {
+            close_socket_monitor_bridge (pub_, monitor_socket);
+            monitor_socket->close ();
+        }
         return -1;
+    }
+
+    if (monitor_socket) {
+        const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 250;
+        while (zlink::clock_t ().now_ms () < deadline_ms) {
+            const bool ingress_ready =
+              pub_->socket_has_attached_pipes ()
+              && _runtime && _runtime->local_pub_ingress_sub
+              && _runtime->local_pub_ingress_sub->socket_has_attached_pipes ();
+            if (ingress_ready)
+                break;
+
+            zlink_monitor_event_t raw;
+            if (recv_socket_monitor_event (monitor_socket, &raw, ZLINK_DONTWAIT)
+                == 0) {
+                if (raw.event == ZLINK_EVENT_CONNECTION_READY
+                    || raw.event == ZLINK_EVENT_DISCONNECTED) {
+                    break;
+                }
+                continue;
+            }
+
+            if (errno != EAGAIN)
+                break;
+            zlink::sleep_ms (1);
+        }
+
+        close_socket_monitor_bridge (pub_, monitor_socket);
+        monitor_socket->close ();
+    }
 
     scoped_lock_t lock (_sync);
     if (_pub_ingress || _service_attachment_socket_index.count (pub_) != 0) {

@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_data_plane_message_io_internal.hpp"
 #include "services/spot/spot_message_parts_internal.hpp"
 #include "services/spot/spot_mesh_pub_budget.hpp"
 
@@ -37,6 +38,8 @@ namespace zlink
 {
 namespace
 {
+namespace spot_io = zlink::spot_data_plane_message_io;
+
 #ifdef _WIN32
 static int current_process_id ()
 {
@@ -105,15 +108,6 @@ static void spot_ctrl_debugf (const char *fmt_, ...)
     vfprintf (stderr, fmt_, args);
     fprintf (stderr, "\n");
     fflush (stderr);
-    FILE *fp = fopen ("/tmp/zlink_spot_ctrl.log", "a");
-    if (fp) {
-        va_list file_args;
-        va_start (file_args, fmt_);
-        vfprintf (fp, fmt_, file_args);
-        fprintf (fp, "\n");
-        va_end (file_args);
-        fclose (fp);
-    }
     va_end (args);
 }
 
@@ -140,195 +134,6 @@ static void spot_ready_ack_ctrl_debugf (const char *fmt_, ...)
     va_end (args);
 }
 
-static int send_ascii_frame (socket_base_t *socket_,
-                             const std::string &value_,
-                             int flags_)
-{
-    msg_t msg;
-    if (msg.init_size (value_.size ()) != 0)
-        return -1;
-    if (!value_.empty ())
-        memcpy (msg.data (), value_.data (), value_.size ());
-    const int rc = socket_->send (&msg, flags_);
-    msg.close ();
-    return rc;
-}
-
-static int send_control_snapshot (socket_base_t *socket_,
-                                  const char *topic_,
-                                  const std::string &target_endpoint_,
-                                  const std::string &source_node_id_,
-                                  const std::set<std::string> &filters_)
-{
-    if (!socket_ || !topic_ || target_endpoint_.empty ()
-        || source_node_id_.empty ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const std::string version =
-      spot_control_protocol::node_id_string (
-        static_cast<uint32_t> (spot_control_protocol::protocol_version));
-
-    if (send_ascii_frame (socket_, topic_, ZLINK_SNDMORE)
-        != 0
-        || send_ascii_frame (socket_, target_endpoint_, ZLINK_SNDMORE) != 0
-        || send_ascii_frame (socket_, source_node_id_, ZLINK_SNDMORE) != 0) {
-        return -1;
-    }
-
-    const bool has_filters = !filters_.empty ();
-    if (send_ascii_frame (socket_, version, has_filters ? ZLINK_SNDMORE : 0)
-        != 0)
-        return -1;
-
-    std::set<std::string>::const_iterator it = filters_.begin ();
-    while (it != filters_.end ()) {
-        std::set<std::string>::const_iterator next = it;
-        ++next;
-        if (send_ascii_frame (socket_, *it,
-                              next != filters_.end () ? ZLINK_SNDMORE : 0)
-            != 0) {
-            return -1;
-        }
-        it = next;
-    }
-
-    spot_ctrl_debugf ("send snapshot target=%s source=%s filters=%zu",
-                      target_endpoint_.c_str (), source_node_id_.c_str (),
-                      static_cast<size_t> (filters_.size ()));
-
-    return 0;
-}
-
-static int send_snapshot_to_target (socket_base_t *socket_,
-                                    spot_node_t *node_,
-                                    const std::string &target_endpoint_)
-{
-    if (!socket_ || !node_ || target_endpoint_.empty ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::set<std::string> filters;
-    node_->snapshot_raw_subscription_filters (&filters);
-    return send_control_snapshot (
-      socket_, spot_control_protocol::ctrl_snapshot_topic, target_endpoint_,
-      spot_control_protocol::node_id_string (
-        spot_node_access_t::runtime (node_)->node_id),
-      filters);
-}
-
-static int send_snapshot_to_peers (
-  socket_base_t *socket_,
-  spot_node_t *node_,
-  const std::map<std::string, std::string> &peer_ctrl_endpoints_)
-{
-    if (!socket_ || !node_)
-        return 0;
-
-    std::set<std::string> filters;
-    node_->snapshot_raw_subscription_filters (&filters);
-    const std::string source_node_id =
-      spot_control_protocol::node_id_string (
-        spot_node_access_t::runtime (node_)->node_id);
-
-    for (std::map<std::string, std::string>::const_iterator it =
-           peer_ctrl_endpoints_.begin ();
-         it != peer_ctrl_endpoints_.end (); ++it) {
-        if (it->first.empty ())
-            continue;
-        if (send_control_snapshot (socket_,
-                                   spot_control_protocol::ctrl_snapshot_topic,
-                                   it->first, source_node_id, filters)
-            != 0) {
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-static int send_ready_ack_snapshots_to_target (
-  socket_base_t *socket_,
-  const std::string &target_endpoint_,
-  const std::map<std::string, std::map<std::string, std::set<std::string> > > &
-    outbound_ready_filters_)
-{
-    if (!socket_ || target_endpoint_.empty ())
-        return 0;
-
-    const std::map<std::string,
-                   std::map<std::string, std::set<std::string> > >::const_iterator
-      target_it = outbound_ready_filters_.find (target_endpoint_);
-    if (target_it == outbound_ready_filters_.end ())
-        return 0;
-
-    for (std::map<std::string, std::set<std::string> >::const_iterator it =
-           target_it->second.begin ();
-         it != target_it->second.end (); ++it) {
-        if (it->first.empty ())
-            continue;
-        if (send_control_snapshot (socket_,
-                                   spot_control_protocol::ctrl_ready_ack_topic,
-                                   target_endpoint_, it->first,
-                                   it->second)
-            != 0)
-            return -1;
-    }
-
-    return 0;
-}
-
-static bool parse_ready_ack_arg (const std::string &arg_,
-                                 std::string *target_endpoint_out_,
-                                 std::string *raw_filter_out_,
-                                 std::string *ack_source_id_out_)
-{
-    if (!target_endpoint_out_ || !raw_filter_out_ || !ack_source_id_out_)
-        return false;
-
-    const size_t first = arg_.find ('\n');
-    if (first == std::string::npos)
-        return false;
-    const size_t second = arg_.find ('\n', first + 1);
-    if (second == std::string::npos)
-        return false;
-
-    *target_endpoint_out_ = arg_.substr (0, first);
-    *raw_filter_out_ = arg_.substr (first + 1, second - first - 1);
-    *ack_source_id_out_ = arg_.substr (second + 1);
-    return !target_endpoint_out_->empty () && !raw_filter_out_->empty ()
-           && !ack_source_id_out_->empty ();
-}
-
-static int recv_remaining_frame_strings (socket_base_t *socket_,
-                                         std::vector<std::string> *out_)
-{
-    if (!socket_ || !out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    out_->clear ();
-    while (true) {
-        msg_t frame;
-        if (frame.init () != 0)
-            return -1;
-        if (socket_->recv (&frame, 0) != 0) {
-            frame.close ();
-            return -1;
-        }
-        out_->push_back (std::string (
-          static_cast<const char *> (frame.data ()), frame.size ()));
-        const bool more = (frame.flags () & msg_t::more) != 0;
-        frame.close ();
-        if (!more)
-            break;
-    }
-    return 0;
-}
-
 static uint64_t default_bootstrap_broadcast_interval_ms (
   const spot_runtime_t *runtime_)
 {
@@ -341,39 +146,6 @@ static uint64_t default_bootstrap_broadcast_interval_ms (
     }
 
     return 1000;
-}
-
-static int dispatch_routed_mesh_message (spot_node_t *node_,
-                                         spot_owned_msg_parts_t *frames_)
-{
-    if (!node_ || !frames_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::vector<zlink_msg_t> combined;
-    if (spot_move_msg_parts (frames_, &combined) != 0)
-        return -1;
-
-    zlink::spot_reqrep_internal::parsed_spot_envelope_t envelope;
-    const bool parsed =
-      !combined.empty ()
-      && zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-        &combined[0], combined.size (), &envelope);
-
-    int rc = 0;
-    if (parsed
-        && zlink::spot_reqrep_internal::should_process_spot_routed_locally (
-          node_, envelope)) {
-        rc = zlink::spot_reqrep_internal::
-          process_parsed_route_combined_for_local_delivery (&combined,
-                                                            envelope);
-    }
-
-    const int saved_errno = errno;
-    zlink::request_reply::close_built_parts (&combined);
-    errno = saved_errno;
-    return parsed ? rc : 0;
 }
 
 static bool topic_frame_equals (const msg_t &frame_, const char *topic_)
@@ -390,98 +162,6 @@ static bool topic_frame_equals (const msg_t &frame_, const char *topic_)
                       == 0);
 }
 
-static int recv_remaining_frames_to_vector (socket_base_t *socket_,
-                                            std::vector<zlink_msg_t> *out_,
-                                            size_t *wire_bytes_out_)
-{
-    if (!socket_ || !out_ || !wire_bytes_out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    while (out_->empty ()
-           || (reinterpret_cast<msg_t *> (&out_->back ())->flags () & msg_t::more)
-                != 0) {
-        msg_t frame;
-        if (frame.init () != 0)
-            return -1;
-
-        if (socket_->recv (&frame, 0) != 0) {
-            const int err = errno;
-            frame.close ();
-            zlink::request_reply::close_built_parts (out_);
-            out_->clear ();
-            errno = err;
-            return -1;
-        }
-
-        *wire_bytes_out_ += frame.size ();
-        out_->push_back (zlink_msg_t ());
-        zlink_msg_t &stored = out_->back ();
-        zlink_msg_init (&stored);
-        if (zlink_msg_move (&stored, reinterpret_cast<zlink_msg_t *> (&frame))
-            != 0) {
-            const int err = errno;
-            frame.close ();
-            zlink_msg_close (&stored);
-            out_->pop_back ();
-            zlink::request_reply::close_built_parts (out_);
-            out_->clear ();
-            errno = err;
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-static int recv_remaining_frames_to_parts (socket_base_t *socket_,
-                                           spot_owned_msg_parts_t *parts_out_,
-                                           size_t *wire_bytes_out_)
-{
-    if (!socket_ || !parts_out_ || !wire_bytes_out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    spot_clear_msg_parts (parts_out_);
-    while (parts_out_->empty ()
-           || (reinterpret_cast<msg_t *> (&parts_out_->back ())->flags ()
-                & msg_t::more)
-                != 0) {
-        msg_t frame;
-        if (frame.init () != 0) {
-            spot_clear_msg_parts (parts_out_);
-            return -1;
-        }
-
-        if (socket_->recv (&frame, 0) != 0) {
-            const int err = errno;
-            frame.close ();
-            spot_clear_msg_parts (parts_out_);
-            errno = err;
-            return -1;
-        }
-
-        parts_out_->push_back (zlink_msg_t ());
-        zlink_msg_t &stored = parts_out_->back ();
-        spot_init_msg_frame (&stored);
-        if (zlink_msg_move (&stored, reinterpret_cast<zlink_msg_t *> (&frame))
-            != 0) {
-            const int err = errno;
-            frame.close ();
-            spot_close_msg_frame (&stored);
-            parts_out_->pop_back ();
-            spot_clear_msg_parts (parts_out_);
-            errno = err;
-            return -1;
-        }
-
-        *wire_bytes_out_ += zlink_msg_size (&stored);
-    }
-
-    return 0;
-}
 }
 
 int spot_data_plane_protocol_t::recv_ascii_command (
@@ -535,14 +215,14 @@ int spot_data_plane_protocol_t::send_errno_reply (socket_base_t *socket_,
 {
     char buf[32];
     snprintf (buf, sizeof (buf), "%d", error_);
-    if (send_ascii_frame (socket_, "error", ZLINK_SNDMORE) != 0)
+    if (spot_io::send_ascii_frame (socket_, "error", ZLINK_SNDMORE) != 0)
         return -1;
-    return send_ascii_frame (socket_, buf, 0);
+    return spot_io::send_ascii_frame (socket_, buf, 0);
 }
 
 int spot_data_plane_protocol_t::send_ok_reply (socket_base_t *socket_)
 {
-    return send_ascii_frame (socket_, "ok", 0);
+    return spot_io::send_ascii_frame (socket_, "ok", 0);
 }
 
 uint64_t spot_data_plane_protocol_t::resolve_bootstrap_broadcast_interval_ms (
@@ -590,17 +270,19 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
     const std::string version =
       spot_control_protocol::node_id_string (
         static_cast<uint32_t> (spot_control_protocol::protocol_version));
-    if (send_ascii_frame (mesh_pub_,
-                          spot_control_protocol::bootstrap_ctrl_descriptor_topic,
-                          ZLINK_SNDMORE)
+    if (spot_io::send_ascii_frame (
+          mesh_pub_, spot_control_protocol::bootstrap_ctrl_descriptor_topic,
+          ZLINK_SNDMORE)
           != 0
-        || send_ascii_frame (mesh_pub_, public_data_endpoint, ZLINK_SNDMORE)
+        || spot_io::send_ascii_frame (
+             mesh_pub_, public_data_endpoint, ZLINK_SNDMORE)
              != 0
-        || send_ascii_frame (mesh_pub_, runtime_->peer_ctrl_endpoint,
-                             ZLINK_SNDMORE)
+        || spot_io::send_ascii_frame (
+             mesh_pub_, runtime_->peer_ctrl_endpoint, ZLINK_SNDMORE)
              != 0
-        || send_ascii_frame (mesh_pub_, source_node_id, ZLINK_SNDMORE) != 0
-        || send_ascii_frame (mesh_pub_, version, 0) != 0) {
+        || spot_io::send_ascii_frame (mesh_pub_, source_node_id, ZLINK_SNDMORE)
+             != 0
+        || spot_io::send_ascii_frame (mesh_pub_, version, 0) != 0) {
         return -1;
     }
 
@@ -723,7 +405,7 @@ int spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
         const std::string topic (
           static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
         std::vector<std::string> frames;
-        if (recv_remaining_frame_strings (ctrl_sub_, &frames) != 0) {
+        if (spot_io::recv_remaining_frame_strings (ctrl_sub_, &frames) != 0) {
             topic_msg.close ();
             return -1;
         }
@@ -827,7 +509,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
                       .count ())
                 : 0;
             std::vector<zlink_msg_t> combined;
-            if (recv_remaining_frames_to_vector (
+            if (spot_io::recv_remaining_frames_to_vector (
                   mesh_xsub_, &combined, &processed_bytes)
                 != 0) {
                 topic_msg.close ();
@@ -878,7 +560,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         topic_msg.close ();
 
         spot_owned_msg_parts_t frames;
-        if (recv_remaining_frames_to_parts (
+        if (spot_io::recv_remaining_frames_to_parts (
               mesh_xsub_, &frames, &processed_bytes)
             != 0) {
             return -1;
@@ -933,13 +615,14 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         spot_ctrl_debugf ("connect peer ctrl data=%s ctrl=%s",
                           peer_data_endpoint.c_str (),
                           peer_ctrl_endpoint.c_str ());
-        if (send_snapshot_to_target (peer_ctrl_pub_, node_, peer_data_endpoint)
+        if (spot_io::send_snapshot_to_target (
+              peer_ctrl_pub_, node_, peer_data_endpoint)
             != 0) {
             return -1;
         }
-        if (send_ready_ack_snapshots_to_target (peer_ctrl_pub_,
-                                                peer_data_endpoint,
-                                                state_->outbound_ready_filters)
+        if (spot_io::send_ready_ack_snapshots_to_target (
+              peer_ctrl_pub_, peer_data_endpoint,
+              state_->outbound_ready_filters)
             != 0) {
             return -1;
         }
@@ -1108,8 +791,10 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                     (void) peer_ctrl_pub_->term_endpoint (it->second.c_str ());
                 }
                 if (peer_ctrl_pub_->connect (peer_ctrl_endpoint.c_str ()) != 0
-                    || send_snapshot_to_target (peer_ctrl_pub_, node_, arg) != 0
-                    || send_ready_ack_snapshots_to_target (
+                    || spot_io::send_snapshot_to_target (
+                         peer_ctrl_pub_, node_, arg)
+                         != 0
+                    || spot_io::send_ready_ack_snapshots_to_target (
                          peer_ctrl_pub_, arg,
                          state_->outbound_ready_filters)
                          != 0) {
@@ -1133,8 +818,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
 
     if (verb == "replay_subscriptions" || verb == "subscription_subscribe"
         || verb == "subscription_unsubscribe") {
-        if (send_snapshot_to_peers (peer_ctrl_pub_, node_,
-                                    state_->peer_ctrl_endpoints)
+        if (spot_io::send_snapshot_to_peers (
+              peer_ctrl_pub_, node_, state_->peer_ctrl_endpoints)
             != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;
@@ -1147,8 +832,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         std::string target_endpoint;
         std::string raw_filter;
         std::string ack_source_id;
-        if (!parse_ready_ack_arg (arg, &target_endpoint, &raw_filter,
-                                  &ack_source_id)) {
+        if (!spot_io::parse_ready_ack_arg (arg, &target_endpoint, &raw_filter,
+                                           &ack_source_id)) {
             if (send_errno_reply (ctrl_, EINVAL) != 0)
                 return -1;
             return 0;
@@ -1177,9 +862,9 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                 filters = source_filters;
         }
 
-        if (send_control_snapshot (peer_ctrl_pub_,
-                                   spot_control_protocol::ctrl_ready_ack_topic,
-                                   target_endpoint, ack_source_id, filters)
+        if (spot_io::send_control_snapshot (
+              peer_ctrl_pub_, spot_control_protocol::ctrl_ready_ack_topic,
+              target_endpoint, ack_source_id, filters)
             != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;
@@ -1229,13 +914,13 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                               std::set<std::string> >::const_iterator
                        source_it = ready_it->second.begin ();
                      source_it != ready_it->second.end (); ++source_it) {
-                    (void) send_control_snapshot (
+                    (void) spot_io::send_control_snapshot (
                       peer_ctrl_pub_, spot_control_protocol::ctrl_ready_ack_topic,
                       arg, source_it->first, empty_filters);
                 }
             }
             std::set<std::string> empty_filters;
-            (void) send_control_snapshot (
+            (void) spot_io::send_control_snapshot (
               peer_ctrl_pub_, spot_control_protocol::ctrl_snapshot_topic, arg,
               spot_control_protocol::node_id_string (runtime_->node_id),
               empty_filters);

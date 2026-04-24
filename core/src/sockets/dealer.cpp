@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
 #include "sockets/dealer.hpp"
+#include "sockets/socket_dispatch_loop_internal.hpp"
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
@@ -104,20 +105,13 @@ void zlink::dealer_t::xread_activated (pipe_t *pipe_)
     _fq.activated (pipe_);
     if (!socket_msg_dispatch_active ())
         return;
-
-    msg_t msg;
-    const int init_rc = msg.init ();
-    errno_assert (init_rc == 0);
-
-    pipe_t *dispatch_pipe = NULL;
-    while (recvpipe (&msg, &dispatch_pipe) == 0) {
-        const int dispatch_rc = xsocket_msg_dispatch (&msg, dispatch_pipe);
-        if (dispatch_rc <= 0)
-            break;
-    }
-
-    const int close_rc = msg.close ();
-    errno_assert (close_rc == 0);
+    zlink::drain_socket_dispatch_loop (
+      [this] (msg_t *msg_, pipe_t **pipe_out_) {
+          return recvpipe (msg_, pipe_out_);
+      },
+      [this] (msg_t *msg_, pipe_t *pipe_) {
+          return xsocket_msg_dispatch (msg_, pipe_);
+      });
 }
 
 void zlink::dealer_t::xwrite_activated (pipe_t *pipe_)
@@ -188,20 +182,13 @@ void zlink::dealer_t::xdispatch_io ()
 {
     if (!socket_msg_dispatch_active ())
         return;
-
-    msg_t msg;
-    const int init_rc = msg.init ();
-    errno_assert (init_rc == 0);
-
-    pipe_t *dispatch_pipe = NULL;
-    while (recvpipe (&msg, &dispatch_pipe) == 0) {
-        const int dispatch_rc = xsocket_msg_dispatch (&msg, dispatch_pipe);
-        if (dispatch_rc <= 0)
-            break;
-    }
-
-    const int close_rc = msg.close ();
-    errno_assert (close_rc == 0);
+    zlink::drain_socket_dispatch_loop (
+      [this] (msg_t *msg_, pipe_t **pipe_out_) {
+          return recvpipe (msg_, pipe_out_);
+      },
+      [this] (msg_t *msg_, pipe_t *pipe_) {
+          return xsocket_msg_dispatch (msg_, pipe_);
+      });
 }
 
 int zlink::dealer_t::apply_peer_admission_state (pipe_t *pipe_,

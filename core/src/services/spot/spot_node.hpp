@@ -314,10 +314,7 @@ class spot_node_t : public discovery_observer_t
     service_attachment_state_t _service_attachment_state;
 
     friend struct spot_runtime_t;
-    friend class spot_data_plane_t;
     friend struct spot_data_plane_protocol_t;
-    friend class spot_pub_t;
-    friend class spot_sub_t;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
 };
 }

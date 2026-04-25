@@ -140,6 +140,7 @@ callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공
 | `spot_sub_recv.cpp` | sub 측 recv 처리 |
 | `spot_data_plane.cpp` | data plane 코어 |
 | `spot_data_plane_forwarding.cpp` | ingress/egress 메시지 포워딩 |
+| `spot_data_plane_pending.cpp` | backpressure 시 보류된 메시지의 복사, 참조 카운트, 재전송 큐 관리 |
 | `spot_data_plane_protocol.cpp` | 제어 메시지, 구독 업데이트 |
 | `spot_data_plane_internal.hpp` | data plane 내부 state/protocol 정의 |
 | `spot_node_state.hpp` | SpotNode 내부 상태 묶음 분리: discovery, TLS, endpoint, handle, service attachment |
@@ -150,6 +151,12 @@ callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공
 길게 품지 않고, `spot_node_state.hpp`가 제공하는 상태 묶음을 조합해서
 사용한다. 이 방식은 discovery, service attachment, summary 소유권을 더
 명확하게 분리한다.
+
+data plane의 메시지 전달 흐름도 같은 기준으로 나누었다.
+`spot_data_plane_forwarding.cpp`는 ingress, mesh, local fanout 사이의 전달
+순서를 담당하고, 보류 큐의 메모리 제한 검사와 메시지 복사, target별 참조
+해제는 `spot_data_plane_pending.cpp`가 담당한다. 이렇게 나누면 느린 peer로
+인해 생긴 backpressure 처리와 실제 포워딩 순서를 별도로 검토할 수 있다.
 
 **Discovery** (`services/discovery/`):
 

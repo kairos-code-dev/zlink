@@ -132,6 +132,7 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | `spot_sub_recv.cpp` | Sub-side recv handling |
 | `spot_data_plane.cpp` | Data plane core |
 | `spot_data_plane_forwarding.cpp` | Ingress/egress message forwarding |
+| `spot_data_plane_pending.cpp` | Pending message copy, reference accounting, and retry queues under backpressure |
 | `spot_data_plane_protocol.cpp` | Control messages, subscription updates, bootstrap |
 | `spot_data_plane_internal.hpp` | Data plane internal state and protocol definitions |
 | `spot_node_state.hpp` | Extracted SpotNode state bundles for discovery, TLS, endpoint, handle, and service attachment |
@@ -142,6 +143,12 @@ Recent refactors moved the large internal state structs out of `spot_node_t`
 and into `spot_node_state.hpp`. `spot_node_t` still coordinates lifecycle and
 control flow, but discovery/service-attachment/summary ownership now lives in
 explicit state bundles instead of one monolithic header body.
+
+The data-plane forwarding path follows the same split. `spot_data_plane_forwarding.cpp`
+owns the delivery order between ingress, mesh, and local fanout. `spot_data_plane_pending.cpp`
+owns pending-queue memory admission, copied message parts, per-target reference
+accounting, and retry queue cleanup. This keeps slow-peer backpressure handling
+separate from the high-level forwarding sequence.
 
 **Discovery** (`services/discovery/`):
 

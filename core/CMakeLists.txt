@@ -1095,6 +1095,7 @@ set(spot-sources
     src/services/spot/spot_data_plane_mesh.cpp
     src/services/spot/spot_data_plane_message_io.cpp
     src/services/spot/spot_data_plane_runtime.cpp
+    src/services/spot/spot_data_plane_pending.cpp
     src/services/spot/spot_data_plane_protocol.cpp
     src/services/spot/spot_mesh_pub_budget.cpp
     src/services/spot/spot_subject_access.cpp

@@ -181,16 +181,16 @@ int spot_runtime_t::stop_and_join ()
     (void) detach_runtime_endpoints ();
     advance_shutdown_phase (spot_shutdown_phase_detach_endpoints);
     stop_sockets ();
-    const uint64_t task_id = clear_data_plane_task_id ();
-    if (data_plane_runtime && task_id != 0)
-        (void) data_plane_runtime->remove_task (task_id);
-    data_plane_runtime = NULL;
     if (execution.data_plane_running) {
+        const uint64_t task_id = clear_data_plane_task_id ();
+        if (task_id != 0 && data_plane_runtime)
+            (void) data_plane_runtime->remove_task (task_id);
         spot_data_plane_t::teardown_runtime (
           owner, this, &execution.data_plane_state,
           &execution.data_plane_protocol_state);
         execution.data_plane_running = false;
     }
+    data_plane_runtime = NULL;
     advance_shutdown_phase (spot_shutdown_phase_close_transports);
     advance_shutdown_phase (spot_shutdown_phase_drain_state);
     advance_shutdown_phase (spot_shutdown_phase_cleanup);
@@ -219,16 +219,17 @@ int spot_runtime_t::abortive_stop ()
 {
     abortive_shutdown = true;
     begin_shutdown ();
-    const uint64_t task_id = clear_data_plane_task_id ();
-    if (data_plane_runtime && task_id != 0)
-        (void) data_plane_runtime->remove_task (task_id);
-    data_plane_runtime = NULL;
+    stop_sockets ();
     if (execution.data_plane_running) {
+        const uint64_t task_id = clear_data_plane_task_id ();
+        if (task_id != 0 && data_plane_runtime)
+            (void) data_plane_runtime->remove_task (task_id);
         spot_data_plane_t::teardown_runtime (
           owner, this, &execution.data_plane_state,
           &execution.data_plane_protocol_state);
         execution.data_plane_running = false;
     }
+    data_plane_runtime = NULL;
     advance_shutdown_phase (spot_shutdown_phase_stop_producers);
     (void) close_sender_caches (1000);
     (void) detach_runtime_endpoints ();

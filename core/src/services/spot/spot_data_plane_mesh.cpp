@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
 
 namespace zlink
 {

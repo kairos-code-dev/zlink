@@ -257,6 +257,7 @@ class socket_base_t : public own_t,
     int monitor_snapshot (zlink_monitor_snapshot_t *out_);
     void refresh_auto_hwm_policy ();
     void set_auto_hwm_role (auto_hwm_role_t role_);
+    void set_auto_hwm_policy_enabled (bool enabled_);
     bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
     void socket_bound_endpoints (std::set<std::string> *out_) const;
@@ -462,6 +463,11 @@ class socket_base_t : public own_t,
                                           size_t part_count_,
                                           int flags_,
                                           bool fallback_on_missing_sndtimeo_);
+    friend int logical_multipart_publish_frame (socket_base_t *socket_,
+                                                zlink_msg_t *topic_frame_,
+                                                zlink_msg_t *parts_,
+                                                size_t part_count_,
+                                                int flags_);
 
     // Direct public send currently shares one scope between single-part and
     // logical multipart wrappers. Keep the admission/sync decision and the
@@ -630,6 +636,7 @@ class socket_base_t : public own_t,
     socket_runtime_t _runtime;
     auto_hwm_role_t _auto_hwm_role;
     bool _auto_hwm_role_override;
+    bool _auto_hwm_policy_enabled;
     bool _manual_sndhwm;
     bool _manual_rcvhwm;
     bool _manual_sndbuf;

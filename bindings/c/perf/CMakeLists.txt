@@ -20,6 +20,7 @@ set(PERF_EXTERNAL_INCLUDE_DIR "${ZLINK_REPO_ROOT_DIR}/core/external")
 if(NOT EXISTS "${PERF_EXTERNAL_INCLUDE_DIR}")
     set(PERF_EXTERNAL_INCLUDE_DIR "${ZLINK_REPO_ROOT_DIR}/external")
 endif()
+set(PERF_CORE_SRC_INCLUDE_DIR "${ZLINK_REPO_ROOT_DIR}/core/src")
 
 set(PERF_BENCH_SINGLE_COMMON_DIR
     "${ZLINK_C_BINDINGS_DIR}/bench/with_zmq/single/common")
@@ -53,6 +54,7 @@ if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
         target_include_directories(${name} PRIVATE
             ${PERF_BINDINGS_C_INCLUDE_DIR}
             ${PERF_CORE_INCLUDE_DIR}
+            ${PERF_CORE_SRC_INCLUDE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/single/common
             ${PERF_EXTERNAL_INCLUDE_DIR})
         target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
@@ -69,6 +71,7 @@ if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
         target_include_directories(${name} PRIVATE
             ${PERF_BINDINGS_C_INCLUDE_DIR}
             ${PERF_CORE_INCLUDE_DIR}
+            ${PERF_CORE_SRC_INCLUDE_DIR}
             ${PERF_BENCH_SINGLE_COMMON_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/single/common
             ${PERF_EXTERNAL_INCLUDE_DIR})
@@ -86,6 +89,7 @@ if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
         target_include_directories(${name} PRIVATE
             ${PERF_BINDINGS_C_INCLUDE_DIR}
             ${PERF_CORE_INCLUDE_DIR}
+            ${PERF_CORE_SRC_INCLUDE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/multi/common
             ${PERF_BENCH_MULTI_COMMON_DIR})
         target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})

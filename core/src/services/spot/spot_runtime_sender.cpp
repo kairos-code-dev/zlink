@@ -93,6 +93,7 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
     socket_base_t *socket = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
     if (!socket)
         return -1;
+    socket->set_auto_hwm_policy_enabled (false);
 
     const int linger = 0;
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
@@ -140,6 +141,7 @@ int spot_runtime_t::ensure_peer_route_sender_socket (
       owner->_ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
     if (!socket)
         return -1;
+    socket->set_auto_hwm_policy_enabled (false);
 
     const int linger = 0;
     const int immediate = 1;

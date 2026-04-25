@@ -184,6 +184,7 @@ int spot_runtime_t::start ()
         close_socket_ptr_local (&data_ctrl_front);
         return -1;
     }
+    data_ctrl_front->set_auto_hwm_policy_enabled (false);
     owner->track_owned_socket (data_ctrl_front);
 
     const int linger = 0;

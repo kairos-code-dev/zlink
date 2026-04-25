@@ -128,18 +128,6 @@ static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
     }
 }
 
-static bool read_socket_hwm (socket_base_t *socket_,
-                             int option_,
-                             int *value_out_)
-{
-    if (!socket_ || !value_out_)
-        return false;
-
-    size_t value_size = sizeof (*value_out_);
-    return socket_->getsockopt (option_, value_out_, &value_size) == 0
-           && value_size == sizeof (*value_out_);
-}
-
 static int compute_default_node_hwm (ctx_t *ctx_, int option_)
 {
     if (!ctx_)
@@ -185,6 +173,7 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
                                      int option_,
                                      int *value_out_)
 {
+    (void) runtime_;
     if (!value_out_)
         return false;
 
@@ -194,21 +183,11 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
                 *value_out_ = config_.topic_send_hwm;
                 return true;
             }
-            if (runtime_
-                && read_socket_hwm (runtime_->mesh_pub, ZLINK_INTERNAL_OPT_SNDHWM,
-                                    value_out_)) {
-                return true;
-            }
             *value_out_ = compute_default_node_hwm (ctx_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
             if (config_.topic_recv_enabled) {
                 *value_out_ = config_.topic_recv_hwm;
-                return true;
-            }
-            if (runtime_
-                && read_socket_hwm (runtime_->mesh_xsub, ZLINK_INTERNAL_OPT_RCVHWM,
-                                    value_out_)) {
                 return true;
             }
             *value_out_ = compute_default_node_hwm (ctx_, option_);
@@ -218,21 +197,11 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
                 *value_out_ = config_.routed_send_hwm;
                 return true;
             }
-            if (runtime_
-                && read_socket_hwm (runtime_->node_router,
-                                    ZLINK_INTERNAL_OPT_SNDHWM, value_out_)) {
-                return true;
-            }
             *value_out_ = compute_default_node_hwm (ctx_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
             if (config_.routed_recv_enabled) {
                 *value_out_ = config_.routed_recv_hwm;
-                return true;
-            }
-            if (runtime_
-                && read_socket_hwm (runtime_->route_ingress,
-                                    ZLINK_INTERNAL_OPT_RCVHWM, value_out_)) {
                 return true;
             }
             *value_out_ = compute_default_node_hwm (ctx_, option_);

@@ -27,6 +27,16 @@ zlink::socket_base_t *
 resolve_spot_pub_subject_poller_socket (void *spot_or_node_);
 zlink::socket_base_t *
 resolve_spot_sub_subject_poller_socket (void *spot_or_node_);
+
+static inline void *resolve_spot_sub_side_handle (void *handle_)
+{
+    if (zlink::spot_sub_t *sub = as_spot_sub_side_handle (handle_))
+        return sub;
+
+    spot_handle_t *spot = as_spot_handle (handle_);
+    return spot ? static_cast<void *> (ensure_spot_sub (spot)) : NULL;
+}
+
 int infer_spot_monitor_role (void *target_, uint32_t events_);
 void *spot_pub_monitor_open (void *spot_pub_, int events_);
 void *spot_sub_monitor_open (void *spot_sub_, int events_);

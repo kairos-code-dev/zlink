@@ -4,6 +4,7 @@
 #define __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 
 #include "services/spot/spot_runtime_execution.hpp"
+#include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
@@ -142,6 +143,7 @@ struct spot_runtime_t
     socket_base_t *peer_route_tx;
     socket_base_t *local_pub_ingress_sub;
     socket_base_t *local_fanout_xpub;
+    thread_t data_plane_thread;
     service_control_runtime_t *data_plane_runtime;
     atomic_counter_t stop;
     uint32_t node_id;

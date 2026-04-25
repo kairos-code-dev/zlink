@@ -96,6 +96,20 @@ inline int bench_ctx_blocky()
     return parsed != 0 ? 1 : 0;
 }
 
+inline int bench_ctx_auto_hwm_enable()
+{
+    const char *value = std::getenv("PERF_CTX_AUTO_HWM_ENABLE");
+    if (!value || !*value)
+        return ZLINK_CTX_AUTO_HWM_ENABLE_DFLT;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(value, &end, 10);
+    if (errno != 0 || end == value)
+        return ZLINK_CTX_AUTO_HWM_ENABLE_DFLT;
+    return parsed != 0 ? 1 : 0;
+}
+
 inline void apply_ctx_options(void *ctx_)
 {
     const bool debug = std::getenv("PERF_DEBUG") != NULL;
@@ -119,6 +133,10 @@ inline void apply_ctx_options(void *ctx_)
 
     const int blocky = bench_ctx_blocky();
     set_ctx_opt_int(ctx_, ZLINK_CTX_OPT_BLOCKY, blocky, "ZLINK_CTX_OPT_BLOCKY");
+    set_ctx_opt_int(ctx_,
+                    ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
+                    bench_ctx_auto_hwm_enable(),
+                    "ZLINK_CTX_OPT_AUTO_HWM_ENABLE");
 }
 
 class ctx_guard_t {

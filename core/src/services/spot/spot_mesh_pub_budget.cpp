@@ -152,9 +152,13 @@ void spot_mesh_pub_budget_t::refresh_live_socket (
     *last_budget_version_ = budget_version;
     *last_bound_endpoint_ = bound_endpoint;
 
-    const int desired = spot_data_plane_forwarder_t::resolve_internal_hwm_override (
+    int desired = spot_data_plane_forwarder_t::resolve_internal_hwm_override (
       "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
       resolve_runtime_default (runtime_));
+    if (getenv ("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM") == NULL
+        && desired < 1000) {
+        desired = 1000;
+    }
     if (desired == *current_hwm_)
         return;
 

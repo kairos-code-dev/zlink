@@ -107,6 +107,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _runtime (),
     _auto_hwm_role (auto_hwm_role_none),
     _auto_hwm_role_override (false),
+    _auto_hwm_policy_enabled (true),
     _manual_sndhwm (false),
     _manual_rcvhwm (false),
     _manual_sndbuf (false),
@@ -142,6 +143,36 @@ void zlink::socket_base_t::set_auto_hwm_role (auto_hwm_role_t role_)
     refresh_auto_hwm_policy ();
 }
 
+void zlink::socket_base_t::set_auto_hwm_policy_enabled (bool enabled_)
+{
+    const bool was_enabled = _auto_hwm_policy_enabled;
+    _auto_hwm_policy_enabled = enabled_;
+
+    if (was_enabled && !enabled_) {
+        options_t defaults;
+        defaults.type = options.type;
+
+        bool refresh_hwms = false;
+        if (!_manual_sndhwm && options.sndhwm != defaults.sndhwm) {
+            options.sndhwm = defaults.sndhwm;
+            refresh_hwms = true;
+        }
+        if (!_manual_rcvhwm && options.rcvhwm != defaults.rcvhwm) {
+            options.rcvhwm = defaults.rcvhwm;
+            refresh_hwms = true;
+        }
+        if (!_manual_sndbuf && !_manual_sndhwm)
+            options.sndbuf = defaults.sndbuf;
+        if (!_manual_rcvbuf && !_manual_rcvhwm)
+            options.rcvbuf = defaults.rcvbuf;
+
+        if (refresh_hwms)
+            refresh_attached_pipe_hwms ();
+    }
+
+    refresh_auto_hwm_policy ();
+}
+
 void zlink::socket_base_t::refresh_auto_hwm_policy ()
 {
     ctx_t *ctx = get_ctx ();
@@ -169,7 +200,7 @@ void zlink::socket_base_t::refresh_auto_hwm_policy ()
                                    managed_connections, managed_connections,
                                    &_auto_hwm_socket_plan);
 
-    if (!_auto_hwm_context_plan.enabled)
+    if (!_auto_hwm_context_plan.enabled || !_auto_hwm_policy_enabled)
         return;
 
     bool refresh_hwms = false;
@@ -181,9 +212,9 @@ void zlink::socket_base_t::refresh_auto_hwm_policy ()
         options.rcvhwm = _auto_hwm_socket_plan.rcvhwm;
         refresh_hwms = true;
     }
-    if (!_manual_sndbuf)
+    if (!_manual_sndbuf && !_manual_sndhwm)
         options.sndbuf = _auto_hwm_socket_plan.requested_sndbuf;
-    if (!_manual_rcvbuf)
+    if (!_manual_rcvbuf && !_manual_rcvhwm)
         options.rcvbuf = _auto_hwm_socket_plan.requested_rcvbuf;
 
     if (refresh_hwms)

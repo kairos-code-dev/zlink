@@ -192,14 +192,20 @@ spot_node_t::plan_service_discovery_sockets_locked (
         if (attachment.discovered.routers.count (*it) == 0) {
             socket_base_t *router_socket =
               _ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
-            if (router_socket)
+            if (router_socket) {
+                router_socket->set_auto_hwm_policy_enabled (false);
                 plan.new_router_sockets.push_back (std::make_pair (*it, router_socket));
+            }
         }
     }
     if (!attachment.discovered.pub && topology_.pubsub_active ())
         plan.pub_socket = _ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
     if (!attachment.discovered.sub && topology_.pubsub_active ())
         plan.sub_socket = _ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
+    if (plan.pub_socket)
+        plan.pub_socket->set_auto_hwm_policy_enabled (false);
+    if (plan.sub_socket)
+        plan.sub_socket->set_auto_hwm_policy_enabled (false);
     if (topology_.pubsub_active () && pub_endpoints_changed) {
         attachment.mark_auto_sub_replay_pending (
           service_attachment_t::discovered_state_t::auto_sub_replay_reconnect);

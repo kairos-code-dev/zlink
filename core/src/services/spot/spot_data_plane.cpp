@@ -57,18 +57,9 @@ void spot_data_plane_t::run (spot_node_t *node_)
     if (!runtime)
         return;
 
-    spot_data_plane_runtime_state_t runtime_state;
-    if (initialize_runtime (node_, runtime, &runtime_state)
-        != 0) {
-        return;
-    }
-
-    spot_data_plane_protocol_state_t protocol_state;
-    const int fatal_errno =
-      spot_data_plane_loop_t::run_until_shutdown (node_, runtime,
-                                                  &runtime_state,
-                                                  &protocol_state);
-    teardown_runtime (node_, runtime, &runtime_state, &protocol_state);
+    const int fatal_errno = spot_data_plane_loop_t::run_until_shutdown (
+      node_, runtime, &runtime->execution.data_plane_state,
+      &runtime->execution.data_plane_protocol_state);
 
     if (fatal_errno != 0 && runtime->stop.get () == 0) {
         scoped_lock_t lock (node_->_sync);

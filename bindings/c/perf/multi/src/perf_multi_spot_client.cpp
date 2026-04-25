@@ -7,6 +7,7 @@
 #include "../common/perf_multi_spot_handle.hpp"
 #include "../common/perf_multi_spot_handshake.hpp"
 #include "../../common/perf_tls_setup.hpp"
+#include "services/spot/spot_subject_access.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -767,22 +768,142 @@ bool drain_spot_client_slot(spot_client_slot_t *slot,
     return true;
 }
 
+bool drain_spot_worker_slots(spot_recv_worker_t *worker, bool *progressed)
+{
+    if (progressed)
+        *progressed = false;
+    if (!worker)
+        return false;
+
+    for (size_t i = 0; i < worker->slots.size(); ++i) {
+        spot_client_slot_t *slot = worker->slots[i];
+        bool slot_progressed = false;
+        if (!slot || slot->stop.load(std::memory_order_acquire))
+            continue;
+        if (!drain_spot_client_slot(slot, ZLINK_DONTWAIT, &slot_progressed))
+            return false;
+        if (slot_progressed && progressed)
+            *progressed = true;
+    }
+
+    return true;
+}
+
+bool create_spot_recv_worker_poller(spot_recv_worker_t *worker)
+{
+    if (!worker || worker->slots.empty()) {
+        errno = EINVAL;
+        return false;
+    }
+
+    worker->poller = zlink_poller_new();
+    if (!worker->poller) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] worker poller create failed err="
+                      << zlink_errno() << std::endl;
+        }
+        return false;
+    }
+
+    worker->events.resize(worker->slots.size());
+    for (size_t i = 0; i < worker->slots.size(); ++i) {
+        spot_client_slot_t *slot = worker->slots[i];
+        if (!slot || !slot->handle) {
+            errno = EINVAL;
+            return false;
+        }
+
+        void *sub_handle = resolve_spot_sub_side_handle(slot->handle);
+        if (!sub_handle) {
+            if (bench_debug_enabled()) {
+                std::cerr
+                  << "[multi-spot-client] worker poller sub resolve failed slot="
+                  << slot->index << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+
+        if (zlink_poller_add(worker->poller, sub_handle, slot, ZLINK_POLLIN)
+            != 0) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] worker poller add failed slot="
+                          << slot->index << " err=" << zlink_errno()
+                          << std::endl;
+            }
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void spot_client_recv_worker_loop(spot_recv_worker_t *worker)
 {
     if (!worker || !worker->state)
         return;
 
+    if (!worker->poller) {
+        while (!worker->state->recv_workers_stop.load(std::memory_order_acquire)) {
+            bool progressed = false;
+            for (size_t i = 0; i < worker->slots.size(); ++i) {
+                spot_client_slot_t *slot = worker->slots[i];
+                if (!slot || slot->stop.load(std::memory_order_acquire))
+                    continue;
+                if (!drain_spot_client_slot(slot, ZLINK_DONTWAIT, &progressed))
+                    return;
+            }
+            if (!progressed)
+                (void) perf_socket_poll(NULL, 0, 1);
+        }
+        return;
+    }
+
     while (!worker->state->recv_workers_stop.load(std::memory_order_acquire)) {
+        const int event_count = zlink_poller_wait_all(
+          worker->poller,
+          worker->events.empty() ? NULL : &worker->events[0],
+          static_cast<int>(worker->events.size()),
+          1,
+          NULL);
+        if (event_count < 0) {
+            const int err = zlink_errno();
+            if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK)
+                continue;
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] worker poller wait failed err="
+                          << err << std::endl;
+            }
+            mark_fatal();
+            return;
+        }
+        if (event_count == 0)
+            continue;
+
         bool progressed = false;
-        for (size_t i = 0; i < worker->slots.size(); ++i) {
-            spot_client_slot_t *slot = worker->slots[i];
+        for (int i = 0; i < event_count; ++i) {
+            if ((worker->events[i].events & ZLINK_POLLIN) == 0)
+                continue;
+
+            spot_client_slot_t *slot =
+              static_cast<spot_client_slot_t *>(worker->events[i].user_data);
             if (!slot || slot->stop.load(std::memory_order_acquire))
                 continue;
-            if (!drain_spot_client_slot(slot, ZLINK_DONTWAIT, &progressed))
+            bool slot_progressed = false;
+            if (!drain_spot_client_slot(slot, ZLINK_DONTWAIT, &slot_progressed))
                 return;
+            progressed = progressed || slot_progressed;
         }
+
         if (!progressed)
-            (void) perf_socket_poll(NULL, 0, 1);
+            continue;
+
+        for (size_t sweep = 0; sweep < 32; ++sweep) {
+            bool sweep_progressed = false;
+            if (!drain_spot_worker_slots(worker, &sweep_progressed))
+                return;
+            if (!sweep_progressed)
+                break;
+        }
     }
 }
 
@@ -846,10 +967,15 @@ bool recv_one_control_message(spot_client_state_t *state, bool *received)
     if (perf_multi_spot_handshake::parse_start_command(payload.data(),
                                                        payload.size(),
                                                        &started_size)) {
+        const uint64_t start_recv_ns =
+          bench_transition_debug_enabled() ? perf_multi_metric::now_ns() : 0;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->control_started_msg_size.store(started_size,
                                                   std::memory_order_relaxed);
+            if (start_recv_ns != 0)
+                state->control_start_recv_ns.store(start_recv_ns,
+                                                   std::memory_order_relaxed);
             state->seen_msg_size.store(started_size, std::memory_order_relaxed);
             state->seen_phase.store(
               static_cast<int>(perf_multi_metric::phase_active),
@@ -1363,11 +1489,18 @@ bool run_single_size_case(spot_client_state_t *state,
                   << " timeout_ms=" << phase_timeout_ms << std::endl;
     }
 
+    // Poller-based recv workers can observe the first active payload slightly
+    // before the separate control START frame is drained. Arm collection for
+    // the current run before waiting on the control phase gate so a small HWM
+    // does not drop the whole active window on fast paths.
+    state->collect_active.store(true, std::memory_order_release);
+
     if (!wait_msg_size_start(state, msg_size, phase_timeout_ms)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] size start timeout size="
                       << msg_size << std::endl;
         }
+        state->collect_active.store(false, std::memory_order_release);
         return false;
     }
     if (bench_debug_enabled()) {
@@ -1380,7 +1513,6 @@ bool run_single_size_case(spot_client_state_t *state,
                   << " size=" << msg_size << std::endl;
     }
 
-    state->collect_active.store(true, std::memory_order_release);
     if (!wait_phase_start(state,
                           msg_size,
                           perf_multi_metric::phase_active,

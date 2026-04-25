@@ -3,8 +3,11 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_data_plane_message_io_internal.hpp"
 #include "services/spot/spot_message_parts_internal.hpp"
 
+#include "api/request_reply_protocol_internal.hpp"
+#include "core/multipart_send_txn.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "sockets/socket_base.hpp"

@@ -173,6 +173,35 @@ static int send_publish_once (zlink::socket_base_t *socket_,
     return send_frames_once (socket_, parts_, part_count_, flags_, true, scope_);
 }
 
+static int send_publish_frame_once (zlink::socket_base_t *socket_,
+                                    zlink_msg_t *topic_frame_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    int flags_,
+                                    zlink::socket_public_send_scope_t &scope_)
+{
+    if (!topic_frame_
+        || !reinterpret_cast<zlink::msg_t *> (topic_frame_)->check ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const bool has_payload = part_count_ > 0;
+    if (socket_->send_scoped (reinterpret_cast<zlink::msg_t *> (topic_frame_),
+                              (has_payload ? ZLINK_SNDMORE : 0) | flags_,
+                              scope_)
+        != 0) {
+        return -1;
+    }
+
+    if (part_count_ == 0) {
+        errno = 0;
+        return 0;
+    }
+
+    return send_frames_once (socket_, parts_, part_count_, flags_, true, scope_);
+}
+
 static int send_prefixed_once (zlink::socket_base_t *socket_,
                                const void *prefix_data_,
                                size_t prefix_size_,
@@ -476,6 +505,31 @@ int zlink::logical_multipart_publish (socket_base_t *socket_,
 
     const int rc = attempt_send_publish (socket_, parts_, part_count_, flags_,
                                          &arg, send_scope);
+    if (rc != 0)
+        return -1;
+
+    errno = 0;
+    return 0;
+}
+
+int zlink::logical_multipart_publish_frame (socket_base_t *socket_,
+                                            zlink_msg_t *topic_frame_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            int flags_)
+{
+    if (!socket_ || !topic_frame_ || (part_count_ > 0 && !parts_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::socket_public_send_scope_t send_scope (
+      socket_->lifecycle_coordinator (), true);
+    if (!send_scope.acquired ())
+        return -1;
+
+    const int rc = send_publish_frame_once (socket_, topic_frame_, parts_,
+                                            part_count_, flags_, send_scope);
     if (rc != 0)
         return -1;
 

@@ -25,6 +25,9 @@ namespace
 void service_runtime_sockets (spot_runtime_t *runtime_,
                               spot_data_plane_runtime_state_t *state_)
 {
+    if (!runtime_ || !state_)
+        return;
+
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ctrl);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_xsub);
@@ -38,7 +41,6 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->node_router);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->fanout);
-
     state_->mesh_pub->set_all_pipes_nodelay ();
     state_->peer_ctrl_pub->set_all_pipes_nodelay ();
     state_->peer_ctrl_sub->set_all_pipes_nodelay ();

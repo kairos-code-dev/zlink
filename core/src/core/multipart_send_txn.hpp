@@ -76,6 +76,12 @@ int logical_multipart_publish (socket_base_t *socket_,
                                size_t part_count_,
                                int flags_,
                                bool fallback_on_missing_sndtimeo_ = false);
+
+int logical_multipart_publish_frame (socket_base_t *socket_,
+                                     zlink_msg_t *topic_frame_,
+                                     zlink_msg_t *parts_,
+                                     size_t part_count_,
+                                     int flags_);
 }
 
 #endif

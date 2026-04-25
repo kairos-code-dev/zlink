@@ -43,6 +43,7 @@ int spot_runtime_t::create_attachment (int kind_,
     socket_base_t *socket = owner->_ctx->create_socket (socket_type);
     if (!socket)
         return -1;
+    socket->set_auto_hwm_policy_enabled (false);
 
     owner->track_owned_socket (socket);
     if (socket->connect (endpoint_) != 0) {

@@ -128,7 +128,9 @@ static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
     }
 }
 
-static int compute_default_node_hwm (ctx_t *ctx_, int option_)
+static int compute_default_node_hwm (ctx_t *ctx_,
+                                     const spot_runtime_t *runtime_,
+                                     int option_)
 {
     if (!ctx_)
         return 0;
@@ -140,26 +142,44 @@ static int compute_default_node_hwm (ctx_t *ctx_, int option_)
 
     auto_hwm_role_t role = auto_hwm_role_none;
     int socket_type = ZLINK_CORE_SOCKET_PAIR;
+    size_t managed_connections = 0;
+    size_t active_connections = 0;
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    if (runtime_) {
+        runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                                            &connected_peer_count,
+                                            &active_peer_count);
+    }
     switch (option_) {
         case ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM:
             role = auto_hwm_role_fanout;
             socket_type = ZLINK_CORE_SOCKET_PUB;
+            managed_connections = local_sub_count + connected_peer_count;
+            active_connections = local_sub_count + active_peer_count;
             break;
         case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
             role = auto_hwm_role_recv_ingress;
             socket_type = ZLINK_CORE_SOCKET_SUB;
+            managed_connections = local_pub_count + connected_peer_count;
+            active_connections = local_pub_count + active_peer_count;
             break;
         case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
         case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
             role = auto_hwm_role_routed;
             socket_type = ZLINK_CORE_SOCKET_ROUTER;
+            managed_connections = connected_peer_count;
+            active_connections = active_peer_count;
             break;
         default:
             return 0;
     }
 
     auto_hwm_socket_plan_t socket_plan;
-    auto_hwm_socket_plan_for_role (context_plan, role, socket_type, 0, 0,
+    auto_hwm_socket_plan_for_role (context_plan, role, socket_type,
+                                   managed_connections, active_connections,
                                    &socket_plan);
     return option_ == ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM
              || option_ == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
@@ -173,7 +193,6 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
                                      int option_,
                                      int *value_out_)
 {
-    (void) runtime_;
     if (!value_out_)
         return false;
 
@@ -183,28 +202,28 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
                 *value_out_ = config_.topic_send_hwm;
                 return true;
             }
-            *value_out_ = compute_default_node_hwm (ctx_, option_);
+            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM:
             if (config_.topic_recv_enabled) {
                 *value_out_ = config_.topic_recv_hwm;
                 return true;
             }
-            *value_out_ = compute_default_node_hwm (ctx_, option_);
+            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
             if (config_.routed_send_enabled) {
                 *value_out_ = config_.routed_send_hwm;
                 return true;
             }
-            *value_out_ = compute_default_node_hwm (ctx_, option_);
+            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
             return true;
         case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
             if (config_.routed_recv_enabled) {
                 *value_out_ = config_.routed_recv_hwm;
                 return true;
             }
-            *value_out_ = compute_default_node_hwm (ctx_, option_);
+            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
             return true;
         default:
             return false;

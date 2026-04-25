@@ -16,14 +16,17 @@
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 
+#include <algorithm>
 #include <climits>
+#include <vector>
 
 namespace zlink
 {
 namespace
 {
 void service_runtime_sockets (spot_runtime_t *runtime_,
-                              spot_data_plane_runtime_state_t *state_)
+                              spot_data_plane_runtime_state_t *state_,
+                              const spot_data_plane_protocol_state_t *protocol_state_)
 {
     if (!runtime_ || !state_)
         return;
@@ -41,6 +44,24 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->node_router);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->fanout);
+    spot_data_plane_forwarder_t::sync_local_fanout_targets (runtime_, state_);
+    spot_data_plane_forwarder_t::sync_remote_mesh_targets (runtime_, state_,
+                                                           protocol_state_);
+    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
+           iterator it = state_->local_targets.begin ();
+         it != state_->local_targets.end (); ++it) {
+        if (it->second.relay_socket)
+            spot_data_plane_forwarder_t::pump_socket_commands (
+              it->second.relay_socket);
+    }
+    for (std::map<std::string,
+                  spot_data_plane_runtime_state_t::remote_target_state_t>::
+           iterator it = state_->mesh_targets.begin ();
+         it != state_->mesh_targets.end (); ++it) {
+        if (it->second.sender_socket)
+            spot_data_plane_forwarder_t::pump_socket_commands (
+              it->second.sender_socket);
+    }
     state_->mesh_pub->set_all_pipes_nodelay ();
     state_->peer_ctrl_pub->set_all_pipes_nodelay ();
     state_->peer_ctrl_sub->set_all_pipes_nodelay ();
@@ -49,10 +70,28 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     state_->node_router->set_all_pipes_nodelay ();
     state_->ingress->set_all_pipes_nodelay ();
     state_->fanout->set_all_pipes_nodelay ();
+    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
+           iterator it = state_->local_targets.begin ();
+         it != state_->local_targets.end (); ++it) {
+        if (it->second.relay_socket)
+            it->second.relay_socket->set_all_pipes_nodelay ();
+    }
+    for (std::map<std::string,
+                  spot_data_plane_runtime_state_t::remote_target_state_t>::
+           iterator it = state_->mesh_targets.begin ();
+         it != state_->mesh_targets.end (); ++it) {
+        if (it->second.sender_socket)
+            it->second.sender_socket->set_all_pipes_nodelay ();
+    }
     spot_mesh_pub_budget_t::refresh_live_socket (
       runtime_, state_->mesh_pub, &state_->current_mesh_pub_sndhwm,
       &state_->last_mesh_pub_budget_version,
       &state_->last_mesh_pub_bound_endpoint);
+    spot_data_plane_forwarder_t::update_pending_queue_limits (runtime_, state_);
+    (void) spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_);
+    (void) spot_data_plane_forwarder_t::flush_local_fanout_pending (runtime_,
+                                                                    state_);
+    spot_data_plane_forwarder_t::refresh_poller_interest (state_);
 }
 
 int drain_peer_ctrl_messages (spot_node_t *node_,
@@ -180,13 +219,41 @@ bool handle_mesh_event (socket_base_t *socket_,
         return false;
 
     if (spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
-          state_->mesh_xsub, state_->fanout, state_->peer_ctrl_pub, runtime_,
-          node_, protocol_state_)
+          state_->mesh_xsub, state_->peer_ctrl_pub, runtime_, state_, node_,
+          protocol_state_)
         != 0) {
         *fatal_errno_out_ = errno;
         *running_out_ = false;
     }
     return true;
+}
+
+bool handle_pollout_event (socket_base_t *socket_,
+                           spot_node_t *node_,
+                           spot_runtime_t *runtime_,
+                           spot_data_plane_runtime_state_t *state_,
+                           bool *running_out_,
+                           int *fatal_errno_out_)
+{
+    (void) node_;
+
+    if (spot_data_plane_forwarder_t::flush_local_fanout_pending (runtime_, state_,
+                                                                 socket_)
+        != 0) {
+        *fatal_errno_out_ = errno;
+        *running_out_ = false;
+        return true;
+    }
+
+    if (spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_,
+                                                             socket_)
+        != 0) {
+        *fatal_errno_out_ = errno;
+        *running_out_ = false;
+        return true;
+    }
+
+    return false;
 }
 
 bool handle_ingress_event (socket_base_t *socket_,
@@ -219,6 +286,18 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
 {
     int fatal_errno = 0;
 
+    for (int i = 0; i < event_count_ && *running_out_; ++i) {
+        if ((events_[i].events & ZLINK_POLLOUT) == 0)
+            continue;
+        socket_base_t *socket =
+          static_cast<socket_base_t *> (events_[i].socket);
+        if (handle_pollout_event (socket, node_, runtime_, state_, running_out_,
+                                  &fatal_errno)
+            && !*running_out_) {
+            break;
+        }
+    }
+
     for (int pass = 0; pass < 3 && *running_out_; ++pass) {
         for (int i = 0; i < event_count_; ++i) {
             if ((events_[i].events & ZLINK_POLLIN) == 0)
@@ -232,12 +311,11 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
                 continue;
             }
 
-                if (handle_ctrl_event (socket, node_, runtime_, state_,
-                                   protocol_state_, running_out_,
-                                   &fatal_errno)
+            if (handle_ctrl_event (socket, node_, runtime_, state_,
+                                   protocol_state_, running_out_, &fatal_errno)
                 || handle_mesh_event (socket, node_, runtime_, state_,
-                                      protocol_state_,
-                                      running_out_, &fatal_errno)
+                                      protocol_state_, running_out_,
+                                      &fatal_errno)
                 || handle_ingress_event (socket, node_, runtime_, state_,
                                          running_out_, &fatal_errno)) {
                 if (!*running_out_)
@@ -314,7 +392,7 @@ int spot_data_plane_loop_t::run_until_shutdown (
       protocol_state_out_ ? protocol_state_out_ : &protocol_state;
 
     while (running) {
-        service_runtime_sockets (runtime_, state_);
+        service_runtime_sockets (runtime_, state_, protocol_state_ptr);
 
         if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
             fatal_errno = errno;
@@ -324,11 +402,11 @@ int spot_data_plane_loop_t::run_until_shutdown (
             fatal_errno = errno;
             break;
         }
-        socket_poller_t::event_t events[8];
-        const int rc =
-          state_->poller->wait (
-            events, 8,
-            resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));
+        std::vector<socket_poller_t::event_t> events (
+          std::max (state_->poller->size (), 8));
+        const int rc = state_->poller->wait (
+          events.empty () ? NULL : &events[0], static_cast<int> (events.size ()),
+          resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));
         if (rc < 0) {
             if (errno == EAGAIN || errno == EINTR)
                 continue;
@@ -336,8 +414,9 @@ int spot_data_plane_loop_t::run_until_shutdown (
             break;
         }
 
-        fatal_errno = dispatch_ready_events (events, rc, node_, runtime_, state_,
-                                             protocol_state_ptr, &running);
+        fatal_errno = dispatch_ready_events (
+          events.empty () ? NULL : &events[0], rc, node_, runtime_, state_,
+          protocol_state_ptr, &running);
         if (!running)
             break;
 
@@ -372,14 +451,16 @@ int spot_data_plane_loop_t::run_once (
     *running_out_ = true;
     if (!state_->poller)
         return EFAULT;
-    service_runtime_sockets (runtime_, state_);
+    service_runtime_sockets (runtime_, state_, protocol_state_);
 
     if (drain_peer_ctrl_messages (node_, state_, protocol_state_) != 0)
         return errno;
     if (drain_direct_route_messages (node_, state_) != 0)
         return errno;
-    socket_poller_t::event_t events[8];
-    const int rc = state_->poller->wait (events, 8, 0);
+    std::vector<socket_poller_t::event_t> events (
+      std::max (state_->poller->size (), 8));
+    const int rc = state_->poller->wait (
+      events.empty () ? NULL : &events[0], static_cast<int> (events.size ()), 0);
     if (rc < 0) {
         if (errno == EAGAIN || errno == EINTR)
             return 0;
@@ -387,8 +468,8 @@ int spot_data_plane_loop_t::run_once (
     }
 
     int fatal_errno =
-      dispatch_ready_events (events, rc, node_, runtime_, state_,
-                             protocol_state_, running_out_);
+      dispatch_ready_events (events.empty () ? NULL : &events[0], rc, node_,
+                             runtime_, state_, protocol_state_, running_out_);
     if (!*running_out_ || fatal_errno != 0)
         return fatal_errno;
 

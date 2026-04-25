@@ -10,6 +10,19 @@
 
 namespace zlink
 {
+namespace
+{
+void stop_runtime_dispatch_local (socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+    if (socket_->socket_msg_dispatch_active ())
+        (void) socket_->socket_msg_dispatch_stop ();
+    if (socket_->sub_dispatch_active ())
+        (void) socket_->sub_dispatch_stop ();
+}
+}
+
 void spot_runtime_t::stop_sockets ()
 {
     runtime_socket_slot_ref_t refs[14];
@@ -74,12 +87,15 @@ int spot_runtime_t::close_control_sockets ()
             if (sockets[i] && endpoints[i] && !endpoints[i]->empty ())
                 (void) sockets[i]->term_endpoint (endpoints[i]->c_str ());
         }
-        if (sockets[8] && !peer_route_bind_endpoint.empty ())
-            (void) sockets[8]->term_endpoint (peer_route_bind_endpoint.c_str ());
+        if (sockets[7] && !peer_route_bind_endpoint.empty ())
+            (void) sockets[7]->term_endpoint (peer_route_bind_endpoint.c_str ());
         for (size_t i = 0; i < slot_count; ++i) {
             if (sockets[i])
                 sockets[i]->set_all_pipes_nodelay ();
         }
+        stop_runtime_dispatch_local (sockets[6]);
+        stop_runtime_dispatch_local (sockets[7]);
+        stop_runtime_dispatch_local (sockets[8]);
         for (size_t i = 0; i < slot_count; ++i) {
             if (!sockets[i])
                 continue;
@@ -143,8 +159,8 @@ int spot_runtime_t::detach_runtime_endpoints ()
         (void) route_ingress_local->term_endpoint (route_ingress_endpoint.c_str ());
     if (node_router_local && !node_router_endpoint.empty ())
         (void) node_router_local->term_endpoint (node_router_endpoint.c_str ());
-    if (node_router_local && !peer_route_bind_endpoint.empty ())
-        (void) node_router_local->term_endpoint (
+    if (peer_route_ingress_local && !peer_route_bind_endpoint.empty ())
+        (void) peer_route_ingress_local->term_endpoint (
           peer_route_bind_endpoint.c_str ());
     if (ingress && !pub_ingress_endpoint.empty ())
         (void) ingress->term_endpoint (pub_ingress_endpoint.c_str ());
@@ -191,6 +207,22 @@ int spot_runtime_t::stop_and_join ()
         execution.data_plane_running = false;
     }
     data_plane_runtime = NULL;
+    std::vector<socket_base_t *> retired_relay_sockets;
+    {
+        scoped_lock_t lock (attachment_sync);
+        while (!retired_attachment_relay_sockets.empty ()) {
+            retired_relay_sockets.push_back (
+              retired_attachment_relay_sockets.front ());
+            retired_attachment_relay_sockets.pop_front ();
+        }
+    }
+    for (size_t i = 0; i < retired_relay_sockets.size (); ++i) {
+        socket_base_t *socket = retired_relay_sockets[i];
+        if (!socket)
+            continue;
+        socket->set_all_pipes_nodelay ();
+        preserve_first_error_local (close_runtime_socket (socket, 1000), NULL);
+    }
     advance_shutdown_phase (spot_shutdown_phase_close_transports);
     advance_shutdown_phase (spot_shutdown_phase_drain_state);
     advance_shutdown_phase (spot_shutdown_phase_cleanup);
@@ -286,6 +318,13 @@ int spot_runtime_t::abortive_stop ()
              it != attachments.end (); ++it) {
             if (it->second.socket)
                 attachment_sockets.push_back (it->second.socket);
+            if (it->second.relay_socket)
+                attachment_sockets.push_back (it->second.relay_socket);
+        }
+        while (!retired_attachment_relay_sockets.empty ()) {
+            attachment_sockets.push_back (
+              retired_attachment_relay_sockets.front ());
+            retired_attachment_relay_sockets.pop_front ();
         }
         attachments.clear ();
     }
@@ -313,6 +352,9 @@ int spot_runtime_t::abortive_stop ()
             ingress->set_all_pipes_nodelay ();
         if (fanout)
             fanout->set_all_pipes_nodelay ();
+        stop_runtime_dispatch_local (route_ingress_local);
+        stop_runtime_dispatch_local (peer_route_ingress_local);
+        stop_runtime_dispatch_local (node_router_local);
         (void) close_runtime_socket (ctrl_front, 1000);
         (void) close_runtime_socket (ctrl_back, 1000);
         (void) close_runtime_socket (mesh_pub_local, 1000);

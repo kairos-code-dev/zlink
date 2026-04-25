@@ -492,6 +492,9 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             return 0;
         }
 
+        spot_data_plane_forwarder_t::drop_remote_mesh_target (
+          runtime_, &runtime_->execution.data_plane_state, arg);
+
         if (remove_connected_mesh_peer_endpoint (
               &runtime_->execution.mesh_peer_state, arg)
             && runtime_->owner) {

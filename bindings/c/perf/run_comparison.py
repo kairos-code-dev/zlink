@@ -906,9 +906,7 @@ def pattern_default_clients(pattern_name, transport=None):
 
 
 def pattern_default_hwm(pattern_name):
-    if normalize_multi_pattern_name(pattern_name) in STREAM_VARIANT_PATTERNS:
-        return 10
-    return 100
+    return 0
 
 
 def pattern_default_io_threads(pattern_name):
@@ -3176,11 +3174,11 @@ def build_effective_option_items(args, selected_patterns):
             base_hwm = max(1, parse_env_int("PERF_HWM", 100))
             hwm_display = str(base_hwm)
         elif not default_hwm_values:
-            base_hwm = 100
-            hwm_display = "100 (default)"
+            base_hwm = 0
+            hwm_display = "auto-hwm"
         elif len(default_hwm_values) == 1:
             base_hwm = next(iter(default_hwm_values))
-            hwm_display = f"{base_hwm} (default)"
+            hwm_display = "auto-hwm" if base_hwm == 0 else f"{base_hwm} (default)"
         else:
             base_hwm = max(default_hwm_values)
             hwm_display = (
@@ -3193,8 +3191,8 @@ def build_effective_option_items(args, selected_patterns):
         rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm)
         sndbuf = _read_env_value("PERF_SNDBUF") or ""
         rcvbuf = _read_env_value("PERF_RCVBUF") or ""
-        sndhwm_display = str(sndhwm)
-        rcvhwm_display = str(rcvhwm)
+        sndhwm_display = "auto-hwm" if sndhwm <= 0 else str(sndhwm)
+        rcvhwm_display = "auto-hwm" if rcvhwm <= 0 else str(rcvhwm)
         if not (_read_env_value("PERF_SNDHWM") or ""):
             sndhwm_display = hwm_display
         if not (_read_env_value("PERF_RCVHWM") or ""):

@@ -132,14 +132,11 @@ inline bool apply_control_options(void *pub,
 
     const int linger_ms = 0;
     const int timeout_ms = std::max(1000, settings.connect_ready_timeout_ms);
-    const int hwm = std::max<int>(1024, static_cast<int>(settings.clients * 8));
     const int nodrop = 1;
 
     if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
                          sizeof(linger_ms))
           != ZLINK_CONFIG_OK
-        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm))
-             != ZLINK_CONFIG_OK
         || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
                             sizeof(timeout_ms))
              != ZLINK_CONFIG_OK
@@ -148,8 +145,6 @@ inline bool apply_control_options(void *pub,
              != ZLINK_CONFIG_OK
         || zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
                             sizeof(linger_ms))
-             != ZLINK_CONFIG_OK
-        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm))
              != ZLINK_CONFIG_OK
         || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &timeout_ms,
                             sizeof(timeout_ms))

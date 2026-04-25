@@ -364,6 +364,65 @@ void spot_node_access_t::schedule_subscription_replay (spot_node_t *node_)
         node_->schedule_subscription_replay ();
 }
 
+void spot_node_access_t::snapshot_active_peer_endpoints (
+  spot_node_t *node_, std::set<std::string> *out_)
+{
+    if (!out_)
+        return;
+
+    out_->clear ();
+    if (!node_)
+        return;
+
+    scoped_lock_t lock (node_->_sync);
+    *out_ = node_->_peer_state.active_endpoints;
+}
+
+void spot_node_access_t::snapshot_tls_client_config (spot_node_t *node_,
+                                                     std::string *ca_out_,
+                                                     std::string *host_out_,
+                                                     int *trust_system_out_)
+{
+    if (ca_out_)
+        ca_out_->clear ();
+    if (host_out_)
+        host_out_->clear ();
+    if (trust_system_out_)
+        *trust_system_out_ = 0;
+    if (!node_)
+        return;
+
+    scoped_lock_t lock (node_->_sync);
+    if (ca_out_)
+        *ca_out_ = node_->_tls_ca;
+    if (host_out_)
+        *host_out_ = node_->_tls_hostname;
+    if (trust_system_out_)
+        *trust_system_out_ = node_->_tls_trust_system;
+}
+
+int spot_node_access_t::apply_tls_client (spot_node_t *node_,
+                                          socket_base_t *socket_,
+                                          const std::string &ca_cert_,
+                                          const std::string &hostname_,
+                                          int trust_system_)
+{
+    (void) node_;
+    return spot_node_t::apply_tls_client (socket_, ca_cert_, hostname_,
+                                          trust_system_);
+}
+
+int spot_node_access_t::close_owned_socket_and_wait (spot_node_t *node_,
+                                                     socket_base_t *&socket_,
+                                                     int timeout_ms_)
+{
+    if (!node_ || !socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node_->_lifecycle.close_socket_and_wait (socket_, timeout_ms_);
+}
+
 int spot_node_access_t::send_internal_subscription_update (
   spot_node_t *node_,
   const std::string &raw_filter_,

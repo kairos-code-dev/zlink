@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_runtime_internal.hpp"
 #include "services/spot/spot_node.hpp"
 
@@ -94,6 +95,19 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
     if (!socket)
         return -1;
     socket->set_auto_hwm_policy_enabled (false);
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                              &connected_peer_count, &active_peer_count);
+    apply_spot_internal_auto_hwm (
+      owner->_ctx, socket,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_DEALER,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0, true, true, true, true});
 
     const int linger = 0;
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
@@ -142,6 +156,19 @@ int spot_runtime_t::ensure_peer_route_sender_socket (
     if (!socket)
         return -1;
     socket->set_auto_hwm_policy_enabled (false);
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                              &connected_peer_count, &active_peer_count);
+    apply_spot_internal_auto_hwm (
+      owner->_ctx, socket,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_DEALER,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0, true, true, true, true});
 
     const int linger = 0;
     const int immediate = 1;

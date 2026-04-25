@@ -94,10 +94,8 @@ inline std::string normalize_multi_pattern_name (const char *pattern)
 inline int resolve_default_hwm (const char *pattern, int clients)
 {
     (void) clients;
-    const std::string normalized = normalize_multi_pattern_name (pattern);
-    if (normalized == "STREAM")
-        return 10;
-    return 100;
+    (void) pattern;
+    return 0;
 }
 
 inline int resolve_default_clients (const char *pattern)
@@ -141,7 +139,7 @@ inline bench_settings_t resolve_bench_settings ()
       "PERF_MULTI_HWM",
       "PERF_HWM",
       resolve_default_hwm (pattern, resolved_clients),
-      1);
+      0);
     settings.warmup_seconds =
       resolve_multi_int_env_with_fallback (
         "PERF_MULTI_WARMUP_SECONDS", "PERF_WARMUP_SECONDS", 3, 0);

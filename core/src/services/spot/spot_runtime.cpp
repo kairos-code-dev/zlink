@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_runtime_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -165,6 +166,11 @@ spot_node_hwm_config_t spot_runtime_t::hwm_config_snapshot () const
     return hwm_config;
 }
 
+ctx_t *spot_runtime_t::ctx () const
+{
+    return owner ? owner->_ctx : NULL;
+}
+
 void spot_runtime_t::set_hwm_config (const spot_node_hwm_config_t &config_)
 {
     scoped_lock_t lock (hwm_config_sync);
@@ -185,6 +191,19 @@ int spot_runtime_t::start ()
         return -1;
     }
     data_ctrl_front->set_auto_hwm_policy_enabled (false);
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                              &connected_peer_count, &active_peer_count);
+    apply_spot_internal_auto_hwm (
+      owner->_ctx, data_ctrl_front,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_control,
+                                      ZLINK_CORE_SOCKET_PAIR,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0, true, true, true, true});
     owner->track_owned_socket (data_ctrl_front);
 
     const int linger = 0;

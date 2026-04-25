@@ -5,9 +5,11 @@
 
 #include <zlink.h>
 
+#include "services/spot/spot_message_parts_internal.hpp"
 #include "utils/mutex.hpp"
 
 #include <atomic>
+#include <deque>
 #include <map>
 #include <set>
 #include <string>
@@ -234,6 +236,52 @@ struct spot_data_plane_runtime_state_t
 {
     spot_data_plane_runtime_state_t ();
 
+    struct publish_pending_entry_t
+    {
+        publish_pending_entry_t () :
+            message_id (0),
+            encoded_bytes (0),
+            remaining_targets (0)
+        {
+        }
+
+        uint64_t message_id;
+        std::string topic;
+        spot_owned_msg_parts_t parts;
+        size_t encoded_bytes;
+        uint32_t remaining_targets;
+    };
+
+    struct local_target_state_t
+    {
+        local_target_state_t () :
+            attachment_id (0),
+            relay_socket (NULL),
+            pollout_armed (false)
+        {
+        }
+
+        uint64_t attachment_id;
+        socket_base_t *relay_socket;
+        bool pollout_armed;
+        std::deque<uint64_t> pending_message_ids;
+    };
+
+    struct remote_target_state_t
+    {
+        remote_target_state_t () :
+            sender_socket (NULL),
+            pollout_armed (false)
+        {
+        }
+
+        std::string endpoint;
+        std::string route_endpoint;
+        socket_base_t *sender_socket;
+        bool pollout_armed;
+        std::deque<uint64_t> pending_message_ids;
+    };
+
     socket_base_t *ctrl;
     socket_base_t *mesh_pub;
     socket_base_t *mesh_xsub;
@@ -248,6 +296,21 @@ struct spot_data_plane_runtime_state_t
     int current_mesh_pub_sndhwm;
     uint64_t last_mesh_pub_budget_version;
     std::string last_mesh_pub_bound_endpoint;
+    uint64_t next_pending_message_id;
+    bool ingress_pollin_paused;
+    bool mesh_xsub_pollin_paused;
+    bool mesh_pub_pollout_armed;
+    size_t local_pending_bytes;
+    size_t mesh_pending_bytes;
+    size_t local_pending_pause_threshold;
+    size_t local_pending_resume_threshold;
+    size_t mesh_pending_pause_threshold;
+    size_t mesh_pending_resume_threshold;
+    std::map<uint64_t, publish_pending_entry_t> local_pending_messages;
+    std::map<uint64_t, local_target_state_t> local_targets;
+    std::map<uint64_t, publish_pending_entry_t> mesh_pending_messages;
+    std::deque<uint64_t> mesh_broadcast_pending_message_ids;
+    std::map<std::string, remote_target_state_t> mesh_targets;
     socket_poller_t *poller;
 };
 
@@ -266,9 +329,9 @@ struct spot_data_plane_protocol_t
       spot_data_plane_protocol_state_t *state_);
     static int recv_and_dispatch_mesh_xsub (
       socket_base_t *mesh_xsub_,
-      socket_base_t *fanout_,
       socket_base_t *peer_ctrl_pub_,
       spot_runtime_t *runtime_,
+      spot_data_plane_runtime_state_t *runtime_state_,
       spot_node_t *node_,
       spot_data_plane_protocol_state_t *state_);
     static int handle_ctrl_command (
@@ -305,6 +368,31 @@ struct spot_data_plane_forwarder_t
     static void pump_socket_commands (socket_base_t *socket_);
     static int resolve_internal_hwm_override (const char *env_name_,
                                               int default_value_);
+    static void sync_local_fanout_targets (spot_runtime_t *runtime_,
+                                           spot_data_plane_runtime_state_t *state_);
+    static void sync_remote_mesh_targets (spot_runtime_t *runtime_,
+                                          spot_data_plane_runtime_state_t *state_,
+                                          const spot_data_plane_protocol_state_t *protocol_state_);
+    static void drop_remote_mesh_target (spot_runtime_t *runtime_,
+                                         spot_data_plane_runtime_state_t *state_,
+                                         const std::string &endpoint_);
+    static void update_pending_queue_limits (spot_runtime_t *runtime_,
+                                             spot_data_plane_runtime_state_t *state_);
+    static void refresh_poller_interest (spot_data_plane_runtime_state_t *state_);
+    static int forward_local_fanout (spot_runtime_t *runtime_,
+                                     spot_data_plane_runtime_state_t *state_,
+                                     const std::string &topic_,
+                                     const spot_owned_msg_parts_t &parts_);
+    static int forward_mesh_pub (spot_runtime_t *runtime_,
+                                 spot_data_plane_runtime_state_t *state_,
+                                 const std::string &topic_,
+                                 const spot_owned_msg_parts_t &parts_);
+    static int flush_local_fanout_pending (spot_runtime_t *runtime_,
+                                           spot_data_plane_runtime_state_t *state_,
+                                           socket_base_t *relay_socket_ = NULL);
+    static int flush_mesh_pub_pending (spot_runtime_t *runtime_,
+                                       spot_data_plane_runtime_state_t *state_,
+                                       socket_base_t *sender_socket_ = NULL);
     static int recv_and_forward_ingress (socket_base_t *src_,
                                          socket_base_t *mesh_pub_,
                                          socket_base_t *fanout_,

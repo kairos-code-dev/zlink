@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_mesh_pub_budget.hpp"
@@ -23,13 +24,13 @@ namespace zlink
 {
 namespace
 {
-static const int spot_data_plane_hwm_default = 1000;
-static const int spot_internal_ingress_rcvhwm_default = 1000;
-static const int spot_internal_mesh_xsub_rcvhwm_default = 1000;
-static const int spot_internal_peer_ctrl_rcvhwm_default = 1024;
-static const int spot_internal_route_ingress_rcvhwm_default = 1000;
-static const int spot_internal_node_router_rcvhwm_default = 1000;
-static const int spot_internal_node_router_sndhwm_default = 1000;
+static const int spot_data_plane_hwm_default = 0;
+static const int spot_internal_ingress_rcvhwm_default = 0;
+static const int spot_internal_mesh_xsub_rcvhwm_default = 0;
+static const int spot_internal_peer_ctrl_rcvhwm_default = 0;
+static const int spot_internal_route_ingress_rcvhwm_default = 0;
+static const int spot_internal_node_router_rcvhwm_default = 0;
+static const int spot_internal_node_router_sndhwm_default = 0;
 
 static bool read_socket_int_option (socket_base_t *socket_,
                                     int option_,
@@ -117,6 +118,16 @@ static void close_runtime_sockets (spot_node_t *node_,
     if (!state_)
         return;
 
+    for (std::map<std::string,
+                  spot_data_plane_runtime_state_t::remote_target_state_t>::
+           iterator it = state_->mesh_targets.begin ();
+         it != state_->mesh_targets.end (); ++it) {
+        if (it->second.sender_socket && !it->second.route_endpoint.empty ())
+            (void) it->second.sender_socket->term_endpoint (
+              it->second.route_endpoint.c_str ());
+        spot_data_plane_t::close_socket_ptr (node_, it->second.sender_socket);
+    }
+    state_->mesh_targets.clear ();
     LIBZLINK_DELETE (state_->poller);
     state_->poller = NULL;
     spot_data_plane_t::close_socket_ptr (node_, state_->fanout);
@@ -163,28 +174,68 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
       resolve_routed_send_hwm_default (runtime_, node_pub_sndhwm);
     const int routed_recv_hwm =
       resolve_routed_recv_hwm_default (runtime_, node_sub_rcvhwm);
+    ctx_t *ctx = runtime_ ? runtime_->ctx () : NULL;
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    if (runtime_) {
+        runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                                            &connected_peer_count,
+                                            &active_peer_count);
+    }
     int ingress_rcvhwm =
       node_sub_rcvhwm > 0 ? node_sub_rcvhwm
-                          : spot_internal_ingress_rcvhwm_default;
+                          : spot_internal_auto_hwm_default_hwm (
+                              ctx, auto_hwm_role_recv_ingress,
+                              ZLINK_CORE_SOCKET_SUB, true,
+                              spot_internal_ingress_rcvhwm_default,
+                              local_pub_count, local_pub_count);
     int mesh_xsub_rcvhwm =
       node_sub_rcvhwm > 0 ? node_sub_rcvhwm
-                          : spot_internal_mesh_xsub_rcvhwm_default;
+                          : spot_internal_auto_hwm_default_hwm (
+                              ctx, auto_hwm_role_recv_ingress,
+                              ZLINK_CORE_SOCKET_XSUB, true,
+                              spot_internal_mesh_xsub_rcvhwm_default,
+                              connected_peer_count, active_peer_count);
     int mesh_pub_sndhwm =
       node_pub_sndhwm > 0
         ? node_pub_sndhwm
-        : spot_mesh_pub_budget_t::resolve_default (std::string (), 0);
-    int peer_ctrl_rcvhwm = spot_internal_peer_ctrl_rcvhwm_default;
+        : spot_internal_auto_hwm_default_hwm (
+            ctx, auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, false,
+            spot_data_plane_hwm_default, connected_peer_count,
+            active_peer_count);
+    int peer_ctrl_rcvhwm = spot_internal_auto_hwm_default_hwm (
+      ctx, auto_hwm_role_control, ZLINK_CORE_SOCKET_SUB, true,
+      spot_internal_peer_ctrl_rcvhwm_default, connected_peer_count,
+      active_peer_count);
     int route_ingress_rcvhwm =
       routed_recv_hwm > 0 ? routed_recv_hwm
-                          : spot_internal_route_ingress_rcvhwm_default;
+                          : spot_internal_auto_hwm_default_hwm (
+                              ctx, auto_hwm_role_routed,
+                              ZLINK_CORE_SOCKET_ROUTER, true,
+                              spot_internal_route_ingress_rcvhwm_default,
+                              connected_peer_count, active_peer_count);
     int node_router_rcvhwm =
       routed_recv_hwm > 0 ? routed_recv_hwm
-                          : spot_internal_node_router_rcvhwm_default;
+                          : spot_internal_auto_hwm_default_hwm (
+                              ctx, auto_hwm_role_routed,
+                              ZLINK_CORE_SOCKET_ROUTER, true,
+                              spot_internal_node_router_rcvhwm_default,
+                              connected_peer_count, active_peer_count);
     int node_router_sndhwm =
       routed_send_hwm > 0 ? routed_send_hwm
-                          : spot_internal_node_router_sndhwm_default;
+                          : spot_internal_auto_hwm_default_hwm (
+                              ctx, auto_hwm_role_routed,
+                              ZLINK_CORE_SOCKET_ROUTER, false,
+                              spot_internal_node_router_sndhwm_default,
+                              connected_peer_count, active_peer_count);
     int fanout_sndhwm =
-      node_pub_sndhwm > 0 ? node_pub_sndhwm : spot_data_plane_hwm_default;
+      node_pub_sndhwm > 0
+        ? node_pub_sndhwm
+        : spot_internal_auto_hwm_default_hwm (
+            ctx, auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, false,
+            spot_data_plane_hwm_default, local_sub_count, local_sub_count);
 
     (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM",
                                   ingress_rcvhwm, &ingress_rcvhwm);
@@ -194,10 +245,6 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
       node_pub_sndhwm > 0
       || read_env_hwm_override ("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
                                 mesh_pub_sndhwm, &mesh_pub_sndhwm);
-    if (!mesh_pub_sndhwm_override
-        && mesh_pub_sndhwm < spot_data_plane_hwm_default) {
-        mesh_pub_sndhwm = spot_data_plane_hwm_default;
-    }
     (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_PEER_CTRL_RCVHWM",
                                   peer_ctrl_rcvhwm, &peer_ctrl_rcvhwm);
     (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_ROUTE_INGRESS_RCVHWM",
@@ -298,6 +345,16 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     fanout (NULL),
     current_mesh_pub_sndhwm (0),
     last_mesh_pub_budget_version (UINT64_MAX),
+    next_pending_message_id (0),
+    ingress_pollin_paused (false),
+    mesh_xsub_pollin_paused (false),
+    mesh_pub_pollout_armed (false),
+    local_pending_bytes (0),
+    mesh_pending_bytes (0),
+    local_pending_pause_threshold (0),
+    local_pending_resume_threshold (0),
+    mesh_pending_pause_threshold (0),
+    mesh_pending_resume_threshold (0),
     poller (NULL)
 {
 }
@@ -417,21 +474,6 @@ int spot_data_plane_t::initialize_runtime (
         node_->track_owned_socket (state_out_->fanout);
     }
 
-    if (zlink_spot_install_peer_route_dispatch (node_,
-                                                state_out_->peer_route_ingress)
-        != 0) {
-        const int err = errno != 0 ? errno : EIO;
-        close_runtime_sockets (node_, state_out_);
-        {
-            scoped_lock_t lock (node_->_sync);
-            clear_runtime_socket_refs (runtime_);
-            runtime_->mark_fault (err);
-        }
-        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
-          runtime_);
-        errno = err;
-        return -1;
-    }
     configure_runtime_sockets (runtime_, state_out_);
 
     state_out_->mesh_xsub_monitor =
@@ -459,6 +501,7 @@ int spot_data_plane_t::initialize_runtime (
         || state_out_->poller->add (state_out_->ctrl, NULL, ZLINK_POLLIN) != 0
         || state_out_->poller->add (state_out_->ingress, NULL, ZLINK_POLLIN)
              != 0
+        || state_out_->poller->add (state_out_->mesh_pub, NULL, 0) != 0
         || state_out_->poller->add (state_out_->mesh_xsub, NULL, ZLINK_POLLIN)
              != 0
         || state_out_->poller->add (state_out_->peer_ctrl_sub, NULL,
@@ -502,6 +545,9 @@ int spot_data_plane_t::initialize_runtime (
         || state_out_->ingress->bind (runtime_->pub_ingress_endpoint.c_str ())
              != 0
         || state_out_->fanout->bind (runtime_->sub_fanout_endpoint.c_str ())
+             != 0
+        || zlink_spot_install_peer_route_dispatch (
+             node_, state_out_->peer_route_ingress)
              != 0) {
         const int err = errno != 0 ? errno : EIO;
         (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
@@ -560,6 +606,28 @@ void spot_data_plane_t::teardown_runtime (
                 (void) state_->mesh_xsub->term_endpoint (it->first.c_str ());
         }
         protocol_state_->peer_ctrl_endpoints.clear ();
+    }
+
+    if (state_->peer_route_ingress
+        && state_->peer_route_ingress->socket_msg_dispatch_active ())
+        (void) state_->peer_route_ingress->socket_msg_dispatch_stop ();
+
+    if (state_) {
+        for (std::map<std::string,
+                      spot_data_plane_runtime_state_t::remote_target_state_t>::
+               iterator it = state_->mesh_targets.begin ();
+             it != state_->mesh_targets.end (); ++it) {
+            if (state_->poller && it->second.sender_socket)
+                (void) state_->poller->remove (it->second.sender_socket);
+            if (it->second.sender_socket && !it->second.route_endpoint.empty ())
+                (void) it->second.sender_socket->term_endpoint (
+                  it->second.route_endpoint.c_str ());
+            if (it->second.sender_socket)
+                (void) spot_node_access_t::close_owned_socket_and_wait (
+                  runtime_->owner, it->second.sender_socket, 1000);
+        }
+        state_->mesh_targets.clear ();
+        state_->mesh_pending_messages.clear ();
     }
 
     if (state_->mesh_xsub)

@@ -69,7 +69,7 @@ Options:
   -PinCpu                      Enable PERF_TASKSET=1.
   -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
   -Clients N                   Override PERF_MULTI_CLIENTS (default: 100, stream=10000).
-  -Hwm N                       Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
+  -Hwm N                       Override PERF_MULTI_HWM (default: unset; auto-HWM decides).
   -SendHwm N                   Override PERF_MULTI_SNDHWM (fallback: -Hwm).
   -RecvHwm N                   Override PERF_MULTI_RCVHWM (fallback: -Hwm).
   -SendTimeoutMs N             Override PERF_MULTI_SNDTIMEO_MS.

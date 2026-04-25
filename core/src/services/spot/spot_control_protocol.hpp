@@ -20,6 +20,7 @@ static const char ctrl_snapshot_topic[] = "__zlink.spot.ctrl.snapshot";
 static const char ctrl_ready_ack_topic[] = "__zlink.spot.ctrl.ready_ack";
 static const char bootstrap_ctrl_descriptor_topic[] =
   "__zlink.spot.bootstrap.ctrl_descriptor";
+static const char peer_pub_route_topic[] = "__zlink.spot.peer_pub";
 
 inline bool starts_with (const std::string &value_, const char *prefix_)
 {
@@ -92,6 +93,16 @@ inline bool is_bootstrap_ctrl_descriptor_topic (const char *value_,
 {
     return equals_literal (value_, value_size_,
                            bootstrap_ctrl_descriptor_topic);
+}
+
+inline bool is_peer_pub_route_topic (const std::string &value_)
+{
+    return value_ == peer_pub_route_topic;
+}
+
+inline bool is_peer_pub_route_topic (const char *value_, size_t value_size_)
+{
+    return equals_literal (value_, value_size_, peer_pub_route_topic);
 }
 
 inline std::string node_id_string (uint32_t node_id_)

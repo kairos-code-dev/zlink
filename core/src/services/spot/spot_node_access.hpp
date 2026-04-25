@@ -5,6 +5,7 @@
 
 #include <zlink.h>
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -109,6 +110,20 @@ struct spot_node_access_t
     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
     static void wake_control_task (spot_node_t *node_);
     static void schedule_subscription_replay (spot_node_t *node_);
+    static void snapshot_active_peer_endpoints (
+      spot_node_t *node_, std::set<std::string> *out_);
+    static void snapshot_tls_client_config (spot_node_t *node_,
+                                            std::string *ca_out_,
+                                            std::string *host_out_,
+                                            int *trust_system_out_);
+    static int apply_tls_client (spot_node_t *node_,
+                                 socket_base_t *socket_,
+                                 const std::string &ca_cert_,
+                                 const std::string &hostname_,
+                                 int trust_system_);
+    static int close_owned_socket_and_wait (spot_node_t *node_,
+                                            socket_base_t *&socket_,
+                                            int timeout_ms_);
     static int send_internal_subscription_update (spot_node_t *node_,
                                                   const std::string &raw_filter_,
                                                   bool subscribe_);

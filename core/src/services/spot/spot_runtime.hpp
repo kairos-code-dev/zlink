@@ -9,6 +9,7 @@
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
 
+#include <deque>
 #include <map>
 #include <string>
 
@@ -17,6 +18,7 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 class service_control_runtime_t;
+class ctx_t;
 
 enum spot_attachment_kind_t
 {
@@ -46,14 +48,17 @@ struct spot_attachment_t
     spot_attachment_t () :
         id (0),
         kind (0),
-        socket (NULL)
+        socket (NULL),
+        relay_socket (NULL)
     {
     }
 
     uint64_t id;
     int kind;
     socket_base_t *socket;
+    socket_base_t *relay_socket;
     std::string endpoint;
+    std::string relay_endpoint;
 };
 
 struct spot_node_hwm_config_t
@@ -83,6 +88,8 @@ struct spot_node_hwm_config_t
 struct spot_runtime_t
 {
     explicit spot_runtime_t (spot_node_t *owner_);
+
+    ctx_t *ctx () const;
 
     int start ();
     int create_attachment (int kind_,
@@ -120,6 +127,11 @@ struct spot_runtime_t
     int abortive_stop ();
     size_t live_socket_slot_count () const;
     size_t attachment_count () const;
+    size_t attachment_count_by_kind (int kind_) const;
+    void snapshot_auto_hwm_inputs (size_t *local_pub_count_out_,
+                                   size_t *local_sub_count_out_,
+                                   size_t *connected_peer_count_out_,
+                                   size_t *active_peer_count_out_) const;
     spot_node_hwm_config_t hwm_config_snapshot () const;
     void set_hwm_config (const spot_node_hwm_config_t &config_);
 
@@ -169,6 +181,7 @@ struct spot_runtime_t
     spot_runtime_execution_state_t execution;
     uint64_t next_attachment_id;
     std::map<uint64_t, spot_attachment_t> attachments;
+    std::deque<socket_base_t *> retired_attachment_relay_sockets;
 };
 }
 

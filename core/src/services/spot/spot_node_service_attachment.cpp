@@ -3,6 +3,8 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_auto_hwm_internal.hpp"
+#include "services/spot/spot_runtime.hpp"
 
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery_protocol.hpp"
@@ -12,6 +14,25 @@ namespace zlink
 {
 namespace
 {
+void snapshot_service_auto_hwm_inputs_local (spot_runtime_t *runtime_,
+                                             size_t *connected_peer_count_out_,
+                                             size_t *active_peer_count_out_)
+{
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    if (runtime_) {
+        runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                                            &connected_peer_count,
+                                            &active_peer_count);
+    }
+    if (connected_peer_count_out_)
+        *connected_peer_count_out_ = connected_peer_count;
+    if (active_peer_count_out_)
+        *active_peer_count_out_ = active_peer_count;
+}
+
 static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
 {
     if (!always_ && !std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
@@ -194,6 +215,18 @@ spot_node_t::plan_service_discovery_sockets_locked (
               _ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
             if (router_socket) {
                 router_socket->set_auto_hwm_policy_enabled (false);
+                size_t connected_peer_count = 0;
+                size_t active_peer_count = 0;
+                snapshot_service_auto_hwm_inputs_local (
+                  _runtime, &connected_peer_count, &active_peer_count);
+                apply_spot_internal_auto_hwm (
+                  _ctx, router_socket,
+                  spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
+                                                  ZLINK_CORE_SOCKET_DEALER,
+                                                  connected_peer_count,
+                                                  active_peer_count,
+                                                  0, 0, true, true, true,
+                                                  true});
                 plan.new_router_sockets.push_back (std::make_pair (*it, router_socket));
             }
         }
@@ -206,6 +239,32 @@ spot_node_t::plan_service_discovery_sockets_locked (
         plan.pub_socket->set_auto_hwm_policy_enabled (false);
     if (plan.sub_socket)
         plan.sub_socket->set_auto_hwm_policy_enabled (false);
+    if (plan.pub_socket) {
+        size_t connected_peer_count = 0;
+        size_t active_peer_count = 0;
+        snapshot_service_auto_hwm_inputs_local (
+          _runtime, &connected_peer_count, &active_peer_count);
+        apply_spot_internal_auto_hwm (
+          _ctx, plan.pub_socket,
+          spot_internal_auto_hwm_policy_t{auto_hwm_role_fanout,
+                                          ZLINK_CORE_SOCKET_PUB,
+                                          connected_peer_count,
+                                          active_peer_count,
+                                          0, 0, true, true, true, true});
+    }
+    if (plan.sub_socket) {
+        size_t connected_peer_count = 0;
+        size_t active_peer_count = 0;
+        snapshot_service_auto_hwm_inputs_local (
+          _runtime, &connected_peer_count, &active_peer_count);
+        apply_spot_internal_auto_hwm (
+          _ctx, plan.sub_socket,
+          spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
+                                          ZLINK_CORE_SOCKET_SUB,
+                                          connected_peer_count,
+                                          active_peer_count,
+                                          0, 0, true, true, true, true});
+    }
     if (topology_.pubsub_active () && pub_endpoints_changed) {
         attachment.mark_auto_sub_replay_pending (
           service_attachment_t::discovered_state_t::auto_sub_replay_reconnect);

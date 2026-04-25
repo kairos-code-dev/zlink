@@ -73,7 +73,8 @@ inline int bench_max_sockets()
 
     long required = 0;
     if (normalized == "SPOT") {
-        required = static_cast<long>(clients) * 16L + 64L;
+        required = std::max<long>(4096L,
+                                  static_cast<long>(clients) * 32L + 512L);
     } else {
         required = static_cast<long>(clients) * 3L + 4096L;
     }
@@ -110,6 +111,23 @@ inline int bench_ctx_auto_hwm_enable()
     return parsed != 0 ? 1 : 0;
 }
 
+inline int bench_ctx_auto_hwm_total_memory_budget_mb()
+{
+    const char *value =
+      std::getenv("PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB");
+    if (!value || !*value)
+        return ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(value, &end, 10);
+    if (errno != 0 || end == value || parsed <= 0)
+        return ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int>(parsed);
+}
+
 inline void apply_ctx_options(void *ctx_)
 {
     const bool debug = std::getenv("PERF_DEBUG") != NULL;
@@ -137,6 +155,10 @@ inline void apply_ctx_options(void *ctx_)
                     ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
                     bench_ctx_auto_hwm_enable(),
                     "ZLINK_CTX_OPT_AUTO_HWM_ENABLE");
+    set_ctx_opt_int(ctx_,
+                    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
+                    bench_ctx_auto_hwm_total_memory_budget_mb(),
+                    "ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB");
 }
 
 class ctx_guard_t {
@@ -256,13 +278,25 @@ inline int bench_hwm_from_env(const char *name_, int default_hwm_)
 
 inline void apply_benchmark_hwm(void *socket_, int hwm_value)
 {
-    if (hwm_value <= 0)
+    const char *sndhwm_raw = resolve_multi_named_env_value("PERF_SNDHWM");
+    const char *rcvhwm_raw = resolve_multi_named_env_value("PERF_RCVHWM");
+    const bool explicit_sndhwm = sndhwm_raw && *sndhwm_raw;
+    const bool explicit_rcvhwm = rcvhwm_raw && *rcvhwm_raw;
+    if (hwm_value <= 0 && !explicit_sndhwm && !explicit_rcvhwm)
         return;
 
-    const int sndhwm = bench_hwm_from_env("PERF_SNDHWM", hwm_value);
-    const int rcvhwm = bench_hwm_from_env("PERF_RCVHWM", hwm_value);
-    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
+    if (explicit_sndhwm || hwm_value > 0) {
+        const int sndhwm = bench_hwm_from_env("PERF_SNDHWM", hwm_value);
+        if (sndhwm > 0)
+            set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm,
+                            "ZLINK_OPT_SNDHWM");
+    }
+    if (explicit_rcvhwm || hwm_value > 0) {
+        const int rcvhwm = bench_hwm_from_env("PERF_RCVHWM", hwm_value);
+        if (rcvhwm > 0)
+            set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm,
+                            "ZLINK_OPT_RCVHWM");
+    }
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)

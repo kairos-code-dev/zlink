@@ -144,6 +144,11 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
 
     const bool changed =
       sync_mesh_peer_monitor_state (&runtime_->execution.mesh_peer_state, raw_);
+    if (raw_.event == ZLINK_EVENT_DISCONNECTED) {
+        runtime_->execution.data_plane_protocol_state.peer_ctrl_endpoints.clear ();
+        runtime_->execution.data_plane_protocol_state.peer_ready_filters.clear ();
+        runtime_->execution.data_plane_protocol_state.outbound_ready_filters.clear ();
+    }
     if (std::getenv ("ZLINK_DEBUG_SPOT_CONTROL")) {
         std::fprintf (
           stderr,
@@ -196,14 +201,14 @@ void spot_data_plane_protocol_t::clear_snapshot_sources (
 
 int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
   socket_base_t *mesh_xsub_,
-  socket_base_t *fanout_,
   socket_base_t *peer_ctrl_pub_,
   spot_runtime_t *runtime_,
+  spot_data_plane_runtime_state_t *runtime_state_,
   spot_node_t *node_,
   spot_data_plane_protocol_state_t *state_)
 {
-    if (!mesh_xsub_ || !fanout_ || !peer_ctrl_pub_ || !runtime_ || !node_
-        || !state_) {
+    if (!mesh_xsub_ || !peer_ctrl_pub_ || !runtime_ || !runtime_state_
+        || !node_ || !state_) {
         errno = EFAULT;
         return -1;
     }
@@ -298,8 +303,13 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
 
         if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (
               topic_data, topic_size)) {
-            if (spot_publish_msg_parts_consume (fanout_, topic, &frames) != 0)
+            if (!runtime_state_->local_targets.empty ()
+                && spot_data_plane_forwarder_t::forward_local_fanout (
+                     runtime_, runtime_state_, topic, frames)
+                     != 0) {
+                spot_clear_msg_parts (&frames);
                 return -1;
+            }
             spot_clear_msg_parts (&frames);
 
             ++processed;

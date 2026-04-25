@@ -800,12 +800,11 @@ dealer map for cross-channel calls, and an external publish ingress path.
   update the dealer's effective candidates.
 - Manual attachments stay active as long as the socket is healthy.
 
-### 11.7 Weight propagation
+### 11.7 Weight cache
 
-When `zlink_set_spot_node_option(..., ZLINK_SPOT_NODE_OPT_WEIGHT, ...)`
-switches a SpotNode weight between positive values and `0`, the change is
-advertised to other SpotNode peers through the SpotNode peer control path
-(`peer_ctrl_pub` / `peer_ctrl_sub`) as a best-effort runtime signal.
+SpotNode and Spot do not expose a local weight setting. The SpotNode peer
+cache keeps the remote `weight` value learned from discovery provider entries
+and peer state so service-aware routing can avoid peers that advertise `0`.
 
 - Each peer updates the matching entry inside its SpotNode peer cache
   (see §2.2). That cache is also the source for the `weight`
@@ -815,14 +814,15 @@ advertised to other SpotNode peers through the SpotNode peer control path
   marked with weight `0` is excluded from candidates, and when every
   candidate is `0` the submit path normalizes the result to
   `ZLINK_SUBMIT_NOT_ADMITTED`. Direct SPOT requests targeting a
-  weight-`0` SpotNode return the same result.
-- The change is also surfaced via the service monitor event
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. The corresponding
-  raw socket transition is exposed separately through the socket monitor
-  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.
-- After a peer reconnects, the SpotNode re-advertises its current
-  weight once so that stale caches do not cause incorrect
-  candidate selection.
+  peer whose remote weight cache shows `0` return the same result.
+- Weight changes learned through discovery are surfaced via the service monitor
+  event `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. Raw socket local
+  weight changes are exposed separately through the socket monitor event
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.
+- After a provider reconnects through discovery, the provider weight in the
+  registry is rebuilt from the provider registration. SpotNode registrations
+  use the default provider weight `100`; raw socket attachments advertise their
+  own local peer weight.
 
 ## 12. Peer RID Disconnect
 

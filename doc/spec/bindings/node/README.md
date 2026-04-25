@@ -41,9 +41,9 @@ with the rules here, this section wins.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters. Binding docs and samples must drain
   until the recv path reports no data / `EAGAIN`.
-- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
-  and `Spot` through typed option/property surfaces. The value range is
-  `0..100`, default `100`; `0` drains new outbound selection. Submit
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
+  typed option/property surfaces. The value range is `0..100`, default
+  `100`; `0` drains new outbound selection. Submit
   attempts to a weight-`0` peer throw `SubmitError` whose `code` equals
   `SubmitResult.NotAdmitted`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
@@ -149,11 +149,10 @@ Node / TypeScript nonblocking data-plane helpers follow this rule:
   recv failures.
 
 Peer weight is not a common socket option. Bindings expose weight only on
-`RouterSocket`, `DealerSocket`, `SpotNode`, and `Spot`:
+`RouterSocket` and `DealerSocket`:
 
 ```typescript
-// No common peer-weight accessor. RouterSocket, DealerSocket,
-// SpotNode, and Spot expose weight on their typed option facade.
+// No common peer-weight accessor. RouterSocket and DealerSocket expose weight on their typed option facade.
 ```
 
 ### PairSocket

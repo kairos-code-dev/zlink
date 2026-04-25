@@ -256,54 +256,6 @@ int spot_subject_get_routing_id (void *handle_, zlink_routing_id_t *out_)
     return -1;
 }
 
-int spot_subject_set_weight (void *handle_,
-                                      uint32_t state_)
-{
-    if (as_spot_pub_side_handle (handle_) || as_spot_sub_side_handle (handle_)) {
-        errno = ENOTSUP;
-        return -1;
-    }
-
-    if (is_registered_spot_handle (handle_)) {
-        spot_handle_t *spot = static_cast<spot_handle_t *> (handle_);
-        zlink::service_public_api_scope_t admission (spot->public_api);
-        if (!admission.acquired ())
-            return -1;
-        return spot->node ? spot->node->set_weight (state_) : -1;
-    }
-
-    if (is_registered_spot_node_handle (handle_))
-        return static_cast<zlink::spot_node_t *> (handle_)
-          ->set_weight (state_);
-
-    errno = EFAULT;
-    return -1;
-}
-
-int spot_subject_get_weight (void *handle_,
-                                      uint32_t *state_out_)
-{
-    if (as_spot_pub_side_handle (handle_) || as_spot_sub_side_handle (handle_)) {
-        errno = ENOTSUP;
-        return -1;
-    }
-
-    if (is_registered_spot_handle (handle_)) {
-        spot_handle_t *spot = static_cast<spot_handle_t *> (handle_);
-        zlink::service_public_api_scope_t admission (spot->public_api);
-        if (!admission.acquired ())
-            return -1;
-        return spot->node ? spot->node->get_weight (state_out_) : -1;
-    }
-
-    if (is_registered_spot_node_handle (handle_))
-        return static_cast<zlink::spot_node_t *> (handle_)
-          ->get_weight (state_out_);
-
-    errno = EFAULT;
-    return -1;
-}
-
 int spot_subject_set_tls_server (void *handle_,
                                  const char *cert_,
                                  const char *key_,

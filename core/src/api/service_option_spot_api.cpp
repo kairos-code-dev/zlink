@@ -38,20 +38,6 @@ int zlink_service_spot_get_routing_id_internal (void *handle_,
     return spot_subject_get_routing_id (handle_, out_);
 }
 
-int zlink_service_spot_set_weight_internal (
-  void *handle_,
-  uint32_t state_)
-{
-    return spot_subject_set_weight (handle_, state_);
-}
-
-int zlink_service_spot_get_weight_internal (
-  void *handle_,
-  uint32_t *state_out_)
-{
-    return spot_subject_get_weight (handle_, state_out_);
-}
-
 int zlink_service_spot_set_tls_server_internal (void *handle_,
                                                 const char *cert_,
                                                 const char *key_,

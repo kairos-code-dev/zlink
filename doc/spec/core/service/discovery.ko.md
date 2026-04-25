@@ -174,8 +174,7 @@ Discovery가 노출하는 peer 항목은 peer 가중치를 함께 가집니다.
 `zlink_member_peer_entry_t.weight`는 각 peer의 현재 `0..100` 값을 나타냅니다.
 DEALER attachment는 가중치가 `0`인 peer를 후보에서 제외하고,
 모두 `0`이면 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로 실패합니다.
-가중치 규약과 변경 방법은 [router.ko.md](../socket/router.ko.md)와
-[spot.ko.md](spot.ko.md)에 정리되어 있습니다.
+로컬 advertised weight를 바꾸는 public handle은 raw ROUTER와 DEALER 소켓입니다.
 
 DEALER는 예외적으로 서비스 단위 정책 변경을 허용할 수 있습니다. 서비스가
 명시적으로 DEALER peer 모드를 바꾸면, 같은 `service_name` 안에서

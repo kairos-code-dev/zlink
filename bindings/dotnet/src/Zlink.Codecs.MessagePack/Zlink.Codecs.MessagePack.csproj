@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Zlink.Codecs.MessagePack</PackageId>
-    <Version>5.3.2</Version>
+    <Version>5.3.4</Version>
     <Description>MessagePack codec extension for Zlink</Description>
   </PropertyGroup>
   <ItemGroup>

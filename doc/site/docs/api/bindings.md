@@ -231,7 +231,7 @@ public shape를 기준으로 고정한다.
   한다. `ZLINK_POLLOUT` 은 "transport writable" 이 아니라
   "send recovery readiness / backpressure recovery notification" 으로 설명한다.
 - 바인딩은 peer 가중치 surface 를 언어별 typed option/property 로 노출해야
-  한다. 대상은 `ROUTER`, `DEALER`, `SpotNode`, `Spot`이며 값 범위는
+  한다. 설정 대상은 `ROUTER`, `DEALER`이며 값 범위는
   `0..100`, 기본값은 `100`이다. `0`은 새 outbound 선택에서 제외를 뜻한다.
   대응하는 제출 실패 코드는 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) 이며,
   모든 바인딩의 `SubmitError` 매핑에 포함되어야 한다.
@@ -2302,8 +2302,6 @@ surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개
 핵심 API/계약:
 - `ZLINK_ROUTER_OPT_WEIGHT`
 - `ZLINK_DEALER_OPT_WEIGHT`
-- `ZLINK_SPOT_NODE_OPT_WEIGHT`
-- `ZLINK_SPOT_OPT_WEIGHT`
 - 값 범위 `0..100`, 기본값 `100`
 - submit 결과 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) — target peer 가중치가 `0`이면 반환
 - socket monitor 이벤트 `ZLINK_EVENT_PEER_WEIGHT_CHANGED` (bit 15)
@@ -2312,7 +2310,8 @@ surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개
 
 바인딩 규칙:
 - `weight`는 언어 관례에 맞는 typed option/property surface로 노출한다.
-  대상은 `ROUTER`, `DEALER`, `SpotNode`, `Spot`이다.
+  설정 대상은 `ROUTER`, `DEALER`이다. `SpotNode`와 `Spot`에는 weight 설정
+  surface를 노출하지 않는다.
 - `NOT_ADMITTED` 를 `SubmitError` 계열에 포함하여 caller 가
   가중치 `0` 거부를 구분할 수 있게 한다.
 - `PEER_WEIGHT_CHANGED` 이벤트 bit 은 기존 socket monitor / service

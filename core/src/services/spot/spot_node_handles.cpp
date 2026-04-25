@@ -611,19 +611,6 @@ int spot_node_t::set_node_option (int option_,
         errno = EFAULT;
         return -1;
     }
-    if (option_ == ZLINK_SPOT_NODE_OPT_WEIGHT) {
-        if (optvallen_ != sizeof (int)) {
-            errno = EINVAL;
-            return -1;
-        }
-        int value = 0;
-        memcpy (&value, optval_, sizeof (value));
-        if (value < 0 || value > 100) {
-            errno = EINVAL;
-            return -1;
-        }
-        return set_weight (static_cast<uint32_t> (value));
-    }
 
     spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
     if (!apply_runtime_hwm_option (&hwm_config, option_, optval_, optvallen_)) {
@@ -673,15 +660,6 @@ int spot_node_t::get_node_option (int option_,
     if (!_runtime || !optval_ || !optvallen_ || *optvallen_ < sizeof (int)) {
         errno = EINVAL;
         return -1;
-    }
-    if (option_ == ZLINK_SPOT_NODE_OPT_WEIGHT) {
-        uint32_t weight = 0;
-        if (get_weight (&weight) != 0)
-            return -1;
-        const int value = static_cast<int> (weight);
-        memcpy (optval_, &value, sizeof (value));
-        *optvallen_ = sizeof (value);
-        return 0;
     }
 
     int value = 0;

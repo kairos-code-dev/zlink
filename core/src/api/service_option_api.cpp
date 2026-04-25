@@ -123,46 +123,6 @@ int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
     return -1;
 }
 
-int zlink_service_set_weight (void *handle_,
-                                       uint32_t state_)
-{
-    const zlink::service_handle_resolution_t resolved =
-      zlink::resolve_service_handle (handle_);
-
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (zlink_service_spot_set_weight_internal (handle_, state_) == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
-}
-
-int zlink_service_get_weight (void *handle_,
-                                       uint32_t *state_out_)
-{
-    const zlink::service_handle_resolution_t resolved =
-      zlink::resolve_service_handle (handle_);
-
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (zlink_service_spot_get_weight_internal (handle_, state_out_)
-        == 0) {
-        return 0;
-    }
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
-}
-
 int zlink_service_set_tls_server (void *handle_,
                                   const char *cert_,
                                   const char *key_,

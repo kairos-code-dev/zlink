@@ -236,25 +236,6 @@ void test_typed_spot_node_unified_options ()
       zlink_set_pub_option (node, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof (nodrop)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "alpha"));
 
-    int weight = 30;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_WEIGHT, &weight, sizeof (weight)));
-    weight = 0;
-    size = sizeof (weight);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_WEIGHT, &weight, &size));
-    TEST_ASSERT_EQUAL_INT (30, weight);
-
-    weight = 45;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_spot_option (spot, ZLINK_SPOT_OPT_WEIGHT, &weight,
-                             sizeof (weight)));
-    weight = 0;
-    size = sizeof (weight);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_spot_option (spot, ZLINK_SPOT_OPT_WEIGHT, &weight, &size));
-    TEST_ASSERT_EQUAL_INT (45, weight);
-
     int got = 0;
     size = sizeof (got);
     TEST_ASSERT_SUCCESS_ERRNO (

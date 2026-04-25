@@ -91,25 +91,25 @@ call `zlink_spot_node_disconnect_peer_rid()` on the `SpotNode` to close that
 peer node connection. The `Spot` facade does not expose a separate rid
 disconnect function because it does not directly own peer connections.
 
-### 3.3 Drain new outbound with weight
+### 3.3 Drain new outbound with raw peer weight
 
-If you want to stop new routed/channel outbound temporarily without tearing
-down peer connections, set `ZLINK_SPOT_NODE_OPT_WEIGHT` or
-`ZLINK_SPOT_OPT_WEIGHT` to `0`. The valid range is `0..100`; the default is
-`100`.
+SpotNode and Spot do not expose a weight setting. If a service uses raw
+ROUTER or worker DEALER peers and you want to stop new outbound temporarily
+without tearing down peer connections, set that raw socket's weight to `0`.
+The valid range is `0..100`; the default is `100`.
 
 ```c
 int drain_weight = 0;
-zlink_set_spot_node_option(
-  node,
-  ZLINK_SPOT_NODE_OPT_WEIGHT,
+zlink_set_router_option(
+  router,
+  ZLINK_ROUTER_OPT_WEIGHT,
   &drain_weight,
   sizeof(drain_weight));
 
 int serve_weight = 100;
-zlink_set_spot_option(
-  spot,
-  ZLINK_SPOT_OPT_WEIGHT,
+zlink_set_router_option(
+  router,
+  ZLINK_ROUTER_OPT_WEIGHT,
   &serve_weight,
   sizeof(serve_weight));
 ```

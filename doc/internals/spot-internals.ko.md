@@ -786,12 +786,11 @@ ingress 경로다.
   유효 후보가 자동으로 갱신된다.
 - 수동 attachment는 socket 상태가 정상인 동안 active로 유지된다.
 
-### 11.7 가중치 전파
+### 11.7 가중치 cache
 
-`zlink_set_spot_node_option(..., ZLINK_SPOT_NODE_OPT_WEIGHT, ...)`로 SpotNode의
-가중치를 양수 값과 `0` 사이에서 바꾸면, 변경은 SpotNode 내부 peer control
-경로(`peer_ctrl_pub` / `peer_ctrl_sub`)를 통해 best-effort runtime 신호로
-다른 SpotNode peer에게 advertise된다.
+SpotNode와 Spot에는 로컬 weight 설정 옵션이 없다. SpotNode peer cache는
+discovery provider entry나 peer 상태에서 배운 remote `weight` 값을 보관하고,
+service-aware routing이 `0`을 advertise한 peer를 후보에서 제외할 수 있게 한다.
 
 - 각 peer는 자신의 SpotNode peer cache(§2.2 참조)에서 해당 항목의
   가중치를 갱신한다. 이 cache는 `zlink_spot_node_peers_snapshot()`과
@@ -801,13 +800,15 @@ ingress 경로다.
   가중치가 `0`으로 보이면 service-aware send/request는 그 peer를 후보에서
   제외하고, 후보가 모두 `0`이면 submit은
   `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화되어 반환된다. 직접 SPOT request도
-  대상 SpotNode의 가중치가 `0`이면 같은 결과를 낸다.
-- 변경은 service monitor의
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로도 함께 노출된다.
-  같은 raw socket 쪽 변경은 별도로 socket monitor의
+  대상 peer의 remote weight cache가 `0`으로 보이면 같은 결과를 낸다.
+- discovery에서 배운 weight 변경은 service monitor의
+  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로 노출된다. raw socket의
+  로컬 weight 변경은 별도로 socket monitor의
   `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 surface된다.
-- peer 재연결 후에는 현재 가중치를 한 번 더 advertise해서 stale
-  cache로 인한 잘못된 후보 선택을 줄인다.
+- provider가 discovery를 통해 재연결되면 registry의 provider weight는
+  provider registration으로 다시 구성된다. SpotNode registration은 기본
+  provider weight `100`을 쓰고, raw socket attachment는 자기 local peer
+  weight를 advertise한다.
 
 ## 12. Peer rid disconnect
 

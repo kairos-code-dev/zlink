@@ -173,7 +173,7 @@ service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
 ```c
 int drain_weight = 0;
 zlink_set_spot_node_option(
-    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
     &drain_weight, sizeof(drain_weight));
 
 /* 2) Wait for in-flight requests to complete (e.g. SLA + small margin)
@@ -185,7 +185,7 @@ sleep_seconds(60);
 /* 4) Rejoin the service */
 int serve_weight = 100;
 zlink_set_spot_node_option(
-    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+    orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
     &serve_weight, sizeof(serve_weight));
 ```
 

@@ -56,10 +56,7 @@ with the rules here, this section wins.
 - `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
   samples must drain until the recv path reports `EAGAIN`.
-- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
-  and `Spot` through typed option/property surfaces. The value range is
-  `0..100`, default `100`; `0` drains new outbound selection. Submit
-  attempts to a weight-`0` peer raise `SubmitException` with
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit attempts to a weight-`0` peer raise `SubmitException` with
   `getCode() == SubmitResult.NOT_ADMITTED`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `onSendReady(...)`. It is not a "transport writable" bit.
@@ -136,7 +133,7 @@ void close();                                                    // @throws Clos
 MonitorSocket monitorOpen();                                    // @throws ConfigException
 MonitorSocket monitorOpen(MonitorEventType... events);          // @throws ConfigException
 // No common peer-weight accessor. Bindings expose weight only on
-// RouterSocket, DealerSocket, SpotNode, and Spot.
+// RouterSocket and DealerSocket.
 
 // Available on message-capable sockets
 boolean send(Message part, SendFlags flags);                            // @throws SubmitException

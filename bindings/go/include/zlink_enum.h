@@ -151,14 +151,12 @@ typedef enum zlink_spot_node_option_t
     ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM = 0x3608,
     ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM = 0x3609,
     ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM = 0x360A,
-    ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM = 0x360B,
-    ZLINK_SPOT_NODE_OPT_WEIGHT = 0x360C
+    ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM = 0x360B
 } zlink_spot_node_option_t;
 
 typedef enum zlink_spot_option_t
 {
-    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701,
-    ZLINK_SPOT_OPT_WEIGHT = 0x3702
+    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701
 } zlink_spot_option_t;
 
 typedef enum zlink_disconnect_reason_t

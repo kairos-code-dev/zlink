@@ -47,8 +47,7 @@ conflicts with the rules here, this section wins.
 - `service::spot_t::on_routed_receive(...)` and
   `service::spot_t::on_dispatch_event(...)` are mutually exclusive on the
   routed axis.
-- Peer weight is exposed only on `router_socket_t`, `dealer_socket_t`,
-  `service::spot_node_t`, and `service::spot_t` through typed option/property
+- Peer weight is exposed only on `router_socket_t` and `dealer_socket_t` through typed option/property
   surfaces. The value range is `0..100`, default `100`; `0` drains new
   outbound selection. Submit attempts to a weight-`0` peer fail with
   `submit_error_t{.code = submit_result_t::not_admitted}`.
@@ -195,7 +194,7 @@ void unbind(const std::string& endpoint);
 /// @throws config_error_t
 common_socket_options_t options();
 // No common peer-weight accessor. Bindings expose weight only on
-// router_socket_t, dealer_socket_t, service::spot_node_t, and service::spot_t.
+// router_socket_t and dealer_socket_t.
 /// @throws config_error_t
 void set_tls_server(const std::string& cert, const std::string& key,
                     bool require_client_cert = false);

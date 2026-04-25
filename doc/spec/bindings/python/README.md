@@ -44,10 +44,7 @@ with the rules here, this section wins.
   samples must drain until the recv path reports `EAGAIN`.
 - `Spot.on_routed_receive(...)` and `on_dispatch_event(...)` are mutually
   exclusive on the routed axis.
-- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
-  and `Spot` through typed option/property surfaces. The value range is
-  `0..100`, default `100`; `0` drains new outbound selection. Submit
-  attempts to a weight-`0` peer raise `SubmitError` whose `code` is
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit attempts to a weight-`0` peer raise `SubmitError` whose `code` is
   `SubmitResult.NOT_ADMITTED`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
@@ -135,8 +132,7 @@ Python nonblocking data-plane helpers follow this rule:
   `RecvError` for real recv failures.
 
 Peer weight is not a common-socket accessor. Bindings expose it only on the
-implemented weight-bearing handles (`RouterSocket`, `DealerSocket`,
-`SpotNode`, and `Spot`) through their typed option/property surfaces.
+implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through their typed option/property surfaces.
 
 ### PairSocket
 

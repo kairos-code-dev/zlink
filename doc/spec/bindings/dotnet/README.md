@@ -57,9 +57,9 @@ with the rules here, this section wins.
 - `SpotDispatchEvent.SubscribeReadable` and `.RoutedReadable` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
   samples must drain until the recv API reports `EAGAIN`.
-- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
-  and `Spot` through typed option/property surfaces. The value range is
-  `0..100`, default `100`; `0` drains new outbound selection. Submit
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
+  typed option/property surfaces. The value range is `0..100`, default
+  `100`; `0` drains new outbound selection. Submit
   attempts to a weight-`0` peer throw `ZlinkSubmitException` with `Code =
   SubmitResult.NotAdmitted`.
 - `Pollout` is a send-recovery readiness signal, shared with
@@ -154,7 +154,7 @@ void Unbind(string address);
 SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All);
 /// <exception cref="ZlinkConfigException"/>
 // No common peer-weight accessor. Bindings expose weight only on
-// RouterSocket, DealerSocket, SpotNode, and Spot.
+// RouterSocket and DealerSocket.
 /// <exception cref="ZlinkConfigException"/>
 void SetTlsServer(string certPath, string keyPath,
                   bool requireClientCert = false);

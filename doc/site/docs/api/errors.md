@@ -531,7 +531,7 @@ path remains.
 
 `zlink_spot_publish` is fan-out, so a single peer's weight never fails it.
 The other routed/direct send functions return `NOT_ADMITTED` when the
-destination SpotNode or ROUTER has weight `0`.
+destination peer's remote weight cache shows `0`.
 
 ### SPOT reply functions
 

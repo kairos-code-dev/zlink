@@ -70,8 +70,6 @@ class spot_node_t : public discovery_observer_t
                         int trust_system_);
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
                                 void *userdata_);
-    int set_weight (uint32_t weight_);
-    int get_weight (uint32_t *weight_out_) const;
     int set_pub_option (int option_,
                         const void *optval_,
                         size_t optvallen_);
@@ -299,7 +297,6 @@ class spot_node_t : public discovery_observer_t
 
     spot_runtime_t *_runtime;
     spot_peer_state_t _peer_state;
-    uint32_t _weight;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_handler_userdata;
     service_public_api_guard_t _public_api;

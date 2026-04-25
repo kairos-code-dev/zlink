@@ -299,7 +299,6 @@ class SpotNodeOption(IntEnum):
     TOPIC_RECV_HWM = 0x3609
     ROUTED_SEND_HWM = 0x360A
     ROUTED_RECV_HWM = 0x360B
-    WEIGHT = 0x360C
 
 
 class SpotNodePubMode(IntEnum):

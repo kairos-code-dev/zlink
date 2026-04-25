@@ -44,10 +44,7 @@ with the rules here, this section wins.
   until `EAGAIN`.
 - `Spot.OnRoutedReceive(...)` and `OnDispatchEvent(...)` are mutually exclusive
   on the routed axis.
-- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
-  and `Spot` through typed option/property surfaces. The value range is
-  `0..100`, default `100`; `0` drains new outbound selection. Submit
-  attempts to a weight-`0` peer return `*SubmitError` whose `Code()` is
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit attempts to a weight-`0` peer return `*SubmitError` whose `Code()` is
   `SubmitResultNotAdmitted`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `OnSendReady(...)`. It is not a "transport writable" bit.
@@ -140,8 +137,7 @@ Go nonblocking data-plane helpers follow this rule:
   error for real recv failures.
 
 Peer weight is not a common-socket accessor. Bindings expose it only on the
-implemented weight-bearing handles (`RouterSocket`, `DealerSocket`,
-`SpotNode`, and `Spot`) through their typed option/property surfaces.
+implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through their typed option/property surfaces.
 
 ```go
 // No common peer-weight accessor.

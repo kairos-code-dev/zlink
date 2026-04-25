@@ -699,20 +699,20 @@ traffic through the same framing):
 
 ## 10. Weight propagation
 
-Both raw ROUTER and SpotNode drive their own local weight through typed
-option APIs. Internally each subject advertises the change to its connected
-peers as a **best-effort runtime signal**, and each peer updates its weight
-cache so outbound candidate selection reflects the new value.
+Raw ROUTER and DEALER sockets drive local peer weight through their typed
+option APIs. SpotNode and Spot do not expose a separate local weight setting.
+Internally each raw subject advertises the change to its connected peers as a
+**best-effort runtime signal**, and each peer updates its weight cache so
+outbound candidate selection reflects the new value.
 
 Baseline behavior:
 
 - A local weight change is applied to the local cache immediately. Other local
   outbound paths on the same node (e.g. local spot or router send) see the
   new value right away.
-- Peer-side propagation flows through the SpotNode peer control path
-  (`peer_ctrl_pub` / `peer_ctrl_sub`) and through the dedicated raw socket
-  weight signal path. The signal is a best-effort runtime control
-  message; no strong synchronous model is provided.
+- Peer-side propagation flows through the dedicated raw socket weight signal
+  path. The signal is a best-effort runtime control message; no strong
+  synchronous model is provided.
 - After reconnect the weight resyncs. When a new session becomes
   ready the subject re-advertises its current weight once so a
   stale cache does not cause incorrect candidate selection.
@@ -723,8 +723,8 @@ Baseline behavior:
   the same refusal may surface first as `ZLINK_SUBMIT_NOT_CONNECTED` or
   `ZLINK_SUBMIT_NOT_FOUND`.
 - Raw socket changes are exposed to the application via the socket monitor
-  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. SpotNode changes use the
-  service monitor event
+  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. Discovery-learned service peer
+  weight changes use the service monitor event
   `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. The implementation
   carries both the peer identifier (`routing_id`) and the new weight inside
   the same event payload.

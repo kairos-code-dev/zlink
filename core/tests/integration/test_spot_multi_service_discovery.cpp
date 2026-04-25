@@ -28,6 +28,31 @@ void tearDown ()
 
 namespace
 {
+bool wait_for_spot_node_provider_weight_local (void *registry_,
+                                               const char *service_name_,
+                                               uint32_t expected_weight_,
+                                               int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_member_peer_entry_t entries[8];
+        size_t count = 8;
+        if (zlink_registry_member_peers (registry_, ZLINK_SERVICE_TYPE_SPOT,
+                                         service_name_, entries, &count)
+            == ZLINK_CONFIG_OK) {
+            for (size_t j = 0; j < count; ++j) {
+                if (entries[j].service_role
+                      == zlink::discovery_protocol::service_role_spot
+                    && entries[j].weight == expected_weight_) {
+                    return true;
+                }
+            }
+        }
+        msleep (25);
+    }
+    return false;
+}
+
 void test_spot_service_discovery_replays_existing_filters_end_to_end ()
 {
     using namespace zlink::discovery_protocol;
@@ -122,6 +147,54 @@ void test_spot_service_discovery_replays_existing_filters_end_to_end ()
     close_zero_linger (sub);
     close_zero_linger (xpub);
     destroy_multi_service_fixture_local (&spot, &node, &consumer_discovery,
+                                         &provider_discovery, &registry, ctx);
+}
+
+void test_spot_node_provider_registers_default_weight ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
+              test_port (6070));
+    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
+              test_port (6071));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_bind (registry, registry_pub, registry_router));
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-weight-default");
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      discovery, registry_router, 3000));
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_bind (node, "tcp://127.0.0.1:*"));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_spot_node_attach_discovery (node, discovery));
+
+    TEST_ASSERT_TRUE (wait_for_spot_node_provider_weight_local (
+      registry, "spot-weight-default", 100, 5000));
+
+    void *spot = NULL;
+    void *provider_discovery = NULL;
+    destroy_multi_service_fixture_local (&spot, &node, &discovery,
                                          &provider_discovery, &registry, ctx);
 }
 
@@ -410,6 +483,7 @@ int main (void)
 
     UNITY_BEGIN ();
     RUN_TEST (test_spot_service_discovery_replays_existing_filters_end_to_end);
+    RUN_TEST (test_spot_node_provider_registers_default_weight);
     RUN_TEST (test_spot_service_discovery_replays_filters_after_pubsub_churn);
     RUN_TEST (
       test_spot_service_discovery_multi_router_distributes_across_candidates);

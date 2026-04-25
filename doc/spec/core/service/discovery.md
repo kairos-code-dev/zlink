@@ -179,8 +179,8 @@ Peer entries surfaced by Discovery carry peer weight.
 `zlink_member_peer_entry_t.weight` stores the current `0..100` value for
 each peer. DEALER attachments exclude peers with weight `0` from candidate
 selection and fail submit with `ZLINK_SUBMIT_NOT_ADMITTED` when every known
-peer has weight `0`. See [router.md](../socket/router.md) and [spot.md](spot.md)
-for the weight contract and the typed option APIs used to change it.
+peer has weight `0`. Raw ROUTER and DEALER sockets are the public handles that
+can change local advertised weight.
 
 DEALER is the only exception that may be changed by service-level policy. If a
 service explicitly switches its DEALER peer mode, the service may use

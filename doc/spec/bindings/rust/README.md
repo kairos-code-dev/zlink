@@ -20,10 +20,7 @@ with the rules here, this section wins.
 
 - `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
   plane. Remove `on_receive(...)` from their public contract.
-- Peer weight is exposed only on `RouterSocket`, `DealerSocket`, `SpotNode`,
-  and `Spot` through typed option/property surfaces. The value range is
-  `0..100`, default `100`; `0` drains new outbound selection. Submit to a
-  weight-`0` peer returns
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit to a weight-`0` peer returns
   `Err(SubmitError { code: SubmitResult::NotAdmitted, .. })`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
@@ -214,8 +211,7 @@ Peer weight is not part of `CommonSocketOptions`. Rust exposes weight only on
 
 ```rust
 impl<'a, S> CommonSocketOptions<'a, S> {
-    // No common peer-weight accessor. RouterSocket, DealerSocket,
-    // SpotNode, and Spot expose weight on their typed option facade.
+    // No common peer-weight accessor. RouterSocket and DealerSocket expose weight on their typed option facade.
 }
 ```
 

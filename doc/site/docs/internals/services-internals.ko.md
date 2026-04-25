@@ -716,12 +716,10 @@ ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 RO
 
 ## 10. 가중치 전파
 
-raw ROUTER와 SpotNode는 모두 자기 가중치를 바꿀 수 있다. ROUTER는
-`zlink_set_router_option(..., ZLINK_ROUTER_OPT_WEIGHT, ...)`, SpotNode는
-`zlink_set_spot_node_option(..., ZLINK_SPOT_NODE_OPT_WEIGHT, ...)`로 값을
-바꾼다. 내부 구현은 그 변경을 연결된 peer에게 **최선 노력의 runtime
-신호**로 알리고, peer는 자신의 가중치 cache를 갱신해서 outbound 후보
-선택에 반영한다.
+raw ROUTER와 DEALER 소켓은 typed option API로 자기 peer 가중치를 바꿀 수
+있다. SpotNode와 Spot에는 별도 로컬 weight 설정 옵션이 없다. 내부 구현은 raw
+socket의 변경을 연결된 peer에게 **최선 노력의 runtime 신호**로 알리고, peer는
+자신의 가중치 cache를 갱신해서 outbound 후보 선택에 반영한다.
 
 기본 동작 약속:
 
@@ -742,7 +740,8 @@ raw ROUTER와 SpotNode는 모두 자기 가중치를 바꿀 수 있다. ROUTER�
   `ZLINK_SUBMIT_NOT_CONNECTED` 또는 `ZLINK_SUBMIT_NOT_FOUND`로 먼저 보일
   수 있다.
 - raw socket 쪽 변경은 socket monitor의
-  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로, SpotNode 쪽 변경은
+  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다. Discovery에서
+  배운 service peer weight 변경은
   `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다.
   내부 구현은 peer 식별자(`routing_id`)와 새 가중치를 같은
   이벤트 payload에 함께 싣는다.

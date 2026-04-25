@@ -315,7 +315,7 @@ int spot_node_t::ensure_registered ()
     if (discovery_owned_service::register_endpoint (
           discovery, discovery_protocol::service_type_spot_node,
           advertise.c_str (), &resolved, &node_rid,
-          discovery_protocol::service_role_spot, _weight)
+          discovery_protocol::service_role_spot, 100)
         != 0) {
         return -1;
     }

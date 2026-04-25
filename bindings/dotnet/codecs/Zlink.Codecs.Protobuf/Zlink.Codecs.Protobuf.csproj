@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <Version>5.3.2</Version>
+    <Version>5.3.4</Version>
     <AssemblyName>Zlink.Codecs.Protobuf</AssemblyName>
     <PackageId>Zlink.Codecs.Protobuf</PackageId>
     <Authors>ulalax</Authors>

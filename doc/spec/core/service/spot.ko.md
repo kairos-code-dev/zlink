@@ -55,11 +55,10 @@ auto HWM 정책에서 계산됩니다. 사용자가
 우선합니다. 기본 context 설정에서는 topic send 경로가 `fanout` floor `16`,
 topic recv와 routed send/recv 경로가 `8`에서 시작합니다.
 
-`ZLINK_SPOT_NODE_OPT_WEIGHT`와 `ZLINK_SPOT_OPT_WEIGHT`는 로컬 peer가 다른
-peer에게 광고하는 처리 가중치다. 값 형식은 `int`, 범위는 `0..100`, 기본값은
-`100`이다. `0`은 연결 자체를 끊지 않고도 새 outbound 후보에서 빠진다는 뜻이며,
-양수 값으로 돌아오면 기존 peer 연결을 다시 사용한다. 이미 진행 중인 request에
-대한 reply는 이 weight 검사 대상이 아니다.
+SpotNode와 Spot에는 public weight 설정 옵션이 없습니다. peer weight는 raw
+ROUTER와 DEALER 소켓에서만 설정합니다. Spot peer snapshot에 남아 있는
+`weight` 필드는 discovery나 peer 신호에서 배운 remote peer 상태이며,
+Spot/SpotNode의 로컬 옵션이 아닙니다.
 
 
 ### 토폴로지와 discovery

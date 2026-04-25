@@ -147,13 +147,14 @@ service implementation files.
 ## 4.1 Graceful Maintenance (weight)
 
 When you need to take a SPOT Node or raw ROUTER offline for maintenance,
-prefer a graceful drain over an abrupt disconnect. Marking the node as
-weight `0` lets in-flight work finish while peers automatically stop
-selecting it as a target for new outbound work.
+prefer a graceful drain over an abrupt disconnect. For raw ROUTER or worker
+DEALER peers, setting the socket weight to `0` lets in-flight work finish
+while peers automatically stop selecting that raw peer for new outbound work.
+SpotNode and Spot do not provide a separate weight setting.
 
 Recommended sequence:
 
-1. Set the handle-specific weight option to `0`.
+1. Set the raw ROUTER or DEALER weight option to `0`.
 2. Allow connected peers a moment to update their weight caches. You
    can observe this via the socket monitor event
    `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. If you need the service-layer
@@ -161,13 +162,13 @@ Recommended sequence:
    `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`.
 3. Wait long enough for in-flight replies to drain. In production this
    wait is typically driven by your request SLA.
-4. Restart or replace the node, then rejoin the service with a positive
-   weight, usually `100`.
+4. Restart or replace the peer, then rejoin the service with a positive
+   raw socket weight, usually `100`.
 
 ```c
 int drain_weight = 0;
-zlink_set_spot_node_option(
-    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+zlink_set_router_option(
+    orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
     &drain_weight, sizeof(drain_weight));
 
 /* 2) Wait for in-flight requests to complete (for example, SLA + small
@@ -178,8 +179,8 @@ sleep_seconds(60);
 
 /* 4) Rejoin the service */
 int serve_weight = 100;
-zlink_set_spot_node_option(
-    orders_exec_node, ZLINK_SPOT_NODE_OPT_WEIGHT,
+zlink_set_router_option(
+    orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
     &serve_weight, sizeof(serve_weight));
 ```
 

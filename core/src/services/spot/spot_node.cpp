@@ -56,7 +56,6 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
     _runtime (NULL),
-    _weight (100),
     _send_ready_handler (NULL),
     _send_ready_handler_userdata (NULL)
 {
@@ -100,64 +99,6 @@ spot_node_t::~spot_node_t ()
 bool spot_node_t::check_tag () const
 {
     return _tag == spot_node_tag_value;
-}
-
-int spot_node_t::set_weight (uint32_t weight_)
-{
-    if (weight_ > 100) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-    if (ensure_healthy () != 0)
-        return -1;
-
-    discovery_t *discovery = NULL;
-    std::string advertise;
-    bool registered = false;
-    {
-        scoped_lock_t lock (_sync);
-        if (_weight == weight_)
-            return 0;
-        _weight = weight_;
-        discovery = _discovery_state.discovery;
-        advertise = _discovery_state.advertise_endpoint;
-        registered = _discovery_state.registered;
-    }
-
-    if (registered && discovery && !advertise.empty ()) {
-        if (discovery_owned_service::update_attributes (
-              discovery, discovery_protocol::service_type_spot_node,
-              advertise.c_str (), 0, weight_)
-            != 0) {
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-int spot_node_t::get_weight (
-  uint32_t *weight_out_) const
-{
-    if (!weight_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
-    if (!admission.acquired ())
-        return -1;
-    if (ensure_healthy () != 0)
-        return -1;
-
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    *weight_out_ = _weight;
-    return 0;
 }
 
 bool spot_node_t::peer_has_positive_weight (const zlink_routing_id_t *peer_rid_) const

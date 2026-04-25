@@ -212,6 +212,9 @@ zlink::spot_reqrep_internal::try_find_spot_state (void *spot_)
     if (!spot)
         return std::shared_ptr<spot_request_reply_state_t> ();
 
+    if (spot->request_reply_state)
+        return spot->request_reply_state;
+
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
       it = spot_owner_states ().find (spot_);
@@ -226,6 +229,7 @@ void zlink::spot_reqrep_internal::erase_spot_owner_state (void *spot_)
     if (!spot)
         return;
 
+    spot->request_reply_state.reset ();
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     spot_owner_states ().erase (spot_);
 }
@@ -326,11 +330,13 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
         return std::shared_ptr<spot_request_reply_state_t> ();
 
     std::shared_ptr<spot_request_reply_state_t> state;
+    if (spot->request_reply_state)
+        state = spot->request_reply_state;
     {
         std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
         std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
           it = spot_owner_states ().find (spot_);
-        if (it != spot_owner_states ().end ())
+        if (!state && it != spot_owner_states ().end ())
             state = it->second;
         if (!state) {
             state.reset (new spot_request_reply_state_t (spot_));
@@ -339,6 +345,7 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     }
     if (!state)
         state.reset (new spot_request_reply_state_t (spot_));
+    spot->request_reply_state = state;
 
     refresh_spot_identity_index (spot, state);
     return state;
@@ -352,8 +359,7 @@ zlink::spot_reqrep_internal::find_or_create_router_state (void *router_)
         return std::shared_ptr<router_spot_request_reply_state_t> ();
 
     std::shared_ptr<router_spot_request_reply_state_t> state =
-      std::static_pointer_cast<router_spot_request_reply_state_t> (
-        handle.socket->router_spot_request_reply_state ());
+      handle.socket->router_spot_request_reply_state ();
     if (!state) {
         state.reset (new router_spot_request_reply_state_t (router_));
         handle.socket->set_router_spot_request_reply_state (state);

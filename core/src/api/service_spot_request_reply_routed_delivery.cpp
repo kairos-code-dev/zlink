@@ -265,7 +265,7 @@ void spot_peer_route_dispatch (const zlink_routing_id_t *,
                           "[spot-direct] peer-pub forward rc=%d errno=%d targets=%zu\n",
                           rc,
                           errno,
-                          runtime->execution.data_plane_state.local_targets.size ());
+                          runtime->execution.data_plane_state.local_fanout.targets.size ());
         }
         zlink::spot_clear_msg_parts (&payload);
         return;

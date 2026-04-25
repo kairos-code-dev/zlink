@@ -16,6 +16,7 @@
 
 #include "api/internal_pair_queue_internal.hpp"
 #include "api/request_completion_queue_internal.hpp"
+#include "api/request_reply_runtime_core.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
 #include "api/socket_api_internal.hpp"
 
@@ -45,7 +46,8 @@ struct pending_request_t
     std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
 };
 
-struct socket_request_reply_state_t
+struct socket_request_reply_state_t :
+    public zlink::request_reply_runtime::sequence_state_t
 {
     explicit socket_request_reply_state_t (zlink::socket_base_t *socket_,
                                            int socket_type_);
@@ -53,9 +55,6 @@ struct socket_request_reply_state_t
     zlink::socket_base_t *socket;
     int socket_type;
     std::mutex mutex;
-    uint32_t default_timeout_ms;
-    uint64_t next_request_seq;
-    std::unordered_set<uint64_t> pending_sequences;
     std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>
       pending_requests;
     std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;

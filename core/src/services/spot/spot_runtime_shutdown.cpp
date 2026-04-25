@@ -103,8 +103,8 @@ int spot_runtime_t::close_control_sockets ()
                 close_socket_ptr_local (&sockets[i]);
                 continue;
             }
-            preserve_first_error_local (close_runtime_socket (sockets[i], 2000),
-                                        &first_error);
+            preserve_first_error_local (
+              close_runtime_socket_async (sockets[i], 2000), &first_error);
         }
     } else {
         for (size_t i = 0; i < slot_count; ++i)

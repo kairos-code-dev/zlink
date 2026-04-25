@@ -212,7 +212,7 @@ int router_t::apply_peer_weight (pipe_t *pipe_, uint32_t weight_)
     if (out_pipe->weight == weight_)
         return 1;
 
-    out_pipe->weight = weight_;
+    update_out_pipe_weight (out_pipe, weight_);
     emit_peer_weight_changed (pipe_, weight_);
     return 1;
 }

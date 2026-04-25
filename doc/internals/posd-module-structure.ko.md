@@ -142,8 +142,14 @@ callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공
 | `spot_data_plane_forwarding.cpp` | ingress/egress 메시지 포워딩 |
 | `spot_data_plane_protocol.cpp` | 제어 메시지, 구독 업데이트 |
 | `spot_data_plane_internal.hpp` | data plane 내부 state/protocol 정의 |
+| `spot_node_state.hpp` | SpotNode 내부 상태 묶음 분리: discovery, TLS, endpoint, handle, service attachment |
 | `spot_subject_access.cpp/hpp` | subject-level API seam |
 | `spot_runtime.cpp/hpp` | runtime lifecycle |
+
+최근 리팩토링으로 `spot_node_t`는 큰 내부 상태 구조체를 헤더 본문 안에 직접
+길게 품지 않고, `spot_node_state.hpp`가 제공하는 상태 묶음을 조합해서
+사용한다. 이 방식은 discovery, service attachment, summary 소유권을 더
+명확하게 분리한다.
 
 **Discovery** (`services/discovery/`):
 
@@ -177,12 +183,17 @@ callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공
 | `socket_base_monitor.cpp` | monitor event emission |
 | `socket_base_msg.cpp` | message send/recv 기계 작업 |
 | `socket_base_routing.cpp` | routing_id 처리 |
+| `socket_base_request_reply_bridge.cpp` | req/reply, part helper typed bridge |
 | `socket_runtime.cpp/hpp` | runtime component aggregation |
 | `socket_close_ops.cpp/hpp` | close/wait helper contract |
 
 Family 구현 (pair, pub, sub, xpub, xsub, dealer, router, stream)은
 routing/subscription/load-balancing 의미에 집중하고,
 runtime internal field를 직접 참조하지 않는다.
+
+`socket_base_t`는 semantic entrypoint로 남지만, req/reply 상태와 part helper
+상태는 이제 `shared_ptr<void>`가 아니라 typed bridge accessor를 통해 접근한다.
+API 계층은 raw cast를 반복하지 않고 이 bridge를 사용한다.
 
 ### 3.5 Runtime Core (`core/src/core/`)
 
@@ -199,6 +210,10 @@ Option은 세 카테고리로 분류되어 각 도메인 소유자가 validation
 `options_dispatch.cpp`가 공개 `setsockopt/getsockopt` 호출을 카테고리별 handler로 라우팅한다.
 `options_dispatch_internal.hpp`가 template 유틸리티와 dispatch 함수 선언을 제공한다.
 
+공개 option 번호를 internal option 번호로 바꾸는 경로도 descriptor table로
+정리해 두어, `zlink_option.cpp`가 거대한 switch 허브로 다시 비대해지지 않게
+유지한다.
+
 #### Logical Multipart Send
 
 `multipart_send_txn.cpp/hpp`는 `zlink_send`와 `spot publish`가 공통으로
@@ -208,6 +223,34 @@ Option은 세 카테고리로 분류되어 각 도메인 소유자가 validation
 - blocking: `sndtimeo` deadline까지 whole-message retry
 - 재시도 대상: `EAGAIN`, `EINTR`만. 그 외 오류는 즉시 실패
 - `libzmq`의 `pipe/router/xpub/dist` lower layer rollback/HWM semantics를 재사용
+
+#### Request/Reply Runtime Core
+
+`request_reply_runtime_core.hpp`는 socket req/reply와 SPOT req/reply가 같이
+쓰는 작은 공통 코어다.
+
+- request sequence allocation
+- scheduler-backed timeout task 생성 helper
+- socket req/reply의 wire I/O와 router recv queue framing은
+  `socket_request_reply_runtime_io.cpp`가 맡는다.
+
+프로토콜별 framing/routing 차이는 각 모듈에 남기고, 두 경로가 반드시 같아야
+하는 기계 작업만 공통 모듈로 올린다.
+
+`socket_request_reply_dispatch.cpp`는 이제 dispatch callback 설치, pending
+completion 정리, close/drain 같은 lifecycle 중심 코드만 담는다. 실제
+framing/send/recv 코드는 runtime I/O 모듈로 분리해 dispatch 파일이 다시
+거대한 helper 집합이 되지 않게 한다.
+
+#### Stream / ASIO Policy Seams
+
+STREAM과 ASIO fast path에서 환경 변수와 기본 정책 계산은 hot path 구현 파일
+머리에 직접 섞지 않고 별도 policy 모듈로 뺀다.
+
+| 모듈 | 역할 |
+|------|------|
+| `sockets/stream_batch_policy.hpp` | STREAM batch/headroom 기본값 계산 |
+| `engine/asio/asio_stream_fastpath_policy.hpp` | ASIO STREAM gather/speculative/drain 정책과 target size 계산 |
 
 ## 4. 의존 방향
 

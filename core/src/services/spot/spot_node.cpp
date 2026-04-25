@@ -57,45 +57,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _lifecycle (ctx_),
     _runtime (NULL),
     _weight (100),
-    _bound_endpoint (_endpoint_state.bound_endpoint),
-    _subject_last_changed_ms (_summary_state.subject_last_changed_ms),
-    _last_summary_error (_summary_state.last_summary_error),
-    _summary_last_changed_ms (_summary_state.summary_last_changed_ms),
-    _discovery (_discovery_state.discovery),
-    _discovery_service (_discovery_state.discovery_service),
-    _discovery_seq (_discovery_state.discovery_seq),
-    _pending_service_updates (_discovery_state.pending_service_updates),
-    _registered (_discovery_state.registered),
-    _advertise_endpoint (_discovery_state.advertise_endpoint),
-    _registration_uplink_endpoint (_discovery_state.registration_uplink_endpoint),
-    _tls_cert (_tls_state.tls_cert),
-    _tls_key (_tls_state.tls_key),
-    _tls_ca (_tls_state.tls_ca),
-    _tls_hostname (_tls_state.tls_hostname),
-    _tls_trust_system (_tls_state.tls_trust_system),
-    _server_tls_locked (_tls_state.server_tls_locked),
-    _mesh_client_tls_locked (_tls_state.mesh_client_tls_locked),
-    _registration_tls_locked (_tls_state.registration_tls_locked),
     _send_ready_handler (NULL),
-    _send_ready_handler_userdata (NULL),
-    _local_pub_ingress_rcvhwm_cfg (_endpoint_state.local_pub_ingress_rcvhwm_cfg),
-    _local_fanout_sndhwm_cfg (_endpoint_state.local_fanout_sndhwm_cfg),
-    _local_pub_ingress_rcvhwm_default (
-      _endpoint_state.local_pub_ingress_rcvhwm_default),
-    _local_fanout_sndhwm_default (_endpoint_state.local_fanout_sndhwm_default),
-    _local_filtered_sub_count (_endpoint_state.local_filtered_sub_count),
-    _active_peer_count (_endpoint_state.active_peer_count),
-    _handle_defaults (_handle_state.handle_defaults),
-    _pubs (_handle_state.pubs),
-    _subs (_handle_state.subs),
-    _facades (_handle_state.facades),
-    _service_attachments (_service_attachment_state.attachments),
-    _service_attachment_socket_index (_service_attachment_state.socket_index),
-    _service_monitors (_service_attachment_state.monitors),
-    _service_discoveries (_service_attachment_state.discoveries),
-    _channel_dealer_discoveries (
-      _service_attachment_state.channel_dealer_discoveries),
-    _pub_ingress (_service_attachment_state.pub_ingress)
+    _send_ready_handler_userdata (NULL)
 {
     _lifecycle.transition_to (service_state_starting);
 
@@ -160,9 +123,9 @@ int spot_node_t::set_weight (uint32_t weight_)
         if (_weight == weight_)
             return 0;
         _weight = weight_;
-        discovery = _discovery;
-        advertise = _advertise_endpoint;
-        registered = _registered;
+        discovery = _discovery_state.discovery;
+        advertise = _discovery_state.advertise_endpoint;
+        registered = _discovery_state.registered;
     }
 
     if (registered && discovery && !advertise.empty ()) {
@@ -297,17 +260,17 @@ const std::string &spot_node_t::sub_fanout_endpoint () const
 std::string spot_node_t::public_endpoint () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return _advertise_endpoint.empty () ? _bound_endpoint : _advertise_endpoint;
+    return _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint : _discovery_state.advertise_endpoint;
 }
 
 bool spot_node_t::has_active_peers () const
 {
-    return _active_peer_count.load (std::memory_order_acquire) != 0;
+    return _endpoint_state.active_peer_count.load (std::memory_order_acquire) != 0;
 }
 
 bool spot_node_t::has_local_filtered_subs () const
 {
-    return _local_filtered_sub_count.load (std::memory_order_acquire) != 0;
+    return _endpoint_state.local_filtered_sub_count.load (std::memory_order_acquire) != 0;
 }
 
 void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
@@ -317,13 +280,13 @@ void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
         return;
 
     if (has_filters_) {
-        _local_filtered_sub_count.fetch_add (1, std::memory_order_acq_rel);
+        _endpoint_state.local_filtered_sub_count.fetch_add (1, std::memory_order_acq_rel);
         return;
     }
 
-    uint32_t current = _local_filtered_sub_count.load (std::memory_order_acquire);
+    uint32_t current = _endpoint_state.local_filtered_sub_count.load (std::memory_order_acquire);
     while (current != 0
-           && !_local_filtered_sub_count.compare_exchange_weak (
+           && !_endpoint_state.local_filtered_sub_count.compare_exchange_weak (
              current, current - 1, std::memory_order_acq_rel,
              std::memory_order_acquire)) {
     }
@@ -371,10 +334,10 @@ void spot_node_t::debug_mark_fault (int err_)
         if (!_runtime)
             return;
         _runtime->mark_fault (err_);
-        _last_summary_error = _runtime->fault_errno;
-        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
-        pubs.assign (_pubs.begin (), _pubs.end ());
-        subs.assign (_subs.begin (), _subs.end ());
+        _summary_state.last_summary_error = _runtime->fault_errno;
+        _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        pubs.assign (_handle_state.pubs.begin (), _handle_state.pubs.end ());
+        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
     }
 
     for (size_t i = 0; i < pubs.size (); ++i)
@@ -450,11 +413,11 @@ int spot_node_t::resolve_advertise_endpoint (const char *advertise_endpoint_,
     }
 
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    if (_bound_endpoint.empty ()) {
+    if (_endpoint_state.bound_endpoint.empty ()) {
         errno = EFSM;
         return -1;
     }
-    *out_ = _bound_endpoint;
+    *out_ = _endpoint_state.bound_endpoint;
     if (!validate_public_endpoint (*out_)) {
         errno = EINVAL;
         return -1;

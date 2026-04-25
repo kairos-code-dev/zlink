@@ -44,7 +44,7 @@ int spot_node_t::replay_subscriptions_if_active_peers ()
         return 0;
     if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] immediate replay request\n");
-    if (send_data_plane_command ("replay_subscriptions") != 0)
+    if (send_data_plane_command ("replay_handle_state.subscriptions") != 0)
         return -1;
     queue_all_subscription_ready_filters ();
     return 0;
@@ -130,11 +130,11 @@ void spot_node_t::wake_control_task ()
 
 bool spot_node_t::can_suspend_control_task () const
 {
-    if (_discovery != NULL)
+    if (_discovery_state.discovery != NULL)
         return false;
-    if (!_service_discoveries.empty ())
+    if (!_service_attachment_state.discoveries.empty ())
         return false;
-    if (!_pending_service_updates.empty ())
+    if (!_discovery_state.pending_service_updates.empty ())
         return false;
     if (_peer_state.subscription_replay_pending
         || _peer_state.subscription_ready_refresh_pending
@@ -169,7 +169,7 @@ void spot_node_t::control_tick ()
         scoped_lock_t lock (_sync);
         const uint64_t connected_peer_version =
           mesh_peer_version (&_runtime->execution.mesh_peer_state);
-        skip_extra = _discovery == NULL
+        skip_extra = _discovery_state.discovery == NULL
                      && connected_peer_version
                           == _runtime->connected_peer_version_seen ()
                      && !_peer_state.subscription_replay_pending

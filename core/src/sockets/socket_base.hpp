@@ -46,17 +46,42 @@ class io_thread_t;
 class discovery_t;
 class socket_discovery_attachment_t;
 class socket_base_t;
+
+namespace socket_reqrep_internal
+{
+struct socket_request_reply_state_t;
+}
+
+namespace spot_reqrep_internal
+{
+struct router_spot_request_reply_state_t;
+}
+
+namespace part_helper_internal
+{
+struct handle_state_t;
+}
 }
 
 namespace zlink
 {
 class address_t;
+struct multipart_send_facade_t;
 typedef void (*spot_sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
                                         const char *topic_,
                                         size_t topic_len_,
                                         zlink_msg_t *parts_,
                                         size_t part_count_,
                                         void *userdata_);
+
+struct socket_request_reply_bridge_t
+{
+    std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t>
+      router_spot_request_reply_state;
+    std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
+      request_reply_state;
+    std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state;
+};
 
 class socket_recv_source_rid_scope_t
 {
@@ -267,15 +292,22 @@ class socket_base_t : public own_t,
     int get_peer_weight (uint32_t *weight_out_) const;
     uint32_t local_peer_weight () const;
     int socket_id () const;
-    std::shared_ptr<void> router_spot_request_reply_state () const;
+    std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t>
+    router_spot_request_reply_state () const;
     void set_router_spot_request_reply_state (
-      const std::shared_ptr<void> &state_);
+      const std::shared_ptr<
+        spot_reqrep_internal::router_spot_request_reply_state_t> &state_);
     void clear_router_spot_request_reply_state ();
-    std::shared_ptr<void> request_reply_state () const;
-    void set_request_reply_state (const std::shared_ptr<void> &state_);
+    std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
+    request_reply_state () const;
+    void set_request_reply_state (
+      const std::shared_ptr<
+        socket_reqrep_internal::socket_request_reply_state_t> &state_);
     void clear_request_reply_state ();
-    std::shared_ptr<void> part_helper_state () const;
-    void set_part_helper_state (const std::shared_ptr<void> &state_);
+    std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state ()
+      const;
+    void set_part_helper_state (
+      const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
     void clear_part_helper_state ();
     int set_channel_name_metadata (const char *channel_name_);
     int get_channel_name_metadata (char *channel_name_buf_,
@@ -400,74 +432,7 @@ class socket_base_t : public own_t,
     bool has_attached_pipes () const;
 
   private:
-    friend int logical_multipart_send (socket_base_t *socket_,
-                                       zlink_msg_t *parts_,
-                                       size_t part_count_,
-                                       int flags_);
-    friend int logical_multipart_send_routed (
-      socket_base_t *socket_,
-      const zlink_routing_id_t *routing_id_,
-      zlink_msg_t *parts_,
-      size_t part_count_,
-      int flags_);
-    friend int logical_multipart_send_prefixed (socket_base_t *socket_,
-                                                const void *prefix_data_,
-                                                size_t prefix_size_,
-                                                zlink_msg_t *parts_,
-                                                size_t part_count_,
-                                                int flags_,
-                                                int route_ready_retry_ms_);
-    friend int logical_multipart_send_prefixed_frame (
-      socket_base_t *socket_,
-      const void *prefix_data_,
-      size_t prefix_size_,
-      int prefix_frame_flags_,
-      zlink_msg_t *parts_,
-      size_t part_count_,
-      int flags_);
-    friend int logical_multipart_send_routed_prefixed_frame (
-      socket_base_t *socket_,
-      const zlink_routing_id_t *routing_id_,
-      const void *prefix_data_,
-      size_t prefix_size_,
-      int prefix_frame_flags_,
-      zlink_msg_t *parts_,
-      size_t part_count_,
-      int flags_);
-    friend int logical_multipart_send_prefixed_frames (
-      socket_base_t *socket_,
-      const void *prefix1_data_,
-      size_t prefix1_size_,
-      int prefix1_frame_flags_,
-      const void *prefix2_data_,
-      size_t prefix2_size_,
-      int prefix2_frame_flags_,
-      zlink_msg_t *parts_,
-      size_t part_count_,
-      int flags_);
-    friend int logical_multipart_send_routed_prefixed_frames (
-      socket_base_t *socket_,
-      const zlink_routing_id_t *routing_id_,
-      const void *prefix1_data_,
-      size_t prefix1_size_,
-      int prefix1_frame_flags_,
-      const void *prefix2_data_,
-      size_t prefix2_size_,
-      int prefix2_frame_flags_,
-      zlink_msg_t *parts_,
-      size_t part_count_,
-      int flags_);
-    friend int logical_multipart_publish (socket_base_t *socket_,
-                                          const char *topic_,
-                                          zlink_msg_t *parts_,
-                                          size_t part_count_,
-                                          int flags_,
-                                          bool fallback_on_missing_sndtimeo_);
-    friend int logical_multipart_publish_frame (socket_base_t *socket_,
-                                                zlink_msg_t *topic_frame_,
-                                                zlink_msg_t *parts_,
-                                                size_t part_count_,
-                                                int flags_);
+    friend struct multipart_send_facade_t;
 
     // Direct public send currently shares one scope between single-part and
     // logical multipart wrappers. Keep the admission/sync decision and the
@@ -634,6 +599,7 @@ class socket_base_t : public own_t,
     //  Improves efficiency of time measurement.
     clock_t _clock;
     socket_runtime_t _runtime;
+    socket_request_reply_bridge_t _request_reply_bridge;
     auto_hwm_role_t _auto_hwm_role;
     bool _auto_hwm_role_override;
     bool _auto_hwm_policy_enabled;
@@ -649,9 +615,6 @@ class socket_base_t : public own_t,
     std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
     uint32_t _local_peer_weight;
     socket_discovery_attachment_t *_service_attachment;
-    std::shared_ptr<void> _router_spot_request_reply_state;
-    std::shared_ptr<void> _request_reply_state;
-    std::shared_ptr<void> _part_helper_state;
     std::string _channel_name;
     bool _channel_name_locked;
 
@@ -688,6 +651,10 @@ class routing_socket_base_t : public socket_base_t
     void erase_out_pipe (const pipe_t *pipe_);
     int terminate_out_pipe_by_routing_id (const zlink_routing_id_t *peer_rid_);
     out_pipe_t try_erase_out_pipe (const blob_t &routing_id_);
+    void mark_out_pipe_active (out_pipe_t *out_pipe_);
+    void mark_out_pipe_inactive (out_pipe_t *out_pipe_);
+    void update_out_pipe_weight (out_pipe_t *out_pipe_, uint32_t weight_);
+    bool has_writable_weighted_out_pipes () const;
     template <typename Func> bool any_of_out_pipes (Func func_)
     {
         bool res = false;
@@ -703,7 +670,10 @@ class routing_socket_base_t : public socket_base_t
   private:
     //  Outbound pipes indexed by the peer IDs.
     typedef std::map<blob_t, out_pipe_t> out_pipes_t;
+    typedef std::map<pipe_t *, out_pipes_t::iterator> out_pipe_index_t;
     out_pipes_t _out_pipes;
+    out_pipe_index_t _out_pipe_index;
+    size_t _writable_weighted_out_pipes;
 
     // Next assigned name on a zlink_connect() call used by ROUTER socket type.
     std::string _connect_routing_id;

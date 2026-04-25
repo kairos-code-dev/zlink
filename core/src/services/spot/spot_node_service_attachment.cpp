@@ -53,9 +53,9 @@ socket_base_t *spot_node_t::select_service_router (
 {
     scoped_lock_t lock (_sync);
     std::map<std::string, service_attachment_t>::iterator it =
-      _service_attachments.find (service_name_);
-    if (it == _service_attachments.end ()) {
-        errno = _service_discoveries.count (service_name_) != 0 ? ENOTCONN : ENOENT;
+      _service_attachment_state.attachments.find (service_name_);
+    if (it == _service_attachment_state.attachments.end ()) {
+        errno = _service_attachment_state.discoveries.count (service_name_) != 0 ? ENOTCONN : ENOENT;
         return NULL;
     }
     service_attachment_t &attachment = it->second;
@@ -83,9 +83,9 @@ socket_base_t *spot_node_t::service_pub_socket (
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     std::map<std::string, service_attachment_t>::const_iterator it =
-      _service_attachments.find (service_name_);
-    if (it == _service_attachments.end ()) {
-        errno = _service_discoveries.count (service_name_) != 0 ? ENOTCONN : ENOENT;
+      _service_attachment_state.attachments.find (service_name_);
+    if (it == _service_attachment_state.attachments.end ()) {
+        errno = _service_attachment_state.discoveries.count (service_name_) != 0 ? ENOTCONN : ENOENT;
         return NULL;
     }
     if (it->second.has_manual_pubsub ())
@@ -109,8 +109,8 @@ int spot_node_t::apply_service_subscription_filters ()
             return;
         scoped_lock_t lock (_sync);
         for (std::map<std::string, service_attachment_t>::iterator it =
-               _service_attachments.begin ();
-             it != _service_attachments.end (); ++it) {
+               _service_attachment_state.attachments.begin ();
+             it != _service_attachment_state.attachments.end (); ++it) {
             if (it->second.applied_filters == filters)
                 continue;
             if (it->second.manual.sub)
@@ -124,8 +124,8 @@ int spot_node_t::apply_service_subscription_filters ()
     const auto commit_applied_filters = [&] () {
         scoped_lock_t lock (_sync);
         for (std::map<std::string, service_attachment_t>::iterator it =
-               _service_attachments.begin ();
-             it != _service_attachments.end (); ++it) {
+               _service_attachment_state.attachments.begin ();
+             it != _service_attachment_state.attachments.end (); ++it) {
             if (it->second.manual.sub || it->second.discovered.sub)
                 it->second.applied_filters = filters;
         }
@@ -164,8 +164,8 @@ void spot_node_t::collect_pending_service_discoveries_locked (
            _service_attachment_state.pending_refresh_services.begin ();
          it != _service_attachment_state.pending_refresh_services.end (); ++it) {
         std::map<std::string, discovery_t *>::const_iterator dit =
-          _service_discoveries.find (*it);
-        if (dit != _service_discoveries.end ())
+          _service_attachment_state.discoveries.find (*it);
+        if (dit != _service_attachment_state.discoveries.end ())
             out_->push_back (*dit);
     }
     _service_attachment_state.pending_refresh_services.clear ();
@@ -204,7 +204,7 @@ spot_node_t::plan_service_discovery_sockets_locked (
   const std::string &service_name_, const service_discovery_topology_t &topology_)
 {
     service_discovery_socket_plan_t plan;
-    service_attachment_t &attachment = _service_attachments[service_name_];
+    service_attachment_t &attachment = _service_attachment_state.attachments[service_name_];
     const bool pub_endpoints_changed =
       attachment.discovered.pub_endpoints != topology_.pub_endpoints;
     for (std::set<std::string>::const_iterator it =
@@ -288,12 +288,12 @@ void spot_node_t::install_service_discovery_sockets (
         options.events = ZLINK_EVENT_ALL;
         void *monitor = zlink_socket_monitor_open (router_socket, &options);
         scoped_lock_t lock (_sync);
-        service_attachment_t &attachment = _service_attachments[service_name_];
+        service_attachment_t &attachment = _service_attachment_state.attachments[service_name_];
         if (attachment.discovered.routers.count (plan_.new_router_sockets[i].first)
             == 0) {
             attachment.discovered.routers[plan_.new_router_sockets[i].first] =
               router_socket;
-            _service_attachment_socket_index[router_socket] = service_name_;
+            _service_attachment_state.socket_index[router_socket] = service_name_;
             register_service_monitor_locked (
               router_socket, monitor, service_name_);
             mutated = true;
@@ -311,7 +311,7 @@ void spot_node_t::install_service_discovery_sockets (
         options.events = ZLINK_EVENT_ALL;
         void *monitor = zlink_socket_monitor_open (plan_.pub_socket, &options);
         scoped_lock_t lock (_sync);
-        service_attachment_t &attachment = _service_attachments[service_name_];
+        service_attachment_t &attachment = _service_attachment_state.attachments[service_name_];
         if (!attachment.discovered.pub) {
             attachment.discovered.pub = plan_.pub_socket;
             register_service_monitor_locked (
@@ -336,7 +336,7 @@ void spot_node_t::install_service_discovery_sockets (
         options.events = ZLINK_EVENT_ALL;
         void *monitor = zlink_socket_monitor_open (plan_.sub_socket, &options);
         scoped_lock_t lock (_sync);
-        service_attachment_t &attachment = _service_attachments[service_name_];
+        service_attachment_t &attachment = _service_attachment_state.attachments[service_name_];
         if (!attachment.discovered.sub) {
             attachment.discovered.sub = plan_.sub_socket;
             attachment.mark_auto_sub_replay_pending (
@@ -364,7 +364,7 @@ void spot_node_t::sync_service_discovery_topology (
     service_attachment_t::discovered_state_t discovered_snapshot;
     {
         scoped_lock_t lock (_sync);
-        discovered_snapshot = _service_attachments[service_name_].discovered;
+        discovered_snapshot = _service_attachment_state.attachments[service_name_].discovered;
     }
 
     std::vector<socket_base_t *> removed_router_sockets;
@@ -422,14 +422,14 @@ void spot_node_t::sync_service_discovery_topology (
 
     {
         scoped_lock_t lock (_sync);
-        service_attachment_t &attachment = _service_attachments[service_name_];
+        service_attachment_t &attachment = _service_attachment_state.attachments[service_name_];
         std::vector<socket_base_t *> stale_router_sockets;
         for (std::map<std::string, socket_base_t *>::iterator it =
                attachment.discovered.routers.begin ();
              it != attachment.discovered.routers.end ();) {
             if (topology_.router_endpoints.count (it->first) == 0) {
                 stale_router_sockets.push_back (it->second);
-                _service_attachment_socket_index.erase (it->second);
+                _service_attachment_state.socket_index.erase (it->second);
                 it = attachment.discovered.routers.erase (it);
             } else {
                 ++it;
@@ -460,8 +460,8 @@ void spot_node_t::replay_pending_service_discovery_filters (
     {
         scoped_lock_t lock (_sync);
         std::map<std::string, service_attachment_t>::const_iterator it =
-          _service_attachments.find (service_name_);
-        if (it != _service_attachments.end ()) {
+          _service_attachment_state.attachments.find (service_name_);
+        if (it != _service_attachment_state.attachments.end ()) {
             auto_sub = it->second.discovered.sub;
             needs_replay = it->second.needs_auto_sub_replay ();
         }
@@ -474,8 +474,8 @@ void spot_node_t::replay_pending_service_discovery_filters (
     }
     scoped_lock_t lock (_sync);
     std::map<std::string, service_attachment_t>::iterator it =
-      _service_attachments.find (service_name_);
-    if (it != _service_attachments.end () && it->second.discovered.sub == auto_sub)
+      _service_attachment_state.attachments.find (service_name_);
+    if (it != _service_attachment_state.attachments.end () && it->second.discovered.sub == auto_sub)
         it->second.clear_auto_sub_replay ();
 }
 

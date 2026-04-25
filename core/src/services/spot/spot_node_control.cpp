@@ -88,8 +88,8 @@ void spot_node_t::emit_pending_subscription_replays ()
             return;
         if (_peer_state.active_endpoints.empty ())
             return;
-        subs.reserve (_subs.size ());
-        subs.assign (_subs.begin (), _subs.end ());
+        subs.reserve (_handle_state.subs.size ());
+        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
     }
 
     std::set<std::string> replay_filters;
@@ -132,7 +132,7 @@ void spot_node_t::emit_pending_subscription_replays ()
 
     if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] emit pending replay\n");
-    if (send_data_plane_command ("replay_subscriptions") != 0) {
+    if (send_data_plane_command ("replay_handle_state.subscriptions") != 0) {
         debug_mark_fault (errno);
         return;
     }
@@ -172,7 +172,7 @@ int spot_node_t::send_subscription_update (const std::string &raw_filter_,
     }
 
     return send_data_plane_command (
-      subscribe_ ? "subscription_subscribe" : "subscription_unsubscribe",
+      subscribe_ ? "subscription_handle_state.subscribe" : "subscription_unsubscribe",
       raw_filter_.c_str ());
 }
 

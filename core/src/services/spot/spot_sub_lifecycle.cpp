@@ -272,7 +272,6 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     std::vector<std::pair<std::string, std::string> > ready_ack_updates;
     bool had_filters = false;
     const bool node_shutting_down = _node && _node->is_shutting_down ();
-    const bool destroying_from_node = allow_embedded_default_ && notify_node_;
 
     {
         scoped_lock_t lock (_sync);
@@ -360,9 +359,9 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
             spot_sub_diag_log ("destroy.before-destroy-attachment");
         if (socket && _node)
             preserve_first_error (
-              (destroying_from_node || !node_shutting_down)
-                ? _node->destroy_attachment (_attachment_id)
-                : _node->destroy_attachment_async (_attachment_id),
+              !node_shutting_down ? _node->destroy_attachment (_attachment_id)
+                                 : _node->destroy_attachment_async (
+                                     _attachment_id),
               &first_error);
         if (socket && _node)
             spot_sub_diag_log ("destroy.after-destroy-attachment");

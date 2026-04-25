@@ -18,7 +18,8 @@ namespace zlink
 class ctx_t;
 class pipe_t;
 
-//  TODO: This class uses O(n) scheduling. Rewrite it to use O(1) algorithm.
+//  Outbound eligibility is tracked through routing-id lookup and cached
+//  writable state to avoid full pipe scans on the hot path.
 class router_t : public routing_socket_base_t
 {
   public:

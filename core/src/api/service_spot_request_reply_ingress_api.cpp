@@ -78,7 +78,7 @@ int process_route_combined_message (void *node_,
                   topic.c_str (),
                   rc,
                   errno,
-                  runtime->execution.data_plane_state.local_targets.size ());
+                  runtime->execution.data_plane_state.local_fanout.targets.size ());
             }
             const int saved_errno = errno;
             zlink::spot_clear_msg_parts (&payload);

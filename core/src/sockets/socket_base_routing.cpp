@@ -10,7 +10,7 @@
 zlink::routing_socket_base_t::routing_socket_base_t (class ctx_t *parent_,
                                                      uint32_t tid_,
                                                      int sid_) :
-    socket_base_t (parent_, tid_, sid_)
+    socket_base_t (parent_, tid_, sid_), _writable_weighted_out_pipes (0)
 {
 }
 
@@ -43,18 +43,9 @@ int zlink::routing_socket_base_t::xsetsockopt (int option_,
 
 void zlink::routing_socket_base_t::xwrite_activated (pipe_t *pipe_)
 {
-    const out_pipes_t::iterator end = _out_pipes.end ();
-    out_pipes_t::iterator it;
-    for (it = _out_pipes.begin (); it != end; ++it)
-        if (it->second.pipe == pipe_)
-            break;
-
-    zlink_assert (it != end);
-    // Duplicate write-activation notifications can race with async flush
-    // cycles under high STREAM load. Keep activation idempotent.
-    if (it->second.active)
-        return;
-    it->second.active = true;
+    const out_pipe_index_t::iterator index_it = _out_pipe_index.find (pipe_);
+    zlink_assert (index_it != _out_pipe_index.end ());
+    mark_out_pipe_active (&index_it->second->second);
 }
 
 std::string zlink::routing_socket_base_t::extract_connect_routing_id ()
@@ -73,10 +64,12 @@ void zlink::routing_socket_base_t::add_out_pipe (blob_t routing_id_,
                                                  pipe_t *pipe_)
 {
     const out_pipe_t outpipe = {pipe_, true, 100};
-    const bool ok =
-      _out_pipes.ZLINK_MAP_INSERT_OR_EMPLACE (ZLINK_MOVE (routing_id_), outpipe)
-        .second;
+    const std::pair<out_pipes_t::iterator, bool> insert_res =
+      _out_pipes.ZLINK_MAP_INSERT_OR_EMPLACE (ZLINK_MOVE (routing_id_), outpipe);
+    const bool ok = insert_res.second;
     zlink_assert (ok);
+    _out_pipe_index[pipe_] = insert_res.first;
+    ++_writable_weighted_out_pipes;
 }
 
 bool zlink::routing_socket_base_t::has_out_pipe (const blob_t &routing_id_) const
@@ -115,9 +108,17 @@ void zlink::routing_socket_base_t::erase_out_pipe (const pipe_t *pipe_)
     if (!pipe_)
         return;
 
-    const size_t erased = _out_pipes.erase (pipe_->get_routing_id ());
-    if (erased != 0)
+    const out_pipe_index_t::iterator index_it =
+      _out_pipe_index.find (const_cast<pipe_t *> (pipe_));
+    if (index_it != _out_pipe_index.end ()) {
+        const out_pipes_t::iterator out_it = index_it->second;
+        if (out_it->second.pipe != NULL && out_it->second.active
+            && out_it->second.weight > 0)
+            --_writable_weighted_out_pipes;
+        _out_pipes.erase (out_it);
+        _out_pipe_index.erase (index_it);
         return;
+    }
 
     // Routing id may have been refreshed after attach. Fall back to
     // pointer-based lookup to keep teardown idempotent and avoid stale pipes.
@@ -125,6 +126,9 @@ void zlink::routing_socket_base_t::erase_out_pipe (const pipe_t *pipe_)
                                end = _out_pipes.end ();
          it != end; ++it) {
         if (it->second.pipe == pipe_) {
+            if (it->second.active && it->second.weight > 0)
+                --_writable_weighted_out_pipes;
+            _out_pipe_index.erase (it->second.pipe);
             _out_pipes.erase (it);
             return;
         }
@@ -154,10 +158,52 @@ zlink::routing_socket_base_t::out_pipe_t
 zlink::routing_socket_base_t::try_erase_out_pipe (const blob_t &routing_id_)
 {
     const out_pipes_t::iterator it = _out_pipes.find (routing_id_);
-    out_pipe_t res = {NULL, false};
+    out_pipe_t res = {NULL, false, 0};
     if (it != _out_pipes.end ()) {
         res = it->second;
+        if (it->second.pipe != NULL && it->second.active && it->second.weight > 0)
+            --_writable_weighted_out_pipes;
+        _out_pipe_index.erase (it->second.pipe);
         _out_pipes.erase (it);
     }
     return res;
+}
+
+void zlink::routing_socket_base_t::mark_out_pipe_active (out_pipe_t *out_pipe_)
+{
+    if (!out_pipe_ || out_pipe_->active)
+        return;
+
+    if (out_pipe_->weight > 0)
+        ++_writable_weighted_out_pipes;
+    out_pipe_->active = true;
+}
+
+void zlink::routing_socket_base_t::mark_out_pipe_inactive (out_pipe_t *out_pipe_)
+{
+    if (!out_pipe_ || !out_pipe_->active)
+        return;
+
+    if (out_pipe_->weight > 0 && _writable_weighted_out_pipes > 0)
+        --_writable_weighted_out_pipes;
+    out_pipe_->active = false;
+}
+
+void zlink::routing_socket_base_t::update_out_pipe_weight (out_pipe_t *out_pipe_,
+                                                           uint32_t weight_)
+{
+    if (!out_pipe_ || out_pipe_->weight == weight_)
+        return;
+
+    if (out_pipe_->active && out_pipe_->weight > 0 && weight_ == 0)
+        --_writable_weighted_out_pipes;
+    else if (out_pipe_->active && out_pipe_->weight == 0 && weight_ > 0)
+        ++_writable_weighted_out_pipes;
+
+    out_pipe_->weight = weight_;
+}
+
+bool zlink::routing_socket_base_t::has_writable_weighted_out_pipes () const
+{
+    return _writable_weighted_out_pipes != 0;
 }

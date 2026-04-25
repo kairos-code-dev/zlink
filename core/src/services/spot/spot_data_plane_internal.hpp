@@ -13,6 +13,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace zlink
@@ -298,6 +299,86 @@ struct spot_data_plane_runtime_state_t
         std::deque<uint64_t> pending_message_ids;
     };
 
+    struct mesh_pub_budget_state_t
+    {
+        mesh_pub_budget_state_t () :
+            current_sndhwm (0),
+            last_budget_version (UINT64_MAX)
+        {
+        }
+
+        int current_sndhwm;
+        uint64_t last_budget_version;
+        std::string last_bound_endpoint;
+    };
+
+    struct local_fanout_state_t
+    {
+        typedef std::unordered_map<uint64_t, publish_pending_entry_t>
+          pending_message_map_t;
+        typedef std::unordered_map<uint64_t, local_target_state_t>
+          target_map_t;
+
+        local_fanout_state_t () :
+            pending_bytes (0),
+            pending_pause_threshold (0),
+            pending_resume_threshold (0),
+            pending_hard_limit (0)
+        {
+        }
+
+        size_t pending_bytes;
+        size_t pending_pause_threshold;
+        size_t pending_resume_threshold;
+        size_t pending_hard_limit;
+        pending_message_map_t pending_messages;
+        target_map_t targets;
+    };
+
+    struct remote_mesh_state_t
+    {
+        typedef std::unordered_map<uint64_t, publish_pending_entry_t>
+          pending_message_map_t;
+        typedef std::unordered_map<std::string, remote_target_state_t>
+          target_map_t;
+
+        remote_mesh_state_t () :
+            pollout_armed (false),
+            pending_bytes (0),
+            pending_pause_threshold (0),
+            pending_resume_threshold (0),
+            pending_hard_limit (0)
+        {
+        }
+
+        bool pollout_armed;
+        size_t pending_bytes;
+        size_t pending_pause_threshold;
+        size_t pending_resume_threshold;
+        size_t pending_hard_limit;
+        pending_message_map_t pending_messages;
+        std::deque<uint64_t> broadcast_pending_message_ids;
+        target_map_t targets;
+    };
+
+    struct staged_publish_state_t
+    {
+        std::deque<staged_publish_entry_t> ingress_messages;
+        std::deque<staged_publish_entry_t> mesh_messages;
+    };
+
+    struct poller_interest_state_t
+    {
+        poller_interest_state_t () :
+            ingress_pollin_paused (false),
+            mesh_xsub_pollin_paused (false)
+        {
+        }
+
+        bool ingress_pollin_paused;
+        bool mesh_xsub_pollin_paused;
+    };
+
     socket_base_t *ctrl;
     socket_base_t *mesh_pub;
     socket_base_t *mesh_xsub;
@@ -309,28 +390,12 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *node_router;
     socket_base_t *ingress;
     socket_base_t *fanout;
-    int current_mesh_pub_sndhwm;
-    uint64_t last_mesh_pub_budget_version;
-    std::string last_mesh_pub_bound_endpoint;
     uint64_t next_pending_message_id;
-    bool ingress_pollin_paused;
-    bool mesh_xsub_pollin_paused;
-    bool mesh_pub_pollout_armed;
-    size_t local_pending_bytes;
-    size_t mesh_pending_bytes;
-    size_t local_pending_pause_threshold;
-    size_t local_pending_resume_threshold;
-    size_t mesh_pending_pause_threshold;
-    size_t mesh_pending_resume_threshold;
-    size_t local_pending_hard_limit;
-    size_t mesh_pending_hard_limit;
-    std::map<uint64_t, publish_pending_entry_t> local_pending_messages;
-    std::map<uint64_t, local_target_state_t> local_targets;
-    std::map<uint64_t, publish_pending_entry_t> mesh_pending_messages;
-    std::deque<uint64_t> mesh_broadcast_pending_message_ids;
-    std::deque<staged_publish_entry_t> ingress_staged_messages;
-    std::deque<staged_publish_entry_t> mesh_staged_messages;
-    std::map<std::string, remote_target_state_t> mesh_targets;
+    mesh_pub_budget_state_t mesh_pub_budget;
+    poller_interest_state_t interest;
+    local_fanout_state_t local_fanout;
+    remote_mesh_state_t remote_mesh;
+    staged_publish_state_t staged;
     socket_poller_t *poller;
 };
 

@@ -345,6 +345,10 @@ class asio_engine_t : public i_engine
 
     struct connection_facade_t
     {
+        struct callback_guard_t
+        {
+        };
+
         connection_facade_t () :
             plugged (false),
             handshaking (true),
@@ -357,7 +361,7 @@ class asio_engine_t : public i_engine
         bool plugged;
         bool handshaking;
         bool terminating;
-        std::shared_ptr<void> callback_guard;
+        std::shared_ptr<callback_guard_t> callback_guard;
         zlink::session_base_t *session;
         zlink::socket_base_t *socket;
     };
@@ -395,7 +399,7 @@ class asio_engine_t : public i_engine
     const unsigned char *&_gather_body;
     size_t &_gather_body_size;
     bool &_terminating;
-    std::shared_ptr<void> &_callback_guard;
+    std::shared_ptr<connection_facade_t::callback_guard_t> &_callback_guard;
     unsigned char *&_read_buffer_ptr;
     size_t &_last_read_request_size;
     bool &_last_read_had_partial_prefix;

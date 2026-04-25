@@ -2,6 +2,8 @@
 
 #include "utils/precompiled.hpp"
 #include <string.h>
+#include <climits>
+#include <cstdlib>
 #include <vector>
 
 #include "utils/macros.hpp"
@@ -11,6 +13,24 @@
 
 namespace
 {
+unsigned int resolve_non_matching_skip_budget ()
+{
+    const char *env = std::getenv ("ZLINK_XSUB_NON_MATCHING_SKIP_BUDGET");
+    if (!env || !*env)
+        return 64u;
+
+    char *end = NULL;
+    const unsigned long parsed = std::strtoul (env, &end, 10);
+    if (!end || end == env || *end != '\0' || parsed == 0)
+        return 64u;
+    if (parsed > UINT_MAX)
+        return UINT_MAX;
+    return static_cast<unsigned int> (parsed);
+}
+
+const unsigned int xsub_non_matching_skip_budget =
+  resolve_non_matching_skip_budget ();
+
 struct xsub_snapshot_arg_t
 {
     explicit xsub_snapshot_arg_t (
@@ -363,9 +383,9 @@ int zlink::xsub_t::xrecv (msg_t *msg_)
         return 0;
     }
 
-    //  TODO: This can result in infinite loop in the case of continuous
-    //  stream of non-matching messages which breaks the non-blocking recv
-    //  semantics.
+    //  Bound the number of non-matching messages skipped in one call so
+    //  non-blocking recv semantics still return control under hostile traffic.
+    unsigned int skipped_non_matching = 0;
     while (true) {
         //  Get a message using fair queueing algorithm.
         pipe_t *pipe = NULL;
@@ -392,6 +412,12 @@ int zlink::xsub_t::xrecv (msg_t *msg_)
             rc = _fq.recvpipe (msg_, &pipe);
             errno_assert (rc == 0);
         }
+
+        ++skipped_non_matching;
+        if (unlikely (skipped_non_matching >= xsub_non_matching_skip_budget)) {
+            errno = EAGAIN;
+            return -1;
+        }
     }
 }
 
@@ -406,8 +432,9 @@ bool zlink::xsub_t::xhas_in ()
     if (_has_message)
         return true;
 
-    //  TODO: This can result in infinite loop in the case of continuous
-    //  stream of non-matching messages.
+    //  Bound the number of non-matching messages skipped in one probe so a
+    //  caller polling for readiness is not trapped by unrelated traffic.
+    unsigned int skipped_non_matching = 0;
     while (true) {
         //  Get a message using fair queueing algorithm.
         int rc = _fq.recv (&_message);
@@ -431,6 +458,10 @@ bool zlink::xsub_t::xhas_in ()
             rc = _fq.recv (&_message);
             errno_assert (rc == 0);
         }
+
+        ++skipped_non_matching;
+        if (unlikely (skipped_non_matching >= xsub_non_matching_skip_budget))
+            return false;
     }
 }
 

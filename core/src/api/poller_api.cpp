@@ -94,10 +94,7 @@ int drain_hidden_completion_registration (
             if (!handle.socket)
                 return -1;
             std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-              state =
-                std::static_pointer_cast<
-                  zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
-                  handle.socket->router_spot_request_reply_state ());
+              state = handle.socket->router_spot_request_reply_state ();
             return state
                      ? zlink::spot_reqrep_internal::drain_router_reply_completions (
                          state, registration_->subject)

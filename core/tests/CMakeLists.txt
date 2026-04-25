@@ -698,6 +698,7 @@ set(SPOT_PUBSUB_CASES
     test_spot_peer_tcp_reverse_publish
     test_spot_multi_publisher
     test_spot_node_direct_local_and_child_interop
+    test_spot_node_pub_ingress_local_spot_subscribe_surface
     test_spot_sub_handler_basic
     test_spot_recv_callback_isolated_by_handle
     test_spot_node_discovery_direct_and_child_interop)

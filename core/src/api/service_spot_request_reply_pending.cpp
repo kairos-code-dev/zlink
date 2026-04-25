@@ -166,8 +166,7 @@ int zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (
     }
 
     std::shared_ptr<router_spot_request_reply_state_t> state =
-      std::static_pointer_cast<router_spot_request_reply_state_t> (
-        handle.socket->router_spot_request_reply_state ());
+      handle.socket->router_spot_request_reply_state ();
     if (!state)
         return 0;
 

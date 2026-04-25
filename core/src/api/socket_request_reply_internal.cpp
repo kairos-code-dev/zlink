@@ -46,8 +46,6 @@ socket_request_reply_state_t::socket_request_reply_state_t (
   int socket_type_) :
     socket (socket_),
     socket_type (socket_type_),
-    default_timeout_ms (zlink::request_reply::default_timeout_ms),
-    next_request_seq (1),
     internal_dispatch_installed (false)
 {
 }
@@ -179,43 +177,6 @@ struct socket_timeout_callback_ctx_t
     pending_key_t key;
 };
 
-void destroy_socket_timeout_callback_ctx (void *userdata_)
-{
-    delete static_cast<socket_timeout_callback_ctx_t *> (userdata_);
-}
-
-uint64_t allocate_request_seq (socket_request_reply_state_t *state_)
-{
-    if (!state_) {
-        errno = EFAULT;
-        return 0;
-    }
-
-    const uint64_t start =
-      state_->next_request_seq == 0 ? 1 : state_->next_request_seq;
-    uint64_t candidate = start;
-
-    do {
-        if (candidate == 0)
-            candidate = 1;
-
-        if (state_->pending_sequences.count (candidate) == 0) {
-            uint64_t next = candidate + 1;
-            if (next == 0)
-                next = 1;
-            state_->next_request_seq = next;
-            return candidate;
-        }
-
-        ++candidate;
-        if (candidate == 0)
-            candidate = 1;
-    } while (candidate != start);
-
-    errno = EBUSY;
-    return 0;
-}
-
 void on_socket_request_timeout (void *userdata_)
 {
     std::unique_ptr<socket_timeout_callback_ctx_t> ctx (
@@ -250,8 +211,7 @@ std::shared_ptr<socket_request_reply_state_t>
 find_or_create_request_reply_state (socket_handle_t handle_)
 {
     std::shared_ptr<socket_request_reply_state_t> state =
-      handle_.socket ? std::static_pointer_cast<socket_request_reply_state_t> (
-                        handle_.socket->request_reply_state ())
+      handle_.socket ? handle_.socket->request_reply_state ()
                      : std::shared_ptr<socket_request_reply_state_t> ();
     if (state)
         return state;
@@ -265,10 +225,8 @@ find_or_create_request_reply_state (socket_handle_t handle_)
 std::shared_ptr<socket_request_reply_state_t>
 find_request_reply_state (socket_handle_t handle_)
 {
-    return handle_.socket
-             ? std::static_pointer_cast<socket_request_reply_state_t> (
-                 handle_.socket->request_reply_state ())
-             : std::shared_ptr<socket_request_reply_state_t> ();
+    return handle_.socket ? handle_.socket->request_reply_state ()
+                          : std::shared_ptr<socket_request_reply_state_t> ();
 }
 
 int start_request (socket_handle_t handle_,
@@ -292,7 +250,9 @@ int start_request (socket_handle_t handle_,
     uint32_t resolved_timeout_ms = zlink::request_reply::default_timeout_ms;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        const uint64_t request_seq = allocate_request_seq (state.get ());
+        const uint64_t request_seq =
+          zlink::request_reply_runtime::allocate_request_sequence (
+            state.get ());
         if (request_seq == 0)
             return -1;
 
@@ -307,21 +267,15 @@ int start_request (socket_handle_t handle_,
         pending.userdata = userdata_;
         resolved_timeout_ms = zlink::request_reply::resolve_timeout_ms (
           timeout_ms_, state->default_timeout_ms);
-        std::unique_ptr<socket_timeout_callback_ctx_t> timeout_ctx (
-          new (std::nothrow) socket_timeout_callback_ctx_t ());
-        if (!timeout_ctx.get ()) {
-            errno = ENOMEM;
-            return -1;
-        }
-        timeout_ctx->state = state;
-        timeout_ctx->key = key;
-        pending.timeout_task =
-          zlink::request_timeout::schedule (resolved_timeout_ms,
-                                            &on_socket_request_timeout,
-                                            timeout_ctx.release (),
-                                            &destroy_socket_timeout_callback_ctx);
-        if (!pending.timeout_task) {
-            errno = ENOMEM;
+        if (zlink::request_reply_runtime::schedule_timeout_task<
+              socket_timeout_callback_ctx_t> (
+              resolved_timeout_ms, &on_socket_request_timeout,
+              [&] (socket_timeout_callback_ctx_t &ctx_) {
+                  ctx_.state = state;
+                  ctx_.key = key;
+              },
+              &pending.timeout_task)
+            != 0) {
             return -1;
         }
         state->pending_sequences.insert (request_seq);

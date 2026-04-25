@@ -16,15 +16,15 @@ void spot_node_t::refresh_discovery_peers ()
     uint64_t seq = 0;
     {
         scoped_lock_t lock (_sync);
-        discovery = _discovery;
-        service = _discovery_service;
+        discovery = _discovery_state.discovery;
+        service = _discovery_state.discovery_service;
         if (!discovery || service.empty ())
             return;
         seq = discovery->service_update_seq (service);
-        if (_pending_service_updates.empty () && seq == _discovery_seq)
+        if (_discovery_state.pending_service_updates.empty () && seq == _discovery_state.discovery_seq)
             return;
-        _pending_service_updates.clear ();
-        _discovery_seq = seq;
+        _discovery_state.pending_service_updates.clear ();
+        _discovery_state.discovery_seq = seq;
     }
 
     std::vector<provider_info_t> providers;
@@ -37,7 +37,7 @@ void spot_node_t::refresh_discovery_peers ()
     std::string self_endpoint;
     {
         scoped_lock_t lock (_sync);
-        self_endpoint = _advertise_endpoint;
+        self_endpoint = _discovery_state.advertise_endpoint;
     }
     for (size_t i = 0; i < providers.size (); ++i) {
         if (!providers[i].endpoint.empty ()
@@ -84,7 +84,7 @@ void spot_node_t::refresh_discovery_peers ()
             == 0) {
             scoped_lock_t lock (_sync);
             if (_peer_state.active_endpoints.insert (to_connect[i]).second)
-                _active_peer_count.fetch_add (1, std::memory_order_acq_rel);
+                _endpoint_state.active_peer_count.fetch_add (1, std::memory_order_acq_rel);
         }
     }
 
@@ -94,7 +94,7 @@ void spot_node_t::refresh_discovery_peers ()
             == 0) {
             scoped_lock_t lock (_sync);
             if (_peer_state.active_endpoints.erase (to_disconnect[i]) != 0)
-                _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
+                _endpoint_state.active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
         }
     }
 
@@ -182,15 +182,15 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         previous_connected_count = _peer_state.connected_endpoints.size ();
         _peer_state.connected_endpoints.swap (connected);
         changed = true;
-        _summary_last_changed_ms = now_ms;
+        _summary_state.summary_last_changed_ms = now_ms;
         if (_peer_state.connected_endpoints.empty ()) {
-            subs.reserve (_subs.size ());
-            subs.assign (_subs.begin (), _subs.end ());
+            subs.reserve (_handle_state.subs.size ());
+            subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
             clear_peer_readiness_locked (NULL);
             became_empty = true;
         } else {
-            subs.reserve (_subs.size ());
-            subs.assign (_subs.begin (), _subs.end ());
+            subs.reserve (_handle_state.subs.size ());
+            subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
         }
     }
 
@@ -209,7 +209,7 @@ void spot_node_t::refresh_connected_peer_endpoints ()
     }
 
     if (changed && has_filters) {
-        if (send_data_plane_command ("replay_subscriptions") != 0) {
+        if (send_data_plane_command ("replay_handle_state.subscriptions") != 0) {
             debug_mark_fault (errno);
             return;
         }

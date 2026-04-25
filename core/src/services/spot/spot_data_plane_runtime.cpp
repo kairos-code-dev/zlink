@@ -136,16 +136,15 @@ static void close_runtime_sockets (spot_node_t *node_,
     if (!state_)
         return;
 
-    for (std::map<std::string,
-                  spot_data_plane_runtime_state_t::remote_target_state_t>::
-           iterator it = state_->mesh_targets.begin ();
-         it != state_->mesh_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
+           iterator it = state_->remote_mesh.targets.begin ();
+         it != state_->remote_mesh.targets.end (); ++it) {
         if (it->second.sender_socket && !it->second.route_endpoint.empty ())
             (void) it->second.sender_socket->term_endpoint (
               it->second.route_endpoint.c_str ());
         spot_data_plane_t::close_socket_ptr (node_, it->second.sender_socket);
     }
-    state_->mesh_targets.clear ();
+    state_->remote_mesh.targets.clear ();
     LIBZLINK_DELETE (state_->poller);
     state_->poller = NULL;
     spot_data_plane_t::close_socket_ptr (node_, state_->fanout);
@@ -378,7 +377,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                      sizeof (neg_one));
     state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                      sizeof (neg_one));
-    state_->current_mesh_pub_sndhwm =
+    state_->mesh_pub_budget.current_sndhwm =
       read_socket_int_option (state_->mesh_pub, ZLINK_INTERNAL_OPT_SNDHWM,
                               &mesh_pub_sndhwm)
         ? mesh_pub_sndhwm
@@ -400,20 +399,7 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     node_router (NULL),
     ingress (NULL),
     fanout (NULL),
-    current_mesh_pub_sndhwm (0),
-    last_mesh_pub_budget_version (UINT64_MAX),
     next_pending_message_id (0),
-    ingress_pollin_paused (false),
-    mesh_xsub_pollin_paused (false),
-    mesh_pub_pollout_armed (false),
-    local_pending_bytes (0),
-    mesh_pending_bytes (0),
-    local_pending_pause_threshold (0),
-    local_pending_resume_threshold (0),
-    mesh_pending_pause_threshold (0),
-    mesh_pending_resume_threshold (0),
-    local_pending_hard_limit (0),
-    mesh_pending_hard_limit (0),
     poller (NULL)
 {
 }
@@ -672,10 +658,9 @@ void spot_data_plane_t::teardown_runtime (
         (void) state_->peer_route_ingress->socket_msg_dispatch_stop ();
 
     if (state_) {
-        for (std::map<std::string,
-                      spot_data_plane_runtime_state_t::remote_target_state_t>::
-               iterator it = state_->mesh_targets.begin ();
-             it != state_->mesh_targets.end (); ++it) {
+        for (spot_data_plane_runtime_state_t::remote_mesh_state_t::
+               target_map_t::iterator it = state_->remote_mesh.targets.begin ();
+             it != state_->remote_mesh.targets.end (); ++it) {
             if (state_->poller && it->second.sender_socket)
                 (void) state_->poller->remove (it->second.sender_socket);
             if (it->second.sender_socket && !it->second.route_endpoint.empty ())
@@ -685,8 +670,8 @@ void spot_data_plane_t::teardown_runtime (
                 (void) spot_node_access_t::close_owned_socket_and_wait (
                   runtime_->owner, it->second.sender_socket, 1000);
         }
-        state_->mesh_targets.clear ();
-        state_->mesh_pending_messages.clear ();
+        state_->remote_mesh.targets.clear ();
+        state_->remote_mesh.pending_messages.clear ();
     }
 
     if (state_->mesh_xsub)

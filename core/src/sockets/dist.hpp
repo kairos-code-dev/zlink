@@ -89,6 +89,13 @@ class dist_t
     //  True if last we are in the middle of a multipart message.
     bool _more;
 
+    // Cached result for matching-pipe HWM scan. Matching/eligible topology
+    // changes invalidate the cache; repeated readiness probes can then avoid
+    // rescanning the same matching prefix until a pipe state transition
+    // happens.
+    bool _matching_hwm_cache_valid;
+    bool _matching_hwm_ready;
+
     ZLINK_NON_COPYABLE_NOR_MOVABLE (dist_t)
 };
 }

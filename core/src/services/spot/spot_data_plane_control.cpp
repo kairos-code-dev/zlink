@@ -223,8 +223,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         std::string key;
         {
             scoped_lock_t lock (node_->_sync);
-            cert = node_->_tls_cert;
-            key = node_->_tls_key;
+            cert = node_->_tls_state.tls_cert;
+            key = node_->_tls_state.tls_key;
         }
 
         const int mesh_pub_sndhwm =
@@ -304,8 +304,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         }
         {
             scoped_lock_t lock (node_->_sync);
-            node_->_bound_endpoint = resolved_endpoint;
-            node_->_server_tls_locked = true;
+            node_->_endpoint_state.bound_endpoint = resolved_endpoint;
+            node_->_tls_state.server_tls_locked = true;
         }
         return send_ok_reply (ctrl_);
     }
@@ -316,9 +316,9 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         int trust = 0;
         {
             scoped_lock_t lock (node_->_sync);
-            ca = node_->_tls_ca;
-            host = node_->_tls_hostname;
-            trust = node_->_tls_trust_system;
+            ca = node_->_tls_state.tls_ca;
+            host = node_->_tls_state.tls_hostname;
+            trust = node_->_tls_state.tls_trust_system;
         }
         if (spot_node_t::apply_tls_client (mesh_xsub_, ca, host, trust) != 0
             || spot_node_t::apply_tls_client (peer_ctrl_pub_, ca, host, trust)
@@ -364,12 +364,12 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         }
         {
             scoped_lock_t lock (node_->_sync);
-            node_->_mesh_client_tls_locked = true;
+            node_->_tls_state.mesh_client_tls_locked = true;
         }
         return send_ok_reply (ctrl_);
     }
 
-    if (verb == "replay_subscriptions" || verb == "subscription_subscribe"
+    if (verb == "replay_handle_state.subscriptions" || verb == "subscription_handle_state.subscribe"
         || verb == "subscription_unsubscribe") {
         if (sync_outbound_mesh_subscriptions (mesh_xsub_, node_, state_) != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
@@ -386,7 +386,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         return send_ok_reply (ctrl_);
     }
 
-    if (verb == "ready_ack_subscribe" || verb == "ready_ack_unsubscribe") {
+    if (verb == "ready_ack_handle_state.subscribe" || verb == "ready_ack_unsubscribe") {
         std::string target_endpoint;
         std::string raw_filter;
         std::string ack_source_id;
@@ -406,7 +406,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         {
             std::set<std::string> &source_filters =
               state_->outbound_ready_filters[target_endpoint][ack_source_id];
-            if (verb == "ready_ack_subscribe")
+            if (verb == "ready_ack_handle_state.subscribe")
                 source_filters.insert (raw_filter);
             else
                 source_filters.erase (raw_filter);

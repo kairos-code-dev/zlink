@@ -107,8 +107,8 @@ void spot_node_t::queue_all_subscription_ready_filters ()
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
-        subs.reserve (_subs.size ());
-        subs.assign (_subs.begin (), _subs.end ());
+        subs.reserve (_handle_state.subs.size ());
+        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
     }
 
     std::set<std::string> raw_filters;
@@ -182,8 +182,8 @@ void spot_node_t::emit_pending_subscription_ready_events ()
             if (!active_endpoints.empty ())
                 ready_endpoint = *active_endpoints.begin ();
         }
-        subs.reserve (_subs.size ());
-        subs.assign (_subs.begin (), _subs.end ());
+        subs.reserve (_handle_state.subs.size ());
+        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
         raw_filters.swap (_peer_state.pending_subscription_ready_filters);
         _peer_state.subscription_ready_refresh_pending = false;
         _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
@@ -228,8 +228,8 @@ void spot_node_t::emit_pending_pub_delivery_ready_events ()
             _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
             return;
         }
-        pubs.reserve (_pubs.size ());
-        pubs.assign (_pubs.begin (), _pubs.end ());
+        pubs.reserve (_handle_state.pubs.size ());
+        pubs.assign (_handle_state.pubs.begin (), _handle_state.pubs.end ());
         updates.reserve (_peer_state.pending_pub_delivery_ready_counts.size ());
         for (std::map<std::string, uint32_t>::const_iterator it =
                _peer_state.pending_pub_delivery_ready_counts.begin ();
@@ -266,7 +266,7 @@ void spot_node_t::notify_pub_delivery_ready_ack (
     {
         scoped_lock_t lock (_sync);
         self_endpoint =
-          _advertise_endpoint.empty () ? _bound_endpoint : _advertise_endpoint;
+          _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint : _discovery_state.advertise_endpoint;
     }
     if (self_endpoint.empty () || self_endpoint != target_endpoint_)
         return;
@@ -335,7 +335,7 @@ int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
       spot_node_control_policy::make_ready_ack_arg (
         target_endpoint_, raw_filter_, ack_source_id_);
     return send_data_plane_command (
-      subscribe_ ? "ready_ack_subscribe" : "ready_ack_unsubscribe",
+      subscribe_ ? "ready_ack_handle_state.subscribe" : "ready_ack_unsubscribe",
       arg.c_str ());
 }
 }

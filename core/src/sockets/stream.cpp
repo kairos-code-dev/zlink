@@ -2,63 +2,29 @@
 
 #include "utils/precompiled.hpp"
 #include "sockets/stream.hpp"
+#include "sockets/stream_batch_policy.hpp"
 #include "sockets/stream_dispatch_internal.hpp"
 #include "core/pipe.hpp"
 #include "protocol/wire.hpp"
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
 #include <chrono>
-#include <climits>
-#include <cstdlib>
 #include <thread>
 
 namespace
 {
-int parse_non_negative_int_env (const char *name_, int default_value_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return default_value_;
-
-    char *end = NULL;
-    const long value = std::strtol (env, &end, 10);
-    if (!end || end == env || value < 0 || value > INT_MAX)
-        return default_value_;
-    return static_cast<int> (value);
-}
-
-int parse_positive_int_env (const char *name_, int default_value_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return default_value_;
-
-    char *end = NULL;
-    const long value = std::strtol (env, &end, 10);
-    if (!end || end == env || value <= 0 || value > INT_MAX)
-        return default_value_;
-    return static_cast<int> (value);
-}
-
 // STREAM echo and proxy traffic is often dominated by small payloads. A large
 // mandatory batch floor improves large-frame throughput, but it also adds copy
 // and queuing cost on 64B-class traffic. Keep the initial batch modest and let
 // the ASIO stream encoder grow dynamically when the socket sustains larger
 // bursts.
 const int stream_batch_size_min =
-  parse_positive_int_env ("ZLINK_ASIO_STREAM_BATCH_SIZE", 4096);
+  zlink::stream_batch_policy::minimum_send_batch_size ();
 
 // Keep a small read headroom so framed application protocols are less likely
 // to split at the exact payload boundary.
-const int stream_batch_read_headroom = parse_non_negative_int_env (
-  "ZLINK_ASIO_STREAM_BATCH_HEADROOM", 64);
-
-int apply_headroom (int base_, int headroom_)
-{
-    if (headroom_ <= 0 || base_ > INT_MAX - headroom_)
-        return base_;
-    return base_ + headroom_;
-}
+const int stream_batch_read_headroom =
+  zlink::stream_batch_policy::read_headroom_bytes ();
 
 bool is_stream_control_event (const unsigned char *payload_, size_t size_)
 {
@@ -190,7 +156,8 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 
     const int stream_batch_size = stream_batch_size_min;
     const int stream_read_batch_size =
-      apply_headroom (stream_batch_size, stream_batch_read_headroom);
+      zlink::stream_batch_policy::apply_read_headroom (
+        stream_batch_size, stream_batch_read_headroom);
     options.in_batch_size = stream_read_batch_size;
     options.out_batch_size = stream_batch_size;
 

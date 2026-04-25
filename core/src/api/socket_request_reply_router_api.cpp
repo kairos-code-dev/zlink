@@ -459,10 +459,7 @@ extern "C" int zlink_socket_request_progress_internal (void *socket_)
     }
 
     const std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-      router_spot_state =
-        std::static_pointer_cast<
-          zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
-          handle.socket->router_spot_request_reply_state ());
+      router_spot_state = handle.socket->router_spot_request_reply_state ();
     if (router_spot_state) {
         const int rc =
           zlink::spot_reqrep_internal::drain_router_reply_completions (

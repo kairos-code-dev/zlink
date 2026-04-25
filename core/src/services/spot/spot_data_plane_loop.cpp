@@ -47,17 +47,16 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::sync_local_fanout_targets (runtime_, state_);
     spot_data_plane_forwarder_t::sync_remote_mesh_targets (runtime_, state_,
                                                            protocol_state_);
-    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
-           iterator it = state_->local_targets.begin ();
-         it != state_->local_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+           iterator it = state_->local_fanout.targets.begin ();
+         it != state_->local_fanout.targets.end (); ++it) {
         if (it->second.relay_socket)
             spot_data_plane_forwarder_t::pump_socket_commands (
               it->second.relay_socket);
     }
-    for (std::map<std::string,
-                  spot_data_plane_runtime_state_t::remote_target_state_t>::
-           iterator it = state_->mesh_targets.begin ();
-         it != state_->mesh_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
+           iterator it = state_->remote_mesh.targets.begin ();
+         it != state_->remote_mesh.targets.end (); ++it) {
         if (it->second.sender_socket)
             spot_data_plane_forwarder_t::pump_socket_commands (
               it->second.sender_socket);
@@ -70,23 +69,22 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     state_->node_router->set_all_pipes_nodelay ();
     state_->ingress->set_all_pipes_nodelay ();
     state_->fanout->set_all_pipes_nodelay ();
-    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
-           iterator it = state_->local_targets.begin ();
-         it != state_->local_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+           iterator it = state_->local_fanout.targets.begin ();
+         it != state_->local_fanout.targets.end (); ++it) {
         if (it->second.relay_socket)
             it->second.relay_socket->set_all_pipes_nodelay ();
     }
-    for (std::map<std::string,
-                  spot_data_plane_runtime_state_t::remote_target_state_t>::
-           iterator it = state_->mesh_targets.begin ();
-         it != state_->mesh_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
+           iterator it = state_->remote_mesh.targets.begin ();
+         it != state_->remote_mesh.targets.end (); ++it) {
         if (it->second.sender_socket)
             it->second.sender_socket->set_all_pipes_nodelay ();
     }
     spot_mesh_pub_budget_t::refresh_live_socket (
-      runtime_, state_->mesh_pub, &state_->current_mesh_pub_sndhwm,
-      &state_->last_mesh_pub_budget_version,
-      &state_->last_mesh_pub_bound_endpoint);
+      runtime_, state_->mesh_pub, &state_->mesh_pub_budget.current_sndhwm,
+      &state_->mesh_pub_budget.last_budget_version,
+      &state_->mesh_pub_budget.last_bound_endpoint);
     spot_data_plane_forwarder_t::update_pending_queue_limits (runtime_, state_);
     (void) spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_);
     (void) spot_data_plane_forwarder_t::flush_local_fanout_pending (runtime_,

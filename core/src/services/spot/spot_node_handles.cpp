@@ -45,7 +45,7 @@ static void refresh_runtime_pub_hwm (spot_runtime_t *runtime_,
     if (runtime_->local_fanout_xpub)
         (void) runtime_->local_fanout_xpub->setsockopt (
           ZLINK_INTERNAL_OPT_SNDHWM, &value, sizeof (value));
-    runtime_->execution.data_plane_state.current_mesh_pub_sndhwm = value;
+    runtime_->execution.data_plane_state.mesh_pub_budget.current_sndhwm = value;
 }
 
 static void refresh_runtime_sub_hwm (spot_runtime_t *runtime_,
@@ -575,7 +575,7 @@ int spot_node_t::set_pub_option (int option_,
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    const int rc = _handle_defaults.set_pub_option (option_, optval_, optvallen_);
+    const int rc = _handle_state.handle_defaults.set_pub_option (option_, optval_, optvallen_);
     if (rc != 0)
         return rc;
 
@@ -591,7 +591,7 @@ int spot_node_t::set_sub_option (int option_,
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    const int rc = _handle_defaults.set_sub_option (option_, optval_, optvallen_);
+    const int rc = _handle_state.handle_defaults.set_sub_option (option_, optval_, optvallen_);
     if (rc != 0)
         return rc;
 
@@ -631,12 +631,12 @@ int spot_node_t::set_node_option (int option_,
         return -1;
     }
     if (option_ == ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM) {
-        if (_handle_defaults.set_pub_option (ZLINK_SPOT_PUB_OPT_SNDHWM, optval_,
+        if (_handle_state.handle_defaults.set_pub_option (ZLINK_SPOT_PUB_OPT_SNDHWM, optval_,
                                              optvallen_)
             != 0)
             return -1;
     } else if (option_ == ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM) {
-        if (_handle_defaults.set_sub_option (ZLINK_SPOT_SUB_OPT_RCVHWM, optval_,
+        if (_handle_state.handle_defaults.set_sub_option (ZLINK_SPOT_SUB_OPT_RCVHWM, optval_,
                                              optvallen_)
             != 0)
             return -1;
@@ -698,12 +698,12 @@ int spot_node_t::get_node_option (int option_,
 
 spot_node_t::pub_defaults_t spot_node_t::load_pub_defaults () const
 {
-    return _handle_defaults.load_pub_defaults ();
+    return _handle_state.handle_defaults.load_pub_defaults ();
 }
 
 spot_node_t::sub_defaults_t spot_node_t::load_sub_defaults () const
 {
-    return _handle_defaults.load_sub_defaults ();
+    return _handle_state.handle_defaults.load_sub_defaults ();
 }
 
 
@@ -723,20 +723,20 @@ spot_sub_t *spot_node_t::create_spot_sub ()
 
 spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
 {
-    spot_internal_receiver_t *receiver = _handle_defaults.fast_internal_receiver ();
+    spot_internal_receiver_t *receiver = _handle_state.handle_defaults.fast_internal_receiver ();
     if (receiver)
         return receiver;
 
-    scoped_lock_t init_lock (_handle_defaults.default_sub_init_lock ());
+    scoped_lock_t init_lock (_handle_state.handle_defaults.default_sub_init_lock ());
 
     spot_sub_t *previous_default_sub = NULL;
-    receiver = _handle_defaults.internal_receiver ();
+    receiver = _handle_state.handle_defaults.internal_receiver ();
     if (receiver)
         return receiver;
-    previous_default_sub = _handle_defaults.default_sub ();
+    previous_default_sub = _handle_state.handle_defaults.default_sub ();
 
-    sub_defaults_t defaults = _handle_defaults.load_sub_defaults ();
-    receiver = _handle_defaults.internal_receiver ();
+    sub_defaults_t defaults = _handle_state.handle_defaults.load_sub_defaults ();
+    receiver = _handle_state.handle_defaults.internal_receiver ();
     if (receiver)
         return receiver;
 
@@ -753,13 +753,13 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
 
     bool installed = false;
     spot_internal_receiver_t *published_receiver =
-      _handle_defaults.publish_internal_receiver (receiver, sub,
+      _handle_state.handle_defaults.publish_internal_receiver (receiver, sub,
                                                  previous_default_sub,
                                                  &installed);
     if (!installed) {
         {
             scoped_lock_t lock (_sync);
-            _subs.erase (sub);
+            _handle_state.subs.erase (sub);
         }
         (void) receiver->abort_create ();
         delete receiver;
@@ -772,31 +772,31 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
 
 spot_pub_t *spot_node_t::default_pub () const
 {
-    return _handle_defaults.default_pub ();
+    return _handle_state.handle_defaults.default_pub ();
 }
 
 spot_internal_receiver_t *spot_node_t::internal_receiver () const
 {
-    return _handle_defaults.internal_receiver ();
+    return _handle_state.handle_defaults.internal_receiver ();
 }
 
 spot_sub_t *spot_node_t::default_sub () const
 {
-    return _handle_defaults.default_sub ();
+    return _handle_state.handle_defaults.default_sub ();
 }
 
 void spot_node_t::remove_spot_pub (spot_pub_t *pub_)
 {
-    _handle_defaults.remove_spot_pub (pub_);
+    _handle_state.handle_defaults.remove_spot_pub (pub_);
     scoped_lock_t lock (_sync);
-    _pubs.erase (pub_);
+    _handle_state.pubs.erase (pub_);
 }
 
 void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
 {
-    const bool had_filters = _handle_defaults.remove_spot_sub (sub_);
+    const bool had_filters = _handle_state.handle_defaults.remove_spot_sub (sub_);
     scoped_lock_t lock (_sync);
-    _subs.erase (sub_);
+    _handle_state.subs.erase (sub_);
     if (had_filters)
         note_local_sub_filters_changed (true, false);
 }
@@ -808,11 +808,11 @@ int spot_node_t::destroy_handles ()
     int first_error = 0;
     {
         scoped_lock_t lock (_sync);
-        _handle_defaults.snapshot_destroy_handles (_pubs, _subs, &pubs, &subs);
+        _handle_state.handle_defaults.snapshot_destroy_handles (_handle_state.pubs, _handle_state.subs, &pubs, &subs);
         for (size_t i = 0; i < pubs.size (); ++i)
-            _pubs.erase (pubs[i]);
+            _handle_state.pubs.erase (pubs[i]);
         for (size_t i = 0; i < subs.size (); ++i)
-            _subs.erase (subs[i]);
+            _handle_state.subs.erase (subs[i]);
     }
 
     for (size_t i = 0; i < pubs.size (); ++i) {
@@ -832,11 +832,11 @@ int spot_node_t::destroy_handles ()
 
 int spot_node_t::destroy_internal_receiver ()
 {
-    spot_internal_receiver_t *receiver = _handle_defaults.detach_internal_receiver ();
+    spot_internal_receiver_t *receiver = _handle_state.handle_defaults.detach_internal_receiver ();
     {
         scoped_lock_t lock (_sync);
         if (receiver)
-            _subs.erase (receiver->impl ());
+            _handle_state.subs.erase (receiver->impl ());
     }
 
     if (!receiver)

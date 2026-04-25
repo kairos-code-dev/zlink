@@ -128,11 +128,11 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     spot_pub_t *published_default_pub = pub;
     {
         scoped_lock_t lock (_sync);
-        _pubs.insert (pub);
-        bound = !_bound_endpoint.empty ();
+        _handle_state.pubs.insert (pub);
+        bound = !_endpoint_state.bound_endpoint.empty ();
     }
     if (node_owned_default_)
-        _handle_defaults.publish_default_pub (pub, &published_default_pub);
+        _handle_state.handle_defaults.publish_default_pub (pub, &published_default_pub);
 
     if (node_owned_default_ && published_default_pub != pub) {
         remove_spot_pub (pub);
@@ -203,10 +203,10 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
 
     {
         scoped_lock_t lock (_sync);
-        _subs.insert (sub);
+        _handle_state.subs.insert (sub);
     }
     if (node_owned_default_)
-        _handle_defaults.publish_default_sub (sub);
+        _handle_state.handle_defaults.publish_default_sub (sub);
     sub->emit_ready_event ();
     submit_sub_summary (sub, ZLINK_TOPOLOGY_STATE_CONNECTING, 0);
     return sub;
@@ -214,17 +214,17 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
 
 spot_pub_t *spot_node_t::ensure_default_pub ()
 {
-    spot_pub_t *pub = _handle_defaults.fast_default_pub ();
+    spot_pub_t *pub = _handle_state.handle_defaults.fast_default_pub ();
     if (pub)
         return pub;
 
-    scoped_lock_t init_lock (_handle_defaults.default_pub_init_lock ());
-    pub = _handle_defaults.default_pub ();
+    scoped_lock_t init_lock (_handle_state.handle_defaults.default_pub_init_lock ());
+    pub = _handle_state.handle_defaults.default_pub ();
     if (pub)
         return pub;
 
-    pub_defaults_t defaults = _handle_defaults.load_pub_defaults ();
-    pub = _handle_defaults.default_pub ();
+    pub_defaults_t defaults = _handle_state.handle_defaults.load_pub_defaults ();
+    pub = _handle_state.handle_defaults.default_pub ();
     if (pub)
         return pub;
     return create_spot_pub_with_defaults (defaults, true);
@@ -232,17 +232,17 @@ spot_pub_t *spot_node_t::ensure_default_pub ()
 
 spot_sub_t *spot_node_t::ensure_default_sub ()
 {
-    spot_sub_t *sub = _handle_defaults.fast_default_sub ();
+    spot_sub_t *sub = _handle_state.handle_defaults.fast_default_sub ();
     if (sub)
         return sub;
 
-    scoped_lock_t init_lock (_handle_defaults.default_sub_init_lock ());
-    sub = _handle_defaults.default_sub ();
+    scoped_lock_t init_lock (_handle_state.handle_defaults.default_sub_init_lock ());
+    sub = _handle_state.handle_defaults.default_sub ();
     if (sub)
         return sub;
 
-    sub_defaults_t defaults = _handle_defaults.load_sub_defaults ();
-    sub = _handle_defaults.default_sub ();
+    sub_defaults_t defaults = _handle_state.handle_defaults.load_sub_defaults ();
+    sub = _handle_state.handle_defaults.default_sub ();
     if (sub)
         return sub;
     return create_spot_sub_with_defaults (defaults, true);

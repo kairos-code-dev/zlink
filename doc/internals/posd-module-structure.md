@@ -134,8 +134,14 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | `spot_data_plane_forwarding.cpp` | Ingress/egress message forwarding |
 | `spot_data_plane_protocol.cpp` | Control messages, subscription updates, bootstrap |
 | `spot_data_plane_internal.hpp` | Data plane internal state and protocol definitions |
+| `spot_node_state.hpp` | Extracted SpotNode state bundles for discovery, TLS, endpoint, handle, and service attachment |
 | `spot_subject_access.cpp/hpp` | Subject-level API seam (publish, recv, option, handler) |
 | `spot_runtime.cpp/hpp` | Runtime lifecycle |
+
+Recent refactors moved the large internal state structs out of `spot_node_t`
+and into `spot_node_state.hpp`. `spot_node_t` still coordinates lifecycle and
+control flow, but discovery/service-attachment/summary ownership now lives in
+explicit state bundles instead of one monolithic header body.
 
 **Discovery** (`services/discovery/`):
 
@@ -169,12 +175,17 @@ while common mechanism work is separated into runtime components.
 | `socket_base_monitor.cpp` | Monitor event emission |
 | `socket_base_msg.cpp` | Message send/recv mechanism |
 | `socket_base_routing.cpp` | routing_id handling |
+| `socket_base_request_reply_bridge.cpp` | Typed req/reply and part-helper bridge accessors |
 | `socket_runtime.cpp/hpp` | Runtime component aggregation |
 | `socket_close_ops.cpp/hpp` | Close/wait helper contract |
 
 Family implementations (pair, pub, sub, xpub, xsub, dealer, router, stream)
 focus on routing/subscription/load-balancing semantics and do not
 directly reference runtime internal fields.
+
+`socket_base_t` still acts as the semantic entrypoint, but req/reply state and
+part-helper state now sit behind typed bridge accessors rather than
+`shared_ptr<void>` storage and repeated casts in API code.
 
 ### 3.5 Runtime Core (`core/src/core/`)
 
@@ -193,6 +204,10 @@ owner responsible for validation/apply:
 per-category handlers. `options_dispatch_internal.hpp` provides template
 utilities and dispatch function declarations.
 
+The public-to-internal option mapping in `zlink_option.cpp` is also expressed as
+descriptor tables now, so the API layer does not drift back toward a large
+central switch hub.
+
 #### Logical Multipart Send
 
 `multipart_send_txn.cpp/hpp` is the shared logical multipart send module
@@ -202,6 +217,34 @@ used by `zlink_send` and `spot publish`.
 - blocking: whole-message retry until `sndtimeo` deadline
 - retry targets: `EAGAIN` and `EINTR` only; other errors fail immediately
 - Reuses `libzmq`'s `pipe/router/xpub/dist` lower layer rollback/HWM semantics
+
+#### Request/Reply Runtime Core
+
+`request_reply_runtime_core.hpp` is the small shared runtime core used by both
+socket req/reply and SPOT req/reply.
+
+- request sequence allocation
+- scheduler-backed timeout task creation helpers
+- socket req/reply wire I/O and router recv queue framing live in
+  `socket_request_reply_runtime_io.cpp`.
+
+Protocol-specific framing and routing stay in the socket/spot-specific modules,
+while identical state-machine mechanics live in one place.
+
+`socket_request_reply_dispatch.cpp` now keeps dispatch callback installation,
+pending completion cleanup, and close/drain lifecycle code. Actual
+framing/send/recv code is kept in the runtime I/O module so the dispatch file
+does not grow back into a broad helper collection.
+
+#### Stream / ASIO Policy Seams
+
+STREAM and ASIO fast-path policy defaults are kept out of the main hot-path
+implementation files.
+
+| Module | Role |
+|--------|------|
+| `sockets/stream_batch_policy.hpp` | STREAM batch/headroom defaults |
+| `engine/asio/asio_stream_fastpath_policy.hpp` | ASIO STREAM gather/speculative/drain policy and target-size calculation |
 
 ## 4. Dependency Direction
 

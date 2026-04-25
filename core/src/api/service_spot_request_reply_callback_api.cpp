@@ -473,8 +473,7 @@ extern "C" void zlink_spot_request_reply_cleanup_router (void *router_)
         return;
 
     std::shared_ptr<router_spot_request_reply_state_t> state =
-      std::static_pointer_cast<router_spot_request_reply_state_t> (
-        handle.socket->router_spot_request_reply_state ());
+      handle.socket->router_spot_request_reply_state ();
     if (state)
         (void)
           zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (

@@ -20,6 +20,7 @@
 
 #include "api/internal_pair_queue_internal.hpp"
 #include "api/request_completion_queue_internal.hpp"
+#include "api/request_reply_runtime_core.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
 
 namespace zlink
@@ -157,13 +158,10 @@ struct routed_message_queue_t
     zlink::internal_pair_queue::queue_t signal;
 };
 
-struct spot_request_reply_request_state_t
+struct spot_request_reply_request_state_t :
+    public zlink::request_reply_runtime::sequence_state_t
 {
     spot_request_reply_request_state_t ();
-
-    uint32_t default_timeout_ms;
-    uint64_t next_request_seq;
-    std::unordered_set<uint64_t> pending_sequences;
     std::unordered_map<pending_spot_key_t,
                        pending_reply_t,
                        pending_spot_key_hash_t>
@@ -203,13 +201,10 @@ struct spot_request_reply_state_t
     spot_dispatch_state_t dispatch;
 };
 
-struct router_spot_request_reply_request_state_t
+struct router_spot_request_reply_request_state_t :
+    public zlink::request_reply_runtime::sequence_state_t
 {
     router_spot_request_reply_request_state_t ();
-
-    uint32_t default_timeout_ms;
-    uint64_t next_request_seq;
-    std::unordered_set<uint64_t> pending_sequences;
     std::unordered_map<uint64_t, pending_reply_t> pending_replies;
 };
 

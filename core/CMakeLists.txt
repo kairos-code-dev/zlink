@@ -999,6 +999,7 @@ set(api-sources
     src/api/socket_message_handler_api.cpp
     src/api/socket_message_send_api.cpp
     src/api/socket_request_reply_dispatch.cpp
+    src/api/socket_request_reply_runtime_io.cpp
     src/api/socket_request_reply_internal.cpp
     src/api/socket_request_reply_router_api.cpp
     src/api/socket_request_reply_api.cpp

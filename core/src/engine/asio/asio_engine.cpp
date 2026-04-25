@@ -4,6 +4,7 @@
 #if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include "engine/asio/asio_engine.hpp"
+#include "engine/asio/asio_stream_fastpath_policy.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "engine/asio/i_asio_transport.hpp"
 #include "transports/tcp/tcp_transport.hpp"
@@ -21,8 +22,6 @@
 #include <unistd.h>
 #endif
 
-#include <cerrno>
-#include <cstdlib>
 #include <cstring>
 #include <sstream>
 
@@ -85,168 +84,58 @@ static std::string get_peer_address (zlink::fd_t s_)
 
 namespace
 {
-bool env_flag_enabled (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    return env && *env && *env != '0';
-}
-
-size_t parse_size_env (const char *name_, size_t fallback_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return fallback_;
-    errno = 0;
-    char *end = NULL;
-    const unsigned long long value = std::strtoull (env, &end, 10);
-    if (errno != 0 || end == env || value == 0)
-        return fallback_;
-    return static_cast<size_t> (value);
-}
-
 const bool asio_gather_write_on =
-  env_flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
+  zlink::asio_stream_fastpath_policy::gather_write_enabled ();
 
 const bool asio_single_write_on =
-  env_flag_enabled ("ZLINK_ASIO_SINGLE_WRITE");
+  zlink::asio_stream_fastpath_policy::single_write_enabled ();
 
 const size_t asio_gather_threshold =
-  parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
+  zlink::asio_stream_fastpath_policy::gather_threshold ();
 
 // STREAM sockets are latency/throughput sensitive on small frames.
 // Enable gather-write by default for STREAM so we can send
 // `len+header` and body with one transport operation without copying
 // body into encoder batch buffers.
 const bool asio_stream_gather_on =
-  !env_flag_enabled ("ZLINK_ASIO_STREAM_DISABLE_GATHER");
+  zlink::asio_stream_fastpath_policy::stream_gather_enabled ();
 
 // Keep gather enabled for STREAM once payloads are large enough that copying
 // them into the encoder batch is more expensive than emitting header+body
 // directly in one transport write.
 const size_t asio_stream_gather_threshold =
-  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 1024);
+  zlink::asio_stream_fastpath_policy::stream_gather_threshold ();
 const size_t asio_stream_tiny_gather_threshold =
-  parse_size_env ("ZLINK_ASIO_STREAM_TINY_GATHER_THRESHOLD", 0);
+  zlink::asio_stream_fastpath_policy::stream_tiny_gather_threshold ();
 
 const bool asio_trace_on =
-  env_flag_enabled ("ZLINK_ASIO_TRACE");
+  zlink::asio_stream_fastpath_policy::trace_enabled ();
 
-const bool asio_stream_enable_handler_alloc = true;
+const bool asio_stream_enable_handler_alloc =
+  zlink::asio_stream_fastpath_policy::enable_handler_alloc ();
 
-const bool asio_stream_enable_read_drain = true;
+const bool asio_stream_enable_read_drain =
+  zlink::asio_stream_fastpath_policy::enable_read_drain ();
 
 // STREAM/TCP is dominated by small-frame send overhead in high-connection
 // tests. Keep speculative write always enabled in the STREAM fast-path.
-const bool asio_stream_enable_speculative_write = true;
+const bool asio_stream_enable_speculative_write =
+  zlink::asio_stream_fastpath_policy::enable_speculative_write ();
 
-const bool asio_stream_enable_rx_slab = true;
+const bool asio_stream_enable_rx_slab =
+  zlink::asio_stream_fastpath_policy::enable_rx_slab ();
 
 const bool asio_stream_enable_non_tcp_spec_read =
-  env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ");
+  zlink::asio_stream_fastpath_policy::enable_non_tcp_spec_read ();
 
-const size_t asio_stream_spec_write_budget_bytes = 2097152;
+const size_t asio_stream_spec_write_budget_bytes =
+  zlink::asio_stream_fastpath_policy::spec_write_budget_bytes ();
 
-const size_t asio_stream_read_drain_max_loops = 64;
+const size_t asio_stream_read_drain_max_loops =
+  zlink::asio_stream_fastpath_policy::read_drain_max_loops ();
 
-const size_t asio_stream_read_drain_max_bytes = 1048576;
-
-const size_t stream_target_default_size = 4096;
-const size_t stream_target_initial_cap =
-  parse_size_env ("ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP", 4096);
-
-size_t clamp_stream_target_limit (size_t target_,
-                                  const zlink::options_t &options_,
-                                  bool read_path_)
-{
-    size_t clamped = target_ > 0 ? target_ : stream_target_default_size;
-
-    if (read_path_ && options_.rcvbuf > 0
-        && static_cast<size_t> (options_.rcvbuf) < clamped) {
-        clamped = static_cast<size_t> (options_.rcvbuf);
-    }
-
-    if (!read_path_ && options_.sndbuf > 0
-        && static_cast<size_t> (options_.sndbuf) < clamped) {
-        clamped = static_cast<size_t> (options_.sndbuf);
-    }
-
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < clamped) {
-        clamped = static_cast<size_t> (options_.maxmsgsize);
-    }
-
-    return clamped > 0 ? clamped : static_cast<size_t> (1);
-}
-
-size_t stream_decoder_initial_read_target (const zlink::options_t &options_)
-{
-    size_t target = options_.in_batch_size > 0
-                      ? static_cast<size_t> (options_.in_batch_size)
-                      : stream_target_default_size;
-    if (target > stream_target_initial_cap)
-        target = stream_target_initial_cap;
-    return clamp_stream_target_limit (target, options_, true);
-}
-
-size_t stream_decoder_max_read_target (const zlink::options_t &options_)
-{
-    const size_t initial_target = stream_decoder_initial_read_target (options_);
-    size_t max_target = initial_target;
-
-    if (options_.rcvbuf > 0
-        && static_cast<size_t> (options_.rcvbuf) > max_target)
-        max_target = static_cast<size_t> (options_.rcvbuf);
-
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < max_target)
-        max_target = static_cast<size_t> (options_.maxmsgsize);
-
-    if (max_target == 0)
-        return initial_target;
-
-    return max_target;
-}
-
-size_t stream_encoder_initial_write_target (const zlink::options_t &options_)
-{
-    size_t target = options_.out_batch_size > 0
-                      ? static_cast<size_t> (options_.out_batch_size)
-                      : stream_target_default_size;
-    if (target > stream_target_initial_cap)
-        target = stream_target_initial_cap;
-    return clamp_stream_target_limit (target, options_, false);
-}
-
-size_t stream_encoder_max_write_target (const zlink::options_t &options_)
-{
-    const size_t initial_target = stream_encoder_initial_write_target (options_);
-    size_t max_target = initial_target;
-
-    if (options_.sndbuf > 0
-        && static_cast<size_t> (options_.sndbuf) > max_target)
-        max_target = static_cast<size_t> (options_.sndbuf);
-
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < max_target)
-        max_target = static_cast<size_t> (options_.maxmsgsize);
-
-    if (max_target == 0)
-        return initial_target;
-
-    return max_target;
-}
-
-size_t stream_output_target_batch (const zlink::asio_engine_t &engine_,
-                                   const zlink::options_t &options_)
-{
-    if (options_.type == ZLINK_CORE_SOCKET_STREAM) {
-        const size_t stream_target = engine_.stream_encoder_write_target_size ();
-        return stream_target > 0 ? stream_target
-                                 : static_cast<size_t> (options_.out_batch_size);
-    }
-
-    return static_cast<size_t> (options_.out_batch_size);
-}
+const size_t asio_stream_read_drain_max_bytes =
+  zlink::asio_stream_fastpath_policy::read_drain_max_bytes ();
 
 
 }
@@ -331,14 +220,17 @@ zlink::asio_engine_t::asio_engine_t (
     _transport = std::move (transport_);
     _read_buffer.resize (read_buffer_size);
     _fd = fd_;
-    _callback_guard = std::shared_ptr<void> (new int (0));
+    _callback_guard.reset (new connection_facade_t::callback_guard_t ());
     _stream_decoder_read_target_size =
-      stream_decoder_initial_read_target (options_);
-    _stream_decoder_read_target_max = stream_decoder_max_read_target (options_);
+      zlink::asio_stream_fastpath_policy::decoder_initial_read_target (
+        options_);
+    _stream_decoder_read_target_max =
+      zlink::asio_stream_fastpath_policy::decoder_max_read_target (options_);
     _stream_encoder_write_target_size =
-      stream_encoder_initial_write_target (options_);
+      zlink::asio_stream_fastpath_policy::encoder_initial_write_target (
+        options_);
     _stream_encoder_write_target_max =
-      stream_encoder_max_write_target (options_);
+      zlink::asio_stream_fastpath_policy::encoder_max_write_target (options_);
 
     const int rc = _tx_msg.init ();
     errno_assert (rc == 0);
@@ -449,7 +341,8 @@ void zlink::asio_engine_t::start_transport_handshake ()
 
     const int handshake_type =
       _endpoint_uri_pair.local_type == endpoint_type_connect ? 0 : 1;
-    const std::weak_ptr<void> callback_guard = _callback_guard;
+    const std::weak_ptr<connection_facade_t::callback_guard_t> callback_guard =
+      _callback_guard;
 
     const bool use_stream_handler_alloc =
       _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
@@ -667,7 +560,8 @@ void zlink::asio_engine_t::start_async_read ()
 
     ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
     if (_transport) {
-        const std::weak_ptr<void> callback_guard = _callback_guard;
+        const std::weak_ptr<connection_facade_t::callback_guard_t>
+          callback_guard = _callback_guard;
         const bool use_stream_handler_alloc =
           _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
         if (use_stream_handler_alloc) {
@@ -876,7 +770,8 @@ void zlink::asio_engine_t::start_async_write ()
     _async_zero_copy = true;
 
     if (_transport) {
-        const std::weak_ptr<void> callback_guard = _callback_guard;
+        const std::weak_ptr<connection_facade_t::callback_guard_t>
+          callback_guard = _callback_guard;
         const bool use_stream_handler_alloc =
           _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
         if (use_stream_handler_alloc) {
@@ -960,7 +855,8 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     _async_zero_copy = false;
     _output_stopped = false;
 
-    const std::weak_ptr<void> callback_guard = _callback_guard;
+    const std::weak_ptr<connection_facade_t::callback_guard_t> callback_guard =
+      _callback_guard;
     const bool use_stream_handler_alloc =
       _options.type == ZLINK_CORE_SOCKET_STREAM && asio_stream_enable_handler_alloc;
     if (use_stream_handler_alloc) {
@@ -1381,7 +1277,8 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
         if (_outsize > 0) {
             _write_pending = true;
             if (_transport) {
-                const std::weak_ptr<void> callback_guard = _callback_guard;
+                const std::weak_ptr<connection_facade_t::callback_guard_t>
+                  callback_guard = _callback_guard;
                 const bool use_stream_handler_alloc =
                   _options.type == ZLINK_CORE_SOCKET_STREAM
                   && asio_stream_enable_handler_alloc;
@@ -1540,7 +1437,8 @@ bool zlink::asio_engine_t::prepare_output_buffer ()
     _outpos = NULL;
     _outsize = _encoder->encode (&_outpos, 0);
 
-    size_t target_out_batch = stream_output_target_batch (*this, _options);
+    size_t target_out_batch =
+      zlink::asio_stream_fastpath_policy::output_target_batch (*this, _options);
 
     while (_outsize < target_out_batch) {
         if ((this->*_next_msg) (&_tx_msg) == -1) {
@@ -1722,7 +1620,9 @@ void zlink::asio_engine_t::process_output ()
         _outpos = NULL;
         _outsize = _encoder->encode (&_outpos, 0);
 
-        size_t target_out_batch = stream_output_target_batch (*this, _options);
+        size_t target_out_batch =
+          zlink::asio_stream_fastpath_policy::output_target_batch (*this,
+                                                                   _options);
 
         while (_outsize < target_out_batch) {
             if ((this->*_next_msg) (&_tx_msg) == -1) {
@@ -2178,7 +2078,11 @@ void zlink::asio_engine_t::add_timer (int timeout_, int id_)
     _current_timer_id = id_;
     _timer->expires_after (std::chrono::milliseconds (timeout_));
     _timer->async_wait (
-      [this, id_, callback_guard = std::weak_ptr<void> (_callback_guard)] (
+      [this,
+       id_,
+       callback_guard =
+         std::weak_ptr<connection_facade_t::callback_guard_t> (
+           _callback_guard)] (
         const boost::system::error_code &ec) {
           if (callback_guard.expired ())
               return;

@@ -250,7 +250,9 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
     if (!relay_endpoint.empty ())
         (void) socket->term_endpoint (relay_endpoint.c_str ());
     socket->set_all_pipes_nodelay ();
-    const int rc = close_runtime_socket (socket, 10000);
+    const int rc =
+      data_plane_running ? close_runtime_socket_async (socket, 10000)
+                         : close_runtime_socket (socket, 10000);
     return rc;
 }
 

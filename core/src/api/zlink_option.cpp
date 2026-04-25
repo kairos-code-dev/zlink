@@ -9,7 +9,116 @@
 
 #include "core/ctx.hpp"
 
+#include <stddef.h>
 #include <string.h>
+
+namespace
+{
+struct option_descriptor_t
+{
+    int public_option;
+    int internal_option;
+};
+
+template <size_t N>
+int lookup_option_descriptor (const option_descriptor_t (&table_)[N],
+                              int option_)
+{
+    for (size_t i = 0; i < N; ++i) {
+        if (table_[i].public_option == option_)
+            return table_[i].internal_option;
+    }
+
+    errno = EINVAL;
+    return -1;
+}
+
+const option_descriptor_t common_option_table[] = {
+  {ZLINK_OPT_AFFINITY, ZLINK_INTERNAL_OPT_AFFINITY},
+  {ZLINK_OPT_RATE, ZLINK_INTERNAL_OPT_RATE},
+  {ZLINK_OPT_RECOVERY_IVL, ZLINK_INTERNAL_OPT_RECOVERY_IVL},
+  {ZLINK_OPT_SNDBUF, ZLINK_INTERNAL_OPT_SNDBUF},
+  {ZLINK_OPT_RCVBUF, ZLINK_INTERNAL_OPT_RCVBUF},
+  {ZLINK_OPT_FD, ZLINK_INTERNAL_OPT_FD},
+  {ZLINK_OPT_EVENTS, ZLINK_INTERNAL_OPT_EVENTS},
+  {ZLINK_OPT_TYPE, ZLINK_INTERNAL_OPT_TYPE},
+  {ZLINK_OPT_LINGER, ZLINK_INTERNAL_OPT_LINGER},
+  {ZLINK_OPT_RECONNECT_IVL, ZLINK_INTERNAL_OPT_RECONNECT_IVL},
+  {ZLINK_OPT_BACKLOG, ZLINK_INTERNAL_OPT_BACKLOG},
+  {ZLINK_OPT_RECONNECT_IVL_MAX, ZLINK_INTERNAL_OPT_RECONNECT_IVL_MAX},
+  {ZLINK_OPT_MAXMSGSIZE, ZLINK_INTERNAL_OPT_MAXMSGSIZE},
+  {ZLINK_OPT_SNDHWM, ZLINK_INTERNAL_OPT_SNDHWM},
+  {ZLINK_OPT_RCVHWM, ZLINK_INTERNAL_OPT_RCVHWM},
+  {ZLINK_OPT_MULTICAST_HOPS, ZLINK_INTERNAL_OPT_MULTICAST_HOPS},
+  {ZLINK_OPT_RCVTIMEO, ZLINK_INTERNAL_OPT_RCVTIMEO},
+  {ZLINK_OPT_SNDTIMEO, ZLINK_INTERNAL_OPT_SNDTIMEO},
+  {ZLINK_OPT_LAST_ENDPOINT, ZLINK_INTERNAL_OPT_LAST_ENDPOINT},
+  {ZLINK_OPT_TCP_KEEPALIVE, ZLINK_INTERNAL_OPT_TCP_KEEPALIVE},
+  {ZLINK_OPT_TCP_KEEPALIVE_CNT, ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_CNT},
+  {ZLINK_OPT_TCP_KEEPALIVE_IDLE, ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_IDLE},
+  {ZLINK_OPT_TCP_KEEPALIVE_INTVL, ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_INTVL},
+  {ZLINK_OPT_IMMEDIATE, ZLINK_INTERNAL_OPT_IMMEDIATE},
+  {ZLINK_OPT_IPV6, ZLINK_INTERNAL_OPT_IPV6},
+  {ZLINK_OPT_CONFLATE, ZLINK_INTERNAL_OPT_CONFLATE},
+  {ZLINK_OPT_TOS, ZLINK_INTERNAL_OPT_TOS},
+  {ZLINK_OPT_HANDSHAKE_IVL, ZLINK_INTERNAL_OPT_HANDSHAKE_IVL},
+  {ZLINK_OPT_BLOCKY, ZLINK_INTERNAL_OPT_BLOCKY},
+  {ZLINK_OPT_INVERT_MATCHING, ZLINK_INTERNAL_OPT_INVERT_MATCHING},
+  {ZLINK_OPT_HEARTBEAT_IVL, ZLINK_INTERNAL_OPT_HEARTBEAT_IVL},
+  {ZLINK_OPT_HEARTBEAT_TTL, ZLINK_INTERNAL_OPT_HEARTBEAT_TTL},
+  {ZLINK_OPT_HEARTBEAT_TIMEOUT, ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT},
+  {ZLINK_OPT_CONNECT_TIMEOUT, ZLINK_INTERNAL_OPT_CONNECT_TIMEOUT},
+  {ZLINK_OPT_TCP_MAXRT, ZLINK_INTERNAL_OPT_TCP_MAXRT},
+  {ZLINK_OPT_MULTICAST_MAXTPDU, ZLINK_INTERNAL_OPT_MULTICAST_MAXTPDU},
+  {ZLINK_OPT_BINDTODEVICE, ZLINK_INTERNAL_OPT_BINDTODEVICE},
+  {ZLINK_OPT_TLS_CERT, ZLINK_INTERNAL_OPT_TLS_CERT},
+  {ZLINK_OPT_TLS_KEY, ZLINK_INTERNAL_OPT_TLS_KEY},
+  {ZLINK_OPT_TLS_CA, ZLINK_INTERNAL_OPT_TLS_CA},
+  {ZLINK_OPT_TLS_VERIFY, ZLINK_INTERNAL_OPT_TLS_VERIFY},
+  {ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT,
+   ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT},
+  {ZLINK_OPT_TLS_HOSTNAME, ZLINK_INTERNAL_OPT_TLS_HOSTNAME},
+  {ZLINK_OPT_TLS_TRUST_SYSTEM, ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM},
+  {ZLINK_OPT_TLS_PASSWORD, ZLINK_INTERNAL_OPT_TLS_PASSWORD},
+  {ZLINK_OPT_ZMP_METADATA, ZLINK_INTERNAL_OPT_ZMP_METADATA},
+  {ZLINK_OPT_TCP_NODELAY, ZLINK_INTERNAL_OPT_TCP_NODELAY},
+  {ZLINK_OPT_RID_DUPLICATE_POLICY, ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY},
+};
+
+const option_descriptor_t router_option_table[] = {
+  {ZLINK_ROUTER_OPT_MANDATORY, ZLINK_INTERNAL_OPT_ROUTER_MANDATORY},
+  {ZLINK_ROUTER_OPT_PROBE, ZLINK_INTERNAL_OPT_PROBE_ROUTER},
+  {ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+   ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID},
+  {ZLINK_ROUTER_OPT_WEIGHT, ZLINK_INTERNAL_OPT_PEER_WEIGHT},
+};
+
+const option_descriptor_t dealer_option_table[] = {
+  {ZLINK_DEALER_OPT_PROBE, ZLINK_INTERNAL_OPT_PROBE_ROUTER},
+  {ZLINK_DEALER_OPT_WEIGHT, ZLINK_INTERNAL_OPT_PEER_WEIGHT},
+};
+
+const option_descriptor_t stream_option_table[] = {
+  {ZLINK_STREAM_OPT_NOTIFY, ZLINK_INTERNAL_OPT_STREAM_NOTIFY},
+};
+
+const option_descriptor_t pub_option_table[] = {
+  {ZLINK_PUB_OPT_VERBOSE, ZLINK_INTERNAL_OPT_XPUB_VERBOSE},
+  {ZLINK_PUB_OPT_VERBOSER, ZLINK_INTERNAL_OPT_XPUB_VERBOSER},
+  {ZLINK_PUB_OPT_MANUAL, ZLINK_INTERNAL_OPT_XPUB_MANUAL},
+  {ZLINK_PUB_OPT_MANUAL_LAST_VALUE,
+   ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE},
+  {ZLINK_PUB_OPT_NODROP, ZLINK_INTERNAL_OPT_XPUB_NODROP},
+  {ZLINK_PUB_OPT_WELCOME_MSG, ZLINK_INTERNAL_OPT_XPUB_WELCOME_MSG},
+  {ZLINK_PUB_OPT_TOPICS_COUNT, ZLINK_INTERNAL_OPT_TOPICS_COUNT},
+  {ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, ZLINK_INTERNAL_OPT_SUBSCRIBE},
+  {ZLINK_PUB_OPT_REJECT_SUBSCRIBE, ZLINK_INTERNAL_OPT_UNSUBSCRIBE},
+};
+
+const option_descriptor_t sub_option_table[] = {
+  {ZLINK_SUB_OPT_TOPICS_COUNT, ZLINK_INTERNAL_OPT_TOPICS_COUNT},
+};
+}
 
 zlink::socket_base_t *as_socket (void *handle_)
 {
@@ -39,186 +148,32 @@ int socket_type_of (zlink::socket_base_t *socket_)
 
 int map_common_option (zlink_option_t option_)
 {
-    switch (option_) {
-        case ZLINK_OPT_AFFINITY:
-            return ZLINK_INTERNAL_OPT_AFFINITY;
-        case ZLINK_OPT_RATE:
-            return ZLINK_INTERNAL_OPT_RATE;
-        case ZLINK_OPT_RECOVERY_IVL:
-            return ZLINK_INTERNAL_OPT_RECOVERY_IVL;
-        case ZLINK_OPT_SNDBUF:
-            return ZLINK_INTERNAL_OPT_SNDBUF;
-        case ZLINK_OPT_RCVBUF:
-            return ZLINK_INTERNAL_OPT_RCVBUF;
-        case ZLINK_OPT_FD:
-            return ZLINK_INTERNAL_OPT_FD;
-        case ZLINK_OPT_EVENTS:
-            return ZLINK_INTERNAL_OPT_EVENTS;
-        case ZLINK_OPT_TYPE:
-            return ZLINK_INTERNAL_OPT_TYPE;
-        case ZLINK_OPT_LINGER:
-            return ZLINK_INTERNAL_OPT_LINGER;
-        case ZLINK_OPT_RECONNECT_IVL:
-            return ZLINK_INTERNAL_OPT_RECONNECT_IVL;
-        case ZLINK_OPT_BACKLOG:
-            return ZLINK_INTERNAL_OPT_BACKLOG;
-        case ZLINK_OPT_RECONNECT_IVL_MAX:
-            return ZLINK_INTERNAL_OPT_RECONNECT_IVL_MAX;
-        case ZLINK_OPT_MAXMSGSIZE:
-            return ZLINK_INTERNAL_OPT_MAXMSGSIZE;
-        case ZLINK_OPT_SNDHWM:
-            return ZLINK_INTERNAL_OPT_SNDHWM;
-        case ZLINK_OPT_RCVHWM:
-            return ZLINK_INTERNAL_OPT_RCVHWM;
-        case ZLINK_OPT_MULTICAST_HOPS:
-            return ZLINK_INTERNAL_OPT_MULTICAST_HOPS;
-        case ZLINK_OPT_RCVTIMEO:
-            return ZLINK_INTERNAL_OPT_RCVTIMEO;
-        case ZLINK_OPT_SNDTIMEO:
-            return ZLINK_INTERNAL_OPT_SNDTIMEO;
-        case ZLINK_OPT_LAST_ENDPOINT:
-            return ZLINK_INTERNAL_OPT_LAST_ENDPOINT;
-        case ZLINK_OPT_TCP_KEEPALIVE:
-            return ZLINK_INTERNAL_OPT_TCP_KEEPALIVE;
-        case ZLINK_OPT_TCP_KEEPALIVE_CNT:
-            return ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_CNT;
-        case ZLINK_OPT_TCP_KEEPALIVE_IDLE:
-            return ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_IDLE;
-        case ZLINK_OPT_TCP_KEEPALIVE_INTVL:
-            return ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_INTVL;
-        case ZLINK_OPT_IMMEDIATE:
-            return ZLINK_INTERNAL_OPT_IMMEDIATE;
-        case ZLINK_OPT_IPV6:
-            return ZLINK_INTERNAL_OPT_IPV6;
-        case ZLINK_OPT_CONFLATE:
-            return ZLINK_INTERNAL_OPT_CONFLATE;
-        case ZLINK_OPT_TOS:
-            return ZLINK_INTERNAL_OPT_TOS;
-        case ZLINK_OPT_HANDSHAKE_IVL:
-            return ZLINK_INTERNAL_OPT_HANDSHAKE_IVL;
-        case ZLINK_OPT_BLOCKY:
-            return ZLINK_INTERNAL_OPT_BLOCKY;
-        case ZLINK_OPT_INVERT_MATCHING:
-            return ZLINK_INTERNAL_OPT_INVERT_MATCHING;
-        case ZLINK_OPT_HEARTBEAT_IVL:
-            return ZLINK_INTERNAL_OPT_HEARTBEAT_IVL;
-        case ZLINK_OPT_HEARTBEAT_TTL:
-            return ZLINK_INTERNAL_OPT_HEARTBEAT_TTL;
-        case ZLINK_OPT_HEARTBEAT_TIMEOUT:
-            return ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT;
-        case ZLINK_OPT_CONNECT_TIMEOUT:
-            return ZLINK_INTERNAL_OPT_CONNECT_TIMEOUT;
-        case ZLINK_OPT_TCP_MAXRT:
-            return ZLINK_INTERNAL_OPT_TCP_MAXRT;
-        case ZLINK_OPT_MULTICAST_MAXTPDU:
-            return ZLINK_INTERNAL_OPT_MULTICAST_MAXTPDU;
-        case ZLINK_OPT_BINDTODEVICE:
-            return ZLINK_INTERNAL_OPT_BINDTODEVICE;
-        case ZLINK_OPT_TLS_CERT:
-            return ZLINK_INTERNAL_OPT_TLS_CERT;
-        case ZLINK_OPT_TLS_KEY:
-            return ZLINK_INTERNAL_OPT_TLS_KEY;
-        case ZLINK_OPT_TLS_CA:
-            return ZLINK_INTERNAL_OPT_TLS_CA;
-        case ZLINK_OPT_TLS_VERIFY:
-            return ZLINK_INTERNAL_OPT_TLS_VERIFY;
-        case ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT:
-            return ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT;
-        case ZLINK_OPT_TLS_HOSTNAME:
-            return ZLINK_INTERNAL_OPT_TLS_HOSTNAME;
-        case ZLINK_OPT_TLS_TRUST_SYSTEM:
-            return ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM;
-        case ZLINK_OPT_TLS_PASSWORD:
-            return ZLINK_INTERNAL_OPT_TLS_PASSWORD;
-        case ZLINK_OPT_ZMP_METADATA:
-            return ZLINK_INTERNAL_OPT_ZMP_METADATA;
-        case ZLINK_OPT_TCP_NODELAY:
-            return ZLINK_INTERNAL_OPT_TCP_NODELAY;
-        case ZLINK_OPT_RID_DUPLICATE_POLICY:
-            return ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    return lookup_option_descriptor (common_option_table, option_);
 }
 
 int map_router_option (zlink_router_option_t option_)
 {
-    switch (option_) {
-        case ZLINK_ROUTER_OPT_MANDATORY:
-            return ZLINK_INTERNAL_OPT_ROUTER_MANDATORY;
-        case ZLINK_ROUTER_OPT_PROBE:
-            return ZLINK_INTERNAL_OPT_PROBE_ROUTER;
-        case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
-            return ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID;
-        case ZLINK_ROUTER_OPT_WEIGHT:
-            return ZLINK_INTERNAL_OPT_PEER_WEIGHT;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    return lookup_option_descriptor (router_option_table, option_);
 }
 
 int map_dealer_option (zlink_dealer_option_t option_)
 {
-    switch (option_) {
-        case ZLINK_DEALER_OPT_PROBE:
-            return ZLINK_INTERNAL_OPT_PROBE_ROUTER;
-        case ZLINK_DEALER_OPT_WEIGHT:
-            return ZLINK_INTERNAL_OPT_PEER_WEIGHT;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    return lookup_option_descriptor (dealer_option_table, option_);
 }
 
 int map_stream_option (zlink_stream_option_t option_)
 {
-    switch (option_) {
-        case ZLINK_STREAM_OPT_NOTIFY:
-            return ZLINK_INTERNAL_OPT_STREAM_NOTIFY;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    return lookup_option_descriptor (stream_option_table, option_);
 }
 
 int map_pub_option (int option_)
 {
-    switch (option_) {
-        case ZLINK_PUB_OPT_VERBOSE:
-            return ZLINK_INTERNAL_OPT_XPUB_VERBOSE;
-        case ZLINK_PUB_OPT_VERBOSER:
-            return ZLINK_INTERNAL_OPT_XPUB_VERBOSER;
-        case ZLINK_PUB_OPT_MANUAL:
-            return ZLINK_INTERNAL_OPT_XPUB_MANUAL;
-        case ZLINK_PUB_OPT_MANUAL_LAST_VALUE:
-            return ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE;
-        case ZLINK_PUB_OPT_NODROP:
-            return ZLINK_INTERNAL_OPT_XPUB_NODROP;
-        case ZLINK_PUB_OPT_WELCOME_MSG:
-            return ZLINK_INTERNAL_OPT_XPUB_WELCOME_MSG;
-        case ZLINK_PUB_OPT_TOPICS_COUNT:
-            return ZLINK_INTERNAL_OPT_TOPICS_COUNT;
-        case ZLINK_PUB_OPT_APPROVE_SUBSCRIBE:
-            return ZLINK_INTERNAL_OPT_SUBSCRIBE;
-        case ZLINK_PUB_OPT_REJECT_SUBSCRIBE:
-            return ZLINK_INTERNAL_OPT_UNSUBSCRIBE;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    return lookup_option_descriptor (pub_option_table, option_);
 }
 
 int map_sub_option (int option_)
 {
-    switch (option_) {
-        case ZLINK_SUB_OPT_TOPICS_COUNT:
-            return ZLINK_INTERNAL_OPT_TOPICS_COUNT;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    return lookup_option_descriptor (sub_option_table, option_);
 }
 
 int set_socket_option_checked (zlink::socket_base_t *socket_,

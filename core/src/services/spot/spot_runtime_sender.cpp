@@ -175,9 +175,9 @@ int spot_runtime_t::ensure_peer_route_sender_socket (
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     socket->setsockopt (ZLINK_INTERNAL_OPT_IMMEDIATE, &immediate,
                         sizeof (immediate));
-    if (spot_node_t::apply_tls_client (socket, owner->_tls_ca,
-                                       owner->_tls_hostname,
-                                       owner->_tls_trust_system)
+    if (spot_node_t::apply_tls_client (socket, owner->_tls_state.tls_ca,
+                                       owner->_tls_state.tls_hostname,
+                                       owner->_tls_state.tls_trust_system)
           != 0
         || socket->connect (target_endpoint_.c_str ()) != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;

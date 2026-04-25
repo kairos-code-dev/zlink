@@ -8,7 +8,12 @@
 #include "utils/likely.hpp"
 
 zlink::dist_t::dist_t () :
-    _matching (0), _active (0), _eligible (0), _more (false)
+    _matching (0),
+    _active (0),
+    _eligible (0),
+    _more (false),
+    _matching_hwm_cache_valid (false),
+    _matching_hwm_ready (true)
 {
 }
 
@@ -32,6 +37,7 @@ void zlink::dist_t::attach (pipe_t *pipe_)
         _active++;
         _eligible++;
     }
+    _matching_hwm_cache_valid = false;
 }
 
 bool zlink::dist_t::has_pipe (pipe_t *pipe_)
@@ -59,6 +65,7 @@ void zlink::dist_t::match (pipe_t *pipe_)
     //  Mark the pipe as matching.
     _pipes.swap (_pipes.index (pipe_), _matching);
     _matching++;
+    _matching_hwm_cache_valid = false;
 }
 
 void zlink::dist_t::reverse_match ()
@@ -75,11 +82,13 @@ void zlink::dist_t::reverse_match ()
     for (pipes_t::size_type i = prev_matching; i < _eligible; ++i) {
         _pipes.swap (i, _matching++);
     }
+    _matching_hwm_cache_valid = false;
 }
 
 void zlink::dist_t::unmatch ()
 {
     _matching = 0;
+    _matching_hwm_cache_valid = false;
 }
 
 void zlink::dist_t::pipe_terminated (pipe_t *pipe_)
@@ -100,6 +109,7 @@ void zlink::dist_t::pipe_terminated (pipe_t *pipe_)
     }
 
     _pipes.erase (pipe_);
+    _matching_hwm_cache_valid = false;
 }
 
 void zlink::dist_t::activated (pipe_t *pipe_)
@@ -116,11 +126,13 @@ void zlink::dist_t::activated (pipe_t *pipe_)
         _pipes.swap (_eligible - 1, _active);
         _active++;
     }
+    _matching_hwm_cache_valid = false;
 }
 
 int zlink::dist_t::send_to_all (msg_t *msg_)
 {
     _matching = _active;
+    _matching_hwm_cache_valid = false;
     return send_to_matching (msg_);
 }
 
@@ -212,6 +224,7 @@ void zlink::dist_t::deactivate_matching_pipe (pipes_t::size_type index_)
     _active--;
     _pipes.swap (_active, _eligible - 1);
     _eligible--;
+    _matching_hwm_cache_valid = false;
 }
 
 bool zlink::dist_t::write_at (pipes_t::size_type index_, msg_t *msg_)
@@ -229,11 +242,19 @@ bool zlink::dist_t::write_at (pipes_t::size_type index_, msg_t *msg_)
 
 bool zlink::dist_t::check_hwm ()
 {
-    for (pipes_t::size_type i = 0; i < _matching; ++i)
-        if (!_pipes[i]->check_hwm ())
-            return false;
+    if (_matching_hwm_cache_valid)
+        return _matching_hwm_ready;
 
-    return true;
+    bool ready = true;
+    for (pipes_t::size_type i = 0; i < _matching; ++i)
+        if (!_pipes[i]->check_hwm ()) {
+            ready = false;
+            break;
+        }
+
+    _matching_hwm_cache_valid = true;
+    _matching_hwm_ready = ready;
+    return ready;
 }
 
 void zlink::dist_t::rollback ()
@@ -244,4 +265,5 @@ void zlink::dist_t::rollback ()
     _matching = 0;
     _active = _eligible;
     _more = false;
+    _matching_hwm_cache_valid = false;
 }

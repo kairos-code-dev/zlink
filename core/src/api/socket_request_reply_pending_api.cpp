@@ -86,18 +86,10 @@ int ensure_socket_pending_request_impl (
     reqrep::pending_request_t pending;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        uint64_t request_seq =
-          state->next_request_seq == 0 ? 1 : state->next_request_seq;
-        while (state->pending_sequences.count (request_seq) != 0) {
-            ++request_seq;
-            if (request_seq == 0)
-                request_seq = 1;
-            if (request_seq == state->next_request_seq) {
-                errno = EBUSY;
-                return -1;
-            }
-        }
-        state->next_request_seq = request_seq + 1 == 0 ? 1 : request_seq + 1;
+        const uint64_t request_seq =
+          zlink::request_reply_runtime::allocate_request_sequence (state.get ());
+        if (request_seq == 0)
+            return -1;
 
         key.request_seq = request_seq;
         if (handle_.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
@@ -115,9 +107,6 @@ int ensure_socket_pending_request_impl (
         {
             std::shared_ptr<reqrep::socket_request_reply_state_t> state;
             reqrep::pending_key_t key;
-        };
-        auto destroy_ctx = [] (void *userdata_) {
-            delete static_cast<socket_timeout_callback_ctx_t *> (userdata_);
         };
         auto on_timeout = [] (void *userdata_) {
             std::unique_ptr<socket_timeout_callback_ctx_t> ctx (
@@ -148,18 +137,15 @@ int ensure_socket_pending_request_impl (
                   NULL, 0);
             }
         };
-        std::unique_ptr<socket_timeout_callback_ctx_t> timeout_ctx (
-          new (std::nothrow) socket_timeout_callback_ctx_t ());
-        if (!timeout_ctx) {
-            errno = ENOMEM;
-            return -1;
-        }
-        timeout_ctx->state = state;
-        timeout_ctx->key = key;
-        pending.timeout_task = zlink::request_timeout::schedule (
-          resolved_timeout_ms, on_timeout, timeout_ctx.release (), destroy_ctx);
-        if (!pending.timeout_task) {
-            errno = ENOMEM;
+        if (zlink::request_reply_runtime::schedule_timeout_task<
+              socket_timeout_callback_ctx_t> (
+              resolved_timeout_ms, on_timeout,
+              [&] (socket_timeout_callback_ctx_t &ctx_) {
+                  ctx_.state = state;
+                  ctx_.key = key;
+              },
+              &pending.timeout_task)
+            != 0) {
             return -1;
         }
 

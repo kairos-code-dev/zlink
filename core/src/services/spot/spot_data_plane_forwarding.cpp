@@ -98,9 +98,9 @@ void release_local_pending_ref_local (spot_data_plane_runtime_state_t *state_,
     if (!state_ || message_id_ == 0)
         return;
 
-    std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-      iterator it = state_->local_pending_messages.find (message_id_);
-    if (it == state_->local_pending_messages.end ())
+    spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
+      iterator it = state_->local_fanout.pending_messages.find (message_id_);
+    if (it == state_->local_fanout.pending_messages.end ())
         return;
 
     if (it->second.remaining_targets > 0)
@@ -108,12 +108,12 @@ void release_local_pending_ref_local (spot_data_plane_runtime_state_t *state_,
     if (it->second.remaining_targets != 0)
         return;
 
-    if (state_->local_pending_bytes >= it->second.encoded_bytes)
-        state_->local_pending_bytes -= it->second.encoded_bytes;
+    if (state_->local_fanout.pending_bytes >= it->second.encoded_bytes)
+        state_->local_fanout.pending_bytes -= it->second.encoded_bytes;
     else
-        state_->local_pending_bytes = 0;
+        state_->local_fanout.pending_bytes = 0;
     spot_clear_msg_parts (&it->second.parts);
-    state_->local_pending_messages.erase (it);
+    state_->local_fanout.pending_messages.erase (it);
 }
 
 void drop_local_target_state_local (spot_data_plane_runtime_state_t *state_,
@@ -122,9 +122,9 @@ void drop_local_target_state_local (spot_data_plane_runtime_state_t *state_,
     if (!state_ || attachment_id_ == 0)
         return;
 
-    std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
-      iterator it = state_->local_targets.find (attachment_id_);
-    if (it == state_->local_targets.end ())
+    spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator
+      it = state_->local_fanout.targets.find (attachment_id_);
+    if (it == state_->local_fanout.targets.end ())
         return;
 
     if (state_->poller && it->second.relay_socket)
@@ -135,7 +135,7 @@ void drop_local_target_state_local (spot_data_plane_runtime_state_t *state_,
         it->second.pending_message_ids.pop_front ();
     }
 
-    state_->local_targets.erase (it);
+    state_->local_fanout.targets.erase (it);
 }
 
 void release_mesh_pending_ref_local (spot_data_plane_runtime_state_t *state_,
@@ -144,9 +144,9 @@ void release_mesh_pending_ref_local (spot_data_plane_runtime_state_t *state_,
     if (!state_ || message_id_ == 0)
         return;
 
-    std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-      iterator it = state_->mesh_pending_messages.find (message_id_);
-    if (it == state_->mesh_pending_messages.end ())
+    spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
+      iterator it = state_->remote_mesh.pending_messages.find (message_id_);
+    if (it == state_->remote_mesh.pending_messages.end ())
         return;
 
     if (it->second.remaining_targets > 0)
@@ -154,12 +154,12 @@ void release_mesh_pending_ref_local (spot_data_plane_runtime_state_t *state_,
     if (it->second.remaining_targets != 0)
         return;
 
-    if (state_->mesh_pending_bytes >= it->second.encoded_bytes)
-        state_->mesh_pending_bytes -= it->second.encoded_bytes;
+    if (state_->remote_mesh.pending_bytes >= it->second.encoded_bytes)
+        state_->remote_mesh.pending_bytes -= it->second.encoded_bytes;
     else
-        state_->mesh_pending_bytes = 0;
+        state_->remote_mesh.pending_bytes = 0;
     spot_clear_msg_parts (&it->second.parts);
-    state_->mesh_pending_messages.erase (it);
+    state_->remote_mesh.pending_messages.erase (it);
 }
 
 void close_remote_target_socket_local (spot_runtime_t *runtime_,
@@ -189,10 +189,10 @@ void drop_remote_target_state_local (spot_runtime_t *runtime_,
     if (!state_ || endpoint_.empty ())
         return;
 
-    std::map<std::string,
-             spot_data_plane_runtime_state_t::remote_target_state_t>::iterator it =
-      state_->mesh_targets.find (endpoint_);
-    if (it == state_->mesh_targets.end ())
+    spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::iterator
+      it =
+      state_->remote_mesh.targets.find (endpoint_);
+    if (it == state_->remote_mesh.targets.end ())
         return;
 
     if (state_->poller && it->second.sender_socket)
@@ -206,7 +206,7 @@ void drop_remote_target_state_local (spot_runtime_t *runtime_,
 
     close_remote_target_socket_local (runtime_, it->second.route_endpoint,
                                       it->second.sender_socket);
-    state_->mesh_targets.erase (it);
+    state_->remote_mesh.targets.erase (it);
 }
 
 bool enqueue_local_target_message_local (
@@ -231,8 +231,8 @@ bool enqueue_local_target_message_local (
         entry.message_id = message_id;
         entry.topic = topic_;
         entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
-        if (!pending_queue_has_room_local (state_->local_pending_bytes,
-                                           state_->local_pending_hard_limit,
+        if (!pending_queue_has_room_local (state_->local_fanout.pending_bytes,
+                                           state_->local_fanout.pending_hard_limit,
                                            entry.encoded_bytes)) {
             errno = EAGAIN;
             return false;
@@ -240,16 +240,16 @@ bool enqueue_local_target_message_local (
         if (copy_msg_parts_to_owned_local (parts_, &entry.parts) != 0)
             return false;
 
-        state_->local_pending_bytes += entry.encoded_bytes;
-        state_->local_pending_messages[message_id] = entry;
+        state_->local_fanout.pending_bytes += entry.encoded_bytes;
+        state_->local_fanout.pending_messages[message_id] = entry;
         if (message_id_inout_)
             *message_id_inout_ = message_id;
     }
 
     target_->pending_message_ids.push_back (message_id);
-    std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-      iterator it = state_->local_pending_messages.find (message_id);
-    if (it != state_->local_pending_messages.end ())
+    spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
+      iterator it = state_->local_fanout.pending_messages.find (message_id);
+    if (it != state_->local_fanout.pending_messages.end ())
         ++it->second.remaining_targets;
     return true;
 }
@@ -275,8 +275,8 @@ bool enqueue_mesh_pending_local (spot_data_plane_runtime_state_t *state_,
         entry.message_id = message_id;
         entry.topic = topic_;
         entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
-        if (!pending_queue_has_room_local (state_->mesh_pending_bytes,
-                                           state_->mesh_pending_hard_limit,
+        if (!pending_queue_has_room_local (state_->remote_mesh.pending_bytes,
+                                           state_->remote_mesh.pending_hard_limit,
                                            entry.encoded_bytes)) {
             errno = EAGAIN;
             return false;
@@ -284,16 +284,16 @@ bool enqueue_mesh_pending_local (spot_data_plane_runtime_state_t *state_,
         if (copy_msg_parts_to_owned_local (parts_, &entry.parts) != 0)
             return false;
 
-        state_->mesh_pending_bytes += entry.encoded_bytes;
-        state_->mesh_pending_messages[message_id] = entry;
+        state_->remote_mesh.pending_bytes += entry.encoded_bytes;
+        state_->remote_mesh.pending_messages[message_id] = entry;
         if (message_id_inout_)
             *message_id_inout_ = message_id;
     }
 
     target_->pending_message_ids.push_back (message_id);
-    std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-      iterator it = state_->mesh_pending_messages.find (message_id);
-    if (it != state_->mesh_pending_messages.end ())
+    spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
+      iterator it = state_->remote_mesh.pending_messages.find (message_id);
+    if (it != state_->remote_mesh.pending_messages.end ())
         ++it->second.remaining_targets;
     return true;
 }
@@ -319,8 +319,8 @@ bool enqueue_mesh_broadcast_pending_local (
         entry.message_id = message_id;
         entry.topic = topic_;
         entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
-        if (!pending_queue_has_room_local (state_->mesh_pending_bytes,
-                                           state_->mesh_pending_hard_limit,
+        if (!pending_queue_has_room_local (state_->remote_mesh.pending_bytes,
+                                           state_->remote_mesh.pending_hard_limit,
                                            entry.encoded_bytes)) {
             errno = EAGAIN;
             return false;
@@ -328,16 +328,16 @@ bool enqueue_mesh_broadcast_pending_local (
         if (copy_msg_parts_to_owned_local (parts_, &entry.parts) != 0)
             return false;
 
-        state_->mesh_pending_bytes += entry.encoded_bytes;
-        state_->mesh_pending_messages[message_id] = entry;
+        state_->remote_mesh.pending_bytes += entry.encoded_bytes;
+        state_->remote_mesh.pending_messages[message_id] = entry;
         if (message_id_inout_)
             *message_id_inout_ = message_id;
     }
 
-    state_->mesh_broadcast_pending_message_ids.push_back (message_id);
-    std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-      iterator it = state_->mesh_pending_messages.find (message_id);
-    if (it != state_->mesh_pending_messages.end ())
+    state_->remote_mesh.broadcast_pending_message_ids.push_back (message_id);
+    spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
+      iterator it = state_->remote_mesh.pending_messages.find (message_id);
+    if (it != state_->remote_mesh.pending_messages.end ())
         ++it->second.remaining_targets;
     return true;
 }
@@ -478,7 +478,7 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
     if (!runtime_ || !state_)
         return;
 
-    std::map<uint64_t, socket_base_t *> snapshot;
+    std::unordered_map<uint64_t, socket_base_t *> snapshot;
     std::deque<socket_base_t *> retired_relays;
     {
         scoped_lock_t lock (runtime_->attachment_sync);
@@ -491,10 +491,10 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
         retired_relays.swap (runtime_->retired_attachment_relay_sockets);
     }
 
-    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
-           iterator it = state_->local_targets.begin ();
-         it != state_->local_targets.end ();) {
-        const std::map<uint64_t, socket_base_t *>::const_iterator snap_it =
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+           iterator it = state_->local_fanout.targets.begin ();
+         it != state_->local_fanout.targets.end ();) {
+        const std::unordered_map<uint64_t, socket_base_t *>::const_iterator snap_it =
           snapshot.find (it->first);
         if (snap_it == snapshot.end () || snap_it->second == NULL) {
             const uint64_t attachment_id = it->first;
@@ -506,15 +506,15 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
         ++it;
     }
 
-    for (std::map<uint64_t, socket_base_t *>::const_iterator it =
+    for (std::unordered_map<uint64_t, socket_base_t *>::const_iterator it =
            snapshot.begin ();
          it != snapshot.end (); ++it) {
-        if (state_->local_targets.find (it->first) != state_->local_targets.end ())
+        if (state_->local_fanout.targets.find (it->first) != state_->local_fanout.targets.end ())
             continue;
         spot_data_plane_runtime_state_t::local_target_state_t target;
         target.attachment_id = it->first;
         target.relay_socket = it->second;
-        state_->local_targets[it->first] = target;
+        state_->local_fanout.targets[it->first] = target;
         if (state_->poller && it->second)
             (void) state_->poller->add (it->second, NULL, 0);
     }
@@ -541,8 +541,8 @@ void spot_data_plane_forwarder_t::sync_remote_mesh_targets (
     if (!runtime_ || !state_)
         return;
 
-    while (!state_->mesh_targets.empty ()) {
-        const std::string endpoint = state_->mesh_targets.begin ()->first;
+    while (!state_->remote_mesh.targets.empty ()) {
+        const std::string endpoint = state_->remote_mesh.targets.begin ()->first;
         drop_remote_target_state_local (runtime_, state_, endpoint);
     }
 }
@@ -566,13 +566,13 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
     const size_t half_budget =
       static_cast<size_t> (std::max (total_fanout_budget / 2,
                                      static_cast<int> (pending_queue_bytes_floor)));
-    state_->local_pending_hard_limit = half_budget;
-    state_->mesh_pending_hard_limit = half_budget;
-    state_->local_pending_pause_threshold = half_budget;
-    state_->local_pending_resume_threshold =
+    state_->local_fanout.pending_hard_limit = half_budget;
+    state_->remote_mesh.pending_hard_limit = half_budget;
+    state_->local_fanout.pending_pause_threshold = half_budget;
+    state_->local_fanout.pending_resume_threshold =
       std::max (half_budget / 2, pending_queue_bytes_floor / 2);
-    state_->mesh_pending_pause_threshold = half_budget;
-    state_->mesh_pending_resume_threshold =
+    state_->remote_mesh.pending_pause_threshold = half_budget;
+    state_->remote_mesh.pending_resume_threshold =
       std::max (half_budget / 2, pending_queue_bytes_floor / 2);
 }
 
@@ -583,48 +583,48 @@ void spot_data_plane_forwarder_t::refresh_poller_interest (
         return;
 
     const bool pause_ingress =
-      state_->local_pending_bytes >= state_->local_pending_pause_threshold
-      || state_->mesh_pending_bytes >= state_->mesh_pending_pause_threshold
-      || !state_->ingress_staged_messages.empty ()
-      || !state_->mesh_staged_messages.empty ();
+      state_->local_fanout.pending_bytes >= state_->local_fanout.pending_pause_threshold
+      || state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
+      || !state_->staged.ingress_messages.empty ()
+      || !state_->staged.mesh_messages.empty ();
     const bool resume_ingress =
-      state_->local_pending_bytes <= state_->local_pending_resume_threshold
-      && state_->mesh_pending_bytes <= state_->mesh_pending_resume_threshold;
-    if (!state_->ingress_pollin_paused && pause_ingress)
-        state_->ingress_pollin_paused = true;
-    else if (state_->ingress_pollin_paused && resume_ingress)
-        state_->ingress_pollin_paused = false;
+      state_->local_fanout.pending_bytes <= state_->local_fanout.pending_resume_threshold
+      && state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
+    if (!state_->interest.ingress_pollin_paused && pause_ingress)
+        state_->interest.ingress_pollin_paused = true;
+    else if (state_->interest.ingress_pollin_paused && resume_ingress)
+        state_->interest.ingress_pollin_paused = false;
 
     const bool pause_mesh =
-      state_->mesh_pending_bytes >= state_->mesh_pending_pause_threshold
-      || !state_->mesh_staged_messages.empty ()
-      || !state_->ingress_staged_messages.empty ();
+      state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
+      || !state_->staged.mesh_messages.empty ()
+      || !state_->staged.ingress_messages.empty ();
     const bool resume_mesh =
-      state_->mesh_pending_bytes <= state_->mesh_pending_resume_threshold;
-    if (!state_->mesh_xsub_pollin_paused && pause_mesh)
-        state_->mesh_xsub_pollin_paused = true;
-    else if (state_->mesh_xsub_pollin_paused && resume_mesh)
-        state_->mesh_xsub_pollin_paused = false;
+      state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
+    if (!state_->interest.mesh_xsub_pollin_paused && pause_mesh)
+        state_->interest.mesh_xsub_pollin_paused = true;
+    else if (state_->interest.mesh_xsub_pollin_paused && resume_mesh)
+        state_->interest.mesh_xsub_pollin_paused = false;
 
     (void) state_->poller->modify (state_->ingress,
-                                   state_->ingress_pollin_paused ? 0
+                                   state_->interest.ingress_pollin_paused ? 0
                                                                  : ZLINK_POLLIN);
     (void) state_->poller->modify (state_->mesh_xsub,
-                                   state_->mesh_xsub_pollin_paused ? 0
+                                   state_->interest.mesh_xsub_pollin_paused ? 0
                                                                     : ZLINK_POLLIN);
 
     const bool mesh_pub_need_pollout =
-      !state_->mesh_broadcast_pending_message_ids.empty ();
-    if (mesh_pub_need_pollout != state_->mesh_pub_pollout_armed) {
+      !state_->remote_mesh.broadcast_pending_message_ids.empty ();
+    if (mesh_pub_need_pollout != state_->remote_mesh.pollout_armed) {
         (void) state_->poller->modify (
           state_->mesh_pub,
           mesh_pub_need_pollout ? ZLINK_POLLOUT : 0);
-        state_->mesh_pub_pollout_armed = mesh_pub_need_pollout;
+        state_->remote_mesh.pollout_armed = mesh_pub_need_pollout;
     }
 
-    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
-           iterator it = state_->local_targets.begin ();
-         it != state_->local_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+           iterator it = state_->local_fanout.targets.begin ();
+         it != state_->local_fanout.targets.end (); ++it) {
         if (!it->second.relay_socket)
             continue;
         const bool need_pollout = !it->second.pending_message_ids.empty ();
@@ -635,10 +635,9 @@ void spot_data_plane_forwarder_t::refresh_poller_interest (
         it->second.pollout_armed = need_pollout;
     }
 
-    for (std::map<std::string,
-                  spot_data_plane_runtime_state_t::remote_target_state_t>::
-           iterator it = state_->mesh_targets.begin ();
-         it != state_->mesh_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
+           iterator it = state_->remote_mesh.targets.begin ();
+         it != state_->remote_mesh.targets.end (); ++it) {
         if (!it->second.sender_socket)
             continue;
         const bool need_pollout = !it->second.pending_message_ids.empty ();
@@ -661,12 +660,12 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
         return -1;
     }
 
-    if (state_->local_targets.empty ())
+    if (state_->local_fanout.targets.empty ())
         return 0;
 
     const size_t encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
-    if (!pending_queue_has_room_local (state_->local_pending_bytes,
-                                       state_->local_pending_hard_limit,
+    if (!pending_queue_has_room_local (state_->local_fanout.pending_bytes,
+                                       state_->local_fanout.pending_hard_limit,
                                        encoded_bytes)) {
         refresh_poller_interest (state_);
         errno = EAGAIN;
@@ -674,9 +673,9 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
     }
 
     uint64_t local_pending_message_id = 0;
-    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
-           iterator target_it = state_->local_targets.begin ();
-         target_it != state_->local_targets.end (); ++target_it) {
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+           iterator target_it = state_->local_fanout.targets.begin ();
+         target_it != state_->local_fanout.targets.end (); ++target_it) {
         spot_data_plane_runtime_state_t::local_target_state_t &target =
           target_it->second;
         if (!target.relay_socket)
@@ -714,8 +713,8 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
     }
 
     const size_t encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
-    if (!pending_queue_has_room_local (state_->mesh_pending_bytes,
-                                       state_->mesh_pending_hard_limit,
+    if (!pending_queue_has_room_local (state_->remote_mesh.pending_bytes,
+                                       state_->remote_mesh.pending_hard_limit,
                                        encoded_bytes)) {
         refresh_poller_interest (state_);
         errno = EAGAIN;
@@ -724,12 +723,12 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
 
     pump_socket_commands (state_->mesh_pub);
     state_->mesh_pub->set_all_pipes_nodelay ();
-    if (state_->mesh_broadcast_pending_message_ids.empty ()
+    if (state_->remote_mesh.broadcast_pending_message_ids.empty ()
         && spot_publish_msg_parts (state_->mesh_pub, topic_, parts_) == 0) {
         return 0;
     }
 
-    if (errno != EAGAIN && !state_->mesh_broadcast_pending_message_ids.empty ())
+    if (errno != EAGAIN && !state_->remote_mesh.broadcast_pending_message_ids.empty ())
         errno = EAGAIN;
     if (errno != EAGAIN) {
         return -1;
@@ -759,8 +758,8 @@ int spot_data_plane_forwarder_t::stage_message (
     }
 
     std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> &queue =
-      source_mesh_ ? state_->mesh_staged_messages
-                   : state_->ingress_staged_messages;
+      source_mesh_ ? state_->staged.mesh_messages
+                   : state_->staged.ingress_messages;
     if (!stage_publish_message_local (&queue, topic_, parts_, need_local_,
                                       need_mesh_)) {
         if (errno == 0)
@@ -777,11 +776,11 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
     if (!runtime_ || !state_)
         return 0;
 
-    while (!state_->ingress_staged_messages.empty ()) {
+    while (!state_->staged.ingress_messages.empty ()) {
         spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
-          state_->ingress_staged_messages.front ();
+          state_->staged.ingress_messages.front ();
         if (entry.need_local) {
-            if (state_->local_targets.empty ()) {
+            if (state_->local_fanout.targets.empty ()) {
                 entry.need_local = false;
             } else if (forward_local_fanout (runtime_, state_, entry.topic,
                                              entry.parts)
@@ -805,14 +804,14 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
         if (entry.need_local || entry.need_mesh)
             break;
         spot_clear_msg_parts (&entry.parts);
-        state_->ingress_staged_messages.pop_front ();
+        state_->staged.ingress_messages.pop_front ();
     }
 
-    while (!state_->mesh_staged_messages.empty ()) {
+    while (!state_->staged.mesh_messages.empty ()) {
         spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
-          state_->mesh_staged_messages.front ();
+          state_->staged.mesh_messages.front ();
         if (entry.need_local) {
-            if (state_->local_targets.empty ()) {
+            if (state_->local_fanout.targets.empty ()) {
                 entry.need_local = false;
             } else if (forward_local_fanout (runtime_, state_, entry.topic,
                                              entry.parts)
@@ -827,7 +826,7 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
         if (entry.need_local)
             break;
         spot_clear_msg_parts (&entry.parts);
-        state_->mesh_staged_messages.pop_front ();
+        state_->staged.mesh_messages.pop_front ();
     }
 
     refresh_poller_interest (state_);
@@ -844,9 +843,9 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
     if (!runtime_ || !state_)
         return 0;
 
-    for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
-           iterator it = state_->local_targets.begin ();
-         it != state_->local_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+           iterator it = state_->local_fanout.targets.begin ();
+         it != state_->local_fanout.targets.end (); ++it) {
         spot_data_plane_runtime_state_t::local_target_state_t &target = it->second;
         if (!target.relay_socket
             || (relay_socket_ && target.relay_socket != relay_socket_)) {
@@ -855,9 +854,9 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
 
         while (!target.pending_message_ids.empty ()) {
             const uint64_t message_id = target.pending_message_ids.front ();
-            std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-              iterator msg_it = state_->local_pending_messages.find (message_id);
-            if (msg_it == state_->local_pending_messages.end ()) {
+            spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
+              iterator msg_it = state_->local_fanout.pending_messages.find (message_id);
+            if (msg_it == state_->local_fanout.pending_messages.end ()) {
                 target.pending_message_ids.pop_front ();
                 continue;
             }
@@ -890,13 +889,13 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
         return 0;
 
     if (!sender_socket_ || sender_socket_ == state_->mesh_pub) {
-        while (!state_->mesh_broadcast_pending_message_ids.empty ()) {
+        while (!state_->remote_mesh.broadcast_pending_message_ids.empty ()) {
             const uint64_t message_id =
-              state_->mesh_broadcast_pending_message_ids.front ();
-            std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-              iterator msg_it = state_->mesh_pending_messages.find (message_id);
-            if (msg_it == state_->mesh_pending_messages.end ()) {
-                state_->mesh_broadcast_pending_message_ids.pop_front ();
+              state_->remote_mesh.broadcast_pending_message_ids.front ();
+            spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
+              iterator msg_it = state_->remote_mesh.pending_messages.find (message_id);
+            if (msg_it == state_->remote_mesh.pending_messages.end ()) {
+                state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
                 continue;
             }
 
@@ -910,15 +909,14 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
                 return -1;
             }
 
-            state_->mesh_broadcast_pending_message_ids.pop_front ();
+            state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
             release_mesh_pending_ref_local (state_, message_id);
         }
     }
 
-    for (std::map<std::string,
-                  spot_data_plane_runtime_state_t::remote_target_state_t>::
-           iterator it = state_->mesh_targets.begin ();
-         it != state_->mesh_targets.end (); ++it) {
+    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
+           iterator it = state_->remote_mesh.targets.begin ();
+         it != state_->remote_mesh.targets.end (); ++it) {
         spot_data_plane_runtime_state_t::remote_target_state_t &target =
           it->second;
         if (!target.sender_socket
@@ -928,9 +926,9 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
 
         while (!target.pending_message_ids.empty ()) {
             const uint64_t message_id = target.pending_message_ids.front ();
-            std::map<uint64_t, spot_data_plane_runtime_state_t::publish_pending_entry_t>::
-              iterator msg_it = state_->mesh_pending_messages.find (message_id);
-            if (msg_it == state_->mesh_pending_messages.end ()) {
+            spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
+              iterator msg_it = state_->remote_mesh.pending_messages.find (message_id);
+            if (msg_it == state_->remote_mesh.pending_messages.end ()) {
                 target.pending_message_ids.pop_front ();
                 continue;
             }
@@ -1009,11 +1007,11 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
         if (spot_direct_route_debug_enabled_local ()) {
             std::fprintf (stderr,
                           "[spot-direct] ingress topic=%s local_targets=%zu mesh_targets=%zu parts=%zu\n",
-                          topic.c_str (), state_->local_targets.size (),
-                          state_->mesh_targets.size (), parts.size ());
+                          topic.c_str (), state_->local_fanout.targets.size (),
+                          state_->remote_mesh.targets.size (), parts.size ());
         }
 
-        if (!state_->local_targets.empty ()
+        if (!state_->local_fanout.targets.empty ()
             && forward_local_fanout (runtime_, state_, topic, parts) != 0) {
             if (errno == EAGAIN
                 && stage_message (state_, topic, parts, false, true,

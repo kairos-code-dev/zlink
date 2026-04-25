@@ -50,6 +50,10 @@ class session_base_t;
 class asio_ws_engine_t ZLINK_FINAL : public i_engine
 {
   public:
+    struct callback_guard_t
+    {
+    };
+
     //  Create WebSocket engine for an already-connected socket
     //  fd_: The socket file descriptor (TCP connection already established)
     //  options_: ZLINK socket options
@@ -184,7 +188,7 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
 
     //  IO context pointer (set during plug)
     boost::asio::io_context *_io_context;
-    std::shared_ptr<void> _callback_guard;
+    std::shared_ptr<callback_guard_t> _callback_guard;
 
     //  Options
     const options_t _options;

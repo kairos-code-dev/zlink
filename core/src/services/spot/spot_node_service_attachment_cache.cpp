@@ -34,11 +34,11 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
     std::shared_ptr<socket_poller_t> readable_sub_poller (
       new socket_poller_t ());
 
-    sub_cache->reserve (_service_attachments.size () * 2);
-    readable_sub_cache->reserve (_service_attachments.size () * 2);
+    sub_cache->reserve (_service_attachment_state.attachments.size () * 2);
+    readable_sub_cache->reserve (_service_attachment_state.attachments.size () * 2);
     for (std::map<std::string, service_attachment_t>::const_iterator it =
-           _service_attachments.begin ();
-         it != _service_attachments.end (); ++it) {
+           _service_attachment_state.attachments.begin ();
+         it != _service_attachment_state.attachments.end (); ++it) {
         service_attachment_t &attachment =
           const_cast<service_attachment_t &> (it->second);
         attachment.router_cache.clear ();
@@ -84,8 +84,8 @@ void spot_node_t::remove_service_monitors_by_owner_locked (
     if (sockets_.empty ())
         return;
     for (std::deque<service_monitor_handle_t>::iterator mit =
-           _service_monitors.begin ();
-         mit != _service_monitors.end ();) {
+           _service_attachment_state.monitors.begin ();
+         mit != _service_attachment_state.monitors.end ();) {
         bool matched = false;
         for (size_t i = 0; i < sockets_.size (); ++i) {
             if (mit->owner_socket == sockets_[i]) {
@@ -99,7 +99,7 @@ void spot_node_t::remove_service_monitors_by_owner_locked (
         }
         if (mit->handle)
             (void) zlink_monitor_close (&mit->handle);
-        mit = _service_monitors.erase (mit);
+        mit = _service_attachment_state.monitors.erase (mit);
     }
 }
 
@@ -112,31 +112,31 @@ bool spot_node_t::detach_discovered_service_locked (
     sockets_to_close_out_->clear ();
 
     for (std::map<std::string, discovery_t *>::iterator it =
-           _service_discoveries.begin ();
-         it != _service_discoveries.end (); ++it) {
+           _service_attachment_state.discoveries.begin ();
+         it != _service_attachment_state.discoveries.end (); ++it) {
         if (it->second != discovery_)
             continue;
         const std::string service_name = it->first;
 
         std::map<std::string, service_attachment_t>::iterator attach_it =
-          _service_attachments.find (service_name);
-        if (attach_it != _service_attachments.end ()) {
+          _service_attachment_state.attachments.find (service_name);
+        if (attach_it != _service_attachment_state.attachments.end ()) {
             for (std::map<std::string, socket_base_t *>::iterator rit =
                    attach_it->second.discovered.routers.begin ();
                  rit != attach_it->second.discovered.routers.end (); ++rit) {
                 if (rit->second) {
                     sockets_to_close_out_->push_back (rit->second);
-                    _service_attachment_socket_index.erase (rit->second);
+                    _service_attachment_state.socket_index.erase (rit->second);
                 }
             }
             if (attach_it->second.discovered.pub) {
                 sockets_to_close_out_->push_back (attach_it->second.discovered.pub);
-                _service_attachment_socket_index.erase (
+                _service_attachment_state.socket_index.erase (
                   attach_it->second.discovered.pub);
             }
             if (attach_it->second.discovered.sub) {
                 sockets_to_close_out_->push_back (attach_it->second.discovered.sub);
-                _service_attachment_socket_index.erase (
+                _service_attachment_state.socket_index.erase (
                   attach_it->second.discovered.sub);
             }
 
@@ -149,11 +149,11 @@ bool spot_node_t::detach_discovered_service_locked (
             attach_it->second.clear_auto_sub_replay ();
             if (attach_it->second.manual.routers.empty ()
                 && !attach_it->second.has_manual_pubsub ())
-                _service_attachments.erase (attach_it);
+                _service_attachment_state.attachments.erase (attach_it);
         }
 
         remove_service_monitors_by_owner_locked (*sockets_to_close_out_);
-        _service_discoveries.erase (it);
+        _service_attachment_state.discoveries.erase (it);
         _service_attachment_state.pending_refresh_services.erase (service_name);
         rebuild_service_attachment_caches_locked ();
         spot_shutdown_logf_local (

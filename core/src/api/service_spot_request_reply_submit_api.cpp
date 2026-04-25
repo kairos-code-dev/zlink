@@ -108,39 +108,6 @@ bool spot_destination_has_positive_weight (void *spot_,
     return !spot || !spot->node || spot->node->peer_has_positive_weight (dest_node_rid_);
 }
 
-uint64_t allocate_request_seq (
-  uint64_t *next_request_seq_,
-  const std::unordered_set<uint64_t> &pending_sequences_)
-{
-    if (!next_request_seq_) {
-        errno = EFAULT;
-        return 0;
-    }
-
-    const uint64_t start = *next_request_seq_ == 0 ? 1 : *next_request_seq_;
-    uint64_t candidate = start;
-
-    do {
-        if (candidate == 0)
-            candidate = 1;
-
-        if (pending_sequences_.count (candidate) == 0) {
-            uint64_t next = candidate + 1;
-            if (next == 0)
-                next = 1;
-            *next_request_seq_ = next;
-            return candidate;
-        }
-
-        ++candidate;
-        if (candidate == 0)
-            candidate = 1;
-    } while (candidate != start);
-
-    errno = EBUSY;
-    return 0;
-}
-
 int start_spot_request_common (void *spot_,
                                uint8_t destination_class_,
                                const std::string &destination_node_rid_,
@@ -167,8 +134,9 @@ int start_spot_request_common (void *spot_,
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         request_seq =
-          allocate_request_seq (&state->requests.next_request_seq,
-                                state->requests.pending_sequences);
+          zlink::request_reply_runtime::allocate_request_sequence (
+            &state->requests.next_request_seq,
+            state->requests.pending_sequences);
         if (request_seq == 0)
             return -1;
 
@@ -296,8 +264,9 @@ int start_router_request_to_spot (void *router_,
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         request_seq =
-          allocate_request_seq (&state->requests.next_request_seq,
-                                state->requests.pending_sequences);
+          zlink::request_reply_runtime::allocate_request_sequence (
+            &state->requests.next_request_seq,
+            state->requests.pending_sequences);
         if (request_seq == 0)
             return -1;
 

@@ -139,11 +139,6 @@ struct router_spot_timeout_callback_ctx_t
     uint64_t request_seq;
 };
 
-void destroy_router_spot_timeout_callback_ctx (void *userdata_)
-{
-    delete static_cast<router_spot_timeout_callback_ctx_t *> (userdata_);
-}
-
 void on_router_spot_request_timeout (void *userdata_)
 {
     std::unique_ptr<router_spot_timeout_callback_ctx_t> ctx (
@@ -231,20 +226,15 @@ int zlink::spot_reqrep_internal::register_router_spot_pending_request (
     const uint32_t resolved_timeout_ms =
       zlink::request_reply::resolve_timeout_ms (timeout_ms_,
                                                 state_->requests.default_timeout_ms);
-    std::unique_ptr<router_spot_timeout_callback_ctx_t> timeout_ctx (
-      new (std::nothrow) router_spot_timeout_callback_ctx_t ());
-    if (!timeout_ctx.get ()) {
-        errno = ENOMEM;
-        return -1;
-    }
-    timeout_ctx->state = state_;
-    timeout_ctx->request_seq = request_seq_;
-    pending.timeout_task =
-      zlink::request_timeout::schedule (
-        resolved_timeout_ms, &on_router_spot_request_timeout,
-        timeout_ctx.release (), &destroy_router_spot_timeout_callback_ctx);
-    if (!pending.timeout_task) {
-        errno = ENOMEM;
+    if (zlink::request_reply_runtime::schedule_timeout_task<
+          router_spot_timeout_callback_ctx_t> (
+          resolved_timeout_ms, &on_router_spot_request_timeout,
+          [&] (router_spot_timeout_callback_ctx_t &ctx_) {
+              ctx_.state = state_;
+              ctx_.request_seq = request_seq_;
+          },
+          &pending.timeout_task)
+        != 0) {
         return -1;
     }
 

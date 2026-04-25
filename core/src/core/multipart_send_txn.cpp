@@ -7,6 +7,34 @@
 #include "core/msg.hpp"
 #include "sockets/socket_base.hpp"
 
+namespace zlink
+{
+struct multipart_send_facade_t
+{
+    static socket_public_send_scope_t make_scope (socket_base_t *socket_,
+                                                  bool force_sync_)
+    {
+        return socket_public_send_scope_t (
+          socket_->lifecycle_coordinator (),
+          force_sync_ || socket_->direct_send_needs_public_api_sync ());
+    }
+
+    static int send_scoped (socket_base_t *socket_,
+                            msg_t *msg_,
+                            int flags_,
+                            socket_public_send_scope_t &scope_)
+    {
+        return socket_->send_scoped (msg_, flags_, scope_);
+    }
+
+    static int rollback_scoped (socket_base_t *socket_,
+                                socket_public_send_scope_t &scope_)
+    {
+        return socket_->rollback_scoped (scope_);
+    }
+};
+}
+
 namespace
 {
 struct prefix_frame_t
@@ -43,12 +71,14 @@ static int send_frames_once (zlink::socket_base_t *socket_,
 
     for (size_t i = 0; i < part_count_; ++i) {
         const bool more = i + 1 < part_count_;
-        if (socket_->send_scoped (reinterpret_cast<zlink::msg_t *> (&parts_[i]),
-                                  (more ? ZLINK_SNDMORE : 0) | flags_, scope_)
+        if (zlink::multipart_send_facade_t::send_scoped (
+              socket_, reinterpret_cast<zlink::msg_t *> (&parts_[i]),
+              (more ? ZLINK_SNDMORE : 0) | flags_, scope_)
             != 0) {
             const int err = errno;
             if (started)
-                (void) socket_->rollback_scoped (scope_);
+                (void) zlink::multipart_send_facade_t::rollback_scoped (
+                  socket_, scope_);
             consume_frames_from (parts_, i, part_count_);
             errno = err;
             return -1;
@@ -91,14 +121,16 @@ static int send_prefix_sequence_once (zlink::socket_base_t *socket_,
 
         const bool has_following =
           (i + 1 < prefix_count_) || part_count_ > 0;
-        if (socket_->send_scoped (&prefix_msg,
-                                  (has_following ? ZLINK_SNDMORE : 0) | flags_
-                                    | prefixes_[i].frame_flags,
-                                  scope_)
+        if (zlink::multipart_send_facade_t::send_scoped (
+              socket_, &prefix_msg,
+              (has_following ? ZLINK_SNDMORE : 0) | flags_
+                | prefixes_[i].frame_flags,
+              scope_)
             != 0) {
             const int err = errno;
             if (started)
-                (void) socket_->rollback_scoped (scope_);
+                (void) zlink::multipart_send_facade_t::rollback_scoped (
+                  socket_, scope_);
             (void) prefix_msg.close ();
             errno = err;
             return -1;
@@ -154,9 +186,9 @@ static int send_publish_once (zlink::socket_base_t *socket_,
         memcpy (topic_msg.data (), topic_, topic_size);
 
     const bool has_payload = part_count_ > 0;
-    if (socket_->send_scoped (&topic_msg,
-                              (has_payload ? ZLINK_SNDMORE : 0) | flags_,
-                              scope_)
+    if (zlink::multipart_send_facade_t::send_scoped (
+          socket_, &topic_msg, (has_payload ? ZLINK_SNDMORE : 0) | flags_,
+          scope_)
         != 0) {
         const int err = errno;
         (void) topic_msg.close ();
@@ -187,9 +219,9 @@ static int send_publish_frame_once (zlink::socket_base_t *socket_,
     }
 
     const bool has_payload = part_count_ > 0;
-    if (socket_->send_scoped (reinterpret_cast<zlink::msg_t *> (topic_frame_),
-                              (has_payload ? ZLINK_SNDMORE : 0) | flags_,
-                              scope_)
+    if (zlink::multipart_send_facade_t::send_scoped (
+          socket_, reinterpret_cast<zlink::msg_t *> (topic_frame_),
+          (has_payload ? ZLINK_SNDMORE : 0) | flags_, scope_)
         != 0) {
         return -1;
     }
@@ -283,9 +315,8 @@ int zlink::logical_multipart_send (socket_base_t *socket_,
         return -1;
     }
 
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (),
-      socket_->direct_send_needs_public_api_sync ());
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, false);
     if (!send_scope.acquired ())
         return -1;
 
@@ -310,8 +341,8 @@ int zlink::logical_multipart_send_routed (socket_base_t *socket_,
     }
 
     routed_attempt_arg_t arg = {routing_id_};
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (), true);
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 
@@ -338,9 +369,8 @@ int zlink::logical_multipart_send_prefixed (socket_base_t *socket_,
     }
 
     (void) route_ready_retry_ms_;
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (),
-      socket_->direct_send_needs_public_api_sync ());
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, false);
     if (!send_scope.acquired ())
         return -1;
 
@@ -361,9 +391,8 @@ int zlink::logical_multipart_send_prefixed_frame (socket_base_t *socket_,
         return -1;
     }
 
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (),
-      socket_->direct_send_needs_public_api_sync ());
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, false);
     if (!send_scope.acquired ())
         return -1;
 
@@ -387,8 +416,8 @@ int zlink::logical_multipart_send_routed_prefixed_frame (
         return -1;
     }
 
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (), true);
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 
@@ -398,7 +427,8 @@ int zlink::logical_multipart_send_routed_prefixed_frame (
     if (routing_id_->size > 0)
         memcpy (routing_msg.data (), routing_id_->data, routing_id_->size);
 
-    if (socket_->send_scoped (&routing_msg, ZLINK_SNDMORE | flags_, send_scope)
+    if (zlink::multipart_send_facade_t::send_scoped (
+          socket_, &routing_msg, ZLINK_SNDMORE | flags_, send_scope)
         != 0) {
         const int err = errno;
         (void) routing_msg.close ();
@@ -434,9 +464,8 @@ int zlink::logical_multipart_send_prefixed_frames (
         return -1;
     }
 
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (),
-      socket_->direct_send_needs_public_api_sync ());
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, false);
     if (!send_scope.acquired ())
         return -1;
 
@@ -465,8 +494,8 @@ int zlink::logical_multipart_send_routed_prefixed_frames (
         return -1;
     }
 
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (), true);
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 
@@ -498,8 +527,8 @@ int zlink::logical_multipart_publish (socket_base_t *socket_,
 
     publish_attempt_arg_t arg = {topic_};
     (void) fallback_on_missing_sndtimeo_;
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (), true);
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 
@@ -523,8 +552,8 @@ int zlink::logical_multipart_publish_frame (socket_base_t *socket_,
         return -1;
     }
 
-    zlink::socket_public_send_scope_t send_scope (
-      socket_->lifecycle_coordinator (), true);
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 

@@ -394,11 +394,11 @@ void spot_node_access_t::snapshot_tls_client_config (spot_node_t *node_,
 
     scoped_lock_t lock (node_->_sync);
     if (ca_out_)
-        *ca_out_ = node_->_tls_ca;
+        *ca_out_ = node_->_tls_state.tls_ca;
     if (host_out_)
-        *host_out_ = node_->_tls_hostname;
+        *host_out_ = node_->_tls_state.tls_hostname;
     if (trust_system_out_)
-        *trust_system_out_ = node_->_tls_trust_system;
+        *trust_system_out_ = node_->_tls_state.tls_trust_system;
 }
 
 int spot_node_access_t::apply_tls_client (spot_node_t *node_,

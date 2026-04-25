@@ -38,16 +38,16 @@ static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
 
 int spot_node_t::validate_destroyable_handles_locked () const
 {
-    for (std::set<spot_pub_t *>::const_iterator it = _pubs.begin ();
-         it != _pubs.end (); ++it) {
+    for (std::set<spot_pub_t *>::const_iterator it = _handle_state.pubs.begin ();
+         it != _handle_state.pubs.end (); ++it) {
         if (*it && !(*it)->is_node_owned_default ()) {
             errno = EBUSY;
             return -1;
         }
     }
-    for (std::set<spot_sub_t *>::const_iterator it = _subs.begin ();
-         it != _subs.end (); ++it) {
-        spot_internal_receiver_t *receiver = _handle_defaults.internal_receiver ();
+    for (std::set<spot_sub_t *>::const_iterator it = _handle_state.subs.begin ();
+         it != _handle_state.subs.end (); ++it) {
+        spot_internal_receiver_t *receiver = _handle_state.handle_defaults.internal_receiver ();
         if (receiver && *it == receiver->impl ())
             continue;
         if (*it && !(*it)->is_node_owned_default ()) {
@@ -82,18 +82,18 @@ void spot_node_t::begin_destroy_detach_phase (
                                             _peer_state.active_endpoints.end ());
     }
     if (bound_endpoint_out_)
-        *bound_endpoint_out_ = _bound_endpoint;
+        *bound_endpoint_out_ = _endpoint_state.bound_endpoint;
     if (discovery_out_)
-        *discovery_out_ = _discovery;
+        *discovery_out_ = _discovery_state.discovery;
 
     reset_spot_discovery_state_locked ();
     _peer_state.manual_endpoints.clear ();
     _peer_state.active_endpoints.clear ();
-    _active_peer_count.store (0, std::memory_order_release);
+    _endpoint_state.active_peer_count.store (0, std::memory_order_release);
     if (service_discoveries_out_)
-        service_discoveries_out_->swap (_service_discoveries);
+        service_discoveries_out_->swap (_service_attachment_state.discoveries);
     if (channel_dealer_discoveries_out_)
-        channel_dealer_discoveries_out_->swap (_channel_dealer_discoveries);
+        channel_dealer_discoveries_out_->swap (_service_attachment_state.channel_dealer_discoveries);
 }
 
 void spot_node_t::clear_service_attachment_runtime_locked (
@@ -103,13 +103,13 @@ void spot_node_t::clear_service_attachment_runtime_locked (
         return;
     monitors_out_->clear ();
     scoped_lock_t lock (_sync);
-    monitors_out_->swap (_service_monitors);
-    if (_pub_ingress) {
-        (void) _pub_ingress->term_endpoint (pub_ingress_endpoint ().c_str ());
-        _pub_ingress = NULL;
+    monitors_out_->swap (_service_attachment_state.monitors);
+    if (_service_attachment_state.pub_ingress) {
+        (void) _service_attachment_state.pub_ingress->term_endpoint (pub_ingress_endpoint ().c_str ());
+        _service_attachment_state.pub_ingress = NULL;
     }
-    _service_attachments.clear ();
-    _service_attachment_socket_index.clear ();
+    _service_attachment_state.attachments.clear ();
+    _service_attachment_state.socket_index.clear ();
     _service_attachment_state.pending_refresh_services.clear ();
     rebuild_service_attachment_caches_locked ();
 }
@@ -147,10 +147,10 @@ int spot_node_t::destroy ()
     spot_shutdown_logf_local (false,
                               "step=begin node=%p service=%s state=%d tracked=%zu",
                               static_cast<void *> (this),
-                              _discovery_service.c_str (),
+                              _discovery_state.discovery_service.c_str (),
                               static_cast<int> (_lifecycle.state ()),
                               _lifecycle.owned_socket_count ());
-    if (_discovery && _registered)
+    if (_discovery_state.discovery && _discovery_state.registered)
         (void) unregister_registered ();
     begin_destroy_detach_phase (&discovery, &service_discoveries,
                                 &channel_dealer_discoveries,

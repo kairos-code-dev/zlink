@@ -196,7 +196,7 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _socket (NULL),
     _fd (fd_),
     _io_context (NULL),
-    _callback_guard (std::shared_ptr<void> (new int (0))),
+    _callback_guard (std::shared_ptr<callback_guard_t> (new callback_guard_t ())),
     _options (options_),
     _endpoint_uri_pair (endpoint_uri_pair_),
     _peer_address (get_peer_address (fd_)),
@@ -296,7 +296,7 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _socket (NULL),
     _fd (fd_),
     _io_context (NULL),
-    _callback_guard (std::shared_ptr<void> (new int (0))),
+    _callback_guard (std::shared_ptr<callback_guard_t> (new callback_guard_t ())),
     _options (options_),
     _endpoint_uri_pair (endpoint_uri_pair_),
     _peer_address (get_peer_address (fd_)),
@@ -477,7 +477,7 @@ void zlink::asio_ws_engine_t::start_ws_handshake ()
 
     //  Start WebSocket handshake (client or server)
     const int handshake_type = _is_client ? 0 : 1;
-    const std::weak_ptr<void> callback_guard = _callback_guard;
+    const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
 
     _transport->async_handshake (
       handshake_type,
@@ -629,7 +629,7 @@ void zlink::asio_ws_engine_t::start_async_read ()
         buffer_size = _read_buffer.size ();
     }
 
-    const std::weak_ptr<void> callback_guard = _callback_guard;
+    const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
     _transport->async_read_some (
       buffer, buffer_size,
       [this, callback_guard] (const boost::system::error_code &ec,
@@ -787,7 +787,7 @@ void zlink::asio_ws_engine_t::start_async_write ()
 
     _write_pending = true;
 
-    const std::weak_ptr<void> callback_guard = _callback_guard;
+    const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
     _transport->async_write_some (
       _outpos, _outsize,
       [this, callback_guard] (const boost::system::error_code &ec,
@@ -1389,7 +1389,7 @@ bool zlink::asio_ws_engine_t::prepare_gather_output ()
     _write_pending = true;
     _output_stopped = false;
 
-    const std::weak_ptr<void> callback_guard = _callback_guard;
+    const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
     _transport->async_writev (
       _gather_header, _gather_header_size, _gather_body, _gather_body_size,
       [this, callback_guard] (const boost::system::error_code &ec,
@@ -1831,7 +1831,7 @@ void zlink::asio_ws_engine_t::add_timer (int timeout_, int id_)
     _current_timer_id = id_;
 
     _timer->expires_after (std::chrono::milliseconds (timeout_));
-    const std::weak_ptr<void> callback_guard = _callback_guard;
+    const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
     _timer->async_wait ([this, id_, callback_guard] (
                           const boost::system::error_code &ec) {
         if (callback_guard.expired ())

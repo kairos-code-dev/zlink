@@ -15,6 +15,10 @@ namespace zlink
 class spot_node_t;
 class spot_pub_t;
 class spot_sub_t;
+namespace spot_reqrep_internal
+{
+struct spot_request_reply_state_t;
+}
 }
 
 struct spot_handle_t
@@ -41,7 +45,8 @@ struct spot_handle_t
     zlink::spot_node_pub_defaults_t pending_pub_defaults;
     zlink::spot_node_sub_defaults_t pending_sub_defaults;
     zlink::service_mode_state_t mode_state;
-    std::shared_ptr<void> request_reply_state;
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+      request_reply_state;
 };
 
 #endif

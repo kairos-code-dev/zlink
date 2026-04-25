@@ -46,10 +46,6 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_,
     }
 }
 
-bool check_pipe_hwm (const zlink::pipe_t &pipe_)
-{
-    return pipe_.check_hwm ();
-}
 }
 
 int zlink::router_t::xsend (msg_t *msg_)
@@ -76,7 +72,7 @@ int zlink::router_t::xsend (msg_t *msg_)
                   _current_out->check_write_status ();
                 if (write_status != pipe_write_ready) {
                     const bool pipe_full = write_status == pipe_write_hwm_full;
-                    out_pipe->active = false;
+                    mark_out_pipe_inactive (out_pipe);
                     _current_out = NULL;
 
                     if (_mandatory) {
@@ -115,6 +111,9 @@ int zlink::router_t::xsend (msg_t *msg_)
         const bool ok = _more_out ? _current_out->write (msg_)
                                   : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
+            const blob_t &routing_id = _current_out->get_routing_id ();
+            out_pipe_t *current_out_pipe = lookup_out_pipe (routing_id);
+            mark_out_pipe_inactive (current_out_pipe);
             if (router_debug_enabled ()) {
                 fprintf (stderr,
                          "router xsend: drop message size=%zu\n",
@@ -170,7 +169,7 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
           _current_out->check_write_status ();
         if (write_status != pipe_write_ready) {
             const bool pipe_full = write_status == pipe_write_hwm_full;
-            out_pipe->active = false;
+            mark_out_pipe_inactive (out_pipe);
             _current_out = NULL;
 
             if (_mandatory) {
@@ -201,6 +200,9 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
         const bool ok = _more_out ? _current_out->write (msg_)
                                   : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
+            const blob_t &routing_id = _current_out->get_routing_id ();
+            out_pipe_t *current_out_pipe = lookup_out_pipe (routing_id);
+            mark_out_pipe_inactive (current_out_pipe);
             if (router_debug_enabled ()) {
                 fprintf (stderr,
                          "router xsend_routed: write failed rid_size=%u\n",
@@ -228,7 +230,5 @@ bool zlink::router_t::xhas_out ()
     if (!_mandatory)
         return true;
 
-    return any_of_out_pipes ([] (const out_pipe_t &out_pipe_) {
-        return out_pipe_.weight > 0 && check_pipe_hwm (*out_pipe_.pipe);
-    });
+    return has_writable_weighted_out_pipes ();
 }

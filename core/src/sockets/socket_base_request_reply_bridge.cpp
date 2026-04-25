@@ -4,51 +4,57 @@
 
 #include "sockets/socket_base.hpp"
 
-std::shared_ptr<void> zlink::socket_base_t::router_spot_request_reply_state () const
+std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+zlink::socket_base_t::router_spot_request_reply_state () const
 {
-    return _router_spot_request_reply_state;
+    return _request_reply_bridge.router_spot_request_reply_state;
 }
 
 void zlink::socket_base_t::set_router_spot_request_reply_state (
-  const std::shared_ptr<void> &state_)
+  const std::shared_ptr<
+    zlink::spot_reqrep_internal::router_spot_request_reply_state_t> &state_)
 {
-    _router_spot_request_reply_state = state_;
+    _request_reply_bridge.router_spot_request_reply_state = state_;
 }
 
 void zlink::socket_base_t::clear_router_spot_request_reply_state ()
 {
-    _router_spot_request_reply_state.reset ();
+    _request_reply_bridge.router_spot_request_reply_state.reset ();
 }
 
-std::shared_ptr<void> zlink::socket_base_t::request_reply_state () const
+std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+zlink::socket_base_t::request_reply_state () const
 {
-    return _request_reply_state;
+    return _request_reply_bridge.request_reply_state;
 }
 
 void zlink::socket_base_t::set_request_reply_state (
-  const std::shared_ptr<void> &state_)
+  const std::shared_ptr<
+    zlink::socket_reqrep_internal::socket_request_reply_state_t> &state_)
 {
-    _request_reply_state = state_;
+    _request_reply_bridge.request_reply_state = state_;
 }
 
 void zlink::socket_base_t::clear_request_reply_state ()
 {
-    _request_reply_state.reset ();
+    _request_reply_bridge.request_reply_state.reset ();
 }
 
-std::shared_ptr<void> zlink::socket_base_t::part_helper_state () const
+std::shared_ptr<zlink::part_helper_internal::handle_state_t>
+zlink::socket_base_t::part_helper_state () const
 {
-    return _part_helper_state;
+    return _request_reply_bridge.part_helper_state;
 }
 
-void zlink::socket_base_t::set_part_helper_state (const std::shared_ptr<void> &state_)
+void zlink::socket_base_t::set_part_helper_state (
+  const std::shared_ptr<zlink::part_helper_internal::handle_state_t> &state_)
 {
-    _part_helper_state = state_;
+    _request_reply_bridge.part_helper_state = state_;
 }
 
 void zlink::socket_base_t::clear_part_helper_state ()
 {
-    _part_helper_state.reset ();
+    _request_reply_bridge.part_helper_state.reset ();
 }
 
 int zlink::socket_base_t::set_channel_name_metadata (const char *channel_name_)

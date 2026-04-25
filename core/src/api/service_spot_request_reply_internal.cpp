@@ -229,9 +229,7 @@ routed_message_queue_t::routed_message_queue_t ()
 {
 }
 
-spot_request_reply_request_state_t::spot_request_reply_request_state_t () :
-    default_timeout_ms (zlink::request_reply::default_timeout_ms),
-    next_request_seq (1)
+spot_request_reply_request_state_t::spot_request_reply_request_state_t ()
 {
 }
 
@@ -253,9 +251,7 @@ spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) :
 }
 
 router_spot_request_reply_request_state_t::
-  router_spot_request_reply_request_state_t () :
-    default_timeout_ms (zlink::request_reply::default_timeout_ms),
-    next_request_seq (1)
+  router_spot_request_reply_request_state_t ()
 {
 }
 

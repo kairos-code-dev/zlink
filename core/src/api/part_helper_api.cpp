@@ -67,8 +67,7 @@ std::shared_ptr<zlink::part_helper_internal::handle_state_t>
 try_socket_owned_handle_state (void *handle_)
 {
     zlink::socket_base_t *socket = try_as_socket (handle_);
-    return socket ? std::static_pointer_cast<zlink::part_helper_internal::handle_state_t> (
-                      socket->part_helper_state ())
+    return socket ? socket->part_helper_state ()
                   : std::shared_ptr<zlink::part_helper_internal::handle_state_t> ();
 }
 
@@ -80,8 +79,7 @@ create_socket_owned_handle_state (void *handle_)
         return std::shared_ptr<zlink::part_helper_internal::handle_state_t> ();
 
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> state =
-      std::static_pointer_cast<zlink::part_helper_internal::handle_state_t> (
-        socket->part_helper_state ());
+      socket->part_helper_state ();
     if (state)
         return state;
 
@@ -649,7 +647,7 @@ void zlink::part_helper_internal::cleanup_handle (void *handle_)
     std::shared_ptr<handle_state_t> state;
     zlink::socket_base_t *socket = try_as_socket (handle_);
     if (socket) {
-        state = std::static_pointer_cast<handle_state_t> (socket->part_helper_state ());
+        state = socket->part_helper_state ();
         if (!state)
             return;
         socket->clear_part_helper_state ();

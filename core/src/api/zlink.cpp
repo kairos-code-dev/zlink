@@ -117,10 +117,7 @@ zlink_close_result_t zlink_close (void *s_)
       request_reply_state =
         zlink::socket_reqrep_internal::find_request_reply_state (handle);
     std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-      router_spot_state =
-        std::static_pointer_cast<
-          zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
-          handle.socket->router_spot_request_reply_state ());
+      router_spot_state = handle.socket->router_spot_request_reply_state ();
     if (zlink::socket_reqrep_internal::in_socket_request_completion_callback (
           s_)) {
         errno = EBUSY;

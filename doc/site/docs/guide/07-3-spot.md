@@ -91,6 +91,33 @@ call `zlink_spot_node_disconnect_peer_rid()` on the `SpotNode` to close that
 peer node connection. The `Spot` facade does not expose a separate rid
 disconnect function because it does not directly own peer connections.
 
+### 3.3 Drain new outbound with weight
+
+If you want to stop new routed/channel outbound temporarily without tearing
+down peer connections, set `ZLINK_SPOT_NODE_OPT_WEIGHT` or
+`ZLINK_SPOT_OPT_WEIGHT` to `0`. The valid range is `0..100`; the default is
+`100`.
+
+```c
+int drain_weight = 0;
+zlink_set_spot_node_option(
+  node,
+  ZLINK_SPOT_NODE_OPT_WEIGHT,
+  &drain_weight,
+  sizeof(drain_weight));
+
+int serve_weight = 100;
+zlink_set_spot_option(
+  spot,
+  ZLINK_SPOT_OPT_WEIGHT,
+  &serve_weight,
+  sizeof(serve_weight));
+```
+
+When the weight is `0`, remote peers exclude this node from new outbound
+candidates. Existing connections and replies for already in-flight requests
+stay valid. Raise the weight back to a positive value when maintenance ends.
+
 ## 4. Topic publish/subscribe
 
 The SPOT topic plane uses `service_name + topic_id`.

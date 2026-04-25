@@ -49,7 +49,7 @@ with the rules here, this section wins.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `onSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
-  true`, `handover = true`, `nodrop = true`.
+  true`, `handover = false`, `nodrop = true`.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingId, advertiseEndpoint)`. Users do not configure this.
@@ -1150,6 +1150,18 @@ interface MonitorSnapshot {
     readonly autoHwmGroupBudgetBytes: bigint;
     readonly autoHwmGroupMessageSlots: bigint;
     readonly autoHwmEffectiveMessageBytes: bigint;
+    readonly autoHwmControlBudgetBytes: bigint;
+    readonly autoHwmRoutedBudgetBytes: bigint;
+    readonly autoHwmFanoutBudgetBytes: bigint;
+    readonly autoHwmRecvIngressBudgetBytes: bigint;
+    readonly autoHwmControlActiveConnections: number;
+    readonly autoHwmRoutedActiveConnections: number;
+    readonly autoHwmFanoutActiveConnections: number;
+    readonly autoHwmRecvIngressActiveConnections: number;
+    readonly autoHwmEstimatedMaxMemoryBytes: bigint;
+    readonly autoHwmLastRecalcMs: bigint;
+    readonly autoHwmLastRecalcReason: number;
+    readonly autoHwmSendBlockedRatioPpm: number;
     /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
     isReady(): boolean;
 }

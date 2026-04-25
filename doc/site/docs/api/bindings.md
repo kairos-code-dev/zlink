@@ -248,8 +248,8 @@ public shape를 기준으로 고정한다.
   내부 정책이 `(routing_id, advertise endpoint)` 전순서로 initiator 를
   선정한다. 사용자가 설정하는 옵션이 아니다.
 - socket 기본값: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
-  `ZLINK_ROUTER_OPT_HANDOVER` = `0`, `ZLINK_OPT_RID_DUPLICATE_POLICY` =
-  `ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_PUB_OPT_NODROP` = `1`.
+  `ZLINK_OPT_RID_DUPLICATE_POLICY` = `ZLINK_RID_DUPLICATE_REJECT`,
+  `ZLINK_PUB_OPT_NODROP` = `1`.
   바인딩 예제는 이 기본값을 기준으로 작성한다.
 
 ## 문서 해석 규칙

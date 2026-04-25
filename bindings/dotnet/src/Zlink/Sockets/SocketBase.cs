@@ -53,6 +53,18 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
     }
 
+    public void DisconnectRid(RoutingId peerRid)
+    {
+        try
+        {
+            _kernel.DisconnectRid(peerRid);
+        }
+        catch (ZlinkException ex)
+        {
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+        }
+    }
+
     public SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All)
     {
         EnumValidation.EnsureSocketEvents(events, nameof(events));

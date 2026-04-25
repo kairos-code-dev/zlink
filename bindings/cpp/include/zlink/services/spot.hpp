@@ -451,6 +451,14 @@ class spot_node_t
             zlink_spot_node_disconnect_peer (_node, endpoint_.c_str ())));
     }
 
+    void disconnect_peer_rid (const routing_id_t &target_node_rid_)
+    {
+        const zlink_routing_id_t native = target_node_rid_.native ();
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_spot_node_disconnect_peer_rid (_node, &native)));
+    }
+
     void attach_discovery (discovery_t &discovery_)
     {
         detail::throw_if_failed<config_error_t> (

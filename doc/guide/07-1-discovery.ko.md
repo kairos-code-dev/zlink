@@ -193,8 +193,10 @@ sequenceDiagram
 ```
 
 서로 다른 host 에서 같은 `routing_id` 가 올라오는 예외 (오설정, zombie
-instance, 롤링 재시작 겹침) 는 여전히 handover 가 담당한다. 기본값인
-`ROUTER_HANDOVER=1` 이면 나중에 들어온 연결이 기존 pipe 를 인수한다.
+instance, 롤링 재시작 겹침) 는 여전히 duplicate policy 로 다룬다. 기본값인
+`ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_REJECT` 는 기존 pipe 를
+유지한다. 나중에 들어온 연결이 기존 pipe 를 인수해야 하면
+`ZLINK_RID_DUPLICATE_HANDOVER` 를 명시 설정한다.
 
 ## 3. Registry 설정
 

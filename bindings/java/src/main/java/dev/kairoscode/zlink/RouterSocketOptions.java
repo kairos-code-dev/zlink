@@ -17,14 +17,6 @@ public final class RouterSocketOptions extends CommonSocketOptions {
         socket.setOption(SocketOptions.ROUTER_MANDATORY, enabled ? 1 : 0);
     }
 
-    public boolean handover() {
-        return socket.getOption(SocketOptions.ROUTER_HANDOVER) != 0;
-    }
-
-    public void handover(boolean enabled) {
-        socket.setOption(SocketOptions.ROUTER_HANDOVER, enabled ? 1 : 0);
-    }
-
     public boolean probe() {
         return socket.getOption(SocketOptions.PROBE_ROUTER) != 0;
     }

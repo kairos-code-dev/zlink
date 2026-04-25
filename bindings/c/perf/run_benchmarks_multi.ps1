@@ -69,9 +69,10 @@ Options:
   -PinCpu                      Enable PERF_TASKSET=1.
   -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
   -Clients N                   Override PERF_MULTI_CLIENTS (default: 100, stream=10000).
-  -Hwm N                       Override PERF_MULTI_HWM (default: unset; auto-HWM decides).
-  -SendHwm N                   Override PERF_MULTI_SNDHWM (fallback: -Hwm).
-  -RecvHwm N                   Override PERF_MULTI_RCVHWM (fallback: -Hwm).
+  -Hwm N                       Debug-only override PERF_MULTI_HWM.
+                               Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
+  -SendHwm N                   Debug-only override PERF_MULTI_SNDHWM (fallback: -Hwm).
+  -RecvHwm N                   Debug-only override PERF_MULTI_RCVHWM (fallback: -Hwm).
   -SendTimeoutMs N             Override PERF_MULTI_SNDTIMEO_MS.
   -RecvTimeoutMs N             Override PERF_MULTI_RCVTIMEO_MS.
   -ConnectConcurrency N        Override PERF_MULTI_CONNECT_CONCURRENCY.
@@ -173,6 +174,17 @@ if ($PatternList.Count -eq 0) {
 }
 $PatternCsv = ($PatternList -join ",")
 
+$AllowManualSocketOverrides = if ($env:PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES) {
+    $env:PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES
+} elseif ($env:PERF_ALLOW_MANUAL_SOCKET_OVERRIDES) {
+    $env:PERF_ALLOW_MANUAL_SOCKET_OVERRIDES
+} else {
+    "0"
+}
+if (($Hwm -or $SendHwm -or $RecvHwm) -and $AllowManualSocketOverrides -ne "1") {
+    throw "manual HWM overrides are debug-only. Set PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1 first."
+}
+
 if ($Runs -lt 0) { throw "Runs must be >= 0." }
 if ($Runs -eq 0) {
     $Runs = 3
@@ -202,6 +214,9 @@ if ($Clients) { $RunEnv["PERF_MULTI_CLIENTS"] = $Clients }
 if ($Hwm) { $RunEnv["PERF_MULTI_HWM"] = $Hwm }
 if ($SendHwm) { $RunEnv["PERF_MULTI_SNDHWM"] = $SendHwm }
 if ($RecvHwm) { $RunEnv["PERF_MULTI_RCVHWM"] = $RecvHwm }
+if ($AllowManualSocketOverrides -eq "1") {
+    $RunEnv["PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES"] = "1"
+}
 if ($ConnectConcurrency) { $RunEnv["PERF_MULTI_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
 if ($IoThreads) { $RunEnv["PERF_IO_THREADS"] = $IoThreads }
 if ($Build.IsPresent) {

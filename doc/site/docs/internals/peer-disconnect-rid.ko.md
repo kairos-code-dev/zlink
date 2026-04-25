@@ -39,8 +39,8 @@ pipe를 찾는다. 같은 rid가 둘 이상이면 파괴적인 종료 대상을 
 `ZLINK_OPT_RID_DUPLICATE_POLICY`의 저장 위치다. 기본값은
 `ZLINK_RID_DUPLICATE_REJECT`다.
 
-ROUTER는 기존 `ZLINK_ROUTER_OPT_HANDOVER` 경로를 이 정책과 같은 상태로
-연결해 호환성을 유지한다. 새 코드에서는 공통 option을 사용한다.
+ROUTER는 새 pipe가 기존 peer identity를 대체할 수 있는지 판단할 때 이 저장된
+duplicate policy 상태를 그대로 읽는다.
 
 ## SpotNode 경로
 

@@ -89,6 +89,14 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.IMMEDIATE, enabled ? 1 : 0);
     }
 
+    public int ridDuplicatePolicy() {
+        return socket.getOption(SocketOptions.RID_DUPLICATE_POLICY);
+    }
+
+    public void ridDuplicatePolicy(int value) {
+        socket.setOption(SocketOptions.RID_DUPLICATE_POLICY, value);
+    }
+
     public Duration connectTimeout() {
         return Duration.ofMillis(socket.getOption(SocketOptions.CONNECT_TIMEOUT));
     }

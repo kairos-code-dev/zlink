@@ -42,6 +42,11 @@ import (
 	"unsafe"
 )
 
+const (
+	RidDuplicateReject   = 0
+	RidDuplicateHandover = 1
+)
+
 type recvCallback func(*Received)
 type subscribeCallback func(*TopicMessage)
 type sendReadyCallback func()
@@ -94,6 +99,15 @@ func (s *socketCore) Disconnect(endpoint string) error {
 	return s.withCString(endpoint, func(cstr *C.char) error {
 		return connectErrorFromResult(C.zlink_disconnect(s.handle, cstr))
 	})
+}
+
+func (s *socketCore) DisconnectRID(peerRID RoutingID) error {
+	rid := peerRID.toC()
+	return connectErrorFromResult(
+		C.zlink_disconnect_rid(
+			s.handle,
+			(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
+		))
 }
 
 func (s *socketCore) Close() error {
@@ -622,6 +636,15 @@ func (s *connectionSocket) SetTCPNoDelay(value bool) error {
 
 func (s *connectionSocket) SetIPv6(value bool) error {
 	return s.setBoolOption(C.ZLINK_OPT_IPV6, value)
+}
+
+func (s *connectionSocket) SetRidDuplicatePolicy(value int) error {
+	return s.setIntOption(C.ZLINK_OPT_RID_DUPLICATE_POLICY, int32(value))
+}
+
+func (s *connectionSocket) RidDuplicatePolicy() (int, error) {
+	value, err := s.getIntOption(C.ZLINK_OPT_RID_DUPLICATE_POLICY)
+	return int(value), err
 }
 
 func (s *connectionSocket) LastEndpoint() (string, error) {
@@ -1221,14 +1244,6 @@ func (s *RouterSocket) SetMandatory(value bool) error {
 		raw = 1
 	}
 	return configErrorFromResult(C.zlink_set_router_option(s.raw(), C.ZLINK_ROUTER_OPT_MANDATORY, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
-}
-
-func (s *RouterSocket) SetHandover(value bool) error {
-	var raw C.int
-	if value {
-		raw = 1
-	}
-	return configErrorFromResult(C.zlink_set_router_option(s.raw(), C.ZLINK_ROUTER_OPT_HANDOVER, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
 }
 
 func (s *RouterSocket) SetProbe(value bool) error {

@@ -31,9 +31,8 @@ id appears again.
 | `ZLINK_RID_DUPLICATE_REJECT` | Default. Keep the existing connection and do not register the duplicate connection. |
 | `ZLINK_RID_DUPLICATE_HANDOVER` | Let the new connection take over the existing one. Use this for rolling restart overlap where the same identity may briefly appear twice. |
 
-This is a common socket option used with `zlink_set_option()`. The older
-ROUTER-specific `ZLINK_ROUTER_OPT_HANDOVER` remains for compatibility, but new
-code should prefer the common option.
+This is a common socket option used with `zlink_set_option()`. It is the only
+public option for duplicate peer takeover.
 
 STREAM is not affected by this policy because the server assigns its own
 4-byte routing id for each connection.
@@ -433,7 +432,6 @@ Some socket types override common defaults at creation time:
 |-------------|-------------------|-------|--------|
 | `SUB` / `XSUB` | `LINGER` | `0` | Subscription sockets have nothing to drain on close |
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | Surface failures to unconnected peers instead of silently dropping |
-| `ROUTER` | `ROUTER_HANDOVER` | `1` | Let a new connection take over an existing peer identity |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
 | `STREAM` | `SNDBUF` | automatic (`262144` only when auto HWM is disabled and the option stays unset) | Transport buffer sizing from the context budget |
@@ -446,9 +444,10 @@ Some socket types override common defaults at creation time:
 >   of silently dropping. Writable / `ZLINK_POLLOUT` observation also
 >   surfaces readiness only while a reachable peer exists. Set the
 >   option to `0` explicitly if silent-drop is required.
-> - `ROUTER_HANDOVER` defaults to `1`. When a duplicate peer identity
->   arrives, the new connection takes over the existing pipe. Set it
->   explicitly to `0` to keep the old pipe and reject the new one.
+> - `ZLINK_OPT_RID_DUPLICATE_POLICY` defaults to
+>   `ZLINK_RID_DUPLICATE_REJECT`. Keep this default to preserve the
+>   existing pipe and reject a duplicate identity. Set it explicitly to
+>   `ZLINK_RID_DUPLICATE_HANDOVER` when the newer connection should take over.
 > - `PUB_NODROP` defaults to `1`. `zlink_publish()` returns
 >   `ZLINK_SUBMIT_BACKPRESSURED` on HWM instead of silently dropping.
 >   Loss-tolerant workloads that prefer dropping on HWM must set this
@@ -463,7 +462,7 @@ Beyond common options, socket-type-specific options use dedicated APIs:
 
 | Socket | API | Representative Options |
 |--------|-----|----------------------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY` (default `1`), `HANDOVER` (default `1`), `PROBE`, `CONNECT_ROUTING_ID` |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (default `1`), `PROBE`, `CONNECT_ROUTING_ID` |
 | DEALER | `zlink_set_dealer_option()` | `PROBE` |
 | XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (default `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | Subscription-related |

@@ -104,3 +104,29 @@
 - site 문서 동기화: 확인
 - 금지 표현 검색: 깨끗함
 - 미적용/오적용 항목: 없음
+
+## 2026-04-25 문서/로그 정합성 재검토
+- 기준 commit: `9d4919eb` (`core: recover spot perf with peer runtime policy`)
+- 배경:
+  - stage 5 이후 SPOT perf 회복 커밋이 추가되었고, 계획 문서 기준 문서/로그 정합성을 다시 확인했다.
+- 수정:
+  - `doc/spec/core/service/spot.{ko.md,md}`
+  - `doc/guide/07-3-spot.{ko.md,md}`
+  - `doc/site/docs/api/spot.{ko.md,md}`
+  - `doc/site/docs/guide/07-3-spot.{ko.md,md}`
+  - `doc/spec/bindings/{cpp,python,node,go,rust,java,dotnet}/README.md`
+  - `doc/internals/spot-internals.{ko.md,md}`
+  - `doc/site/docs/internals/spot-internals.{ko.md,md}`
+  - `doc/site/docs/api/errors.{ko.md,md}`
+- 정리 내용:
+  - SpotNode/Spot weight 공개 계약과 guide 사용법을 SPOT spec/guide/site 문서에 추가
+  - binding spec의 ROUTER handover 기본값을 core header와 같은 `false/0` 의미로 정정
+  - stale `peer admission` 문구를 현재 weight 모델 설명으로 교체
+- 재검토 명령:
+  - `rg -n "ZLINK_SPOT_NODE_OPT_WEIGHT|ZLINK_SPOT_OPT_WEIGHT|weight.*0..100" doc/spec/core/service/spot.ko.md doc/spec/core/service/spot.md doc/guide/07-3-spot.ko.md doc/guide/07-3-spot.md doc/site/docs/api/spot.ko.md doc/site/docs/api/spot.md doc/site/docs/guide/07-3-spot.ko.md doc/site/docs/guide/07-3-spot.md`
+  - `rg -n "handover = true|handover = True|Handover = true" doc/spec/bindings doc/site/docs -g'*.md'`
+  - `rg -n "peer state, admission|admission is not re-evaluated|admission 판정을" doc/internals doc/site/docs -g'*.md'`
+- 결과:
+  - SPOT weight 문서 반영 확인
+  - binding spec stale handover 기본값 문구 제거 확인
+  - peer-state 의미의 stale admission 문구 제거 확인

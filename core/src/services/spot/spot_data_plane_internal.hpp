@@ -267,6 +267,22 @@ struct spot_data_plane_runtime_state_t
         std::deque<uint64_t> pending_message_ids;
     };
 
+    struct staged_publish_entry_t
+    {
+        staged_publish_entry_t () :
+            encoded_bytes (0),
+            need_local (false),
+            need_mesh (false)
+        {
+        }
+
+        std::string topic;
+        spot_owned_msg_parts_t parts;
+        size_t encoded_bytes;
+        bool need_local;
+        bool need_mesh;
+    };
+
     struct remote_target_state_t
     {
         remote_target_state_t () :
@@ -306,10 +322,14 @@ struct spot_data_plane_runtime_state_t
     size_t local_pending_resume_threshold;
     size_t mesh_pending_pause_threshold;
     size_t mesh_pending_resume_threshold;
+    size_t local_pending_hard_limit;
+    size_t mesh_pending_hard_limit;
     std::map<uint64_t, publish_pending_entry_t> local_pending_messages;
     std::map<uint64_t, local_target_state_t> local_targets;
     std::map<uint64_t, publish_pending_entry_t> mesh_pending_messages;
     std::deque<uint64_t> mesh_broadcast_pending_message_ids;
+    std::deque<staged_publish_entry_t> ingress_staged_messages;
+    std::deque<staged_publish_entry_t> mesh_staged_messages;
     std::map<std::string, remote_target_state_t> mesh_targets;
     socket_poller_t *poller;
 };
@@ -387,12 +407,20 @@ struct spot_data_plane_forwarder_t
                                  spot_data_plane_runtime_state_t *state_,
                                  const std::string &topic_,
                                  const spot_owned_msg_parts_t &parts_);
+    static int stage_message (spot_data_plane_runtime_state_t *state_,
+                              const std::string &topic_,
+                              const spot_owned_msg_parts_t &parts_,
+                              bool source_mesh_,
+                              bool need_local_,
+                              bool need_mesh_);
     static int flush_local_fanout_pending (spot_runtime_t *runtime_,
                                            spot_data_plane_runtime_state_t *state_,
                                            socket_base_t *relay_socket_ = NULL);
     static int flush_mesh_pub_pending (spot_runtime_t *runtime_,
                                        spot_data_plane_runtime_state_t *state_,
                                        socket_base_t *sender_socket_ = NULL);
+    static int flush_staged_messages (spot_runtime_t *runtime_,
+                                      spot_data_plane_runtime_state_t *state_);
     static int recv_and_forward_ingress (socket_base_t *src_,
                                          socket_base_t *mesh_pub_,
                                          socket_base_t *fanout_,

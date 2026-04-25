@@ -138,7 +138,6 @@ if (zlink_router_recv(router,
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | Return `ZLINK_SUBMIT_NOT_CONNECTED` for undeliverable messages. With the default of `1`, `zlink_send_rid()` to an unconnected peer surfaces the failure. Set to `0` explicitly to silently drop instead. |
 | `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | Controls whether duplicate routing_id arrivals keep the existing pipe or let the new pipe take over. |
-| `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | ROUTER-specific compatibility option. New code should prefer `ZLINK_OPT_RID_DUPLICATE_POLICY`. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
 | `ZLINK_OPT_SNDHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |

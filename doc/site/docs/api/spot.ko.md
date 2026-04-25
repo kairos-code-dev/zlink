@@ -46,6 +46,21 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 ## SpotNode 계약
 
+SpotNode와 Spot의 내부 raw 소켓 기본 HWM은 고정 숫자가 아니라 context
+auto HWM 정책에서 계산됩니다. 사용자가
+`ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM`,
+`ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`,
+`ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`,
+`ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`를 직접 설정하면 그 값이 자동값보다
+우선합니다. 기본 context 설정에서는 topic send 경로가 `fanout` floor `16`,
+topic recv와 routed send/recv 경로가 `8`에서 시작합니다.
+
+`ZLINK_SPOT_NODE_OPT_WEIGHT`와 `ZLINK_SPOT_OPT_WEIGHT`는 로컬 peer가 다른
+peer에게 광고하는 처리 가중치다. 값 형식은 `int`, 범위는 `0..100`, 기본값은
+`100`이다. `0`은 연결 자체를 끊지 않고도 새 outbound 후보에서 빠진다는 뜻이며,
+양수 값으로 돌아오면 기존 peer 연결을 다시 사용한다. 이미 진행 중인 request에
+대한 reply는 이 weight 검사 대상이 아니다.
+
 ### 토폴로지와 discovery
 
 ```c

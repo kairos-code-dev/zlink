@@ -84,11 +84,12 @@ decides the authoritative owner according to the handover setting.
   The previous owner must move to a replaced state.
 - An older update must never roll the current authoritative owner back.
 
-This rule follows the same direction as raw `ROUTER_HANDOVER`. The decision
-must be based on the ordering token, not merely on message arrival order.
-The concrete source of the handover setting is implementation-defined in this
+This rule follows the same direction as
+`ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_HANDOVER`. The decision
+must be based on the ordering token, not merely on message arrival order. The
+concrete source of the handover setting is implementation-defined in this
 document version. A conforming implementation may derive it from the routed
-handover policy already applied to the owning service or node.
+duplicate-policy setting already applied to the owning service or node.
 
 The current core implementation keeps topology rows separately per endpoint for
 the same `(service_name, spot_rid)` and then picks exactly one authoritative

@@ -102,13 +102,13 @@ enum class socket_option : int
     tls_trust_system = ZLINK_OPT_TLS_TRUST_SYSTEM,
     tls_password = ZLINK_OPT_TLS_PASSWORD,
     zmp_metadata = ZLINK_OPT_ZMP_METADATA,
+    rid_duplicate_policy = ZLINK_OPT_RID_DUPLICATE_POLICY,
     discovery_metadata_max_size = ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE
 };
 
 enum class router_option : int
 {
     mandatory = ZLINK_ROUTER_OPT_MANDATORY,
-    handover = ZLINK_ROUTER_OPT_HANDOVER,
     probe = ZLINK_ROUTER_OPT_PROBE,
     connect_routing_id = ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
     request_timeout_ms = ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
@@ -300,12 +300,13 @@ static const socket_option_key_t<std::string> tls_password (
   socket_option::tls_password);
 static const socket_option_key_t<int> zmp_metadata (
   socket_option::zmp_metadata);
+static const socket_option_key_t<int> rid_duplicate_policy (
+  socket_option::rid_duplicate_policy);
 } // namespace socket_options
 
 namespace router_options
 {
 static const router_option_key_t<int> mandatory (router_option::mandatory);
-static const router_option_key_t<int> handover (router_option::handover);
 static const router_option_key_t<int> probe (router_option::probe);
 static const router_option_key_t<std::string> connect_routing_id (
   router_option::connect_routing_id);
@@ -377,6 +378,8 @@ class common_socket_options_t
     void heartbeat_ttl (int value);
     int heartbeat_timeout () const;
     void heartbeat_timeout (int value);
+    int rid_duplicate_policy () const;
+    void rid_duplicate_policy (int value);
     int64_t max_message_size () const;
     void max_message_size (int64_t value);
     int backlog () const;
@@ -401,8 +404,6 @@ class router_socket_options_t
 
     bool mandatory () const;
     void mandatory (bool value);
-    bool handover () const;
-    void handover (bool value);
     bool probe_router () const;
     void probe_router (bool value);
     std::optional<routing_id_t> connect_routing_id () const;
@@ -1040,7 +1041,34 @@ struct monitor_snapshot_t
 {
     monitor_snapshot_t ()
         : source_kind (monitor_source_kind::socket), state_flags (0),
-          detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0)
+          detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0),
+          auto_hwm_enabled (false), auto_hwm_role (0),
+          auto_hwm_managed_connections (0),
+          auto_hwm_active_hwm_connections (0),
+          auto_hwm_planning_transport_connections (0),
+          auto_hwm_base_floor_per_connection (0),
+          auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
+          auto_hwm_requested_sndbuf (0), auto_hwm_requested_rcvbuf (0),
+          auto_hwm_effective_sndbuf (0), auto_hwm_effective_rcvbuf (0),
+          auto_hwm_total_memory_budget_bytes (0),
+          auto_hwm_queue_budget_bytes (0),
+          auto_hwm_transport_budget_bytes (0),
+          auto_hwm_runtime_reserve_bytes (0),
+          auto_hwm_group_budget_bytes (0),
+          auto_hwm_group_message_slots (0),
+          auto_hwm_effective_message_bytes (0),
+          auto_hwm_control_budget_bytes (0),
+          auto_hwm_routed_budget_bytes (0),
+          auto_hwm_fanout_budget_bytes (0),
+          auto_hwm_recv_ingress_budget_bytes (0),
+          auto_hwm_control_active_connections (0),
+          auto_hwm_routed_active_connections (0),
+          auto_hwm_fanout_active_connections (0),
+          auto_hwm_recv_ingress_active_connections (0),
+          auto_hwm_estimated_max_memory_bytes (0),
+          auto_hwm_last_recalc_ms (0),
+          auto_hwm_last_recalc_reason (0),
+          auto_hwm_send_blocked_ratio_ppm (0)
     {
     }
 
@@ -1050,7 +1078,55 @@ struct monitor_snapshot_t
           state_flags (native_.state_flags),
           detail_flags (native_.detail_flags),
           snd_pending_msgs (native_.snd_pending_msgs),
-          rcv_pending_msgs (native_.rcv_pending_msgs)
+          rcv_pending_msgs (native_.rcv_pending_msgs),
+          auto_hwm_enabled (native_.auto_hwm_enabled != 0),
+          auto_hwm_role (native_.auto_hwm_role),
+          auto_hwm_managed_connections (native_.auto_hwm_managed_connections),
+          auto_hwm_active_hwm_connections (
+            native_.auto_hwm_active_hwm_connections),
+          auto_hwm_planning_transport_connections (
+            native_.auto_hwm_planning_transport_connections),
+          auto_hwm_base_floor_per_connection (
+            native_.auto_hwm_base_floor_per_connection),
+          auto_hwm_applied_sndhwm (native_.auto_hwm_applied_sndhwm),
+          auto_hwm_applied_rcvhwm (native_.auto_hwm_applied_rcvhwm),
+          auto_hwm_requested_sndbuf (native_.auto_hwm_requested_sndbuf),
+          auto_hwm_requested_rcvbuf (native_.auto_hwm_requested_rcvbuf),
+          auto_hwm_effective_sndbuf (native_.auto_hwm_effective_sndbuf),
+          auto_hwm_effective_rcvbuf (native_.auto_hwm_effective_rcvbuf),
+          auto_hwm_total_memory_budget_bytes (
+            native_.auto_hwm_total_memory_budget_bytes),
+          auto_hwm_queue_budget_bytes (native_.auto_hwm_queue_budget_bytes),
+          auto_hwm_transport_budget_bytes (
+            native_.auto_hwm_transport_budget_bytes),
+          auto_hwm_runtime_reserve_bytes (
+            native_.auto_hwm_runtime_reserve_bytes),
+          auto_hwm_group_budget_bytes (native_.auto_hwm_group_budget_bytes),
+          auto_hwm_group_message_slots (native_.auto_hwm_group_message_slots),
+          auto_hwm_effective_message_bytes (
+            native_.auto_hwm_effective_message_bytes),
+          auto_hwm_control_budget_bytes (
+            native_.auto_hwm_control_budget_bytes),
+          auto_hwm_routed_budget_bytes (
+            native_.auto_hwm_routed_budget_bytes),
+          auto_hwm_fanout_budget_bytes (
+            native_.auto_hwm_fanout_budget_bytes),
+          auto_hwm_recv_ingress_budget_bytes (
+            native_.auto_hwm_recv_ingress_budget_bytes),
+          auto_hwm_control_active_connections (
+            native_.auto_hwm_control_active_connections),
+          auto_hwm_routed_active_connections (
+            native_.auto_hwm_routed_active_connections),
+          auto_hwm_fanout_active_connections (
+            native_.auto_hwm_fanout_active_connections),
+          auto_hwm_recv_ingress_active_connections (
+            native_.auto_hwm_recv_ingress_active_connections),
+          auto_hwm_estimated_max_memory_bytes (
+            native_.auto_hwm_estimated_max_memory_bytes),
+          auto_hwm_last_recalc_ms (native_.auto_hwm_last_recalc_ms),
+          auto_hwm_last_recalc_reason (native_.auto_hwm_last_recalc_reason),
+          auto_hwm_send_blocked_ratio_ppm (
+            native_.auto_hwm_send_blocked_ratio_ppm)
     {
     }
 
@@ -1064,6 +1140,37 @@ struct monitor_snapshot_t
     uint32_t detail_flags;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
+    bool auto_hwm_enabled;
+    uint32_t auto_hwm_role;
+    uint32_t auto_hwm_managed_connections;
+    uint32_t auto_hwm_active_hwm_connections;
+    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_base_floor_per_connection;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_requested_sndbuf;
+    int32_t auto_hwm_requested_rcvbuf;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
+    uint64_t auto_hwm_total_memory_budget_bytes;
+    uint64_t auto_hwm_queue_budget_bytes;
+    uint64_t auto_hwm_transport_budget_bytes;
+    uint64_t auto_hwm_runtime_reserve_bytes;
+    uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_effective_message_bytes;
+    uint64_t auto_hwm_control_budget_bytes;
+    uint64_t auto_hwm_routed_budget_bytes;
+    uint64_t auto_hwm_fanout_budget_bytes;
+    uint64_t auto_hwm_recv_ingress_budget_bytes;
+    uint32_t auto_hwm_control_active_connections;
+    uint32_t auto_hwm_routed_active_connections;
+    uint32_t auto_hwm_fanout_active_connections;
+    uint32_t auto_hwm_recv_ingress_active_connections;
+    uint64_t auto_hwm_estimated_max_memory_bytes;
+    uint64_t auto_hwm_last_recalc_ms;
+    uint32_t auto_hwm_last_recalc_reason;
+    uint32_t auto_hwm_send_blocked_ratio_ppm;
 };
 
 struct service_event_t

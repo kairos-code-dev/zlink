@@ -74,6 +74,10 @@ public sealed class test_socket_surface
             typeof(uint), typeof(byte[]), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Connect"));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Disconnect"));
+        Assert.True(HasPublicInstanceMethod(typeof(StreamSocket), "DisconnectRid",
+            typeof(RoutingId)));
+        Assert.True(HasPublicInstanceMethod(typeof(PairSocket), "DisconnectRid",
+            typeof(RoutingId)));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(StreamSocket.OnPacket)));
         Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
@@ -129,6 +133,8 @@ public sealed class test_socket_surface
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(RegistryQueryClient)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SpotNode)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Spot)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "DisconnectPeerRid",
+            typeof(RoutingId)));
         Assert.NotNull(typeof(SpotNode).GetMethod(nameof(SpotNode.CreateSpot),
             BindingFlags.Instance | BindingFlags.Public));
         Assert.Empty(typeof(Spot).GetConstructors(

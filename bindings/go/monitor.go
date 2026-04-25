@@ -83,11 +83,42 @@ func (e *MonitorEvent) IsConnectionReady() bool {
 }
 
 type MonitorSnapshot struct {
-	SourceKind     MonitorSourceKind
-	StateFlags     uint32
-	DetailFlags    uint32
-	SndPendingMsgs uint64
-	RcvPendingMsgs uint64
+	SourceKind                          MonitorSourceKind
+	StateFlags                          uint32
+	DetailFlags                         uint32
+	SndPendingMsgs                      uint64
+	RcvPendingMsgs                      uint64
+	AutoHwmEnabled                      bool
+	AutoHwmRole                         uint32
+	AutoHwmManagedConnections           uint32
+	AutoHwmActiveHwmConnections         uint32
+	AutoHwmPlanningTransportConnections uint32
+	AutoHwmBaseFloorPerConnection       uint32
+	AutoHwmAppliedSndHwm                int32
+	AutoHwmAppliedRcvHwm                int32
+	AutoHwmRequestedSndBuf              int32
+	AutoHwmRequestedRcvBuf              int32
+	AutoHwmEffectiveSndBuf              int32
+	AutoHwmEffectiveRcvBuf              int32
+	AutoHwmTotalMemoryBudgetBytes       uint64
+	AutoHwmQueueBudgetBytes             uint64
+	AutoHwmTransportBudgetBytes         uint64
+	AutoHwmRuntimeReserveBytes          uint64
+	AutoHwmGroupBudgetBytes             uint64
+	AutoHwmGroupMessageSlots            uint64
+	AutoHwmEffectiveMessageBytes        uint64
+	AutoHwmControlBudgetBytes           uint64
+	AutoHwmRoutedBudgetBytes            uint64
+	AutoHwmFanoutBudgetBytes            uint64
+	AutoHwmRecvIngressBudgetBytes       uint64
+	AutoHwmControlActiveConnections     uint32
+	AutoHwmRoutedActiveConnections      uint32
+	AutoHwmFanoutActiveConnections      uint32
+	AutoHwmRecvIngressActiveConnections uint32
+	AutoHwmEstimatedMaxMemoryBytes      uint64
+	AutoHwmLastRecalcMs                 uint64
+	AutoHwmLastRecalcReason             uint32
+	AutoHwmSendBlockedRatioPPM          uint32
 }
 
 func (s *MonitorSnapshot) IsReady() bool {
@@ -174,11 +205,42 @@ func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error) {
 		return nil, err
 	}
 	return &MonitorSnapshot{
-		SourceKind:     MonitorSourceKind(raw.source_kind),
-		StateFlags:     uint32(raw.state_flags),
-		DetailFlags:    uint32(raw.detail_flags),
-		SndPendingMsgs: uint64(raw.snd_pending_msgs),
-		RcvPendingMsgs: uint64(raw.rcv_pending_msgs),
+		SourceKind:                          MonitorSourceKind(raw.source_kind),
+		StateFlags:                          uint32(raw.state_flags),
+		DetailFlags:                         uint32(raw.detail_flags),
+		SndPendingMsgs:                      uint64(raw.snd_pending_msgs),
+		RcvPendingMsgs:                      uint64(raw.rcv_pending_msgs),
+		AutoHwmEnabled:                      uint32(raw.auto_hwm_enabled) != 0,
+		AutoHwmRole:                         uint32(raw.auto_hwm_role),
+		AutoHwmManagedConnections:           uint32(raw.auto_hwm_managed_connections),
+		AutoHwmActiveHwmConnections:         uint32(raw.auto_hwm_active_hwm_connections),
+		AutoHwmPlanningTransportConnections: uint32(raw.auto_hwm_planning_transport_connections),
+		AutoHwmBaseFloorPerConnection:       uint32(raw.auto_hwm_base_floor_per_connection),
+		AutoHwmAppliedSndHwm:                int32(raw.auto_hwm_applied_sndhwm),
+		AutoHwmAppliedRcvHwm:                int32(raw.auto_hwm_applied_rcvhwm),
+		AutoHwmRequestedSndBuf:              int32(raw.auto_hwm_requested_sndbuf),
+		AutoHwmRequestedRcvBuf:              int32(raw.auto_hwm_requested_rcvbuf),
+		AutoHwmEffectiveSndBuf:              int32(raw.auto_hwm_effective_sndbuf),
+		AutoHwmEffectiveRcvBuf:              int32(raw.auto_hwm_effective_rcvbuf),
+		AutoHwmTotalMemoryBudgetBytes:       uint64(raw.auto_hwm_total_memory_budget_bytes),
+		AutoHwmQueueBudgetBytes:             uint64(raw.auto_hwm_queue_budget_bytes),
+		AutoHwmTransportBudgetBytes:         uint64(raw.auto_hwm_transport_budget_bytes),
+		AutoHwmRuntimeReserveBytes:          uint64(raw.auto_hwm_runtime_reserve_bytes),
+		AutoHwmGroupBudgetBytes:             uint64(raw.auto_hwm_group_budget_bytes),
+		AutoHwmGroupMessageSlots:            uint64(raw.auto_hwm_group_message_slots),
+		AutoHwmEffectiveMessageBytes:        uint64(raw.auto_hwm_effective_message_bytes),
+		AutoHwmControlBudgetBytes:           uint64(raw.auto_hwm_control_budget_bytes),
+		AutoHwmRoutedBudgetBytes:            uint64(raw.auto_hwm_routed_budget_bytes),
+		AutoHwmFanoutBudgetBytes:            uint64(raw.auto_hwm_fanout_budget_bytes),
+		AutoHwmRecvIngressBudgetBytes:       uint64(raw.auto_hwm_recv_ingress_budget_bytes),
+		AutoHwmControlActiveConnections:     uint32(raw.auto_hwm_control_active_connections),
+		AutoHwmRoutedActiveConnections:      uint32(raw.auto_hwm_routed_active_connections),
+		AutoHwmFanoutActiveConnections:      uint32(raw.auto_hwm_fanout_active_connections),
+		AutoHwmRecvIngressActiveConnections: uint32(raw.auto_hwm_recv_ingress_active_connections),
+		AutoHwmEstimatedMaxMemoryBytes:      uint64(raw.auto_hwm_estimated_max_memory_bytes),
+		AutoHwmLastRecalcMs:                 uint64(raw.auto_hwm_last_recalc_ms),
+		AutoHwmLastRecalcReason:             uint32(raw.auto_hwm_last_recalc_reason),
+		AutoHwmSendBlockedRatioPPM:          uint32(raw.auto_hwm_send_blocked_ratio_ppm),
 	}, nil
 }
 
@@ -230,11 +292,42 @@ func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error) {
 		return nil, err
 	}
 	return &MonitorSnapshot{
-		SourceKind:     MonitorSourceKind(raw.source_kind),
-		StateFlags:     uint32(raw.state_flags),
-		DetailFlags:    uint32(raw.detail_flags),
-		SndPendingMsgs: uint64(raw.snd_pending_msgs),
-		RcvPendingMsgs: uint64(raw.rcv_pending_msgs),
+		SourceKind:                          MonitorSourceKind(raw.source_kind),
+		StateFlags:                          uint32(raw.state_flags),
+		DetailFlags:                         uint32(raw.detail_flags),
+		SndPendingMsgs:                      uint64(raw.snd_pending_msgs),
+		RcvPendingMsgs:                      uint64(raw.rcv_pending_msgs),
+		AutoHwmEnabled:                      uint32(raw.auto_hwm_enabled) != 0,
+		AutoHwmRole:                         uint32(raw.auto_hwm_role),
+		AutoHwmManagedConnections:           uint32(raw.auto_hwm_managed_connections),
+		AutoHwmActiveHwmConnections:         uint32(raw.auto_hwm_active_hwm_connections),
+		AutoHwmPlanningTransportConnections: uint32(raw.auto_hwm_planning_transport_connections),
+		AutoHwmBaseFloorPerConnection:       uint32(raw.auto_hwm_base_floor_per_connection),
+		AutoHwmAppliedSndHwm:                int32(raw.auto_hwm_applied_sndhwm),
+		AutoHwmAppliedRcvHwm:                int32(raw.auto_hwm_applied_rcvhwm),
+		AutoHwmRequestedSndBuf:              int32(raw.auto_hwm_requested_sndbuf),
+		AutoHwmRequestedRcvBuf:              int32(raw.auto_hwm_requested_rcvbuf),
+		AutoHwmEffectiveSndBuf:              int32(raw.auto_hwm_effective_sndbuf),
+		AutoHwmEffectiveRcvBuf:              int32(raw.auto_hwm_effective_rcvbuf),
+		AutoHwmTotalMemoryBudgetBytes:       uint64(raw.auto_hwm_total_memory_budget_bytes),
+		AutoHwmQueueBudgetBytes:             uint64(raw.auto_hwm_queue_budget_bytes),
+		AutoHwmTransportBudgetBytes:         uint64(raw.auto_hwm_transport_budget_bytes),
+		AutoHwmRuntimeReserveBytes:          uint64(raw.auto_hwm_runtime_reserve_bytes),
+		AutoHwmGroupBudgetBytes:             uint64(raw.auto_hwm_group_budget_bytes),
+		AutoHwmGroupMessageSlots:            uint64(raw.auto_hwm_group_message_slots),
+		AutoHwmEffectiveMessageBytes:        uint64(raw.auto_hwm_effective_message_bytes),
+		AutoHwmControlBudgetBytes:           uint64(raw.auto_hwm_control_budget_bytes),
+		AutoHwmRoutedBudgetBytes:            uint64(raw.auto_hwm_routed_budget_bytes),
+		AutoHwmFanoutBudgetBytes:            uint64(raw.auto_hwm_fanout_budget_bytes),
+		AutoHwmRecvIngressBudgetBytes:       uint64(raw.auto_hwm_recv_ingress_budget_bytes),
+		AutoHwmControlActiveConnections:     uint32(raw.auto_hwm_control_active_connections),
+		AutoHwmRoutedActiveConnections:      uint32(raw.auto_hwm_routed_active_connections),
+		AutoHwmFanoutActiveConnections:      uint32(raw.auto_hwm_fanout_active_connections),
+		AutoHwmRecvIngressActiveConnections: uint32(raw.auto_hwm_recv_ingress_active_connections),
+		AutoHwmEstimatedMaxMemoryBytes:      uint64(raw.auto_hwm_estimated_max_memory_bytes),
+		AutoHwmLastRecalcMs:                 uint64(raw.auto_hwm_last_recalc_ms),
+		AutoHwmLastRecalcReason:             uint32(raw.auto_hwm_last_recalc_reason),
+		AutoHwmSendBlockedRatioPPM:          uint32(raw.auto_hwm_send_blocked_ratio_ppm),
 	}, nil
 }
 

@@ -893,6 +893,18 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_group_budget_bytes;
     uint64_t auto_hwm_group_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
+    uint64_t auto_hwm_control_budget_bytes;
+    uint64_t auto_hwm_routed_budget_bytes;
+    uint64_t auto_hwm_fanout_budget_bytes;
+    uint64_t auto_hwm_recv_ingress_budget_bytes;
+    uint32_t auto_hwm_control_active_connections;
+    uint32_t auto_hwm_routed_active_connections;
+    uint32_t auto_hwm_fanout_active_connections;
+    uint32_t auto_hwm_recv_ingress_active_connections;
+    uint64_t auto_hwm_estimated_max_memory_bytes;
+    uint64_t auto_hwm_last_recalc_ms;
+    uint32_t auto_hwm_last_recalc_reason;
+    uint32_t auto_hwm_send_blocked_ratio_ppm;
 } zlink_monitor_snapshot_t;
 
 /**

@@ -109,6 +109,7 @@ int zlink::socket_base_t::send_direct_with_retry (
 
     prepare_direct_send_message (msg_, flags_);
 
+    _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
     rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
     if (rc == 0) {
         dispatch_runtime ().clear_send_recovery_pending ();
@@ -134,6 +135,7 @@ int zlink::socket_base_t::send_direct_with_retry (
         }
         return -1;
     }
+    _auto_hwm_send_blocked_attempts.fetch_add (1, std::memory_order_relaxed);
 
     if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
         const bool was_pending = dispatch_runtime ().send_recovery_pending ();
@@ -160,6 +162,7 @@ int zlink::socket_base_t::send_direct_with_retry (
         }
         if (!hold_sync_during_retry)
             send_scope.reacquire_sync_after_retry ();
+        _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
         rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
         if (rc == 0) {
             dispatch_runtime ().clear_send_recovery_pending ();
@@ -171,6 +174,8 @@ int zlink::socket_base_t::send_direct_with_retry (
             dispatch_runtime ().clear_send_recovery_pending ();
             return -1;
         }
+        _auto_hwm_send_blocked_attempts.fetch_add (1,
+                                                   std::memory_order_relaxed);
         const bool was_pending = dispatch_runtime ().send_recovery_pending ();
         dispatch_runtime ().mark_send_recovery_pending ();
         if (!was_pending)

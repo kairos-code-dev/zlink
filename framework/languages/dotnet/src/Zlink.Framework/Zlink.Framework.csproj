@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
     <AssemblyName>Zlink.Framework</AssemblyName>
     <RootNamespace>Zlink.Framework</RootNamespace>
     <Description>ZLink framework core abstractions and runtime for .NET.</Description>

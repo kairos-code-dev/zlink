@@ -482,8 +482,8 @@ typedef enum zlink_config_result_t
 | `SEQ_EXHAUSTED` | -- |
 | `INTERNAL_ERROR` | Y |
 
-reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새로 적용하지
-않는다. 따라서 `zlink_router_reply`는 `NOT_ADMITTED`를 내지 않는다.
+reply는 이미 들어온 request에 대한 응답이라 weight 기반 후보 판정을 새로
+적용하지 않는다. 따라서 `zlink_router_reply`는 `NOT_ADMITTED`를 내지 않는다.
 
 ### SPOT request 함수
 
@@ -551,7 +551,7 @@ ROUTER의 가중치가 `0`이면 `NOT_ADMITTED`를 낸다.
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
-reply는 이미 진행 중인 request에 대한 응답이라 admission 판정을 다시
+reply는 이미 진행 중인 request에 대한 응답이라 weight 기반 후보 판정을 다시
 적용하지 않는다. 따라서 SPOT reply 함수도 `NOT_ADMITTED`를 내지 않는다.
 
 ---

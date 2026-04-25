@@ -42,6 +42,9 @@
   내부 헤더나 내부 함수를 직접 호출하지 않는다.
 - `bindings/<lang>/perf`는 해당 언어 binding의 public API만 사용한다. binding
   내부/private API, 내부 구현 클래스, native 내부 helper를 직접 호출하지 않는다.
+- single/multi 기본 경로는 모두 context auto-HWM 을 사용한다. `PERF_*_HWM`,
+  `PERF_*_SNDHWM`, `PERF_*_RCVHWM`, `PERF_*_SNDBUF`, `PERF_*_RCVBUF`
+  override 는 debug 예외 경로이며 allow flag 가 켜진 경우에만 허용한다.
 - public API 동작에 문제가 있으면 perf 코드에서 우회하지 않고 버그로
   레포팅한다. 버그레포팅 문서는 doc/bug/perf 아래에 md 파일 형식으로 작성한다.
   버그는 회귀테스트를 작성해서 재현을 확인하고 수정한다. 버그를 우선 수정하고
@@ -299,11 +302,12 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   - median/최종 report 저장
 - 바이너리 내부에서 측정 hot path를 흐리게 하는 report formatting, 문자열 조합,
   동적 집계 컨테이너 orchestration 로직을 추가하면 안 된다.
-- perf 기본 HWM 정책은 단순성을 우선한다. perf가 여는 benchmark socket은
-  역할별 예외 없이 동일한 `hwm` budget을 사용하고, 각 socket에
-  `SNDHWM`, `RCVHWM` 을 함께 설정한다.
-- one-way pattern에서도 이 규칙을 유지한다. 실제 traffic 방향상 한쪽 HWM만
-  주로 의미를 가지더라도, perf surface는 동일 설정으로 고정한다.
+- perf 기본 socket sizing은 context auto-HWM 을 따른다. perf가 여는
+  benchmark socket은 역할별 예외 없이 같은 context budget 아래에서 core
+  계산값을 사용한다. 기본 경로에서 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`
+  를 숫자로 직접 고정하지 않는다.
+- one-way pattern에서도 이 규칙을 유지한다. 실제 traffic 방향상 한쪽 값만 더
+  중요하더라도 기본 bench surface는 auto 계산 결과를 그대로 본다.
 - perf는 throughput/bandwidth/latency 중심의 기본 surface만 유지한다. cpu/mem,
   queue, debug, probe 기반 RESULT surface는 기본 perf에 두지 않는다.
 
@@ -888,7 +892,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------|------|
 | CLI 옵션 | `--inflight`, `--outstanding`, `--max-in-flight` 등 inflight 깊이를 조절하는 옵션을 제공하지 않는다 |
 | 환경 변수 | `PERF_INFLIGHT`, `PERF_MULTI_INFLIGHT`, `PERF_OUTSTANDING` 등 inflight 관련 환경 변수는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
-| 하드코딩 flow control | `outstanding_limit`, `window_exhausted` 등 send/recv 차이 기반의 인위적 흐름 제어는 제거한다. 소켓 HWM(`PERF_MULTI_HWM`)이 이미 send 큐 backpressure를 제공한다 |
+| 하드코딩 flow control | `outstanding_limit`, `window_exhausted` 등 send/recv 차이 기반의 인위적 흐름 제어는 제거한다. 기본 경로는 auto-HWM이 제공하는 send 큐 backpressure를 사용한다 |
 
 - **이유**: inflight 제한은 벤치마크 결과를 인위적으로 왜곡한다. 라이브러리의 실제 처리 능력을 측정해야 하며, 벤치마크 인프라가 추가 병목을 도입하면 안 된다.
 - one-way 패턴에서는 응답이 없으므로 outstanding 개념 자체가 성립하지 않는다.

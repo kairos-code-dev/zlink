@@ -55,6 +55,13 @@ values. With the default context settings, topic send starts from the
 `fanout` floor `16`, while topic recv and routed send/recv start from floor
 `8`.
 
+`ZLINK_SPOT_NODE_OPT_WEIGHT` and `ZLINK_SPOT_OPT_WEIGHT` advertise the local
+peer weight to connected peers. They use `int`, range `0..100`, default
+`100`. A value of `0` drains the node from new outbound selection without
+tearing down the connection. Returning to a positive value makes the existing
+peer eligible again. Replies for requests that are already in flight are not
+blocked by this weight check.
+
 ### Topology and discovery
 
 ```c

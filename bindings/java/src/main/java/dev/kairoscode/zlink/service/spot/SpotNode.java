@@ -78,6 +78,19 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
+    /** Disconnects the peer spot node identified by target node routing id. */
+    public void disconnectPeerRid(RoutingId targetNodeRid) {
+        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, targetNodeRid);
+            int rc = Native.spotNodeDisconnectPeerRid(handle, nativeRid);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_disconnect_peer_rid");
+            }
+        }
+    }
+
     /** Attaches a fixed-service discovery view to the node. */
     public void attachDiscovery(Discovery discovery) {
         Objects.requireNonNull(discovery, "discovery");
@@ -193,6 +206,18 @@ public final class SpotNode implements AutoCloseable {
             }
             return RoutingId.fromBytes(value);
         }
+    }
+
+    private static MemorySegment nativeRoutingId(Arena arena, RoutingId rid) {
+        byte[] value = rid.toBytes();
+        MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+          (byte) value.length);
+        if (value.length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
+              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
+        }
+        return nativeRid;
     }
 
     /** Creates one spot handle owned by this node. */

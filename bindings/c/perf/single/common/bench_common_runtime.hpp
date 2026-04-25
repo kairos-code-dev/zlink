@@ -7,6 +7,27 @@
 
 // --- Single runtime helpers ---
 
+inline int resolve_single_ctx_nonnegative_env(const char *name_, int default_value_)
+{
+    if (!name_ || !*name_)
+        return default_value_;
+
+    const char *value = std::getenv(name_);
+    if (!value || !*value)
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0')
+        return default_value_;
+    if (parsed < 0)
+        return 0;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int>(parsed);
+}
+
 inline void apply_ctx_options(void *ctx_)
 {
     const bool debug = std::getenv("PERF_DEBUG") != NULL;
@@ -27,6 +48,29 @@ inline void apply_ctx_options(void *ctx_)
                       << zlink_strerror(zlink_errno()) << std::endl;
         }
     }
+
+    const int blocky =
+      resolve_single_ctx_nonnegative_env("PERF_CTX_BLOCKY", 0) != 0 ? 1 : 0;
+    set_ctx_opt_int(ctx_, ZLINK_CTX_OPT_BLOCKY, blocky, "ZLINK_CTX_OPT_BLOCKY");
+
+    const int auto_hwm_enable =
+      resolve_single_ctx_nonnegative_env(
+        "PERF_CTX_AUTO_HWM_ENABLE", ZLINK_CTX_AUTO_HWM_ENABLE_DFLT)
+        != 0
+        ? 1
+        : 0;
+    set_ctx_opt_int(ctx_,
+                    ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
+                    auto_hwm_enable,
+                    "ZLINK_CTX_OPT_AUTO_HWM_ENABLE");
+
+    const int auto_hwm_budget_mb = resolve_single_ctx_nonnegative_env (
+      "PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB",
+      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT);
+    set_ctx_opt_int(ctx_,
+                    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
+                    auto_hwm_budget_mb,
+                    "ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB");
 }
 
 class ctx_guard_t {
@@ -171,11 +215,62 @@ inline uint32_t next_single_metric_run_id ()
     return run_id;
 }
 
+inline bool bench_single_manual_socket_overrides_allowed()
+{
+    const char *value = std::getenv("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES");
+    if (!value || !*value)
+        value = std::getenv("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES");
+    return value && std::strcmp(value, "1") == 0;
+}
+
 inline int resolve_single_socket_hwm(bool send_)
 {
-    const int base_hwm = parse_positive_env("PERF_SINGLE_HWM", 1000);
+    const int base_hwm = parse_positive_env("PERF_SINGLE_HWM", 0);
     return send_ ? parse_positive_env("PERF_SINGLE_SNDHWM", base_hwm)
                  : parse_positive_env("PERF_SINGLE_RCVHWM", base_hwm);
+}
+
+inline int parse_single_byte_size_token(const char *value_, int default_value_)
+{
+    if (!value_ || !*value_)
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull(value_, &end, 10);
+    if (errno != 0 || end == value_)
+        return default_value_;
+
+    unsigned long long multiplier = 1;
+    if (end && *end) {
+        char suffix[3] = {0, 0, 0};
+        size_t suffix_len = 0;
+        while (end[suffix_len] != '\0' && suffix_len < 2) {
+            suffix[suffix_len] = static_cast<char> (
+              std::tolower(static_cast<unsigned char> (end[suffix_len])));
+            ++suffix_len;
+        }
+        if (end[suffix_len] != '\0')
+            return default_value_;
+
+        if (suffix[0] == 'b' && suffix[1] == '\0')
+            multiplier = 1;
+        else if (suffix[0] == 'k' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL;
+        else if (suffix[0] == 'm' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL * 1024ULL;
+        else if (suffix[0] == 'g' && (suffix[1] == '\0' || suffix[1] == 'b'))
+            multiplier = 1024ULL * 1024ULL * 1024ULL;
+        else
+            return default_value_;
+    }
+
+    const unsigned long long bytes = parsed * multiplier;
+    if (bytes == 0)
+        return default_value_;
+    if (bytes > static_cast<unsigned long long> (INT_MAX))
+        return INT_MAX;
+    return static_cast<int> (bytes);
 }
 
 inline bool wait_socket_event(void *socket_,
@@ -247,13 +342,15 @@ inline bool wait_socket_event_until(
 
 inline void apply_single_hwm(void *socket_)
 {
-    if (!socket_)
+    if (!socket_ || !bench_single_manual_socket_overrides_allowed())
         return;
 
     const int sndhwm = resolve_single_socket_hwm(true);
     const int rcvhwm = resolve_single_socket_hwm(false);
-    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
+    if (sndhwm > 0)
+        set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
+    if (rcvhwm > 0)
+        set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
 inline void apply_single_benchmark_socket_options(void *socket_,
@@ -267,7 +364,19 @@ inline void apply_single_benchmark_socket_options(void *socket_,
     const int linger_ms = 0;
     const int sndtimeo_ms = resolve_single_send_timeout_ms();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms();
+    const int sndbuf =
+      bench_single_manual_socket_overrides_allowed()
+        ? parse_single_byte_size_token(std::getenv("PERF_SINGLE_SNDBUF"), -1)
+        : -1;
+    const int rcvbuf =
+      bench_single_manual_socket_overrides_allowed()
+        ? parse_single_byte_size_token(std::getenv("PERF_SINGLE_RCVBUF"), -1)
+        : -1;
     set_sockopt_int(socket_, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
+    if (sndbuf > 0)
+        set_sockopt_int(socket_, ZLINK_OPT_SNDBUF, sndbuf, "ZLINK_OPT_SNDBUF");
+    if (rcvbuf > 0)
+        set_sockopt_int(socket_, ZLINK_OPT_RCVBUF, rcvbuf, "ZLINK_OPT_RCVBUF");
     set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, sndtimeo_ms,
                     "ZLINK_OPT_SNDTIMEO");
     set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, rcvtimeo_ms,

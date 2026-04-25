@@ -111,6 +111,18 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_group_budget_bytes;
     uint64_t auto_hwm_group_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
+    uint64_t auto_hwm_control_budget_bytes;
+    uint64_t auto_hwm_routed_budget_bytes;
+    uint64_t auto_hwm_fanout_budget_bytes;
+    uint64_t auto_hwm_recv_ingress_budget_bytes;
+    uint32_t auto_hwm_control_active_connections;
+    uint32_t auto_hwm_routed_active_connections;
+    uint32_t auto_hwm_fanout_active_connections;
+    uint32_t auto_hwm_recv_ingress_active_connections;
+    uint64_t auto_hwm_estimated_max_memory_bytes;
+    uint64_t auto_hwm_last_recalc_ms;
+    uint32_t auto_hwm_last_recalc_reason;
+    uint32_t auto_hwm_send_blocked_ratio_ppm;
 } zlink_monitor_snapshot_t;
 ```
 
@@ -140,6 +152,18 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_group_budget_bytes` | Queue budget assigned to the current role bucket. |
 | `auto_hwm_group_message_slots` | Message slots available to the current role bucket after dividing by effective message size. |
 | `auto_hwm_effective_message_bytes` | Effective message size used by the current policy calculation. |
+| `auto_hwm_control_budget_bytes` | Queue budget assigned to the control role bucket. |
+| `auto_hwm_routed_budget_bytes` | Queue budget assigned to the routed role bucket. |
+| `auto_hwm_fanout_budget_bytes` | Queue budget assigned to the fanout role bucket. |
+| `auto_hwm_recv_ingress_budget_bytes` | Queue budget assigned to the recv_ingress role bucket. |
+| `auto_hwm_control_active_connections` | Active connection count recorded for the control role bucket in this snapshot. `0` when this source belongs to another role. |
+| `auto_hwm_routed_active_connections` | Active connection count recorded for the routed role bucket in this snapshot. `0` when this source belongs to another role. |
+| `auto_hwm_fanout_active_connections` | Active connection count recorded for the fanout role bucket in this snapshot. `0` when this source belongs to another role. |
+| `auto_hwm_recv_ingress_active_connections` | Active connection count recorded for the recv_ingress role bucket in this snapshot. `0` when this source belongs to another role. |
+| `auto_hwm_estimated_max_memory_bytes` | Estimated maximum memory envelope derived from the current context budget. |
+| `auto_hwm_last_recalc_ms` | Timestamp of the most recent auto-HWM recalculation in milliseconds. |
+| `auto_hwm_last_recalc_reason` | Enum value that records why the latest recalculation ran. |
+| `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
 
 ## Constants
 

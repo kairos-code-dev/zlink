@@ -818,22 +818,35 @@ def build_single_option_items(
 
     unique_transports = sorted(set(transports))
     unique_sizes = sorted(set(sizes))
-    base_hwm = parse_env_int("PERF_SINGLE_HWM", 1000)
-    sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)
-    rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
+    manual_socket_overrides = (
+        (env_get("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+        or (env_get("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+    ) == "1"
+    base_hwm = parse_env_int("PERF_SINGLE_HWM", 0) if manual_socket_overrides else 0
+    sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm) if manual_socket_overrides else 0
+    rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm) if manual_socket_overrides else 0
     sndtimeo_ms = parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200)
     rcvtimeo_ms = parse_env_int("PERF_SINGLE_RCVTIMEO_MS", 200)
     io_threads = max(1, parse_env_int("PERF_IO_THREADS", 1))
+    sndbuf = env_get("PERF_SINGLE_SNDBUF") if manual_socket_overrides else ""
+    rcvbuf = env_get("PERF_SINGLE_RCVBUF") if manual_socket_overrides else ""
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
         ("io_threads", str(io_threads)),
-        ("hwm", str(base_hwm)),
-        ("sndhwm", str(sndhwm)),
-        ("rcvhwm", str(rcvhwm)),
+        ("hwm", "auto-hwm" if base_hwm <= 0 else str(base_hwm)),
+        ("sndhwm", "auto-hwm" if sndhwm <= 0 else str(sndhwm)),
+        ("rcvhwm", "auto-hwm" if rcvhwm <= 0 else str(rcvhwm)),
+        ("sndbuf", sndbuf if sndbuf else "auto-hwm"),
+        ("rcvbuf", rcvbuf if rcvbuf else "auto-hwm"),
         ("sndtimeo_ms", str(sndtimeo_ms)),
         ("rcvtimeo_ms", str(rcvtimeo_ms)),
+        ("ctx_auto_hwm_enable", env_get("PERF_CTX_AUTO_HWM_ENABLE") or "core-default"),
+        (
+            "ctx_auto_hwm_total_memory_budget_mb",
+            env_get("PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB") or "core-default",
+        ),
         ("patterns", ",".join(patterns)),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),

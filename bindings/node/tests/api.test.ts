@@ -105,6 +105,22 @@ test('Spot must be created through SpotNode.createSpot()', () => {
   ctx.close();
 });
 
+test('rid disconnect surface exists on sockets and spot nodes', () => {
+  const ctx = new zlink.Context();
+  const pair = new zlink.PairSocket(ctx);
+  const stream = new zlink.StreamSocket(ctx);
+  const node = new zlink.SpotNode(ctx);
+
+  assert.equal(typeof pair.disconnectRid, 'function');
+  assert.equal(typeof stream.disconnectRid, 'function');
+  assert.equal(typeof node.disconnectPeerRid, 'function');
+
+  node.close();
+  stream.close();
+  pair.close();
+  ctx.close();
+});
+
 test('removed receiver stays removed from aligned api', () => {
   assert.equal('Receiver' in zlink, false);
   assert.equal(zlink.Receiver, undefined);
@@ -361,7 +377,7 @@ test('canonical socket options are exposed through typed facades', () => {
 
   dealer.options.probe = true;
   router.options.mandatory = true;
-  router.options.handover = true;
+  pair.options.ridDuplicatePolicy = zlink.RidDuplicatePolicy.Handover;
   router.options.probe = true;
   router.options.connectRoutingId = zlink.RoutingId.fromBytes(Buffer.from('route'));
   stream.options.notify = true;
@@ -386,8 +402,8 @@ test('canonical socket options are exposed through typed facades', () => {
   assert.equal(pair.options.backlog, 9);
   assert.equal(pair.options.reconnectInterval, 21);
   assert.equal(pair.options.reconnectIntervalMax, 34);
+  assert.equal(pair.options.ridDuplicatePolicy, zlink.RidDuplicatePolicy.Handover);
   assert.equal(router.options.mandatory, true);
-  assert.equal(router.options.handover, true);
   assert.equal(router.options.probe, true);
   assert.equal(stream.options.notify, true);
   assert.equal(typeof sub.options.topicsCount, 'number');

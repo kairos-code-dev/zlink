@@ -226,7 +226,15 @@ public sealed class MonitorSnapshot
         int autoHwmEffectiveRcvBuf, ulong autoHwmTotalMemoryBudgetBytes,
         ulong autoHwmQueueBudgetBytes, ulong autoHwmTransportBudgetBytes,
         ulong autoHwmRuntimeReserveBytes, ulong autoHwmGroupBudgetBytes,
-        ulong autoHwmGroupMessageSlots, ulong autoHwmEffectiveMessageBytes)
+        ulong autoHwmGroupMessageSlots, ulong autoHwmEffectiveMessageBytes,
+        ulong autoHwmControlBudgetBytes, ulong autoHwmRoutedBudgetBytes,
+        ulong autoHwmFanoutBudgetBytes, ulong autoHwmRecvIngressBudgetBytes,
+        uint autoHwmControlActiveConnections,
+        uint autoHwmRoutedActiveConnections,
+        uint autoHwmFanoutActiveConnections,
+        uint autoHwmRecvIngressActiveConnections,
+        ulong autoHwmEstimatedMaxMemoryBytes, ulong autoHwmLastRecalcMs,
+        uint autoHwmLastRecalcReason, uint autoHwmSendBlockedRatioPpm)
     {
         SourceKind = sourceKind;
         StateFlags = stateFlags;
@@ -252,6 +260,18 @@ public sealed class MonitorSnapshot
         AutoHwmGroupBudgetBytes = autoHwmGroupBudgetBytes;
         AutoHwmGroupMessageSlots = autoHwmGroupMessageSlots;
         AutoHwmEffectiveMessageBytes = autoHwmEffectiveMessageBytes;
+        AutoHwmControlBudgetBytes = autoHwmControlBudgetBytes;
+        AutoHwmRoutedBudgetBytes = autoHwmRoutedBudgetBytes;
+        AutoHwmFanoutBudgetBytes = autoHwmFanoutBudgetBytes;
+        AutoHwmRecvIngressBudgetBytes = autoHwmRecvIngressBudgetBytes;
+        AutoHwmControlActiveConnections = autoHwmControlActiveConnections;
+        AutoHwmRoutedActiveConnections = autoHwmRoutedActiveConnections;
+        AutoHwmFanoutActiveConnections = autoHwmFanoutActiveConnections;
+        AutoHwmRecvIngressActiveConnections = autoHwmRecvIngressActiveConnections;
+        AutoHwmEstimatedMaxMemoryBytes = autoHwmEstimatedMaxMemoryBytes;
+        AutoHwmLastRecalcMs = autoHwmLastRecalcMs;
+        AutoHwmLastRecalcReason = autoHwmLastRecalcReason;
+        AutoHwmSendBlockedRatioPpm = autoHwmSendBlockedRatioPpm;
     }
 
     public SourceKind SourceKind { get; }
@@ -278,6 +298,18 @@ public sealed class MonitorSnapshot
     public ulong AutoHwmGroupBudgetBytes { get; }
     public ulong AutoHwmGroupMessageSlots { get; }
     public ulong AutoHwmEffectiveMessageBytes { get; }
+    public ulong AutoHwmControlBudgetBytes { get; }
+    public ulong AutoHwmRoutedBudgetBytes { get; }
+    public ulong AutoHwmFanoutBudgetBytes { get; }
+    public ulong AutoHwmRecvIngressBudgetBytes { get; }
+    public uint AutoHwmControlActiveConnections { get; }
+    public uint AutoHwmRoutedActiveConnections { get; }
+    public uint AutoHwmFanoutActiveConnections { get; }
+    public uint AutoHwmRecvIngressActiveConnections { get; }
+    public ulong AutoHwmEstimatedMaxMemoryBytes { get; }
+    public ulong AutoHwmLastRecalcMs { get; }
+    public uint AutoHwmLastRecalcReason { get; }
+    public uint AutoHwmSendBlockedRatioPpm { get; }
     public bool IsReady => SourceKind == SourceKind.Socket
         && (StateFlags & 0x1u) != 0;
 
@@ -299,6 +331,18 @@ public sealed class MonitorSnapshot
             native.AutoHwmRuntimeReserveBytes,
             native.AutoHwmGroupBudgetBytes,
             native.AutoHwmGroupMessageSlots,
-            native.AutoHwmEffectiveMessageBytes);
+            native.AutoHwmEffectiveMessageBytes,
+            native.AutoHwmControlBudgetBytes,
+            native.AutoHwmRoutedBudgetBytes,
+            native.AutoHwmFanoutBudgetBytes,
+            native.AutoHwmRecvIngressBudgetBytes,
+            native.AutoHwmControlActiveConnections,
+            native.AutoHwmRoutedActiveConnections,
+            native.AutoHwmFanoutActiveConnections,
+            native.AutoHwmRecvIngressActiveConnections,
+            native.AutoHwmEstimatedMaxMemoryBytes,
+            native.AutoHwmLastRecalcMs,
+            native.AutoHwmLastRecalcReason,
+            native.AutoHwmSendBlockedRatioPpm);
     }
 }

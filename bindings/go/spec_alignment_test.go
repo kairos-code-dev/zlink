@@ -182,6 +182,10 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertField("SourceKind", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
 	assertField("SndPendingMsgs", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
 	assertField("RcvPendingMsgs", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
+	assertField("AutoHwmControlBudgetBytes", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
+	assertField("AutoHwmControlActiveConnections", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
+	assertField("AutoHwmLastRecalcReason", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
+	assertField("AutoHwmSendBlockedRatioPPM", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
 	assertNoField("SendPendingMsg", reflect.TypeOf(MonitorSnapshot{}))
 	assertNoField("RecvPendingMsg", reflect.TypeOf(MonitorSnapshot{}))
 

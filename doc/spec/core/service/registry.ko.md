@@ -85,11 +85,13 @@ Registry는 handover 설정에 따라 최종 owner를 결정합니다.
 - 더 오래된 update 는 어떤 경우에도 현재 owner 를 되돌려서는 안
   됩니다.
 
-이 규칙은 raw `ROUTER_HANDOVER` 와 같은 방향으로 해석합니다. 다만 Registry는
-연결 순서가 아니라 ordering token 기준으로 더 새로운 정보를 판정해야 합니다.
-이 문서 버전에서는 handover 설정을 어디에서 읽어올지는 구현에 맡깁니다.
-적절한 구현이라면 owning service 또는 node에 이미 적용된 routed handover
-정책을 따라도 됩니다.
+이 규칙은
+`ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_HANDOVER`와 같은
+방향으로 해석합니다. 다만 Registry는 연결 순서가 아니라 ordering token
+기준으로 더 새로운 정보를 판정해야 합니다. 이 문서 버전에서는 handover
+설정을 어디에서 읽어올지는 구현에 맡깁니다. 적절한 구현이라면 owning
+service 또는 node에 이미 적용된 routed duplicate policy 설정을 따라도
+됩니다.
 
 현재 core 구현은 같은 `(service_name, spot_rid)`에 대해 topology row를
 엔드포인트별로 따로 보관한 뒤, owner 조회를 할 때 최종 owner 한 개만 다시

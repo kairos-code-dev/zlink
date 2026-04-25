@@ -75,9 +75,11 @@ struct spot_client_state_t
         control_sub(NULL),
         expected_msg_size(0),
         active_duration_ns(0),
+        probe_duration_ns(0),
         sender_window_start_ns(0),
         sender_window_end_ns(0),
         collect_active(false),
+        collect_probe(false),
         expected_run_id(1U),
         fatal(false),
         ready_barrier_settled(false),
@@ -106,9 +108,11 @@ struct spot_client_state_t
     std::vector<spot_thread_metrics_t *> thread_metrics;
     std::atomic<size_t> expected_msg_size;
     std::atomic<uint64_t> active_duration_ns;
+    std::atomic<uint64_t> probe_duration_ns;
     std::atomic<uint64_t> sender_window_start_ns;
     std::atomic<uint64_t> sender_window_end_ns;
     std::atomic<bool> collect_active;
+    std::atomic<bool> collect_probe;
     std::atomic<uint32_t> expected_run_id;
     std::atomic<bool> fatal;
     std::atomic<bool> ready_barrier_settled;
@@ -143,7 +147,8 @@ struct spot_thread_metrics_t
         registered(false),
         epoch(0),
         active_received(0),
-        sample_index(0)
+        sample_index(0),
+        probe_sample_index(0)
     {
     }
 
@@ -153,7 +158,9 @@ struct spot_thread_metrics_t
     std::atomic<uint64_t> epoch;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> sample_index;
+    std::atomic<unsigned long long> probe_sample_index;
     bench_latency_sampler_t latency;
+    bench_latency_sampler_t probe_latency;
 };
 
 static thread_local spot_thread_metrics_t g_spot_thread_metrics;
@@ -183,8 +190,10 @@ void reset_spot_thread_metrics(spot_thread_metrics_t *metrics, uint64_t epoch)
     metrics->epoch.store(epoch, std::memory_order_release);
     metrics->active_received.store(0, std::memory_order_release);
     metrics->sample_index.store(0, std::memory_order_release);
+    metrics->probe_sample_index.store(0, std::memory_order_release);
     std::lock_guard<std::mutex> lock(metrics->latency_mutex);
     metrics->latency.reset();
+    metrics->probe_latency.reset();
 }
 
 spot_thread_metrics_t *bind_spot_thread_metrics(spot_client_state_t *state)
@@ -213,17 +222,21 @@ spot_thread_metrics_t *bind_spot_thread_metrics(spot_client_state_t *state)
 
 void collect_spot_thread_metrics(spot_client_state_t *state,
                                  unsigned long long *active_received_out,
-                                 bench_latency_stats_t *latency_out)
+                                 bench_latency_stats_t *latency_out,
+                                 bench_latency_stats_t *probe_latency_out)
 {
     if (active_received_out)
         *active_received_out = 0;
     if (latency_out)
         *latency_out = bench_latency_stats_t();
+    if (probe_latency_out)
+        *probe_latency_out = bench_latency_stats_t();
     if (!state)
         return;
 
     const uint64_t epoch = state->metrics_epoch.load(std::memory_order_acquire);
     bench_latency_sampler_t merged_latency;
+    bench_latency_sampler_t merged_probe_latency;
     unsigned long long active_received = 0;
     {
         std::lock_guard<std::mutex> lock(state->metrics_mutex);
@@ -238,6 +251,7 @@ void collect_spot_thread_metrics(spot_client_state_t *state,
               metrics->active_received.load(std::memory_order_acquire);
             std::lock_guard<std::mutex> metrics_lock(metrics->latency_mutex);
             merged_latency.merge_from(metrics->latency);
+            merged_probe_latency.merge_from(metrics->probe_latency);
         }
     }
 
@@ -245,12 +259,20 @@ void collect_spot_thread_metrics(spot_client_state_t *state,
         *active_received_out = active_received;
     if (latency_out)
         *latency_out = merged_latency.snapshot();
+    if (probe_latency_out)
+        *probe_latency_out = merged_probe_latency.snapshot();
 }
 
 unsigned int resolve_spot_latency_sample_stride()
 {
     return static_cast<unsigned int>(
       resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32, 1));
+}
+
+unsigned int resolve_spot_probe_latency_sample_stride()
+{
+    return static_cast<unsigned int>(resolve_multi_int_env(
+      "PERF_MULTI_SPOT_PROBE_LATENCY_SAMPLE_STRIDE", 1, 1));
 }
 
 int resolve_spot_ready_settle_ms()
@@ -261,6 +283,12 @@ int resolve_spot_ready_settle_ms()
 int resolve_spot_control_settle_ms()
 {
     return resolve_multi_int_env("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25, 0);
+}
+
+double resolve_spot_latency_probe_seconds()
+{
+    return static_cast<double>(
+      resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_PROBE_SECONDS", 0, 0));
 }
 
 uint64_t resolve_spot_drain_grace_ns(uint64_t active_duration_ns,
@@ -296,6 +324,14 @@ int resolve_spot_post_phase_settle_ms(size_t msg_size)
 bool should_sample_spot_latency(unsigned long long sample_index)
 {
     static const unsigned int stride = resolve_spot_latency_sample_stride();
+    return stride <= 1 || sample_index == 1
+           || (sample_index % static_cast<unsigned long long>(stride)) == 0;
+}
+
+bool should_sample_spot_probe_latency(unsigned long long sample_index)
+{
+    static const unsigned int stride =
+      resolve_spot_probe_latency_sample_stride();
     return stride <= 1 || sample_index == 1
            || (sample_index % static_cast<unsigned long long>(stride)) == 0;
 }
@@ -628,6 +664,8 @@ void handle_spot_client_parts(const char *topic,
     }
     const bool collect_active =
       state->collect_active.load(std::memory_order_acquire);
+    const bool collect_probe =
+      state->collect_probe.load(std::memory_order_acquire);
     const bool trace_phases = bench_transition_debug_enabled();
     const uint64_t recv_ts_ns =
       trace_phases ? perf_multi_metric::now_ns() : 0;
@@ -697,6 +735,34 @@ void handle_spot_client_parts(const char *topic,
                 std::lock_guard<std::mutex> metrics_lock(
                   metrics->latency_mutex);
                 metrics->latency.add(latency_ns);
+            }
+        }
+    }
+
+    if (collect_probe
+        && header.magic == perf_multi_metric::k_magic
+        && header.run_id
+             == state->expected_run_id.load(std::memory_order_acquire)
+        && header.phase
+             == static_cast<uint32_t>(perf_multi_metric::phase_cooldown)
+        && header.msg_size
+             == state->expected_msg_size.load(std::memory_order_acquire)) {
+        spot_thread_metrics_t *metrics = bind_spot_thread_metrics(state);
+        if (metrics) {
+            const unsigned long long sample_index =
+              metrics->probe_sample_index.fetch_add(1,
+                                                    std::memory_order_relaxed)
+              + 1;
+            if (should_sample_spot_probe_latency(sample_index)) {
+                const uint64_t sample_ts_ns =
+                  trace_phases ? recv_ts_ns : perf_multi_metric::now_ns();
+                const double latency_ns =
+                  header.sent_ts_ns > 0 && sample_ts_ns >= header.sent_ts_ns
+                    ? static_cast<double>(sample_ts_ns - header.sent_ts_ns)
+                    : 0.0;
+                std::lock_guard<std::mutex> metrics_lock(
+                  metrics->latency_mutex);
+                metrics->probe_latency.add(latency_ns);
             }
         }
     }
@@ -1196,9 +1262,11 @@ bool create_spot_slots(ctx_guard_t &ctx,
 void reset_metrics(spot_client_state_t *state, size_t msg_size)
 {
     state->expected_msg_size.store(msg_size, std::memory_order_release);
+    state->probe_duration_ns.store(0, std::memory_order_release);
     state->sender_window_start_ns.store(0, std::memory_order_release);
     state->sender_window_end_ns.store(0, std::memory_order_release);
     state->collect_active.store(false, std::memory_order_release);
+    state->collect_probe.store(false, std::memory_order_release);
     state->control_started_msg_size.store(0, std::memory_order_release);
     state->control_start_recv_ns.store(0, std::memory_order_release);
     {
@@ -1430,6 +1498,9 @@ bool run_single_size_case(spot_client_state_t *state,
 {
     const int phase_timeout_ms =
       resolve_spot_phase_timeout_ms(settings, msg_size);
+    const double probe_seconds = resolve_spot_latency_probe_seconds();
+    const uint64_t probe_duration_ns =
+      static_cast<uint64_t>(std::max(0.0, probe_seconds) * 1000000000.0);
 
     if (!wait_for_control_link_ready(state, settings.connect_ready_timeout_ms)) {
         if (bench_debug_enabled()) {
@@ -1453,6 +1524,8 @@ bool run_single_size_case(spot_client_state_t *state,
       static_cast<uint64_t>(std::max(1, settings.duration_seconds))
       * 1000000000ULL,
       std::memory_order_release);
+    state->probe_duration_ns.store(probe_duration_ns,
+                                   std::memory_order_release);
     if (!ensure_control_connected(state)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] ensure control connect failed"
@@ -1540,7 +1613,8 @@ bool run_single_size_case(spot_client_state_t *state,
     if (bench_transition_debug_enabled())
         print_phase_spread_summary(state, msg_size);
 
-    bench_latency_stats_t latency;
+    bench_latency_stats_t active_latency;
+    bench_latency_stats_t probe_latency;
     double throughput = 0.0;
 
     unsigned long long active_received = 0;
@@ -1549,7 +1623,8 @@ bool run_single_size_case(spot_client_state_t *state,
                   << perf_multi_metric::now_ns()
                   << " size=" << msg_size << std::endl;
     }
-    collect_spot_thread_metrics(state, &active_received, &latency);
+    collect_spot_thread_metrics(
+      state, &active_received, &active_latency, &probe_latency);
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-client] metrics merge done ts_ns="
                   << perf_multi_metric::now_ns()
@@ -1557,18 +1632,56 @@ bool run_single_size_case(spot_client_state_t *state,
                   << " received=" << active_received << std::endl;
     }
     if (state->fatal.load(std::memory_order_acquire)
-        || active_received == 0 || latency.mean_ns <= 0.0) {
+        || active_received == 0) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] metrics invalid fatal="
                       << state->fatal.load(std::memory_order_acquire)
                       << " received=" << active_received
-                      << " latency_mean=" << latency.mean_ns << std::endl;
+                      << " latency_mean=" << active_latency.mean_ns
+                      << " probe_latency_mean=" << probe_latency.mean_ns
+                      << std::endl;
         }
         return false;
     }
     throughput =
       static_cast<double>(active_received)
       / static_cast<double>(std::max(1, settings.duration_seconds));
+
+    if (probe_duration_ns > 0) {
+        state->metrics_epoch.fetch_add(1, std::memory_order_acq_rel);
+        state->collect_probe.store(true, std::memory_order_release);
+        if (!wait_phase_start(state,
+                              msg_size,
+                              perf_multi_metric::phase_cooldown,
+                              phase_timeout_ms)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] probe start timeout size="
+                          << msg_size << std::endl;
+            }
+            state->collect_probe.store(false, std::memory_order_release);
+            return false;
+        }
+        if (!perf_multi_spot_control::wait_for_phase_duration(
+              state, probe_seconds)) {
+            state->collect_probe.store(false, std::memory_order_release);
+            return false;
+        }
+        state->collect_probe.store(false, std::memory_order_release);
+        collect_spot_thread_metrics(
+          state, NULL, NULL, &probe_latency);
+    }
+
+    const bench_latency_stats_t &latency =
+      probe_latency.mean_ns > 0.0 ? probe_latency : active_latency;
+    if (latency.mean_ns <= 0.0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] latency missing size="
+                      << msg_size << " active_latency_mean="
+                      << active_latency.mean_ns << " probe_latency_mean="
+                      << probe_latency.mean_ns << std::endl;
+        }
+        return false;
+    }
 
     print_client_result_lines(k_pattern, lib_name, transport, msg_size,
                               throughput, latency);

@@ -11,10 +11,10 @@ void test_with_handover ()
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
-    // Enable the handover flag
-    int handover = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_HANDOVER, &handover, sizeof (handover)));
+    const int duplicate_policy = ZLINK_RID_DUPLICATE_HANDOVER;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      router, ZLINK_OPT_RID_DUPLICATE_POLICY, &duplicate_policy,
+      sizeof (duplicate_policy)));
 
     //  Create dealer called "X" and connect it to our router
     void *dealer_one = test_context_socket (ZLINK_SOCKET_DEALER);
@@ -66,9 +66,10 @@ void test_without_handover ()
     size_t len = MAX_SOCKET_STRING;
     char my_endpoint[MAX_SOCKET_STRING];
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
-    int handover = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_HANDOVER, &handover, sizeof (handover)));
+    const int duplicate_policy = ZLINK_RID_DUPLICATE_REJECT;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      router, ZLINK_OPT_RID_DUPLICATE_POLICY, &duplicate_policy,
+      sizeof (duplicate_policy)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "tcp://127.0.0.1:*"));
 

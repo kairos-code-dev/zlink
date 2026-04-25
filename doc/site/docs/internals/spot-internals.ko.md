@@ -712,7 +712,7 @@ ingress 경로다.
 |  channel DEALER -> ROUTER(server) 경로 (channel 호출)             |
 |------------------------------------------------------------------|
 | service monitor                                                  |
-|  peer state, admission, topology 변경 이벤트                      |
+|  peer state, weight, topology 변경 이벤트                         |
 +------------------------------------------------------------------+
 ```
 

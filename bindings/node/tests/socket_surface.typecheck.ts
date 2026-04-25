@@ -74,6 +74,7 @@ router.options.connectRoutingId = peerRoutingId;
 const stream = new zlink.StreamSocket(ctx);
 stream.send(routingId, 'ok');
 stream.recv();
+stream.disconnectRid(peerRoutingId);
 stream.onPacket((sourceRid, header, body) => {
   sourceRid.toString();
   header.data();

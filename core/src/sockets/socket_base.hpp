@@ -643,6 +643,10 @@ class socket_base_t : public own_t,
     bool _manual_rcvbuf;
     auto_hwm_context_plan_t _auto_hwm_context_plan;
     auto_hwm_socket_plan_t _auto_hwm_socket_plan;
+    uint64_t _auto_hwm_last_recalc_ms;
+    uint32_t _auto_hwm_last_recalc_reason;
+    std::atomic<uint64_t> _auto_hwm_send_attempts;
+    std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
     uint32_t _local_peer_weight;
     socket_discovery_attachment_t *_service_attachment;
     std::shared_ptr<void> _router_spot_request_reply_state;

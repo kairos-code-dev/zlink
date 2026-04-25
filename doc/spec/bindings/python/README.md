@@ -52,7 +52,7 @@ with the rules here, this section wins.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
-  True`, `handover = True`, `nodrop = True`.
+  True`, `handover = False`, `nodrop = True`.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise_endpoint)`. Users do not configure this.
@@ -984,6 +984,18 @@ class MonitorSnapshot:
     auto_hwm_group_budget_bytes: int
     auto_hwm_group_message_slots: int
     auto_hwm_effective_message_bytes: int
+    auto_hwm_control_budget_bytes: int
+    auto_hwm_routed_budget_bytes: int
+    auto_hwm_fanout_budget_bytes: int
+    auto_hwm_recv_ingress_budget_bytes: int
+    auto_hwm_control_active_connections: int
+    auto_hwm_routed_active_connections: int
+    auto_hwm_fanout_active_connections: int
+    auto_hwm_recv_ingress_active_connections: int
+    auto_hwm_estimated_max_memory_bytes: int
+    auto_hwm_last_recalc_ms: int
+    auto_hwm_last_recalc_reason: int
+    auto_hwm_send_blocked_ratio_ppm: int
 
     def is_ready(self) -> bool: ...  # True when the ready bit is set in state_flags
 ```

@@ -28,8 +28,9 @@ export const SocketOption = Object.freeze({
   TLS_HOSTNAME: 0x302D, TLS_TRUST_SYSTEM: 0x302E,
   TLS_PASSWORD: 0x302F, ZMP_METADATA: 0x3030,
   TCP_NODELAY: 0x3031, DISCOVERY_METADATA_MAX_SIZE: 0x3032,
+  RID_DUPLICATE_POLICY: 0x3033,
   ROUTING_ID: 5, SUBSCRIBE: 6, UNSUBSCRIBE: 7,
-  ROUTER_MANDATORY: 0x3101, ROUTER_HANDOVER: 0x3102,
+  ROUTER_MANDATORY: 0x3101,
   PROBE_ROUTER: 0x3103, CONNECT_ROUTING_ID: 0x3104,
   DEALER_PROBE: 0x3201,
   XPUB_VERBOSE: 0x3301, XPUB_VERBOSER: 0x3302, XPUB_MANUAL: 0x3303,
@@ -44,3 +45,10 @@ export type SendFlags = typeof SendFlags[keyof typeof SendFlags];
 
 export const RecvFlags = Object.freeze({ None: 0, DontWait: 0x0001 } as const);
 export type RecvFlags = typeof RecvFlags[keyof typeof RecvFlags];
+
+export const RidDuplicatePolicy = Object.freeze({
+  Reject: 0,
+  Handover: 1
+} as const);
+export type RidDuplicatePolicy =
+  typeof RidDuplicatePolicy[keyof typeof RidDuplicatePolicy];

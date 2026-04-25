@@ -91,6 +91,9 @@ final class SocketOptions {
     public static final SocketOptionKey<Integer> IMMEDIATE =
       SocketOptionKey.int32("IMMEDIATE", SocketOption.IMMEDIATE,
         true, true);
+    public static final SocketOptionKey<Integer> RID_DUPLICATE_POLICY =
+      SocketOptionKey.int32("RID_DUPLICATE_POLICY",
+        SocketOption.RID_DUPLICATE_POLICY, true, true);
     public static final SocketOptionKey<Integer> XPUB_VERBOSE =
       SocketOptionKey.int32("XPUB_VERBOSE", SocketOption.XPUB_VERBOSE,
         true, true);
@@ -101,9 +104,6 @@ final class SocketOptions {
         true, true);
     public static final SocketOptionKey<Integer> CONFLATE =
       SocketOptionKey.int32("CONFLATE", SocketOption.CONFLATE,
-        true, true);
-    public static final SocketOptionKey<Integer> ROUTER_HANDOVER =
-      SocketOptionKey.int32("ROUTER_HANDOVER", SocketOption.ROUTER_HANDOVER,
         true, true);
     public static final SocketOptionKey<Integer> TOS =
       SocketOptionKey.int32("TOS", SocketOption.TOS, true, true);
@@ -224,7 +224,7 @@ final class SocketOptions {
         LAST_ENDPOINT, ROUTER_MANDATORY, TCP_KEEPALIVE,
         TCP_KEEPALIVE_CNT, TCP_KEEPALIVE_IDLE, TCP_KEEPALIVE_INTVL,
         TCP_NODELAY, IMMEDIATE, XPUB_VERBOSE, IPV6, PROBE_ROUTER,
-        CONFLATE, ROUTER_HANDOVER, TOS,
+        CONFLATE, RID_DUPLICATE_POLICY, TOS,
         CONNECT_ROUTING_ID, CONNECT_ROUTING_ID_BYTES,
         HANDSHAKE_IVL, XPUB_NODROP, BLOCKY, XPUB_MANUAL,
         XPUB_WELCOME_MSG, XPUB_WELCOME_MSG_BYTES,

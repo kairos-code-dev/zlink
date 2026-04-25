@@ -190,6 +190,15 @@ int socket_discovery_attachment_t::on_public_term_endpoint () const
     return -1;
 }
 
+int socket_discovery_attachment_t::on_public_disconnect_rid () const
+{
+    int err = 0;
+    if (!public_api_forbidden (&err))
+        return 0;
+    errno = err;
+    return -1;
+}
+
 int socket_discovery_attachment_t::on_public_close () const
 {
     int err = 0;

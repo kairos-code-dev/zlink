@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
+[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Streaming Client](./streaming-client.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
 
 # Draft -- ZLink Framework For .NET
 
@@ -101,6 +101,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 | [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, packet/raw session, monitor 기반 lifecycle, recv 비지원 방향 |
+| [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity client connector, TCP/TLS/WS/WSS transport, header/body packet 송수신 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping의 결정 기준 |
 | [aspnet-core-monitoring.ko.md](./aspnet-core-monitoring.ko.md) | socket/discovery/registry/spot runtime monitoring 이벤트와 등록 모델 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 필요한 추가 조건 |

@@ -359,6 +359,18 @@ inline void common_socket_options_t::heartbeat_timeout (int value)
       _handle, socket_option::heartbeat_timeout, value);
 }
 
+inline int common_socket_options_t::rid_duplicate_policy () const
+{
+    return detail::get_common_option_value<int> (
+      _handle, socket_option::rid_duplicate_policy);
+}
+
+inline void common_socket_options_t::rid_duplicate_policy (int value)
+{
+    detail::set_common_option_value<int> (
+      _handle, socket_option::rid_duplicate_policy, value);
+}
+
 inline int64_t common_socket_options_t::max_message_size () const
 {
     return detail::get_common_option_value<int64_t> (
@@ -420,18 +432,6 @@ inline void router_socket_options_t::mandatory (bool value)
 {
     detail::set_router_option_value<int> (
       _handle, router_option::mandatory, value ? 1 : 0);
-}
-
-inline bool router_socket_options_t::handover () const
-{
-    return detail::get_router_option_value<int> (_handle, router_option::handover)
-           != 0;
-}
-
-inline void router_socket_options_t::handover (bool value)
-{
-    detail::set_router_option_value<int> (
-      _handle, router_option::handover, value ? 1 : 0);
 }
 
 inline bool router_socket_options_t::probe_router () const

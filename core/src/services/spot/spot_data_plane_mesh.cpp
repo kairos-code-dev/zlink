@@ -307,6 +307,13 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
                 && spot_data_plane_forwarder_t::forward_local_fanout (
                      runtime_, runtime_state_, topic, frames)
                      != 0) {
+                if (errno == EAGAIN
+                    && spot_data_plane_forwarder_t::stage_message (
+                         runtime_state_, topic, frames, true, true, false)
+                         == 0) {
+                    spot_clear_msg_parts (&frames);
+                    return 0;
+                }
                 spot_clear_msg_parts (&frames);
                 return -1;
             }

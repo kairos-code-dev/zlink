@@ -101,6 +101,16 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConnectIfError(rc);
     }
 
+    public void DisconnectPeerRid(RoutingId targetNodeRid)
+    {
+        EnsureNotDisposed();
+        byte[] ridBytes = RoutingIdCodec.FromRoutingId(targetNodeRid);
+        ZlinkRoutingId nativeRid = NativeHelpers.WriteRoutingId(ridBytes);
+        int rc = NativeMethods.zlink_spot_node_disconnect_peer_rid(_handle,
+            ref nativeRid);
+        ZlinkException.ThrowConnectIfError(rc);
+    }
+
     /// <summary>
     /// Attaches this SPOT node to a discovery-owned service lifecycle.
     /// </summary>

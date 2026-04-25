@@ -88,6 +88,24 @@ static int apply_common_internal_opts (socket_base_t *socket_, int linger_)
                                 sizeof (linger_));
 }
 
+static void apply_internal_transport_buffers (
+  ctx_t *ctx_,
+  socket_base_t *socket_,
+  auto_hwm_role_t role_,
+  int socket_type_,
+  size_t managed_connections_,
+  size_t active_connections_)
+{
+    if (!ctx_ || !socket_)
+        return;
+
+    apply_spot_internal_auto_hwm (
+      ctx_, socket_,
+      spot_internal_auto_hwm_policy_t{role_, socket_type_, managed_connections_,
+                                      active_connections_, 0, 0, false, false,
+                                      true, true});
+}
+
 static int resolve_routed_send_hwm_default (const spot_runtime_t *runtime_,
                                             int topic_send_hwm_)
 {
@@ -267,6 +285,45 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     apply_common_internal_opts (state_->node_router, linger);
     apply_common_internal_opts (state_->ingress, linger);
     apply_common_internal_opts (state_->fanout, linger);
+    apply_internal_transport_buffers (ctx, state_->ctrl, auto_hwm_role_control,
+                                      ZLINK_CORE_SOCKET_PAIR,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->mesh_pub,
+                                      auto_hwm_role_fanout,
+                                      ZLINK_CORE_SOCKET_PUB,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->mesh_xsub,
+                                      auto_hwm_role_recv_ingress,
+                                      ZLINK_CORE_SOCKET_XSUB,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->peer_ctrl_pub,
+                                      auto_hwm_role_control,
+                                      ZLINK_CORE_SOCKET_PUB,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->peer_ctrl_sub,
+                                      auto_hwm_role_control,
+                                      ZLINK_CORE_SOCKET_SUB,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->route_ingress,
+                                      auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_ROUTER,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->peer_route_ingress,
+                                      auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_ROUTER,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->node_router,
+                                      auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_ROUTER,
+                                      connected_peer_count, active_peer_count);
+    apply_internal_transport_buffers (ctx, state_->ingress,
+                                      auto_hwm_role_recv_ingress,
+                                      ZLINK_CORE_SOCKET_SUB, local_pub_count,
+                                      local_pub_count);
+    apply_internal_transport_buffers (ctx, state_->fanout,
+                                      auto_hwm_role_fanout,
+                                      ZLINK_CORE_SOCKET_PUB, local_sub_count,
+                                      local_sub_count);
 
     state_->ctrl->connect (runtime_->data_ctrl_endpoint.c_str ());
     state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &ingress_rcvhwm,
@@ -355,6 +412,8 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     local_pending_resume_threshold (0),
     mesh_pending_pause_threshold (0),
     mesh_pending_resume_threshold (0),
+    local_pending_hard_limit (0),
+    mesh_pending_hard_limit (0),
     poller (NULL)
 {
 }

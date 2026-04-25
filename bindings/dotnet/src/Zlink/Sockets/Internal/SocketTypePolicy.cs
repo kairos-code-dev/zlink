@@ -77,8 +77,7 @@ internal sealed class SocketTypePolicy
                 || _socketType == SocketType.XSub,
             SocketOption.XPubNoDrop => _socketType == SocketType.Pub
                 || _socketType == SocketType.XPub,
-            SocketOption.RouterMandatory or SocketOption.RouterHandover
-                => _socketType == SocketType.Router,
+            SocketOption.RouterMandatory => _socketType == SocketType.Router,
             SocketOption.ProbeRouter => _socketType == SocketType.Dealer
                 || _socketType == SocketType.Router,
             SocketOption.RoutingId => _socketType == SocketType.Dealer

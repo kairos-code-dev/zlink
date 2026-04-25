@@ -1714,6 +1714,7 @@ def run_sizes_test_split(
     sizes,
     pattern_name,
     result_line_callback=None,
+    extra_env=None,
 ):
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
@@ -1769,6 +1770,10 @@ def run_sizes_test_split(
     )
     server_env = env.copy()
     client_env = env.copy()
+    if extra_env:
+        for key, value in extra_env.items():
+            server_env[str(key)] = str(value)
+            client_env[str(key)] = str(value)
     set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
     set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
 
@@ -2300,6 +2305,12 @@ def run_sizes_test(
             }
 
         def run_one_size_case(case_size):
+            callback = result_line_callback
+            if (
+                normalize_multi_pattern_name(pattern_name) == "SPOT"
+                and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
+            ):
+                callback = None
             return run_sizes_test_split(
                 names["server"],
                 names["client"],
@@ -2307,7 +2318,19 @@ def run_sizes_test(
                 transport,
                 [case_size],
                 pattern_name,
-                result_line_callback=result_line_callback,
+                result_line_callback=callback,
+            )
+
+        def run_one_size_case_with_env(case_size, extra_env):
+            return run_sizes_test_split(
+                names["server"],
+                names["client"],
+                lib_name,
+                transport,
+                [case_size],
+                pattern_name,
+                result_line_callback=None,
+                extra_env=extra_env,
             )
 
     merged = {
@@ -2320,9 +2343,64 @@ def run_sizes_test(
     }
     size_retry_limit = max(0, parse_env_int("PERF_MULTI_SIZE_RETRIES", 1))
     for size_index, size in enumerate(size_list):
+        normalized_pattern = normalize_multi_pattern_name(pattern_name)
         isolated = None
         for attempt in range(size_retry_limit + 1):
             isolated = run_one_size_case(size)
+            if (
+                isolated.get("status") == "success"
+                and normalized_pattern == "SPOT"
+                and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
+            ):
+                latency_only = run_one_size_case_with_env(
+                    size, {"PERF_MULTI_SPOT_LATENCY_ONLY": "1"}
+                )
+                isolated.setdefault("warnings", [])
+                isolated["warnings"].extend(latency_only.get("warnings", []))
+                if latency_only.get("status") == "success":
+                    latency_keys = (
+                        f"{transport}|{size}|latency",
+                        f"{transport}|{size}|{LATENCY_P95_METRIC}",
+                        f"{transport}|{size}|{LATENCY_P99_METRIC}",
+                    )
+                    for latency_key in latency_keys:
+                        if latency_key in latency_only.get("parsed", {}):
+                            isolated["parsed"][latency_key] = latency_only["parsed"][
+                                latency_key
+                            ]
+                else:
+                    reason = (latency_only.get("reason", "") or "").strip()
+                    isolated["warnings"].append(
+                        "spot clean latency pass failed"
+                        + (f": {reason}" if reason else "")
+                    )
+            if isolated.get("status") == "success" and normalized_pattern == "SPOT":
+                parsed = isolated.get("parsed", {}) or {}
+                tp_key = f"{transport}|{size}|throughput"
+                bw_key = f"{transport}|{size}|bandwidth"
+                lat_key = f"{transport}|{size}|latency"
+                lat95_key = f"{transport}|{size}|{LATENCY_P95_METRIC}"
+                lat99_key = f"{transport}|{size}|{LATENCY_P99_METRIC}"
+                if (
+                    tp_key in parsed
+                    and bw_key in parsed
+                    and lat_key in parsed
+                ):
+                    lat_mean, lat95_value, lat99_value = resolve_latency_triplet(
+                        parsed.get(lat_key),
+                        parsed.get(lat95_key),
+                        parsed.get(lat99_key),
+                    )
+                    print(
+                        "    Result "
+                        f"{transport} | {size}B: "
+                        f"{format_throughput(pattern_name, parsed.get(tp_key, 0.0))}, "
+                        f"{format_bandwidth(parsed.get(bw_key, 0.0))}, "
+                        f"{lat_mean:.3f} ms, "
+                        f"p95 {lat95_value:.3f} ms, "
+                        f"p99 {lat99_value:.3f} ms",
+                        flush=True,
+                    )
             merged["warnings"].extend(isolated.get("warnings", []))
             merged["parsed"].update(isolated.get("parsed", {}))
             if isolated.get("status") == "success":
@@ -3187,15 +3265,19 @@ def build_effective_option_items(args, selected_patterns):
                 + ")"
             )
 
-        sndhwm = parse_env_int("PERF_SNDHWM", base_hwm)
-        rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm)
-        sndbuf = _read_env_value("PERF_SNDBUF") or ""
-        rcvbuf = _read_env_value("PERF_RCVBUF") or ""
+        manual_socket_overrides = (
+            (_read_env_value("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+            or (_read_env_value("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+        ) == "1"
+        sndhwm = parse_env_int("PERF_SNDHWM", base_hwm) if manual_socket_overrides else 0
+        rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm) if manual_socket_overrides else 0
+        sndbuf = (_read_env_value("PERF_SNDBUF") or "") if manual_socket_overrides else ""
+        rcvbuf = (_read_env_value("PERF_RCVBUF") or "") if manual_socket_overrides else ""
         sndhwm_display = "auto-hwm" if sndhwm <= 0 else str(sndhwm)
         rcvhwm_display = "auto-hwm" if rcvhwm <= 0 else str(rcvhwm)
-        if not (_read_env_value("PERF_SNDHWM") or ""):
+        if not manual_socket_overrides or not (_read_env_value("PERF_SNDHWM") or ""):
             sndhwm_display = hwm_display
-        if not (_read_env_value("PERF_RCVHWM") or ""):
+        if not manual_socket_overrides or not (_read_env_value("PERF_RCVHWM") or ""):
             rcvhwm_display = hwm_display
         timeout_override = parse_env_int("PERF_TIMEOUT_SECONDS", 0)
         service_clients = parse_env_int("PERF_SERVICE_CLIENTS", 0)
@@ -3300,8 +3382,8 @@ def build_effective_option_items(args, selected_patterns):
                 ("hwm", hwm_display),
                 ("sndhwm", sndhwm_display),
                 ("rcvhwm", rcvhwm_display),
-                ("sndbuf", sndbuf or "default(os)"),
-                ("rcvbuf", rcvbuf or "default(os)"),
+                ("sndbuf", sndbuf or "auto-hwm"),
+                ("rcvbuf", rcvbuf or "auto-hwm"),
                 ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),

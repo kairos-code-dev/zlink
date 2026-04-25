@@ -127,6 +127,8 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISCONNECT = downcall("zlink_disconnect",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_DISCONNECT_RID = downcall("zlink_disconnect_rid",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SOCKET_ATTACH_DISCOVERY = downcall(
             "zlink_socket_attach_discovery",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -722,6 +724,8 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DISC_PEER = downcall("zlink_spot_node_disconnect_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_DISC_PEER_RID = downcall("zlink_spot_node_disconnect_peer_rid",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_ATTACH_DISCOVERY = downcall(
             "zlink_spot_node_attach_discovery",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -1047,6 +1051,14 @@ public final class Native {
             return (int) MH_DISCONNECT.invokeExact(socket, addr);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_disconnect failed", t);
+        }
+    }
+
+    public static int disconnectRid(MemorySegment socket, MemorySegment peerRid) {
+        try {
+            return (int) MH_DISCONNECT_RID.invokeExact(socket, peerRid);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_disconnect_rid failed", t);
         }
     }
 
@@ -2954,6 +2966,15 @@ public final class Native {
             return (int) MH_SPOT_NODE_DISC_PEER.invokeExact(node, ep);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_disconnect_peer failed", t);
+        }
+    }
+
+    public static int spotNodeDisconnectPeerRid(MemorySegment node,
+                                                MemorySegment rid) {
+        try {
+            return (int) MH_SPOT_NODE_DISC_PEER_RID.invokeExact(node, rid);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_disconnect_peer_rid failed", t);
         }
     }
 

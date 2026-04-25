@@ -30,8 +30,7 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 | `ZLINK_RID_DUPLICATE_HANDOVER` | 새 연결이 기존 연결을 인수합니다. rolling restart처럼 같은 identity가 잠깐 겹치는 상황에 씁니다. |
 
 이 옵션은 `zlink_set_option()`으로 설정하는 공통 socket 옵션입니다.
-기존 ROUTER 전용 `ZLINK_ROUTER_OPT_HANDOVER`는 호환성을 위해 남아 있지만,
-새 코드에서는 공통 옵션을 우선 사용합니다.
+중복 peer identity 인수 여부를 바꾸는 public 설정은 이 옵션 하나만 씁니다.
 
 STREAM은 서버가 연결별 4바이트 routing id를 직접 부여하므로 이 중복 정책의
 대상이 아닙니다.
@@ -433,7 +432,6 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 |-----------|---------------|-----|------|
 | `SUB` / `XSUB` | `LINGER` | `0` | 구독 소켓은 종료 시 대기 불필요 |
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | 미연결 peer 대상 전송 실패를 surface |
-| `ROUTER` | `ROUTER_HANDOVER` | `1` | duplicate peer identity 시 새 연결이 인수 |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
 | `STREAM` | `SNDBUF` | 자동 (auto HWM 비활성 + 미설정이면 `262144`) | context 예산 기준 transport buffer 계산 |
@@ -446,9 +444,10 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 >   `ZLINK_SUBMIT_NOT_CONNECTED` 가 반환된다. writable / `ZLINK_POLLOUT`
 >   관찰값도 실제로 쓸 수 있는 peer 가 있을 때만 surface 된다. 조용한 drop
 >   이 필요하면 옵션을 `0` 으로 명시 설정한다.
-> - `ROUTER_HANDOVER` 기본값은 `1` 이다. duplicate peer identity 로 새 연결
->   이 들어오면 새 연결이 기존 pipe 를 인수한다. 기존 연결을 유지하고
->   새 연결을 거부하려면 `0` 으로 명시 설정한다.
+> - `ZLINK_OPT_RID_DUPLICATE_POLICY` 기본값은
+>   `ZLINK_RID_DUPLICATE_REJECT` 이다. duplicate peer identity 가 들어오면
+>   기존 pipe 를 유지하고 새 연결은 등록하지 않는다. 새 연결이 기존 pipe 를
+>   인수해야 하면 `ZLINK_RID_DUPLICATE_HANDOVER` 로 명시 설정한다.
 > - `PUB_NODROP` 기본값은 `1` 이다. HWM 상황에서 `zlink_publish()` 가 조용히
 >   drop 하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 진행률을 위해
 >   drop 이 필요한 loss-tolerant workload 는 `0` 으로 명시 설정한다.
@@ -462,7 +461,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 
 | 소켓 | API | 대표 옵션 |
 |------|-----|-----------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `HANDOVER` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID` |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID` |
 | DEALER | `zlink_set_dealer_option()` | `PROBE` |
 | XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | 구독 관련 |

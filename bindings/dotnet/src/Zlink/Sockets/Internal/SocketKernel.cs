@@ -104,6 +104,14 @@ internal sealed class SocketKernel : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
+    public void DisconnectRid(RoutingId peerRid)
+    {
+        byte[] ridBytes = RoutingIdCodec.FromRoutingId(peerRid);
+        ZlinkRoutingId nativeRid = NativeHelpers.WriteRoutingId(ridBytes);
+        int rc = NativeMethods.zlink_disconnect_rid(Handle, ref nativeRid);
+        ZlinkException.ThrowConnectIfError(rc);
+    }
+
     public void AttachDiscovery(Discovery discovery)
     {
         if (discovery == null)

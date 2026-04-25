@@ -167,6 +167,19 @@ func (n *SpotNode) DisconnectPeer(endpoint string) error {
 	})
 }
 
+func (n *SpotNode) DisconnectPeerRID(targetNodeRID RoutingID) error {
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
+	}
+	rid := targetNodeRID.toC()
+	return connectErrorFromResult(
+		C.zlink_spot_node_disconnect_peer_rid(
+			handle,
+			(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
+		))
+}
+
 func (n *SpotNode) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {
 	handle, err := n.handleOrError()
 	if err != nil {

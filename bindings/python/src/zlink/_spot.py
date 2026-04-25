@@ -505,6 +505,14 @@ class SpotNode:
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
+    def disconnect_peer_rid(self, target_node_rid):
+        native = _copy_routing_id(target_node_rid)
+        rc = lib().zlink_spot_node_disconnect_peer_rid(
+            self._handle, ctypes.byref(native)
+        )
+        if rc != 0:
+            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
+
     def attach_discovery(self, discovery):
         rc = lib().zlink_spot_node_attach_discovery(
             self._handle, discovery._handle

@@ -12,24 +12,24 @@ Used with `zlink_set_router_option()` / `zlink_get_router_option()`.
 | Constant | Description |
 |---|---|
 | `ZLINK_ROUTER_OPT_MANDATORY` | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1, default `1`) |
-| `ZLINK_ROUTER_OPT_HANDOVER` | Allow new connection to take over an existing routing identity (`int`; 0 or 1, default `0`, compatibility option) |
 | `ZLINK_ROUTER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_router_request()` (`uint32_t`) |
 | `ZLINK_ROUTER_OPT_WEIGHT` | Local peer weight advertised to connected peers (`int`; `0..100`, default `100`) |
 
 `ZLINK_ROUTER_OPT_MANDATORY` defaults to `1`.
-`ZLINK_ROUTER_OPT_HANDOVER` is the ROUTER-specific compatibility option for
-`ZLINK_OPT_RID_DUPLICATE_POLICY`; it defaults to `0`. New code should use the
-common `ZLINK_OPT_RID_DUPLICATE_POLICY` option.
+Duplicate peer identity handling is controlled by the common socket option
+`ZLINK_OPT_RID_DUPLICATE_POLICY`. Its default is
+`ZLINK_RID_DUPLICATE_REJECT`.
 
 - With `MANDATORY=1`, `zlink_send_rid()` returns
   `ZLINK_SUBMIT_NOT_CONNECTED` instead of silently dropping when the target
   peer is not connected. For the same reason, ROUTER's writable /
   `ZLINK_POLLOUT` observation surfaces readiness only while at least one
   reachable peer exists.
-- With `HANDOVER=0`, a new connection arriving with the same peer identity
-  keeps the existing pipe and does not register the duplicate pipe.
+- With the default duplicate policy, a new connection arriving with the same
+  peer identity keeps the existing pipe and does not register the duplicate
+  pipe.
 
 Callers that want the alternative behavior (silent drop when no peer is
 reachable, or new pipe takeover for duplicate identity) must set these

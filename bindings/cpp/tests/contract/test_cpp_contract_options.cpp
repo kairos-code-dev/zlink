@@ -30,8 +30,6 @@ template<typename T> class has_router_socket_options_facade_t
     static auto test (int)
       -> decltype (std::declval<U &> ().mandatory (),
                     std::declval<U &> ().mandatory (true),
-                    std::declval<U &> ().handover (),
-                    std::declval<U &> ().handover (true),
                     std::declval<U &> ().probe_router (),
                     std::declval<U &> ().probe_router (true),
                     std::declval<U &> ().connect_routing_id (),

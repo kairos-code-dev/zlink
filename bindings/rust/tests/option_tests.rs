@@ -63,10 +63,11 @@ fn router_option_mandatory() {
 }
 
 #[test]
-fn router_option_handover() {
+fn common_option_rid_duplicate_policy() {
     let ctx = Context::new().unwrap();
     let sock = ctx.router_socket().unwrap();
-    sock.router_options().set_handover(true).unwrap();
+    sock.common_options().set_rid_duplicate_policy(1).unwrap();
+    assert_eq!(sock.common_options().rid_duplicate_policy().unwrap(), 1);
 }
 
 #[test]

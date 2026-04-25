@@ -52,7 +52,7 @@ with the rules here, this section wins.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `OnSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `Mandatory =
-  true`, `Handover = true`, `NoDrop = true`.
+  true`, `Handover = false`, `NoDrop = true`.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingID, advertiseEndpoint)`. Users do not configure this.
@@ -979,11 +979,42 @@ Canonical socket / service monitor runtime snapshot.
 
 ```go
 type MonitorSnapshot struct {
-    SourceKind      MonitorSourceKind // monitor target kind
-    StateFlags      uint32            // state bitmask
-    DetailFlags     uint32            // detail bitmask
-    SndPendingMsgs  uint64            // pending send queue depth
-    RcvPendingMsgs  uint64            // pending recv queue depth
+    SourceKind                          MonitorSourceKind
+    StateFlags                          uint32
+    DetailFlags                         uint32
+    SndPendingMsgs                      uint64
+    RcvPendingMsgs                      uint64
+    AutoHwmEnabled                      bool
+    AutoHwmRole                         uint32
+    AutoHwmManagedConnections           uint32
+    AutoHwmActiveHwmConnections         uint32
+    AutoHwmPlanningTransportConnections uint32
+    AutoHwmBaseFloorPerConnection       uint32
+    AutoHwmAppliedSndHwm                int32
+    AutoHwmAppliedRcvHwm                int32
+    AutoHwmRequestedSndBuf              int32
+    AutoHwmRequestedRcvBuf              int32
+    AutoHwmEffectiveSndBuf              int32
+    AutoHwmEffectiveRcvBuf              int32
+    AutoHwmTotalMemoryBudgetBytes       uint64
+    AutoHwmQueueBudgetBytes             uint64
+    AutoHwmTransportBudgetBytes         uint64
+    AutoHwmRuntimeReserveBytes          uint64
+    AutoHwmGroupBudgetBytes             uint64
+    AutoHwmGroupMessageSlots            uint64
+    AutoHwmEffectiveMessageBytes        uint64
+    AutoHwmControlBudgetBytes           uint64
+    AutoHwmRoutedBudgetBytes            uint64
+    AutoHwmFanoutBudgetBytes            uint64
+    AutoHwmRecvIngressBudgetBytes       uint64
+    AutoHwmControlActiveConnections     uint32
+    AutoHwmRoutedActiveConnections      uint32
+    AutoHwmFanoutActiveConnections      uint32
+    AutoHwmRecvIngressActiveConnections uint32
+    AutoHwmEstimatedMaxMemoryBytes      uint64
+    AutoHwmLastRecalcMs                 uint64
+    AutoHwmLastRecalcReason             uint32
+    AutoHwmSendBlockedRatioPPM          uint32
 }
 
 // IsReady returns true when the ready bit is set in StateFlags.

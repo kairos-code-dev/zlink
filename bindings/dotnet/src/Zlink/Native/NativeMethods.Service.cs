@@ -172,6 +172,10 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_disconnect_peer_rid(IntPtr node,
+        ref ZlinkRoutingId targetNodeRid);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_attach_channel_dealer(
         IntPtr node, IntPtr discovery, IntPtr dealer);
 

@@ -132,6 +132,12 @@ impl SocketInner {
         check_connect_rc(unsafe { ffi::zlink_disconnect(self.handle, c.as_ptr()) })
     }
 
+    pub fn disconnect_rid(&self, peer_rid: &RoutingId) -> Result<(), ConnectError> {
+        check_connect_rc(unsafe {
+            ffi::zlink_disconnect_rid(self.handle, peer_rid.as_raw())
+        })
+    }
+
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
         check_config_rc(unsafe { ffi::zlink_socket_attach_discovery(self.handle, discovery.raw()) })
     }
@@ -578,6 +584,21 @@ impl SocketInner {
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_CONNECT_TIMEOUT,
             d,
+        )
+    }
+
+    pub fn set_rid_duplicate_policy(&self, value: i32) -> Result<(), ConfigError> {
+        set_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_RID_DUPLICATE_POLICY,
+            value,
+        )
+    }
+
+    pub fn rid_duplicate_policy(&self) -> Result<i32, ConfigError> {
+        get_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_RID_DUPLICATE_POLICY,
         )
     }
 
@@ -1089,6 +1110,17 @@ macro_rules! impl_base_socket {
             ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_connect_timeout(d)
             }
+            pub(crate) fn set_rid_duplicate_policy(
+                &self,
+                value: i32,
+            ) -> Result<(), crate::error::ConfigError> {
+                self.inner.set_rid_duplicate_policy(value)
+            }
+            pub(crate) fn rid_duplicate_policy(
+                &self,
+            ) -> Result<i32, crate::error::ConfigError> {
+                self.inner.rid_duplicate_policy()
+            }
             pub(crate) fn set_heartbeat_interval(
                 &self,
                 d: Duration,
@@ -1176,6 +1208,12 @@ macro_rules! impl_connect {
             }
             pub fn disconnect(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
                 self.inner.disconnect(addr)
+            }
+            pub fn disconnect_rid(
+                &self,
+                peer_rid: &crate::message::RoutingId,
+            ) -> Result<(), crate::error::ConnectError> {
+                self.inner.disconnect_rid(peer_rid)
             }
         }
     };

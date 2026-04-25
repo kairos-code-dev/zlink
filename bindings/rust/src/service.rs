@@ -872,6 +872,15 @@ impl SpotNode {
         check_connect_rc(unsafe { ffi::zlink_spot_node_disconnect_peer(self.handle, c.as_ptr()) })
     }
 
+    pub fn disconnect_peer_rid(&self, target_node_rid: &RoutingId) -> Result<(), ConnectError> {
+        check_connect_rc(unsafe {
+            ffi::zlink_spot_node_disconnect_peer_rid(
+                self.handle,
+                target_node_rid.as_raw(),
+            )
+        })
+    }
+
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
             ffi::zlink_spot_node_attach_discovery(self.handle, discovery.raw())

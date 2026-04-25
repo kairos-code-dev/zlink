@@ -2025,6 +2025,24 @@ napi_value spot_node_disconnect_peer(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_disconnect_peer_rid(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_routing_id_t peer_rid;
+    if (!parse_routing_id_value(env, argv[1], &peer_rid))
+        return NULL;
+    int rc = zlink_spot_node_disconnect_peer_rid(node, &peer_rid);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_disconnect_peer_rid failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value spot_node_register(napi_env env, napi_callback_info info)
 {
     (void) info;

@@ -24,6 +24,13 @@ export class Socket extends DuplexSocket {
     requireNative().socketDisconnect(this.nativeHandle(), endpoint);
   }
 
+  disconnectRid(peerRid: BufferLike): void {
+    requireNative().socketDisconnectRid(
+      this.nativeHandle(),
+      normalizeBufferLike(peerRid, 'peerRid')
+    );
+  }
+
   setSockOpt(option: number, value: BufferLike | string): void {
     this.setSockOptRaw(option, value);
   }

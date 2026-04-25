@@ -166,14 +166,19 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   이 신호만으로 raw ready 를 판정하거나 측정을 시작해서는 안 된다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 용도로만 사용한다. perf 시작 gate로 승격하지 않는다.
 
-### 1.6 HWM 정책
+### 1.6 Auto-HWM 정책
 
-- multi 기본 HWM 정책은 pattern/role 특례 없이 동일하다. `PERF_MULTI_HWM`
-  또는 send/recv override로 결정된 값은 perf가 여는 benchmark socket마다
-  `SNDHWM`, `RCVHWM` 둘 다 함께 적용한다.
-- 이 규칙은 one-way pattern과 SPOT facade/control socket에도 동일하게
-  적용한다. 목적은 역할별 HWM 예외를 없애고, perf 설정 의미를 단일 budget으로
-  고정하는 것이다.
+- multi 기본 정책은 context auto-HWM 이다. perf는
+  `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` 을 켜고 benchmark socket과 spot handle의
+  기본 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF` 를 core 계산값에 맡긴다.
+- 기본 실행에서는 pattern/role 특례 없이 같은 context budget을 공유한다.
+  숫자 HWM이나 transport buffer를 직접 주입해서 결과를 고정하지 않는다.
+- `PERF_MULTI_HWM`, `PERF_MULTI_SNDHWM`, `PERF_MULTI_RCVHWM`, `PERF_SNDBUF`,
+  `PERF_RCVBUF` 는 debug 전용 override 이다. 기본 경로에서는 비활성이고,
+  `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 또는
+  `PERF_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 이 켜졌을 때만 허용한다.
+- SPOT facade/control socket도 같은 원칙을 따른다. 기본 경로에서 control
+  plane용 별도 수동 HWM을 두지 않는다.
 
 ### 1.7 금지 단계
 
@@ -1129,9 +1134,10 @@ core/perf/run_benchmarks_multi.sh --duration 10
 |------|------|--------|
 | `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (stream=10000) |
 | `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록. 미설정 시 `PERF_MSG_SIZES`가 설정되어 있으면 그 값을 사용하고, 둘 다 미설정이면 기본값 사용 | `64,256,1024,65536` |
-| `PERF_MULTI_HWM` | 소켓 HWM | 1000 |
-| `PERF_MULTI_SNDHWM` | 소켓 송신 HWM | `PERF_MULTI_HWM` |
-| `PERF_MULTI_RCVHWM` | 소켓 수신 HWM | `PERF_MULTI_HWM` |
+| `PERF_MULTI_HWM` | debug 전용 공통 HWM override. allow flag가 켜진 경우에만 사용 | 비활성 |
+| `PERF_MULTI_SNDHWM` | debug 전용 송신 HWM override | 비활성 |
+| `PERF_MULTI_RCVHWM` | debug 전용 수신 HWM override | 비활성 |
+| `PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | context auto-HWM 전체 메모리 예산(MB). 미설정 시 core 기본값 사용 | core 기본값 |
 | `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |
 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
 | `PERF_MULTI_SERVICE_CLIENTS` | 서비스 클라이언트 수 상한 (0=제한 없음) | 0 |

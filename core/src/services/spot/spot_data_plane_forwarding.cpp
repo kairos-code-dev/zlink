@@ -36,6 +36,19 @@ static const unsigned int ingress_forward_batch_limit = 2048;
 static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
 static const size_t pending_queue_bytes_floor = 64 * 1024;
 
+bool pending_queue_has_room_local (size_t current_bytes_,
+                                   size_t hard_limit_bytes_,
+                                   size_t message_bytes_)
+{
+    if (hard_limit_bytes_ == 0)
+        return true;
+    if (current_bytes_ == 0)
+        return true;
+    if (message_bytes_ > hard_limit_bytes_)
+        return false;
+    return current_bytes_ <= hard_limit_bytes_ - message_bytes_;
+}
+
 int copy_msg_parts_to_owned_local (const spot_owned_msg_parts_t &src_,
                                    spot_owned_msg_parts_t *dst_)
 {
@@ -218,6 +231,12 @@ bool enqueue_local_target_message_local (
         entry.message_id = message_id;
         entry.topic = topic_;
         entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+        if (!pending_queue_has_room_local (state_->local_pending_bytes,
+                                           state_->local_pending_hard_limit,
+                                           entry.encoded_bytes)) {
+            errno = EAGAIN;
+            return false;
+        }
         if (copy_msg_parts_to_owned_local (parts_, &entry.parts) != 0)
             return false;
 
@@ -256,6 +275,12 @@ bool enqueue_mesh_pending_local (spot_data_plane_runtime_state_t *state_,
         entry.message_id = message_id;
         entry.topic = topic_;
         entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+        if (!pending_queue_has_room_local (state_->mesh_pending_bytes,
+                                           state_->mesh_pending_hard_limit,
+                                           entry.encoded_bytes)) {
+            errno = EAGAIN;
+            return false;
+        }
         if (copy_msg_parts_to_owned_local (parts_, &entry.parts) != 0)
             return false;
 
@@ -294,6 +319,12 @@ bool enqueue_mesh_broadcast_pending_local (
         entry.message_id = message_id;
         entry.topic = topic_;
         entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+        if (!pending_queue_has_room_local (state_->mesh_pending_bytes,
+                                           state_->mesh_pending_hard_limit,
+                                           entry.encoded_bytes)) {
+            errno = EAGAIN;
+            return false;
+        }
         if (copy_msg_parts_to_owned_local (parts_, &entry.parts) != 0)
             return false;
 
@@ -399,6 +430,29 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
 
     spot_node_access_t::track_owned_socket (runtime_->owner, socket);
     return socket;
+}
+
+bool stage_publish_message_local (
+  std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> *queue_,
+  const std::string &topic_,
+  const spot_owned_msg_parts_t &parts_,
+  bool need_local_,
+  bool need_mesh_)
+{
+    if (!queue_ || topic_.empty ()) {
+        errno = EINVAL;
+        return false;
+    }
+
+    spot_data_plane_runtime_state_t::staged_publish_entry_t entry;
+    entry.topic = topic_;
+    entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+    entry.need_local = need_local_;
+    entry.need_mesh = need_mesh_;
+    if (copy_msg_parts_to_owned_local (parts_, &entry.parts) != 0)
+        return false;
+    queue_->push_back (entry);
+    return true;
 }
 }
 
@@ -512,6 +566,8 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
     const size_t half_budget =
       static_cast<size_t> (std::max (total_fanout_budget / 2,
                                      static_cast<int> (pending_queue_bytes_floor)));
+    state_->local_pending_hard_limit = half_budget;
+    state_->mesh_pending_hard_limit = half_budget;
     state_->local_pending_pause_threshold = half_budget;
     state_->local_pending_resume_threshold =
       std::max (half_budget / 2, pending_queue_bytes_floor / 2);
@@ -528,7 +584,9 @@ void spot_data_plane_forwarder_t::refresh_poller_interest (
 
     const bool pause_ingress =
       state_->local_pending_bytes >= state_->local_pending_pause_threshold
-      || state_->mesh_pending_bytes >= state_->mesh_pending_pause_threshold;
+      || state_->mesh_pending_bytes >= state_->mesh_pending_pause_threshold
+      || !state_->ingress_staged_messages.empty ()
+      || !state_->mesh_staged_messages.empty ();
     const bool resume_ingress =
       state_->local_pending_bytes <= state_->local_pending_resume_threshold
       && state_->mesh_pending_bytes <= state_->mesh_pending_resume_threshold;
@@ -538,7 +596,9 @@ void spot_data_plane_forwarder_t::refresh_poller_interest (
         state_->ingress_pollin_paused = false;
 
     const bool pause_mesh =
-      state_->mesh_pending_bytes >= state_->mesh_pending_pause_threshold;
+      state_->mesh_pending_bytes >= state_->mesh_pending_pause_threshold
+      || !state_->mesh_staged_messages.empty ()
+      || !state_->ingress_staged_messages.empty ();
     const bool resume_mesh =
       state_->mesh_pending_bytes <= state_->mesh_pending_resume_threshold;
     if (!state_->mesh_xsub_pollin_paused && pause_mesh)
@@ -604,6 +664,15 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
     if (state_->local_targets.empty ())
         return 0;
 
+    const size_t encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+    if (!pending_queue_has_room_local (state_->local_pending_bytes,
+                                       state_->local_pending_hard_limit,
+                                       encoded_bytes)) {
+        refresh_poller_interest (state_);
+        errno = EAGAIN;
+        return -1;
+    }
+
     uint64_t local_pending_message_id = 0;
     for (std::map<uint64_t, spot_data_plane_runtime_state_t::local_target_state_t>::
            iterator target_it = state_->local_targets.begin ();
@@ -644,6 +713,15 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
         return -1;
     }
 
+    const size_t encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+    if (!pending_queue_has_room_local (state_->mesh_pending_bytes,
+                                       state_->mesh_pending_hard_limit,
+                                       encoded_bytes)) {
+        refresh_poller_interest (state_);
+        errno = EAGAIN;
+        return -1;
+    }
+
     pump_socket_commands (state_->mesh_pub);
     state_->mesh_pub->set_all_pipes_nodelay ();
     if (state_->mesh_broadcast_pending_message_ids.empty ()
@@ -661,6 +739,95 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
     if (!enqueue_mesh_broadcast_pending_local (state_, topic_, parts_,
                                                &mesh_pending_message_id)) {
         return -1;
+    }
+
+    refresh_poller_interest (state_);
+    return 0;
+}
+
+int spot_data_plane_forwarder_t::stage_message (
+  spot_data_plane_runtime_state_t *state_,
+  const std::string &topic_,
+  const spot_owned_msg_parts_t &parts_,
+  bool source_mesh_,
+  bool need_local_,
+  bool need_mesh_)
+{
+    if (!state_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> &queue =
+      source_mesh_ ? state_->mesh_staged_messages
+                   : state_->ingress_staged_messages;
+    if (!stage_publish_message_local (&queue, topic_, parts_, need_local_,
+                                      need_mesh_)) {
+        if (errno == 0)
+            errno = ENOMEM;
+        return -1;
+    }
+    refresh_poller_interest (state_);
+    return 0;
+}
+
+int spot_data_plane_forwarder_t::flush_staged_messages (
+  spot_runtime_t *runtime_, spot_data_plane_runtime_state_t *state_)
+{
+    if (!runtime_ || !state_)
+        return 0;
+
+    while (!state_->ingress_staged_messages.empty ()) {
+        spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
+          state_->ingress_staged_messages.front ();
+        if (entry.need_local) {
+            if (state_->local_targets.empty ()) {
+                entry.need_local = false;
+            } else if (forward_local_fanout (runtime_, state_, entry.topic,
+                                             entry.parts)
+                       != 0) {
+                if (errno == EAGAIN)
+                    break;
+                return -1;
+            } else {
+                entry.need_local = false;
+            }
+        }
+        if (entry.need_mesh) {
+            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts)
+                != 0) {
+                if (errno == EAGAIN)
+                    break;
+                return -1;
+            }
+            entry.need_mesh = false;
+        }
+        if (entry.need_local || entry.need_mesh)
+            break;
+        spot_clear_msg_parts (&entry.parts);
+        state_->ingress_staged_messages.pop_front ();
+    }
+
+    while (!state_->mesh_staged_messages.empty ()) {
+        spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
+          state_->mesh_staged_messages.front ();
+        if (entry.need_local) {
+            if (state_->local_targets.empty ()) {
+                entry.need_local = false;
+            } else if (forward_local_fanout (runtime_, state_, entry.topic,
+                                             entry.parts)
+                       != 0) {
+                if (errno == EAGAIN)
+                    break;
+                return -1;
+            } else {
+                entry.need_local = false;
+            }
+        }
+        if (entry.need_local)
+            break;
+        spot_clear_msg_parts (&entry.parts);
+        state_->mesh_staged_messages.pop_front ();
     }
 
     refresh_poller_interest (state_);
@@ -848,11 +1015,24 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
 
         if (!state_->local_targets.empty ()
             && forward_local_fanout (runtime_, state_, topic, parts) != 0) {
+            if (errno == EAGAIN
+                && stage_message (state_, topic, parts, false, true,
+                                  mesh_pub_ != NULL)
+                     == 0) {
+                spot_clear_msg_parts (&parts);
+                return 0;
+            }
             spot_clear_msg_parts (&parts);
             return -1;
         }
 
         if (mesh_pub_ && forward_mesh_pub (runtime_, state_, topic, parts) != 0) {
+            if (errno == EAGAIN
+                && stage_message (state_, topic, parts, false, false, true)
+                     == 0) {
+                spot_clear_msg_parts (&parts);
+                return 0;
+            }
             spot_clear_msg_parts (&parts);
             return -1;
         }

@@ -257,6 +257,14 @@ inline bool bench_transition_debug_enabled()
     return enabled;
 }
 
+inline bool bench_manual_socket_overrides_allowed()
+{
+    const char *value = resolve_multi_env_value(
+      "PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES",
+      "PERF_ALLOW_MANUAL_SOCKET_OVERRIDES");
+    return value && std::strcmp(value, "1") == 0;
+}
+
 inline int bench_hwm_from_env(const char *name_, int default_hwm_)
 {
     if (!name_ || !*name_)
@@ -278,6 +286,9 @@ inline int bench_hwm_from_env(const char *name_, int default_hwm_)
 
 inline void apply_benchmark_hwm(void *socket_, int hwm_value)
 {
+    if (!bench_manual_socket_overrides_allowed())
+        return;
+
     const char *sndhwm_raw = resolve_multi_named_env_value("PERF_SNDHWM");
     const char *rcvhwm_raw = resolve_multi_named_env_value("PERF_RCVHWM");
     const bool explicit_sndhwm = sndhwm_raw && *sndhwm_raw;
@@ -396,8 +407,14 @@ inline void apply_benchmark_socket_options(void *socket_,
 
     const int linger_ms = 0;
     const int tcp_nodelay = 1;
-    const int sndbuf = bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1);
-    const int rcvbuf = bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1);
+    const int sndbuf =
+      bench_manual_socket_overrides_allowed()
+        ? bench_socket_buffer_bytes_from_env("PERF_SNDBUF", -1)
+        : -1;
+    const int rcvbuf =
+      bench_manual_socket_overrides_allowed()
+        ? bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1)
+        : -1;
     set_sockopt_int(socket_, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     if (transport == "tcp") {
         set_sockopt_int(

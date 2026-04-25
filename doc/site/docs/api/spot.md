@@ -45,6 +45,23 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 ## SpotNode contract
 
+The default HWM values used by SpotNode and Spot internal raw sockets are
+not fixed constants anymore. They come from the context automatic HWM
+policy. Manual `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM`,
+`ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`,
+`ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`, and
+`ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` settings override those automatic
+values. With the default context settings, topic send starts from the
+`fanout` floor `16`, while topic recv and routed send/recv start from floor
+`8`.
+
+`ZLINK_SPOT_NODE_OPT_WEIGHT` and `ZLINK_SPOT_OPT_WEIGHT` advertise the local
+peer weight to connected peers. They use `int`, range `0..100`, default
+`100`. A value of `0` drains the node from new outbound selection without
+tearing down the connection. Returning to a positive value makes the existing
+peer eligible again. Replies for requests that are already in flight are not
+blocked by this weight check.
+
 ### Topology and discovery
 
 ```c

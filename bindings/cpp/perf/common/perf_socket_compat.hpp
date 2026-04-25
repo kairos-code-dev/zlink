@@ -669,9 +669,6 @@ class socket_t
                     case router_option::mandatory:
                         options.mandatory (static_cast<int> (value_) != 0);
                         return 0;
-                    case router_option::handover:
-                        options.handover (static_cast<int> (value_) != 0);
-                        return 0;
                     case router_option::probe:
                         options.probe_router (static_cast<int> (value_) != 0);
                         return 0;

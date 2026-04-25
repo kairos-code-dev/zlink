@@ -62,8 +62,8 @@ func TestSocketSpecificOptions(t *testing.T) {
 	if err := router.SetMandatory(true); err != nil {
 		t.Fatalf("SetMandatory() error = %v", err)
 	}
-	if err := router.SetHandover(true); err != nil {
-		t.Fatalf("SetHandover() error = %v", err)
+	if err := router.SetRidDuplicatePolicy(int(zlink.RidDuplicateHandover)); err != nil {
+		t.Fatalf("SetRidDuplicatePolicy() error = %v", err)
 	}
 	if err := router.SetProbe(true); err != nil {
 		t.Fatalf("SetProbe() error = %v", err)

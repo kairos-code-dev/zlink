@@ -169,14 +169,6 @@ class RouterSocketOptions:
         self._socket._set_router_bool_option(RouterOption.MANDATORY, enabled)
 
     @property
-    def handover(self):
-        return self._socket._get_router_bool_option(RouterOption.HANDOVER)
-
-    @handover.setter
-    def handover(self, enabled):
-        self._socket._set_router_bool_option(RouterOption.HANDOVER, enabled)
-
-    @property
     def probe(self):
         return self._socket._get_router_bool_option(RouterOption.PROBE)
 
@@ -667,6 +659,12 @@ class RouterSocket(
 
 class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingIdSocket, _RoutedMessageSocket):
     _socket_type_value = SocketType.STREAM
+
+    def disconnect_rid(self, peer_rid):
+        native = _copy_routing_id(peer_rid)
+        rc = lib().zlink_disconnect_rid(self._handle, ctypes.byref(native))
+        if rc != 0:
+            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
     def on_packet(self, handler):
         if handler is None:

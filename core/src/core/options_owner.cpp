@@ -180,7 +180,6 @@ zlink::router_option_owner_of (zlink_router_option_t option_)
 {
     switch (option_) {
         case ZLINK_ROUTER_OPT_MANDATORY:
-        case ZLINK_ROUTER_OPT_HANDOVER:
         case ZLINK_ROUTER_OPT_PROBE:
         case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
             return options_owner_service_specific;

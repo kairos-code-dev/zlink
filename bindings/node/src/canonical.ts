@@ -13,7 +13,9 @@ import {
   type MessageSnapshot
 } from './message';
 import { validateCString } from './validation';
-import { SocketType, SocketOption, SendFlags, RecvFlags } from './socket/constants';
+import {
+  SocketType, SocketOption, SendFlags, RecvFlags, RidDuplicatePolicy
+} from './socket/constants';
 import {
   BindError,
   BindResult,
@@ -44,6 +46,7 @@ export {
   SubscriptionEvent,
   SendFlags,
   RecvFlags,
+  RidDuplicatePolicy,
   SubmitResult,
   RequestResult,
   RecvResult,
@@ -96,6 +99,37 @@ export interface MonitorSnapshot {
   readonly detailFlags: number;
   readonly sndPendingMsgs: bigint;
   readonly rcvPendingMsgs: bigint;
+  readonly autoHwmEnabled: boolean;
+  readonly autoHwmRole: number;
+  readonly autoHwmManagedConnections: number;
+  readonly autoHwmActiveHwmConnections: number;
+  readonly autoHwmPlanningTransportConnections: number;
+  readonly autoHwmBaseFloorPerConnection: number;
+  readonly autoHwmAppliedSndHwm: number;
+  readonly autoHwmAppliedRcvHwm: number;
+  readonly autoHwmRequestedSndBuf: number;
+  readonly autoHwmRequestedRcvBuf: number;
+  readonly autoHwmEffectiveSndBuf: number;
+  readonly autoHwmEffectiveRcvBuf: number;
+  readonly autoHwmTotalMemoryBudgetBytes: bigint;
+  readonly autoHwmQueueBudgetBytes: bigint;
+  readonly autoHwmTransportBudgetBytes: bigint;
+  readonly autoHwmRuntimeReserveBytes: bigint;
+  readonly autoHwmGroupBudgetBytes: bigint;
+  readonly autoHwmGroupMessageSlots: bigint;
+  readonly autoHwmEffectiveMessageBytes: bigint;
+  readonly autoHwmControlBudgetBytes: bigint;
+  readonly autoHwmRoutedBudgetBytes: bigint;
+  readonly autoHwmFanoutBudgetBytes: bigint;
+  readonly autoHwmRecvIngressBudgetBytes: bigint;
+  readonly autoHwmControlActiveConnections: number;
+  readonly autoHwmRoutedActiveConnections: number;
+  readonly autoHwmFanoutActiveConnections: number;
+  readonly autoHwmRecvIngressActiveConnections: number;
+  readonly autoHwmEstimatedMaxMemoryBytes: bigint;
+  readonly autoHwmLastRecalcMs: bigint;
+  readonly autoHwmLastRecalcReason: number;
+  readonly autoHwmSendBlockedRatioPpm: number;
   isReady(): boolean;
 }
 
@@ -105,6 +139,37 @@ interface MonitorSnapshotRaw {
   detailFlags: number;
   sndPendingMsgs: number | bigint;
   rcvPendingMsgs: number | bigint;
+  autoHwmEnabled: boolean;
+  autoHwmRole: number;
+  autoHwmManagedConnections: number;
+  autoHwmActiveHwmConnections: number;
+  autoHwmPlanningTransportConnections: number;
+  autoHwmBaseFloorPerConnection: number;
+  autoHwmAppliedSndHwm: number;
+  autoHwmAppliedRcvHwm: number;
+  autoHwmRequestedSndBuf: number;
+  autoHwmRequestedRcvBuf: number;
+  autoHwmEffectiveSndBuf: number;
+  autoHwmEffectiveRcvBuf: number;
+  autoHwmTotalMemoryBudgetBytes: number | bigint;
+  autoHwmQueueBudgetBytes: number | bigint;
+  autoHwmTransportBudgetBytes: number | bigint;
+  autoHwmRuntimeReserveBytes: number | bigint;
+  autoHwmGroupBudgetBytes: number | bigint;
+  autoHwmGroupMessageSlots: number | bigint;
+  autoHwmEffectiveMessageBytes: number | bigint;
+  autoHwmControlBudgetBytes: number | bigint;
+  autoHwmRoutedBudgetBytes: number | bigint;
+  autoHwmFanoutBudgetBytes: number | bigint;
+  autoHwmRecvIngressBudgetBytes: number | bigint;
+  autoHwmControlActiveConnections: number;
+  autoHwmRoutedActiveConnections: number;
+  autoHwmFanoutActiveConnections: number;
+  autoHwmRecvIngressActiveConnections: number;
+  autoHwmEstimatedMaxMemoryBytes: number | bigint;
+  autoHwmLastRecalcMs: number | bigint;
+  autoHwmLastRecalcReason: number;
+  autoHwmSendBlockedRatioPpm: number;
 }
 
 interface MonitorEventValueRaw {
@@ -507,6 +572,37 @@ function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
     detailFlags: raw.detailFlags,
     sndPendingMsgs: BigInt(raw.sndPendingMsgs),
     rcvPendingMsgs: BigInt(raw.rcvPendingMsgs),
+    autoHwmEnabled: raw.autoHwmEnabled,
+    autoHwmRole: raw.autoHwmRole,
+    autoHwmManagedConnections: raw.autoHwmManagedConnections,
+    autoHwmActiveHwmConnections: raw.autoHwmActiveHwmConnections,
+    autoHwmPlanningTransportConnections: raw.autoHwmPlanningTransportConnections,
+    autoHwmBaseFloorPerConnection: raw.autoHwmBaseFloorPerConnection,
+    autoHwmAppliedSndHwm: raw.autoHwmAppliedSndHwm,
+    autoHwmAppliedRcvHwm: raw.autoHwmAppliedRcvHwm,
+    autoHwmRequestedSndBuf: raw.autoHwmRequestedSndBuf,
+    autoHwmRequestedRcvBuf: raw.autoHwmRequestedRcvBuf,
+    autoHwmEffectiveSndBuf: raw.autoHwmEffectiveSndBuf,
+    autoHwmEffectiveRcvBuf: raw.autoHwmEffectiveRcvBuf,
+    autoHwmTotalMemoryBudgetBytes: BigInt(raw.autoHwmTotalMemoryBudgetBytes),
+    autoHwmQueueBudgetBytes: BigInt(raw.autoHwmQueueBudgetBytes),
+    autoHwmTransportBudgetBytes: BigInt(raw.autoHwmTransportBudgetBytes),
+    autoHwmRuntimeReserveBytes: BigInt(raw.autoHwmRuntimeReserveBytes),
+    autoHwmGroupBudgetBytes: BigInt(raw.autoHwmGroupBudgetBytes),
+    autoHwmGroupMessageSlots: BigInt(raw.autoHwmGroupMessageSlots),
+    autoHwmEffectiveMessageBytes: BigInt(raw.autoHwmEffectiveMessageBytes),
+    autoHwmControlBudgetBytes: BigInt(raw.autoHwmControlBudgetBytes),
+    autoHwmRoutedBudgetBytes: BigInt(raw.autoHwmRoutedBudgetBytes),
+    autoHwmFanoutBudgetBytes: BigInt(raw.autoHwmFanoutBudgetBytes),
+    autoHwmRecvIngressBudgetBytes: BigInt(raw.autoHwmRecvIngressBudgetBytes),
+    autoHwmControlActiveConnections: raw.autoHwmControlActiveConnections,
+    autoHwmRoutedActiveConnections: raw.autoHwmRoutedActiveConnections,
+    autoHwmFanoutActiveConnections: raw.autoHwmFanoutActiveConnections,
+    autoHwmRecvIngressActiveConnections: raw.autoHwmRecvIngressActiveConnections,
+    autoHwmEstimatedMaxMemoryBytes: BigInt(raw.autoHwmEstimatedMaxMemoryBytes),
+    autoHwmLastRecalcMs: BigInt(raw.autoHwmLastRecalcMs),
+    autoHwmLastRecalcReason: raw.autoHwmLastRecalcReason,
+    autoHwmSendBlockedRatioPpm: raw.autoHwmSendBlockedRatioPpm,
     isReady(): boolean {
       return (this.stateFlags & MonitorState.READY) !== 0;
     }
@@ -835,6 +931,13 @@ class ConnectableSocket extends BaseSocket {
   disconnect(endpoint: string): void {
     requireNative().socketDisconnect(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
   }
+
+  disconnectRid(peerRid: RoutingId): void {
+    requireNative().socketDisconnectRid(
+      this.nativeHandle(),
+      normalizeRoutingId(peerRid)
+    );
+  }
 }
 
 function int32Buffer(value: number, name: string): Buffer {
@@ -904,6 +1007,8 @@ export class CommonSocketOptions {
   set recvTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.RCVTIMEO, int32Buffer(value, 'recvTimeout')); }
   get immediate(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.IMMEDIATE), 'immediate'); }
   set immediate(value: boolean) { this._socket.setSockOptRaw(SocketOption.IMMEDIATE, boolBuffer(value)); }
+  get ridDuplicatePolicy(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.RID_DUPLICATE_POLICY), 'ridDuplicatePolicy'); }
+  set ridDuplicatePolicy(value: number) { this._socket.setSockOptRaw(SocketOption.RID_DUPLICATE_POLICY, int32Buffer(value, 'ridDuplicatePolicy')); }
   get connectTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.CONNECT_TIMEOUT), 'connectTimeout'); }
   set connectTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.CONNECT_TIMEOUT, int32Buffer(value, 'connectTimeout')); }
   get ipv6(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.IPV6), 'ipv6'); }
@@ -934,8 +1039,6 @@ export class DealerSocketOptions extends CommonSocketOptions {
 export class RouterSocketOptions extends CommonSocketOptions {
   get mandatory(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.ROUTER_MANDATORY), 'mandatory'); }
   set mandatory(value: boolean) { this._socket.setSockOptRaw(SocketOption.ROUTER_MANDATORY, boolBuffer(value)); }
-  get handover(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.ROUTER_HANDOVER), 'handover'); }
-  set handover(value: boolean) { this._socket.setSockOptRaw(SocketOption.ROUTER_HANDOVER, boolBuffer(value)); }
   get probe(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.PROBE_ROUTER), 'probe'); }
   set probe(value: boolean) { this._socket.setSockOptRaw(SocketOption.PROBE_ROUTER, boolBuffer(value)); }
   set connectRoutingId(value: RoutingId) {
@@ -1560,6 +1663,12 @@ export class StreamSocket extends BaseSocket {
       requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
     );
   }
+  disconnectRid(peerRid: RoutingId): void {
+    requireNative().socketDisconnectRid(
+      this.nativeHandle(),
+      normalizeRoutingId(peerRid)
+    );
+  }
 }
 
 export class Registry extends NativeHandle {
@@ -1655,6 +1764,12 @@ export class SpotNode extends NativeHandle {
   bind(endpoint: string): void { requireNative().spotNodeBind(this._native, validateCString(endpoint, 'endpoint')); }
   connectPeer(endpoint: string): void { requireNative().spotNodeConnectPeerPub(this._native, validateCString(endpoint, 'endpoint')); }
   disconnectPeer(endpoint: string): void { requireNative().spotNodeDisconnectPeerPub(this._native, validateCString(endpoint, 'endpoint')); }
+  disconnectPeerRid(targetNodeRid: RoutingId): void {
+    requireNative().spotNodeDisconnectPeerRidPub(
+      this._native,
+      normalizeRoutingId(targetNodeRid)
+    );
+  }
   attachChannelDealer(discovery: Discovery, dealer: DealerSocket): void {
     requireNative().spotNodeAttachChannelDealer(
       this._native,

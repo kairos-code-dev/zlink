@@ -112,6 +112,18 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_group_budget_bytes;
     uint64_t auto_hwm_group_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
+    uint64_t auto_hwm_control_budget_bytes;
+    uint64_t auto_hwm_routed_budget_bytes;
+    uint64_t auto_hwm_fanout_budget_bytes;
+    uint64_t auto_hwm_recv_ingress_budget_bytes;
+    uint32_t auto_hwm_control_active_connections;
+    uint32_t auto_hwm_routed_active_connections;
+    uint32_t auto_hwm_fanout_active_connections;
+    uint32_t auto_hwm_recv_ingress_active_connections;
+    uint64_t auto_hwm_estimated_max_memory_bytes;
+    uint64_t auto_hwm_last_recalc_ms;
+    uint32_t auto_hwm_last_recalc_reason;
+    uint32_t auto_hwm_send_blocked_ratio_ppm;
 } zlink_monitor_snapshot_t;
 ```
 
@@ -141,6 +153,18 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_group_budget_bytes` | 현재 역할 묶음에 배정된 큐 예산 |
 | `auto_hwm_group_message_slots` | 현재 역할 묶음 예산을 실효 메시지 크기로 나눈 슬롯 수 |
 | `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 바이트 |
+| `auto_hwm_control_budget_bytes` | control 역할 묶음에 배정된 큐 예산 |
+| `auto_hwm_routed_budget_bytes` | routed 역할 묶음에 배정된 큐 예산 |
+| `auto_hwm_fanout_budget_bytes` | fanout 역할 묶음에 배정된 큐 예산 |
+| `auto_hwm_recv_ingress_budget_bytes` | recv_ingress 역할 묶음에 배정된 큐 예산 |
+| `auto_hwm_control_active_connections` | 현재 snapshot에서 control 역할 묶음에 기록된 active 연결 수. 이 source가 다른 역할이면 `0` |
+| `auto_hwm_routed_active_connections` | 현재 snapshot에서 routed 역할 묶음에 기록된 active 연결 수. 이 source가 다른 역할이면 `0` |
+| `auto_hwm_fanout_active_connections` | 현재 snapshot에서 fanout 역할 묶음에 기록된 active 연결 수. 이 source가 다른 역할이면 `0` |
+| `auto_hwm_recv_ingress_active_connections` | 현재 snapshot에서 recv_ingress 역할 묶음에 기록된 active 연결 수. 이 source가 다른 역할이면 `0` |
+| `auto_hwm_estimated_max_memory_bytes` | 현재 context 예산 기준으로 추정한 최대 메모리 상한 |
+| `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
+| `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
+| `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure 로 막힌 비율(ppm) |
 
 ## 상수
 

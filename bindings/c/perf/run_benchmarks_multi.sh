@@ -336,11 +336,12 @@ Options:
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
-  --hwm N                Override PERF_MULTI_HWM (default: unset; auto-HWM decides).
-  --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
-  --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
-  --sndbuf SIZE          Override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
-  --rcvbuf SIZE          Override PERF_MULTI_RCVBUF (e.g. 64b, 1k, 64k).
+  --hwm N                Debug-only override PERF_MULTI_HWM.
+                         Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
+  --send-hwm N           Debug-only override PERF_MULTI_SNDHWM (fallback: --hwm).
+  --recv-hwm N           Debug-only override PERF_MULTI_RCVHWM (fallback: --hwm).
+  --sndbuf SIZE          Debug-only override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
+  --rcvbuf SIZE          Debug-only override PERF_MULTI_RCVBUF (e.g. 64b, 1k, 64k).
   --sndtimeo N           Override PERF_MULTI_SNDTIMEO_MS (default: 200).
   --rcvtimeo N           Override PERF_MULTI_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N    Alias of --sndtimeo.
@@ -531,6 +532,7 @@ SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
 STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-${PERF_STREAM_SERVER_IO_THREADS:-}}"
 STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-${PERF_STREAM_CLIENT_IO_THREADS:-}}"
+ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
 set_build_mode() {
   local next_mode="${1:-}"
   if [[ "${next_mode}" != "incremental" && "${next_mode}" != "reuse" && "${next_mode}" != "clean" ]]; then
@@ -813,6 +815,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -n "${HWM}" || -n "${SNDHWM}" || -n "${RCVHWM}" || -n "${SNDBUF}" || -n "${RCVBUF}" ]]; then
+  if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" != "1" ]]; then
+    echo "Error: manual HWM/SNDBUF/RCVBUF overrides are debug-only." >&2
+    echo "Set PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--sndbuf/--rcvbuf." >&2
+    exit 1
+  fi
+fi
+
 if ! is_uint "${TRANSPORT_TRANSITION_MS}"; then
   echo "Error: --transport-transition-ms must be a non-negative integer." >&2
   exit 1
@@ -997,6 +1007,9 @@ if [[ -n "${SNDBUF}" ]]; then
 fi
 if [[ -n "${RCVBUF}" ]]; then
   RUN_ENV+=(PERF_MULTI_RCVBUF="${RCVBUF}")
+fi
+if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+  RUN_ENV+=(PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1)
 fi
 if [[ -n "${SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_SNDTIMEO_MS="${SNDTIMEO_MS}")

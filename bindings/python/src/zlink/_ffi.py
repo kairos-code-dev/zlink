@@ -45,6 +45,37 @@ class ZlinkMonitorSnapshot(ctypes.Structure):
         ("detail_flags", ctypes.c_uint32),
         ("snd_pending_msgs", ctypes.c_uint64),
         ("rcv_pending_msgs", ctypes.c_uint64),
+        ("auto_hwm_enabled", ctypes.c_uint32),
+        ("auto_hwm_role", ctypes.c_uint32),
+        ("auto_hwm_managed_connections", ctypes.c_uint32),
+        ("auto_hwm_active_hwm_connections", ctypes.c_uint32),
+        ("auto_hwm_planning_transport_connections", ctypes.c_uint32),
+        ("auto_hwm_base_floor_per_connection", ctypes.c_uint32),
+        ("auto_hwm_applied_sndhwm", ctypes.c_int32),
+        ("auto_hwm_applied_rcvhwm", ctypes.c_int32),
+        ("auto_hwm_requested_sndbuf", ctypes.c_int32),
+        ("auto_hwm_requested_rcvbuf", ctypes.c_int32),
+        ("auto_hwm_effective_sndbuf", ctypes.c_int32),
+        ("auto_hwm_effective_rcvbuf", ctypes.c_int32),
+        ("auto_hwm_total_memory_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_queue_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_transport_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_runtime_reserve_bytes", ctypes.c_uint64),
+        ("auto_hwm_group_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_group_message_slots", ctypes.c_uint64),
+        ("auto_hwm_effective_message_bytes", ctypes.c_uint64),
+        ("auto_hwm_control_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_routed_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_fanout_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_recv_ingress_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_control_active_connections", ctypes.c_uint32),
+        ("auto_hwm_routed_active_connections", ctypes.c_uint32),
+        ("auto_hwm_fanout_active_connections", ctypes.c_uint32),
+        ("auto_hwm_recv_ingress_active_connections", ctypes.c_uint32),
+        ("auto_hwm_estimated_max_memory_bytes", ctypes.c_uint64),
+        ("auto_hwm_last_recalc_ms", ctypes.c_uint64),
+        ("auto_hwm_last_recalc_reason", ctypes.c_uint32),
+        ("auto_hwm_send_blocked_ratio_ppm", ctypes.c_uint32),
     ]
 
 
@@ -542,6 +573,11 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_disconnect_rid",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkRoutingId)],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_socket_attach_discovery",
             [ctypes.c_void_p, ctypes.c_void_p],
             ctypes.c_int,
@@ -851,6 +887,11 @@ class _Lib:
         self._require(
             "zlink_spot_node_disconnect_peer",
             [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_disconnect_peer_rid",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkRoutingId)],
             ctypes.c_int,
         )
         self._require(

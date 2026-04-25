@@ -12,6 +12,7 @@ from ._enums import (
     ConnectResult,
     HandlerResult,
     MonitorEventMask,
+    RidDuplicatePolicy,
     SocketOption,
     SocketType,
     SubmitResult,
@@ -243,6 +244,20 @@ class CommonSocketOptions:
     @immediate.setter
     def immediate(self, value):
         self._socket._set_common_bool_option(SocketOption.IMMEDIATE, value)
+
+    @property
+    def rid_duplicate_policy(self):
+        value = self._socket._get_common_int_option(
+            SocketOption.RID_DUPLICATE_POLICY
+        )
+        return RidDuplicatePolicy(value)
+
+    @rid_duplicate_policy.setter
+    def rid_duplicate_policy(self, value):
+        policy = RidDuplicatePolicy(value)
+        self._socket._set_common_int_option(
+            SocketOption.RID_DUPLICATE_POLICY, int(policy)
+        )
 
     @property
     def connect_timeout_ms(self):
@@ -857,6 +872,12 @@ class _ConnectSocket(_Socket):
             self._handle,
             _validated_c_string_text(endpoint, field="endpoint", max_length=255),
         )
+        if rc != 0:
+            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
+
+    def disconnect_rid(self, peer_rid):
+        native = _copy_routing_id(peer_rid)
+        rc = lib().zlink_disconnect_rid(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 

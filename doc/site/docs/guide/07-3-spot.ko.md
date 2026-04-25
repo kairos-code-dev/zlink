@@ -100,6 +100,32 @@ peer endpoint를 모르고 target node의 routing id만 알고 있으면
 이 함수는 `SpotNode`에 호출한다. `Spot` facade는 개별 peer 연결을 직접
 소유하지 않으므로 별도 rid disconnect 함수를 제공하지 않는다.
 
+### 3.3 weight로 새 outbound만 비우기
+
+peer 연결은 유지한 채 새 routed/channel 요청만 잠시 빼고 싶으면
+`ZLINK_SPOT_NODE_OPT_WEIGHT` 또는 `ZLINK_SPOT_OPT_WEIGHT`를 `0`으로 둔다.
+값 범위는 `0..100`, 기본값은 `100`이다.
+
+```c
+int drain_weight = 0;
+zlink_set_spot_node_option(
+  node,
+  ZLINK_SPOT_NODE_OPT_WEIGHT,
+  &drain_weight,
+  sizeof(drain_weight));
+
+int serve_weight = 100;
+zlink_set_spot_option(
+  spot,
+  ZLINK_SPOT_OPT_WEIGHT,
+  &serve_weight,
+  sizeof(serve_weight));
+```
+
+weight가 `0`이면 다른 peer가 이 node를 새 outbound 후보에서 제외한다. 기존
+연결과 이미 진행 중인 request의 reply는 그대로 유지된다. maintenance가 끝나면
+다시 양수 값으로 올리면 된다.
+
 ## 4. 토픽 publish/subscribe
 
 SPOT topic plane은 `service_name + topic_id`를 함께 사용한다.

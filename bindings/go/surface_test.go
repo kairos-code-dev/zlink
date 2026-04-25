@@ -133,6 +133,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "RoutingID") {
 		t.Fatalf("SpotNode should expose RoutingID")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "DisconnectPeerRID") {
+		t.Fatalf("SpotNode should expose DisconnectPeerRID")
+	}
 	if !hasMethod((*zlink.Spot)(nil), "Publish") {
 		t.Fatalf("Spot should expose Publish")
 	}
@@ -311,6 +314,12 @@ func TestSurfaceTypedOptionMethods(t *testing.T) {
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "SetMandatory") {
 		t.Fatalf("RouterSocket should expose router-specific options")
+	}
+	if !hasMethod((*zlink.PairSocket)(nil), "DisconnectRID") {
+		t.Fatalf("PairSocket should expose disconnect by routing id")
+	}
+	if !hasMethod((*zlink.RouterSocket)(nil), "SetRidDuplicatePolicy") {
+		t.Fatalf("RouterSocket should expose rid duplicate policy")
 	}
 	if !hasMethod((*zlink.DealerSocket)(nil), "SetProbe") {
 		t.Fatalf("DealerSocket should expose dealer-specific options")

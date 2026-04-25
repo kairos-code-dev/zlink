@@ -45,6 +45,10 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string addr);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_disconnect_rid(IntPtr socket,
+        ref ZlinkRoutingId peerRoutingId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_send_part(IntPtr socket, ref ZlinkMsg part,
         int flags, ZlinkPartFlag partFlag);
 

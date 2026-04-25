@@ -23,8 +23,11 @@ void test_with_handover ()
       endpoint_for (transport_case_t{"tcp", ""}, "router-handover-on");
     router.bind (endpoint);
 
-    const int handover = 1;
-    assert (router.set_option (zlink::socket_option::router_handover, handover) == 0);
+    const int duplicate_policy = ZLINK_RID_DUPLICATE_HANDOVER;
+    assert (
+      router.set_option (zlink::socket_option::rid_duplicate_policy,
+                         duplicate_policy)
+      == 0);
 
     zlink::dealer_socket_t dealer_one (ctx);
     assert (dealer_one.set_option (zlink::socket_option::routing_id, "X", 1) == 0);

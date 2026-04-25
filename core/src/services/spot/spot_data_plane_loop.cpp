@@ -91,6 +91,7 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     (void) spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_);
     (void) spot_data_plane_forwarder_t::flush_local_fanout_pending (runtime_,
                                                                     state_);
+    (void) spot_data_plane_forwarder_t::flush_staged_messages (runtime_, state_);
     spot_data_plane_forwarder_t::refresh_poller_interest (state_);
 }
 
@@ -247,6 +248,13 @@ bool handle_pollout_event (socket_base_t *socket_,
 
     if (spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_,
                                                              socket_)
+        != 0) {
+        *fatal_errno_out_ = errno;
+        *running_out_ = false;
+        return true;
+    }
+
+    if (spot_data_plane_forwarder_t::flush_staged_messages (runtime_, state_)
         != 0) {
         *fatal_errno_out_ = errno;
         *running_out_ = false;

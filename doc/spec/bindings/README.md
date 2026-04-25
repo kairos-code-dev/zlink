@@ -248,8 +248,8 @@ public shape를 기준으로 고정한다.
   내부 정책이 `(routing_id, advertise endpoint)` 전순서로 initiator 를
   선정한다. 사용자가 설정하는 옵션이 아니다.
 - socket 기본값: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
-  `ZLINK_ROUTER_OPT_HANDOVER` = `0`, `ZLINK_OPT_RID_DUPLICATE_POLICY` =
-  `ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_PUB_OPT_NODROP` = `1`.
+  `ZLINK_OPT_RID_DUPLICATE_POLICY` = `ZLINK_RID_DUPLICATE_REJECT`,
+  `ZLINK_PUB_OPT_NODROP` = `1`.
   바인딩 예제는 이 기본값을 기준으로 작성한다.
 
 ## 문서 해석 규칙
@@ -800,6 +800,7 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 | `detail_flags` | `uint32` | 세부 비트마스크 |
 | `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
 | `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
+| `auto_hwm_*` budget/buffer/diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t` 의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. 역할 묶음별 budget, 역할 묶음별 active connection 수, 최근 재계산 정보, blocked ratio 를 포함한다 |
 | `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
 
 #### `ServiceEvent`

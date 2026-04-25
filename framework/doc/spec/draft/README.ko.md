@@ -16,6 +16,7 @@ draft 문서는 현재 공개 계약이 아니다.
 | 문서 | 설명 |
 |------|------|
 | [framework-adapter/README.ko.md](./framework-adapter/README.ko.md) | `ZLink Framework` 초안 묶음의 진입점 |
+| [streaming-client.ko.md](./streaming-client.ko.md) | STREAM 서버에 접속하는 범용 client connector 초안 |
 
 ## 관리 원칙
 

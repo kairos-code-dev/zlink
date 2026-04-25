@@ -147,8 +147,6 @@ int map_router_option (zlink_router_option_t option_)
     switch (option_) {
         case ZLINK_ROUTER_OPT_MANDATORY:
             return ZLINK_INTERNAL_OPT_ROUTER_MANDATORY;
-        case ZLINK_ROUTER_OPT_HANDOVER:
-            return ZLINK_INTERNAL_OPT_ROUTER_HANDOVER;
         case ZLINK_ROUTER_OPT_PROBE:
             return ZLINK_INTERNAL_OPT_PROBE_ROUTER;
         case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:

@@ -1,4 +1,4 @@
-use std::ffi::{CStr, c_void};
+use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ops::{BitOr, BitOrAssign};
@@ -94,8 +94,8 @@ pub const SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED: ServiceMonitorEventMask =
     ServiceMonitorEventMask::CLOSED;
 
 use crate::error::{
-    CloseError, ConfigError, HandlerError, RecvError, check_close_rc, check_config_rc,
-    check_handler_rc, check_recv_rc,
+    check_close_rc, check_config_rc, check_handler_rc, check_recv_rc, CloseError, ConfigError,
+    HandlerError, RecvError,
 };
 use crate::ffi;
 use crate::message::RoutingId;
@@ -232,6 +232,37 @@ pub struct MonitorSnapshot {
     pub detail_flags: u32,
     pub snd_pending_msgs: u64,
     pub rcv_pending_msgs: u64,
+    pub auto_hwm_enabled: bool,
+    pub auto_hwm_role: u32,
+    pub auto_hwm_managed_connections: u32,
+    pub auto_hwm_active_hwm_connections: u32,
+    pub auto_hwm_planning_transport_connections: u32,
+    pub auto_hwm_base_floor_per_connection: u32,
+    pub auto_hwm_applied_sndhwm: i32,
+    pub auto_hwm_applied_rcvhwm: i32,
+    pub auto_hwm_requested_sndbuf: i32,
+    pub auto_hwm_requested_rcvbuf: i32,
+    pub auto_hwm_effective_sndbuf: i32,
+    pub auto_hwm_effective_rcvbuf: i32,
+    pub auto_hwm_total_memory_budget_bytes: u64,
+    pub auto_hwm_queue_budget_bytes: u64,
+    pub auto_hwm_transport_budget_bytes: u64,
+    pub auto_hwm_runtime_reserve_bytes: u64,
+    pub auto_hwm_group_budget_bytes: u64,
+    pub auto_hwm_group_message_slots: u64,
+    pub auto_hwm_effective_message_bytes: u64,
+    pub auto_hwm_control_budget_bytes: u64,
+    pub auto_hwm_routed_budget_bytes: u64,
+    pub auto_hwm_fanout_budget_bytes: u64,
+    pub auto_hwm_recv_ingress_budget_bytes: u64,
+    pub auto_hwm_control_active_connections: u32,
+    pub auto_hwm_routed_active_connections: u32,
+    pub auto_hwm_fanout_active_connections: u32,
+    pub auto_hwm_recv_ingress_active_connections: u32,
+    pub auto_hwm_estimated_max_memory_bytes: u64,
+    pub auto_hwm_last_recalc_ms: u64,
+    pub auto_hwm_last_recalc_reason: u32,
+    pub auto_hwm_send_blocked_ratio_ppm: u32,
 }
 
 impl MonitorSnapshot {
@@ -252,6 +283,37 @@ impl MonitorSnapshot {
             detail_flags: raw.detail_flags,
             snd_pending_msgs: raw.snd_pending_msgs,
             rcv_pending_msgs: raw.rcv_pending_msgs,
+            auto_hwm_enabled: raw.auto_hwm_enabled != 0,
+            auto_hwm_role: raw.auto_hwm_role,
+            auto_hwm_managed_connections: raw.auto_hwm_managed_connections,
+            auto_hwm_active_hwm_connections: raw.auto_hwm_active_hwm_connections,
+            auto_hwm_planning_transport_connections: raw.auto_hwm_planning_transport_connections,
+            auto_hwm_base_floor_per_connection: raw.auto_hwm_base_floor_per_connection,
+            auto_hwm_applied_sndhwm: raw.auto_hwm_applied_sndhwm,
+            auto_hwm_applied_rcvhwm: raw.auto_hwm_applied_rcvhwm,
+            auto_hwm_requested_sndbuf: raw.auto_hwm_requested_sndbuf,
+            auto_hwm_requested_rcvbuf: raw.auto_hwm_requested_rcvbuf,
+            auto_hwm_effective_sndbuf: raw.auto_hwm_effective_sndbuf,
+            auto_hwm_effective_rcvbuf: raw.auto_hwm_effective_rcvbuf,
+            auto_hwm_total_memory_budget_bytes: raw.auto_hwm_total_memory_budget_bytes,
+            auto_hwm_queue_budget_bytes: raw.auto_hwm_queue_budget_bytes,
+            auto_hwm_transport_budget_bytes: raw.auto_hwm_transport_budget_bytes,
+            auto_hwm_runtime_reserve_bytes: raw.auto_hwm_runtime_reserve_bytes,
+            auto_hwm_group_budget_bytes: raw.auto_hwm_group_budget_bytes,
+            auto_hwm_group_message_slots: raw.auto_hwm_group_message_slots,
+            auto_hwm_effective_message_bytes: raw.auto_hwm_effective_message_bytes,
+            auto_hwm_control_budget_bytes: raw.auto_hwm_control_budget_bytes,
+            auto_hwm_routed_budget_bytes: raw.auto_hwm_routed_budget_bytes,
+            auto_hwm_fanout_budget_bytes: raw.auto_hwm_fanout_budget_bytes,
+            auto_hwm_recv_ingress_budget_bytes: raw.auto_hwm_recv_ingress_budget_bytes,
+            auto_hwm_control_active_connections: raw.auto_hwm_control_active_connections,
+            auto_hwm_routed_active_connections: raw.auto_hwm_routed_active_connections,
+            auto_hwm_fanout_active_connections: raw.auto_hwm_fanout_active_connections,
+            auto_hwm_recv_ingress_active_connections: raw.auto_hwm_recv_ingress_active_connections,
+            auto_hwm_estimated_max_memory_bytes: raw.auto_hwm_estimated_max_memory_bytes,
+            auto_hwm_last_recalc_ms: raw.auto_hwm_last_recalc_ms,
+            auto_hwm_last_recalc_reason: raw.auto_hwm_last_recalc_reason,
+            auto_hwm_send_blocked_ratio_ppm: raw.auto_hwm_send_blocked_ratio_ppm,
         }
     }
 

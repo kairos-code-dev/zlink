@@ -417,14 +417,6 @@ impl RouterSocket {
         )
     }
 
-    pub(crate) fn set_handover(&self, enabled: bool) -> Result<(), ConfigError> {
-        set_router_bool(
-            self.inner.handle,
-            ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_HANDOVER,
-            enabled,
-        )
-    }
-
     pub(crate) fn set_probe(&self, enabled: bool) -> Result<(), ConfigError> {
         set_router_bool(
             self.inner.handle,

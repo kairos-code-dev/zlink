@@ -518,6 +518,15 @@ class base_socket_t : public socket_handle_t
               detail::connect_result_from_errno (zlink_errno ()), zlink_errno ());
     }
 
+    void disconnect_rid (const routing_id_t &peer_rid_)
+    {
+        const zlink_routing_id_t native = peer_rid_.native ();
+        const int rc = zlink_disconnect_rid (handle (), &native);
+        if (rc != 0)
+            throw connect_error_t (
+              static_cast<connect_result_t> (rc), zlink_errno ());
+    }
+
     monitor_handle_t
     monitor_handle (monitor_event events_ = monitor_event::all) const
     {

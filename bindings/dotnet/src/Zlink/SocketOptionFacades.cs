@@ -96,6 +96,12 @@ public sealed class CommonSocketOptions
         set => _socket.SetOption(SocketOptions.Immediate, value ? 1 : 0);
     }
 
+    public int RidDuplicatePolicy
+    {
+        get => _socket.GetOption(SocketOptions.RidDuplicatePolicy);
+        set => _socket.SetOption(SocketOptions.RidDuplicatePolicy, value);
+    }
+
     public string LastEndpoint => _socket.GetOption(SocketOptions.LastEndpoint);
 
     public int FileDescriptor => _socket.GetOption(SocketOptions.Fd);
@@ -162,12 +168,6 @@ public sealed class RouterSocketOptions
     {
         get => _socket.GetOption(SocketOptions.RouterMandatory) != 0;
         set => _socket.SetOption(SocketOptions.RouterMandatory, value ? 1 : 0);
-    }
-
-    public bool Handover
-    {
-        get => _socket.GetOption(SocketOptions.RouterHandover) != 0;
-        set => _socket.SetOption(SocketOptions.RouterHandover, value ? 1 : 0);
     }
 
     public bool Probe

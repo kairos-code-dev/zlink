@@ -58,6 +58,10 @@ public abstract class Socket implements AutoCloseable {
         COMMON, ROUTER, PUB, SUB, STREAM
     }
 
+    public void disconnectRid(RoutingId peerRid) {
+        socketCore.disconnectRid(peerRid);
+    }
+
     private record OptionRoute(OptionFamily family, int optionId) {
     }
 
@@ -1729,9 +1733,6 @@ public abstract class Socket implements AutoCloseable {
         SocketType type = resolveSocketType();
         if (optionId == SocketOption.ROUTER_MANDATORY.getValue()) {
             return new OptionRoute(OptionFamily.ROUTER, 0x3101);
-        }
-        if (optionId == SocketOption.ROUTER_HANDOVER.getValue()) {
-            return new OptionRoute(OptionFamily.ROUTER, 0x3102);
         }
         if (optionId == SocketOption.PROBE_ROUTER.getValue()) {
             return new OptionRoute(OptionFamily.ROUTER, 0x3103);

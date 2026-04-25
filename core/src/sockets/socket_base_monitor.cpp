@@ -9,6 +9,44 @@
 #include "utils/sleep.hpp"
 #include "zlink.h"
 
+namespace
+{
+uint32_t compute_blocked_ratio_ppm_local (uint64_t attempts_, uint64_t blocked_)
+{
+    if (attempts_ == 0 || blocked_ == 0)
+        return 0u;
+    const uint64_t scaled = (blocked_ * 1000000ull) / attempts_;
+    return scaled > 0xffffffffull ? 0xffffffffu
+                                  : static_cast<uint32_t> (scaled);
+}
+
+void assign_role_active_connection_count (
+  zlink_monitor_snapshot_t *out_,
+  zlink::auto_hwm_role_t role_,
+  uint32_t active_connections_)
+{
+    if (!out_)
+        return;
+
+    switch (role_) {
+    case zlink::auto_hwm_role_control:
+        out_->auto_hwm_control_active_connections = active_connections_;
+        break;
+    case zlink::auto_hwm_role_routed:
+        out_->auto_hwm_routed_active_connections = active_connections_;
+        break;
+    case zlink::auto_hwm_role_fanout:
+        out_->auto_hwm_fanout_active_connections = active_connections_;
+        break;
+    case zlink::auto_hwm_role_recv_ingress:
+        out_->auto_hwm_recv_ingress_active_connections = active_connections_;
+        break;
+    default:
+        break;
+    }
+}
+}
+
 int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
 {
     if (!out_) {
@@ -67,6 +105,25 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
       _auto_hwm_socket_plan.group_message_slots;
     out_->auto_hwm_effective_message_bytes =
       _auto_hwm_context_plan.effective_message_bytes;
+    out_->auto_hwm_control_budget_bytes =
+      (_auto_hwm_context_plan.queue_budget_bytes * 5ull) / 100ull;
+    out_->auto_hwm_routed_budget_bytes =
+      (_auto_hwm_context_plan.queue_budget_bytes * 25ull) / 100ull;
+    out_->auto_hwm_fanout_budget_bytes =
+      (_auto_hwm_context_plan.queue_budget_bytes * 50ull) / 100ull;
+    out_->auto_hwm_recv_ingress_budget_bytes =
+      _auto_hwm_context_plan.queue_budget_bytes
+      - out_->auto_hwm_control_budget_bytes - out_->auto_hwm_routed_budget_bytes
+      - out_->auto_hwm_fanout_budget_bytes;
+    assign_role_active_connection_count (
+      out_, _auto_hwm_socket_plan.role, _auto_hwm_socket_plan.active_hwm_connections);
+    out_->auto_hwm_estimated_max_memory_bytes =
+      _auto_hwm_context_plan.total_memory_budget_bytes;
+    out_->auto_hwm_last_recalc_ms = _auto_hwm_last_recalc_ms;
+    out_->auto_hwm_last_recalc_reason = _auto_hwm_last_recalc_reason;
+    out_->auto_hwm_send_blocked_ratio_ppm = compute_blocked_ratio_ppm_local (
+      _auto_hwm_send_attempts.load (std::memory_order_relaxed),
+      _auto_hwm_send_blocked_attempts.load (std::memory_order_relaxed));
 
     return 0;
 }

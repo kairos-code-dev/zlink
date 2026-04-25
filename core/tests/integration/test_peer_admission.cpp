@@ -516,12 +516,6 @@ void test_socket_default_options_are_enabled ()
       router, ZLINK_ROUTER_OPT_MANDATORY, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
-    value = 0;
-    size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
-      router, ZLINK_ROUTER_OPT_HANDOVER, &value, &size));
-    TEST_ASSERT_EQUAL_INT (0, value);
-
     value = -1;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (

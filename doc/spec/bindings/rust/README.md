@@ -28,7 +28,7 @@ with the rules here, this section wins.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
-  true`, `handover = true`, `nodrop = true`.
+  true`, `handover = false`, `nodrop = true`.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise_endpoint)`. Users do not configure this.
@@ -1270,6 +1270,18 @@ pub struct MonitorSnapshot {
     pub auto_hwm_group_budget_bytes: u64,
     pub auto_hwm_group_message_slots: u64,
     pub auto_hwm_effective_message_bytes: u64,
+    pub auto_hwm_control_budget_bytes: u64,
+    pub auto_hwm_routed_budget_bytes: u64,
+    pub auto_hwm_fanout_budget_bytes: u64,
+    pub auto_hwm_recv_ingress_budget_bytes: u64,
+    pub auto_hwm_control_active_connections: u32,
+    pub auto_hwm_routed_active_connections: u32,
+    pub auto_hwm_fanout_active_connections: u32,
+    pub auto_hwm_recv_ingress_active_connections: u32,
+    pub auto_hwm_estimated_max_memory_bytes: u64,
+    pub auto_hwm_last_recalc_ms: u64,
+    pub auto_hwm_last_recalc_reason: u32,
+    pub auto_hwm_send_blocked_ratio_ppm: u32,
 }
 
 impl MonitorSnapshot {

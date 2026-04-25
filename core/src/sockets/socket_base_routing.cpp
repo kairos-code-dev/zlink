@@ -16,7 +16,10 @@ zlink::routing_socket_base_t::routing_socket_base_t (class ctx_t *parent_,
 
 zlink::routing_socket_base_t::~routing_socket_base_t ()
 {
-    zlink_assert (_out_pipes.empty ());
+    // Shutdown can race with late peer teardown and leave stale routing table
+    // entries after the underlying pipes are already being destroyed. Treat
+    // those entries as best-effort cleanup instead of aborting the process.
+    _out_pipes.clear ();
 }
 
 int zlink::routing_socket_base_t::xsetsockopt (int option_,

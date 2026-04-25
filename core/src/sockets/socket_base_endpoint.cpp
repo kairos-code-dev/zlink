@@ -457,7 +457,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 int zlink::socket_base_t::term_peer_rid (const zlink_routing_id_t *peer_rid_)
 {
     if (_service_attachment
-        && _service_attachment->on_public_term_endpoint () != 0) {
+        && _service_attachment->on_public_disconnect_rid () != 0) {
         return -1;
     }
 

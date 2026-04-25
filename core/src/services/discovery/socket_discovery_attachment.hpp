@@ -26,6 +26,7 @@ class socket_discovery_attachment_t : public discovery_observer_t
     int on_bind_success (const std::string &endpoint_);
     int on_public_connect () const;
     int on_public_term_endpoint () const;
+    int on_public_disconnect_rid () const;
     int on_public_close () const;
     void on_local_peer_weight_changed ();
 

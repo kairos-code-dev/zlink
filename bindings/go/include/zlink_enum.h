@@ -110,7 +110,6 @@ typedef enum zlink_rid_duplicate_policy_t
 typedef enum zlink_router_option_t
 {
     ZLINK_ROUTER_OPT_MANDATORY = 0x3101,
-    ZLINK_ROUTER_OPT_HANDOVER = 0x3102,
     ZLINK_ROUTER_OPT_PROBE = 0x3103,
     ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID = 0x3104,
     ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS = 0x3105,
@@ -169,6 +168,15 @@ typedef enum zlink_disconnect_reason_t
     ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR = 4,
     ZLINK_DISCONNECT_REASON_CTX_TERM = 5
 } zlink_disconnect_reason_t;
+
+typedef enum zlink_auto_hwm_recalc_reason_t
+{
+    ZLINK_AUTO_HWM_RECALC_REASON_NONE = 0,
+    ZLINK_AUTO_HWM_RECALC_REASON_INITIAL = 1,
+    ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE = 2,
+    ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE = 3,
+    ZLINK_AUTO_HWM_RECALC_REASON_REFRESH = 4
+} zlink_auto_hwm_recalc_reason_t;
 
 typedef enum zlink_protocol_error_t
 {

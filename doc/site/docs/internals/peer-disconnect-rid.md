@@ -38,8 +38,8 @@ ambiguous; the call returns `EADDRINUSE` and terminates no pipe.
 `ZLINK_OPT_RID_DUPLICATE_POLICY`. The default is
 `ZLINK_RID_DUPLICATE_REJECT`.
 
-ROUTER keeps the older `ZLINK_ROUTER_OPT_HANDOVER` path wired to the same
-state for compatibility. New code should use the common option.
+ROUTER reads the same stored duplicate-policy state when it decides whether a
+new pipe may replace an existing peer identity.
 
 ## SpotNode Path
 

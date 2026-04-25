@@ -43,12 +43,88 @@ class MonitorSnapshot:
         detail_flags,
         snd_pending_msgs,
         rcv_pending_msgs,
+        auto_hwm_enabled=None,
+        auto_hwm_role=None,
+        auto_hwm_managed_connections=None,
+        auto_hwm_active_hwm_connections=None,
+        auto_hwm_planning_transport_connections=None,
+        auto_hwm_base_floor_per_connection=None,
+        auto_hwm_applied_sndhwm=None,
+        auto_hwm_applied_rcvhwm=None,
+        auto_hwm_requested_sndbuf=None,
+        auto_hwm_requested_rcvbuf=None,
+        auto_hwm_effective_sndbuf=None,
+        auto_hwm_effective_rcvbuf=None,
+        auto_hwm_total_memory_budget_bytes=None,
+        auto_hwm_queue_budget_bytes=None,
+        auto_hwm_transport_budget_bytes=None,
+        auto_hwm_runtime_reserve_bytes=None,
+        auto_hwm_group_budget_bytes=None,
+        auto_hwm_group_message_slots=None,
+        auto_hwm_effective_message_bytes=None,
+        auto_hwm_control_budget_bytes=None,
+        auto_hwm_routed_budget_bytes=None,
+        auto_hwm_fanout_budget_bytes=None,
+        auto_hwm_recv_ingress_budget_bytes=None,
+        auto_hwm_control_active_connections=None,
+        auto_hwm_routed_active_connections=None,
+        auto_hwm_fanout_active_connections=None,
+        auto_hwm_recv_ingress_active_connections=None,
+        auto_hwm_estimated_max_memory_bytes=None,
+        auto_hwm_last_recalc_ms=None,
+        auto_hwm_last_recalc_reason=None,
+        auto_hwm_send_blocked_ratio_ppm=None,
     ):
         self.source_kind = source_kind
         self.state_flags = state_flags
         self.detail_flags = detail_flags
         self.snd_pending_msgs = snd_pending_msgs
         self.rcv_pending_msgs = rcv_pending_msgs
+        self.auto_hwm_enabled = auto_hwm_enabled
+        self.auto_hwm_role = auto_hwm_role
+        self.auto_hwm_managed_connections = auto_hwm_managed_connections
+        self.auto_hwm_active_hwm_connections = auto_hwm_active_hwm_connections
+        self.auto_hwm_planning_transport_connections = (
+            auto_hwm_planning_transport_connections
+        )
+        self.auto_hwm_base_floor_per_connection = auto_hwm_base_floor_per_connection
+        self.auto_hwm_applied_sndhwm = auto_hwm_applied_sndhwm
+        self.auto_hwm_applied_rcvhwm = auto_hwm_applied_rcvhwm
+        self.auto_hwm_requested_sndbuf = auto_hwm_requested_sndbuf
+        self.auto_hwm_requested_rcvbuf = auto_hwm_requested_rcvbuf
+        self.auto_hwm_effective_sndbuf = auto_hwm_effective_sndbuf
+        self.auto_hwm_effective_rcvbuf = auto_hwm_effective_rcvbuf
+        self.auto_hwm_total_memory_budget_bytes = auto_hwm_total_memory_budget_bytes
+        self.auto_hwm_queue_budget_bytes = auto_hwm_queue_budget_bytes
+        self.auto_hwm_transport_budget_bytes = auto_hwm_transport_budget_bytes
+        self.auto_hwm_runtime_reserve_bytes = auto_hwm_runtime_reserve_bytes
+        self.auto_hwm_group_budget_bytes = auto_hwm_group_budget_bytes
+        self.auto_hwm_group_message_slots = auto_hwm_group_message_slots
+        self.auto_hwm_effective_message_bytes = auto_hwm_effective_message_bytes
+        self.auto_hwm_control_budget_bytes = auto_hwm_control_budget_bytes
+        self.auto_hwm_routed_budget_bytes = auto_hwm_routed_budget_bytes
+        self.auto_hwm_fanout_budget_bytes = auto_hwm_fanout_budget_bytes
+        self.auto_hwm_recv_ingress_budget_bytes = (
+            auto_hwm_recv_ingress_budget_bytes
+        )
+        self.auto_hwm_control_active_connections = (
+            auto_hwm_control_active_connections
+        )
+        self.auto_hwm_routed_active_connections = (
+            auto_hwm_routed_active_connections
+        )
+        self.auto_hwm_fanout_active_connections = (
+            auto_hwm_fanout_active_connections
+        )
+        self.auto_hwm_recv_ingress_active_connections = (
+            auto_hwm_recv_ingress_active_connections
+        )
+        self.auto_hwm_estimated_max_memory_bytes = (
+            auto_hwm_estimated_max_memory_bytes
+        )
+        self.auto_hwm_last_recalc_ms = auto_hwm_last_recalc_ms
+        self.auto_hwm_last_recalc_reason = auto_hwm_last_recalc_reason
+        self.auto_hwm_send_blocked_ratio_ppm = auto_hwm_send_blocked_ratio_ppm
 
     def is_ready(self):
         return bool(self.state_flags & (1 << 0))
@@ -183,6 +259,73 @@ class _BaseMonitor:
             detail_flags=int(snapshot.detail_flags),
             snd_pending_msgs=int(snapshot.snd_pending_msgs),
             rcv_pending_msgs=int(snapshot.rcv_pending_msgs),
+            auto_hwm_enabled=bool(snapshot.auto_hwm_enabled),
+            auto_hwm_role=int(snapshot.auto_hwm_role),
+            auto_hwm_managed_connections=int(snapshot.auto_hwm_managed_connections),
+            auto_hwm_active_hwm_connections=int(
+                snapshot.auto_hwm_active_hwm_connections
+            ),
+            auto_hwm_planning_transport_connections=int(
+                snapshot.auto_hwm_planning_transport_connections
+            ),
+            auto_hwm_base_floor_per_connection=int(
+                snapshot.auto_hwm_base_floor_per_connection
+            ),
+            auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
+            auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),
+            auto_hwm_requested_sndbuf=int(snapshot.auto_hwm_requested_sndbuf),
+            auto_hwm_requested_rcvbuf=int(snapshot.auto_hwm_requested_rcvbuf),
+            auto_hwm_effective_sndbuf=int(snapshot.auto_hwm_effective_sndbuf),
+            auto_hwm_effective_rcvbuf=int(snapshot.auto_hwm_effective_rcvbuf),
+            auto_hwm_total_memory_budget_bytes=int(
+                snapshot.auto_hwm_total_memory_budget_bytes
+            ),
+            auto_hwm_queue_budget_bytes=int(snapshot.auto_hwm_queue_budget_bytes),
+            auto_hwm_transport_budget_bytes=int(
+                snapshot.auto_hwm_transport_budget_bytes
+            ),
+            auto_hwm_runtime_reserve_bytes=int(
+                snapshot.auto_hwm_runtime_reserve_bytes
+            ),
+            auto_hwm_group_budget_bytes=int(snapshot.auto_hwm_group_budget_bytes),
+            auto_hwm_group_message_slots=int(snapshot.auto_hwm_group_message_slots),
+            auto_hwm_effective_message_bytes=int(
+                snapshot.auto_hwm_effective_message_bytes
+            ),
+            auto_hwm_control_budget_bytes=int(
+                snapshot.auto_hwm_control_budget_bytes
+            ),
+            auto_hwm_routed_budget_bytes=int(
+                snapshot.auto_hwm_routed_budget_bytes
+            ),
+            auto_hwm_fanout_budget_bytes=int(
+                snapshot.auto_hwm_fanout_budget_bytes
+            ),
+            auto_hwm_recv_ingress_budget_bytes=int(
+                snapshot.auto_hwm_recv_ingress_budget_bytes
+            ),
+            auto_hwm_control_active_connections=int(
+                snapshot.auto_hwm_control_active_connections
+            ),
+            auto_hwm_routed_active_connections=int(
+                snapshot.auto_hwm_routed_active_connections
+            ),
+            auto_hwm_fanout_active_connections=int(
+                snapshot.auto_hwm_fanout_active_connections
+            ),
+            auto_hwm_recv_ingress_active_connections=int(
+                snapshot.auto_hwm_recv_ingress_active_connections
+            ),
+            auto_hwm_estimated_max_memory_bytes=int(
+                snapshot.auto_hwm_estimated_max_memory_bytes
+            ),
+            auto_hwm_last_recalc_ms=int(snapshot.auto_hwm_last_recalc_ms),
+            auto_hwm_last_recalc_reason=int(
+                snapshot.auto_hwm_last_recalc_reason
+            ),
+            auto_hwm_send_blocked_ratio_ppm=int(
+                snapshot.auto_hwm_send_blocked_ratio_ppm
+            ),
         )
 
     def close(self):

@@ -165,9 +165,60 @@ bool wait_for_size_start(spot_server_state_t *state,
 }
 
 
-bool wait_for_spot_send_progress(bool send_enabled)
+bool wait_for_spot_send_progress(void *pub, bool send_enabled)
 {
-    return perf_socket_poll(NULL, 0, send_enabled ? 2 : 1) >= 0;
+    if (!send_enabled || !pub)
+        return perf_socket_poll(NULL, 0, send_enabled ? 2 : 1) >= 0;
+
+    zlink_pollitem_t item;
+    item.socket = pub;
+    item.fd = 0;
+    item.events = ZLINK_POLLOUT;
+    item.revents = 0;
+    return perf_socket_poll(&item, 1, 2) >= 0;
+}
+
+double resolve_spot_latency_probe_seconds()
+{
+    return static_cast<double>(
+      resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_PROBE_SECONDS", 0, 0));
+}
+
+int resolve_spot_latency_probe_interval_us()
+{
+    return resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_PROBE_INTERVAL_US",
+                                 1000,
+                                 1);
+}
+
+bool resolve_spot_latency_only_mode()
+{
+    const char *value = std::getenv("PERF_MULTI_SPOT_LATENCY_ONLY");
+    return value != NULL && *value != '\0' && std::strcmp(value, "0") != 0;
+}
+
+int resolve_spot_latency_only_interval_us()
+{
+    return resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US",
+                                 1000,
+                                 1);
+}
+
+int resolve_spot_latency_probe_settle_ms(const multi_bench_settings_t &settings)
+{
+    const int default_ms =
+      std::max(1000, std::max(1, settings.duration_seconds) * 1000);
+    return resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_PROBE_SETTLE_MS",
+                                 default_ms,
+                                 0);
+}
+
+bool wait_for_spot_probe_ready(void *pub, int timeout_ms)
+{
+    (void) pub;
+    if (timeout_ms <= 0)
+        return true;
+    return perf_socket_poll(NULL, 0, timeout_ms) >= 0;
 }
 
 enum send_status_t
@@ -220,10 +271,7 @@ send_status_t try_publish_locked(spot_server_state_t *state,
     };
 
     int saved_errno = 0;
-    int rc = publish_once(ZLINK_SEND_FLAGS_DONTWAIT, &saved_errno);
-    if (rc != 0 && saved_errno == EAGAIN) {
-        rc = publish_once(static_cast<zlink_send_flags_t>(0), &saved_errno);
-    }
+    const int rc = publish_once(ZLINK_SEND_FLAGS_DONTWAIT, &saved_errno);
 
     if (rc == 0) {
         if (publish_ok_count)
@@ -277,6 +325,15 @@ bool run_phase(spot_server_state_t *state,
       std::chrono::steady_clock::now()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double>(duration_seconds));
+    const bool latency_only =
+      resolve_spot_latency_only_mode()
+      && phase == perf_multi_metric::phase_active && send_enabled;
+    const bool probe_phase =
+      phase == perf_multi_metric::phase_cooldown && send_enabled;
+    const auto probe_interval = std::chrono::microseconds(
+      latency_only ? resolve_spot_latency_only_interval_us()
+                   : resolve_spot_latency_probe_interval_us());
+    auto next_probe_at = std::chrono::steady_clock::now();
 
     while (!perf_stop_requested ().load(std::memory_order_acquire)
            && std::chrono::steady_clock::now() < deadline) {
@@ -284,6 +341,19 @@ bool run_phase(spot_server_state_t *state,
         if (state->fatal_errno.load(std::memory_order_acquire) != 0)
             return false;
         if (state->send_enabled.load(std::memory_order_acquire)) {
+            if (probe_phase || latency_only) {
+                const auto now = std::chrono::steady_clock::now();
+                if (now < next_probe_at) {
+                    const auto wait_ms =
+                      std::chrono::duration_cast<std::chrono::milliseconds>(
+                        next_probe_at - now);
+                    (void) perf_socket_poll(
+                      NULL,
+                      0,
+                      std::max<long>(1, static_cast<long>(wait_ms.count())));
+                    continue;
+                }
+            }
             const send_status_t rc =
               try_publish_locked(state, &publish_ok_count,
                                  &publish_blocked_count);
@@ -293,11 +363,13 @@ bool run_phase(spot_server_state_t *state,
                 return false;
             }
             progressed = rc == send_status_ok;
+            if ((probe_phase || latency_only) && progressed)
+                next_probe_at = std::chrono::steady_clock::now() + probe_interval;
         }
 
         if (!progressed) {
             ++publish_wait_count;
-            wait_for_spot_send_progress(send_enabled);
+            wait_for_spot_send_progress(state->pub, send_enabled);
         }
     }
 
@@ -344,6 +416,9 @@ bool run_server_loop(spot_server_state_t *state,
 {
     const double active_seconds =
       static_cast<double>(std::max(1, settings.duration_seconds));
+    const double probe_seconds = resolve_spot_latency_probe_seconds();
+    const int probe_settle_ms =
+      resolve_spot_latency_probe_settle_ms(settings);
     const int start_timeout_ms =
       std::max(settings.connect_ready_timeout_ms,
                std::max(1000, settings.connect_ready_timeout_ms * 6));
@@ -407,6 +482,38 @@ bool run_server_loop(spot_server_state_t *state,
                        perf_multi_metric::phase_active, active_seconds, true)) {
             if (bench_transition_debug_enabled()) {
                 std::cerr << "[multi-spot-server] loop abort size="
+                          << msg_sizes[i]
+                          << " stop="
+                          << (perf_stop_requested ().load(std::memory_order_acquire)
+                                ? 1
+                                : 0)
+                          << " fatal_errno="
+                          << state->fatal_errno.load(std::memory_order_acquire)
+                          << std::endl;
+            }
+            return false;
+        }
+        if (probe_seconds > 0.0
+            && !wait_for_spot_probe_ready(state->pub, probe_settle_ms)) {
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-server] probe ready wait failed size="
+                          << msg_sizes[i]
+                          << " settle_ms=" << probe_settle_ms
+                          << " err=" << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+        if (probe_seconds > 0.0
+            && !run_phase(state,
+                          lib_name,
+                          transport,
+                          msg_sizes[i],
+                          static_cast<uint32_t>(i + 1),
+                          perf_multi_metric::phase_cooldown,
+                          probe_seconds,
+                          true)) {
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-server] probe abort size="
                           << msg_sizes[i]
                           << " stop="
                           << (perf_stop_requested ().load(std::memory_order_acquire)

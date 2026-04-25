@@ -87,6 +87,9 @@ SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
 SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
 SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
+ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
+CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-}"
+CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB="${PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:-}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
@@ -113,11 +116,12 @@ Options:
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
   --duration N                Override single duration seconds (default: 5).
-  --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
-  --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
-  --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
-  --sndbuf SIZE               Override PERF_SINGLE_SNDBUF (e.g. 64b, 1k, 64k).
-  --rcvbuf SIZE               Override PERF_SINGLE_RCVBUF (e.g. 64b, 1k, 64k).
+  --hwm N                     Debug-only PERF_SINGLE_HWM override.
+                             Requires PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
+  --send-hwm N                Debug-only PERF_SINGLE_SNDHWM override.
+  --recv-hwm N                Debug-only PERF_SINGLE_RCVHWM override.
+  --sndbuf SIZE               Debug-only PERF_SINGLE_SNDBUF override (e.g. 64b, 1k, 64k).
+  --rcvbuf SIZE               Debug-only PERF_SINGLE_RCVBUF override (e.g. 64b, 1k, 64k).
   --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
   --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N         Alias of --sndtimeo.
@@ -675,6 +679,12 @@ fi
 if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
 fi
+if [[ -n "${CTX_AUTO_HWM_ENABLE}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_ENABLE="${CTX_AUTO_HWM_ENABLE}")
+fi
+if [[ -n "${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB="${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}")
+fi
 if [[ -n "${SINGLE_HWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
 fi
@@ -689,6 +699,9 @@ if [[ -n "${SINGLE_SNDBUF}" ]]; then
 fi
 if [[ -n "${SINGLE_RCVBUF}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVBUF="${SINGLE_RCVBUF}")
+fi
+if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+  RUN_ENV+=(PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1)
 fi
 if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
@@ -719,6 +732,14 @@ print_effective_option() {
   printf -- "- %s: %s\n" "${key}" "${value}"
 }
 
+if [[ -n "${SINGLE_HWM}${SINGLE_SNDHWM}${SINGLE_RCVHWM}${SINGLE_SNDBUF}${SINGLE_RCVBUF}" ]]; then
+  if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" != "1" ]]; then
+    echo "Error: single manual HWM/SNDBUF/RCVBUF overrides are debug-only." >&2
+    echo "Set PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--sndbuf/--rcvbuf." >&2
+    exit 1
+  fi
+fi
+
 EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
 DISPLAY_PATTERN_CSV="${PATTERN_CSV}"
@@ -742,13 +763,23 @@ print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && ech
 print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
 print_effective_option "runs" "${RUNS}"
 print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
-print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "default(binary)")"
-print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "default(binary)")"
-print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "default(binary)")"
-print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "default(os)")"
-print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "default(os)")"
+if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+  print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")"
+  print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")")"
+  print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")")"
+  print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "auto-hwm")"
+  print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "auto-hwm")"
+else
+  print_effective_option "hwm" "auto-hwm"
+  print_effective_option "send_hwm" "auto-hwm"
+  print_effective_option "recv_hwm" "auto-hwm"
+  print_effective_option "sndbuf" "auto-hwm"
+  print_effective_option "rcvbuf" "auto-hwm"
+fi
 print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"
+print_effective_option "ctx_auto_hwm_enable" "$(value_or_default "${CTX_AUTO_HWM_ENABLE}" "core-default")"
+print_effective_option "ctx_auto_hwm_total_memory_budget_mb" "$(value_or_default "${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}" "core-default")"
 print_effective_option "pin_cpu" "${PIN_CPU}"
 print_effective_option "io_threads" "${EFFECTIVE_IO_THREADS}"
 print_effective_option "msg_sizes" "$(value_or_default "${PERF_MSG_SIZES}" "default(benchmark)")"

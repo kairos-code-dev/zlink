@@ -137,13 +137,13 @@ fn router_typed_options() {
     let common = sock.common_options();
     let router = sock.router_options();
     router.set_mandatory(true).unwrap();
-    router.set_handover(false).unwrap();
     router.set_probe(false).unwrap();
     sock.set_routing_id(&RoutingId::from_bytes(b"router-surface"))
         .unwrap();
     common
         .set_linger(std::time::Duration::from_millis(1))
         .unwrap();
+    common.set_rid_duplicate_policy(0).unwrap();
 }
 
 #[test]
@@ -169,7 +169,21 @@ fn stream_typed_options() {
     assert!(options.notify().unwrap());
     let _set = StreamSocket::set_routing_id;
     let _get = StreamSocket::routing_id;
+    let _disconnect_rid = StreamSocket::disconnect_rid;
     let _on_packet = StreamSocket::on_packet::<fn(RoutingId, Message, Message)>;
+}
+
+#[test]
+fn rid_disconnect_surface_exists() {
+    let ctx = Context::new().unwrap();
+    let pair = ctx.pair_socket().unwrap();
+    let router = ctx.router_socket().unwrap();
+    let node = SpotNode::new(&ctx).unwrap();
+    let rid = RoutingId::from_bytes(b"peer-rid");
+
+    let _ = pair.disconnect_rid(&rid);
+    let _ = router.disconnect_rid(&rid);
+    let _ = node.disconnect_peer_rid(&rid);
 }
 
 // ---------------------------------------------------------------------------

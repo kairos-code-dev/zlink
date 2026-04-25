@@ -11,7 +11,9 @@
 #include "api/service_spot_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_message_parts_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -208,6 +210,64 @@ void spot_peer_route_dispatch (const zlink_routing_id_t *,
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (userdata_);
     if (!node || !parts_ || part_count_ == 0) {
         zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+        return;
+    }
+
+    zlink::msg_t *kind_msg = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
+    if (kind_msg->check ()
+        && zlink::spot_control_protocol::is_peer_pub_route_topic (
+          static_cast<const char *> (kind_msg->data ()), kind_msg->size ())) {
+        if (part_count_ < 2) {
+            zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+            return;
+        }
+
+        zlink::msg_t *topic_msg = reinterpret_cast<zlink::msg_t *> (&parts_[1]);
+        if (!topic_msg->check ()) {
+            zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+            return;
+        }
+
+        std::string topic (static_cast<const char *> (topic_msg->data ()),
+                           topic_msg->size ());
+        zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
+        if (!runtime) {
+            zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+            return;
+        }
+
+        if (spot_direct_route_debug_enabled ()) {
+            std::fprintf (stderr,
+                          "[spot-direct] peer-pub dispatch topic=%s parts=%zu node=%p\n",
+                          topic.c_str (),
+                          part_count_ > 2 ? part_count_ - 2 : 0,
+                          static_cast<void *> (node));
+        }
+
+        zlink::spot_owned_msg_parts_t payload;
+        for (size_t i = 2; i < part_count_; ++i) {
+            payload.push_back (zlink_msg_t ());
+            zlink_msg_init (&payload.back ());
+            if (zlink_msg_move (&payload.back (), &parts_[i]) != 0) {
+                zlink::request_reply::consume_send_frames_from (parts_, i,
+                                                                part_count_);
+                zlink::spot_clear_msg_parts (&payload);
+                zlink::request_reply::close_request_reply_parts (parts_, 2);
+                return;
+            }
+        }
+
+        zlink::request_reply::close_request_reply_parts (parts_, 2);
+        const int rc = zlink::spot_data_plane_forwarder_t::forward_local_fanout (
+          runtime, &runtime->execution.data_plane_state, topic, payload);
+        if (spot_direct_route_debug_enabled ()) {
+            std::fprintf (stderr,
+                          "[spot-direct] peer-pub forward rc=%d errno=%d targets=%zu\n",
+                          rc,
+                          errno,
+                          runtime->execution.data_plane_state.local_targets.size ());
+        }
+        zlink::spot_clear_msg_parts (&payload);
         return;
     }
 

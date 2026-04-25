@@ -68,6 +68,10 @@ impl StreamSocket {
         self.inner.recv_with_flags(flags)
     }
 
+    pub fn disconnect_rid(&self, peer_rid: &RoutingId) -> Result<(), crate::error::ConnectError> {
+        self.inner.disconnect_rid(peer_rid)
+    }
+
     pub fn on_packet<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn(RoutingId, Message, Message) + Send + 'static,

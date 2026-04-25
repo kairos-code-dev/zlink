@@ -80,6 +80,7 @@ class SocketOption(IntEnum):
     ZMP_METADATA = 0x3030
     DISCOVERY_METADATA_MAX_SIZE = 0x3032
     TCP_NODELAY = 0x3031
+    RID_DUPLICATE_POLICY = 0x3033
 
     ROUTING_ID = 5
     SUBSCRIBE = 6
@@ -176,11 +177,15 @@ class SendResult(IntEnum):
 
 class RouterOption(IntEnum):
     MANDATORY = 0x3101
-    HANDOVER = 0x3102
     PROBE = 0x3103
     CONNECT_ROUTING_ID = 0x3104
     REQUEST_TIMEOUT_MS = 0x3105
     WEIGHT = 0x3106
+
+
+class RidDuplicatePolicy(IntEnum):
+    REJECT = 0
+    HANDOVER = 1
 
 
 class ErrorCode(IntEnum):

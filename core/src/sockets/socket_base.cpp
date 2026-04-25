@@ -114,6 +114,10 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _manual_rcvbuf (false),
     _auto_hwm_context_plan (),
     _auto_hwm_socket_plan (),
+    _auto_hwm_last_recalc_ms (0),
+    _auto_hwm_last_recalc_reason (ZLINK_AUTO_HWM_RECALC_REASON_NONE),
+    _auto_hwm_send_attempts (0),
+    _auto_hwm_send_blocked_attempts (0),
     _local_peer_weight (100),
     _service_attachment (NULL),
     _channel_name_locked (false)
@@ -140,6 +144,7 @@ void zlink::socket_base_t::set_auto_hwm_role (auto_hwm_role_t role_)
 {
     _auto_hwm_role = role_;
     _auto_hwm_role_override = role_ != auto_hwm_role_none;
+    _auto_hwm_last_recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE;
     refresh_auto_hwm_policy ();
 }
 
@@ -147,6 +152,7 @@ void zlink::socket_base_t::set_auto_hwm_policy_enabled (bool enabled_)
 {
     const bool was_enabled = _auto_hwm_policy_enabled;
     _auto_hwm_policy_enabled = enabled_;
+    _auto_hwm_last_recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE;
 
     if (was_enabled && !enabled_) {
         options_t defaults;
@@ -178,6 +184,13 @@ void zlink::socket_base_t::refresh_auto_hwm_policy ()
     ctx_t *ctx = get_ctx ();
     if (!ctx)
         return;
+
+    uint32_t recalc_reason = _auto_hwm_last_recalc_reason;
+    if (recalc_reason == ZLINK_AUTO_HWM_RECALC_REASON_NONE) {
+        recalc_reason = _auto_hwm_last_recalc_ms == 0
+                          ? ZLINK_AUTO_HWM_RECALC_REASON_INITIAL
+                          : ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
+    }
 
     const bool enabled = ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0;
     const int total_memory_budget_mb =
@@ -219,6 +232,9 @@ void zlink::socket_base_t::refresh_auto_hwm_policy ()
 
     if (refresh_hwms)
         refresh_attached_pipe_hwms ();
+
+    _auto_hwm_last_recalc_ms = _clock.now_ms ();
+    _auto_hwm_last_recalc_reason = recalc_reason;
 }
 
 static void copy_routing_id (zlink_routing_id_t *out_,

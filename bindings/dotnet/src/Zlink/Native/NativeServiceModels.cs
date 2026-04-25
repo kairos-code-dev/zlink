@@ -35,6 +35,18 @@ internal struct ZlinkMonitorSnapshot
     public ulong AutoHwmGroupBudgetBytes;
     public ulong AutoHwmGroupMessageSlots;
     public ulong AutoHwmEffectiveMessageBytes;
+    public ulong AutoHwmControlBudgetBytes;
+    public ulong AutoHwmRoutedBudgetBytes;
+    public ulong AutoHwmFanoutBudgetBytes;
+    public ulong AutoHwmRecvIngressBudgetBytes;
+    public uint AutoHwmControlActiveConnections;
+    public uint AutoHwmRoutedActiveConnections;
+    public uint AutoHwmFanoutActiveConnections;
+    public uint AutoHwmRecvIngressActiveConnections;
+    public ulong AutoHwmEstimatedMaxMemoryBytes;
+    public ulong AutoHwmLastRecalcMs;
+    public uint AutoHwmLastRecalcReason;
+    public uint AutoHwmSendBlockedRatioPpm;
 }
 
 [StructLayout(LayoutKind.Sequential)]

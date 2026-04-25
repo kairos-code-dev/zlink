@@ -164,13 +164,13 @@ pub enum zlink_option_t {
     ZLINK_OPT_LAST_ENDPOINT = 0x3014,
     ZLINK_OPT_ZMP_METADATA = 0x3030,
     ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE = 0x3032,
+    ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_router_option_t {
     ZLINK_ROUTER_OPT_MANDATORY = 0x3101,
-    ZLINK_ROUTER_OPT_HANDOVER = 0x3102,
     ZLINK_ROUTER_OPT_PROBE = 0x3103,
     ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID = 0x3104,
 }
@@ -293,6 +293,37 @@ pub struct zlink_monitor_snapshot_t {
     pub detail_flags: zlink_monitor_snapshot_detail_mask_t,
     pub snd_pending_msgs: u64,
     pub rcv_pending_msgs: u64,
+    pub auto_hwm_enabled: u32,
+    pub auto_hwm_role: u32,
+    pub auto_hwm_managed_connections: u32,
+    pub auto_hwm_active_hwm_connections: u32,
+    pub auto_hwm_planning_transport_connections: u32,
+    pub auto_hwm_base_floor_per_connection: u32,
+    pub auto_hwm_applied_sndhwm: i32,
+    pub auto_hwm_applied_rcvhwm: i32,
+    pub auto_hwm_requested_sndbuf: i32,
+    pub auto_hwm_requested_rcvbuf: i32,
+    pub auto_hwm_effective_sndbuf: i32,
+    pub auto_hwm_effective_rcvbuf: i32,
+    pub auto_hwm_total_memory_budget_bytes: u64,
+    pub auto_hwm_queue_budget_bytes: u64,
+    pub auto_hwm_transport_budget_bytes: u64,
+    pub auto_hwm_runtime_reserve_bytes: u64,
+    pub auto_hwm_group_budget_bytes: u64,
+    pub auto_hwm_group_message_slots: u64,
+    pub auto_hwm_effective_message_bytes: u64,
+    pub auto_hwm_control_budget_bytes: u64,
+    pub auto_hwm_routed_budget_bytes: u64,
+    pub auto_hwm_fanout_budget_bytes: u64,
+    pub auto_hwm_recv_ingress_budget_bytes: u64,
+    pub auto_hwm_control_active_connections: u32,
+    pub auto_hwm_routed_active_connections: u32,
+    pub auto_hwm_fanout_active_connections: u32,
+    pub auto_hwm_recv_ingress_active_connections: u32,
+    pub auto_hwm_estimated_max_memory_bytes: u64,
+    pub auto_hwm_last_recalc_ms: u64,
+    pub auto_hwm_last_recalc_reason: u32,
+    pub auto_hwm_send_blocked_ratio_ppm: u32,
 }
 
 #[repr(C)]
@@ -876,11 +907,10 @@ unsafe extern "C" {
     pub fn zlink_connect(socket: *mut c_void, addr: *const c_char) -> c_int;
     pub fn zlink_unbind(socket: *mut c_void, addr: *const c_char) -> c_int;
     pub fn zlink_disconnect(socket: *mut c_void, addr: *const c_char) -> c_int;
+    pub fn zlink_disconnect_rid(socket: *mut c_void, peer_rid: *const zlink_routing_id_t) -> c_int;
     pub fn zlink_socket_attach_discovery(socket: *mut c_void, discovery: *mut c_void) -> c_int;
-    pub fn zlink_socket_set_channel_name(
-        socket: *mut c_void,
-        channel_name: *const c_char,
-    ) -> c_int;
+    pub fn zlink_socket_set_channel_name(socket: *mut c_void, channel_name: *const c_char)
+        -> c_int;
     pub fn zlink_socket_get_channel_name(
         socket: *mut c_void,
         channel_name_buf: *mut c_char,
@@ -1116,6 +1146,10 @@ unsafe extern "C" {
         node: *mut c_void,
         peer_endpoint: *const c_char,
     ) -> c_int;
+    pub fn zlink_spot_node_disconnect_peer_rid(
+        node: *mut c_void,
+        target_node_rid: *const zlink_routing_id_t,
+    ) -> c_int;
     pub fn zlink_spot_node_attach_discovery(node: *mut c_void, discovery: *mut c_void) -> c_int;
     pub fn zlink_spot_node_attach_channel_dealer(
         node: *mut c_void,
@@ -1169,10 +1203,8 @@ unsafe extern "C" {
         timeout_ms: u32,
     ) -> c_int;
     pub fn zlink_spot_request_progress_internal(spot: *mut c_void) -> c_int;
-    pub fn zlink_spot_channel_reply_progress_from(
-        spot: *mut c_void,
-        subject: *mut c_void,
-    ) -> c_int;
+    pub fn zlink_spot_channel_reply_progress_from(spot: *mut c_void, subject: *mut c_void)
+        -> c_int;
     pub fn zlink_spot_publish_part(
         spot: *mut c_void,
         service_name: *const c_char,

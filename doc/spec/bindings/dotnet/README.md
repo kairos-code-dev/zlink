@@ -65,7 +65,7 @@ with the rules here, this section wins.
 - `Pollout` is a send-recovery readiness signal, shared with
   `OnSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `Mandatory =
-  true`, `Handover = true`, `Nodrop = true`.
+  true`, `Handover = false`, `Nodrop = true`.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise endpoint)`. Users do not configure this.
@@ -1439,6 +1439,37 @@ public sealed class MonitorSnapshot
     uint DetailFlags { get; }                // detail bitmask
     ulong SndPendingMsgs { get; }            // send-queue pending messages
     ulong RcvPendingMsgs { get; }            // recv-queue pending messages
+    bool AutoHwmEnabled { get; }
+    uint AutoHwmRole { get; }
+    uint AutoHwmManagedConnections { get; }
+    uint AutoHwmActiveHwmConnections { get; }
+    uint AutoHwmPlanningTransportConnections { get; }
+    uint AutoHwmBaseFloorPerConnection { get; }
+    int AutoHwmAppliedSndHwm { get; }
+    int AutoHwmAppliedRcvHwm { get; }
+    int AutoHwmRequestedSndBuf { get; }
+    int AutoHwmRequestedRcvBuf { get; }
+    int AutoHwmEffectiveSndBuf { get; }
+    int AutoHwmEffectiveRcvBuf { get; }
+    ulong AutoHwmTotalMemoryBudgetBytes { get; }
+    ulong AutoHwmQueueBudgetBytes { get; }
+    ulong AutoHwmTransportBudgetBytes { get; }
+    ulong AutoHwmRuntimeReserveBytes { get; }
+    ulong AutoHwmGroupBudgetBytes { get; }
+    ulong AutoHwmGroupMessageSlots { get; }
+    ulong AutoHwmEffectiveMessageBytes { get; }
+    ulong AutoHwmControlBudgetBytes { get; }
+    ulong AutoHwmRoutedBudgetBytes { get; }
+    ulong AutoHwmFanoutBudgetBytes { get; }
+    ulong AutoHwmRecvIngressBudgetBytes { get; }
+    uint AutoHwmControlActiveConnections { get; }
+    uint AutoHwmRoutedActiveConnections { get; }
+    uint AutoHwmFanoutActiveConnections { get; }
+    uint AutoHwmRecvIngressActiveConnections { get; }
+    ulong AutoHwmEstimatedMaxMemoryBytes { get; }
+    ulong AutoHwmLastRecalcMs { get; }
+    uint AutoHwmLastRecalcReason { get; }
+    uint AutoHwmSendBlockedRatioPpm { get; }
 
     bool IsReady { get; }                    // raw socket monitor source의 ready bit
 }

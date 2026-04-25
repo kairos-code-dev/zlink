@@ -133,6 +133,24 @@ final class SocketCore {
         }
     }
 
+    void disconnectRid(RoutingId peerRid) {
+        Objects.requireNonNull(peerRid, "peerRid");
+        failIfDiscoveryAttached("zlink_disconnect_rid");
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] value = peerRid.trustedBytes();
+            MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                (byte) value.length);
+            if (value.length > 0) {
+                MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
+                    NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
+            }
+            int rc = Native.disconnectRid(socket.handle(), nativeRid);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_disconnect_rid");
+        }
+    }
+
     void attachDiscovery(Discovery discovery) {
         Objects.requireNonNull(discovery, "discovery");
         int rc = Native.socketAttachDiscovery(socket.handle(),

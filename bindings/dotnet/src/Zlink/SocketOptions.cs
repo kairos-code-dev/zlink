@@ -107,6 +107,8 @@ internal static class SocketOptions
         Int(SocketOption.TcpNoDelay);
     public static SocketOptionKey<int> Immediate { get; } =
         Int(SocketOption.Immediate);
+    public static SocketOptionKey<int> RidDuplicatePolicy { get; } =
+        Int(SocketOption.RidDuplicatePolicy);
     public static SocketOptionKey<int> XPubVerbose { get; } =
         Int(SocketOption.XPubVerbose);
     public static SocketOptionKey<int> Ipv6 { get; } = Int(SocketOption.Ipv6);
@@ -114,8 +116,6 @@ internal static class SocketOptions
         Int(SocketOption.ProbeRouter);
     public static SocketOptionKey<int> Conflate { get; } =
         Int(SocketOption.Conflate);
-    public static SocketOptionKey<int> RouterHandover { get; } =
-        Int(SocketOption.RouterHandover);
     public static SocketOptionKey<int> Tos { get; } = Int(SocketOption.Tos);
     public static SocketOptionKey<byte[]> ConnectRoutingId { get; } =
         Bytes(SocketOption.ConnectRoutingId);

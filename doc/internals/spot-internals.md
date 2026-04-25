@@ -714,7 +714,7 @@ dealer map for cross-channel calls, and an external publish ingress path.
 |  channel DEALER -> ROUTER(server) path (channel calls)           |
 |------------------------------------------------------------------|
 | service monitor                                                  |
-|  peer state, admission, topology change events                   |
+|  peer state, weight, topology change events                      |
 +------------------------------------------------------------------+
 ```
 
@@ -785,7 +785,7 @@ dealer map for cross-channel calls, and an external publish ingress path.
 
 - `SpotNode` observability uses `zlink_service_monitor_open()` /
   `zlink_service_monitor_recv()` and the snapshot/query APIs.
-- Peer state, admission changes, and topology events are surfaced
+- Peer state, weight changes, and topology events are surfaced
   through the monitor.
 - Monitor events are never multiplexed into the Spot dispatch readable
   plane.

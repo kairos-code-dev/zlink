@@ -482,7 +482,8 @@ RID has weight `0`.
 | `SEQ_EXHAUSTED` | -- |
 | `INTERNAL_ERROR` | Y |
 
-Replies answer in-flight requests, so admission is not re-evaluated for them.
+Replies answer in-flight requests, so the weight-based candidate check is not
+re-evaluated for them.
 `zlink_router_reply` therefore never returns `NOT_ADMITTED`.
 
 ### SPOT request functions
@@ -551,8 +552,9 @@ destination SpotNode or ROUTER has weight `0`.
 | `SEQ_EXHAUSTED` | -- | -- | -- |
 | `INTERNAL_ERROR` | Y | Y | Y |
 
-SPOT replies answer in-flight requests, so admission is not re-evaluated
-for them. None of the SPOT reply functions return `NOT_ADMITTED`.
+SPOT replies answer in-flight requests, so the weight-based candidate check is
+not re-evaluated for them. None of the SPOT reply functions return
+`NOT_ADMITTED`.
 
 ---
 

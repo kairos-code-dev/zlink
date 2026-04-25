@@ -196,10 +196,12 @@ sequenceDiagram
     B->>A: connect (tcp://hostA:9100)
 ```
 
-Handover still covers the exceptional case where the same `routing_id`
-appears from two different hosts (misconfiguration, zombie instance,
-rolling restart overlap); `ROUTER_HANDOVER=1` -- the default -- then lets
-the newer connection take over the existing pipe.
+The exceptional case where the same `routing_id` appears from two different
+hosts (misconfiguration, zombie instance, rolling restart overlap) still uses
+the duplicate policy. Keep the default
+`ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_REJECT` to preserve the
+existing pipe, or set `ZLINK_RID_DUPLICATE_HANDOVER` explicitly when the newer
+connection should take over.
 
 ## 3. Registry Setup
 

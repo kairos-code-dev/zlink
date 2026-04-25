@@ -155,6 +155,7 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
+    perf_print_auto_hwm_snapshot (server, false, "server", transport);
     if (config.has_server_routing_id && config.server_routing_id) {
         zlink_set_routing_id (
           server,

@@ -83,6 +83,7 @@ int main (int argc, char **argv)
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
+    perf_print_auto_hwm_snapshot (server, false, "server", transport);
     const int io_timeout_ms = resolve_bench_count ("PERF_STREAM_TIMEOUT_MS", 5000);
     set_sockopt_int (server, ZLINK_OPT_SNDTIMEO, io_timeout_ms,
                      "ZLINK_OPT_SNDTIMEO");

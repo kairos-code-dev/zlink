@@ -813,6 +813,136 @@ def parse_result_line(line, transport, expected_sizes):
     return (line_transport, line_size, metric, value), None
 
 
+_AUTO_HWM_DETAIL_SEEN = set()
+_AUTO_HWM_DETAIL_ROWS = []
+_AUTO_HWM_DETAIL_TABLE_SEEN = set()
+
+
+def emit_auto_hwm_detail_line(line):
+    stripped = (line or "").strip()
+    if not stripped.startswith("AUTO_HWM_DETAIL,"):
+        return
+    fields = {}
+    for item in stripped.split(",")[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        fields[key.strip()] = value.strip()
+
+    dedup_key = (
+        fields.get("pattern", ""),
+        fields.get("transport", ""),
+        fields.get("component", ""),
+        fields.get("label", ""),
+        fields.get("source", ""),
+        fields.get("role", ""),
+        fields.get("managed_connections", ""),
+        fields.get("active_connections", ""),
+        fields.get("planning_transport_connections", ""),
+        fields.get("sndhwm", ""),
+        fields.get("rcvhwm", ""),
+        fields.get("effective_sndbuf", ""),
+        fields.get("effective_rcvbuf", ""),
+        fields.get("group_budget_bytes", ""),
+        fields.get("queue_budget_bytes", ""),
+        fields.get("transport_budget_bytes", ""),
+        fields.get("total_budget_bytes", ""),
+    )
+    if dedup_key in _AUTO_HWM_DETAIL_SEEN:
+        return
+    _AUTO_HWM_DETAIL_SEEN.add(dedup_key)
+    fields["_dedup_key"] = dedup_key
+    _AUTO_HWM_DETAIL_ROWS.append(fields)
+
+
+def _auto_hwm_cell_widths(rows, columns):
+    widths = []
+    for header, key in columns:
+        width = len(header)
+        for fields in rows:
+            width = max(width, len(str(fields.get(key, "?"))))
+        widths.append(width)
+    return widths
+
+
+def _auto_hwm_emit_markdown_table(emit, indent, columns, rows):
+    widths = _auto_hwm_cell_widths(rows, columns)
+    header_cells = [
+        f" {header:<{widths[index]}} "
+        for index, (header, _key) in enumerate(columns)
+    ]
+    sep_cells = ["-" * (width + 2) for width in widths]
+    emit(f"{indent}|" + "|".join(header_cells) + "|")
+    emit(f"{indent}|" + "|".join(sep_cells) + "|")
+    for fields in rows:
+        cells = [
+            f" {str(fields.get(key, '?')):<{widths[index]}} "
+            for index, (_header, key) in enumerate(columns)
+        ]
+        emit(f"{indent}|" + "|".join(cells) + "|")
+
+
+def emit_auto_hwm_detail_table(emit, pattern_name):
+    pattern = normalize_multi_pattern_name(pattern_name)
+    rows = []
+    for fields in _AUTO_HWM_DETAIL_ROWS:
+        row_pattern = normalize_multi_pattern_name(fields.get("pattern", ""))
+        if row_pattern != pattern:
+            continue
+        dedup_key = fields.get("_dedup_key")
+        table_key = (pattern, dedup_key)
+        if table_key in _AUTO_HWM_DETAIL_TABLE_SEEN:
+            continue
+        rows.append(fields)
+    if not rows:
+        return False
+
+    emit("    Auto-HWM detail:")
+    for fields in rows:
+        fields["connections"] = (
+            f"{fields.get('active_connections', '?')}/"
+            f"{fields.get('managed_connections', '?')}"
+        )
+    _auto_hwm_emit_markdown_table(
+        emit,
+        "      ",
+        (
+            ("Transport", "transport"),
+            ("Component", "component"),
+            ("Label", "label"),
+            ("Source", "source"),
+            ("Role", "role"),
+            ("Conn", "connections"),
+            ("Plan", "planning_transport_connections"),
+            ("SNDHWM", "sndhwm"),
+            ("RCVHWM", "rcvhwm"),
+            ("SNDBUF", "effective_sndbuf"),
+            ("RCVBUF", "effective_rcvbuf"),
+        ),
+        rows,
+    )
+    emit("    Auto-HWM budget:")
+    _auto_hwm_emit_markdown_table(
+        emit,
+        "      ",
+        (
+            ("Transport", "transport"),
+            ("Component", "component"),
+            ("Label", "label"),
+            ("GroupSlots", "group_message_slots"),
+            ("Group(B)", "group_budget_bytes"),
+            ("Queue(B)", "queue_budget_bytes"),
+            ("Transport(B)", "transport_budget_bytes"),
+            ("Total(B)", "total_budget_bytes"),
+            ("Reason", "last_recalc_reason"),
+        ),
+        rows,
+    )
+    for fields in rows:
+        _AUTO_HWM_DETAIL_TABLE_SEEN.add((pattern, fields.get("_dedup_key")))
+    return True
+
+
 def _emit_result_metric_callback(
     result_line_callback, line_transport, line_size, metric_name, value
 ):
@@ -1248,6 +1378,10 @@ def run_sizes_test_stream_shared(
     client_cmd = build_bench_cmd(shared_client_path, shared_client_args)
     server_env = env.copy()
     client_env = env.copy()
+    server_env["PERF_MULTI_COMPONENT"] = "server"
+    client_env["PERF_MULTI_COMPONENT"] = "client"
+    server_env["PERF_MULTI_TRANSPORT"] = transport
+    client_env["PERF_MULTI_TRANSPORT"] = transport
     set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
     set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
     if pattern_name == "PUBSUB":
@@ -1293,6 +1427,7 @@ def run_sizes_test_stream_shared(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        emit_auto_hwm_detail_line(line)
         if pattern_name == "PUBSUB" and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -1518,6 +1653,7 @@ def run_sizes_test_stream_shared(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
+            emit_auto_hwm_detail_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -1770,6 +1906,10 @@ def run_sizes_test_split(
     )
     server_env = env.copy()
     client_env = env.copy()
+    server_env["PERF_MULTI_COMPONENT"] = "server"
+    client_env["PERF_MULTI_COMPONENT"] = "client"
+    server_env["PERF_MULTI_TRANSPORT"] = transport
+    client_env["PERF_MULTI_TRANSPORT"] = transport
     if extra_env:
         for key, value in extra_env.items():
             server_env[str(key)] = str(value)
@@ -1818,6 +1958,7 @@ def run_sizes_test_split(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        emit_auto_hwm_detail_line(line)
         if pattern_name in ("PUBSUB", "DEALER_DEALER") and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -2043,6 +2184,7 @@ def run_sizes_test_split(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
+            emit_auto_hwm_detail_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -2564,9 +2706,16 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
         if table_lines is not None:
             table_lines.append(line)
 
-    emit(f"  > Benchmarking {lib_name} for {display_pattern_name(pattern_name)}...")
     final_stats = {}
     failures = []
+    benchmark_header_emitted = False
+
+    def emit_benchmark_header():
+        nonlocal benchmark_header_emitted
+        if benchmark_header_emitted:
+            return
+        emit(f"  > Benchmarking {lib_name} for {display_pattern_name(pattern_name)}...")
+        benchmark_header_emitted = True
 
     if transports is None:
         transports = TRANSPORTS
@@ -2580,6 +2729,11 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
 
     is_multi = is_pattern(pattern_name)
     sizes = STREAM_MSG_SIZES if pattern_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
+    auto_hwm_table_emitted = False
+    transport_headers_emitted = set()
+
+    if not is_multi:
+        emit_benchmark_header()
 
     for tr_idx, tr in enumerate(transports):
         has_next_transport = (tr_idx + 1) < len(transports)
@@ -2602,10 +2756,16 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 )
                 pattern_runs = min(num_runs, stream_runs_limit)
 
-            emit(f"    Testing {tr}:")
             show_run_labels = pattern_runs > 1
-            if not show_run_labels:
-                _emit_table_header(emit, True, "      ")
+
+            def emit_transport_header():
+                if tr in transport_headers_emitted:
+                    return
+                emit_benchmark_header()
+                emit(f"    Testing {tr}:")
+                if not show_run_labels:
+                    _emit_table_header(emit, True, "      ")
+                transport_headers_emitted.add(tr)
 
             expected_keys = []
             for sz in sizes:
@@ -2623,8 +2783,14 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
             emitted_size_sections = set()
 
             def emit_size_section(sz):
+                nonlocal auto_hwm_table_emitted
                 if sz in emitted_size_sections:
                     return
+                if not auto_hwm_table_emitted:
+                    auto_hwm_table_emitted = emit_auto_hwm_detail_table(
+                        emit, pattern_name
+                    )
+                emit_transport_header()
                 emit(f"    Testing {tr} | {sz}B:")
                 emitted_size_sections.add(sz)
 
@@ -2661,6 +2827,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 live_emitted_sizes = set()
 
                 def maybe_emit_live_row(sz):
+                    nonlocal auto_hwm_table_emitted
                     tp_key = f"{tr}|{sz}|throughput"
                     bw_key = f"{tr}|{sz}|bandwidth"
                     lat_key = f"{tr}|{sz}|latency"
@@ -2685,6 +2852,11 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     _lat_mean, lat95_value, lat99_value = resolve_latency_triplet(
                         lat_value, lat95_value, lat99_value
                     )
+
+                    if not auto_hwm_table_emitted:
+                        auto_hwm_table_emitted = emit_auto_hwm_detail_table(
+                            emit, pattern_name
+                        )
 
                     emit_size_row(
                         sz,

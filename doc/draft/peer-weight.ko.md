@@ -74,8 +74,6 @@ worker에 연결된 `DEALER`는 새 메시지를 대략 `2:1` 비율로 A와 B�
 |-----------|------|-----------|----------|----|
 | `ZLINK_ROUTER_OPT_WEIGHT` | `zlink_router_option_t` | `zlink_set_router_option()` | `ROUTER` | `int`, `0..100` |
 | `ZLINK_DEALER_OPT_WEIGHT` | `zlink_dealer_option_t` | `zlink_set_dealer_option()` | `DEALER` | `int`, `0..100` |
-| `ZLINK_SPOT_NODE_OPT_WEIGHT` | `zlink_spot_node_option_t` | `zlink_set_spot_node_option()` | `SpotNode` | `int`, `0..100` |
-| `ZLINK_SPOT_OPT_WEIGHT` | `zlink_spot_option_t` | `zlink_set_spot_option()` | `Spot` | `int`, `0..100` |
 
 값의 의미는 모든 weight 옵션이 같다.
 
@@ -95,18 +93,6 @@ typedef enum zlink_dealer_option_t
     /* existing values ... */
     ZLINK_DEALER_OPT_WEIGHT = 0x3203
 } zlink_dealer_option_t;
-
-typedef enum zlink_spot_node_option_t
-{
-    /* existing values ... */
-    ZLINK_SPOT_NODE_OPT_WEIGHT = 0x360C
-} zlink_spot_node_option_t;
-
-typedef enum zlink_spot_option_t
-{
-    /* existing values ... */
-    ZLINK_SPOT_OPT_WEIGHT = 0x3702
-} zlink_spot_option_t;
 ```
 
 설정 함수는 기존 타입별 옵션 함수를 그대로 사용한다.
@@ -123,18 +109,6 @@ zlink_config_result_t zlink_set_dealer_option (
   zlink_dealer_option_t option_,
   const void *optval_,
   size_t optvallen_);
-
-zlink_config_result_t zlink_set_spot_node_option (
-  void *handle_,
-  zlink_spot_node_option_t option_,
-  const void *optval_,
-  size_t optvallen_);
-
-zlink_config_result_t zlink_set_spot_option (
-  void *handle_,
-  zlink_spot_option_t option_,
-  const void *optval_,
-  size_t optvallen_);
 ```
 
 초안 기준 값 형식은 `int`다.
@@ -147,8 +121,12 @@ zlink_config_result_t zlink_set_spot_option (
 - 잘못된 `optvallen_`: 실패
 - 지원하지 않는 handle 타입: 실패
 
-`ROUTER`, `DEALER`, `SpotNode`, `Spot`은 같은 의미의 weight를 광고하지만, 사용자는
-각 타입의 옵션 함수로 설정한다.
+`ROUTER`와 `DEALER`는 같은 의미의 weight를 광고하지만, 사용자는 각 타입의 옵션
+함수로 설정한다. `SpotNode`와 `Spot`에는 weight 설정 옵션을 추가하지 않는다.
+weight는 `DEALER`가 raw socket peer를 고를 때 쓰는 라우팅 입력값이며,
+service/Spot 객체 자체의 설정값이 아니기 때문이다. 이미 구현된 Spot/SpotNode
+weight 설정 표면의 제거 계획은 `spot-weight-option-removal.ko.md`에서 별도로
+다룬다.
 
 ```c
 int weight = 70;
@@ -158,18 +136,11 @@ zlink_set_router_option (router, ZLINK_ROUTER_OPT_WEIGHT,
 weight = 0;
 zlink_set_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT,
                          &weight, sizeof (weight));
-
-weight = 50;
-zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_WEIGHT,
-                            &weight, sizeof (weight));
 ```
 
 조회는 기존 get 함수가 있는 타입에서만 제공한다.
 
 - `zlink_get_router_option()`은 `ZLINK_ROUTER_OPT_WEIGHT`를 조회할 수 있어야 한다.
-- `zlink_get_spot_node_option()`은 `ZLINK_SPOT_NODE_OPT_WEIGHT`를 조회할 수 있어야
-  한다.
-- `zlink_get_spot_option()`은 `ZLINK_SPOT_OPT_WEIGHT`를 조회할 수 있어야 한다.
 - 현재 `DEALER`에는 공개 get 함수가 없으므로 C core는 `DEALER` weight 조회를 새로
   추가하지 않는다.
 
@@ -268,8 +239,9 @@ API는 아니었다. 따라서 `WEIGHT == 0`으로 매핑해도 공개 동작 �
 internals 문서는 같은 작업 단위에서 새 weight 모델로 맞춘다.
 
 service/Spot admission도 같은 enum과 함수를 공유하므로, 이번 변경에서는
-service/Spot 쪽 공개 표면도 weight 기반 표면으로 함께 바꾼다. 그래야 admission
-enum과 함수가 공개 헤더에서 완전히 제거된다.
+service/Spot 쪽 admission 공개 표면을 함께 제거한다. 다만 service/Spot 객체에
+weight 설정 옵션을 새로 만들지는 않는다. service/Spot 문서와 snapshot에서는 raw
+socket peer가 광고한 weight를 보여주는 방향으로만 맞춘다.
 
 ## 5. weight 0 의미
 
@@ -608,10 +580,8 @@ degradation일 뿐이며, 서로 다른 버전 사이의 정확한 weighted rout
 
 - `ZLINK_ROUTER_OPT_WEIGHT = 0x3106` 추가
 - `ZLINK_DEALER_OPT_WEIGHT = 0x3203` 추가
-- `ZLINK_SPOT_NODE_OPT_WEIGHT = 0x360C` 추가
-- `ZLINK_SPOT_OPT_WEIGHT = 0x3702` 추가
 - 내부 옵션 id 추가
-- router/dealer/spot-node/spot typed option mapping 추가
+- router/dealer typed option mapping 추가
 - 값 검증: `int`, `0..100`
 - 기본값 `100` 초기화
 - admission 함수와 enum 삭제
@@ -688,8 +658,6 @@ command decode 실패는 application payload로 넘기지 말고 peer command �
 
 작업 내용:
 
-- `ZLINK_SPOT_NODE_OPT_WEIGHT` 매핑 추가
-- `ZLINK_SPOT_OPT_WEIGHT` 매핑 추가
 - `zlink_spot_node_peer_entry_t.admission_state`를 `weight`로 변경
 - `zlink_member_peer_entry_t.admission_state`를 `weight`로 변경
 - service monitor의 peer admission event를 peer weight event로 변경
@@ -699,8 +667,9 @@ command decode 실패는 application payload로 넘기지 말고 peer command �
 - Spot peer cache와 registry member peer query에서 weight 값을 노출한다
 
 raw socket weight만 구현하면서 admission 공개 API를 삭제하면 service/Spot 문서와
-바인딩 surface가 깨진다. 따라서 이번 작업에서는 service/Spot 공개 표면도 같은
-weight 모델로 같이 바꾼다.
+바인딩 surface가 깨진다. 따라서 이번 작업에서는 service/Spot의 admission 기반
+조회와 monitor 표면을 weight 기반 조회와 monitor 표면으로 바꾼다. 하지만
+`SpotNode`나 `Spot`에 weight 설정 옵션을 추가하지는 않는다.
 
 ## 14. Monitoring과 조회
 
@@ -733,8 +702,6 @@ debug log는 공개 계약은 아니지만 구현 검증을 위해 권장한다.
 
 - `DealerSocketOptions.weight`
 - `RouterSocketOptions.weight`
-- `SpotNodeOptions.weight`
-- `SpotOptions.weight`
 
 언어별 이름은 각 바인딩의 기존 option naming 규칙을 따른다. 값의 의미와 기본값은
 C core 계약과 같아야 한다.
@@ -747,8 +714,6 @@ core 테스트는 최소 아래를 포함해야 한다.
 
 - `DEALER -> ROUTER`에서 weight `100:50` 비율 검증
 - `DEALER -> DEALER`에서 weight `100:50` 비율 검증
-- `SpotNode` weight `0`이 service peer 후보 제외로 반영되는지 검증
-- `Spot` weight 변경이 Spot peer cache와 routed 후보 판단에 반영되는지 검증
 - weight 기본값 `100`일 때 기존 round-robin과 같은 분배 검증
 - 모든 positive weight가 같은 경우 기존 round-robin과 같은 분배 검증
 - weight `0` peer가 후보에서 제외되는지 검증
@@ -828,8 +793,6 @@ core 테스트는 최소 아래를 포함해야 한다.
 반영 내용:
 
 - `ZLINK_DEALER_OPT_WEIGHT`와 `ZLINK_ROUTER_OPT_WEIGHT`를 타입별 옵션 표에 추가한다.
-- `ZLINK_SPOT_NODE_OPT_WEIGHT`와 `ZLINK_SPOT_OPT_WEIGHT`를 service option 표에
-  추가한다.
 - 값 형식, 기본값 `100`, 범위 `0..100`, 실패 조건을 명시한다.
 - `weight=0`은 새 메시지 후보 제외라고 명시한다.
 - `DEALER -> ROUTER`, `DEALER -> DEALER`에만 weighted outbound 선택이 적용된다고
@@ -866,7 +829,8 @@ core 테스트는 최소 아래를 포함해야 한다.
 - 모든 positive weight가 같으면 기존 round-robin과 같은 분배가 된다고 설명한다.
 - sender `DEALER`에 routing policy를 설정하지 않는다고 설명한다.
 - admission 기반 draining 예시는 삭제하고 `weight=0` 예시로 바꾼다.
-- service/Spot guide의 admission 기반 drain 설명도 weight `0` 기반 설명으로 바꾼다.
+- service/Spot guide에서는 admission 기반 drain 설명을 제거한다. `SpotNode`나
+  `Spot`에서 weight를 설정할 수 있다고 설명하지 않는다.
 - 내부 pipe, command frame, schedule 같은 구현 세부는 guide 본문에 넣지 않는다.
 
 ### 17.3 Internals
@@ -912,8 +876,7 @@ core 테스트는 최소 아래를 포함해야 한다.
 
 반영 내용:
 
-- 각 언어의 `DealerSocketOptions`, `RouterSocketOptions`, `SpotNodeOptions`,
-  `SpotOptions`에 weight 설정을 추가한다.
+- 각 언어의 `DealerSocketOptions`, `RouterSocketOptions`에 weight 설정을 추가한다.
 - 바인딩 이름은 각 언어 관례를 따른다. 예를 들면 `weight`, `setWeight`,
   `SetWeight`, `with_weight`처럼 기존 option facade 스타일에 맞춘다.
 - 값 범위 `0..100`, 기본값 `100`, `0` 후보 제외 의미를 모든 언어 문서에 맞춘다.

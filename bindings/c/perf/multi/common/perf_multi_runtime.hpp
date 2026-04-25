@@ -13,6 +13,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -126,6 +128,231 @@ inline int bench_ctx_auto_hwm_total_memory_budget_mb()
     if (parsed > INT_MAX)
         return INT_MAX;
     return static_cast<int>(parsed);
+}
+
+inline bool perf_auto_hwm_detail_enabled()
+{
+    const char *value =
+      resolve_multi_env_value("PERF_MULTI_PRINT_AUTO_HWM_DETAIL",
+                              "PERF_PRINT_AUTO_HWM_DETAIL");
+    if (!value || !*value)
+        return true;
+    return std::strcmp(value, "0") != 0;
+}
+
+inline const char *perf_auto_hwm_role_name(uint32_t role_)
+{
+    switch (role_) {
+        case 1:
+            return "control";
+        case 2:
+            return "routed";
+        case 3:
+            return "fanout";
+        case 4:
+            return "recv_ingress";
+        default:
+            return "none";
+    }
+}
+
+inline const char *perf_auto_hwm_recalc_reason_name(uint32_t reason_)
+{
+    switch (reason_) {
+        case ZLINK_AUTO_HWM_RECALC_REASON_INITIAL:
+            return "initial";
+        case ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE:
+            return "role_change";
+        case ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE:
+            return "policy_toggle";
+        case ZLINK_AUTO_HWM_RECALC_REASON_REFRESH:
+            return "refresh";
+        default:
+            return "none";
+    }
+}
+
+inline zlink_service_monitor_event_mask_t
+perf_auto_hwm_service_monitor_events(const char *label_)
+{
+    const std::string label = label_ ? std::string(label_) : std::string();
+    if (label.find("sub") != std::string::npos)
+        return static_cast<zlink_service_monitor_event_mask_t>(1u << 13);
+    if (label.find("pub") != std::string::npos
+        || label.find("data") != std::string::npos)
+        return static_cast<zlink_service_monitor_event_mask_t>(1u << 15);
+    return ZLINK_SERVICE_MONITOR_EVENT_ALL;
+}
+
+inline std::string perf_auto_hwm_env_or_default(const char *name_,
+                                                const char *fallback_)
+{
+    const char *value = resolve_multi_env_value(name_, NULL);
+    if (value && *value)
+        return std::string(value);
+    return fallback_ ? std::string(fallback_) : std::string();
+}
+
+inline void perf_print_auto_hwm_snapshot(void *handle_,
+                                         bool service_handle_,
+                                         const char *label_,
+                                         const std::string &transport_)
+{
+    if (!handle_ || !perf_auto_hwm_detail_enabled())
+        return;
+
+    zlink_monitor_snapshot_t snapshot;
+    std::memset(&snapshot, 0, sizeof(snapshot));
+
+    void *monitor = NULL;
+    zlink_config_result_t rc = ZLINK_CONFIG_INVALID_HANDLE;
+    if (service_handle_) {
+        zlink_service_monitor_open_options_t opts;
+        std::memset(&opts, 0, sizeof(opts));
+        opts.events = perf_auto_hwm_service_monitor_events(label_);
+        monitor = zlink_service_monitor_open(handle_, &opts);
+        if (monitor) {
+            rc = zlink_monitor_snapshot(monitor, &snapshot);
+            zlink_monitor_close(&monitor);
+        }
+    } else {
+        zlink_socket_monitor_open_options_t opts;
+        std::memset(&opts, 0, sizeof(opts));
+        opts.events = ZLINK_SOCKET_MONITOR_EVENT_ALL;
+        monitor = zlink_socket_monitor_open(handle_, &opts);
+        if (monitor) {
+            rc = zlink_monitor_snapshot(monitor, &snapshot);
+            zlink_monitor_close(&monitor);
+        }
+        if (rc != ZLINK_CONFIG_OK) {
+            zlink_service_monitor_open_options_t service_opts;
+            std::memset(&service_opts, 0, sizeof(service_opts));
+            service_opts.events = perf_auto_hwm_service_monitor_events(label_);
+            monitor = zlink_service_monitor_open(handle_, &service_opts);
+            if (monitor) {
+                rc = zlink_monitor_snapshot(monitor, &snapshot);
+                zlink_monitor_close(&monitor);
+            }
+        }
+    }
+    const bool snapshot_from_monitor = rc == ZLINK_CONFIG_OK;
+    if (!snapshot_from_monitor) {
+        int value = 0;
+        size_t value_size = sizeof(value);
+        std::memset(&snapshot, 0, sizeof(snapshot));
+        if (zlink_get_option(handle_, ZLINK_OPT_SNDHWM, &value, &value_size)
+            == ZLINK_CONFIG_OK)
+            snapshot.auto_hwm_applied_sndhwm = value;
+        value = 0;
+        value_size = sizeof(value);
+        if (zlink_get_option(handle_, ZLINK_OPT_RCVHWM, &value, &value_size)
+            == ZLINK_CONFIG_OK)
+            snapshot.auto_hwm_applied_rcvhwm = value;
+        value = -1;
+        value_size = sizeof(value);
+        if (zlink_get_option(handle_, ZLINK_OPT_SNDBUF, &value, &value_size)
+            == ZLINK_CONFIG_OK) {
+            snapshot.auto_hwm_requested_sndbuf = value;
+            snapshot.auto_hwm_effective_sndbuf = value;
+        }
+        value = -1;
+        value_size = sizeof(value);
+        if (zlink_get_option(handle_, ZLINK_OPT_RCVBUF, &value, &value_size)
+            == ZLINK_CONFIG_OK) {
+            snapshot.auto_hwm_requested_rcvbuf = value;
+            snapshot.auto_hwm_effective_rcvbuf = value;
+        }
+    }
+
+    static std::mutex sync;
+    static std::set<std::string> emitted;
+    const std::string pattern =
+      perf_auto_hwm_env_or_default("PERF_MULTI_PATTERN", "unknown");
+    const std::string component =
+      perf_auto_hwm_env_or_default("PERF_MULTI_COMPONENT", "process");
+    const std::string transport =
+      transport_.empty()
+        ? perf_auto_hwm_env_or_default("PERF_MULTI_TRANSPORT", "unknown")
+        : transport_;
+    const char *label = label_ && *label_ ? label_ : "socket";
+
+    const std::string key =
+      pattern + "|" + transport + "|" + component + "|" + label + "|"
+      + perf_auto_hwm_role_name(snapshot.auto_hwm_role) + "|"
+      + std::to_string(snapshot.auto_hwm_applied_sndhwm) + "|"
+      + std::to_string(snapshot.auto_hwm_applied_rcvhwm) + "|"
+      + std::to_string(snapshot.auto_hwm_requested_sndbuf) + "|"
+      + std::to_string(snapshot.auto_hwm_requested_rcvbuf) + "|"
+      + std::to_string(snapshot.auto_hwm_effective_sndbuf) + "|"
+      + std::to_string(snapshot.auto_hwm_effective_rcvbuf);
+
+    {
+        std::lock_guard<std::mutex> lock(sync);
+        if (emitted.find(key) != emitted.end())
+            return;
+        emitted.insert(key);
+    }
+
+    std::cout << "AUTO_HWM_DETAIL"
+              << ",pattern=" << pattern
+              << ",transport=" << transport
+              << ",component=" << component
+              << ",label=" << label
+              << ",source="
+              << (snapshot_from_monitor ? "monitor_snapshot"
+                                        : "option_fallback")
+              << ",enabled=" << snapshot.auto_hwm_enabled
+              << ",role=" << perf_auto_hwm_role_name(snapshot.auto_hwm_role)
+              << ",role_id=" << snapshot.auto_hwm_role
+              << ",managed_connections="
+              << snapshot.auto_hwm_managed_connections
+              << ",active_connections="
+              << snapshot.auto_hwm_active_hwm_connections
+              << ",planning_transport_connections="
+              << snapshot.auto_hwm_planning_transport_connections
+              << ",base_floor_per_connection="
+              << snapshot.auto_hwm_base_floor_per_connection
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",requested_sndbuf="
+              << snapshot.auto_hwm_requested_sndbuf
+              << ",requested_rcvbuf="
+              << snapshot.auto_hwm_requested_rcvbuf
+              << ",effective_sndbuf="
+              << snapshot.auto_hwm_effective_sndbuf
+              << ",effective_rcvbuf="
+              << snapshot.auto_hwm_effective_rcvbuf
+              << ",total_budget_bytes="
+              << snapshot.auto_hwm_total_memory_budget_bytes
+              << ",queue_budget_bytes="
+              << snapshot.auto_hwm_queue_budget_bytes
+              << ",transport_budget_bytes="
+              << snapshot.auto_hwm_transport_budget_bytes
+              << ",runtime_reserve_bytes="
+              << snapshot.auto_hwm_runtime_reserve_bytes
+              << ",group_budget_bytes="
+              << snapshot.auto_hwm_group_budget_bytes
+              << ",group_message_slots="
+              << snapshot.auto_hwm_group_message_slots
+              << ",effective_message_bytes="
+              << snapshot.auto_hwm_effective_message_bytes
+              << ",control_budget_bytes="
+              << snapshot.auto_hwm_control_budget_bytes
+              << ",routed_budget_bytes="
+              << snapshot.auto_hwm_routed_budget_bytes
+              << ",fanout_budget_bytes="
+              << snapshot.auto_hwm_fanout_budget_bytes
+              << ",recv_ingress_budget_bytes="
+              << snapshot.auto_hwm_recv_ingress_budget_bytes
+              << ",estimated_max_memory_bytes="
+              << snapshot.auto_hwm_estimated_max_memory_bytes
+              << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
+              << ",last_recalc_reason="
+              << perf_auto_hwm_recalc_reason_name(
+                   snapshot.auto_hwm_last_recalc_reason)
+              << ",send_blocked_ratio_ppm="
+              << snapshot.auto_hwm_send_blocked_ratio_ppm
+              << std::endl;
 }
 
 inline void apply_ctx_options(void *ctx_)
@@ -426,6 +653,7 @@ inline void apply_benchmark_socket_options(void *socket_,
         set_sockopt_int(socket_, ZLINK_OPT_RCVBUF, rcvbuf, "ZLINK_OPT_RCVBUF");
     apply_benchmark_hwm(socket_, hwm_value);
     apply_debug_timeouts(socket_, transport);
+    perf_print_auto_hwm_snapshot(socket_, false, "socket", transport);
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)

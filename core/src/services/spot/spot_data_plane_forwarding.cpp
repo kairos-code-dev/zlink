@@ -125,6 +125,84 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
     return socket;
 }
 
+void refresh_fixed_poller_interest_local (
+  spot_data_plane_runtime_state_t *state_)
+{
+    const bool pause_ingress =
+      state_->local_fanout.pending_bytes >= state_->local_fanout.pending_pause_threshold
+      || state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
+      || !state_->staged.ingress_messages.empty ()
+      || !state_->staged.mesh_messages.empty ();
+    const bool resume_ingress =
+      state_->local_fanout.pending_bytes <= state_->local_fanout.pending_resume_threshold
+      && state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
+    if (!state_->interest.ingress_pollin_paused && pause_ingress)
+        state_->interest.ingress_pollin_paused = true;
+    else if (state_->interest.ingress_pollin_paused && resume_ingress)
+        state_->interest.ingress_pollin_paused = false;
+
+    const bool pause_mesh =
+      state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
+      || !state_->staged.mesh_messages.empty ()
+      || !state_->staged.ingress_messages.empty ();
+    const bool resume_mesh =
+      state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
+    if (!state_->interest.mesh_xsub_pollin_paused && pause_mesh)
+        state_->interest.mesh_xsub_pollin_paused = true;
+    else if (state_->interest.mesh_xsub_pollin_paused && resume_mesh)
+        state_->interest.mesh_xsub_pollin_paused = false;
+
+    const short ingress_events =
+      state_->interest.ingress_pollin_paused ? 0 : ZLINK_POLLIN;
+    if (state_->interest.ingress_pollin_armed != (ingress_events != 0)) {
+        (void) state_->poller->modify (state_->ingress, ingress_events);
+        state_->interest.ingress_pollin_armed = ingress_events != 0;
+    }
+
+    const short mesh_xsub_events =
+      state_->interest.mesh_xsub_pollin_paused ? 0 : ZLINK_POLLIN;
+    if (state_->interest.mesh_xsub_pollin_armed != (mesh_xsub_events != 0)) {
+        (void) state_->poller->modify (state_->mesh_xsub, mesh_xsub_events);
+        state_->interest.mesh_xsub_pollin_armed = mesh_xsub_events != 0;
+    }
+
+    const bool mesh_pub_need_pollout =
+      !state_->remote_mesh.broadcast_pending_message_ids.empty ();
+    if (mesh_pub_need_pollout != state_->remote_mesh.pollout_armed) {
+        (void) state_->poller->modify (
+          state_->mesh_pub, mesh_pub_need_pollout ? ZLINK_POLLOUT : 0);
+        state_->remote_mesh.pollout_armed = mesh_pub_need_pollout;
+    }
+}
+
+void refresh_local_target_pollout_interest_local (
+  spot_data_plane_runtime_state_t *state_,
+  spot_data_plane_runtime_state_t::local_target_state_t *target_)
+{
+    if (!state_ || !state_->poller || !target_ || !target_->relay_socket)
+        return;
+    const bool need_pollout = !target_->pending_message_ids.empty ();
+    if (need_pollout == target_->pollout_armed)
+        return;
+    (void) state_->poller->modify (target_->relay_socket,
+                                   need_pollout ? ZLINK_POLLOUT : 0);
+    target_->pollout_armed = need_pollout;
+}
+
+void refresh_remote_target_pollout_interest_local (
+  spot_data_plane_runtime_state_t *state_,
+  spot_data_plane_runtime_state_t::remote_target_state_t *target_)
+{
+    if (!state_ || !state_->poller || !target_ || !target_->sender_socket)
+        return;
+    const bool need_pollout = !target_->pending_message_ids.empty ();
+    if (need_pollout == target_->pollout_armed)
+        return;
+    (void) state_->poller->modify (target_->sender_socket,
+                                   need_pollout ? ZLINK_POLLOUT : 0);
+    target_->pollout_armed = need_pollout;
+}
+
 }
 
 void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
@@ -174,7 +252,15 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
               state_, attachment_id);
             continue;
         }
-        it->second.relay_socket = snap_it->second;
+        if (it->second.relay_socket != snap_it->second) {
+            if (it->second.relay_socket)
+                state_->local_fanout.target_by_socket.erase (
+                  it->second.relay_socket);
+            it->second.relay_socket = snap_it->second;
+            if (it->second.relay_socket)
+                state_->local_fanout.target_by_socket[it->second.relay_socket] =
+                  it->first;
+        }
         ++it;
     }
 
@@ -187,8 +273,11 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
         target.attachment_id = it->first;
         target.relay_socket = it->second;
         state_->local_fanout.targets[it->first] = target;
+        state_->local_fanout.target_by_socket[it->second] = it->first;
         if (state_->poller && it->second)
             (void) state_->poller->add (it->second, NULL, 0);
+        if (it->second)
+            it->second->set_all_pipes_nodelay ();
     }
 
     for (std::deque<socket_base_t *>::iterator it = retired_relays.begin ();
@@ -256,70 +345,18 @@ void spot_data_plane_forwarder_t::refresh_poller_interest (
     if (!state_ || !state_->poller)
         return;
 
-    const bool pause_ingress =
-      state_->local_fanout.pending_bytes >= state_->local_fanout.pending_pause_threshold
-      || state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
-      || !state_->staged.ingress_messages.empty ()
-      || !state_->staged.mesh_messages.empty ();
-    const bool resume_ingress =
-      state_->local_fanout.pending_bytes <= state_->local_fanout.pending_resume_threshold
-      && state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
-    if (!state_->interest.ingress_pollin_paused && pause_ingress)
-        state_->interest.ingress_pollin_paused = true;
-    else if (state_->interest.ingress_pollin_paused && resume_ingress)
-        state_->interest.ingress_pollin_paused = false;
-
-    const bool pause_mesh =
-      state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
-      || !state_->staged.mesh_messages.empty ()
-      || !state_->staged.ingress_messages.empty ();
-    const bool resume_mesh =
-      state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
-    if (!state_->interest.mesh_xsub_pollin_paused && pause_mesh)
-        state_->interest.mesh_xsub_pollin_paused = true;
-    else if (state_->interest.mesh_xsub_pollin_paused && resume_mesh)
-        state_->interest.mesh_xsub_pollin_paused = false;
-
-    (void) state_->poller->modify (state_->ingress,
-                                   state_->interest.ingress_pollin_paused ? 0
-                                                                 : ZLINK_POLLIN);
-    (void) state_->poller->modify (state_->mesh_xsub,
-                                   state_->interest.mesh_xsub_pollin_paused ? 0
-                                                                    : ZLINK_POLLIN);
-
-    const bool mesh_pub_need_pollout =
-      !state_->remote_mesh.broadcast_pending_message_ids.empty ();
-    if (mesh_pub_need_pollout != state_->remote_mesh.pollout_armed) {
-        (void) state_->poller->modify (
-          state_->mesh_pub,
-          mesh_pub_need_pollout ? ZLINK_POLLOUT : 0);
-        state_->remote_mesh.pollout_armed = mesh_pub_need_pollout;
-    }
+    refresh_fixed_poller_interest_local (state_);
 
     for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
            iterator it = state_->local_fanout.targets.begin ();
          it != state_->local_fanout.targets.end (); ++it) {
-        if (!it->second.relay_socket)
-            continue;
-        const bool need_pollout = !it->second.pending_message_ids.empty ();
-        if (need_pollout == it->second.pollout_armed)
-            continue;
-        (void) state_->poller->modify (it->second.relay_socket,
-                                       need_pollout ? ZLINK_POLLOUT : 0);
-        it->second.pollout_armed = need_pollout;
+        refresh_local_target_pollout_interest_local (state_, &it->second);
     }
 
     for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
            iterator it = state_->remote_mesh.targets.begin ();
          it != state_->remote_mesh.targets.end (); ++it) {
-        if (!it->second.sender_socket)
-            continue;
-        const bool need_pollout = !it->second.pending_message_ids.empty ();
-        if (need_pollout == it->second.pollout_armed)
-            continue;
-        (void) state_->poller->modify (it->second.sender_socket,
-                                       need_pollout ? ZLINK_POLLOUT : 0);
-        it->second.pollout_armed = need_pollout;
+        refresh_remote_target_pollout_interest_local (state_, &it->second);
     }
 }
 
@@ -356,7 +393,6 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
             continue;
 
         pump_socket_commands (target.relay_socket);
-        target.relay_socket->set_all_pipes_nodelay ();
         if (target.pending_message_ids.empty ()
             && spot_publish_msg_parts (target.relay_socket, topic_, parts_) == 0) {
             continue;
@@ -517,6 +553,57 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
     if (!runtime_ || !state_)
         return 0;
 
+    if (relay_socket_) {
+        std::unordered_map<socket_base_t *, uint64_t>::iterator socket_it =
+          state_->local_fanout.target_by_socket.find (relay_socket_);
+        if (socket_it == state_->local_fanout.target_by_socket.end ()) {
+            if (state_->poller)
+                refresh_fixed_poller_interest_local (state_);
+            return 0;
+        }
+        spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+          iterator target_it =
+            state_->local_fanout.targets.find (socket_it->second);
+        if (target_it == state_->local_fanout.targets.end ()
+            || !target_it->second.relay_socket) {
+            if (state_->poller)
+                refresh_fixed_poller_interest_local (state_);
+            return 0;
+        }
+
+        spot_data_plane_runtime_state_t::local_target_state_t &target =
+          target_it->second;
+        while (!target.pending_message_ids.empty ()) {
+            const uint64_t message_id = target.pending_message_ids.front ();
+            spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
+              iterator msg_it =
+                state_->local_fanout.pending_messages.find (message_id);
+            if (msg_it == state_->local_fanout.pending_messages.end ()) {
+                target.pending_message_ids.pop_front ();
+                continue;
+            }
+
+            pump_socket_commands (target.relay_socket);
+            if (spot_publish_msg_parts (target.relay_socket, msg_it->second.topic,
+                                        msg_it->second.parts)
+                != 0) {
+                if (errno == EAGAIN)
+                    break;
+                return -1;
+            }
+
+            target.pending_message_ids.pop_front ();
+            spot_data_plane_pending_t::release_local_pending_ref (state_,
+                                                                  message_id);
+        }
+
+        if (state_->poller) {
+            refresh_fixed_poller_interest_local (state_);
+            refresh_local_target_pollout_interest_local (state_, &target);
+        }
+        return 0;
+    }
+
     for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
            iterator it = state_->local_fanout.targets.begin ();
          it != state_->local_fanout.targets.end (); ++it) {
@@ -536,7 +623,6 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
             }
 
             pump_socket_commands (target.relay_socket);
-            target.relay_socket->set_all_pipes_nodelay ();
             if (spot_publish_msg_parts (target.relay_socket, msg_it->second.topic,
                                         msg_it->second.parts)
                 != 0) {

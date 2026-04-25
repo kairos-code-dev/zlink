@@ -119,6 +119,8 @@ void spot_data_plane_pending_t::drop_local_target_state (
 
     if (state_->poller && it->second.relay_socket)
         (void) state_->poller->remove (it->second.relay_socket);
+    if (it->second.relay_socket)
+        state_->local_fanout.target_by_socket.erase (it->second.relay_socket);
 
     while (!it->second.pending_message_ids.empty ()) {
         release_local_pending_ref (state_, it->second.pending_message_ids.front ());
@@ -186,6 +188,8 @@ void spot_data_plane_pending_t::drop_remote_target_state (
 
     if (state_->poller && it->second.sender_socket)
         (void) state_->poller->remove (it->second.sender_socket);
+    if (it->second.sender_socket)
+        state_->remote_mesh.target_by_socket.erase (it->second.sender_socket);
 
     while (!it->second.pending_message_ids.empty ()) {
         release_mesh_pending_ref (state_, it->second.pending_message_ids.front ());
@@ -229,7 +233,8 @@ bool spot_data_plane_pending_t::enqueue_local_target_message (
             return false;
 
         state_->local_fanout.pending_bytes += entry.encoded_bytes;
-        state_->local_fanout.pending_messages[message_id] = entry;
+        state_->local_fanout.pending_messages.emplace (message_id,
+                                                       std::move (entry));
         if (message_id_inout_)
             *message_id_inout_ = message_id;
     }
@@ -274,7 +279,8 @@ bool spot_data_plane_pending_t::enqueue_mesh_pending (
             return false;
 
         state_->remote_mesh.pending_bytes += entry.encoded_bytes;
-        state_->remote_mesh.pending_messages[message_id] = entry;
+        state_->remote_mesh.pending_messages.emplace (message_id,
+                                                      std::move (entry));
         if (message_id_inout_)
             *message_id_inout_ = message_id;
     }
@@ -318,7 +324,8 @@ bool spot_data_plane_pending_t::enqueue_mesh_broadcast_pending (
             return false;
 
         state_->remote_mesh.pending_bytes += entry.encoded_bytes;
-        state_->remote_mesh.pending_messages[message_id] = entry;
+        state_->remote_mesh.pending_messages.emplace (message_id,
+                                                      std::move (entry));
         if (message_id_inout_)
             *message_id_inout_ = message_id;
     }

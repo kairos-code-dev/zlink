@@ -142,7 +142,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     fault_errno (0),
     abortive_shutdown (false),
     shutdown_phase_value (spot_shutdown_phase_running),
-    next_attachment_id (0)
+    next_attachment_id (0),
+    attachment_version (0)
 {
     if (node_id == 0)
         node_id = 1;
@@ -164,6 +165,12 @@ spot_node_hwm_config_t spot_runtime_t::hwm_config_snapshot () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (hwm_config_sync));
     return hwm_config;
+}
+
+uint64_t spot_runtime_t::attachment_state_version () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+    return attachment_version;
 }
 
 ctx_t *spot_runtime_t::ctx () const

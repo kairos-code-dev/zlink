@@ -44,42 +44,25 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->node_router);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->fanout);
-    spot_data_plane_forwarder_t::sync_local_fanout_targets (runtime_, state_);
-    spot_data_plane_forwarder_t::sync_remote_mesh_targets (runtime_, state_,
-                                                           protocol_state_);
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-           iterator it = state_->local_fanout.targets.begin ();
-         it != state_->local_fanout.targets.end (); ++it) {
-        if (it->second.relay_socket)
-            spot_data_plane_forwarder_t::pump_socket_commands (
-              it->second.relay_socket);
+
+    const uint64_t attachment_version = runtime_->attachment_state_version ();
+    if (state_->last_attachment_version != attachment_version) {
+        spot_data_plane_forwarder_t::sync_local_fanout_targets (runtime_, state_);
+        spot_data_plane_forwarder_t::sync_remote_mesh_targets (runtime_, state_,
+                                                               protocol_state_);
+        state_->last_attachment_version = attachment_version;
     }
-    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
-           iterator it = state_->remote_mesh.targets.begin ();
-         it != state_->remote_mesh.targets.end (); ++it) {
-        if (it->second.sender_socket)
-            spot_data_plane_forwarder_t::pump_socket_commands (
-              it->second.sender_socket);
-    }
-    state_->mesh_pub->set_all_pipes_nodelay ();
-    state_->peer_ctrl_pub->set_all_pipes_nodelay ();
-    state_->peer_ctrl_sub->set_all_pipes_nodelay ();
-    state_->route_ingress->set_all_pipes_nodelay ();
-    state_->peer_route_ingress->set_all_pipes_nodelay ();
-    state_->node_router->set_all_pipes_nodelay ();
-    state_->ingress->set_all_pipes_nodelay ();
-    state_->fanout->set_all_pipes_nodelay ();
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-           iterator it = state_->local_fanout.targets.begin ();
-         it != state_->local_fanout.targets.end (); ++it) {
-        if (it->second.relay_socket)
-            it->second.relay_socket->set_all_pipes_nodelay ();
-    }
-    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
-           iterator it = state_->remote_mesh.targets.begin ();
-         it != state_->remote_mesh.targets.end (); ++it) {
-        if (it->second.sender_socket)
-            it->second.sender_socket->set_all_pipes_nodelay ();
+
+    if (!state_->runtime_sockets_nodelay_applied) {
+        state_->mesh_pub->set_all_pipes_nodelay ();
+        state_->peer_ctrl_pub->set_all_pipes_nodelay ();
+        state_->peer_ctrl_sub->set_all_pipes_nodelay ();
+        state_->route_ingress->set_all_pipes_nodelay ();
+        state_->peer_route_ingress->set_all_pipes_nodelay ();
+        state_->node_router->set_all_pipes_nodelay ();
+        state_->ingress->set_all_pipes_nodelay ();
+        state_->fanout->set_all_pipes_nodelay ();
+        state_->runtime_sockets_nodelay_applied = true;
     }
     spot_mesh_pub_budget_t::refresh_live_socket (
       runtime_, state_->mesh_pub, &state_->mesh_pub_budget.current_sndhwm,
@@ -396,6 +379,7 @@ int spot_data_plane_loop_t::run_until_shutdown (
         *protocol_state_out_ = protocol_state;
     spot_data_plane_protocol_state_t *protocol_state_ptr =
       protocol_state_out_ ? protocol_state_out_ : &protocol_state;
+    std::vector<socket_poller_t::event_t> events;
 
     while (running) {
         service_runtime_sockets (runtime_, state_, protocol_state_ptr);
@@ -408,8 +392,10 @@ int spot_data_plane_loop_t::run_until_shutdown (
             fatal_errno = errno;
             break;
         }
-        std::vector<socket_poller_t::event_t> events (
-          std::max (state_->poller->size (), 8));
+        const size_t event_capacity =
+          static_cast<size_t> (std::max (state_->poller->size (), 8));
+        if (events.size () < event_capacity)
+            events.resize (event_capacity);
         const int rc = state_->poller->wait (
           events.empty () ? NULL : &events[0], static_cast<int> (events.size ()),
           resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));

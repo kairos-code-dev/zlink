@@ -154,6 +154,7 @@ int spot_runtime_t::create_attachment (int kind_,
         attachment.endpoint = endpoint_;
         attachment.relay_endpoint = relay_endpoint;
         attachments[attachment.id] = attachment;
+        ++attachment_version;
     }
     *out_id_ = attachment.id;
     return 0;
@@ -225,6 +226,7 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
         endpoint = it->second.endpoint;
         relay_endpoint = it->second.relay_endpoint;
         attachments.erase (it);
+        ++attachment_version;
     }
     {
         scoped_lock_t lock (execution_sync);
@@ -234,6 +236,7 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
         if (data_plane_running) {
             scoped_lock_t lock (attachment_sync);
             retired_attachment_relay_sockets.push_back (relay_socket);
+            ++attachment_version;
         } else {
             relay_socket->set_all_pipes_nodelay ();
             (void) close_runtime_socket (relay_socket, 10000);
@@ -277,6 +280,7 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
         endpoint = it->second.endpoint;
         relay_endpoint = it->second.relay_endpoint;
         attachments.erase (it);
+        ++attachment_version;
     }
     {
         scoped_lock_t lock (execution_sync);
@@ -286,6 +290,7 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
         if (data_plane_running) {
             scoped_lock_t lock (attachment_sync);
             retired_attachment_relay_sockets.push_back (relay_socket);
+            ++attachment_version;
         } else {
             relay_socket->set_all_pipes_nodelay ();
             (void) close_runtime_socket_async (relay_socket, 10000);

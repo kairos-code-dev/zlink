@@ -333,6 +333,7 @@ struct spot_data_plane_runtime_state_t
         size_t pending_hard_limit;
         pending_message_map_t pending_messages;
         target_map_t targets;
+        std::unordered_map<socket_base_t *, uint64_t> target_by_socket;
     };
 
     struct remote_mesh_state_t
@@ -359,6 +360,7 @@ struct spot_data_plane_runtime_state_t
         pending_message_map_t pending_messages;
         std::deque<uint64_t> broadcast_pending_message_ids;
         target_map_t targets;
+        std::unordered_map<socket_base_t *, std::string> target_by_socket;
     };
 
     struct staged_publish_state_t
@@ -371,12 +373,16 @@ struct spot_data_plane_runtime_state_t
     {
         poller_interest_state_t () :
             ingress_pollin_paused (false),
-            mesh_xsub_pollin_paused (false)
+            mesh_xsub_pollin_paused (false),
+            ingress_pollin_armed (true),
+            mesh_xsub_pollin_armed (true)
         {
         }
 
         bool ingress_pollin_paused;
         bool mesh_xsub_pollin_paused;
+        bool ingress_pollin_armed;
+        bool mesh_xsub_pollin_armed;
     };
 
     socket_base_t *ctrl;
@@ -391,6 +397,8 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *ingress;
     socket_base_t *fanout;
     uint64_t next_pending_message_id;
+    uint64_t last_attachment_version;
+    bool runtime_sockets_nodelay_applied;
     mesh_pub_budget_state_t mesh_pub_budget;
     poller_interest_state_t interest;
     local_fanout_state_t local_fanout;

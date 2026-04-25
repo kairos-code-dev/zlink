@@ -400,6 +400,8 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     ingress (NULL),
     fanout (NULL),
     next_pending_message_id (0),
+    last_attachment_version (UINT64_MAX),
+    runtime_sockets_nodelay_applied (false),
     poller (NULL)
 {
 }

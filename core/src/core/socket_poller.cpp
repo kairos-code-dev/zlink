@@ -130,6 +130,9 @@ int zlink::socket_poller_t::modify (const socket_base_t *socket_, short events_)
         return -1;
     }
 
+    if (it->events == events_)
+        return 0;
+
     it->events = events_;
     _need_rebuild = true;
 
@@ -146,6 +149,9 @@ int zlink::socket_poller_t::modify_fd (fd_t fd_, short events_)
         errno = EINVAL;
         return -1;
     }
+
+    if (it->events == events_)
+        return 0;
 
     it->events = events_;
     _need_rebuild = true;

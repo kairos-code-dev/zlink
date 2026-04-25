@@ -132,6 +132,7 @@ struct spot_runtime_t
                                    size_t *local_sub_count_out_,
                                    size_t *connected_peer_count_out_,
                                    size_t *active_peer_count_out_) const;
+    uint64_t attachment_state_version () const;
     spot_node_hwm_config_t hwm_config_snapshot () const;
     void set_hwm_config (const spot_node_hwm_config_t &config_);
 
@@ -180,6 +181,7 @@ struct spot_runtime_t
     mutable mutex_t attachment_sync;
     spot_runtime_execution_state_t execution;
     uint64_t next_attachment_id;
+    uint64_t attachment_version;
     std::map<uint64_t, spot_attachment_t> attachments;
     std::deque<socket_base_t *> retired_attachment_relay_sockets;
 };

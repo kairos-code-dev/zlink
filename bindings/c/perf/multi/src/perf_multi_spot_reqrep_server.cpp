@@ -219,6 +219,19 @@ bool initialize_reqrep_server_session(
         return false;
     }
 
+    perf_print_auto_hwm_snapshot(
+      session->node, true, "spotnode_data_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->pub, true, "spotend_data_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_node, true, "spotnode_control_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_node, true, "spotnode_control_sub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_pub, true, "spotend_control_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_sub, true, "spotend_control_sub", transport);
+
     return true;
 }
 

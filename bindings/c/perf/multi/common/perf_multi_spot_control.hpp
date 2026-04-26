@@ -194,8 +194,14 @@ inline bool initialize_client_session(void *node,
     }
 
     const std::string transport = transport_from_endpoint(server_endpoint);
-    perf_print_auto_hwm_snapshot(session->pub, true, "control_pub", transport);
-    perf_print_auto_hwm_snapshot(session->sub, true, "control_sub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->node, true, "spotnode_control_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->node, true, "spotnode_control_sub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->pub, true, "spotend_control_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->sub, true, "spotend_control_sub", transport);
 
     if (connected_flag)
         connected_flag->store(true, std::memory_order_release);
@@ -283,7 +289,9 @@ inline bool initialize_client_slot(ctx_guard_t &ctx,
     }
 
     perf_print_auto_hwm_snapshot(
-      slot->handle, true, "sub", transport_from_endpoint(endpoint));
+      slot->node, true, "spotnode_data_sub", transport);
+    perf_print_auto_hwm_snapshot(
+      slot->handle, true, "spotend_data_sub", transport);
 
     return true;
 }
@@ -385,11 +393,18 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
         return false;
     }
 
-    perf_print_auto_hwm_snapshot(session->pub, true, "data_pub", transport);
     perf_print_auto_hwm_snapshot(
-      session->control_pub, true, "control_pub", transport);
+      session->node, true, "spotnode_data_pub", transport);
     perf_print_auto_hwm_snapshot(
-      session->control_sub, true, "control_sub", transport);
+      session->pub, true, "spotend_data_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_node, true, "spotnode_control_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_node, true, "spotnode_control_sub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_pub, true, "spotend_control_pub", transport);
+    perf_print_auto_hwm_snapshot(
+      session->control_sub, true, "spotend_control_sub", transport);
 
     return true;
 }

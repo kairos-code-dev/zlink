@@ -196,7 +196,8 @@ inline std::string perf_auto_hwm_env_or_default(const char *name_,
 inline void perf_print_auto_hwm_snapshot(void *handle_,
                                          bool service_handle_,
                                          const char *label_,
-                                         const std::string &transport_)
+                                         const std::string &transport_,
+                                         bool allow_service_fallback_ = true)
 {
     if (!handle_ || !perf_auto_hwm_detail_enabled())
         return;
@@ -224,7 +225,7 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
             rc = zlink_monitor_snapshot(monitor, &snapshot);
             zlink_monitor_close(&monitor);
         }
-        if (rc != ZLINK_CONFIG_OK) {
+        if (rc != ZLINK_CONFIG_OK && allow_service_fallback_) {
             zlink_service_monitor_open_options_t service_opts;
             std::memset(&service_opts, 0, sizeof(service_opts));
             service_opts.events = perf_auto_hwm_service_monitor_events(label_);
@@ -653,7 +654,7 @@ inline void apply_benchmark_socket_options(void *socket_,
         set_sockopt_int(socket_, ZLINK_OPT_RCVBUF, rcvbuf, "ZLINK_OPT_RCVBUF");
     apply_benchmark_hwm(socket_, hwm_value);
     apply_debug_timeouts(socket_, transport);
-    perf_print_auto_hwm_snapshot(socket_, false, "socket", transport);
+    perf_print_auto_hwm_snapshot(socket_, false, "endpoint", transport, false);
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)

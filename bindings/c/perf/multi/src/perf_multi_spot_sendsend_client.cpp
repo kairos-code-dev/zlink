@@ -631,6 +631,13 @@ bool create_spot_slots(ctx_guard_t &ctx,
         }
     }
 
+    perf_print_auto_hwm_snapshot(
+      state->data_node, true, "spotnode_data_pub", transport);
+    if (!state->slots.empty()) {
+        perf_print_auto_hwm_snapshot(
+          state->slots[0].socket, true, "spotend_data_pub", transport);
+    }
+
     state->poller = zlink_poller_new();
     if (!state->poller) {
         if (bench_debug_enabled())

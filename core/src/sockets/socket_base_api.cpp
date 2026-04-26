@@ -133,6 +133,14 @@ int zlink::socket_base_t::setsockopt (int option_,
             else if (option_ == ZLINK_INTERNAL_OPT_RCVBUF)
                 _manual_rcvbuf = true;
 
+            if (option_ == ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES
+                || option_ == ZLINK_INTERNAL_OPT_SNDBUF
+                || option_ == ZLINK_INTERNAL_OPT_RCVBUF) {
+                _auto_hwm_last_recalc_reason =
+                  ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
+                refresh_auto_hwm_policy ();
+            }
+
             if (option_ == ZLINK_INTERNAL_OPT_PEER_WEIGHT) {
                 _local_peer_weight = static_cast<uint32_t> (options.peer_weight);
                 if (_service_attachment)

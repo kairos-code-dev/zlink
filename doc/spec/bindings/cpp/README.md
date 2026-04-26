@@ -1054,6 +1054,8 @@ struct monitor_snapshot_t {
     uint64_t rcv_pending_msgs;                // recv-queue pending message count
     bool auto_hwm_enabled;                    // automatic HWM currently active
     uint32_t auto_hwm_role;                   // diagnostic role bucket
+    uint32_t auto_hwm_scope;                  // 0=none, 1=shared, 2=per_spot
+    uint32_t auto_hwm_scope_count;            // scope target count
     uint32_t auto_hwm_managed_connections;    // connection count used for HWM planning
     uint32_t auto_hwm_active_hwm_connections; // connection count used to divide HWM slots
     uint32_t auto_hwm_planning_transport_connections; // connection count used for transport buffers
@@ -1069,8 +1071,13 @@ struct monitor_snapshot_t {
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
     uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_role_group_budget_bytes;
+    uint64_t auto_hwm_scope_group_budget_bytes;
     uint64_t auto_hwm_group_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
+    uint64_t auto_hwm_auto_buffer_bytes;
+    uint64_t auto_hwm_manual_buffer_bytes;
+    uint32_t auto_hwm_buffer_connections;
     uint64_t auto_hwm_control_budget_bytes;
     uint64_t auto_hwm_routed_budget_bytes;
     uint64_t auto_hwm_fanout_budget_bytes;
@@ -1082,6 +1089,8 @@ struct monitor_snapshot_t {
     uint64_t auto_hwm_estimated_max_memory_bytes;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
+    int32_t auto_hwm_deferred_sndhwm;
+    int32_t auto_hwm_deferred_rcvhwm;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
 
     bool is_ready() const noexcept;           // convenience: checks ready bit in state_flags

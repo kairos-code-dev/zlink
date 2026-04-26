@@ -800,7 +800,7 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 | `detail_flags` | `uint32` | 세부 비트마스크 |
 | `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
 | `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
-| `auto_hwm_*` budget/buffer/diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t` 의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. 역할 묶음별 budget, 역할 묶음별 active connection 수, 최근 재계산 정보, blocked ratio 를 포함한다 |
+| `auto_hwm_*` budget/buffer/diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t` 의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. 역할 묶음별 budget, scope budget, `MsgUnit(B)`, 자동/수동 buffer 비용, 최근 재계산 정보, deferred shrink, blocked ratio 를 포함한다 |
 | `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
 
 #### `ServiceEvent`
@@ -3393,6 +3393,12 @@ Bindings must expose `ZLINK_OPT_RID_DUPLICATE_POLICY`,
 `ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_RID_DUPLICATE_HANDOVER`, and the connect
 result values `NOT_FOUND`, `CONFLICT`, and `BUSY` using each language's
 normal enum/error mapping style.
+
+Bindings that expose raw common socket options must also expose
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`. Typed wrappers may
+name it as an automatic-HWM message-unit option, but the contract stays the
+same as C: `int` bytes, raw default `0`, and negative values fail with
+`EINVAL`.
 
 ## Related Docs
 - `bindings/cpp/`

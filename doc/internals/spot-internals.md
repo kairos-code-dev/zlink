@@ -412,31 +412,37 @@ Each handle has its own pub/sub pair, mode state, and request-reply state.
 
 ```text
 +------------------------------------------------------------------+
-|  Spot Handle HWM                                                  |
-|  (public facade pub/sub sockets)                                  |
-|  ┌──────────────────────────────────────────────────────────────┐ |
-|  │  SpotNode Data-Plane HWM                                     │ |
-|  │  ┌─────────────────────────┬────────────────────────────┐    │ |
-|  │  │  SNDHWM applied to:     │  RCVHWM applied to:        │    │ |
-|  │  │  - fanout (PUB)         │  - ingress (SUB)            │    │ |
-|  │  │  - mesh_pub (PUB)       │  - mesh_xsub (XSUB)        │    │ |
-|  │  │  - node_router (SND)    │  - route_ingress (ROUTER)   │    │ |
-|  │  │                         │  - node_router (RCV)        │    │ |
-|  │  └─────────────────────────┴────────────────────────────┘    │ |
-|  │                                                               │ |
-|  │  peer_ctrl is CONTROL PLANE → separate HWM (1024)            │ |
-|  └──────────────────────────────────────────────────────────────┘ |
+|  Spot Handle HWM                                                 |
+|  (public facade pub/sub sockets)                                 |
+|  +------------------------------------------------------------+  |
+|  |  SpotNode Data-Plane HWM                                  |  |
+|  |  +----------------------+------------------------------+  |  |
+|  |  |  SNDHWM targets      |  RCVHWM targets              |  |  |
+|  |  |  fanout, mesh_pub    |  ingress, mesh_xsub          |  |  |
+|  |  |  node_router send    |  route_ingress, router recv  |  |  |
+|  |  +----------------------+------------------------------+  |  |
+|  |  peer_ctrl uses control-plane HWM separately              |  |
+|  +------------------------------------------------------------+  |
 +------------------------------------------------------------------+
 ```
 
 The internal data-plane HWM is no longer a fixed `1000`. SpotNode runtime
-uses the role-bucket values from the context auto-HWM policy.
+uses the role-bucket values from the context auto-HWM policy and keeps two
+budget scopes:
 
-- `fanout`, `mesh_pub`: default floor `16`
-- `ingress`, `mesh_xsub`: default floor `8`
-- `node_router`, `route_ingress`: default floor `8`
+- shared scope: SpotNode shared sockets use the full role budget and divide
+  the resulting slots by the shared target count.
+- per-spot scope: spot endpoint and attachment sockets first divide the role
+  budget by the spot count.
+
+Role floors are not forced past the available budget. If the scoped budget
+converts to fewer slots than the floor, the budget-derived value is used.
+
+- `fanout`, `mesh_pub`: fanout role floor `16`
+- `ingress`, `mesh_xsub`: recv-ingress role floor `8`
+- `node_router`, `route_ingress`: routed role floor `8`
 - `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: separated into the control role
-  with default floor `4`
+  with floor `4`
 
 Topic and routed HWM can be configured independently via
 `zlink_set_spot_node_option()`:

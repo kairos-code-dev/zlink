@@ -89,6 +89,11 @@ zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
         || (defaults.rcvbuf.enabled
             && pub->set_option (ZLINK_SPOT_PUB_OPT_RCVBUF,
                                 &defaults.rcvbuf.value, defaults.rcvbuf.size)
+                 != 0)
+        || (defaults.auto_hwm_msg_unit_bytes.enabled
+            && pub->set_option (ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                                &defaults.auto_hwm_msg_unit_bytes.value,
+                                defaults.auto_hwm_msg_unit_bytes.size)
                  != 0)) {
         const int err = errno;
         (void) pub->destroy ();
@@ -148,6 +153,11 @@ zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
             && sub->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
                                 &defaults.rcvtimeo.value,
                                 defaults.rcvtimeo.size)
+                 != 0)
+        || (defaults.auto_hwm_msg_unit_bytes.enabled
+            && sub->set_option (ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                                &defaults.auto_hwm_msg_unit_bytes.value,
+                                defaults.auto_hwm_msg_unit_bytes.size)
                  != 0)) {
         const int err = errno;
         (void) sub->destroy ();

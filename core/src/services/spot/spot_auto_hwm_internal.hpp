@@ -24,6 +24,9 @@ struct spot_internal_auto_hwm_policy_t
     bool apply_rcvhwm;
     bool apply_sndbuf;
     bool apply_rcvbuf;
+    auto_hwm_scope_t scope;
+    size_t scope_count;
+    int message_unit_bytes;
 };
 
 inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
@@ -38,9 +41,19 @@ inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
       &context_plan);
 
     auto_hwm_socket_plan_t socket_plan;
+    const auto_hwm_scope_t scope =
+      policy_.scope == auto_hwm_scope_none ? auto_hwm_scope_shared
+                                           : policy_.scope;
+    size_t scope_count = policy_.scope_count;
+    if (scope_count == 0)
+        scope_count = std::max<size_t> (
+          std::max<size_t> (policy_.managed_connections,
+                            policy_.active_connections),
+          1u);
     auto_hwm_socket_plan_for_role (
       context_plan, policy_.role, policy_.socket_type,
-      policy_.managed_connections, policy_.active_connections, &socket_plan);
+      policy_.managed_connections, policy_.active_connections, &socket_plan,
+      policy_.message_unit_bytes, -1, -1, false, false, scope, scope_count);
     return socket_plan;
 }
 
@@ -55,7 +68,7 @@ inline int spot_internal_auto_hwm_default_hwm (
 {
     const spot_internal_auto_hwm_policy_t policy = {
       role_, socket_type_, managed_connections_, active_connections_, floor_,
-      floor_, false, false, false, false};
+      floor_, false, false, false, false, auto_hwm_scope_none, 1, 0};
     const auto_hwm_socket_plan_t socket_plan =
       spot_internal_auto_hwm_plan (ctx_, policy);
     const int value = recv_side_ ? socket_plan.rcvhwm : socket_plan.sndhwm;
@@ -72,8 +85,19 @@ inline void apply_spot_internal_auto_hwm (
 
     const auto_hwm_socket_plan_t socket_plan =
       spot_internal_auto_hwm_plan (ctx_, policy_);
-    const int sndhwm = std::max (policy_.sndhwm_floor, socket_plan.sndhwm);
-    const int rcvhwm = std::max (policy_.rcvhwm_floor, socket_plan.rcvhwm);
+    const auto_hwm_scope_t scope =
+      policy_.scope == auto_hwm_scope_none ? auto_hwm_scope_shared
+                                           : policy_.scope;
+    size_t scope_count = policy_.scope_count;
+    if (scope_count == 0)
+        scope_count = std::max<size_t> (
+          std::max<size_t> (policy_.managed_connections,
+                            policy_.active_connections),
+          1u);
+    socket_->set_auto_hwm_role (policy_.role);
+    socket_->set_auto_hwm_scope (scope, scope_count);
+    const int sndhwm = socket_plan.sndhwm;
+    const int rcvhwm = socket_plan.rcvhwm;
 
     if (policy_.apply_sndhwm) {
         (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &sndhwm,
@@ -93,6 +117,9 @@ inline void apply_spot_internal_auto_hwm (
                                     &socket_plan.requested_rcvbuf,
                                     sizeof (socket_plan.requested_rcvbuf));
     }
+    socket_->clear_auto_hwm_manual_overrides (
+      policy_.apply_sndhwm, policy_.apply_rcvhwm, policy_.apply_sndbuf,
+      policy_.apply_rcvbuf);
 }
 }
 

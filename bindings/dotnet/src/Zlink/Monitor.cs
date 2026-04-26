@@ -234,7 +234,13 @@ public sealed class MonitorSnapshot
         uint autoHwmFanoutActiveConnections,
         uint autoHwmRecvIngressActiveConnections,
         ulong autoHwmEstimatedMaxMemoryBytes, ulong autoHwmLastRecalcMs,
-        uint autoHwmLastRecalcReason, uint autoHwmSendBlockedRatioPpm)
+        uint autoHwmLastRecalcReason, uint autoHwmSendBlockedRatioPpm,
+        uint autoHwmScope, uint autoHwmScopeCount,
+        ulong autoHwmRoleGroupBudgetBytes,
+        ulong autoHwmScopeGroupBudgetBytes,
+        ulong autoHwmAutoBufferBytes, ulong autoHwmManualBufferBytes,
+        uint autoHwmBufferConnections,
+        int autoHwmDeferredSndHwm, int autoHwmDeferredRcvHwm)
     {
         SourceKind = sourceKind;
         StateFlags = stateFlags;
@@ -272,6 +278,15 @@ public sealed class MonitorSnapshot
         AutoHwmLastRecalcMs = autoHwmLastRecalcMs;
         AutoHwmLastRecalcReason = autoHwmLastRecalcReason;
         AutoHwmSendBlockedRatioPpm = autoHwmSendBlockedRatioPpm;
+        AutoHwmScope = autoHwmScope;
+        AutoHwmScopeCount = autoHwmScopeCount;
+        AutoHwmRoleGroupBudgetBytes = autoHwmRoleGroupBudgetBytes;
+        AutoHwmScopeGroupBudgetBytes = autoHwmScopeGroupBudgetBytes;
+        AutoHwmAutoBufferBytes = autoHwmAutoBufferBytes;
+        AutoHwmManualBufferBytes = autoHwmManualBufferBytes;
+        AutoHwmBufferConnections = autoHwmBufferConnections;
+        AutoHwmDeferredSndHwm = autoHwmDeferredSndHwm;
+        AutoHwmDeferredRcvHwm = autoHwmDeferredRcvHwm;
     }
 
     public SourceKind SourceKind { get; }
@@ -310,6 +325,15 @@ public sealed class MonitorSnapshot
     public ulong AutoHwmLastRecalcMs { get; }
     public uint AutoHwmLastRecalcReason { get; }
     public uint AutoHwmSendBlockedRatioPpm { get; }
+    public uint AutoHwmScope { get; }
+    public uint AutoHwmScopeCount { get; }
+    public ulong AutoHwmRoleGroupBudgetBytes { get; }
+    public ulong AutoHwmScopeGroupBudgetBytes { get; }
+    public ulong AutoHwmAutoBufferBytes { get; }
+    public ulong AutoHwmManualBufferBytes { get; }
+    public uint AutoHwmBufferConnections { get; }
+    public int AutoHwmDeferredSndHwm { get; }
+    public int AutoHwmDeferredRcvHwm { get; }
     public bool IsReady => SourceKind == SourceKind.Socket
         && (StateFlags & 0x1u) != 0;
 
@@ -343,6 +367,15 @@ public sealed class MonitorSnapshot
             native.AutoHwmEstimatedMaxMemoryBytes,
             native.AutoHwmLastRecalcMs,
             native.AutoHwmLastRecalcReason,
-            native.AutoHwmSendBlockedRatioPpm);
+            native.AutoHwmSendBlockedRatioPpm,
+            native.AutoHwmScope,
+            native.AutoHwmScopeCount,
+            native.AutoHwmRoleGroupBudgetBytes,
+            native.AutoHwmScopeGroupBudgetBytes,
+            native.AutoHwmAutoBufferBytes,
+            native.AutoHwmManualBufferBytes,
+            native.AutoHwmBufferConnections,
+            native.AutoHwmDeferredSndHwm,
+            native.AutoHwmDeferredRcvHwm);
     }
 }

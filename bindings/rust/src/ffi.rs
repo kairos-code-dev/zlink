@@ -165,6 +165,7 @@ pub enum zlink_option_t {
     ZLINK_OPT_ZMP_METADATA = 0x3030,
     ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE = 0x3032,
     ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033,
+    ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034,
 }
 
 #[repr(C)]
@@ -324,6 +325,15 @@ pub struct zlink_monitor_snapshot_t {
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
     pub auto_hwm_send_blocked_ratio_ppm: u32,
+    pub auto_hwm_scope: u32,
+    pub auto_hwm_scope_count: u32,
+    pub auto_hwm_role_group_budget_bytes: u64,
+    pub auto_hwm_scope_group_budget_bytes: u64,
+    pub auto_hwm_auto_buffer_bytes: u64,
+    pub auto_hwm_manual_buffer_bytes: u64,
+    pub auto_hwm_buffer_connections: u32,
+    pub auto_hwm_deferred_sndhwm: i32,
+    pub auto_hwm_deferred_rcvhwm: i32,
 }
 
 #[repr(C)]

@@ -23,8 +23,9 @@ For detailed behavior and scope of each option, see the
 |---|---:|---|
 | `ZLINK_OPT_AFFINITY` | `0` | No I/O thread affinity mask |
 | `zlink_get_routing_id()` | auto | 16-byte random ID per socket (set via `zlink_set_routing_id()`) |
-| `ZLINK_OPT_SNDHWM` | auto-HWM floor | Defaults come from the role floors (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
-| `ZLINK_OPT_RCVHWM` | auto-HWM floor | Defaults come from the role floors (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
+| `ZLINK_OPT_SNDHWM` | auto-HWM result | Calculated from context budget, role bucket, scope, message unit, and connection counts |
+| `ZLINK_OPT_RCVHWM` | auto-HWM result | Calculated from context budget, role bucket, scope, message unit, and connection counts |
+| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | `0` | Raw `0` means socket-type default: `1024` for STREAM, `4096` for other sockets |
 | `ZLINK_OPT_RATE` | `100` | Multicast rate (kb/s) |
 | `ZLINK_OPT_RECOVERY_IVL` | `10000` | Multicast recovery interval (ms) |
 | `ZLINK_OPT_SNDBUF` | `-1` | Do not force `SO_SNDBUF` |
@@ -104,6 +105,13 @@ The helper call itself supplies policy values such as
 - The default `ZLINK_OPT_LINGER` value comes from the context's blocky mode.
 - The default `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` values come from the
   context automatic HWM policy. Manual settings override them.
+- Automatic HWM subtracts only auto-managed buffer cost from the queue budget.
+  User-managed `SNDBUF` / `RCVBUF` values are reported separately in
+  `auto_hwm_manual_buffer_bytes` and are not subtracted from the automatic
+  queue budget.
+- `auto_hwm_effective_message_bytes` is socket-specific. It uses
+  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` when positive, otherwise the STREAM
+  default `1024` or non-STREAM default `4096`.
 - `ZLINK_OPT_CONFLATE` is only effective for `ZLINK_SOCKET_DEALER`,
   `ZLINK_SOCKET_PUB`, and `ZLINK_SOCKET_SUB`.
 - STREAM has additional runtime tuning knobs documented in

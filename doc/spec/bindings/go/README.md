@@ -982,6 +982,8 @@ type MonitorSnapshot struct {
     RcvPendingMsgs                      uint64
     AutoHwmEnabled                      bool
     AutoHwmRole                         uint32
+    AutoHwmScope                        uint32
+    AutoHwmScopeCount                   uint32
     AutoHwmManagedConnections           uint32
     AutoHwmActiveHwmConnections         uint32
     AutoHwmPlanningTransportConnections uint32
@@ -997,8 +999,13 @@ type MonitorSnapshot struct {
     AutoHwmTransportBudgetBytes         uint64
     AutoHwmRuntimeReserveBytes          uint64
     AutoHwmGroupBudgetBytes             uint64
+    AutoHwmRoleGroupBudgetBytes         uint64
+    AutoHwmScopeGroupBudgetBytes        uint64
     AutoHwmGroupMessageSlots            uint64
     AutoHwmEffectiveMessageBytes        uint64
+    AutoHwmAutoBufferBytes              uint64
+    AutoHwmManualBufferBytes            uint64
+    AutoHwmBufferConnections            uint32
     AutoHwmControlBudgetBytes           uint64
     AutoHwmRoutedBudgetBytes            uint64
     AutoHwmFanoutBudgetBytes            uint64
@@ -1010,6 +1017,8 @@ type MonitorSnapshot struct {
     AutoHwmEstimatedMaxMemoryBytes      uint64
     AutoHwmLastRecalcMs                 uint64
     AutoHwmLastRecalcReason             uint32
+    AutoHwmDeferredSndHwm               int32
+    AutoHwmDeferredRcvHwm               int32
     AutoHwmSendBlockedRatioPPM          uint32
 }
 

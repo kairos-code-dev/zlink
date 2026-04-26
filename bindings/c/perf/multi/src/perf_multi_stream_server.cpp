@@ -83,7 +83,6 @@ int main (int argc, char **argv)
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
-    perf_print_auto_hwm_snapshot (server, false, "server", transport);
     const int io_timeout_ms = resolve_bench_count ("PERF_STREAM_TIMEOUT_MS", 5000);
     set_sockopt_int (server, ZLINK_OPT_SNDTIMEO, io_timeout_ms,
                      "ZLINK_OPT_SNDTIMEO");
@@ -115,7 +114,12 @@ int main (int argc, char **argv)
     }
 
     perf_stop_requested ().store (false, std::memory_order_release);
-    perf_multi_stream::reset_session (&g_stream_session, server);
+    perf_multi_stream::reset_session (
+      &g_stream_session,
+      server,
+      ZLINK_SOCKET_STREAM,
+      settings.hwm,
+      transport);
     perf_multi_stream::packet_handler_context_t packet_handler_ctx;
     packet_handler_ctx.session = &g_stream_session;
     packet_handler_ctx.stop_token = k_stop_token;

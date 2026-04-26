@@ -287,6 +287,7 @@ inline bool create_client_sockets (
   const std::string &endpoint,
   const multi_bench_settings_t &settings,
   int client_socket_type,
+  size_t msg_size,
   std::vector<void *> *sockets_out,
   std::vector<ready_monitor_t> *monitors_out)
 {
@@ -303,7 +304,8 @@ inline bool create_client_sockets (
         if (!sock)
             return false;
 
-        apply_benchmark_socket_options (sock, settings.hwm, transport);
+        apply_benchmark_socket_options (
+          sock, settings.hwm, transport, client_socket_type, msg_size);
 
         if (client_socket_type == ZLINK_SOCKET_ROUTER
             || client_socket_type == ZLINK_SOCKET_DEALER) {

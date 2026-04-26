@@ -434,7 +434,13 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    apply_benchmark_socket_options (server, settings.hwm, transport);
+    apply_benchmark_socket_options (
+      server,
+      settings.hwm,
+      transport,
+      k_server_socket_type,
+      0,
+      false);
 
     if (!setup_tls_server (server, transport)) {
         zlink_close (server);
@@ -469,6 +475,11 @@ inline int run_server_benchmark (const std::string &lib_name,
             std::cerr << "[multi-dealer-dealer-server] wait start size="
                       << sizes[si] << std::endl;
         }
+        apply_benchmark_auto_hwm_msg_unit (
+          server, k_server_socket_type, sizes[si]);
+        apply_benchmark_hwm (server, settings.hwm);
+        perf_print_auto_hwm_snapshot (
+          server, false, "server", transport, true, sizes[si]);
         if (!perf_multi_handshake::wait_for_start_from_stdin (sizes[si])) {
             if (bench_transition_debug_enabled ()) {
                 std::cerr << "[multi-dealer-dealer-server] start gate failed size="

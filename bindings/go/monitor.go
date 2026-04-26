@@ -119,6 +119,15 @@ type MonitorSnapshot struct {
 	AutoHwmLastRecalcMs                 uint64
 	AutoHwmLastRecalcReason             uint32
 	AutoHwmSendBlockedRatioPPM          uint32
+	AutoHwmScope                        uint32
+	AutoHwmScopeCount                   uint32
+	AutoHwmRoleGroupBudgetBytes         uint64
+	AutoHwmScopeGroupBudgetBytes        uint64
+	AutoHwmAutoBufferBytes              uint64
+	AutoHwmManualBufferBytes            uint64
+	AutoHwmBufferConnections            uint32
+	AutoHwmDeferredSndHwm               int32
+	AutoHwmDeferredRcvHwm               int32
 }
 
 func (s *MonitorSnapshot) IsReady() bool {
@@ -241,6 +250,15 @@ func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error) {
 		AutoHwmLastRecalcMs:                 uint64(raw.auto_hwm_last_recalc_ms),
 		AutoHwmLastRecalcReason:             uint32(raw.auto_hwm_last_recalc_reason),
 		AutoHwmSendBlockedRatioPPM:          uint32(raw.auto_hwm_send_blocked_ratio_ppm),
+		AutoHwmScope:                        uint32(raw.auto_hwm_scope),
+		AutoHwmScopeCount:                   uint32(raw.auto_hwm_scope_count),
+		AutoHwmRoleGroupBudgetBytes:         uint64(raw.auto_hwm_role_group_budget_bytes),
+		AutoHwmScopeGroupBudgetBytes:        uint64(raw.auto_hwm_scope_group_budget_bytes),
+		AutoHwmAutoBufferBytes:              uint64(raw.auto_hwm_auto_buffer_bytes),
+		AutoHwmManualBufferBytes:            uint64(raw.auto_hwm_manual_buffer_bytes),
+		AutoHwmBufferConnections:            uint32(raw.auto_hwm_buffer_connections),
+		AutoHwmDeferredSndHwm:               int32(raw.auto_hwm_deferred_sndhwm),
+		AutoHwmDeferredRcvHwm:               int32(raw.auto_hwm_deferred_rcvhwm),
 	}, nil
 }
 
@@ -328,6 +346,15 @@ func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error) {
 		AutoHwmLastRecalcMs:                 uint64(raw.auto_hwm_last_recalc_ms),
 		AutoHwmLastRecalcReason:             uint32(raw.auto_hwm_last_recalc_reason),
 		AutoHwmSendBlockedRatioPPM:          uint32(raw.auto_hwm_send_blocked_ratio_ppm),
+		AutoHwmScope:                        uint32(raw.auto_hwm_scope),
+		AutoHwmScopeCount:                   uint32(raw.auto_hwm_scope_count),
+		AutoHwmRoleGroupBudgetBytes:         uint64(raw.auto_hwm_role_group_budget_bytes),
+		AutoHwmScopeGroupBudgetBytes:        uint64(raw.auto_hwm_scope_group_budget_bytes),
+		AutoHwmAutoBufferBytes:              uint64(raw.auto_hwm_auto_buffer_bytes),
+		AutoHwmManualBufferBytes:            uint64(raw.auto_hwm_manual_buffer_bytes),
+		AutoHwmBufferConnections:            uint32(raw.auto_hwm_buffer_connections),
+		AutoHwmDeferredSndHwm:               int32(raw.auto_hwm_deferred_sndhwm),
+		AutoHwmDeferredRcvHwm:               int32(raw.auto_hwm_deferred_rcvhwm),
 	}, nil
 }
 

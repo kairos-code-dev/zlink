@@ -306,6 +306,15 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   benchmark socket은 역할별 예외 없이 같은 context budget 아래에서 core
   계산값을 사용한다. 기본 경로에서 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`
   를 숫자로 직접 고정하지 않는다.
+- multi benchmark는 메시지 크기별로 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를
+  현재 테스트 메시지 크기와 같은 값으로 설정한다. 일반 패턴의 perf 출력은
+  결과 행 뒤에 runtime snapshot에서 실제 수집한 `Auto-HWM detail` 표를 붙이고,
+  `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과 함께 보여야
+  한다. SPOT 계열은 shared/per-spot budget 확인이 중요하므로 common, socket,
+  budget 표를 분리해서 보여준다.
+- SPOT per-spot scope는 spot 수로 role budget을 나눈다. 큰 payload와 높은
+  client 수를 함께 쓰면 HWM이 목표 동시성보다 작아질 수 있으므로, 100-client
+  `MULTI_SPOT_SENDSEND` 64 KiB 검증에는 2048 MiB tier를 추가로 확인한다.
 - one-way pattern에서도 이 규칙을 유지한다. 실제 traffic 방향상 한쪽 값만 더
   중요하더라도 기본 bench surface는 auto 계산 결과를 그대로 본다.
 - perf는 throughput/bandwidth/latency 중심의 기본 surface만 유지한다. cpu/mem,

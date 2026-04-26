@@ -173,6 +173,15 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   기본 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF` 를 core 계산값에 맡긴다.
 - 기본 실행에서는 pattern/role 특례 없이 같은 context budget을 공유한다.
   숫자 HWM이나 transport buffer를 직접 주입해서 결과를 고정하지 않는다.
+- multi benchmark socket은 실행 중인 메시지 크기를
+  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`로 전달한다. perf는 socket family와
+  관계없이 현재 테스트 메시지 크기와 같은 값을 사용한다.
+  이 값은 최대 메시지 크기 제한이 아니라 auto-HWM 예산을 메시지 슬롯으로
+  바꾸는 계획 단위다.
+- SPOT per-spot socket은 role budget을 spot 수로 나눈 scope budget으로
+  계산한다. 100-client `MULTI_SPOT_SENDSEND`에서 64 KiB payload를 통과시키려면
+  1024 MiB에서도 per-spot HWM이 목표 동시성보다 작을 수 있으므로 2048 MiB
+  tier도 함께 확인한다.
 - `PERF_MULTI_HWM`, `PERF_MULTI_SNDHWM`, `PERF_MULTI_RCVHWM`, `PERF_SNDBUF`,
   `PERF_RCVBUF` 는 debug 전용 override 이다. 기본 경로에서는 비활성이고,
   `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 또는

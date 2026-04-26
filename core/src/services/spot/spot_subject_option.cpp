@@ -59,6 +59,11 @@ void store_pending_pub_option (spot_handle_t *spot_,
             copy_option_setting (&spot_->pending_pub_defaults.rcvbuf, optval_,
                                  optvallen_);
             return;
+        case ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            copy_option_setting (
+              &spot_->pending_pub_defaults.auto_hwm_msg_unit_bytes, optval_,
+              optvallen_);
+            return;
         default:
             return;
     }
@@ -93,6 +98,11 @@ void store_pending_sub_option (spot_handle_t *spot_,
             copy_option_setting (&spot_->pending_sub_defaults.rcvtimeo, optval_,
                                  optvallen_);
             return;
+        case ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            copy_option_setting (
+              &spot_->pending_sub_defaults.auto_hwm_msg_unit_bytes, optval_,
+              optvallen_);
+            return;
         default:
             return;
     }
@@ -111,6 +121,8 @@ int map_common_to_spot_pub_option (zlink_option_t option_)
             return ZLINK_SPOT_PUB_OPT_SNDBUF;
         case ZLINK_OPT_RCVBUF:
             return ZLINK_SPOT_PUB_OPT_RCVBUF;
+        case ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            return ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES;
         default:
             return -1;
     }
@@ -129,6 +141,8 @@ int map_common_to_spot_sub_option (zlink_option_t option_)
             return ZLINK_SPOT_SUB_OPT_RCVBUF;
         case ZLINK_OPT_RCVTIMEO:
             return ZLINK_SPOT_SUB_OPT_RCVTIMEO;
+        case ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            return ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES;
         default:
             return -1;
     }
@@ -151,6 +165,8 @@ int map_common_to_socket_option (zlink_option_t option_)
             return ZLINK_INTERNAL_OPT_SNDBUF;
         case ZLINK_OPT_RCVBUF:
             return ZLINK_INTERNAL_OPT_RCVBUF;
+        case ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            return ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES;
         default:
             return -1;
     }

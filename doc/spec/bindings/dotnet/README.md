@@ -1441,6 +1441,8 @@ public sealed class MonitorSnapshot
     ulong RcvPendingMsgs { get; }            // recv-queue pending messages
     bool AutoHwmEnabled { get; }
     uint AutoHwmRole { get; }
+    uint AutoHwmScope { get; }
+    uint AutoHwmScopeCount { get; }
     uint AutoHwmManagedConnections { get; }
     uint AutoHwmActiveHwmConnections { get; }
     uint AutoHwmPlanningTransportConnections { get; }
@@ -1456,8 +1458,13 @@ public sealed class MonitorSnapshot
     ulong AutoHwmTransportBudgetBytes { get; }
     ulong AutoHwmRuntimeReserveBytes { get; }
     ulong AutoHwmGroupBudgetBytes { get; }
+    ulong AutoHwmRoleGroupBudgetBytes { get; }
+    ulong AutoHwmScopeGroupBudgetBytes { get; }
     ulong AutoHwmGroupMessageSlots { get; }
     ulong AutoHwmEffectiveMessageBytes { get; }
+    ulong AutoHwmAutoBufferBytes { get; }
+    ulong AutoHwmManualBufferBytes { get; }
+    uint AutoHwmBufferConnections { get; }
     ulong AutoHwmControlBudgetBytes { get; }
     ulong AutoHwmRoutedBudgetBytes { get; }
     ulong AutoHwmFanoutBudgetBytes { get; }
@@ -1469,6 +1476,8 @@ public sealed class MonitorSnapshot
     ulong AutoHwmEstimatedMaxMemoryBytes { get; }
     ulong AutoHwmLastRecalcMs { get; }
     uint AutoHwmLastRecalcReason { get; }
+    int AutoHwmDeferredSndHwm { get; }
+    int AutoHwmDeferredRcvHwm { get; }
     uint AutoHwmSendBlockedRatioPpm { get; }
 
     bool IsReady { get; }                    // raw socket monitor source의 ready bit

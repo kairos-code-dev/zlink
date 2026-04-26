@@ -103,7 +103,8 @@ enum class socket_option : int
     tls_password = ZLINK_OPT_TLS_PASSWORD,
     zmp_metadata = ZLINK_OPT_ZMP_METADATA,
     rid_duplicate_policy = ZLINK_OPT_RID_DUPLICATE_POLICY,
-    discovery_metadata_max_size = ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE
+    discovery_metadata_max_size = ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
+    auto_hwm_msg_unit_bytes = ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES
 };
 
 enum class router_option : int
@@ -1068,7 +1069,13 @@ struct monitor_snapshot_t
           auto_hwm_estimated_max_memory_bytes (0),
           auto_hwm_last_recalc_ms (0),
           auto_hwm_last_recalc_reason (0),
-          auto_hwm_send_blocked_ratio_ppm (0)
+          auto_hwm_send_blocked_ratio_ppm (0), auto_hwm_scope (0),
+          auto_hwm_scope_count (0), auto_hwm_role_group_budget_bytes (0),
+          auto_hwm_scope_group_budget_bytes (0),
+          auto_hwm_auto_buffer_bytes (0),
+          auto_hwm_manual_buffer_bytes (0),
+          auto_hwm_buffer_connections (0), auto_hwm_deferred_sndhwm (-1),
+          auto_hwm_deferred_rcvhwm (-1)
     {
     }
 
@@ -1126,7 +1133,18 @@ struct monitor_snapshot_t
           auto_hwm_last_recalc_ms (native_.auto_hwm_last_recalc_ms),
           auto_hwm_last_recalc_reason (native_.auto_hwm_last_recalc_reason),
           auto_hwm_send_blocked_ratio_ppm (
-            native_.auto_hwm_send_blocked_ratio_ppm)
+            native_.auto_hwm_send_blocked_ratio_ppm),
+          auto_hwm_scope (native_.auto_hwm_scope),
+          auto_hwm_scope_count (native_.auto_hwm_scope_count),
+          auto_hwm_role_group_budget_bytes (
+            native_.auto_hwm_role_group_budget_bytes),
+          auto_hwm_scope_group_budget_bytes (
+            native_.auto_hwm_scope_group_budget_bytes),
+          auto_hwm_auto_buffer_bytes (native_.auto_hwm_auto_buffer_bytes),
+          auto_hwm_manual_buffer_bytes (native_.auto_hwm_manual_buffer_bytes),
+          auto_hwm_buffer_connections (native_.auto_hwm_buffer_connections),
+          auto_hwm_deferred_sndhwm (native_.auto_hwm_deferred_sndhwm),
+          auto_hwm_deferred_rcvhwm (native_.auto_hwm_deferred_rcvhwm)
     {
     }
 
@@ -1171,6 +1189,15 @@ struct monitor_snapshot_t
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
+    uint32_t auto_hwm_scope;
+    uint32_t auto_hwm_scope_count;
+    uint64_t auto_hwm_role_group_budget_bytes;
+    uint64_t auto_hwm_scope_group_budget_bytes;
+    uint64_t auto_hwm_auto_buffer_bytes;
+    uint64_t auto_hwm_manual_buffer_bytes;
+    uint32_t auto_hwm_buffer_connections;
+    int32_t auto_hwm_deferred_sndhwm;
+    int32_t auto_hwm_deferred_rcvhwm;
 };
 
 struct service_event_t

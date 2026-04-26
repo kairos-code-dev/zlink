@@ -3,6 +3,7 @@
 #include "../testutil_unity.hpp"
 
 #include "core/ctx.hpp"
+#include "core/auto_hwm_policy.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_mesh_pub_budget.hpp"
@@ -16,6 +17,36 @@
 
 namespace
 {
+int expected_mesh_pub_sndhwm (size_t managed_connections_ = 0,
+                              size_t active_connections_ = 0)
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_context_plan_from_budget_mb (
+      ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0,
+      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT, &context_plan);
+    zlink::auto_hwm_socket_plan_t socket_plan;
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
+      managed_connections_, active_connections_, &socket_plan);
+    return socket_plan.sndhwm;
+}
+
+int expected_spot_hwm (zlink::auto_hwm_role_t role_,
+                       int socket_type_,
+                       size_t managed_connections_ = 0,
+                       size_t active_connections_ = 0)
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_context_plan_from_budget_mb (
+      ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0,
+      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT, &context_plan);
+    zlink::auto_hwm_socket_plan_t socket_plan;
+    zlink::auto_hwm_socket_plan_for_role (context_plan, role_, socket_type_,
+                                          managed_connections_,
+                                          active_connections_, &socket_plan);
+    return socket_plan.sndhwm;
+}
+
 void set_zero_linger (zlink::socket_base_t *socket_)
 {
     const int zero = 0;
@@ -170,54 +201,54 @@ void close_socket (zlink::ctx_t *ctx_, zlink::socket_base_t *&socket_)
 void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
 {
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tcp://127.0.0.1:9000", 0));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tcp://127.0.0.1:9000", 1));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tcp://127.0.0.1:9000", 2));
 
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "ws://127.0.0.1:9000", 0));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "ws://127.0.0.1:9000", 1));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "ws://127.0.0.1:9000", 2));
 
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tls://127.0.0.1:9000", 0));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tls://127.0.0.1:9000", 1));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tls://127.0.0.1:9000", 2));
 
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "wss://127.0.0.1:9000", 0));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "wss://127.0.0.1:9000", 1));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "wss://127.0.0.1:9000", 2));
 }
@@ -290,9 +321,10 @@ void test_mesh_pub_budget_runtime_owner_uses_bound_endpoint ()
     TEST_ASSERT_TRUE (
       zlink::spot_mesh_pub_budget_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_INT (
-      16, zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));
+      expected_mesh_pub_sndhwm (0, 0),
+      zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (),
       zlink::spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (
         &runtime, runtime.bound_endpoint));
 
@@ -318,7 +350,7 @@ void test_mesh_pub_budget_runtime_owner_tracks_ready_count_changes ()
     TEST_ASSERT_EQUAL_UINT64 (
       0, zlink::mesh_pub_budget_version (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_INT (
-      16,
+      expected_mesh_pub_sndhwm (0, 0),
       zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));
 }
 
@@ -389,7 +421,18 @@ void test_spot_node_hwm_options_expose_defaults ()
           zlink_get_spot_node_option (node, options[i], &value, &value_size));
         TEST_ASSERT_EQUAL_UINT (sizeof (value), value_size);
         TEST_ASSERT_EQUAL_INT (
-          options[i] == ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM ? 16 : 8, value);
+          options[i] == ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM
+            ? expected_mesh_pub_sndhwm ()
+            : expected_spot_hwm (
+                options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
+                    || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
+                  ? zlink::auto_hwm_role_routed
+                  : zlink::auto_hwm_role_recv_ingress,
+                options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
+                    || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
+                  ? ZLINK_CORE_SOCKET_ROUTER
+                  : ZLINK_CORE_SOCKET_SUB),
+          value);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));

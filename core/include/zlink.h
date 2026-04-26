@@ -905,6 +905,15 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
+    uint32_t auto_hwm_scope;
+    uint32_t auto_hwm_scope_count;
+    uint64_t auto_hwm_role_group_budget_bytes;
+    uint64_t auto_hwm_scope_group_budget_bytes;
+    uint64_t auto_hwm_auto_buffer_bytes;
+    uint64_t auto_hwm_manual_buffer_bytes;
+    uint32_t auto_hwm_buffer_connections;
+    int32_t auto_hwm_deferred_sndhwm;
+    int32_t auto_hwm_deferred_rcvhwm;
 } zlink_monitor_snapshot_t;
 
 /**

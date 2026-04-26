@@ -83,7 +83,36 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
 
 ---
 
-## 2. 종료 대기 — LINGER
+## 2. 자동 HWM 메시지 단위
+
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 자동 HWM 정책이 큐 슬롯 1개를 몇
+바이트로 볼지 정한다. 이 값은 최대 메시지 크기 제한이 아니다. 인바운드
+메시지 크기 제한은 `ZLINK_OPT_MAXMSGSIZE`가 담당한다.
+
+소켓의 일반적인 payload 크기를 알고 있고 기본 계획 크기와 다를 때만 이
+옵션을 조정한다. 기본값 `0`은 소켓 타입별 기본 메시지 단위를 쓰겠다는 뜻이다.
+
+| 소켓 타입 | 기본 메시지 단위 |
+|-----------|------------------|
+| `STREAM` | `1024` bytes |
+| 그 외 소켓 | `4096` bytes |
+
+`zlink_get_option()`은 사용자가 설정한 raw 값을 반환한다. 반환값이 `0`이면
+소켓 타입별 기본값을 쓴다는 뜻이고, 실제 계산에 쓰인 값은 monitor snapshot의
+`auto_hwm_effective_message_bytes`에서 확인한다.
+
+```c
+int msg_unit = 8192;
+zlink_set_option(socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                 &msg_unit, sizeof(msg_unit));
+```
+
+음수는 `EINVAL`로 실패하며 기존 설정을 바꾸지 않는다. `ZLINK_OPT_SNDHWM` 또는
+`ZLINK_OPT_RCVHWM`을 직접 설정한 소켓에서는 그 수동 HWM이 계속 우선한다.
+
+---
+
+## 3. 종료 대기 — LINGER
 
 | 항목 | 설명 |
 |------|------|
@@ -109,7 +138,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ---
 
-## 3. 타임아웃 — SNDTIMEO / RCVTIMEO
+## 4. 타임아웃 — SNDTIMEO / RCVTIMEO
 
 | 항목 | 설명 |
 |------|------|
@@ -131,7 +160,7 @@ zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
 
 ---
 
-## 4. 연결 타임아웃 — CONNECT_TIMEOUT
+## 5. 연결 타임아웃 — CONNECT_TIMEOUT
 
 | 항목 | 설명 |
 |------|------|
@@ -151,7 +180,7 @@ zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
 
 ---
 
-## 5. 재연결 — RECONNECT_IVL / RECONNECT_IVL_MAX
+## 6. 재연결 — RECONNECT_IVL / RECONNECT_IVL_MAX
 
 | 항목 | 설명 |
 |------|------|
@@ -177,7 +206,7 @@ zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max))
 
 ---
 
-## 6. TCP Keepalive — TCP_KEEPALIVE / TCP_KEEPALIVE_CNT / TCP_KEEPALIVE_IDLE / TCP_KEEPALIVE_INTVL
+## 7. TCP Keepalive — TCP_KEEPALIVE / TCP_KEEPALIVE_CNT / TCP_KEEPALIVE_IDLE / TCP_KEEPALIVE_INTVL
 
 | 옵션 | 하는 일 | 기본값 |
 |------|---------|--------|
@@ -203,7 +232,7 @@ zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_CNT, &(int){3}, sizeof(int));
 
 ---
 
-## 7. TCP 재전송 — TCP_MAXRT
+## 8. TCP 재전송 — TCP_MAXRT
 
 | 항목 | 설명 |
 |------|------|
@@ -217,7 +246,7 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 
 ---
 
-## 8. Nagle 알고리즘 — TCP_NODELAY
+## 9. Nagle 알고리즘 — TCP_NODELAY
 
 | 항목 | 설명 |
 |------|------|
@@ -230,7 +259,7 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 
 ---
 
-## 9. ZMP 하트비트 — HEARTBEAT_IVL / HEARTBEAT_TTL / HEARTBEAT_TIMEOUT
+## 10. ZMP 하트비트 — HEARTBEAT_IVL / HEARTBEAT_TTL / HEARTBEAT_TIMEOUT
 
 | 옵션 | 하는 일 | 기본값 |
 |------|---------|--------|
@@ -261,7 +290,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 ---
 
-## 10. 즉시 연결 — IMMEDIATE
+## 11. 즉시 연결 — IMMEDIATE
 
 | 항목 | 설명 |
 |------|------|
@@ -278,7 +307,7 @@ block 되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 hiccup(일
 
 ---
 
-## 11. 최신 값만 유지 — CONFLATE
+## 12. 최신 값만 유지 — CONFLATE
 
 | 항목 | 설명 |
 |------|------|
@@ -292,7 +321,7 @@ block 되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 hiccup(일
 
 ---
 
-## 12. OS 소켓 버퍼 — SNDBUF / RCVBUF
+## 13. OS 소켓 버퍼 — SNDBUF / RCVBUF
 
 | 항목 | 설명 |
 |------|------|
@@ -312,7 +341,7 @@ SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기이다.
 
 ---
 
-## 13. IP 서비스 품질 — TOS
+## 14. IP 서비스 품질 — TOS
 
 | 항목 | 설명 |
 |------|------|
@@ -324,7 +353,7 @@ QoS 정책이 있는 네트워크에서 트래픽 우선순위를 지정할 때 
 
 ---
 
-## 14. 연결 대기열 — BACKLOG
+## 15. 연결 대기열 — BACKLOG
 
 | 항목 | 설명 |
 |------|------|
@@ -337,7 +366,7 @@ QoS 정책이 있는 네트워크에서 트래픽 우선순위를 지정할 때 
 
 ---
 
-## 15. I/O 스레드 어피니티 — AFFINITY
+## 16. I/O 스레드 어피니티 — AFFINITY
 
 | 항목 | 설명 |
 |------|------|
@@ -352,7 +381,7 @@ I/O 스레드가 여러 개(`ZLINK_IO_THREADS > 1`)일 때 특정 소켓을 특�
 
 ---
 
-## 16. 최대 메시지 크기 — MAXMSGSIZE
+## 17. 최대 메시지 크기 — MAXMSGSIZE
 
 | 항목 | 설명 |
 |------|------|
@@ -365,7 +394,7 @@ I/O 스레드가 여러 개(`ZLINK_IO_THREADS > 1`)일 때 특정 소켓을 특�
 
 ---
 
-## 17. IPv6 — IPV6
+## 18. IPv6 — IPV6
 
 | 항목 | 설명 |
 |------|------|
@@ -377,7 +406,7 @@ I/O 스레드가 여러 개(`ZLINK_IO_THREADS > 1`)일 때 특정 소켓을 특�
 
 ---
 
-## 18. 멀티캐스트 — MULTICAST_HOPS / MULTICAST_MAXTPDU
+## 19. 멀티캐스트 — MULTICAST_HOPS / MULTICAST_MAXTPDU
 
 | 옵션 | 하는 일 | 기본값 |
 |------|---------|--------|
@@ -388,7 +417,7 @@ PGM transport에서만 적용. 현재 PGM은 임시 비활성화 상태.
 
 ---
 
-## 19. 구독 매칭 반전 — INVERT_MATCHING
+## 20. 구독 매칭 반전 — INVERT_MATCHING
 
 | 항목 | 설명 |
 |------|------|
@@ -400,7 +429,7 @@ PGM transport에서만 적용. 현재 PGM은 임시 비활성화 상태.
 
 ---
 
-## 20. 네트워크 인터페이스 바인딩 — BINDTODEVICE
+## 21. 네트워크 인터페이스 바인딩 — BINDTODEVICE
 
 | 항목 | 설명 |
 |------|------|
@@ -413,7 +442,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 
 ---
 
-## 21. 핸드셰이크 타임아웃 — HANDSHAKE_IVL
+## 22. 핸드셰이크 타임아웃 — HANDSHAKE_IVL
 
 | 항목 | 설명 |
 |------|------|
@@ -426,7 +455,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 
 ---
 
-## 22. ZMP 메타데이터 — ZMP_METADATA
+## 23. ZMP 메타데이터 — ZMP_METADATA
 
 | 항목 | 설명 |
 |------|------|

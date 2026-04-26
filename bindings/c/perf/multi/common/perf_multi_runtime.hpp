@@ -167,6 +167,20 @@ inline const char *perf_auto_hwm_recalc_reason_name(uint32_t reason_)
             return "policy_toggle";
         case ZLINK_AUTO_HWM_RECALC_REASON_REFRESH:
             return "refresh";
+        case ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK:
+            return "deferred_shrink";
+        default:
+            return "none";
+    }
+}
+
+inline const char *perf_auto_hwm_scope_name(uint32_t scope_)
+{
+    switch (scope_) {
+        case 1:
+            return "shared";
+        case 2:
+            return "per-spot";
         default:
             return "none";
     }
@@ -197,7 +211,8 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
                                          bool service_handle_,
                                          const char *label_,
                                          const std::string &transport_,
-                                         bool allow_service_fallback_ = true)
+                                         bool allow_service_fallback_ = true,
+                                         size_t msg_size_ = 0)
 {
     if (!handle_ || !perf_auto_hwm_detail_enabled())
         return;
@@ -279,13 +294,17 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
 
     const std::string key =
       pattern + "|" + transport + "|" + component + "|" + label + "|"
+      + std::to_string(msg_size_) + "|"
       + perf_auto_hwm_role_name(snapshot.auto_hwm_role) + "|"
       + std::to_string(snapshot.auto_hwm_applied_sndhwm) + "|"
       + std::to_string(snapshot.auto_hwm_applied_rcvhwm) + "|"
       + std::to_string(snapshot.auto_hwm_requested_sndbuf) + "|"
       + std::to_string(snapshot.auto_hwm_requested_rcvbuf) + "|"
       + std::to_string(snapshot.auto_hwm_effective_sndbuf) + "|"
-      + std::to_string(snapshot.auto_hwm_effective_rcvbuf);
+      + std::to_string(snapshot.auto_hwm_effective_rcvbuf) + "|"
+      + std::to_string(snapshot.auto_hwm_scope) + "|"
+      + std::to_string(snapshot.auto_hwm_scope_count) + "|"
+      + std::to_string(snapshot.auto_hwm_effective_message_bytes);
 
     {
         std::lock_guard<std::mutex> lock(sync);
@@ -299,6 +318,7 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << ",transport=" << transport
               << ",component=" << component
               << ",label=" << label
+              << ",msg_size=" << msg_size_
               << ",source="
               << (snapshot_from_monitor ? "monitor_snapshot"
                                         : "option_fallback")
@@ -309,6 +329,9 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << snapshot.auto_hwm_managed_connections
               << ",active_connections="
               << snapshot.auto_hwm_active_hwm_connections
+              << ",scope=" << perf_auto_hwm_scope_name(snapshot.auto_hwm_scope)
+              << ",scope_id=" << snapshot.auto_hwm_scope
+              << ",scope_count=" << snapshot.auto_hwm_scope_count
               << ",planning_transport_connections="
               << snapshot.auto_hwm_planning_transport_connections
               << ",base_floor_per_connection="
@@ -329,8 +352,18 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << snapshot.auto_hwm_queue_budget_bytes
               << ",transport_budget_bytes="
               << snapshot.auto_hwm_transport_budget_bytes
+              << ",auto_buffer_bytes="
+              << snapshot.auto_hwm_auto_buffer_bytes
+              << ",manual_buffer_bytes="
+              << snapshot.auto_hwm_manual_buffer_bytes
+              << ",buffer_connections="
+              << snapshot.auto_hwm_buffer_connections
               << ",runtime_reserve_bytes="
               << snapshot.auto_hwm_runtime_reserve_bytes
+              << ",role_group_budget_bytes="
+              << snapshot.auto_hwm_role_group_budget_bytes
+              << ",scope_group_budget_bytes="
+              << snapshot.auto_hwm_scope_group_budget_bytes
               << ",group_budget_bytes="
               << snapshot.auto_hwm_group_budget_bytes
               << ",group_message_slots="
@@ -353,6 +386,10 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
                    snapshot.auto_hwm_last_recalc_reason)
               << ",send_blocked_ratio_ppm="
               << snapshot.auto_hwm_send_blocked_ratio_ppm
+              << ",deferred_sndhwm="
+              << snapshot.auto_hwm_deferred_sndhwm
+              << ",deferred_rcvhwm="
+              << snapshot.auto_hwm_deferred_rcvhwm
               << std::endl;
 }
 
@@ -538,6 +575,26 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
     }
 }
 
+inline int perf_auto_hwm_msg_unit_for_socket(int socket_type_, size_t msg_size_)
+{
+    (void) socket_type_;
+    const size_t unit = msg_size_;
+    return unit > static_cast<size_t>(INT_MAX) ? INT_MAX
+                                               : static_cast<int>(unit);
+}
+
+inline void apply_benchmark_auto_hwm_msg_unit(void *socket_,
+                                              int socket_type_,
+                                              size_t msg_size_)
+{
+    if (!socket_ || msg_size_ == 0)
+        return;
+    const int msg_unit =
+      perf_auto_hwm_msg_unit_for_socket(socket_type_, msg_size_);
+    set_sockopt_int(socket_, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, msg_unit,
+                    "ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES");
+}
+
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
 {
     if (!name_ || !*name_)
@@ -628,7 +685,10 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport)
 
 inline void apply_benchmark_socket_options(void *socket_,
                                            int hwm_value,
-                                           const std::string &transport)
+                                           const std::string &transport,
+                                           int socket_type = 0,
+                                           size_t msg_size = 0,
+                                           bool print_auto_hwm_snapshot = true)
 {
     if (!socket_)
         return;
@@ -644,6 +704,7 @@ inline void apply_benchmark_socket_options(void *socket_,
         ? bench_socket_buffer_bytes_from_env("PERF_RCVBUF", -1)
         : -1;
     set_sockopt_int(socket_, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
+    apply_benchmark_auto_hwm_msg_unit(socket_, socket_type, msg_size);
     if (transport == "tcp") {
         set_sockopt_int(
           socket_, ZLINK_OPT_TCP_NODELAY, tcp_nodelay, "ZLINK_OPT_TCP_NODELAY");
@@ -654,7 +715,9 @@ inline void apply_benchmark_socket_options(void *socket_,
         set_sockopt_int(socket_, ZLINK_OPT_RCVBUF, rcvbuf, "ZLINK_OPT_RCVBUF");
     apply_benchmark_hwm(socket_, hwm_value);
     apply_debug_timeouts(socket_, transport);
-    perf_print_auto_hwm_snapshot(socket_, false, "endpoint", transport, false);
+    if (print_auto_hwm_snapshot)
+        perf_print_auto_hwm_snapshot(
+          socket_, false, "endpoint", transport, false, msg_size);
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)
@@ -770,6 +833,17 @@ inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
     if (sizes.empty())
         sizes.push_back(default_size);
     return sizes;
+}
+
+inline size_t perf_current_benchmark_max_msg_size(size_t fallback_size)
+{
+    const std::vector<size_t> sizes = resolve_bench_msg_sizes(fallback_size);
+    size_t max_msg_size = fallback_size > 0 ? fallback_size : 64;
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        if (sizes[i] > max_msg_size)
+            max_msg_size = sizes[i];
+    }
+    return max_msg_size;
 }
 
 inline std::atomic<bool> &perf_stop_requested()

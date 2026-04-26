@@ -647,6 +647,15 @@ func (s *connectionSocket) RidDuplicatePolicy() (int, error) {
 	return int(value), err
 }
 
+func (s *connectionSocket) SetAutoHwmMsgUnitBytes(value int) error {
+	return s.setIntOption(C.ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, int32(value))
+}
+
+func (s *connectionSocket) AutoHwmMsgUnitBytes() (int, error) {
+	value, err := s.getIntOption(C.ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+	return int(value), err
+}
+
 func (s *connectionSocket) LastEndpoint() (string, error) {
 	return s.getStringOption(C.ZLINK_OPT_LAST_ENDPOINT, 256)
 }

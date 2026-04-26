@@ -56,6 +56,7 @@ inline bool create_client_sockets (
   const std::string &transport,
   const std::string &endpoint,
   const multi_bench_settings_t &settings,
+  size_t msg_size,
   std::vector<void *> *sockets_out,
   std::vector<ready_monitor_t> *monitors_out)
 {
@@ -65,6 +66,7 @@ inline bool create_client_sockets (
       endpoint,
       settings,
       k_client_socket_type,
+      msg_size,
       sockets_out,
       monitors_out);
 }
@@ -284,6 +286,11 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes (fallback_size);
+    size_t max_msg_size = fallback_size > 0 ? fallback_size : 64;
+    for (size_t i = 0; i < msg_sizes.size (); ++i) {
+        if (msg_sizes[i] > max_msg_size)
+            max_msg_size = msg_sizes[i];
+    }
 
     ctx_guard_t ctx;
     if (!ctx.valid ())
@@ -296,6 +303,7 @@ inline int run_client_benchmark (const std::string &lib_name,
           transport,
           endpoint,
           settings,
+          max_msg_size,
           &sockets,
           &monitors)) {
         if (bench_debug_enabled ())

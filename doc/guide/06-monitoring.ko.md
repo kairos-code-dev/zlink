@@ -312,7 +312,10 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 | `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, approximate) |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | 현재 적용된 자동 HWM 값 |
 | `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 transport buffer 값 |
-| `auto_hwm_total_memory_budget_bytes` 등 budget 필드 | 현재 context 예산과 role별 배분 상태 |
+| `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | 자동 관리 buffer 비용과 사용자가 직접 설정한 buffer 진단값 |
+| `auto_hwm_effective_message_bytes` | queue budget을 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |
+| `auto_hwm_scope` / `auto_hwm_scope_count` | SPOT shared/per-spot을 포함한 HWM 계산 scope |
+| `auto_hwm_total_memory_budget_bytes` 등 budget 필드 | 현재 context 예산, role별 배분, scope별 배분 상태 |
 
 `snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
 이 값이 HWM에 근접하면 백프레셔가 발생하고 있다는 의미이다.

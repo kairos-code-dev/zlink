@@ -102,6 +102,12 @@ public sealed class CommonSocketOptions
         set => _socket.SetOption(SocketOptions.RidDuplicatePolicy, value);
     }
 
+    public int AutoHwmMsgUnitBytes
+    {
+        get => _socket.GetOption(SocketOptions.AutoHwmMsgUnitBytes);
+        set => _socket.SetOption(SocketOptions.AutoHwmMsgUnitBytes, value);
+    }
+
     public string LastEndpoint => _socket.GetOption(SocketOptions.LastEndpoint);
 
     public int FileDescriptor => _socket.GetOption(SocketOptions.Fd);

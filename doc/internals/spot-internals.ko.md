@@ -417,30 +417,36 @@ identity lookup 정보가 함께 묶여 있다. 이 routed ingress는 `zlink_spo
 
 ```text
 +------------------------------------------------------------------+
-|  Spot Handle HWM                                                  |
-|  (public facade pub/sub 소켓)                                      |
-|  ┌──────────────────────────────────────────────────────────────┐ |
-|  │  SpotNode Data-Plane HWM                                     │ |
-|  │  ┌─────────────────────────┬────────────────────────────┐    │ |
-|  │  │  SNDHWM 적용 대상:       │  RCVHWM 적용 대상:          │    │ |
-|  │  │  - fanout (PUB)         │  - ingress (SUB)            │    │ |
-|  │  │  - mesh_pub (PUB)       │  - mesh_xsub (XSUB)        │    │ |
-|  │  │  - node_router (SND)    │  - route_ingress (ROUTER)   │    │ |
-|  │  │                         │  - node_router (RCV)        │    │ |
-|  │  └─────────────────────────┴────────────────────────────┘    │ |
-|  │                                                               �� |
-|  │  peer_ctrl은 CONTROL PLANE → 별도 HWM (1024)                 │ |
-|  └──────────────────────────────────────────────────────────────┘ |
+|  Spot Handle HWM                                                 |
+|  (public facade pub/sub sockets)                                 |
+|  +------------------------------------------------------------+  |
+|  |  SpotNode Data-Plane HWM                                  |  |
+|  |  +----------------------+------------------------------+  |  |
+|  |  |  SNDHWM targets      |  RCVHWM targets              |  |  |
+|  |  |  fanout, mesh_pub    |  ingress, mesh_xsub          |  |  |
+|  |  |  node_router send    |  route_ingress, router recv  |  |  |
+|  |  +----------------------+------------------------------+  |  |
+|  |  peer_ctrl uses control-plane HWM separately              |  |
+|  +------------------------------------------------------------+  |
 +------------------------------------------------------------------+
 ```
 
 기본 내부 data-plane HWM은 고정 `1000`이 아니다. SpotNode runtime은
-context auto HWM 정책에서 나온 역할별 값을 쓴다.
+context auto HWM 정책에서 나온 역할별 값을 쓰며, 예산 scope를 두 가지로
+나눈다.
 
-- `fanout`, `mesh_pub`: 기본 floor `16`
-- `ingress`, `mesh_xsub`: 기본 floor `8`
-- `node_router`, `route_ingress`: 기본 floor `8`
-- `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: control 역할로 분리되며 기본 floor `4`
+- shared scope: SpotNode 공유 소켓은 역할 예산 전체를 기준으로 슬롯을 계산한
+  뒤 shared 대상 수로 나눈다.
+- per-spot scope: spot endpoint와 attachment 소켓은 역할 예산을 먼저 spot 수로
+  나눈다.
+
+역할 floor는 예산을 초과하면서까지 강제하지 않는다. scope 예산으로 계산한 슬롯이
+floor보다 작으면 예산에서 나온 값을 그대로 사용한다.
+
+- `fanout`, `mesh_pub`: fanout 역할 floor `16`
+- `ingress`, `mesh_xsub`: recv-ingress 역할 floor `8`
+- `node_router`, `route_ingress`: routed 역할 floor `8`
+- `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: control 역할로 분리되며 floor `4`
 
 Topic과 routed HWM은 `zlink_set_spot_node_option()`으로 독립 설정 가능:
 - `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`

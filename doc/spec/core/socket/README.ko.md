@@ -320,7 +320,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 
 | 카테고리 | 대표 옵션 | 내부 소유자 |
 |----------|-----------|-------------|
-| Core Socket | `SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
+| Core Socket | `SNDHWM`, `RCVHWM`, `AUTO_HWM_MSG_UNIT_BYTES`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
 | Transport/Network | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY` | `options_transport_network` |
 | Protocol/Metadata | ZMP 메타데이터 | `options_protocol_metadata` |
 
@@ -335,6 +335,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (`int`; 0=OS 기본값) |
 | `ZLINK_OPT_SNDHWM` | 송신 하이 워터 마크 (`int`; 0=무제한) |
 | `ZLINK_OPT_RCVHWM` | 수신 하이 워터 마크 (`int`; 0=무제한) |
+| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 자동 HWM 계산에서 메시지 슬롯으로 환산할 때 쓰는 바이트 단위 (`int`; 0=소켓 타입 기본값, 음수는 `EINVAL`) |
 | `ZLINK_OPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (`int64_t`; -1=무제한) |
 
 ##### Timing

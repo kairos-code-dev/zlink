@@ -104,7 +104,7 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     out_->auto_hwm_group_message_slots =
       _auto_hwm_socket_plan.group_message_slots;
     out_->auto_hwm_effective_message_bytes =
-      _auto_hwm_context_plan.effective_message_bytes;
+      _auto_hwm_socket_plan.effective_message_bytes;
     out_->auto_hwm_control_budget_bytes =
       (_auto_hwm_context_plan.queue_budget_bytes * 5ull) / 100ull;
     out_->auto_hwm_routed_budget_bytes =
@@ -124,6 +124,21 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     out_->auto_hwm_send_blocked_ratio_ppm = compute_blocked_ratio_ppm_local (
       _auto_hwm_send_attempts.load (std::memory_order_relaxed),
       _auto_hwm_send_blocked_attempts.load (std::memory_order_relaxed));
+    out_->auto_hwm_scope =
+      static_cast<uint32_t> (_auto_hwm_socket_plan.scope);
+    out_->auto_hwm_scope_count = _auto_hwm_socket_plan.scope_count;
+    out_->auto_hwm_role_group_budget_bytes =
+      _auto_hwm_socket_plan.role_group_budget_bytes;
+    out_->auto_hwm_scope_group_budget_bytes =
+      _auto_hwm_socket_plan.scope_group_budget_bytes;
+    out_->auto_hwm_auto_buffer_bytes =
+      _auto_hwm_socket_plan.auto_buffer_bytes;
+    out_->auto_hwm_manual_buffer_bytes =
+      _auto_hwm_socket_plan.manual_buffer_bytes;
+    out_->auto_hwm_buffer_connections =
+      _auto_hwm_socket_plan.buffer_connections;
+    out_->auto_hwm_deferred_sndhwm = _auto_hwm_deferred_sndhwm;
+    out_->auto_hwm_deferred_rcvhwm = _auto_hwm_deferred_rcvhwm;
 
     return 0;
 }

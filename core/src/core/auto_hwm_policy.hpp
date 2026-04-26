@@ -17,6 +17,13 @@ enum auto_hwm_role_t
     auto_hwm_role_recv_ingress = 4
 };
 
+enum auto_hwm_scope_t
+{
+    auto_hwm_scope_none = 0,
+    auto_hwm_scope_shared = 1,
+    auto_hwm_scope_per_spot = 2
+};
+
 struct auto_hwm_context_plan_t
 {
     auto_hwm_context_plan_t ();
@@ -27,7 +34,6 @@ struct auto_hwm_context_plan_t
     uint64_t queue_budget_bytes;
     uint64_t transport_budget_bytes;
     uint64_t runtime_reserve_bytes;
-    uint64_t effective_message_bytes;
 };
 
 struct auto_hwm_socket_plan_t
@@ -35,8 +41,16 @@ struct auto_hwm_socket_plan_t
     auto_hwm_socket_plan_t ();
 
     auto_hwm_role_t role;
+    auto_hwm_scope_t scope;
+    uint32_t scope_count;
     uint64_t group_budget_bytes;
+    uint64_t role_group_budget_bytes;
+    uint64_t scope_group_budget_bytes;
     uint64_t group_message_slots;
+    uint64_t auto_buffer_bytes;
+    uint64_t manual_buffer_bytes;
+    uint32_t buffer_connections;
+    uint64_t effective_message_bytes;
     uint32_t managed_connections;
     uint32_t active_hwm_connections;
     uint32_t planning_transport_connections;
@@ -58,7 +72,16 @@ void auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &context_,
                                     int socket_type_,
                                     size_t managed_connections_,
                                     size_t active_hwm_connections_,
-                                    auto_hwm_socket_plan_t *out_);
+                                    auto_hwm_socket_plan_t *out_,
+                                    int message_unit_bytes_ = 0,
+                                    int sndbuf_ = -1,
+                                    int rcvbuf_ = -1,
+                                    bool manual_sndbuf_ = false,
+                                    bool manual_rcvbuf_ = false,
+                                    auto_hwm_scope_t scope_ =
+                                      auto_hwm_scope_none,
+                                    size_t scope_count_ = 1,
+                                    bool buffer_cost_enabled_ = true);
 }
 
 #endif

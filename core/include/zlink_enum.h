@@ -98,7 +98,8 @@ typedef enum zlink_option_t
     ZLINK_OPT_LAST_ENDPOINT = 0x3014,
     ZLINK_OPT_ZMP_METADATA = 0x3030,
     ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE = 0x3032,
-    ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033
+    ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033,
+    ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034
 } zlink_option_t;
 
 typedef enum zlink_rid_duplicate_policy_t
@@ -173,7 +174,8 @@ typedef enum zlink_auto_hwm_recalc_reason_t
     ZLINK_AUTO_HWM_RECALC_REASON_INITIAL = 1,
     ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE = 2,
     ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE = 3,
-    ZLINK_AUTO_HWM_RECALC_REASON_REFRESH = 4
+    ZLINK_AUTO_HWM_RECALC_REASON_REFRESH = 4,
+    ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK = 5
 } zlink_auto_hwm_recalc_reason_t;
 
 typedef enum zlink_protocol_error_t

@@ -280,8 +280,11 @@ class socket_base_t : public own_t,
                                 size_t routing_id_size_) const;
 
     int monitor_snapshot (zlink_monitor_snapshot_t *out_);
-    void refresh_auto_hwm_policy ();
+    void refresh_auto_hwm_policy (bool force_apply_ = false);
     void set_auto_hwm_role (auto_hwm_role_t role_);
+    void set_auto_hwm_scope (auto_hwm_scope_t scope_, size_t scope_count_);
+    void clear_auto_hwm_manual_overrides (bool sndhwm_, bool rcvhwm_,
+                                          bool sndbuf_, bool rcvbuf_);
     void set_auto_hwm_policy_enabled (bool enabled_);
     bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
@@ -601,6 +604,8 @@ class socket_base_t : public own_t,
     socket_runtime_t _runtime;
     socket_request_reply_bridge_t _request_reply_bridge;
     auto_hwm_role_t _auto_hwm_role;
+    auto_hwm_scope_t _auto_hwm_scope;
+    size_t _auto_hwm_scope_count;
     bool _auto_hwm_role_override;
     bool _auto_hwm_policy_enabled;
     bool _manual_sndhwm;
@@ -611,6 +616,8 @@ class socket_base_t : public own_t,
     auto_hwm_socket_plan_t _auto_hwm_socket_plan;
     uint64_t _auto_hwm_last_recalc_ms;
     uint32_t _auto_hwm_last_recalc_reason;
+    int32_t _auto_hwm_deferred_sndhwm;
+    int32_t _auto_hwm_deferred_rcvhwm;
     std::atomic<uint64_t> _auto_hwm_send_attempts;
     std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
     uint32_t _local_peer_weight;

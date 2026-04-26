@@ -266,6 +266,18 @@ inline bool run_server_loop (void *server,
                       settings.connect_ready_timeout_ms)) {
                     return false;
                 }
+                if (new_size) {
+                    apply_benchmark_auto_hwm_msg_unit (
+                      server, k_server_socket_type, current_phase_msg_size);
+                    apply_benchmark_hwm (server, settings.hwm);
+                    perf_print_auto_hwm_snapshot (
+                      server,
+                      false,
+                      "server",
+                      transport,
+                      true,
+                      current_phase_msg_size);
+                }
                 phase_deadline =
                   std::chrono::steady_clock::now ()
                   + phases[phase_index].duration;
@@ -354,7 +366,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
-    perf_print_auto_hwm_snapshot (server, false, "server", transport);
     if (k_server_has_routing_id) {
         zlink_set_routing_id (
           server, k_server_routing_id, std::strlen (k_server_routing_id));

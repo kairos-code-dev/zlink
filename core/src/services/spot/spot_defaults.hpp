@@ -24,6 +24,7 @@ struct spot_node_pub_defaults_t
     spot_node_option_setting_t nodrop;
     spot_node_option_setting_t sndbuf;
     spot_node_option_setting_t rcvbuf;
+    spot_node_option_setting_t auto_hwm_msg_unit_bytes;
 };
 
 struct spot_node_sub_defaults_t
@@ -33,6 +34,7 @@ struct spot_node_sub_defaults_t
     spot_node_option_setting_t sndbuf;
     spot_node_option_setting_t rcvbuf;
     spot_node_option_setting_t rcvtimeo;
+    spot_node_option_setting_t auto_hwm_msg_unit_bytes;
 };
 }
 

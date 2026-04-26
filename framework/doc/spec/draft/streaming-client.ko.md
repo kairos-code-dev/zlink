@@ -109,6 +109,7 @@ transport를 바꾸더라도 상위 packet 처리 코드는 가능하면 바뀌�
 - raw byte payload send
 - body 타입 이름 또는 지정한 packet 이름으로 packet send
 - optional JSON object header metadata 지정
+- body compression flag 처리
 - zero-copy 또는 copy 감소 send 경로
 - segmented send 경로
 - packet callback 수신
@@ -173,6 +174,32 @@ extension 또는 별도 package로 둔다.
 codec extension은 packet 이름 결정, optional header metadata 생성, payload parse를
 돕지만, transport framing과 request lifecycle을 바꾸면 안 된다.
 
+### 5.8 Compression
+
+compression은 body에만 적용한다. header는 routing, request correlation, codec,
+metadata를 담기 때문에 압축하지 않는다.
+
+server-to-client 방향은 자동 해제를 제공한다.
+
+- 서버 쪽 send helper는 설정한 threshold 이상인 body를 압축할 수 있다.
+- 압축된 body를 보낼 때 helper header `flags`에 `body_compressed`를 표시한다.
+- client connector는 수신한 helper header에 `body_compressed`가 있으면 body를
+  자동으로 압축 해제한다.
+- client 사용자 callback이나 receive API에는 압축 해제된 body를 전달한다.
+
+client-to-server 방향은 명시 요청일 때만 압축한다.
+
+- 기본 client send/request는 압축하지 않는다.
+- 사용자가 send/request builder에서 compression을 명시한 경우에만 body를 압축한다.
+- 서버 framework는 기존처럼 `header, body`를 받는다.
+- 서버 쪽 helper나 actor adapter가 helper header의 `body_compressed` flag를 보고
+  필요하면 body를 압축 해제한다.
+
+압축 알고리즘은 packet마다 header에 넣지 않고 connector 또는 서버 send helper 설정에
+둔다. 한 연결 안에서 여러 압축 알고리즘을 섞는 모델은 기본 범위에 넣지 않는다.
+초기 후보는 LZ4다. 알고리즘 혼용이 필요해지면 helper header v2에서 별도 필드를
+추가한다.
+
 ## 6. 빼야 할 범위
 
 아래 기능은 streaming client core에 넣지 않는다.
@@ -232,9 +259,10 @@ connector helper header v1은 binary header다. 문자열 JSON envelope를 heade
 - `meta`: `u16 meta_len` 뒤에 metadata bytes가 온다. metadata가 있을 때만 들어간다.
 
 `name_len`은 최대 255 bytes다. 긴 namespace 전체 이름을 header에 그대로 넣지 말고,
-짧은 packet name 또는 alias를 사용한다. `meta_len`은 최대 65535 bytes까지 표현할 수
-있지만, connector는 더 작은 기본 제한을 둘 수 있다. metadata에는 trace id, tenant id,
-locale처럼 작은 값만 넣고 큰 업무 payload는 body에 넣는다.
+짧은 packet name 또는 alias를 사용한다. `meta_len`은 wire에서 `u16`이지만 connector
+기본 최대값은 1024 bytes로 둔다. 구현은 옵션으로 이 값을 낮추거나 높일 수 있지만,
+65535 bytes를 넘길 수 없다. metadata에는 trace id, tenant id, locale처럼 작은 값만
+넣고 큰 업무 payload는 body에 넣는다.
 
 enum 값은 최초 draft에서 아래처럼 둔다.
 
@@ -248,6 +276,14 @@ enum 값은 최초 draft에서 아래처럼 둔다.
 | codec json | `1` | JSON body |
 | codec messagepack | `2` | MessagePack body |
 | codec protobuf | `3` | Protobuf body |
+
+`flags` bit는 최초 draft에서 아래처럼 둔다.
+
+| flag | value | 의미 |
+|------|-------|------|
+| has rid | `0x01` | `rid` 필드가 있다 |
+| has metadata | `0x02` | `meta` 필드가 있다 |
+| body compressed | `0x04` | body가 압축되어 있다 |
 
 서버 framework는 이 helper header를 몰라도 기존처럼 `header, body`를 받을 수 있어야
 한다. helper를 쓰는 서버 쪽 adapter나 actor helper는 `header bytes`를 위 형식으로
@@ -267,6 +303,8 @@ enum 값은 최초 draft에서 아래처럼 둔다.
 - request callback과 async request가 timeout, response, close 상황을 처리한다.
 - partial read, multi-packet read, large frame limit, close 중 send 실패를 테스트한다.
 - codec extension이 core transport 계약을 바꾸지 않는지 검증한다.
+- server-to-client compressed body를 client connector가 자동으로 압축 해제한다.
+- client-to-server compression은 명시 호출에서만 적용된다.
 - Unity adapter는 main thread callback dispatch를 검증한다.
 - Unreal plugin은 Game Thread callback dispatch를 검증한다.
 

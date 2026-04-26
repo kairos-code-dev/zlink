@@ -58,6 +58,14 @@ public enum ZlinkStreamingCodec : byte
 }
 ```
 
+```csharp
+public enum ZlinkStreamCompression
+{
+    None,
+    Lz4
+}
+```
+
 URI scheme으로 transport를 추론할 수 있어야 한다.
 
 | URI scheme | transport |
@@ -92,11 +100,15 @@ public sealed class ZlinkStreamingClientOptions
 
     public int MaxFrameSize { get; init; } = 1024 * 1024;
 
+    public int MaxMetadataSize { get; init; } = 1024;
+
     public bool SkipServerCertificateValidation { get; init; }
 
     public bool EnableSegmentedSend { get; init; } = true;
 
     public ZlinkStreamingCodec DefaultCodec { get; init; } = ZlinkStreamingCodec.Json;
+
+    public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
     public IZlinkStreamingCodecRegistry? CodecRegistry { get; init; }
 }
@@ -166,7 +178,24 @@ public enum ZlinkStreamMessageKind : byte
 
 `rid`는 request, response, error response에만 들어가는 `u64` correlation id다.
 metadata는 `u16 meta_len + metadata bytes`로 붙인다. metadata가 header 크기 제한 안에
-들어가야 하므로 trace id, locale, tenant id 같은 작은 값만 넣는다.
+들어가야 하므로 trace id, locale, tenant id 같은 작은 값만 넣는다. `MaxMetadataSize`
+기본값은 1024 bytes다. `meta_len` wire 필드가 표현할 수 있는 최댓값은 65535 bytes지만,
+`.NET` connector는 `MaxMetadataSize`를 넘는 metadata를 보내거나 받으면 error로
+처리해야 한다.
+
+helper header v1 `flags` 값은 공통 스펙과 맞춘다.
+
+| flag | value | 의미 |
+|------|-------|------|
+| has rid | `0x01` | `rid` 필드가 있다 |
+| has metadata | `0x02` | `meta` 필드가 있다 |
+| body compressed | `0x04` | body가 압축되어 있다 |
+
+압축 알고리즘은 header에 packet마다 넣지 않는다. `.NET` connector의
+`Compression` option으로 정한다. `body compressed` flag는 이 packet의 body가 해당
+알고리즘으로 압축되어 있음을 나타낸다. 이 option은 client-to-server 자동 압축을
+켜지 않는다. client에서 server로 보낼 때는 send/request builder에서 `.Compress()`를
+명시한 경우에만 압축한다.
 
 ## 6. Client API 초안
 
@@ -266,6 +295,19 @@ await client
     .ExecAsync(cancellationToken);
 ```
 
+client-to-server compression은 명시 호출에서만 적용한다.
+
+```csharp
+await client
+    .Send(new UploadReplayChunk { Bytes = chunk })
+    .Compress()
+    .ExecAsync(cancellationToken);
+```
+
+`.Compress()`는 body만 압축하고 helper header `flags`에 `body compressed`를 표시한다.
+서버 framework는 기존처럼 `header, body`를 받는다. 서버 쪽 helper나 actor adapter는
+helper header를 보고 필요하면 body를 압축 해제한다.
+
 ## 7. Error 모델
 
 ```csharp
@@ -283,6 +325,7 @@ public enum ZlinkStreamingErrorCode
     FrameTooLarge,
     SendFailed,
     TlsValidationFailed,
+    DecompressionFailed,
     UserCallbackFailed
 }
 ```
@@ -345,7 +388,25 @@ attribute 또는 `CodecRegistry`처럼 타입과 codec을 연결하는 명시적
 따른다. codec extension은 transport, timeout, request map, callback dispatch 규칙을
 바꾸면 안 된다.
 
-## 10. Unity Adapter
+## 10. Compression
+
+server-to-client 방향은 자동 압축 해제를 제공한다.
+
+- 서버가 helper header `body compressed` flag를 켜고 body를 보내면 `.NET` connector는
+  사용자 callback 전에 body를 압축 해제한다.
+- `PacketReceived`, typed message handler, `ReceiveAsync`는 압축 해제된 body를 받는다.
+- 압축 해제 실패는 `DecompressionFailed` error로 사용자에게 전달한다.
+
+client-to-server 방향은 명시 호출일 때만 압축한다.
+
+- 기본 `Send`와 `Request`는 압축하지 않는다.
+- `.Compress()`를 호출한 send/request만 body를 압축한다.
+- 압축된 packet에는 helper header `body compressed` flag를 켠다.
+- raw `SendAsync(header, body)` API는 자동 압축을 적용하지 않는다.
+
+압축은 body에만 적용한다. helper header는 압축하지 않는다.
+
+## 11. Unity Adapter
 
 `Zlink.Streaming.Client.Unity`는 일반 C# client를 감싼다.
 
@@ -359,7 +420,7 @@ attribute 또는 `CodecRegistry`처럼 타입과 codec을 연결하는 명시적
 
 Unity adapter는 `ZlinkStreamingClient`의 packet 의미를 바꾸지 않는다.
 
-### 10.1 Unity 패키지 구조
+### 11.1 Unity 패키지 구조
 
 Unity 패키지는 Unity Package Manager에서 직접 참조할 수 있는 구조를 따른다.
 
@@ -385,7 +446,7 @@ Zlink.Streaming.Client.Unity/
 Unity `Runtime/` 코드는 일반 C# core client를 재구현하지 않는다. TCP, TLS, WS, WSS
 transport와 frame codec은 `Zlink.Streaming.Client` core를 사용한다.
 
-### 10.2 Unity public surface 초안
+### 11.2 Unity public surface 초안
 
 Unity 사용자는 `MonoBehaviour` wrapper를 통해 연결과 callback을 다룰 수 있어야
 한다.
@@ -420,7 +481,7 @@ Unity wrapper는 `Task`를 노출할 수 있지만, 사용자 callback은 Unity 
 호출해야 한다. `PacketReceived` 안에서 `GameObject`, `Transform`, `UI` 같은 Unity
 객체를 직접 다룰 수 있어야 하기 때문이다.
 
-### 10.3 Callback dispatch
+### 11.3 Callback dispatch
 
 core client의 receive loop는 worker thread에서 실행될 수 있다. Unity adapter는
 worker thread에서 사용자 callback을 직접 호출하지 않는다.
@@ -454,7 +515,7 @@ public enum ZlinkUnityCallbackOverflowPolicy
 기본값은 `Disconnect`가 적합하다. callback queue overflow는 사용자가 packet을
 처리하지 못하고 있다는 뜻이므로 조용히 유실시키면 문제를 찾기 어렵다.
 
-### 10.4 Unity lifecycle
+### 11.4 Unity lifecycle
 
 Unity adapter는 아래 lifecycle을 지켜야 한다.
 
@@ -476,7 +537,7 @@ public enum ZlinkUnityPausePolicy
 모바일 환경에서는 pause 중 네트워크가 끊길 수 있으므로 `Disconnected` callback과
 명시적 reconnect helper를 제공해야 한다. 자동 reconnect를 기본값으로 켜지는 않는다.
 
-### 10.5 Unity transport 기준
+### 11.5 Unity transport 기준
 
 Unity adapter는 아래 transport를 모두 사용할 수 있어야 한다.
 
@@ -489,7 +550,7 @@ Unity adapter는 아래 transport를 모두 사용할 수 있어야 한다.
 수 없으므로 `ws://` 또는 `wss://`만 허용될 수 있다. 이런 제한은 runtime error보다
 configuration validation에서 먼저 알려야 한다.
 
-### 10.6 Unity sample 기준
+### 11.6 Unity sample 기준
 
 Unity sample은 게임 도메인을 넣지 않는다. 아래만 보여 준다.
 
@@ -503,7 +564,7 @@ Unity sample은 게임 도메인을 넣지 않는다. 아래만 보여 준다.
 채팅방, room, actor 같은 샘플은 Unity adapter sample이 아니라 별도 application
 sample에서 다룬다.
 
-### 10.7 Unity 테스트 기준
+### 11.7 Unity 테스트 기준
 
 필수 테스트:
 
@@ -516,7 +577,7 @@ sample에서 다룬다.
 
 TLS/WSS 테스트는 인증서 fixture가 준비된 CI 환경에서 실행한다.
 
-## 11. 완료 기준
+## 12. 완료 기준
 
 `.NET` 구현 완료 기준은 아래와 같다.
 
@@ -529,5 +590,7 @@ TLS/WSS 테스트는 인증서 fixture가 준비된 CI 환경에서 실행한다
 - TLS 자체 서명 인증서 검증 옵션을 테스트한다.
 - partial read, multi-packet read, large frame limit을 테스트한다.
 - JSON, MessagePack, Protobuf extension이 core packet 계약을 바꾸지 않는지 테스트한다.
+- server-to-client compressed body를 자동으로 압축 해제한다.
+- client-to-server compression은 `.Compress()`를 호출한 packet에만 적용한다.
 - Unity adapter가 main thread callback dispatch, lifecycle close, platform별
   transport validation을 보장한다.

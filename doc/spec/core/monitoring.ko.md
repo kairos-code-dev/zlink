@@ -98,6 +98,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t rcv_pending_msgs;
     uint32_t auto_hwm_enabled;
     uint32_t auto_hwm_role;
+    uint32_t auto_hwm_scope;
+    uint32_t auto_hwm_scope_count;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
     uint32_t auto_hwm_planning_transport_connections;
@@ -113,8 +115,13 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
     uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_role_group_budget_bytes;
+    uint64_t auto_hwm_scope_group_budget_bytes;
     uint64_t auto_hwm_group_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
+    uint64_t auto_hwm_auto_buffer_bytes;
+    uint64_t auto_hwm_manual_buffer_bytes;
+    uint32_t auto_hwm_buffer_connections;
     uint64_t auto_hwm_control_budget_bytes;
     uint64_t auto_hwm_routed_budget_bytes;
     uint64_t auto_hwm_fanout_budget_bytes;
@@ -126,6 +133,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_estimated_max_memory_bytes;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
+    int32_t auto_hwm_deferred_sndhwm;
+    int32_t auto_hwm_deferred_rcvhwm;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
 } zlink_monitor_snapshot_t;
 ```
@@ -139,6 +148,8 @@ typedef struct zlink_monitor_snapshot_t
 | `rcv_pending_msgs` | 지원되는 경우 aggregate 로컬 수신 backlog snapshot |
 | `auto_hwm_enabled` | 이 source가 자동 HWM 정책을 기준으로 계산 중이면 `1`, 아니면 `0` |
 | `auto_hwm_role` | 자동 HWM 진단용 역할 묶음 번호. 현재 `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`이며 새 값이 추가될 수 있음 |
+| `auto_hwm_scope` | 자동 HWM scope 번호. 현재 `0=none`, `1=shared`, `2=per_spot`이며 새 값이 추가될 수 있음 |
+| `auto_hwm_scope_count` | HWM 계산에서 나눈 scope 대상 수 |
 | `auto_hwm_managed_connections` | 현재 정책이 계산에 사용한 연결 수 |
 | `auto_hwm_active_hwm_connections` | HWM 분배에 실제로 나눈 연결 수 |
 | `auto_hwm_planning_transport_connections` | transport buffer 계획에 사용한 연결 수 |
@@ -153,9 +164,14 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_queue_budget_bytes` | HWM 계산에 쓴 큐 예산 |
 | `auto_hwm_transport_budget_bytes` | transport buffer 계산에 쓴 예산 |
 | `auto_hwm_runtime_reserve_bytes` | runtime reserve 예산 |
-| `auto_hwm_group_budget_bytes` | 현재 역할 묶음에 배정된 큐 예산 |
-| `auto_hwm_group_message_slots` | 현재 역할 묶음 예산을 실효 메시지 크기로 나눈 슬롯 수 |
-| `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 바이트 |
+| `auto_hwm_group_budget_bytes` | `auto_hwm_scope_group_budget_bytes`와 같은 값을 담는 호환 필드 |
+| `auto_hwm_role_group_budget_bytes` | scope로 나누기 전 현재 역할 묶음에 배정된 큐 예산 |
+| `auto_hwm_scope_group_budget_bytes` | 현재 scope 계산에 실제로 쓴 큐 예산 |
+| `auto_hwm_group_message_slots` | 현재 scope 예산을 실효 메시지 크기로 나눈 슬롯 수 |
+| `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
+| `auto_hwm_auto_buffer_bytes` | 큐 예산 계산 전에 차감한 자동 관리 buffer 예산 |
+| `auto_hwm_manual_buffer_bytes` | 사용자가 직접 설정한 buffer 진단값. 자동 queue 예산에서는 차감하지 않음 |
+| `auto_hwm_buffer_connections` | buffer 예산 계산에 곱한 계획 connection 수 |
 | `auto_hwm_control_budget_bytes` | control 역할 묶음에 배정된 큐 예산 |
 | `auto_hwm_routed_budget_bytes` | routed 역할 묶음에 배정된 큐 예산 |
 | `auto_hwm_fanout_budget_bytes` | fanout 역할 묶음에 배정된 큐 예산 |
@@ -167,6 +183,8 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_estimated_max_memory_bytes` | 현재 context 예산 기준으로 추정한 최대 메모리 상한 |
 | `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
 | `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
+| `auto_hwm_deferred_sndhwm` | 지연 중인 송신 HWM 축소값. 없으면 `-1` |
+| `auto_hwm_deferred_rcvhwm` | 지연 중인 수신 HWM 축소값. 없으면 `-1` |
 | `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure 로 막힌 비율(ppm) |
 
 ## 상수
@@ -198,6 +216,17 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | auto HWM budget/role/HWM 관련 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | auto HWM transport buffer 관련 필드가 채워짐. |
+
+### Auto-HWM 재계산 사유
+
+| 상수 | 값 | 설명 |
+|------|----|------|
+| `ZLINK_AUTO_HWM_RECALC_REASON_NONE` | `0` | 재계산 사유 없음 |
+| `ZLINK_AUTO_HWM_RECALC_REASON_INITIAL` | `1` | 초기 계산 |
+| `ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE` | `2` | 소켓 역할 변경 |
+| `ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE` | `3` | 자동 HWM 정책 활성/비활성 변경 |
+| `ZLINK_AUTO_HWM_RECALC_REASON_REFRESH` | `4` | 일반 refresh |
+| `ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK` | `5` | 현재 pending 메시지가 새 HWM보다 많아서 HWM 축소를 지연함 |
 
 ### 이벤트 플래그
 

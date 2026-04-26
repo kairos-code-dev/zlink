@@ -58,7 +58,11 @@ struct relay_server_config_t
     const char *server_routing_id;
 };
 
-inline bool relay_router_once (void *server)
+inline bool relay_router_once (void *server,
+                               int socket_type,
+                               int hwm_value,
+                               const std::string &transport,
+                               size_t *active_msg_size)
 {
     const zlink_routing_id_t *source_rid = NULL;
     const zlink_routing_id_t *source_spot_rid = NULL;
@@ -96,6 +100,16 @@ inline bool relay_router_once (void *server)
                   << std::endl;
     }
 
+    const size_t msg_size =
+      part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0;
+    if (active_msg_size && msg_size > 0 && *active_msg_size != msg_size) {
+        apply_benchmark_auto_hwm_msg_unit (server, socket_type, msg_size);
+        apply_benchmark_hwm (server, hwm_value);
+        *active_msg_size = msg_size;
+        perf_print_auto_hwm_snapshot (
+          server, false, "server", transport, true, msg_size);
+    }
+
     const zlink_submit_result_t send_rc =
       ::zlink_send_rid (
         server, source_rid, parts, part_count,
@@ -112,14 +126,21 @@ inline bool relay_router_once (void *server)
 
 inline bool run_server_loop (const relay_server_config_t &config,
                              void *server,
+                             int hwm_value,
                              const std::string &lib_name,
                              const std::string &transport)
 {
     if (!server)
         return false;
 
+    size_t active_msg_size = 0;
     while (!perf_stop_requested ().load (std::memory_order_acquire)) {
-        if (!relay_router_once (server))
+        if (!relay_router_once (
+              server,
+              config.socket_type,
+              hwm_value,
+              transport,
+              &active_msg_size))
             return false;
     }
 
@@ -155,7 +176,6 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
-    perf_print_auto_hwm_snapshot (server, false, "server", transport);
     if (config.has_server_routing_id && config.server_routing_id) {
         zlink_set_routing_id (
           server,
@@ -193,7 +213,8 @@ inline int run_server_benchmark (const relay_server_config_t &config,
 
     std::cout << "READY," << endpoint << std::endl;
 
-    const bool loop_ok = run_server_loop (config, server, lib_name, transport);
+    const bool loop_ok =
+      run_server_loop (config, server, settings.hwm, lib_name, transport);
 
     zlink_close (server);
     return loop_ok ? 0 : 1;

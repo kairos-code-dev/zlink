@@ -36,6 +36,8 @@ pub(crate) trait CommonSocketOptionAccess {
     fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError>;
     fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError>;
     fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError>;
+    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError>;
+    fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError>;
     fn set_backlog(&self, value: i32) -> Result<(), ConfigError>;
     fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError>;
     fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError>;
@@ -63,6 +65,8 @@ macro_rules! impl_common_access {
                 fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_heartbeat_ttl(self, d) }
                 fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_heartbeat_timeout(self, d) }
                 fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> { <$ty>::set_max_msg_size(self, bytes) }
+                fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> { <$ty>::set_auto_hwm_msg_unit_bytes(self, bytes) }
+                fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> { <$ty>::auto_hwm_msg_unit_bytes(self) }
                 fn set_backlog(&self, value: i32) -> Result<(), ConfigError> { <$ty>::set_backlog(self, value) }
                 fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_reconnect_interval(self, d) }
                 fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_reconnect_interval_max(self, d) }
@@ -140,6 +144,12 @@ where
     }
     pub fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> {
         self.socket.set_max_msg_size(bytes)
+    }
+    pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
+        self.socket.set_auto_hwm_msg_unit_bytes(bytes)
+    }
+    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
+        self.socket.auto_hwm_msg_unit_bytes()
     }
     pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
         self.socket.set_backlog(value)

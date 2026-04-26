@@ -94,6 +94,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t rcv_pending_msgs;
     uint32_t auto_hwm_enabled;
     uint32_t auto_hwm_role;
+    uint32_t auto_hwm_scope;
+    uint32_t auto_hwm_scope_count;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
     uint32_t auto_hwm_planning_transport_connections;
@@ -109,8 +111,13 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
     uint64_t auto_hwm_group_budget_bytes;
+    uint64_t auto_hwm_role_group_budget_bytes;
+    uint64_t auto_hwm_scope_group_budget_bytes;
     uint64_t auto_hwm_group_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
+    uint64_t auto_hwm_auto_buffer_bytes;
+    uint64_t auto_hwm_manual_buffer_bytes;
+    uint32_t auto_hwm_buffer_connections;
     uint64_t auto_hwm_control_budget_bytes;
     uint64_t auto_hwm_routed_budget_bytes;
     uint64_t auto_hwm_fanout_budget_bytes;
@@ -122,6 +129,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_estimated_max_memory_bytes;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
+    int32_t auto_hwm_deferred_sndhwm;
+    int32_t auto_hwm_deferred_rcvhwm;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
 } zlink_monitor_snapshot_t;
 ```
@@ -135,6 +144,8 @@ typedef struct zlink_monitor_snapshot_t
 | `rcv_pending_msgs` | Aggregate local inbound backlog snapshot when supported. |
 | `auto_hwm_enabled` | `1` when this source is currently using automatic HWM policy, otherwise `0`. |
 | `auto_hwm_role` | Diagnostic role-bucket id. Current values are `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`; callers must tolerate future values. |
+| `auto_hwm_scope` | Automatic HWM scope id. Current values are `0=none`, `1=shared`, `2=per_spot`; callers must tolerate future values. |
+| `auto_hwm_scope_count` | Scope target count used by the HWM calculation. |
 | `auto_hwm_managed_connections` | Connection count used by the current policy calculation. |
 | `auto_hwm_active_hwm_connections` | Connection count actually used to divide HWM slots. |
 | `auto_hwm_planning_transport_connections` | Connection count used for transport-buffer planning. |
@@ -149,9 +160,14 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_queue_budget_bytes` | Queue-budget portion used for HWM planning. |
 | `auto_hwm_transport_budget_bytes` | Transport-buffer budget portion. |
 | `auto_hwm_runtime_reserve_bytes` | Runtime reserve portion. |
-| `auto_hwm_group_budget_bytes` | Queue budget assigned to the current role bucket. |
-| `auto_hwm_group_message_slots` | Message slots available to the current role bucket after dividing by effective message size. |
-| `auto_hwm_effective_message_bytes` | Effective message size used by the current policy calculation. |
+| `auto_hwm_group_budget_bytes` | Compatibility alias for `auto_hwm_scope_group_budget_bytes`. |
+| `auto_hwm_role_group_budget_bytes` | Queue budget assigned to the current role bucket before scope division. |
+| `auto_hwm_scope_group_budget_bytes` | Queue budget actually used for the current scope calculation. |
+| `auto_hwm_group_message_slots` | Message slots available to the current scope after dividing by effective message size. |
+| `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
+| `auto_hwm_auto_buffer_bytes` | Auto-managed buffer budget subtracted before queue-budget calculation. |
+| `auto_hwm_manual_buffer_bytes` | User-managed buffer diagnostic value; it is not subtracted from the automatic queue budget. |
+| `auto_hwm_buffer_connections` | Planned connection count multiplied into buffer-budget accounting. |
 | `auto_hwm_control_budget_bytes` | Queue budget assigned to the control role bucket. |
 | `auto_hwm_routed_budget_bytes` | Queue budget assigned to the routed role bucket. |
 | `auto_hwm_fanout_budget_bytes` | Queue budget assigned to the fanout role bucket. |
@@ -163,6 +179,8 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_estimated_max_memory_bytes` | Estimated maximum memory envelope derived from the current context budget. |
 | `auto_hwm_last_recalc_ms` | Timestamp of the most recent auto-HWM recalculation in milliseconds. |
 | `auto_hwm_last_recalc_reason` | Enum value that records why the latest recalculation ran. |
+| `auto_hwm_deferred_sndhwm` | Pending deferred send-HWM shrink, or `-1` when no shrink is deferred. |
+| `auto_hwm_deferred_rcvhwm` | Pending deferred recv-HWM shrink, or `-1` when no shrink is deferred. |
 | `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
 
 ## Constants
@@ -194,6 +212,17 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | Auto-HWM role, budget, and applied-HWM fields are populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | Auto-HWM transport-buffer fields are populated. |
+
+### Auto-HWM Recalculation Reason
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ZLINK_AUTO_HWM_RECALC_REASON_NONE` | `0` | No recalculation reason recorded. |
+| `ZLINK_AUTO_HWM_RECALC_REASON_INITIAL` | `1` | Initial calculation. |
+| `ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE` | `2` | Socket role changed. |
+| `ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE` | `3` | Automatic HWM policy was enabled or disabled. |
+| `ZLINK_AUTO_HWM_RECALC_REASON_REFRESH` | `4` | Regular refresh. |
+| `ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK` | `5` | HWM shrink was deferred because current pending messages exceeded the new HWM. |
 
 ### Event Flags
 

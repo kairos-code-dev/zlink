@@ -47,6 +47,12 @@ int spot_node_t::apply_pub_defaults (spot_pub_t *pub_,
                              defaults_.rcvbuf.size)
              != 0)
         return -1;
+    if (defaults_.auto_hwm_msg_unit_bytes.enabled
+        && pub_->set_option (ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                             &defaults_.auto_hwm_msg_unit_bytes.value,
+                             defaults_.auto_hwm_msg_unit_bytes.size)
+             != 0)
+        return -1;
     return 0;
 }
 
@@ -82,6 +88,12 @@ int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
         && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
                              &defaults_.rcvtimeo.value,
                              defaults_.rcvtimeo.size)
+             != 0)
+        return -1;
+    if (defaults_.auto_hwm_msg_unit_bytes.enabled
+        && sub_->set_option (ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                             &defaults_.auto_hwm_msg_unit_bytes.value,
+                             defaults_.auto_hwm_msg_unit_bytes.size)
              != 0)
         return -1;
     return 0;

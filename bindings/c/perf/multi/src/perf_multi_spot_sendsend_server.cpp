@@ -157,7 +157,9 @@ bool apply_replier_options(void *spot,
     if (!spot)
         return false;
 
-    apply_benchmark_socket_options(spot, settings.hwm, "tcp");
+    apply_benchmark_socket_options(
+      spot, settings.hwm, "tcp", ZLINK_SOCKET_DEALER,
+      perf_current_benchmark_max_msg_size(64));
     return true;
 }
 
@@ -184,6 +186,11 @@ bool initialize_reqrep_server_session(
         perf_multi_spot_control::destroy_server_session(session);
         return false;
     }
+    const size_t max_msg_size = perf_current_benchmark_max_msg_size(64);
+    apply_benchmark_auto_hwm_msg_unit(
+      session->node, ZLINK_SOCKET_DEALER, max_msg_size);
+    apply_benchmark_auto_hwm_msg_unit(
+      session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
 
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =

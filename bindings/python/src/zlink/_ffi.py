@@ -76,6 +76,15 @@ class ZlinkMonitorSnapshot(ctypes.Structure):
         ("auto_hwm_last_recalc_ms", ctypes.c_uint64),
         ("auto_hwm_last_recalc_reason", ctypes.c_uint32),
         ("auto_hwm_send_blocked_ratio_ppm", ctypes.c_uint32),
+        ("auto_hwm_scope", ctypes.c_uint32),
+        ("auto_hwm_scope_count", ctypes.c_uint32),
+        ("auto_hwm_role_group_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_scope_group_budget_bytes", ctypes.c_uint64),
+        ("auto_hwm_auto_buffer_bytes", ctypes.c_uint64),
+        ("auto_hwm_manual_buffer_bytes", ctypes.c_uint64),
+        ("auto_hwm_buffer_connections", ctypes.c_uint32),
+        ("auto_hwm_deferred_sndhwm", ctypes.c_int32),
+        ("auto_hwm_deferred_rcvhwm", ctypes.c_int32),
     ]
 
 

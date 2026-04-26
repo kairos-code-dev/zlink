@@ -75,6 +75,7 @@ inline int run_client_benchmark (const std::string &lib_name,
               endpoint,
               settings,
               k_client_socket_type,
+              msg_size,
               &sockets,
               &monitors)) {
             close_client_monitors (&monitors);

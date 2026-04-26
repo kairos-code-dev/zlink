@@ -18,7 +18,7 @@ pub use sub::SubSocket;
 pub use xpub::XPubSocket;
 pub use xsub::XSubSocket;
 
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::time::Duration;
@@ -26,10 +26,10 @@ use std::time::Duration;
 use crate::ctx::duration_to_millis;
 use crate::domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
 use crate::error::{
+    check_bind_rc, check_close_rc, check_config_rc, check_connect_rc, check_handler_rc,
+    check_recv_rc, check_submit_rc, config_validation_error, last_errno, submit_validation_error,
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
-    SubmitError, check_bind_rc, check_close_rc, check_config_rc, check_connect_rc,
-    check_handler_rc, check_recv_rc, check_submit_rc, config_validation_error, last_errno,
-    submit_validation_error,
+    SubmitError,
 };
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
@@ -133,9 +133,7 @@ impl SocketInner {
     }
 
     pub fn disconnect_rid(&self, peer_rid: &RoutingId) -> Result<(), ConnectError> {
-        check_connect_rc(unsafe {
-            ffi::zlink_disconnect_rid(self.handle, peer_rid.as_raw())
-        })
+        check_connect_rc(unsafe { ffi::zlink_disconnect_rid(self.handle, peer_rid.as_raw()) })
     }
 
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
@@ -151,12 +149,7 @@ impl SocketInner {
         let mut buf = [0i8; 256];
         let mut len = 0usize;
         check_config_rc(unsafe {
-            ffi::zlink_socket_get_channel_name(
-                self.handle,
-                buf.as_mut_ptr(),
-                buf.len(),
-                &mut len,
-            )
+            ffi::zlink_socket_get_channel_name(self.handle, buf.as_mut_ptr(), buf.len(), &mut len)
         })?;
         Ok(cstr_buf_to_string(&buf, len))
     }
@@ -513,6 +506,21 @@ impl SocketInner {
                 std::mem::size_of::<i64>(),
             )
         })
+    }
+
+    pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
+        set_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+            bytes,
+        )
+    }
+
+    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
+        get_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+        )
     }
 
     pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
@@ -1068,6 +1076,15 @@ macro_rules! impl_base_socket {
             ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_max_msg_size(bytes)
             }
+            pub(crate) fn set_auto_hwm_msg_unit_bytes(
+                &self,
+                bytes: i32,
+            ) -> Result<(), crate::error::ConfigError> {
+                self.inner.set_auto_hwm_msg_unit_bytes(bytes)
+            }
+            pub(crate) fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, crate::error::ConfigError> {
+                self.inner.auto_hwm_msg_unit_bytes()
+            }
             pub(crate) fn set_backlog(&self, value: i32) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_backlog(value)
             }
@@ -1116,9 +1133,7 @@ macro_rules! impl_base_socket {
             ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_rid_duplicate_policy(value)
             }
-            pub(crate) fn rid_duplicate_policy(
-                &self,
-            ) -> Result<i32, crate::error::ConfigError> {
+            pub(crate) fn rid_duplicate_policy(&self) -> Result<i32, crate::error::ConfigError> {
                 self.inner.rid_duplicate_policy()
             }
             pub(crate) fn set_heartbeat_interval(

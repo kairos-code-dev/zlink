@@ -1249,6 +1249,8 @@ pub struct MonitorSnapshot {
     pub rcv_pending_msgs: u64,            // pending recv-queue message count
     pub auto_hwm_enabled: bool,
     pub auto_hwm_role: u32,
+    pub auto_hwm_scope: u32,
+    pub auto_hwm_scope_count: u32,
     pub auto_hwm_managed_connections: u32,
     pub auto_hwm_active_hwm_connections: u32,
     pub auto_hwm_planning_transport_connections: u32,
@@ -1264,8 +1266,13 @@ pub struct MonitorSnapshot {
     pub auto_hwm_transport_budget_bytes: u64,
     pub auto_hwm_runtime_reserve_bytes: u64,
     pub auto_hwm_group_budget_bytes: u64,
+    pub auto_hwm_role_group_budget_bytes: u64,
+    pub auto_hwm_scope_group_budget_bytes: u64,
     pub auto_hwm_group_message_slots: u64,
     pub auto_hwm_effective_message_bytes: u64,
+    pub auto_hwm_auto_buffer_bytes: u64,
+    pub auto_hwm_manual_buffer_bytes: u64,
+    pub auto_hwm_buffer_connections: u32,
     pub auto_hwm_control_budget_bytes: u64,
     pub auto_hwm_routed_budget_bytes: u64,
     pub auto_hwm_fanout_budget_bytes: u64,
@@ -1277,6 +1284,8 @@ pub struct MonitorSnapshot {
     pub auto_hwm_estimated_max_memory_bytes: u64,
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
+    pub auto_hwm_deferred_sndhwm: i32,
+    pub auto_hwm_deferred_rcvhwm: i32,
     pub auto_hwm_send_blocked_ratio_ppm: u32,
 }
 

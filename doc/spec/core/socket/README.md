@@ -321,7 +321,7 @@ based on the following classification:
 
 | Category | Representative Options | Internal Owner |
 |----------|----------------------|----------------|
-| Core Socket | `SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
+| Core Socket | `SNDHWM`, `RCVHWM`, `AUTO_HWM_MSG_UNIT_BYTES`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
 | Transport/Network | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY` | `options_transport_network` |
 | Protocol/Metadata | ZMP metadata | `options_protocol_metadata` |
 
@@ -336,6 +336,7 @@ based on the following classification:
 | `ZLINK_OPT_RCVBUF` | Kernel receive buffer size in bytes (`int`; 0 = OS default) |
 | `ZLINK_OPT_SNDHWM` | Send high water mark (`int`; 0 = unlimited) |
 | `ZLINK_OPT_RCVHWM` | Receive high water mark (`int`; 0 = unlimited) |
+| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | Message-unit size in bytes used by automatic HWM planning (`int`; 0 = socket-type default, negative values fail with `EINVAL`) |
 | `ZLINK_OPT_MAXMSGSIZE` | Maximum inbound message size in bytes (`int64_t`; -1 = unlimited) |
 
 ##### Timing

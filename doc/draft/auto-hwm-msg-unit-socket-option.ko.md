@@ -554,8 +554,12 @@ Auto-HWM spot
 Auto-HWM budget
 ```
 
-일반 패턴은 기존 endpoint/socket 중심 표를 유지하되 `MsgUnit(B)`를 budget 표에
-포함한다.
+일반 패턴은 결과 행을 출력한 뒤 endpoint/socket 중심의 `Auto-HWM detail` 표
+하나를 붙인다. 이 표는 실행 중 runtime snapshot에서 실제 수집한 값만 사용하고
+`Size(B)`와 `MsgUnit(B)`를 함께 표시한다. 이렇게 하면 같은 패턴에서 4 KiB,
+64 KiB, 128 KiB 같은 테스트 크기별 적용 HWM을 한 표에서 바로 비교할 수 있다.
+일반 패턴에서는 scope 분할이 단순하므로 기본 출력에서 별도 budget 표를
+반복하지 않는다.
 
 SPOT 계열 표에는 shared/per-spot 계산 차이를 검증할 수 있도록 `Scope`와
 `ScopeCount`를 포함한다.
@@ -589,17 +593,16 @@ Auto-HWM spot:
 
 - runner는 size별 실행 전에 현재 `msg_size`를 환경 변수로 전달한다.
 - C perf helper는 socket 생성 직후 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정한다.
-- 설정값은 `max(msg_size + overhead, socket_type_default)` 형태로 잡는다.
-- stream은 최소 `1024`, 그 외 socket은 최소 `4096`을 사용한다.
+- 설정값은 socket family와 관계없이 현재 테스트 메시지 크기와 같은 값으로 잡는다.
 
 초기 구현에서는 overhead를 별도 상수로 크게 잡지 않고, 아래 계산을 우선 사용한다.
 
 ```text
-STREAM:     max(msg_size, 1024)
-non-STREAM: max(msg_size, 4096)
+MsgUnit(B) = msg_size
 ```
 
-이렇게 하면 작은 메시지에서는 과도하게 큰 HWM을 피하고, 큰 메시지에서는
+이렇게 하면 작은 메시지에서도 테스트 size와 auto-HWM queue slot 계산을 직접
+맞춰 볼 수 있고, 큰 메시지에서는
 context 예산에 맞춰 HWM이 줄어든다.
 다만 작은 메시지 성능에 미치는 영향은 반드시 perf로 검증한다. 64B처럼 작은
 메시지에서 HWM이 지나치게 작아지면 overhead 또는 최소 message unit 정책을 다시
@@ -708,10 +711,12 @@ ManualBuffer(B) = auto-HWM budget 밖의 사용자 override
 1. runner가 size별 실행 환경에 현재 메시지 크기를 넣는다.
 2. C perf helper가 socket 생성 직후 공통 옵션으로 message unit을 설정한다.
 3. SPOT perf helper도 spotnode와 spot handle에 설정을 반영한다.
-4. 출력 표에서 `MsgUnit(B)`와 `GroupSlots`가 size별로 달라지는지 확인한다.
-5. SPOT 출력 표에서 `Scope`와 `ScopeCount`가 shared/per-spot 계산 기준을
+4. 일반 패턴 출력 표에서 `Size(B)`, `MsgUnit(B)`, 적용 HWM이 size별로
+   달라지는지 확인한다.
+5. SPOT 출력 표에서 `MsgUnit(B)`와 `GroupSlots`가 size별로 달라지는지 확인한다.
+6. SPOT 출력 표에서 `Scope`와 `ScopeCount`가 shared/per-spot 계산 기준을
    보여주는지 확인한다.
-6. `AutoBuffer(B)`가 context 고정 비율이 아니라 실제 planned 자동 buffer 비용으로
+7. `AutoBuffer(B)`가 context 고정 비율이 아니라 실제 planned 자동 buffer 비용으로
    출력되는지 확인한다.
 7. `BufferConnections` 또는 같은 의미의 필드가 출력되어 buffer 비용이 몇 개
    transport connection 기준인지 확인할 수 있게 한다.
@@ -950,7 +955,7 @@ planned count를 알 수 없을 때는 아래 fallback을 사용한다.
 | buffer accounting | `AutoBuffer(B)`, `ManualBuffer(B)`, `Queue(B)` 공식 검증 |
 | SPOT scope | shared/per-spot HWM 계산이 서로 다른 scope 공식 사용 |
 | monitoring | `MsgUnit(B)`, `AutoBuffer(B)`, `ManualBuffer(B)`, `Scope`, `ScopeCount` 확인 |
-| bindings/perf | size별 `MsgUnit(B)`와 `GroupSlots` 변화 확인 |
+| bindings/perf | 일반 패턴의 size별 `MsgUnit(B)`/HWM 변화와 SPOT의 `GroupSlots` 변화 확인 |
 | 문서 | draft와 정식 문서 사이 미반영 항목 0개 |
 
 ### 15.6 실패 시 처리 규칙

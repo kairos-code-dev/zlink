@@ -74,6 +74,15 @@ class MonitorSnapshot:
         auto_hwm_last_recalc_ms=None,
         auto_hwm_last_recalc_reason=None,
         auto_hwm_send_blocked_ratio_ppm=None,
+        auto_hwm_scope=None,
+        auto_hwm_scope_count=None,
+        auto_hwm_role_group_budget_bytes=None,
+        auto_hwm_scope_group_budget_bytes=None,
+        auto_hwm_auto_buffer_bytes=None,
+        auto_hwm_manual_buffer_bytes=None,
+        auto_hwm_buffer_connections=None,
+        auto_hwm_deferred_sndhwm=None,
+        auto_hwm_deferred_rcvhwm=None,
     ):
         self.source_kind = source_kind
         self.state_flags = state_flags
@@ -125,6 +134,15 @@ class MonitorSnapshot:
         self.auto_hwm_last_recalc_ms = auto_hwm_last_recalc_ms
         self.auto_hwm_last_recalc_reason = auto_hwm_last_recalc_reason
         self.auto_hwm_send_blocked_ratio_ppm = auto_hwm_send_blocked_ratio_ppm
+        self.auto_hwm_scope = auto_hwm_scope
+        self.auto_hwm_scope_count = auto_hwm_scope_count
+        self.auto_hwm_role_group_budget_bytes = auto_hwm_role_group_budget_bytes
+        self.auto_hwm_scope_group_budget_bytes = auto_hwm_scope_group_budget_bytes
+        self.auto_hwm_auto_buffer_bytes = auto_hwm_auto_buffer_bytes
+        self.auto_hwm_manual_buffer_bytes = auto_hwm_manual_buffer_bytes
+        self.auto_hwm_buffer_connections = auto_hwm_buffer_connections
+        self.auto_hwm_deferred_sndhwm = auto_hwm_deferred_sndhwm
+        self.auto_hwm_deferred_rcvhwm = auto_hwm_deferred_rcvhwm
 
     def is_ready(self):
         return bool(self.state_flags & (1 << 0))
@@ -326,6 +344,21 @@ class _BaseMonitor:
             auto_hwm_send_blocked_ratio_ppm=int(
                 snapshot.auto_hwm_send_blocked_ratio_ppm
             ),
+            auto_hwm_scope=int(snapshot.auto_hwm_scope),
+            auto_hwm_scope_count=int(snapshot.auto_hwm_scope_count),
+            auto_hwm_role_group_budget_bytes=int(
+                snapshot.auto_hwm_role_group_budget_bytes
+            ),
+            auto_hwm_scope_group_budget_bytes=int(
+                snapshot.auto_hwm_scope_group_budget_bytes
+            ),
+            auto_hwm_auto_buffer_bytes=int(snapshot.auto_hwm_auto_buffer_bytes),
+            auto_hwm_manual_buffer_bytes=int(
+                snapshot.auto_hwm_manual_buffer_bytes
+            ),
+            auto_hwm_buffer_connections=int(snapshot.auto_hwm_buffer_connections),
+            auto_hwm_deferred_sndhwm=int(snapshot.auto_hwm_deferred_sndhwm),
+            auto_hwm_deferred_rcvhwm=int(snapshot.auto_hwm_deferred_rcvhwm),
         )
 
     def close(self):

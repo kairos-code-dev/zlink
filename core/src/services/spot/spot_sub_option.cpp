@@ -41,13 +41,21 @@ int spot_sub_t::set_option (int option_,
         case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
             socket_option = ZLINK_INTERNAL_OPT_RCVTIMEO;
             break;
+        case ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            socket_option = ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES;
+            break;
         default:
             errno = EINVAL;
             return -1;
     }
 
     scoped_lock_t lock (_sync);
-    return socket->setsockopt (socket_option, optval_, optvallen_);
+    const int rc = socket->setsockopt (socket_option, optval_, optvallen_);
+    if (rc == 0 && option_ == ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES) {
+        socket->clear_auto_hwm_manual_overrides (true, true, true, true);
+        socket->refresh_auto_hwm_policy (true);
+    }
+    return rc;
 }
 
 int spot_sub_t::set_routing_id (const void *data_, size_t size_)

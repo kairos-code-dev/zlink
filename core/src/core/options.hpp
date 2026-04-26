@@ -38,6 +38,9 @@ struct options_t
     int sndhwm;
     int rcvhwm;
 
+    // Raw auto-HWM message unit override. 0 means socket-type default.
+    int auto_hwm_msg_unit_bytes;
+
     //  I/O thread affinity.
     uint64_t affinity;
 

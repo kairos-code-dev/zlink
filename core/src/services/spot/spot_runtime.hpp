@@ -132,6 +132,7 @@ struct spot_runtime_t
                                    size_t *local_sub_count_out_,
                                    size_t *connected_peer_count_out_,
                                    size_t *active_peer_count_out_) const;
+    void refresh_attachment_auto_hwm_scope_counts ();
     uint64_t attachment_state_version () const;
     spot_node_hwm_config_t hwm_config_snapshot () const;
     void set_hwm_config (const spot_node_hwm_config_t &config_);

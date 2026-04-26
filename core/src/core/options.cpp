@@ -100,6 +100,7 @@ const int default_batch_size = 8192; // 32768;// //16384;
 zlink::options_t::options_t () :
     sndhwm (default_hwm),
     rcvhwm (default_hwm),
+    auto_hwm_msg_unit_bytes (0),
     affinity (0),
     routing_id_size (0),
     rate (100),

@@ -28,6 +28,13 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             }
             break;
 
+        case ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            if (is_int_ && value_ >= 0) {
+                self_->auto_hwm_msg_unit_bytes = value_;
+                return 0;
+            }
+            break;
+
         case ZLINK_INTERNAL_OPT_AFFINITY:
             return options_do_setsockopt_value (optval_, optvallen_,
                                                 &self_->affinity);
@@ -160,6 +167,12 @@ int zlink::options_getsockopt_core_socket (const options_t *self_,
         case ZLINK_INTERNAL_OPT_RCVHWM:
             if (is_int_) {
                 *value_ = self_->rcvhwm;
+                return 0;
+            }
+            break;
+        case ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            if (is_int_) {
+                *value_ = self_->auto_hwm_msg_unit_bytes;
                 return 0;
             }
             break;

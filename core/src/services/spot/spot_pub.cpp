@@ -260,6 +260,9 @@ int spot_pub_t::set_option (int option_,
         case ZLINK_SPOT_PUB_OPT_RCVBUF:
             socket_option = ZLINK_INTERNAL_OPT_RCVBUF;
             break;
+        case ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            socket_option = ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES;
+            break;
         case ZLINK_SPOT_PUB_OPT_NODROP:
             socket_option = ZLINK_INTERNAL_OPT_XPUB_NODROP;
             break;
@@ -269,7 +272,12 @@ int spot_pub_t::set_option (int option_,
     }
 
     scoped_lock_t lock (_sync);
-    return socket->setsockopt (socket_option, optval_, optvallen_);
+    const int rc = socket->setsockopt (socket_option, optval_, optvallen_);
+    if (rc == 0 && option_ == ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES) {
+        socket->clear_auto_hwm_manual_overrides (true, true, true, true);
+        socket->refresh_auto_hwm_policy (true);
+    }
+    return rc;
 }
 
 int spot_pub_t::set_routing_id (const void *data_, size_t size_)

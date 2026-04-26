@@ -4351,6 +4351,13 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_value auto_hwm_last_recalc_ms;
     napi_value auto_hwm_last_recalc_reason;
     napi_value auto_hwm_send_blocked_ratio_ppm;
+    napi_value auto_hwm_scope, auto_hwm_scope_count;
+    napi_value auto_hwm_role_group_budget_bytes;
+    napi_value auto_hwm_scope_group_budget_bytes;
+    napi_value auto_hwm_auto_buffer_bytes;
+    napi_value auto_hwm_manual_buffer_bytes;
+    napi_value auto_hwm_buffer_connections;
+    napi_value auto_hwm_deferred_sndhwm, auto_hwm_deferred_rcvhwm;
     napi_create_uint32(env, static_cast<uint32_t>(snapshot.source_kind),
                        &source_kind);
     napi_create_uint32(env, snapshot.state_flags, &state_flags);
@@ -4441,6 +4448,31 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                        &auto_hwm_last_recalc_reason);
     napi_create_uint32(env, snapshot.auto_hwm_send_blocked_ratio_ppm,
                        &auto_hwm_send_blocked_ratio_ppm);
+    napi_create_uint32(env, snapshot.auto_hwm_scope, &auto_hwm_scope);
+    napi_create_uint32(env, snapshot.auto_hwm_scope_count,
+                       &auto_hwm_scope_count);
+    napi_create_int64(env,
+                      static_cast<int64_t> (
+                        snapshot.auto_hwm_role_group_budget_bytes),
+                      &auto_hwm_role_group_budget_bytes);
+    napi_create_int64(env,
+                      static_cast<int64_t> (
+                        snapshot.auto_hwm_scope_group_budget_bytes),
+                      &auto_hwm_scope_group_budget_bytes);
+    napi_create_int64(env,
+                      static_cast<int64_t> (
+                        snapshot.auto_hwm_auto_buffer_bytes),
+                      &auto_hwm_auto_buffer_bytes);
+    napi_create_int64(env,
+                      static_cast<int64_t> (
+                        snapshot.auto_hwm_manual_buffer_bytes),
+                      &auto_hwm_manual_buffer_bytes);
+    napi_create_uint32(env, snapshot.auto_hwm_buffer_connections,
+                       &auto_hwm_buffer_connections);
+    napi_create_int32(env, snapshot.auto_hwm_deferred_sndhwm,
+                      &auto_hwm_deferred_sndhwm);
+    napi_create_int32(env, snapshot.auto_hwm_deferred_rcvhwm,
+                      &auto_hwm_deferred_rcvhwm);
     napi_set_named_property(env, obj, "sourceKind", source_kind);
     napi_set_named_property(env, obj, "stateFlags", state_flags);
     napi_set_named_property(env, obj, "detailFlags", detail_flags);
@@ -4506,6 +4538,23 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                             auto_hwm_last_recalc_reason);
     napi_set_named_property(env, obj, "autoHwmSendBlockedRatioPpm",
                             auto_hwm_send_blocked_ratio_ppm);
+    napi_set_named_property(env, obj, "autoHwmScope", auto_hwm_scope);
+    napi_set_named_property(env, obj, "autoHwmScopeCount",
+                            auto_hwm_scope_count);
+    napi_set_named_property(env, obj, "autoHwmRoleGroupBudgetBytes",
+                            auto_hwm_role_group_budget_bytes);
+    napi_set_named_property(env, obj, "autoHwmScopeGroupBudgetBytes",
+                            auto_hwm_scope_group_budget_bytes);
+    napi_set_named_property(env, obj, "autoHwmAutoBufferBytes",
+                            auto_hwm_auto_buffer_bytes);
+    napi_set_named_property(env, obj, "autoHwmManualBufferBytes",
+                            auto_hwm_manual_buffer_bytes);
+    napi_set_named_property(env, obj, "autoHwmBufferConnections",
+                            auto_hwm_buffer_connections);
+    napi_set_named_property(env, obj, "autoHwmDeferredSndHwm",
+                            auto_hwm_deferred_sndhwm);
+    napi_set_named_property(env, obj, "autoHwmDeferredRcvHwm",
+                            auto_hwm_deferred_rcvhwm);
     return obj;
 }
 

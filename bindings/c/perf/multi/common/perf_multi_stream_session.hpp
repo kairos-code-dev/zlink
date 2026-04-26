@@ -8,6 +8,7 @@
 #include <deque>
 #include <iomanip>
 #include <mutex>
+#include <string>
 
 namespace perf_multi_stream {
 
@@ -78,6 +79,10 @@ struct session_t
         recv_count(0),
         send_count(0),
         pending_count(0),
+        auto_hwm_msg_size(0),
+        auto_hwm_socket_type(0),
+        auto_hwm_hwm_value(0),
+        transport(),
         pending_queue()
     {
     }
@@ -86,6 +91,10 @@ struct session_t
     std::atomic<unsigned long long> recv_count;
     std::atomic<unsigned long long> send_count;
     std::atomic<unsigned long long> pending_count;
+    std::atomic<size_t> auto_hwm_msg_size;
+    int auto_hwm_socket_type;
+    int auto_hwm_hwm_value;
+    std::string transport;
     std::mutex pending_mutex;
     std::deque<queued_message_t> pending_queue;
 };
@@ -99,7 +108,11 @@ inline bool is_stop_payload(const unsigned char *data,
            && std::memcmp(data, stop_token, size) == 0;
 }
 
-inline void reset_session(session_t *session, void *send_socket)
+inline void reset_session(session_t *session,
+                          void *send_socket,
+                          int auto_hwm_socket_type,
+                          int auto_hwm_hwm_value,
+                          const std::string &transport)
 {
     if (!session)
         return;
@@ -107,6 +120,10 @@ inline void reset_session(session_t *session, void *send_socket)
     session->recv_count.store(0, std::memory_order_release);
     session->send_count.store(0, std::memory_order_release);
     session->pending_count.store(0, std::memory_order_release);
+    session->auto_hwm_msg_size.store(0, std::memory_order_release);
+    session->auto_hwm_socket_type = auto_hwm_socket_type;
+    session->auto_hwm_hwm_value = auto_hwm_hwm_value;
+    session->transport = transport;
     std::lock_guard<std::mutex> lock(session->pending_mutex);
     session->pending_queue.clear();
 }
@@ -247,6 +264,30 @@ inline bool handle_packet_message(session_t *session,
     if (is_stop_payload (body_payload, body_payload_size, stop_token)) {
         perf_stop_requested ().store (true, std::memory_order_release);
         return true;
+    }
+
+    size_t previous_msg_size =
+      session->auto_hwm_msg_size.load (std::memory_order_acquire);
+    if (body_payload_size > 0 && previous_msg_size != body_payload_size
+        && session->auto_hwm_msg_size.compare_exchange_strong (
+          previous_msg_size,
+          body_payload_size,
+          std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+        apply_benchmark_auto_hwm_msg_unit (
+          session->send_socket,
+          session->auto_hwm_socket_type,
+          body_payload_size);
+        apply_benchmark_hwm (
+          session->send_socket,
+          session->auto_hwm_hwm_value);
+        perf_print_auto_hwm_snapshot (
+          session->send_socket,
+          false,
+          "server",
+          session->transport,
+          true,
+          body_payload_size);
     }
 
     session->recv_count.fetch_add (1, std::memory_order_relaxed);

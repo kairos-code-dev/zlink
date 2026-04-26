@@ -106,6 +106,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _ctx_terminated (false),
     _runtime (),
     _auto_hwm_role (auto_hwm_role_none),
+    _auto_hwm_scope (auto_hwm_scope_none),
+    _auto_hwm_scope_count (1),
     _auto_hwm_role_override (false),
     _auto_hwm_policy_enabled (true),
     _manual_sndhwm (false),
@@ -116,6 +118,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _auto_hwm_socket_plan (),
     _auto_hwm_last_recalc_ms (0),
     _auto_hwm_last_recalc_reason (ZLINK_AUTO_HWM_RECALC_REASON_NONE),
+    _auto_hwm_deferred_sndhwm (-1),
+    _auto_hwm_deferred_rcvhwm (-1),
     _auto_hwm_send_attempts (0),
     _auto_hwm_send_blocked_attempts (0),
     _local_peer_weight (100),
@@ -146,6 +150,30 @@ void zlink::socket_base_t::set_auto_hwm_role (auto_hwm_role_t role_)
     _auto_hwm_role_override = role_ != auto_hwm_role_none;
     _auto_hwm_last_recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE;
     refresh_auto_hwm_policy ();
+}
+
+void zlink::socket_base_t::set_auto_hwm_scope (auto_hwm_scope_t scope_,
+                                               size_t scope_count_)
+{
+    _auto_hwm_scope = scope_;
+    _auto_hwm_scope_count = scope_count_ > 0 ? scope_count_ : 1;
+    _auto_hwm_last_recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
+    refresh_auto_hwm_policy ();
+}
+
+void zlink::socket_base_t::clear_auto_hwm_manual_overrides (bool sndhwm_,
+                                                            bool rcvhwm_,
+                                                            bool sndbuf_,
+                                                            bool rcvbuf_)
+{
+    if (sndhwm_)
+        _manual_sndhwm = false;
+    if (rcvhwm_)
+        _manual_rcvhwm = false;
+    if (sndbuf_)
+        _manual_sndbuf = false;
+    if (rcvbuf_)
+        _manual_rcvbuf = false;
 }
 
 void zlink::socket_base_t::set_auto_hwm_policy_enabled (bool enabled_)
@@ -179,7 +207,7 @@ void zlink::socket_base_t::set_auto_hwm_policy_enabled (bool enabled_)
     refresh_auto_hwm_policy ();
 }
 
-void zlink::socket_base_t::refresh_auto_hwm_policy ()
+void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
 {
     ctx_t *ctx = get_ctx ();
     if (!ctx)
@@ -205,25 +233,65 @@ void zlink::socket_base_t::refresh_auto_hwm_policy ()
     _auto_hwm_role = role;
 
     size_t managed_connections = 0;
+    uint64_t pending_messages = 0;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         managed_connections = endpoint_runtime ().attached_pipe_count ();
+        for (size_t i = 0; i != managed_connections; ++i) {
+            pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
+            if (!pipe)
+                continue;
+            pending_messages += pipe->get_snd_pending_msgs ();
+            pending_messages += pipe->get_rcv_pending_msgs_approx ();
+        }
     }
     auto_hwm_socket_plan_for_role (_auto_hwm_context_plan, role, options.type,
                                    managed_connections, managed_connections,
-                                   &_auto_hwm_socket_plan);
+                                   &_auto_hwm_socket_plan,
+                                   options.auto_hwm_msg_unit_bytes,
+                                   options.sndbuf, options.rcvbuf,
+                                   _manual_sndbuf, _manual_rcvbuf,
+                                   _auto_hwm_scope,
+                                   _auto_hwm_scope_count);
+    _auto_hwm_context_plan.queue_budget_bytes =
+      _auto_hwm_context_plan.total_memory_budget_bytes
+          > _auto_hwm_context_plan.runtime_reserve_bytes
+              + _auto_hwm_socket_plan.auto_buffer_bytes
+        ? _auto_hwm_context_plan.total_memory_budget_bytes
+            - _auto_hwm_context_plan.runtime_reserve_bytes
+            - _auto_hwm_socket_plan.auto_buffer_bytes
+        : 0;
+    _auto_hwm_context_plan.transport_budget_bytes =
+      _auto_hwm_socket_plan.auto_buffer_bytes;
 
-    if (!_auto_hwm_context_plan.enabled || !_auto_hwm_policy_enabled)
+    if (!_auto_hwm_context_plan.enabled
+        || (!_auto_hwm_policy_enabled && !force_apply_))
         return;
 
     bool refresh_hwms = false;
     if (!_manual_sndhwm && options.sndhwm != _auto_hwm_socket_plan.sndhwm) {
-        options.sndhwm = _auto_hwm_socket_plan.sndhwm;
-        refresh_hwms = true;
+        if (_auto_hwm_socket_plan.sndhwm >= options.sndhwm
+            || pending_messages
+                 <= static_cast<uint64_t> (_auto_hwm_socket_plan.sndhwm)) {
+            options.sndhwm = _auto_hwm_socket_plan.sndhwm;
+            _auto_hwm_deferred_sndhwm = -1;
+            refresh_hwms = true;
+        } else {
+            _auto_hwm_deferred_sndhwm = _auto_hwm_socket_plan.sndhwm;
+            recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK;
+        }
     }
     if (!_manual_rcvhwm && options.rcvhwm != _auto_hwm_socket_plan.rcvhwm) {
-        options.rcvhwm = _auto_hwm_socket_plan.rcvhwm;
-        refresh_hwms = true;
+        if (_auto_hwm_socket_plan.rcvhwm >= options.rcvhwm
+            || pending_messages
+                 <= static_cast<uint64_t> (_auto_hwm_socket_plan.rcvhwm)) {
+            options.rcvhwm = _auto_hwm_socket_plan.rcvhwm;
+            _auto_hwm_deferred_rcvhwm = -1;
+            refresh_hwms = true;
+        } else {
+            _auto_hwm_deferred_rcvhwm = _auto_hwm_socket_plan.rcvhwm;
+            recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK;
+        }
     }
     if (!_manual_sndbuf && !_manual_sndhwm)
         options.sndbuf = _auto_hwm_socket_plan.requested_sndbuf;

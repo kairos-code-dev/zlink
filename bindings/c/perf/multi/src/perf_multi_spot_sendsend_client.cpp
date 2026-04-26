@@ -511,6 +511,7 @@ bool create_control_spot(ctx_guard_t &ctx,
                          const std::string &transport,
                          const std::string &server_control_endpoint,
                          const multi_bench_settings_t &settings,
+                         size_t max_msg_size,
                          spot_reqrep_client_state_t *state)
 {
     if (!state || server_control_endpoint.empty()) {
@@ -527,6 +528,8 @@ bool create_control_spot(ctx_guard_t &ctx,
                       << zlink_errno() << std::endl;
         return false;
     }
+    apply_benchmark_auto_hwm_msg_unit(
+      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
 
     state->control_pub = perf_create_default_spot_handle(state->control_node);
     state->control_sub = perf_create_default_spot_handle(state->control_node);
@@ -570,6 +573,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
                        const std::string &transport,
                        const std::string &endpoint,
                        const multi_bench_settings_t &settings,
+                       size_t max_msg_size,
                        spot_reqrep_client_state_t *state)
 {
     if (!state || endpoint.empty()) {
@@ -586,6 +590,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
                       << zlink_errno() << std::endl;
         return false;
     }
+    apply_benchmark_auto_hwm_msg_unit(
+      state->data_node, ZLINK_SOCKET_DEALER, max_msg_size);
 
     const std::string local_endpoint =
       bind_client_spot_endpoint(state->data_node, transport, 0);
@@ -617,7 +623,9 @@ bool create_spot_slots(ctx_guard_t &ctx,
             return false;
         }
 
-        apply_benchmark_socket_options(slot.socket, settings.hwm, transport);
+        apply_benchmark_socket_options(
+          slot.socket, settings.hwm, transport, ZLINK_SOCKET_DEALER,
+          max_msg_size);
         const std::string routing_id = std::string("SPOT-SENDSEND-")
                                        + std::to_string(i);
         if (zlink_set_routing_id(
@@ -1050,13 +1058,19 @@ int run_client_benchmark(const std::string &lib_name,
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes(fallback_size);
+    size_t max_msg_size = fallback_size > 0 ? fallback_size : 64;
+    for (size_t i = 0; i < msg_sizes.size(); ++i) {
+        if (msg_sizes[i] > max_msg_size)
+            max_msg_size = msg_sizes[i];
+    }
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;
 
     spot_reqrep_client_state_t state;
     g_client_state = &state;
-    if (!create_control_spot(ctx, transport, control_endpoint, settings, &state)) {
+    if (!create_control_spot(
+          ctx, transport, control_endpoint, settings, max_msg_size, &state)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-reqrep-client] create_control_spot failed"
                       << std::endl;
@@ -1069,7 +1083,8 @@ int run_client_benchmark(const std::string &lib_name,
           perf_multi_handshake::signal_start(
             &client_state->start_gate, start_size);
       });
-    if (!create_spot_slots(ctx, transport, endpoint, settings, &state)) {
+    if (!create_spot_slots(
+          ctx, transport, endpoint, settings, max_msg_size, &state)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-reqrep-client] create_spot_slots failed"
                       << std::endl;

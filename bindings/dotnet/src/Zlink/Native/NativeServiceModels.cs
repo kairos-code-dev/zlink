@@ -47,6 +47,15 @@ internal struct ZlinkMonitorSnapshot
     public ulong AutoHwmLastRecalcMs;
     public uint AutoHwmLastRecalcReason;
     public uint AutoHwmSendBlockedRatioPpm;
+    public uint AutoHwmScope;
+    public uint AutoHwmScopeCount;
+    public ulong AutoHwmRoleGroupBudgetBytes;
+    public ulong AutoHwmScopeGroupBudgetBytes;
+    public ulong AutoHwmAutoBufferBytes;
+    public ulong AutoHwmManualBufferBytes;
+    public uint AutoHwmBufferConnections;
+    public int AutoHwmDeferredSndHwm;
+    public int AutoHwmDeferredRcvHwm;
 }
 
 [StructLayout(LayoutKind.Sequential)]

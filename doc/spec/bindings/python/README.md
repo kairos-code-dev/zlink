@@ -963,6 +963,8 @@ class MonitorSnapshot:
     rcv_pending_msgs: int            # pending receive-queue messages
     auto_hwm_enabled: bool
     auto_hwm_role: int
+    auto_hwm_scope: int
+    auto_hwm_scope_count: int
     auto_hwm_managed_connections: int
     auto_hwm_active_hwm_connections: int
     auto_hwm_planning_transport_connections: int
@@ -978,8 +980,13 @@ class MonitorSnapshot:
     auto_hwm_transport_budget_bytes: int
     auto_hwm_runtime_reserve_bytes: int
     auto_hwm_group_budget_bytes: int
+    auto_hwm_role_group_budget_bytes: int
+    auto_hwm_scope_group_budget_bytes: int
     auto_hwm_group_message_slots: int
     auto_hwm_effective_message_bytes: int
+    auto_hwm_auto_buffer_bytes: int
+    auto_hwm_manual_buffer_bytes: int
+    auto_hwm_buffer_connections: int
     auto_hwm_control_budget_bytes: int
     auto_hwm_routed_budget_bytes: int
     auto_hwm_fanout_budget_bytes: int
@@ -991,6 +998,8 @@ class MonitorSnapshot:
     auto_hwm_estimated_max_memory_bytes: int
     auto_hwm_last_recalc_ms: int
     auto_hwm_last_recalc_reason: int
+    auto_hwm_deferred_sndhwm: int
+    auto_hwm_deferred_rcvhwm: int
     auto_hwm_send_blocked_ratio_ppm: int
 
     def is_ready(self) -> bool: ...  # True when the ready bit is set in state_flags

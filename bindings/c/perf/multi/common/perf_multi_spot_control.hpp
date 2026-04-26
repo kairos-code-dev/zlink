@@ -133,6 +133,12 @@ inline bool apply_control_options(void *pub,
     const int linger_ms = 0;
     const int timeout_ms = std::max(1000, settings.connect_ready_timeout_ms);
     const int nodrop = 1;
+    const size_t max_msg_size = perf_current_benchmark_max_msg_size(64);
+
+    apply_benchmark_auto_hwm_msg_unit(
+      pub, ZLINK_SOCKET_DEALER, max_msg_size);
+    apply_benchmark_auto_hwm_msg_unit(
+      sub, ZLINK_SOCKET_DEALER, max_msg_size);
 
     if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
                          sizeof(linger_ms))
@@ -177,6 +183,8 @@ inline bool initialize_client_session(void *node,
     session->pub = NULL;
     session->sub = NULL;
     session->local_endpoint.clear();
+    apply_benchmark_auto_hwm_msg_unit(
+      node, ZLINK_SOCKET_DEALER, perf_current_benchmark_max_msg_size(64));
     session->pub = perf_create_default_spot_handle(node);
     session->sub = perf_create_default_spot_handle(node);
     if (!session->pub || !session->sub
@@ -268,6 +276,9 @@ inline bool initialize_client_slot(ctx_guard_t &ctx,
         slot->node = NULL;
         return false;
     }
+    apply_benchmark_auto_hwm_msg_unit(
+      slot->node, ZLINK_SOCKET_DEALER,
+      perf_current_benchmark_max_msg_size(64));
 
     slot->handle = perf_create_default_spot_handle(slot->node);
     if (!slot->handle) {
@@ -364,6 +375,11 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
         destroy_server_session(session);
         return false;
     }
+    const size_t max_msg_size = perf_current_benchmark_max_msg_size(64);
+    apply_benchmark_auto_hwm_msg_unit(
+      session->node, ZLINK_SOCKET_DEALER, max_msg_size);
+    apply_benchmark_auto_hwm_msg_unit(
+      session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
 
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =

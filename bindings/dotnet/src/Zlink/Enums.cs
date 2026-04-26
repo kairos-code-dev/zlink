@@ -85,6 +85,7 @@ internal enum SocketOption
     ZmpMetadata = 0x3030,
     TcpNoDelay = 0x3031,
     RidDuplicatePolicy = 0x3033,
+    AutoHwmMsgUnitBytes = 0x3034,
     RouterMandatory = 0x3101,
     ProbeRouter = 0x3103,
     ConnectRoutingId = 0x3104,

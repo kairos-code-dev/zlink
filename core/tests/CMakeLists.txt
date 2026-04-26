@@ -51,6 +51,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
   ${INTEGRATION_TEST_ROOT}/test_capabilities
+  ${INTEGRATION_TEST_ROOT}/test_ctx_options
   ${INTEGRATION_TEST_ROOT}/test_socket_null
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
   ${INTEGRATION_TEST_ROOT}/test_multi_socket_contract_regressions

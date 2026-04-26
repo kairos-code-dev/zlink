@@ -834,18 +834,24 @@ def emit_auto_hwm_detail_line(line):
         fields.get("transport", ""),
         fields.get("component", ""),
         fields.get("label", ""),
+        fields.get("msg_size", ""),
         fields.get("source", ""),
         fields.get("role", ""),
         fields.get("managed_connections", ""),
         fields.get("active_connections", ""),
+        fields.get("scope", ""),
+        fields.get("scope_count", ""),
         fields.get("planning_transport_connections", ""),
         fields.get("sndhwm", ""),
         fields.get("rcvhwm", ""),
+        fields.get("effective_message_bytes", ""),
         fields.get("effective_sndbuf", ""),
         fields.get("effective_rcvbuf", ""),
-        fields.get("group_budget_bytes", ""),
+        fields.get("role_group_budget_bytes", ""),
+        fields.get("scope_group_budget_bytes", ""),
         fields.get("queue_budget_bytes", ""),
-        fields.get("transport_budget_bytes", ""),
+        fields.get("auto_buffer_bytes", ""),
+        fields.get("manual_buffer_bytes", ""),
         fields.get("total_budget_bytes", ""),
     )
     if dedup_key in _AUTO_HWM_DETAIL_SEEN:
@@ -899,6 +905,7 @@ def _auto_hwm_spot_display_rows(rows, scope):
     display_rows = []
     for fields in rows:
         row_scope, socket = _auto_hwm_spot_scope_and_socket(fields.get("label", ""))
+        row_scope = fields.get("scope", "") or row_scope
         if row_scope != scope:
             continue
         display = dict(fields)
@@ -972,7 +979,9 @@ def _auto_hwm_emit_spot_common_table(emit, rows):
                 "transport": transport,
                 "total_budget_bytes": fields.get("total_budget_bytes", ""),
                 "queue_budget_bytes": fields.get("queue_budget_bytes", ""),
-                "transport_budget_bytes": fields.get("transport_budget_bytes", ""),
+                "auto_buffer_bytes": fields.get("auto_buffer_bytes", ""),
+                "manual_buffer_bytes": fields.get("manual_buffer_bytes", ""),
+                "buffer_connections": fields.get("buffer_connections", ""),
                 "runtime_reserve_bytes": fields.get("runtime_reserve_bytes", ""),
                 "effective_message_bytes": fields.get("effective_message_bytes", ""),
                 "clients": clients,
@@ -989,7 +998,9 @@ def _auto_hwm_emit_spot_common_table(emit, rows):
             ("Transport", "transport"),
             ("Context(B)", "total_budget_bytes"),
             ("Queue(B)", "queue_budget_bytes"),
-            ("Buffer(B)", "transport_budget_bytes"),
+            ("AutoBuffer(B)", "auto_buffer_bytes"),
+            ("ManualBuffer(B)", "manual_buffer_bytes"),
+            ("BufferConn", "buffer_connections"),
             ("Runtime(B)", "runtime_reserve_bytes"),
             ("MsgUnit(B)", "effective_message_bytes"),
             ("Clients", "clients"),
@@ -1005,14 +1016,18 @@ def _auto_hwm_emit_spot_budget_table(emit, rows):
     seen = set()
     for fields in rows:
         scope, _socket = _auto_hwm_spot_scope_and_socket(fields.get("label", ""))
+        scope = fields.get("scope", "") or scope
         if not scope:
             continue
         row = {
             "transport": fields.get("transport", ""),
             "scope": scope,
+            "scope_count": fields.get("scope_count", ""),
             "role": fields.get("role", ""),
-            "group_budget_bytes": fields.get("group_budget_bytes", ""),
+            "role_group_budget_bytes": fields.get("role_group_budget_bytes", ""),
+            "scope_group_budget_bytes": fields.get("scope_group_budget_bytes", ""),
             "group_message_slots": fields.get("group_message_slots", ""),
+            "effective_message_bytes": fields.get("effective_message_bytes", ""),
             "managed": fields.get("managed_connections", ""),
             "active": fields.get("active_connections", ""),
             "base": fields.get("base_floor_per_connection", ""),
@@ -1021,9 +1036,12 @@ def _auto_hwm_emit_spot_budget_table(emit, rows):
         key = tuple(row.get(name, "") for name in (
             "transport",
             "scope",
+            "scope_count",
             "role",
-            "group_budget_bytes",
+            "role_group_budget_bytes",
+            "scope_group_budget_bytes",
             "group_message_slots",
+            "effective_message_bytes",
             "managed",
             "active",
             "base",
@@ -1042,8 +1060,10 @@ def _auto_hwm_emit_spot_budget_table(emit, rows):
         (
             ("Transport", "transport"),
             ("Scope", "scope"),
+            ("ScopeCount", "scope_count"),
             ("Role", "role"),
-            ("Group(B)", "group_budget_bytes"),
+            ("RoleGroup(B)", "role_group_budget_bytes"),
+            ("ScopeGroup(B)", "scope_group_budget_bytes"),
             ("MsgUnit(B)", "effective_message_bytes"),
             ("GroupSlots", "group_message_slots"),
             ("Managed", "managed"),
@@ -1084,6 +1104,13 @@ def _auto_hwm_emit_spot_tables(emit, rows):
     return emitted
 
 
+def _auto_hwm_parse_int(value, default=0):
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
 def emit_auto_hwm_detail_table(emit, pattern_name):
     pattern = normalize_multi_pattern_name(pattern_name)
     rows = []
@@ -1106,45 +1133,50 @@ def emit_auto_hwm_detail_table(emit, pattern_name):
             _AUTO_HWM_DETAIL_TABLE_SEEN.add((pattern, fields.get("_dedup_key")))
         return True
 
+    rows = [
+        fields
+        for fields in rows
+        if fields.get("msg_size", "") and fields.get("msg_size", "") != "0"
+    ]
+    if not rows:
+        return False
+    rows.sort(
+        key=lambda fields: (
+            _auto_hwm_parse_int(fields.get("msg_size", ""), 0),
+            fields.get("transport", ""),
+            fields.get("component", ""),
+            fields.get("label", ""),
+            fields.get("role", ""),
+        )
+    )
+
     emit("    Auto-HWM detail:")
     for fields in rows:
         fields["connections"] = (
             f"{fields.get('active_connections', '?')}/"
             f"{fields.get('managed_connections', '?')}"
         )
+        msg_size = fields.get("msg_size", "")
+        fields["msg_size_display"] = msg_size if msg_size and msg_size != "0" else "?"
     _auto_hwm_emit_markdown_table(
         emit,
         "      ",
         (
             ("Transport", "transport"),
+            ("Size(B)", "msg_size_display"),
             ("Component", "component"),
             ("Label", "label"),
             ("Source", "source"),
             ("Role", "role"),
             ("Conn", "connections"),
+            ("Scope", "scope"),
+            ("ScopeCount", "scope_count"),
             ("Plan", "planning_transport_connections"),
+            ("MsgUnit(B)", "effective_message_bytes"),
             ("SNDHWM", "sndhwm"),
             ("RCVHWM", "rcvhwm"),
             ("SNDBUF", "effective_sndbuf"),
             ("RCVBUF", "effective_rcvbuf"),
-        ),
-        rows,
-    )
-    emit("    Auto-HWM budget:")
-    _auto_hwm_emit_markdown_table(
-        emit,
-        "      ",
-        (
-            ("Transport", "transport"),
-            ("Component", "component"),
-            ("Label", "label"),
-            ("GroupSlots", "group_message_slots"),
-            ("Group(B)", "group_budget_bytes"),
-            ("Queue(B)", "queue_budget_bytes"),
-            ("Buffer(B)", "transport_budget_bytes"),
-            ("MsgUnit(B)", "effective_message_bytes"),
-            ("Total(B)", "total_budget_bytes"),
-            ("Reason", "last_recalc_reason"),
         ),
         rows,
     )
@@ -2912,7 +2944,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
 
     is_multi = is_pattern(pattern_name)
     sizes = STREAM_MSG_SIZES if pattern_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
-    auto_hwm_table_emitted = False
     transport_headers_emitted = set()
 
     if not is_multi:
@@ -2966,13 +2997,8 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
             emitted_size_sections = set()
 
             def emit_size_section(sz):
-                nonlocal auto_hwm_table_emitted
                 if sz in emitted_size_sections:
                     return
-                if not auto_hwm_table_emitted:
-                    auto_hwm_table_emitted = emit_auto_hwm_detail_table(
-                        emit, pattern_name
-                    )
                 emit_transport_header()
                 emit(f"    Testing {tr} | {sz}B:")
                 emitted_size_sections.add(sz)
@@ -3010,7 +3036,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 live_emitted_sizes = set()
 
                 def maybe_emit_live_row(sz):
-                    nonlocal auto_hwm_table_emitted
                     tp_key = f"{tr}|{sz}|throughput"
                     bw_key = f"{tr}|{sz}|bandwidth"
                     lat_key = f"{tr}|{sz}|latency"
@@ -3035,11 +3060,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     _lat_mean, lat95_value, lat99_value = resolve_latency_triplet(
                         lat_value, lat95_value, lat99_value
                     )
-
-                    if not auto_hwm_table_emitted:
-                        auto_hwm_table_emitted = emit_auto_hwm_detail_table(
-                            emit, pattern_name
-                        )
 
                     emit_size_row(
                         sz,
@@ -3191,6 +3211,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     for sz in sizes:
                         emit_size_row(sz, "unsupported")
                 emit(f"    Testing {tr}: Done")
+                emit_auto_hwm_detail_table(emit, pattern_name)
                 maybe_transport_cooldown()
                 continue
 
@@ -3209,6 +3230,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     for sz in sizes:
                         emit_size_row(sz, "fail")
                 emit(f"    Testing {tr}: Done")
+                emit_auto_hwm_detail_table(emit, pattern_name)
                 maybe_transport_cooldown()
                 continue
 
@@ -3244,6 +3266,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     )
 
             emit(f"    Testing {tr}: Done")
+            emit_auto_hwm_detail_table(emit, pattern_name)
             maybe_transport_cooldown()
             continue
 

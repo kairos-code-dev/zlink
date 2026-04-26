@@ -130,6 +130,15 @@ export interface MonitorSnapshot {
   readonly autoHwmLastRecalcMs: bigint;
   readonly autoHwmLastRecalcReason: number;
   readonly autoHwmSendBlockedRatioPpm: number;
+  readonly autoHwmScope: number;
+  readonly autoHwmScopeCount: number;
+  readonly autoHwmRoleGroupBudgetBytes: bigint;
+  readonly autoHwmScopeGroupBudgetBytes: bigint;
+  readonly autoHwmAutoBufferBytes: bigint;
+  readonly autoHwmManualBufferBytes: bigint;
+  readonly autoHwmBufferConnections: number;
+  readonly autoHwmDeferredSndHwm: number;
+  readonly autoHwmDeferredRcvHwm: number;
   isReady(): boolean;
 }
 
@@ -170,6 +179,15 @@ interface MonitorSnapshotRaw {
   autoHwmLastRecalcMs: number | bigint;
   autoHwmLastRecalcReason: number;
   autoHwmSendBlockedRatioPpm: number;
+  autoHwmScope: number;
+  autoHwmScopeCount: number;
+  autoHwmRoleGroupBudgetBytes: number | bigint;
+  autoHwmScopeGroupBudgetBytes: number | bigint;
+  autoHwmAutoBufferBytes: number | bigint;
+  autoHwmManualBufferBytes: number | bigint;
+  autoHwmBufferConnections: number;
+  autoHwmDeferredSndHwm: number;
+  autoHwmDeferredRcvHwm: number;
 }
 
 interface MonitorEventValueRaw {
@@ -603,6 +621,15 @@ function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
     autoHwmLastRecalcMs: BigInt(raw.autoHwmLastRecalcMs),
     autoHwmLastRecalcReason: raw.autoHwmLastRecalcReason,
     autoHwmSendBlockedRatioPpm: raw.autoHwmSendBlockedRatioPpm,
+    autoHwmScope: raw.autoHwmScope,
+    autoHwmScopeCount: raw.autoHwmScopeCount,
+    autoHwmRoleGroupBudgetBytes: BigInt(raw.autoHwmRoleGroupBudgetBytes),
+    autoHwmScopeGroupBudgetBytes: BigInt(raw.autoHwmScopeGroupBudgetBytes),
+    autoHwmAutoBufferBytes: BigInt(raw.autoHwmAutoBufferBytes),
+    autoHwmManualBufferBytes: BigInt(raw.autoHwmManualBufferBytes),
+    autoHwmBufferConnections: raw.autoHwmBufferConnections,
+    autoHwmDeferredSndHwm: raw.autoHwmDeferredSndHwm,
+    autoHwmDeferredRcvHwm: raw.autoHwmDeferredRcvHwm,
     isReady(): boolean {
       return (this.stateFlags & MonitorState.READY) !== 0;
     }
@@ -1025,6 +1052,8 @@ export class CommonSocketOptions {
   set heartbeatTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.HEARTBEAT_TIMEOUT, int32Buffer(value, 'heartbeatTimeout')); }
   get maxMsgSize(): bigint { return readInt64Option(this._socket.getSockOptRaw(SocketOption.MAXMSGSIZE), 'maxMsgSize'); }
   set maxMsgSize(value: number | bigint) { this._socket.setSockOptRaw(SocketOption.MAXMSGSIZE, int64Buffer(value, 'maxMsgSize')); }
+  get autoHwmMsgUnitBytes(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.AUTO_HWM_MSG_UNIT_BYTES), 'autoHwmMsgUnitBytes'); }
+  set autoHwmMsgUnitBytes(value: number) { this._socket.setSockOptRaw(SocketOption.AUTO_HWM_MSG_UNIT_BYTES, int32Buffer(value, 'autoHwmMsgUnitBytes')); }
   get backlog(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.BACKLOG), 'backlog'); }
   set backlog(value: number) { this._socket.setSockOptRaw(SocketOption.BACKLOG, int32Buffer(value, 'backlog')); }
   get reconnectInterval(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.RECONNECT_IVL), 'reconnectInterval'); }

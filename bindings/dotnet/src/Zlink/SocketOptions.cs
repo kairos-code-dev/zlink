@@ -109,6 +109,8 @@ internal static class SocketOptions
         Int(SocketOption.Immediate);
     public static SocketOptionKey<int> RidDuplicatePolicy { get; } =
         Int(SocketOption.RidDuplicatePolicy);
+    public static SocketOptionKey<int> AutoHwmMsgUnitBytes { get; } =
+        Int(SocketOption.AutoHwmMsgUnitBytes);
     public static SocketOptionKey<int> XPubVerbose { get; } =
         Int(SocketOption.XPubVerbose);
     public static SocketOptionKey<int> Ipv6 { get; } = Int(SocketOption.Ipv6);

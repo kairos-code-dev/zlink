@@ -7,6 +7,8 @@
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
 
+#include <vector>
+
 namespace zlink
 {
 namespace
@@ -70,6 +72,10 @@ int spot_runtime_t::create_attachment (int kind_,
       kind_ == spot_attachment_pub ? local_pub_count + 1 : local_pub_count;
     const size_t next_local_sub_count =
       kind_ == spot_attachment_sub ? local_sub_count + 1 : local_sub_count;
+    const size_t next_spot_scope_count =
+      std::max<size_t> (std::max<size_t> (next_local_pub_count,
+                                          next_local_sub_count),
+                        1u);
     socket_base_t *socket = owner->_ctx->create_socket (socket_type);
     if (!socket)
         return -1;
@@ -88,7 +94,9 @@ int spot_runtime_t::create_attachment (int kind_,
                                             next_local_sub_count
                                               + active_peer_count,
                                             1u),
-                                          0, 0, true, true, true, true}
+                                          0, 0, true, true, true, true,
+                                          auto_hwm_scope_per_spot,
+                                          next_spot_scope_count, 0}
         : spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
                                           ZLINK_CORE_SOCKET_SUB,
                                           std::max<size_t> (
@@ -96,7 +104,9 @@ int spot_runtime_t::create_attachment (int kind_,
                                           std::max<size_t> (
                                             next_local_sub_count, 1u),
                                           0, 0,
-                                          true, true, true, true});
+                                          true, true, true, true,
+                                          auto_hwm_scope_per_spot,
+                                          next_spot_scope_count, 0});
 
     owner->track_owned_socket (socket);
 
@@ -117,7 +127,9 @@ int spot_runtime_t::create_attachment (int kind_,
                                           std::max<size_t> (
                                             next_local_sub_count, 1u),
                                           0, 0,
-                                          true, true, true, true});
+                                          true, true, true, true,
+                                          auto_hwm_scope_per_spot,
+                                          next_spot_scope_count, 0});
         const int neg_one = -1;
         relay_socket->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                   sizeof (neg_one));
@@ -156,6 +168,7 @@ int spot_runtime_t::create_attachment (int kind_,
         attachments[attachment.id] = attachment;
         ++attachment_version;
     }
+    refresh_attachment_auto_hwm_scope_counts ();
     *out_id_ = attachment.id;
     return 0;
 }
@@ -228,6 +241,7 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
         attachments.erase (it);
         ++attachment_version;
     }
+    refresh_attachment_auto_hwm_scope_counts ();
     {
         scoped_lock_t lock (execution_sync);
         data_plane_running = execution.data_plane_running;
@@ -282,6 +296,7 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
         attachments.erase (it);
         ++attachment_version;
     }
+    refresh_attachment_auto_hwm_scope_counts ();
     {
         scoped_lock_t lock (execution_sync);
         data_plane_running = execution.data_plane_running;
@@ -323,6 +338,39 @@ size_t spot_runtime_t::attachment_count_by_kind (int kind_) const
             ++count;
     }
     return count;
+}
+
+void spot_runtime_t::refresh_attachment_auto_hwm_scope_counts ()
+{
+    std::vector<socket_base_t *> sockets;
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    {
+        scoped_lock_t lock (attachment_sync);
+        for (std::map<uint64_t, spot_attachment_t>::const_iterator it =
+               attachments.begin ();
+             it != attachments.end (); ++it) {
+            if (it->second.kind == spot_attachment_pub)
+                ++local_pub_count;
+            else if (it->second.kind == spot_attachment_sub)
+                ++local_sub_count;
+            if (it->second.socket)
+                sockets.push_back (it->second.socket);
+            if (it->second.relay_socket)
+                sockets.push_back (it->second.relay_socket);
+        }
+    }
+
+    const size_t scope_count =
+      std::max<size_t> (std::max<size_t> (local_pub_count, local_sub_count),
+                        1u);
+    for (std::vector<socket_base_t *>::iterator it = sockets.begin ();
+         it != sockets.end (); ++it) {
+        if (!*it)
+            continue;
+        (*it)->set_auto_hwm_scope (auto_hwm_scope_per_spot, scope_count);
+        (*it)->refresh_auto_hwm_policy (true);
+    }
 }
 
 void spot_runtime_t::snapshot_auto_hwm_inputs (

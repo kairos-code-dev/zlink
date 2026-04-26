@@ -1132,6 +1132,8 @@ interface MonitorSnapshot {
     readonly rcvPendingMsgs: bigint;         // uint64 recv-queue depth
     readonly autoHwmEnabled: boolean;
     readonly autoHwmRole: number;
+    readonly autoHwmScope: number;
+    readonly autoHwmScopeCount: number;
     readonly autoHwmManagedConnections: number;
     readonly autoHwmActiveHwmConnections: number;
     readonly autoHwmPlanningTransportConnections: number;
@@ -1147,8 +1149,13 @@ interface MonitorSnapshot {
     readonly autoHwmTransportBudgetBytes: bigint;
     readonly autoHwmRuntimeReserveBytes: bigint;
     readonly autoHwmGroupBudgetBytes: bigint;
+    readonly autoHwmRoleGroupBudgetBytes: bigint;
+    readonly autoHwmScopeGroupBudgetBytes: bigint;
     readonly autoHwmGroupMessageSlots: bigint;
     readonly autoHwmEffectiveMessageBytes: bigint;
+    readonly autoHwmAutoBufferBytes: bigint;
+    readonly autoHwmManualBufferBytes: bigint;
+    readonly autoHwmBufferConnections: number;
     readonly autoHwmControlBudgetBytes: bigint;
     readonly autoHwmRoutedBudgetBytes: bigint;
     readonly autoHwmFanoutBudgetBytes: bigint;
@@ -1160,6 +1167,8 @@ interface MonitorSnapshot {
     readonly autoHwmEstimatedMaxMemoryBytes: bigint;
     readonly autoHwmLastRecalcMs: bigint;
     readonly autoHwmLastRecalcReason: number;
+    readonly autoHwmDeferredSndhwm: number;
+    readonly autoHwmDeferredRcvhwm: number;
     readonly autoHwmSendBlockedRatioPpm: number;
     /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
     isReady(): boolean;

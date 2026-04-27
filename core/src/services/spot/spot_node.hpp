@@ -161,7 +161,7 @@ class spot_node_t : public discovery_observer_t
     typedef spot_node_tls_state_t tls_state_t;
     typedef spot_node_endpoint_state_t endpoint_state_t;
     typedef spot_node_handle_state_t handle_state_t;
-    typedef spot_node_service_monitor_handle_t service_monitor_handle_t;
+    typedef spot_node_attachment_monitor_handle_t attachment_monitor_handle_t;
     typedef spot_node_service_discovery_topology_t service_discovery_topology_t;
     typedef spot_node_service_discovery_socket_plan_t
       service_discovery_socket_plan_t;
@@ -270,12 +270,12 @@ class spot_node_t : public discovery_observer_t
       std::vector<std::string> *active_peer_endpoints_out_,
       std::string *bound_endpoint_out_);
     void clear_service_attachment_runtime_locked (
-      std::deque<service_monitor_handle_t> *monitors_out_);
-    void close_service_monitors (
-      std::deque<service_monitor_handle_t> *monitors_);
+      std::deque<attachment_monitor_handle_t> *monitors_out_);
+    void close_attachment_monitors (
+      std::deque<attachment_monitor_handle_t> *monitors_);
     int validate_socket_service_discovery_attach_locked (
       const std::string &service_name_, discovery_t *discovery_) const;
-    void register_service_monitor_locked (
+    void register_attachment_monitor_locked (
       socket_base_t *owner_socket_,
       void *monitor_handle_,
       const std::string &service_name_);
@@ -283,7 +283,7 @@ class spot_node_t : public discovery_observer_t
     void reset_spot_discovery_state_locked ();
     void queue_service_discovery_refresh_locked (
       const std::string &service_name_);
-    void remove_service_monitors_by_owner_locked (
+    void remove_attachment_monitors_by_owner_locked (
       const std::vector<socket_base_t *> &sockets_);
     bool detach_discovered_service_locked (
       discovery_t *discovery_, std::vector<socket_base_t *> *sockets_to_close_out_);

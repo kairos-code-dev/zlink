@@ -67,7 +67,7 @@ static void append_peer_admission_events_local (
   const std::vector<provider_info_t> &before_,
   const std::vector<provider_info_t> &after_,
   const std::string &service_name_,
-  std::vector<zlink_service_event_t> *events_out_)
+  std::vector<zlink_service_observation_event_t> *events_out_)
 {
     if (!events_out_)
         return;
@@ -93,10 +93,10 @@ static void append_peer_admission_events_local (
             continue;
         }
 
-        zlink_service_event_t event;
+        zlink_service_observation_event_t event;
         memset (&event, 0, sizeof (event));
         event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
-        event.event_type = ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED;
+        event.event_type = ZLINK_SERVICE_EVENT_INTERNAL_PEER_WEIGHT_CHANGED;
         event.value = static_cast<uint32_t> (provider.weight);
         event.detail_flags = static_cast<zlink_service_event_detail_mask_t> (
           ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
@@ -274,7 +274,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
     }
 
     std::set<std::string> changed;
-    std::vector<zlink_service_event_t> events;
+    std::vector<zlink_service_observation_event_t> events;
     events.reserve (updated.size () + 1);
     {
         scoped_lock_t lock (_sync);

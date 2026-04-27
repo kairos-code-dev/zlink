@@ -102,9 +102,9 @@ struct spot_node_handle_state_t
     std::set<spot_handle_t *> facades;
 };
 
-struct spot_node_service_monitor_handle_t
+struct spot_node_attachment_monitor_handle_t
 {
-    spot_node_service_monitor_handle_t () : handle (NULL), owner_socket (NULL)
+    spot_node_attachment_monitor_handle_t () : handle (NULL), owner_socket (NULL)
     {
     }
 
@@ -270,7 +270,7 @@ struct spot_node_service_attachment_state_t
 
     std::map<std::string, spot_node_service_attachment_t> attachments;
     std::map<const socket_base_t *, std::string> socket_index;
-    std::deque<spot_node_service_monitor_handle_t> monitors;
+    std::deque<spot_node_attachment_monitor_handle_t> monitors;
     std::map<std::string, discovery_t *> discoveries;
     std::map<std::string, discovery_t *> channel_dealer_discoveries;
     std::set<std::string> pending_refresh_services;

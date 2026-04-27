@@ -388,12 +388,12 @@ int spot_node_t::validate_socket_service_discovery_attach_locked (
     return 0;
 }
 
-void spot_node_t::register_service_monitor_locked (
+void spot_node_t::register_attachment_monitor_locked (
   socket_base_t *owner_socket_,
   void *monitor_handle_,
   const std::string &service_name_)
 {
-    service_monitor_handle_t monitor_entry;
+    attachment_monitor_handle_t monitor_entry;
     monitor_entry.handle = monitor_handle_;
     monitor_entry.owner_socket = owner_socket_;
     monitor_entry.service_name = service_name_;
@@ -548,7 +548,7 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
     attachment.manual.channel_dealer_discovery = discovery_;
     _service_attachment_state.socket_index[dealer_] = channel_name;
     dealer_->lock_channel_name_metadata ();
-    register_service_monitor_locked (dealer_, monitor, channel_name);
+    register_attachment_monitor_locked (dealer_, monitor, channel_name);
     rebuild_service_attachment_caches_locked ();
     _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     return 0;
@@ -598,7 +598,7 @@ int spot_node_t::attach_channel_dealer_manual (const char *channel_name_,
     attachment.manual.channel_dealer_discovery = NULL;
     _service_attachment_state.socket_index[dealer_] = channel_name;
     dealer_->lock_channel_name_metadata ();
-    register_service_monitor_locked (dealer_, monitor, channel_name);
+    register_attachment_monitor_locked (dealer_, monitor, channel_name);
     rebuild_service_attachment_caches_locked ();
     _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     return 0;
@@ -762,7 +762,7 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
             std::vector<socket_base_t *> owners = attach_it->second.manual.routers;
             for (size_t i = 0; i < owners.size (); ++i)
                 _service_attachment_state.socket_index.erase (owners[i]);
-            remove_service_monitors_by_owner_locked (owners);
+            remove_attachment_monitors_by_owner_locked (owners);
             attach_it->second.manual.routers.clear ();
             attach_it->second.manual.channel_dealer_discovery = NULL;
             if (!attach_it->second.has_manual_pubsub ()

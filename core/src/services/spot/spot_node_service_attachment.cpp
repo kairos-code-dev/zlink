@@ -294,7 +294,7 @@ void spot_node_t::install_service_discovery_sockets (
             attachment.discovered.routers[plan_.new_router_sockets[i].first] =
               router_socket;
             _service_attachment_state.socket_index[router_socket] = service_name_;
-            register_service_monitor_locked (
+            register_attachment_monitor_locked (
               router_socket, monitor, service_name_);
             mutated = true;
         } else {
@@ -314,7 +314,7 @@ void spot_node_t::install_service_discovery_sockets (
         service_attachment_t &attachment = _service_attachment_state.attachments[service_name_];
         if (!attachment.discovered.pub) {
             attachment.discovered.pub = plan_.pub_socket;
-            register_service_monitor_locked (
+            register_attachment_monitor_locked (
               plan_.pub_socket, monitor, service_name_);
             mutated = true;
         } else {
@@ -341,7 +341,7 @@ void spot_node_t::install_service_discovery_sockets (
             attachment.discovered.sub = plan_.sub_socket;
             attachment.mark_auto_sub_replay_pending (
               service_attachment_t::discovered_state_t::auto_sub_replay_initial);
-            register_service_monitor_locked (
+            register_attachment_monitor_locked (
               plan_.sub_socket, monitor, service_name_);
             mutated = true;
         } else {
@@ -435,7 +435,7 @@ void spot_node_t::sync_service_discovery_topology (
                 ++it;
             }
         }
-        remove_service_monitors_by_owner_locked (stale_router_sockets);
+        remove_attachment_monitors_by_owner_locked (stale_router_sockets);
         attachment.discovered.router_endpoints = topology_.router_endpoints;
         attachment.discovered.pub_endpoints =
           topology_.pubsub_active () ? topology_.pub_endpoints

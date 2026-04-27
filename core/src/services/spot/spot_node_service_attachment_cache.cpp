@@ -78,12 +78,12 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
     _service_attachment_state.readable_sub_poller = readable_sub_poller;
 }
 
-void spot_node_t::remove_service_monitors_by_owner_locked (
+void spot_node_t::remove_attachment_monitors_by_owner_locked (
   const std::vector<socket_base_t *> &sockets_)
 {
     if (sockets_.empty ())
         return;
-    for (std::deque<service_monitor_handle_t>::iterator mit =
+    for (std::deque<attachment_monitor_handle_t>::iterator mit =
            _service_attachment_state.monitors.begin ();
          mit != _service_attachment_state.monitors.end ();) {
         bool matched = false;
@@ -152,7 +152,7 @@ bool spot_node_t::detach_discovered_service_locked (
                 _service_attachment_state.attachments.erase (attach_it);
         }
 
-        remove_service_monitors_by_owner_locked (*sockets_to_close_out_);
+        remove_attachment_monitors_by_owner_locked (*sockets_to_close_out_);
         _service_attachment_state.discoveries.erase (it);
         _service_attachment_state.pending_refresh_services.erase (service_name);
         rebuild_service_attachment_caches_locked ();

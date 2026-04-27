@@ -30,7 +30,7 @@
 #include "../include/zlink.h"
 #include "core/internal_errno.hpp"
 #include "core/internal_defs.hpp"
-#include "services/common/service_monitor_types_internal.hpp"
+#include "services/common/service_event_types_internal.hpp"
 
 extern "C" {
 int zlink_stream_attach_raw (void *s_,

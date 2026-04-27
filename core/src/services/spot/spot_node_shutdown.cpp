@@ -97,7 +97,7 @@ void spot_node_t::begin_destroy_detach_phase (
 }
 
 void spot_node_t::clear_service_attachment_runtime_locked (
-  std::deque<service_monitor_handle_t> *monitors_out_)
+  std::deque<attachment_monitor_handle_t> *monitors_out_)
 {
     if (!monitors_out_)
         return;
@@ -114,12 +114,13 @@ void spot_node_t::clear_service_attachment_runtime_locked (
     rebuild_service_attachment_caches_locked ();
 }
 
-void spot_node_t::close_service_monitors (
-  std::deque<service_monitor_handle_t> *monitors_)
+void spot_node_t::close_attachment_monitors (
+  std::deque<attachment_monitor_handle_t> *monitors_)
 {
     if (!monitors_)
         return;
-    for (std::deque<service_monitor_handle_t>::iterator it = monitors_->begin ();
+    for (std::deque<attachment_monitor_handle_t>::iterator it =
+           monitors_->begin ();
          it != monitors_->end (); ++it) {
         if (it->handle)
             (void) zlink_monitor_close (&it->handle);
@@ -176,9 +177,9 @@ int spot_node_t::destroy ()
     spot_shutdown_logf_local (false, "step=task_removed node=%p",
                               static_cast<void *> (this));
 
-    std::deque<service_monitor_handle_t> monitors;
+    std::deque<attachment_monitor_handle_t> monitors;
     clear_service_attachment_runtime_locked (&monitors);
-    close_service_monitors (&monitors);
+    close_attachment_monitors (&monitors);
 
     if (discovery)
         preserve_first_error_local (discovery->remove_observer (this),

@@ -56,7 +56,7 @@ struct discovery_service_change_t
     discovery_service_change_t ();
 
     bool changed;
-    zlink_service_event_t event;
+    zlink_service_observation_event_t event;
 };
 
 class discovery_service_state_t

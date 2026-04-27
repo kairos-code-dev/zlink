@@ -935,24 +935,11 @@ class MonitorSocket:
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
-### ServiceMonitor
-
-Starts in recv model. `on_event(...)` transitions one-way to callback-only
-model; after that `recv()` raises a busy recv error and `snapshot()` still works.
-
-```python
-class ServiceMonitor:
-    def recv(self) -> ServiceEvent: ...                                           # Raises: RecvError
-    def on_event(self, handler: Callable[[ServiceEvent], None]) -> None: ...      # Raises: HandlerError
-    def snapshot(self) -> MonitorSnapshot: ...                                    # Raises: ConfigError
-    def close(self) -> None: ...                                                  # Raises: CloseError
-```
-
 ### MonitorSnapshot
 
 Runtime state snapshot exposed by `MonitorSocket.snapshot()` and
-`ServiceMonitor.snapshot()`. Every binding is required to expose the
-canonical fields together with the `is_ready()` convenience accessor.
+the socket-monitor path. Every binding is required to expose the canonical
+fields together with the `is_ready()` convenience accessor.
 
 ```python
 class MonitorSnapshot:
@@ -963,11 +950,11 @@ class MonitorSnapshot:
     rcv_pending_msgs: int            # pending receive-queue messages
     auto_hwm_enabled: bool
     auto_hwm_role: int
-    auto_hwm_scope: int
-    auto_hwm_scope_count: int
     auto_hwm_managed_connections: int
     auto_hwm_active_hwm_connections: int
-    auto_hwm_planning_transport_connections: int
+    auto_hwm_observed_count: int
+    auto_hwm_planning_count: int
+    auto_hwm_context_total_planning_count: int
     auto_hwm_base_floor_per_connection: int
     auto_hwm_applied_sndhwm: int
     auto_hwm_applied_rcvhwm: int
@@ -979,28 +966,20 @@ class MonitorSnapshot:
     auto_hwm_queue_budget_bytes: int
     auto_hwm_transport_budget_bytes: int
     auto_hwm_runtime_reserve_bytes: int
-    auto_hwm_group_budget_bytes: int
-    auto_hwm_role_group_budget_bytes: int
-    auto_hwm_scope_group_budget_bytes: int
-    auto_hwm_group_message_slots: int
+    auto_hwm_socket_queue_share_bytes: int
+    auto_hwm_socket_message_slots: int
     auto_hwm_effective_message_bytes: int
-    auto_hwm_auto_buffer_bytes: int
-    auto_hwm_manual_buffer_bytes: int
-    auto_hwm_buffer_connections: int
-    auto_hwm_control_budget_bytes: int
-    auto_hwm_routed_budget_bytes: int
-    auto_hwm_fanout_budget_bytes: int
-    auto_hwm_recv_ingress_budget_bytes: int
-    auto_hwm_control_active_connections: int
-    auto_hwm_routed_active_connections: int
-    auto_hwm_fanout_active_connections: int
-    auto_hwm_recv_ingress_active_connections: int
     auto_hwm_estimated_max_memory_bytes: int
     auto_hwm_last_recalc_ms: int
     auto_hwm_last_recalc_reason: int
+    auto_hwm_send_blocked_ratio_ppm: int
+    auto_hwm_scope: int
+    auto_hwm_scope_count: int
+    auto_hwm_auto_buffer_bytes: int
+    auto_hwm_manual_buffer_bytes: int
+    auto_hwm_buffer_connections: int
     auto_hwm_deferred_sndhwm: int
     auto_hwm_deferred_rcvhwm: int
-    auto_hwm_send_blocked_ratio_ppm: int
 
     def is_ready(self) -> bool: ...  # True when the ready bit is set in state_flags
 ```
@@ -1022,9 +1001,7 @@ class MonitorEvent:
 SocketMonitorEvent = MonitorEvent    # backward-compat alias; prefer MonitorEvent
 ```
 
-`MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15). Service
-monitors surface the same change through
-`ServiceMonitorMask.PEER_WEIGHT_CHANGED` (bit 8).
+`MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15).
 
 ### MonitorEventMask
 
@@ -1036,28 +1013,6 @@ class MonitorEventMask(IntFlag):
     NONE = 0
     ALL = ...
     # Individual event bits match the C-side MonitorEventType values.
-```
-
-### ServiceEvent (ServiceMonitorEvent)
-
-Value object emitted by `ServiceMonitor.recv()` / `on_event(...)`.
-`ServiceMonitorEvent` is retained as an alias.
-
-```python
-class ServiceEvent:
-    service_kind: int                # zlink_service_kind_t (DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET)
-    event_type: int                  # UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
-    status: int                      # status code
-    error_code: int                  # errno captured on ERROR events
-    value: int                       # event-specific value
-    detail_flags: int                # detail bitmask
-    service_name: str
-    endpoint: str
-    routing_id: RoutingId | None     # peer routing id, else None
-    subject: str                     # subscribe subject (topic), empty when N/A
-    subject_kind: int                # subject kind enum
-
-ServiceMonitorEvent = ServiceEvent   # backward-compat alias; prefer ServiceEvent
 ```
 
 ---
@@ -1115,8 +1070,6 @@ class Discovery:
     def set_dealer_peer_mode(self, mode: DiscoveryDealerPeerMode) -> None: ...   # Raises: ConfigError — maps to zlink_discovery_set_dealer_peer_mode
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
-    def monitor_open(self, events: ServiceMonitorMask = ServiceMonitorMask.ALL
-                     ) -> ServiceMonitor: ...                                    # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
@@ -1124,6 +1077,7 @@ class Discovery:
 
 ```python
 class SpotNode:
+    def __init__(self, ctx: Context, mode: SpotNodeMode | int | None = None): ...
     def __init__(self, ctx: Context) -> None: ...
     def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
     def last_endpoint(self) -> str: ...                                          # Raises: ConfigError
@@ -1152,6 +1106,10 @@ class SpotNode:
                     ) -> list[SpotNodePeerEntry]: ...                            # Raises: ConfigError
     def subjects_snapshot(self, filter_: SpotNodeSubjectFilter | None = None
                           ) -> list[SpotNodeSubjectEntry]: ...                   # Raises: ConfigError
+    def internal_sockets_snapshot(
+        self,
+        filter_: SpotNodeSocketSnapshotFilter | None = None
+    ) -> list[SpotNodeSocketSnapshotEntry]: ...                                  # Raises: ConfigError
     # close() cascades: closes all live Spot handles before the node becomes invalid.
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```

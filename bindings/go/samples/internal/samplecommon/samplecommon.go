@@ -143,23 +143,6 @@ func WaitSpotPeerConnected(node *zlink.SpotNode, timeout time.Duration) {
 	})
 }
 
-func WaitServiceEvent(monitor *zlink.ServiceMonitor, eventMask uint32) *zlink.ServiceMonitorEvent {
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		event, err := monitor.Recv()
-		if isTemporaryEmpty(err) {
-			runtime.Gosched()
-			continue
-		}
-		Must(err)
-		if event != nil && (event.EventType&zlink.ServiceMonitorEventType(eventMask)) != 0 {
-			return event
-		}
-	}
-	Must(fmt.Errorf("timed out waiting for service monitor event"))
-	return nil
-}
-
 func WaitTopologyEntry(fetch func() ([]zlink.RegistryTopologyEntry, error), serviceName string) *zlink.RegistryTopologyEntry {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

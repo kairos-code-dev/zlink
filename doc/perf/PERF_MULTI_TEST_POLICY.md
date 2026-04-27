@@ -154,7 +154,7 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
   routed request/reply 경로는 `START` broadcast 이후에만 시작한다.
 - multi policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
 - multi policy 는 delivery-ready event gate도 사용하지 않는다.
-- multi SPOT / multi SPOT_REQREP 은 service monitor gate 도 사용하지 않는다.
+- multi SPOT / multi SPOT_REQREP 은 별도 서비스 이벤트 gate 도 사용하지 않는다.
 - multi SPOT / multi SPOT_REQREP 의 짧은 control settle 은 control socket
   connect 직후 request/publish 순서를 정렬하기 위한 barrier 내부 절차다.
   raw pattern 의 monitor ready gate 와 동일한 public 계약으로 취급하지
@@ -1230,7 +1230,7 @@ pattern별 공식 start contract 를 사용한다.
 | 항목 | 규칙 |
 |------|------|
 | raw 연결 확인 API | `zlink_socket_monitor_open(...)` 뒤에 `CONNECTION_READY` 직접 대기 helper 사용 |
-| SPOT / SPOT_REQREP 연결 확인 API | service monitor 사용 금지. spot control topic 위의 `CONNECTED`/`READY_COUNT`/`START` handshake 사용 |
+| SPOT / SPOT_REQREP 연결 확인 API | 별도 서비스 이벤트 스트림 사용 금지. spot control topic 위의 `CONNECTED`/`READY_COUNT`/`START` handshake 사용 |
 | 대기 방식 | app thread에서 타임아웃 기반 bounded wait — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | raw monitor 사용 시 `PERF_MULTI_MONITOR_HWM` (기본 1,000) |

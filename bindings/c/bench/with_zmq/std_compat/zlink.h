@@ -247,18 +247,6 @@ typedef struct zlink_poller_event_t
     short events;
 } zlink_poller_event_t;
 
-typedef struct zlink_service_monitor_event_t
-{
-    uint32_t event_type;
-    uint32_t value;
-    int error_code;
-} zlink_service_monitor_event_t;
-
-typedef struct zlink_service_monitor_open_options_t
-{
-    uint64_t events;
-} zlink_service_monitor_open_options_t;
-
 enum
 {
     ZLINK_IO_THREADS = 1,
@@ -989,26 +977,6 @@ inline int zlink_spot_node_bind (void *node_, const char *endpoint_)
 {
     (void) node_;
     (void) endpoint_;
-    errno = ENOTSUP;
-    return -1;
-}
-
-inline void *zlink_service_monitor_open (
-  void *service_, const zlink_service_monitor_open_options_t *options_)
-{
-    (void) service_;
-    (void) options_;
-    errno = ENOTSUP;
-    return NULL;
-}
-
-inline int zlink_service_monitor_recv (void *monitor_,
-                                       zlink_service_monitor_event_t *out_,
-                                       zlink_send_flags_t flags_)
-{
-    (void) monitor_;
-    (void) out_;
-    (void) flags_;
     errno = ENOTSUP;
     return -1;
 }

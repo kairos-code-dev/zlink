@@ -1,3 +1,4 @@
+[English](architecture.md) | [한국어](architecture.ko.md)
 
 # zlink 시스템 아키텍처 - 내부 개발자 참조 문서
 
@@ -10,7 +11,7 @@
 ## 목차
 
 1. [개요 및 설계 철학](#1-개요-및-설계-철학)
-2. [Reactor에서 Proactor로 — I/O 모델 마이그레이션](#2-reactor에서-proactor로--io-모델-마이그레이션)
+2. [I/O 모델: Proactor 패턴](#2-io-모델-proactor-패턴)
 3. [5계층 아키텍처](#3-5계층-아키텍처)
 4. [컴포넌트 연결 관계](#4-컴포넌트-연결-관계)
 5. [Socket Logic Layer 상세](#5-socket-logic-layer-상세)
@@ -26,8 +27,8 @@
 
 ### 1.1 zlink란?
 
-zlink는 libzmq를 기반으로 한 고성능 메시징 라이브러리입니다.
-기존 libzmq의 패턴과 API 호환성을 유지하면서 다음과 같은 현대적 설계를 적용했습니다:
+zlink 는 libzmq 의 소켓 패턴과 API 형태를 공유하는 고성능 메시징
+라이브러리다. 다음 설계 요소가 적용되어 있다.
 
 - **Boost.Asio 기반 I/O**: 플랫폼별 폴러(epoll/kqueue/IOCP) 대신 Asio의 통합 비동기 I/O 사용
 - **WebSocket/TLS 네이티브 지원**: `ws://`, `wss://`, `tls://` 프로토콜을 라이브러리 수준에서 내장
@@ -68,12 +69,13 @@ zlink는 libzmq를 기반으로 한 고성능 메시징 라이브러리입니다
 
 ---
 
-## 2. Reactor에서 Proactor로 — I/O 모델 마이그레이션
+## 2. I/O 모델: Proactor 패턴
 
-zlink의 가장 근본적인 아키텍처 변경은 I/O 모델의 전환입니다.
-libzmq의 **Reactor 패턴**을 Boost.Asio 기반의 **Proactor 패턴**으로 교체했습니다.
+zlink 의 I/O 코어는 Boost.Asio 기반의 **Proactor 패턴** 을 사용한다.
+엔진이 OS 에 비동기 I/O 연산을 요청하면 완료 콜백으로 결과를 받는다.
+비교를 위해 libzmq 의 전통적인 **Reactor 패턴** 을 함께 보여 준다.
 
-### 2.1 Reactor 패턴 (libzmq)
+### 2.1 Reactor 패턴 (libzmq, 비교용)
 
 libzmq는 전형적인 **Reactor 패턴**을 사용합니다.
 중앙의 폴러(`poller_t`)가 fd의 readiness(읽기/쓰기 가능 상태)를 감시하고,
@@ -167,16 +169,18 @@ zlink는 Boost.Asio의 **Proactor 패턴**을 사용합니다.
 | 플랫폼 폴러 | 6종 직접 구현<br/>(epoll,kqueue,IOCP 등) | Boost.Asio에 위임<br/>(단일 코드베이스) |
 | 최적화 | Reactor 이벤트 배칭 | Speculative I/O<br/>Gather Write<br/>Backpressure (pending buf) |
 
-### 2.4 마이그레이션 전략
+### 2.4 계층 구성
 
-libzmq에서 zlink로의 이식은 "전면 교체"가 아닌 **계층별 선택적 교체**로 진행했습니다.
+zlink 는 socket-logic 레벨의 building block 은 libzmq 와 공유하고,
+I/O 코어는 Asio 기반 Proactor 로 구성하며, 자체 기능을 별도로 쌓는다.
+아래 다이어그램은 각 계층이 현재 코드베이스에서 어떻게 구성되는지 보여 준다.
 
 ```
 +---------------------------------------------------------------------+
-|                   Per-Layer: Preserved / Replaced / Added           |
+|                   Per-Layer: Shared / Asio / Added                  |
 +---------------------------------------------------------------------+
 |                                                                     |
-|  ■ Preserved (kept from libzmq as-is)                               |
+|  ■ Shared with libzmq (socket-logic building block)                 |
 |  +---------------------------------------------------------------+  |
 |  |  Socket Logic Layer                                           |  |
 |  |  - socket_base_t, pair_t, dealer_t, router_t, pub_t, sub_t   |   |
@@ -193,49 +197,48 @@ libzmq에서 zlink로의 이식은 "전면 교체"가 아닌 **계층별 선택�
 |  |  - msg_t (64-byte fixed, VSM/LMSG/CMSG/ZCLMSG)              |    |
 |  +---------------------------------------------------------------+  |
 |                                                                     |
-|  ■ Replaced (libzmq implementation swapped for new)                 |
+|  ■ Asio 기반 I/O 코어                                               |
 |  +---------------------------------------------------------------+  |
-|  |  poller_t (epoll/kqueue/select)  →  asio_poller_t            |   |
-|  |  - Minimal reactor wrapper for mailbox monitoring             |  |
+|  |  asio_poller_t                                                |  |
+|  |  - mailbox fd 모니터링용 최소 reactor 래퍼                    |  |
 |  +---------------------------------------------------------------+  |
-|  |  zmtp_engine_t (ZMTP 3.x)  →  asio_engine_t (Proactor)      |    |
-|  |  - Core I/O engine completely redesigned for completion-based |  |
+|  |  asio_engine_t (Proactor)                                     |  |
+|  |  - 완료 기반 I/O 엔진                                          |  |
 |  +---------------------------------------------------------------+  |
-|  |  Direct fd management  →  i_asio_transport interface         |   |
-|  |  - TCP/IPC wrapped with Boost.Asio sockets                   |   |
+|  |  i_asio_transport 인터페이스                                   |  |
+|  |  - TCP/IPC 를 Boost.Asio 소켓으로 래핑                        |  |
 |  +---------------------------------------------------------------+  |
-|  |  ZMTP 3.x  →  ZMP v1.0                                       |   |
-|  |  - Simplified to 8-byte fixed header, HELLO/READY handshake  |   |
+|  |  ZMP v1.0                                                     |  |
+|  |  - 8-byte 고정 헤더, HELLO/READY 핸드셰이크                   |  |
 |  +---------------------------------------------------------------+  |
 |                                                                     |
-|  ■ Added (new in zlink)                                             |
+|  ■ zlink 가 추가한 구성 요소                                         |
 |  +---------------------------------------------------------------+  |
 |  |  Speculative I/O                                              |  |
-|  |  - Synchronous attempt before async → eliminates callback     |  |
-|  |    overhead on fast path                                      |  |
+|  |  - async 전에 sync 시도 → fast path 콜백 오버헤드 제거         |  |
 |  +---------------------------------------------------------------+  |
 |  |  Backpressure (pending_buffers)                               |  |
-|  |  - Buffers received data up to 10MB when HWM reached         |   |
+|  |  - HWM 도달 시 수신 데이터를 10MB 까지 버퍼링                  |  |
 |  +---------------------------------------------------------------+  |
 |  |  Gather Write                                                 |  |
-|  |  - Scatter/gather I/O sends header+payload in single syscall |   |
+|  |  - scatter/gather I/O 로 헤더+payload 를 단일 syscall 로 전송 |  |
 |  +---------------------------------------------------------------+  |
-|  |  Native WS/WSS/TLS Transports                                |   |
-|  |  - Beast WebSocket + OpenSSL unified via i_asio_transport    |   |
+|  |  Native WS/WSS/TLS Transports                                 |  |
+|  |  - Beast WebSocket + OpenSSL 을 i_asio_transport 로 통합      |  |
 |  +---------------------------------------------------------------+  |
-|  |  Service Layer (Registry, Discovery, SPOT)                  |    |
-|  |  - Higher-level service abstractions not present in libzmq   |   |
+|  |  Service Layer (Registry, Discovery, SPOT)                    |  |
+|  |  - socket 위에 올리는 상위 서비스 추상                         |  |
 |  +---------------------------------------------------------------+  |
 |                                                                     |
 +---------------------------------------------------------------------+
 ```
 
-**왜 Reactor를 완전히 제거하지 않았는가?**
+**왜 최소 reactor 래퍼를 남겼는가?**
 
-`asio_poller_t`는 mailbox fd를 감시하기 위한 최소한의 Reactor 호환 래퍼로 남아 있습니다.
-기존 libzmq의 `io_object_t` 인프라가 mailbox 이벤트를 폴러 콜백으로 수신하는 구조를
-사용하므로, 이 경로를 Asio의 `async_wait()`로 래핑하여 호환성을 유지합니다.
-실제 데이터 I/O 경로(`asio_engine_t`)는 순수 Proactor 패턴으로 동작합니다.
+`asio_poller_t` 는 mailbox fd 를 감시하기 위한 최소한의 reactor 호환 래퍼다.
+`io_object_t` 인프라가 mailbox 이벤트를 poller 콜백으로 수신하므로 이 경로는
+Asio 의 `async_wait()` 로 래핑되어 reactor 모양의 경로 위에 그대로 올라간다.
+실제 데이터 I/O 경로(`asio_engine_t`) 는 순수 Proactor 패턴으로 동작한다.
 
 ---
 
@@ -957,7 +960,7 @@ Application Thread              I/O Thread
 |                    APPLICATION THREAD                             |
 +-------------------------------------------------------------------+
 |                                                                   |
-|  (1) zlink_send(socket, data, size, flags)                        |
+|  (1) zlink_send(socket, parts, part_count, flags)                 |
 |       |                                                           |
 |       v                                                           |
 |  (2) socket_base_t::send()                                        |
@@ -1039,7 +1042,7 @@ Application Thread              I/O Thread
 |                    APPLICATION THREAD                             |
 +-------------------------------------------------------------------+
 |                                                                   |
-|  (8) zlink_recv(socket, buffer, size, flags)                      |
+|  (8) zlink_recv(socket, &source_rid, &parts, &part_count, flags)  |
 |       |                                                           |
 |       v                                                           |
 |  (9) socket_base_t::recv()                                        |
@@ -1206,7 +1209,6 @@ core/
 |   |   +-- common/                  # Common service utilities
 |   |   |   +-- advertise_endpoint.hpp   # Endpoint resolution for service registration
 |   |   |   +-- monitor_decode.hpp       # Monitor event decoding
-|   |   |   +-- service_monitor.cpp/hpp  # Service-level monitor implementation
 |   |   |   +-- service_runtime_base.hpp # Service lifecycle kernel
 |   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
 |   |   +-- discovery/               # Service discovery

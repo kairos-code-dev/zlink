@@ -36,22 +36,6 @@ int recv_monitor_event_from_socket (void *monitor_,
       monitor_, event_, static_cast<zlink_recv_flags_t> (flags_));
 }
 
-int recv_service_event_from_socket (void *monitor_,
-                                    zlink_service_event_t *event_,
-                                    int flags_)
-{
-    if (!monitor_ || !event_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (wait_monitor_readable (monitor_, flags_, 0) != 0)
-        return -1;
-
-    return zlink_service_monitor_recv (
-      monitor_, event_, static_cast<zlink_recv_flags_t> (flags_));
-}
-
 //  Read one event off the monitor socket; return value and address
 //  by reference, if not null, and event number by value. Returns -1
 //  in case of error.

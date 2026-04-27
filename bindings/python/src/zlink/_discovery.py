@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from ._enums import (
     DiscoveryDealerPeerMode,
     RegistryState,
-    ServiceMonitorMask,
     ServiceRole,
     TopologySource,
     TopologyState,
@@ -508,11 +507,6 @@ class Discovery:
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def monitor_open(self, events=ServiceMonitorMask.ALL):
-        from ._monitor import open_service_monitor
-
-        return open_service_monitor(self, events)
 
     def close(self):
         if not self._handle:

@@ -4,12 +4,10 @@
 #define __ZLINK_SPOT_SUB_HPP_INCLUDED__
 
 #include "core/msg.hpp"
-#include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
 #include "utils/macros.hpp"
 #include "utils/mutex.hpp"
-#include "../../../external/moodycamel/concurrentqueue.h"
 
 #include <atomic>
 #include <map>
@@ -66,8 +64,8 @@ class spot_sub_t
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
-    void *monitor_open (int events_);
     socket_base_t *poller_socket () const { return socket (); }
+    socket_base_t *snapshot_socket () const { return socket (); }
     int set_direct_handler (spot_sub_direct_handler_fn handler_,
                             void *userdata_);
     int recv (zlink_routing_id_t *source_rid_out_,
@@ -122,11 +120,7 @@ class spot_sub_t
                                   zlink_msg_t *parts_,
                                   size_t part_count_,
                                   void *userdata_);
-    static void monitor_task_main (void *arg_);
-    void pump_monitor_events ();
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
-    int ensure_monitor_bridge_started ();
-    int stop_monitor_bridge ();
     void handle_ready_probe (const std::string &raw_filter_,
                              const std::string &peer_endpoint_);
     std::string ready_ack_source_id () const;
@@ -134,7 +128,6 @@ class spot_sub_t
                                       std::vector<std::string> *out_);
     void release_all_ready_ack_endpoints (
       std::vector<std::pair<std::string, std::string> > *out_);
-    void emit_monitor_event (const zlink_service_event_t &event_);
     void lock_routing_id ();
     socket_base_t *socket () const;
 
@@ -163,12 +156,6 @@ class spot_sub_t
     atomic_counter_t _callback_inflight;
     condition_variable_t _callback_cv;
     std::atomic<bool> _destroying;
-    service_monitor_hub_t _monitor;
-    moodycamel::ConcurrentQueue<zlink_service_event_t> _monitor_event_queue;
-    std::atomic<bool> _monitor_event_draining;
-    std::atomic<uint32_t> _monitor_event_pending;
-    void *_raw_monitor_socket;
-    uint64_t _monitor_task_id;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_sub_t)
 };

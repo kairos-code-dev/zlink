@@ -1,3 +1,4 @@
+[English](11-thread-safety.md) | [한국어](11-thread-safety.ko.md)
 
 # Thread-Safety Guide
 
@@ -29,7 +30,7 @@ public APIs into three categories so you know what to expect:
 |---|---|---|---|
 | **Sending** | `send`, `publish`, `send_rid` | Yes — fully concurrent | Multiple threads can call these on the same handle simultaneously. This is the fast path, optimized for throughput. |
 | **Configuration** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
-| **Cleanup** | `close`, `destroy` | Yes — with clear error codes | If another thread is still using the handle, close returns `EBUSY` instead of crashing. Details in [section 4](#4-closing-handles-safely). |
+| **Cleanup** | `close`, `destroy` | Yes — with clear error codes | If another thread is still using the handle, close returns `ZLINK_CLOSE_BUSY` instead of crashing. Details in [section 4](#4-closing-handles-safely). |
 
 **In plain terms:** send as much as you want from any thread. Connect,
 subscribe, and change options whenever you need to — even while sending.
@@ -64,7 +65,10 @@ void *worker(void *arg)
     char buf[64];
     for (int i = 0; i < 10000; i++) {
         int len = snprintf(buf, sizeof(buf), "worker-%d msg-%d", w->id, i);
-        zlink_send(w->socket, buf, len, 0);  /* no mutex needed */
+        zlink_msg_t part;
+        zlink_msg_init_size(&part, (size_t)len);
+        memcpy(zlink_msg_data(&part), buf, (size_t)len);
+        zlink_send(w->socket, &part, 1, ZLINK_SEND_FLAGS_NONE); /* no mutex needed */
     }
     return NULL;
 }
@@ -72,7 +76,7 @@ void *worker(void *arg)
 int main(void)
 {
     void *ctx = zlink_ctx_new();
-    void *socket = zlink_socket(ctx, ZLINK_DEALER);
+    void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
     pthread_t threads[4];
@@ -102,7 +106,7 @@ Includes:
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
 - `zlink_spot_node_attach_discovery()`
-- `zlink_socket_monitor_open()` / `zlink_service_monitor_open()`
+- `zlink_socket_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
@@ -157,14 +161,14 @@ Every handle type follows the same three-category model:
 Closing a handle while other threads are still using it doesn't crash —
 zlink returns a clear error code instead:
 
-| Situation | What happens | Error code |
+| Situation | What happens | Result |
 |---|---|---|
-| You call `close`/`destroy` while another thread is mid-call on the same handle | Close is **rejected** — the handle stays alive | `EBUSY` |
-| You call any API after `close` has been accepted | The call is **rejected** — the handle is shutting down | `ESHUTDOWN` |
-| You call `close`/`destroy` twice | Second call returns immediately | `EALREADY` |
+| You call `close`/`destroy` while another thread is mid-call on the same handle | Close is **rejected** — the handle stays alive | `ZLINK_CLOSE_BUSY` |
+| You call any API after `close` has been accepted | The call is **rejected** — the handle is shutting down | `ZLINK_CLOSE_SHUTDOWN` (or matching `*_TERMINATED` on the per-function result) |
+| You call `close`/`destroy` twice | Second call returns immediately | `ZLINK_CLOSE_SHUTDOWN` |
 
-After `EBUSY`, the handle goes back to normal — nothing is damaged, you
-can keep using it or try closing again later.
+After `ZLINK_CLOSE_BUSY`, the handle goes back to normal — nothing is
+damaged, you can keep using it or try closing again later.
 
 **Recommended shutdown pattern:**
 
@@ -182,8 +186,8 @@ void *sender(void *arg)
     while (atomic_load(&g_running)) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 32);
-        int rc = zlink_send(socket, &part, 1, 0);
-        if (rc == -1 && zlink_errno() == ESHUTDOWN)
+        zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+        if (rc == ZLINK_SUBMIT_TERMINATED)
             break;  /* handle is shutting down, stop gracefully */
     }
     return NULL;
@@ -216,8 +220,8 @@ in each thread:
 /* WRONG — two threads sharing the same msg */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 100);
-/* Thread A: */ zlink_send_msg(socket, &msg, 0);
-/* Thread B: */ zlink_send_msg(socket, &msg, 0);  /* data race! */
+/* Thread A: */ zlink_send(socket, &msg, 1, 0);
+/* Thread B: */ zlink_send(socket, &msg, 1, 0);  /* data race! */
 ```
 
 ```c
@@ -226,7 +230,7 @@ zlink_msg_init_size(&msg, 100);
 zlink_msg_t msg_a;                   zlink_msg_t msg_b;
 zlink_msg_init_size(&msg_a, 100);    zlink_msg_init_size(&msg_b, 100);
 memcpy(zlink_msg_data(&msg_a),...);  memcpy(zlink_msg_data(&msg_b),...);
-zlink_send_msg(socket, &msg_a, 0);   zlink_send_msg(socket, &msg_b, 0);  /* safe */
+zlink_send(socket, &msg_a, 1, 0);    zlink_send(socket, &msg_b, 1, 0);  /* safe */
 ```
 
 **Callback ownership:** When your callback receives `zlink_msg_t *parts`,
@@ -336,17 +340,17 @@ void *control(void *arg)
 |---|---|---|
 | Two threads writing to the same `zlink_msg_t` | Message objects are not thread-safe | Create a separate `zlink_msg_t` in each thread |
 | Callback path does heavy work and throughput drops | It stalls the callback's background execution path and reduces delivery throughput | Push to a queue, process on a worker thread |
-| Calling APIs after `close`/`destroy` | Returns `ESHUTDOWN` or undefined behavior | Coordinate shutdown; check return codes |
+| Calling APIs after `close`/`destroy` | Returns `ZLINK_CLOSE_SHUTDOWN` (or per-function `*_TERMINATED`) or undefined behavior | Coordinate shutdown; check return codes |
 | Calling `connect`/`set_option` in a per-message loop | Configuration APIs are serialized — adds unnecessary overhead | Call them only when configuration actually changes |
 
 ## 9. Error Code Quick Reference
 
-| Error | When you see it | What it means |
+| Result | When you see it | What it means |
 |---|---|---|
-| `EBUSY` | `close`/`destroy` while another thread is using the handle | Wait for the other thread to finish, then try again |
-| `ESHUTDOWN` | Any API call after `close` has been accepted | The handle is shutting down — stop using it |
-| `EDEADLK` | Replacing the send-ready handler from inside its own callback | Don't do this — replace the handler from a different context |
-| `EALREADY` | Calling `close`/`destroy` a second time | Already shutting down — nothing more to do |
+| `ZLINK_CLOSE_BUSY` | `close`/`destroy` while another thread is using the handle | Wait for the other thread to finish, then try again |
+| `ZLINK_CLOSE_SHUTDOWN` | Any API call after `close` has been accepted (or second `close`) | The handle is shutting down — stop using it |
+| `ZLINK_HANDLER_DEADLOCK` | Replacing the send-ready handler from inside its own callback | Don't do this — replace the handler from a different context |
+| per-function `*_TERMINATED` | Data-plane call (`send`/`recv`/...) after context `term` | Context has been terminated — abort use |
 
 ---
 

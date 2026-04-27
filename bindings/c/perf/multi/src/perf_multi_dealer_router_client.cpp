@@ -11,7 +11,7 @@
 namespace {
 
 static const char *k_pattern = "MULTI_DEALER_ROUTER";
-static const int k_client_socket_type = ZLINK_SOCKET_DEALER;
+static const zlink_socket_type_t k_client_socket_type = ZLINK_SOCKET_DEALER;
 static const bool k_client_router_send = false;
 static const char *k_server_routing_id = "SERVER";
 
@@ -22,6 +22,7 @@ using perf_multi_client::is_supported_transport;
 using perf_multi_client::next_metric_run_id;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_echo_client_result_lines;
+using perf_multi_client::refresh_connected_client_auto_hwm;
 using perf_multi_client::resolve_case_max_msg_size;
 using perf_multi_client::resolve_case_msg_sizes;
 using perf_multi_client::run_echo_duration;
@@ -77,7 +78,8 @@ inline int run_client_benchmark (const std::string &lib_name,
               k_client_socket_type,
               msg_size,
               &sockets,
-              &monitors)) {
+              &monitors,
+              false)) {
             close_client_monitors (&monitors);
             close_client_sockets (&sockets);
             return 1;
@@ -91,6 +93,12 @@ inline int run_client_benchmark (const std::string &lib_name,
             return 1;
         }
         close_client_monitors (&monitors);
+        refresh_connected_client_auto_hwm (
+          sockets,
+          k_client_socket_type,
+          settings.hwm,
+          transport,
+          msg_size);
 
         double throughput = 0.0;
         bench_latency_stats_t latency;

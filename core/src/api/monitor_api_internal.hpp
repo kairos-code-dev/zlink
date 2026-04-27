@@ -23,34 +23,28 @@ typedef int (*monitor_snapshot_provider_fn) (void *subject_,
 
 struct monitor_handler_state_t
 {
-    monitor_handler_state_t (zlink::socket_base_t *socket_, bool service_) :
+    monitor_handler_state_t (zlink::socket_base_t *socket_) :
         socket (socket_),
         socket_handler (NULL),
-        service_handler (NULL),
         socket_handler_userdata (NULL),
-        service_handler_userdata (NULL),
         snapshot_provider (NULL),
         snapshot_subject (NULL),
         stop (false),
         callback_depth (0),
         close_requested (false),
-        service (service_),
         dispatch_task_id (0)
     {
     }
 
     zlink::socket_base_t *socket;
     std::atomic<zlink_monitor_handler_fn> socket_handler;
-    std::atomic<zlink_service_monitor_handler_fn> service_handler;
     std::atomic<void *> socket_handler_userdata;
-    std::atomic<void *> service_handler_userdata;
     std::atomic<monitor_snapshot_provider_fn> snapshot_provider;
     std::atomic<void *> snapshot_subject;
     std::atomic<bool> stop;
     std::atomic<int> callback_depth;
     std::atomic<bool> close_requested;
     zlink::mutex_t dispatch_sync;
-    bool service;
     uint64_t dispatch_task_id;
 };
 
@@ -75,9 +69,6 @@ void *current_monitor_dispatch_handle ();
 
 monitor_handler_state_t *find_monitor_handler_state (
   zlink::socket_base_t *socket_);
-bool has_open_service_monitor_for_subject (void *snapshot_subject_);
-bool has_open_spot_node_monitor_child (zlink::spot_node_t *node_);
-bool in_spot_node_monitor_callback (zlink::spot_node_t *node_);
 zlink::socket_base_t *raw_monitor_snapshot_subject (
   monitor_handler_state_t *state_);
 void clear_raw_monitor_snapshot_subjects (zlink::socket_base_t *source_);
@@ -85,12 +76,9 @@ void unregister_monitor_handlers (zlink::socket_base_t *socket_);
 
 int set_monitor_handler_state (zlink::socket_base_t *socket_,
                                zlink_monitor_handler_fn socket_handler_,
-                               zlink_service_monitor_handler_fn service_handler_,
-                               bool service_,
                                monitor_snapshot_provider_fn snapshot_provider_,
                                void *snapshot_subject_,
-                               void *socket_handler_userdata_,
-                               void *service_handler_userdata_);
+                               void *socket_handler_userdata_);
 
 int socket_monitor_snapshot_provider (void *subject_,
                                       zlink_monitor_snapshot_t *out_);
@@ -105,9 +93,6 @@ int spot_internal_receiver_monitor_snapshot_provider (
 int recv_socket_monitor_event_unchecked (void *monitor_socket_,
                                          zlink_monitor_event_t *event_,
                                          int flags_);
-int recv_service_monitor_event_unchecked (void *monitor_,
-                                          zlink_service_event_t *event_,
-                                          int flags_);
-int require_monitor_recv_model (void *monitor_, bool service_);
+int require_monitor_recv_model (void *monitor_);
 
 #endif

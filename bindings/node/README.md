@@ -107,9 +107,6 @@ is not exposed as a public `StreamSocket` method.
 
 `SocketMonitor` uses `recv(flags?)`, `onEvent()`, `snapshot()`,
   `close()`.
-`ServiceMonitor` uses `recv(flags?)`, `onEvent()`, `snapshot()`,
-  `close()`. Service monitor events are returned as typed `ServiceEvent`
-  objects.
 
 `*_READY_CHANGED` monitor events are readiness edge/state notifications.
 Node bindings must not interpret `event.value` as an aggregate ready count, and
@@ -156,4 +153,4 @@ cd bindings/node && npm run perf:multi -- --recv recv --pattern STREAM --warmup 
 - readiness gates in binding perf must use low-cost event counting, not
   aggregate ready counts from monitor payloads or snapshots
 - raw sockets: `CONNECTION_READY` event counting
-- SPOT: explicit benchmark barrier protocol; no service monitor gate
+- SPOT: explicit benchmark barrier protocol; no separate service-event gate

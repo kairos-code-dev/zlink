@@ -1111,23 +1111,6 @@ public final class MonitorSocket implements AutoCloseable {
 }
 ```
 
-### ServiceMonitor
-
-Service-level event monitor for discovery.
-Implements `AutoCloseable`.
-Starts in recv model. `onEvent(...)` transitions one-way to callback-only
-model; after that `recv()` raises busy and `snapshot()` still works.
-
-```java
-public final class ServiceMonitor implements AutoCloseable {
-    void onEvent(ServiceMonitorHandler handler);                    // @throws HandlerException
-    ServiceEvent recv();                                             // @throws RecvException
-    MonitorSnapshot snapshot();                                      // @throws ConfigException
-
-    void close();                                                    // @throws CloseException
-}
-```
-
 ### MonitorEvent
 
 Socket monitor event value object. Produced by `MonitorSocket.recv()`.
@@ -1141,14 +1124,12 @@ public record MonitorEvent(MonitorEventType event,
 ```
 
 `MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15). When this
-event fires, `value` carries the new `0..100` weight for the peer. Service
-monitors surface the same change through
-`ServiceMonitorEventMask.PEER_WEIGHT_CHANGED` (bit 8).
+event fires, `value` carries the new `0..100` weight for the peer.
 
 ### MonitorSnapshot
 
-Runtime state snapshot produced by `MonitorSocket.snapshot()` and
-`ServiceMonitor.snapshot()`. Immutable value object.
+Runtime state snapshot produced by `MonitorSocket.snapshot()`. Immutable
+value object.
 
 ```java
 public record MonitorSnapshot(MonitorSourceKind sourceKind,
@@ -1158,11 +1139,11 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               long rcvPendingMsgs,
                               boolean autoHwmEnabled,
                               int autoHwmRole,
-                              int autoHwmScope,
-                              int autoHwmScopeCount,
                               int autoHwmManagedConnections,
                               int autoHwmActiveHwmConnections,
-                              int autoHwmPlanningTransportConnections,
+                              int autoHwmObservedCount,
+                              int autoHwmPlanningCount,
+                              int autoHwmContextTotalPlanningCount,
                               int autoHwmBaseFloorPerConnection,
                               int autoHwmAppliedSndhwm,
                               int autoHwmAppliedRcvhwm,
@@ -1174,50 +1155,24 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               long autoHwmQueueBudgetBytes,
                               long autoHwmTransportBudgetBytes,
                               long autoHwmRuntimeReserveBytes,
-                              long autoHwmGroupBudgetBytes,
-                              long autoHwmRoleGroupBudgetBytes,
-                              long autoHwmScopeGroupBudgetBytes,
-                              long autoHwmGroupMessageSlots,
+                              long autoHwmSocketQueueShareBytes,
+                              long autoHwmSocketMessageSlots,
                               long autoHwmEffectiveMessageBytes,
-                              long autoHwmAutoBufferBytes,
-                              long autoHwmManualBufferBytes,
-                              int autoHwmBufferConnections,
-                              long autoHwmControlBudgetBytes,
-                              long autoHwmRoutedBudgetBytes,
-                              long autoHwmFanoutBudgetBytes,
-                              long autoHwmRecvIngressBudgetBytes,
-                              int autoHwmControlActiveConnections,
-                              int autoHwmRoutedActiveConnections,
-                              int autoHwmFanoutActiveConnections,
-                              int autoHwmRecvIngressActiveConnections,
                               long autoHwmEstimatedMaxMemoryBytes,
                               long autoHwmLastRecalcMs,
                               int autoHwmLastRecalcReason,
+                              int autoHwmSendBlockedRatioPpm,
+                              int autoHwmScope,
+                              int autoHwmScopeCount,
+                              long autoHwmAutoBufferBytes,
+                              long autoHwmManualBufferBytes,
+                              int autoHwmBufferConnections,
                               int autoHwmDeferredSndhwm,
                               int autoHwmDeferredRcvhwm,
                               int autoHwmSendBlockedRatioPpm) {
     // Raw socket monitor source에서만 ready 의미를 사용한다.
     boolean isReady();
 }
-```
-
-### ServiceEvent
-
-Discovery service monitor event value object. Produced by
-`ServiceMonitor.recv()`.
-
-```java
-public record ServiceEvent(ServiceKind serviceKind,
-                           ServiceEventType eventType,
-                           int status,
-                           int errorCode,
-                           long value,
-                           int detailFlags,
-                           String serviceName,
-                           String endpoint,
-                           Optional<RoutingId> routingId,
-                           String subject,
-                           ServiceEventSubjectKind subjectKind) {}
 ```
 
 ---
@@ -1282,9 +1237,6 @@ public final class Discovery implements AutoCloseable {
     RoutingId resolveSpot(RoutingId spotRid);                        // @throws ConfigException
     void setDealerPeerMode(DiscoveryDealerPeerMode mode);            // @throws ConfigException
 
-    ServiceMonitor monitorOpen();                                    // @throws ConfigException
-    ServiceMonitor monitorOpen(ServiceMonitorEventMask... events);   // @throws ConfigException
-
     void close();                                                    // @throws CloseException
 }
 ```
@@ -1297,6 +1249,7 @@ Implements `AutoCloseable`.
 ```java
 public final class SpotNode implements AutoCloseable {
     SpotNode(Context ctx);
+    SpotNode(Context ctx, SpotNodeOptions options);
 
     void bind(String endpoint);                                      // @throws BindException
     void connectPeer(String peerEndpoint);                           // @throws ConnectException
@@ -1322,6 +1275,8 @@ public final class SpotNode implements AutoCloseable {
     List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot();                   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter); // @throws ConfigException
+    List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot(
+        SpotNodeSocketSnapshotFilter filter);                        // @throws ConfigException
     // close() cascades: 모든 live Spot 먼저 close 한 후 node 종료
     void close();                                                    // @throws CloseException
 }

@@ -15,10 +15,6 @@ int recv_monitor_event_from_socket (void *monitor_,
                                     zlink_monitor_event_t *event_,
                                     int flags_);
 
-int recv_service_event_from_socket (void *monitor_,
-                                    zlink_service_event_t *event_,
-                                    int flags_);
-
 int get_monitor_event_with_timeout (void *monitor_,
                                     int *value_,
                                     char **address_,

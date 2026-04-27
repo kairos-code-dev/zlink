@@ -1,7 +1,8 @@
+[English](07-4-registry.md) | [한국어](07-4-registry.ko.md)
 
 # Registry (중앙 서비스 디렉토리)
 
-> **Normative status: Illustrative — Needs refresh.**
+> **규범 상태(Normative status): 설명 목적(Illustrative) — 갱신 필요.**
 > 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
 > `core/include/zlink.h`와 `bindings/README.md`다.
 
@@ -19,7 +20,7 @@ SPOT 노드, 소켓 패밀리 서비스의 등록(Discovery를 통해)을 수락
 | **독립 프로세스** | Registry를 전용 서비스로 실행. 여러 애플리케이션이 Discovery를 통해 연결. |
 | **임베디드** | 애플리케이션 프로세스 내에 Registry를 Discovery, 서비스(SPOT/Socket)와 함께 직접 생성. |
 
-**Registry는 thread-safe하다.**
+**Registry는 스레드 안전(thread-safe)하다.**
 하나의 Registry handle을 여러 스레드에서 동시에 사용할 수 있다.
 
 - **구성 API** (`set_id`, `add_peer`, `set_heartbeat` 등): `bind` 전에 호출
@@ -158,21 +159,20 @@ memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_send(client, &part, 1, 0);
 
 /* Receive reply */
+zlink_routing_id_t source_rid;
 zlink_msg_t *reply_parts = NULL;
 size_t reply_count = 0;
-zlink_recv(client, &reply_parts, &reply_count, 0);
+zlink_recv(client, &source_rid, &reply_parts, &reply_count, 0);
 
 /* Cleanup (reverse order) */
-zlink_close(client);
 zlink_discovery_destroy(&client_disc);
-zlink_close(server);
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
 > **팁**: 모든 컴포넌트가 같은 프로세스에 있을 때 `inproc://` transport를
-> 사용하면 Registry와 Discovery 간 zero-copy 통신이 가능하다.
+> 사용하면 Registry와 Discovery 간 제로카피(zero-copy, 메모리 복사 없이 전달) 통신이 가능하다.
 
 ## 5. 클러스터 구성 및 데이터 동기화
 
@@ -192,7 +192,7 @@ zlink_registry_bind(reg1, "tcp://*:5550", "tcp://*:5551");
 
 ### 5.2 동기화 메커니즘
 
-Registry는 PUB/SUB 기반 flooding 동기화를 사용한다:
+Registry는 PUB/SUB 기반 플러딩(flooding, 전체 브로드캐스트 전파) 동기화를 사용한다:
 
 ```mermaid
 flowchart LR
@@ -205,11 +205,11 @@ flowchart LR
 ```
 
 - 각 Registry가 다른 모든 Registry의 PUB 엔드포인트를 구독
-- 서비스 목록 변경이 다음 브로드캐스트 주기에 flooding을 통해 전파
+- 서비스 목록 변경이 다음 브로드캐스트 주기에 플러딩을 통해 전파
 - **Eventually Consistent**: 모든 Registry가 동일한 상태로 수렴
 - `registry_id` + `list_seq`를 통해 중복/역전 업데이트를 안전하게 무시
 
-**Discovery 관점:** 서비스 목록이 flooding으로 전파되므로, Discovery는 클러스터의
+**Discovery 관점:** 서비스 목록이 플러딩으로 전파되므로, Discovery는 클러스터의
 **하나의** Registry에만 연결해도 전체 서비스를 발견할 수 있다. 여러 Registry에
 연결하는 것은 장애 시 failover를 위한 것이다.
 
@@ -396,7 +396,7 @@ zlink_ctx_term(ctx);
 
 ### 6.3 Member Peer 조회
 
-Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opaque
+Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 불투명(opaque, 내부 구조를 노출하지 않는)
 메타데이터를 노출하는 member peer 조회를 제공한다. 가중치 기반 라우팅
 결정과 운영 모니터링에 유용하다.
 
@@ -428,11 +428,11 @@ free(peers);
 /* Retrieve opaque metadata blob for a specific peer */
 zlink_msg_t metadata;
 zlink_msg_init(&metadata);
-int rc = zlink_registry_member_peer_metadata(registry,
+zlink_config_result_t rc = zlink_registry_member_peer_metadata(registry,
     ZLINK_SERVICE_TYPE_SOCKET, "payment-service",
     ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
     &metadata);
-if (rc == 0) {
+if (rc == ZLINK_CONFIG_OK) {
     printf("metadata size=%zu\n", zlink_msg_size(&metadata));
 }
 zlink_msg_close(&metadata);
@@ -509,9 +509,9 @@ Discovery 인스턴스에 브로드캐스트된다.
 
 ### 7.3 Discovery Failover
 
-- Discovery는 하나 이상의 Registry ROUTER 엔드포인트에 bootstrap 연결
-- bootstrap 메타데이터로 내부 broadcast/uplink 경로를 학습
-- 한 Registry 노드가 실패해도 다른 bootstrap 엔드포인트를 통해 계속 동작
+- Discovery는 하나 이상의 Registry ROUTER 엔드포인트에 부트스트랩(bootstrap, 초기 연결) 연결
+- 부트스트랩 메타데이터로 내부 broadcast/uplink 경로를 학습
+- 한 Registry 노드가 실패해도 다른 부트스트랩 엔드포인트를 통해 계속 동작
 - Discovery의 failover 로직을 통해 서비스가 자동으로 재등록
 
 ### 7.4 클러스터 내 Registry 노드 장애
@@ -519,7 +519,7 @@ Discovery 인스턴스에 브로드캐스트된다.
 - 생존 Registry 노드가 독립적으로 계속 동작
 - 각 노드는 자체 서비스 목록을 유지
 - 생존 노드에 연결된 Discovery 클라이언트는 영향 없음
-- 장애 노드가 복구되면 flooding 메커니즘으로 재동기화
+- 장애 노드가 복구되면 플러딩 메커니즘으로 재동기화
 - Eventually consistent: 모든 노드가 동일 상태로 수렴
 
 ## 8. 역할 분리: Registry vs Monitor

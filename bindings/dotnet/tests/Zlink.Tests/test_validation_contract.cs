@@ -76,20 +76,6 @@ public sealed class test_validation_contract
     }
 
     [Fact]
-    public void discovery_monitor_open_rejects_unknown_event_flags()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var discovery = new Discovery(ctx, ServiceType.Spot,
-            "svc-validation");
-
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            discovery.MonitorOpen((ServiceMonitorEventMask)(1u << 30)));
-    }
-
-    [Fact]
     public void service_surface_rejects_overlong_fixed_utf8_inputs()
     {
         if (!CoreTestSupport.IsNativeAvailable())

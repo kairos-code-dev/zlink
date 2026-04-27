@@ -197,11 +197,10 @@ override 규칙:
   surface 가 있다고 가정하면 안 된다.
 - raw perf/pattern 의 실제 ready gate 는 low-cost edge 인
   `CONNECTION_READY` event counting 이다.
-- raw perf 에서 service monitor, snapshot polling, delivery-ready/count 계열
-  event 를 새 ready gate contract 로 승격하면 정책 위반이다.
+- raw perf 에서 snapshot polling, delivery-ready/count 계열 event 를 새 ready
+  gate contract 로 승격하면 정책 위반이다.
 - SPOT perf 의 실제 ready/start gate 는 explicit `READY/START` barrier 이다.
-- SPOT perf 에서는 service monitor gate, snapshot polling, ready-count wrapper 를
-  사용하면 안 된다.
+- SPOT perf 에서는 snapshot polling, ready-count wrapper 를 사용하면 안 된다.
 - session 파일과 handoff 에 `READY,...`, `CLIENT_READY,...`, `START,...` 표현이
   남아 있어도 그것이 외부 orchestration 의미로만 기록된 경우는 허용된다.
 - 반대로 그 표현을 raw ready 판정, SPOT start 판정, 정상 동작 근거로 서술한

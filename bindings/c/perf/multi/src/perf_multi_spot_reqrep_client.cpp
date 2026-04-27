@@ -534,7 +534,7 @@ bool create_control_spot(ctx_guard_t &ctx,
         return false;
     }
 
-    state->control_node = zlink_spot_node_new(ctx.get());
+    state->control_node = zlink_spot_node_new(ctx.get(), NULL);
     if (!state->control_node
         || !setup_tls_server(state->control_node, transport)
         || !setup_tls_client(state->control_node, transport)) {
@@ -596,7 +596,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
         return false;
     }
 
-    state->data_node = zlink_spot_node_new(ctx.get());
+    state->data_node = zlink_spot_node_new(ctx.get(), NULL);
     if (!state->data_node
         || !setup_tls_server(state->data_node, transport)
         || !setup_tls_client(state->data_node, transport)) {

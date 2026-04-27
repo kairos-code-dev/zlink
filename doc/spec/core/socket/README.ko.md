@@ -133,6 +133,7 @@ NULL입니다. 성공 시 `result_`는 `ZLINK_REQUEST_OK`이고 모든 메시지
 ```c
 typedef enum zlink_socket_type_t
 {
+    ZLINK_SOCKET_ANY    = 0,
     ZLINK_SOCKET_PAIR   = 0x1001,
     ZLINK_SOCKET_PUB    = 0x1002,
     ZLINK_SOCKET_SUB    = 0x1003,
@@ -144,7 +145,9 @@ typedef enum zlink_socket_type_t
 } zlink_socket_type_t;
 ```
 
-항상 위에 표시된 `ZLINK_SOCKET_*` 정규화된 상수를 사용합니다.
+`ZLINK_SOCKET_ANY`는 생성할 socket type이 아니다. filter API에서 전체 socket type을
+뜻하는 wildcard로만 사용한다. 실제 socket 생성에는 위에 표시된 정규화된
+`ZLINK_SOCKET_*` 상수를 사용한다.
 
 ### 송신 플래그
 

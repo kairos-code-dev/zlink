@@ -11,7 +11,7 @@
 - Use `zlink_registry_query_client_*()` and `zlink_registry_query_snapshot()`
   for remote summary queries.
 - Registry topology is intended for global summary only. For detailed local
-  state transitions, use per-service monitor APIs.
+  state transitions, compare successive snapshot/query results.
 
 The Registry is the central service directory for the zlink service layer. It
 accepts service registration, deregistration, and heartbeat requests from

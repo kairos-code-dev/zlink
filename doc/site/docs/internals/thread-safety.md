@@ -1,3 +1,4 @@
+[English](thread-safety.md) | [한국어](thread-safety.ko.md)
 
 # Thread-Safety Internals
 
@@ -24,7 +25,7 @@ explains how each tier is implemented.
 **Target APIs:**
 
 - `zlink_send()`
-- `zlink_spot_publish()` / `zlink_spot_node_publish()`
+- `zlink_publish()`
 - Same-handle `send` / `publish` from inside an admitted callback
 
 **Ordering semantics:**
@@ -56,7 +57,7 @@ enqueued messages drain before teardown completes (drain-then-close).
 
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
-- `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
+- `zlink_set_subscription()` / `zlink_unset_subscription()`
 - `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`

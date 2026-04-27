@@ -216,7 +216,7 @@ void test_typed_raw_socket_options ()
 void test_typed_spot_node_unified_options ()
 {
     void *ctx = new_ctx ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = make_test_spot_handle (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -305,46 +305,23 @@ void test_typed_service_handle_dispatch_domains ()
       ZLINK_CONFIG_OK, zlink_set_routing_id (registry, "rid", 3));
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 
-    zlink_service_monitor_open_options_t opts;
-    memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP;
-    void *monitor = zlink_service_monitor_open (discovery, &opts);
-    TEST_ASSERT_NOT_NULL (monitor);
-    close_monitor_if_open (&monitor);
-
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     close_ctx (ctx);
 }
 
-void test_spot_service_monitor_open_is_supported ()
+void test_spot_node_internal_socket_snapshot_is_supported ()
 {
     void *ctx = new_ctx ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = make_test_spot_handle (node);
     TEST_ASSERT_NOT_NULL (spot);
-
-    zlink_service_monitor_open_options_t opts;
-    memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_SERVICE_MONITOR_EVENT_ERROR;
-
-    void *node_monitor = zlink_service_monitor_open (node, &opts);
-    TEST_ASSERT_NOT_NULL (node_monitor);
-    zlink_monitor_snapshot_t node_snapshot;
-    memset (&node_snapshot, 0, sizeof (node_snapshot));
+    size_t socket_count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_monitor_snapshot (node_monitor, &node_snapshot));
-
-    void *spot_monitor = zlink_service_monitor_open (spot, &opts);
-    TEST_ASSERT_NOT_NULL (spot_monitor);
-    zlink_monitor_snapshot_t spot_snapshot;
-    memset (&spot_snapshot, 0, sizeof (spot_snapshot));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_monitor_snapshot (spot_monitor, &spot_snapshot));
-
-    close_monitor_if_open (&spot_monitor);
-    close_monitor_if_open (&node_monitor);
+      zlink_spot_node_internal_sockets_snapshot (node, NULL, NULL,
+                                                 &socket_count));
+    TEST_ASSERT_GREATER_THAN_UINT (0, socket_count);
 
     destroy_test_spot_handle (&spot);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -507,7 +484,7 @@ int main (void)
     RUN_TEST (test_typed_raw_socket_options);
     RUN_TEST (test_typed_spot_node_unified_options);
     RUN_TEST (test_typed_service_handle_dispatch_domains);
-    RUN_TEST (test_spot_service_monitor_open_is_supported);
+    RUN_TEST (test_spot_node_internal_socket_snapshot_is_supported);
     RUN_TEST (test_discovery_routing_id_locks_after_registry_connect);
     RUN_TEST (test_option_owner_map_matches_domains);
     return UNITY_END ();

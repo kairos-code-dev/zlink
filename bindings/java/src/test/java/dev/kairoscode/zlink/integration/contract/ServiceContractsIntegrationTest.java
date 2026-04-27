@@ -6,13 +6,10 @@ import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RecvResult;
-import dev.kairoscode.zlink.service.registry.ServiceEvent;
-import dev.kairoscode.zlink.service.registry.ServiceEventType;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.service.registry.ServiceType;
-import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.SpotDispatchEvent;
 import dev.kairoscode.zlink.service.discovery.Discovery;
@@ -22,7 +19,6 @@ import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.time.Duration;
 import java.time.Instant;
@@ -89,95 +85,12 @@ class ServiceContractsIntegrationTest {
         }
 
         try (Context ctx = new Context();
-             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET,
-               "svc-monitor");
-             var monitor = discovery.monitorOpen()) {
-            assertNotNull(monitor);
-        }
-
-        try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
              Spot spot = node.createSpot()) {
             spot.setSubscription("svc-topic");
             assertEquals(0, node.statusSnapshot().connectedPeerCount());
             assertTrue(node.subjectsSnapshot().stream()
                 .anyMatch(entry -> "svc-topic".equals(entry.subject())));
-        }
-    }
-
-    @Test
-    void serviceMonitorOnEventRunsOnManagedJavaThread() throws Exception {
-        TestSupport.assumeNative();
-
-        String registryPub = TestSupport.tcpEndpoint();
-        String registryRouter = TestSupport.tcpEndpoint();
-        String serviceEndpoint = TestSupport.tcpEndpoint();
-        String callbackEndpoint = TestSupport.tcpEndpoint();
-        CountDownLatch delivered = new CountDownLatch(1);
-        AtomicReference<ServiceEvent> eventRef = new AtomicReference<>();
-        AtomicReference<Thread> callbackThread = new AtomicReference<>();
-        AtomicReference<String> rejectionMessage = new AtomicReference<>();
-        AtomicReference<Throwable> callbackError = new AtomicReference<>();
-        Thread testThread = Thread.currentThread();
-
-        try (Context ctx = new Context();
-             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SPOT,
-               "svc-monitor-callback");
-             SpotNode node = new SpotNode(ctx);
-             PairSocket callbackLeft = new PairSocket(ctx);
-             PairSocket callbackRight = new PairSocket(ctx);
-             var callbackLeftMon = callbackLeft.monitorOpen(
-               MonitorEventType.CONNECTION_READY);
-             var callbackRightMon = callbackRight.monitorOpen(
-               MonitorEventType.CONNECTION_READY);
-            ServiceMonitor monitor = discovery.monitorOpen()) {
-            monitor.onEvent(event -> {
-                try {
-                    callbackThread.set(Thread.currentThread());
-                    eventRef.set(event);
-                    try (Message reply = Message.copyOfUtf8("callback-send")) {
-                        try {
-                            callbackLeft.send(reply);
-                            throw new IllegalStateException(
-                              "blocking send in service monitor callback must be rejected");
-                        } catch (IllegalStateException ex) {
-                            rejectionMessage.set(ex.getMessage());
-                        }
-                    }
-                } catch (Throwable t) {
-                    callbackError.set(t);
-                } finally {
-                    delivered.countDown();
-                }
-            });
-
-            callbackLeft.bind(callbackEndpoint);
-            callbackRight.connect(callbackEndpoint);
-            callbackLeftMon.recv();
-            callbackRightMon.recv();
-            registry.bind(registryPub, registryRouter);
-            discovery.connectRegistry(registryRouter);
-            node.attachDiscovery(discovery);
-            node.bind(serviceEndpoint);
-
-            assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,
-                TimeUnit.MILLISECONDS), "service monitor callback timed out");
-            ServiceEvent event = eventRef.get();
-            assertNotNull(event);
-            assertEquals(ServiceEventType.DISCOVERY_SERVICE_UP,
-                event.eventType());
-            assertEquals("svc-monitor-callback", event.serviceName());
-            assertNull(callbackError.get(), "callback raised: "
-                + callbackError.get());
-            Thread observedThread = callbackThread.get();
-            assertNotNull(observedThread);
-            assertTrue(observedThread != testThread);
-            assertTrue(observedThread.getName().startsWith(
-                "zlink-service-monitor-callback"));
-            assertNotNull(rejectionMessage.get());
-            assertTrue(rejectionMessage.get().contains("blocking send"));
-            assertTrue(rejectionMessage.get().contains("callback context"));
         }
     }
 
@@ -219,15 +132,6 @@ class ServiceContractsIntegrationTest {
             assertTrue(node.subjectsSnapshot().stream()
                 .anyMatch(entry -> "spot-callback-topic".equals(entry.subject())));
             assertNull(callbackThread.get());
-        }
-    }
-
-    private static boolean await(CountDownLatch latch) {
-        try {
-            return latch.await(TestSupport.DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("await interrupted", ex);
         }
     }
 

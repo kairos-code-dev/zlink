@@ -95,7 +95,7 @@ void ignore_spot_handler (const zlink_routing_id_t *,
 void *create_spot_node (void *ctx_, const char *service_name_)
 {
     LIBZLINK_UNUSED (service_name_);
-    void *node = zlink_spot_node_new (ctx_);
+    void *node = zlink_spot_node_new (ctx_, NULL);
     if (!node)
         return NULL;
 

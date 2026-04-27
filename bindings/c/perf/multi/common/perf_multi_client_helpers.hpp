@@ -289,7 +289,8 @@ inline bool create_client_sockets (
   int client_socket_type,
   size_t msg_size,
   std::vector<void *> *sockets_out,
-  std::vector<ready_monitor_t> *monitors_out)
+  std::vector<ready_monitor_t> *monitors_out,
+  bool print_auto_hwm_snapshot = true)
 {
     if (!sockets_out)
         return false;
@@ -305,7 +306,12 @@ inline bool create_client_sockets (
             return false;
 
         apply_benchmark_socket_options (
-          sock, settings.hwm, transport, client_socket_type, msg_size);
+          sock,
+          settings.hwm,
+          transport,
+          static_cast<zlink_socket_type_t> (client_socket_type),
+          msg_size,
+          print_auto_hwm_snapshot);
 
         if (client_socket_type == ZLINK_SOCKET_ROUTER
             || client_socket_type == ZLINK_SOCKET_DEALER) {
@@ -383,6 +389,33 @@ inline bool create_client_sockets (
     }
 
     return true;
+}
+
+inline void refresh_connected_client_auto_hwm (
+  const std::vector<void *> &sockets,
+  zlink_socket_type_t client_socket_type,
+  int hwm_value,
+  const std::string &transport,
+  size_t msg_size)
+{
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        if (!sockets[i])
+            continue;
+        apply_benchmark_auto_hwm_msg_unit (
+          sockets[i], client_socket_type, msg_size);
+        apply_benchmark_hwm (sockets[i], hwm_value);
+    }
+
+    if (!sockets.empty () && sockets[0]) {
+        perf_print_auto_hwm_snapshot (
+          sockets[0],
+          false,
+          "endpoint",
+          transport,
+          false,
+          msg_size,
+          client_socket_type);
+    }
 }
 
 inline bool make_routing_id (const char *text, zlink_routing_id_t *routing_id)

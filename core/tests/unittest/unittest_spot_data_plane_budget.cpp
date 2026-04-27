@@ -27,7 +27,9 @@ int expected_mesh_pub_sndhwm (size_t managed_connections_ = 0,
     zlink::auto_hwm_socket_plan_t socket_plan;
     zlink::auto_hwm_socket_plan_for_role (
       context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
-      managed_connections_, active_connections_, &socket_plan);
+      managed_connections_, active_connections_, &socket_plan, 0, -1, -1,
+      false, false, zlink::auto_hwm_scope_none, 1, true,
+      ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
     return socket_plan.sndhwm;
 }
 
@@ -43,7 +45,10 @@ int expected_spot_hwm (zlink::auto_hwm_role_t role_,
     zlink::auto_hwm_socket_plan_t socket_plan;
     zlink::auto_hwm_socket_plan_for_role (context_plan, role_, socket_type_,
                                           managed_connections_,
-                                          active_connections_, &socket_plan);
+                                          active_connections_, &socket_plan, 0,
+                                          -1, -1, false, false,
+                                          zlink::auto_hwm_scope_none, 1, true,
+                                          ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
     return socket_plan.sndhwm;
 }
 
@@ -358,7 +363,7 @@ void test_spot_node_hwm_options_round_trip_public_api ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     int topic_send = 111;
@@ -404,7 +409,7 @@ void test_spot_node_hwm_options_expose_defaults ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     const zlink_spot_node_option_t options[] = {

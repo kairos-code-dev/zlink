@@ -47,11 +47,71 @@ type SpotNode struct {
 	spots   map[*spotCore]struct{}
 }
 
+type SpotNodeMode int
+
+const (
+	SpotNodeModePubSub SpotNodeMode = SpotNodeMode(C.ZLINK_SPOT_NODE_MODE_PUBSUB)
+	SpotNodeModeRouted SpotNodeMode = SpotNodeMode(C.ZLINK_SPOT_NODE_MODE_ROUTED)
+	SpotNodeModeAll    SpotNodeMode = SpotNodeMode(C.ZLINK_SPOT_NODE_MODE_ALL)
+)
+
+type SocketType int
+
+const (
+	SocketTypeAny    SocketType = SocketType(C.ZLINK_SOCKET_ANY)
+	SocketTypePair   SocketType = SocketType(C.ZLINK_SOCKET_PAIR)
+	SocketTypePub    SocketType = SocketType(C.ZLINK_SOCKET_PUB)
+	SocketTypeSub    SocketType = SocketType(C.ZLINK_SOCKET_SUB)
+	SocketTypeDealer SocketType = SocketType(C.ZLINK_SOCKET_DEALER)
+	SocketTypeRouter SocketType = SocketType(C.ZLINK_SOCKET_ROUTER)
+	SocketTypeXPub   SocketType = SocketType(C.ZLINK_SOCKET_XPUB)
+	SocketTypeXSub   SocketType = SocketType(C.ZLINK_SOCKET_XSUB)
+	SocketTypeStream SocketType = SocketType(C.ZLINK_SOCKET_STREAM)
+)
+
+type SpotNodeSocketOwner int
+
+const (
+	SpotNodeSocketOwnerAny  SpotNodeSocketOwner = SpotNodeSocketOwner(C.ZLINK_SPOT_NODE_SOCKET_OWNER_ANY)
+	SpotNodeSocketOwnerNode SpotNodeSocketOwner = SpotNodeSocketOwner(C.ZLINK_SPOT_NODE_SOCKET_OWNER_NODE)
+	SpotNodeSocketOwnerSpot SpotNodeSocketOwner = SpotNodeSocketOwner(C.ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT)
+)
+
+type SpotNodeOptions struct {
+	Mode SpotNodeMode
+}
+
+type SpotNodeSocketSnapshotFilter struct {
+	Owner      SpotNodeSocketOwner
+	SocketType SocketType
+	SocketName string
+}
+
+type SpotNodeSocketSnapshotEntry struct {
+	Owner          SpotNodeSocketOwner
+	OwnerID        uint64
+	OwnerName      string
+	SocketName     string
+	SocketType     SocketType
+	AutoHwmVisible bool
+	Snapshot       MonitorSnapshot
+}
+
 func newSpotNode(ctx *Context) (*SpotNode, error) {
+	return newSpotNodeWithOptions(ctx, nil)
+}
+
+func newSpotNodeWithOptions(ctx *Context, options *SpotNodeOptions) (*SpotNode, error) {
 	if ctx == nil || ctx.closed {
 		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	handle := C.zlink_spot_node_new(ctx.raw())
+	var nativeOptions C.zlink_spot_node_options_t
+	var optionsPtr *C.zlink_spot_node_options_t
+	if options != nil {
+		nativeOptions.mode = C.zlink_spot_node_mode_t(options.Mode)
+		optionsPtr = &nativeOptions
+	}
+	handle := C.zlink_spot_node_new(ctx.raw(), optionsPtr)
 	if handle == nil {
 		return nil, configErrorFromErrno(currentErrno())
 	}

@@ -275,15 +275,24 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                   fanout_sndhwm, &fanout_sndhwm);
 
     apply_common_internal_opts (state_->ctrl, linger);
-    apply_common_internal_opts (state_->mesh_pub, linger);
-    apply_common_internal_opts (state_->mesh_xsub, linger);
-    apply_common_internal_opts (state_->peer_ctrl_pub, linger);
-    apply_common_internal_opts (state_->peer_ctrl_sub, linger);
-    apply_common_internal_opts (state_->route_ingress, linger);
-    apply_common_internal_opts (state_->peer_route_ingress, linger);
-    apply_common_internal_opts (state_->node_router, linger);
-    apply_common_internal_opts (state_->ingress, linger);
-    apply_common_internal_opts (state_->fanout, linger);
+    if (state_->mesh_pub)
+        apply_common_internal_opts (state_->mesh_pub, linger);
+    if (state_->mesh_xsub)
+        apply_common_internal_opts (state_->mesh_xsub, linger);
+    if (state_->peer_ctrl_pub)
+        apply_common_internal_opts (state_->peer_ctrl_pub, linger);
+    if (state_->peer_ctrl_sub)
+        apply_common_internal_opts (state_->peer_ctrl_sub, linger);
+    if (state_->route_ingress)
+        apply_common_internal_opts (state_->route_ingress, linger);
+    if (state_->peer_route_ingress)
+        apply_common_internal_opts (state_->peer_route_ingress, linger);
+    if (state_->node_router)
+        apply_common_internal_opts (state_->node_router, linger);
+    if (state_->ingress)
+        apply_common_internal_opts (state_->ingress, linger);
+    if (state_->fanout)
+        apply_common_internal_opts (state_->fanout, linger);
     apply_internal_transport_buffers (ctx, state_->ctrl, auto_hwm_role_control,
                                       ZLINK_CORE_SOCKET_PAIR,
                                       connected_peer_count, active_peer_count);
@@ -325,11 +334,14 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                       local_sub_count);
 
     state_->ctrl->connect (runtime_->data_ctrl_endpoint.c_str ());
+    if (state_->ingress) {
     state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &ingress_rcvhwm,
                                  sizeof (ingress_rcvhwm));
     state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
                                  sizeof (neg_one));
     state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "", 0);
+    }
+    if (state_->fanout) {
     state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &fanout_sndhwm,
                                 sizeof (fanout_sndhwm));
     state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
@@ -338,17 +350,24 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                 sizeof (zero));
     state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_XPUB_NODROP, &one,
                                 sizeof (one));
+    }
+    if (state_->mesh_pub) {
     state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &mesh_pub_sndhwm,
                                   sizeof (mesh_pub_sndhwm));
     state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                   sizeof (neg_one));
+    }
+    if (state_->mesh_xsub) {
     state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                    &mesh_xsub_rcvhwm,
                                    sizeof (mesh_xsub_rcvhwm));
     state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                    sizeof (neg_one));
+    }
+    if (state_->peer_ctrl_pub)
     state_->peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                        sizeof (neg_one));
+    if (state_->peer_ctrl_sub) {
     state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                        &peer_ctrl_rcvhwm,
                                        sizeof (peer_ctrl_rcvhwm));
@@ -356,17 +375,23 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                        spot_control_protocol::ctrl_prefix,
                                        strlen (
                                          spot_control_protocol::ctrl_prefix));
+    }
+    if (state_->route_ingress) {
     state_->route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                        &route_ingress_rcvhwm,
                                        sizeof (route_ingress_rcvhwm));
     state_->route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
                                        sizeof (neg_one));
+    }
+    if (state_->peer_route_ingress) {
     state_->peer_route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                             &route_ingress_rcvhwm,
                                             sizeof (route_ingress_rcvhwm));
     state_->peer_route_ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO,
                                             &neg_one,
                                             sizeof (neg_one));
+    }
+    if (state_->node_router) {
     state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                      &node_router_rcvhwm,
                                      sizeof (node_router_rcvhwm));
@@ -377,9 +402,11 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                      sizeof (neg_one));
     state_->node_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                      sizeof (neg_one));
+    }
     state_->mesh_pub_budget.current_sndhwm =
-      read_socket_int_option (state_->mesh_pub, ZLINK_INTERNAL_OPT_SNDHWM,
-                              &mesh_pub_sndhwm)
+      state_->mesh_pub
+        && read_socket_int_option (state_->mesh_pub, ZLINK_INTERNAL_OPT_SNDHWM,
+                                   &mesh_pub_sndhwm)
         ? mesh_pub_sndhwm
         : 0;
     return 0;
@@ -447,27 +474,38 @@ int spot_data_plane_t::initialize_runtime (
         return -1;
     }
 
+    const bool pubsub_enabled = node_->pubsub_enabled ();
+    const bool routed_enabled = node_->routed_enabled ();
+
     state_out_->ctrl = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
-    state_out_->mesh_pub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
-    state_out_->mesh_xsub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_XSUB);
+    if (pubsub_enabled) {
+        state_out_->mesh_pub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+        state_out_->mesh_xsub =
+          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_XSUB);
+        state_out_->ingress = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
+        state_out_->fanout = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+    }
     state_out_->peer_ctrl_pub =
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
     state_out_->peer_ctrl_sub =
       node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
-    state_out_->route_ingress =
-      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
-    state_out_->peer_route_ingress =
-      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
-    state_out_->node_router =
-      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
-    state_out_->ingress = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
-    state_out_->fanout = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+    if (routed_enabled) {
+        state_out_->route_ingress =
+          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
+        state_out_->peer_route_ingress =
+          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
+        state_out_->node_router =
+          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
+    }
 
-    if (!state_out_->ctrl || !state_out_->mesh_pub || !state_out_->mesh_xsub
+    if (!state_out_->ctrl
+        || (pubsub_enabled
+            && (!state_out_->mesh_pub || !state_out_->mesh_xsub
+                || !state_out_->ingress || !state_out_->fanout))
         || !state_out_->peer_ctrl_pub || !state_out_->peer_ctrl_sub
-        || !state_out_->route_ingress || !state_out_->peer_route_ingress
-        || !state_out_->node_router
-        || !state_out_->ingress || !state_out_->fanout) {
+        || (routed_enabled
+            && (!state_out_->route_ingress || !state_out_->peer_route_ingress
+                || !state_out_->node_router))) {
         const int err = errno != 0 ? errno : ENOMEM;
         if (state_out_->ctrl) {
             (void) state_out_->ctrl->connect (runtime_->data_ctrl_endpoint.c_str ());
@@ -487,15 +525,22 @@ int spot_data_plane_t::initialize_runtime (
     }
 
     state_out_->ctrl->set_auto_hwm_policy_enabled (false);
-    state_out_->mesh_pub->set_auto_hwm_policy_enabled (false);
-    state_out_->mesh_xsub->set_auto_hwm_policy_enabled (false);
+    if (state_out_->mesh_pub)
+        state_out_->mesh_pub->set_auto_hwm_policy_enabled (false);
+    if (state_out_->mesh_xsub)
+        state_out_->mesh_xsub->set_auto_hwm_policy_enabled (false);
     state_out_->peer_ctrl_pub->set_auto_hwm_policy_enabled (false);
     state_out_->peer_ctrl_sub->set_auto_hwm_policy_enabled (false);
-    state_out_->route_ingress->set_auto_hwm_policy_enabled (false);
-    state_out_->peer_route_ingress->set_auto_hwm_policy_enabled (false);
-    state_out_->node_router->set_auto_hwm_policy_enabled (false);
-    state_out_->ingress->set_auto_hwm_policy_enabled (false);
-    state_out_->fanout->set_auto_hwm_policy_enabled (false);
+    if (state_out_->route_ingress)
+        state_out_->route_ingress->set_auto_hwm_policy_enabled (false);
+    if (state_out_->peer_route_ingress)
+        state_out_->peer_route_ingress->set_auto_hwm_policy_enabled (false);
+    if (state_out_->node_router)
+        state_out_->node_router->set_auto_hwm_policy_enabled (false);
+    if (state_out_->ingress)
+        state_out_->ingress->set_auto_hwm_policy_enabled (false);
+    if (state_out_->fanout)
+        state_out_->fanout->set_auto_hwm_policy_enabled (false);
 
     {
         scoped_lock_t lock (node_->_sync);
@@ -523,11 +568,12 @@ int spot_data_plane_t::initialize_runtime (
 
     configure_runtime_sockets (runtime_, state_out_);
 
-    state_out_->mesh_xsub_monitor =
-      static_cast<socket_base_t *> (open_socket_monitor_bridge (
-        state_out_->mesh_xsub,
-        ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
-    if (!state_out_->mesh_xsub_monitor) {
+    if (state_out_->mesh_xsub)
+        state_out_->mesh_xsub_monitor =
+          static_cast<socket_base_t *> (open_socket_monitor_bridge (
+            state_out_->mesh_xsub,
+            ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
+    if (state_out_->mesh_xsub && !state_out_->mesh_xsub_monitor) {
         const int err = errno != 0 ? errno : EIO;
         (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
                                                              err);
@@ -546,31 +592,41 @@ int spot_data_plane_t::initialize_runtime (
     state_out_->poller = new (std::nothrow) socket_poller_t ();
     if (!state_out_->poller
         || state_out_->poller->add (state_out_->ctrl, NULL, ZLINK_POLLIN) != 0
-        || state_out_->poller->add (state_out_->ingress, NULL, ZLINK_POLLIN)
-             != 0
-        || state_out_->poller->add (state_out_->mesh_pub, NULL, 0) != 0
-        || state_out_->poller->add (state_out_->mesh_xsub, NULL, ZLINK_POLLIN)
-             != 0
-        || state_out_->poller->add (state_out_->peer_ctrl_sub, NULL,
-                                    ZLINK_POLLIN)
-             != 0
-        || state_out_->poller->add (state_out_->route_ingress, NULL,
-                                    ZLINK_POLLIN)
-             != 0
-        || state_out_->poller->add (state_out_->peer_route_ingress, NULL,
-                                    ZLINK_POLLIN)
-             != 0
-        || state_out_->poller->add (state_out_->node_router, NULL,
-                                    ZLINK_POLLIN)
-             != 0
-        || state_out_->poller->add (state_out_->mesh_xsub_monitor, NULL,
-                                    ZLINK_POLLIN)
-             != 0) {
+        || (state_out_->ingress
+            && state_out_->poller->add (state_out_->ingress, NULL, ZLINK_POLLIN)
+                 != 0)
+        || (state_out_->mesh_pub
+            && state_out_->poller->add (state_out_->mesh_pub, NULL, 0) != 0)
+        || (state_out_->mesh_xsub
+            && state_out_->poller->add (state_out_->mesh_xsub, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)
+        || (state_out_->peer_ctrl_sub
+            && state_out_->poller->add (state_out_->peer_ctrl_sub, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)
+        || (state_out_->route_ingress
+            && state_out_->poller->add (state_out_->route_ingress, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)
+        || (state_out_->peer_route_ingress
+            && state_out_->poller->add (state_out_->peer_route_ingress, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)
+        || (state_out_->node_router
+            && state_out_->poller->add (state_out_->node_router, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)
+        || (state_out_->mesh_xsub_monitor
+            && state_out_->poller->add (state_out_->mesh_xsub_monitor, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)) {
         const int err = errno != 0 ? errno : ENOMEM;
         (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
                                                              err);
-        (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
-                                               ZLINK_CORE_SOCKET_PAIR);
+        if (state_out_->mesh_xsub)
+            (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
+                                                   ZLINK_CORE_SOCKET_PAIR);
         close_runtime_sockets (node_, state_out_);
         {
             scoped_lock_t lock (node_->_sync);
@@ -583,24 +639,32 @@ int spot_data_plane_t::initialize_runtime (
         return -1;
     }
 
-    if (subscribe_runtime_mesh_topics (runtime_, state_out_->mesh_xsub) != 0
-        || state_out_->route_ingress->bind (
-             runtime_->route_ingress_endpoint.c_str ())
-             != 0
-        || state_out_->node_router->bind (runtime_->node_router_endpoint.c_str ())
-             != 0
-        || state_out_->ingress->bind (runtime_->pub_ingress_endpoint.c_str ())
-             != 0
-        || state_out_->fanout->bind (runtime_->sub_fanout_endpoint.c_str ())
-             != 0
-        || zlink_spot_install_peer_route_dispatch (
-             node_, state_out_->peer_route_ingress)
-             != 0) {
+    if ((state_out_->mesh_xsub
+         && subscribe_runtime_mesh_topics (runtime_, state_out_->mesh_xsub) != 0)
+        || (state_out_->route_ingress
+            && state_out_->route_ingress->bind (
+                 runtime_->route_ingress_endpoint.c_str ())
+                 != 0)
+        || (state_out_->node_router
+            && state_out_->node_router->bind (
+                 runtime_->node_router_endpoint.c_str ())
+                 != 0)
+        || (state_out_->ingress
+            && state_out_->ingress->bind (runtime_->pub_ingress_endpoint.c_str ())
+                 != 0)
+        || (state_out_->fanout
+            && state_out_->fanout->bind (runtime_->sub_fanout_endpoint.c_str ())
+                 != 0)
+        || (state_out_->peer_route_ingress
+            && zlink_spot_install_peer_route_dispatch (
+                 node_, state_out_->peer_route_ingress)
+                 != 0)) {
         const int err = errno != 0 ? errno : EIO;
         (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
                                                              err);
-        (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
-                                               ZLINK_CORE_SOCKET_PAIR);
+        if (state_out_->mesh_xsub)
+            (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
+                                                   ZLINK_CORE_SOCKET_PAIR);
         close_runtime_sockets (node_, state_out_);
         {
             scoped_lock_t lock (node_->_sync);
@@ -615,8 +679,9 @@ int spot_data_plane_t::initialize_runtime (
 
     if (spot_data_plane_protocol_t::send_ok_reply (state_out_->ctrl) != 0) {
         const int err = errno != 0 ? errno : EIO;
-        (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
-                                               ZLINK_CORE_SOCKET_PAIR);
+        if (state_out_->mesh_xsub)
+            (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
+                                                   ZLINK_CORE_SOCKET_PAIR);
         close_runtime_sockets (node_, state_out_);
         {
             scoped_lock_t lock (node_->_sync);

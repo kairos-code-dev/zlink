@@ -6,7 +6,6 @@ typedef struct
 {
     void *provider_discovery;
     void *client_discovery;
-    void *client_monitor;
     void *provider;
     char registry_router[256];
     char service_endpoint[256];
@@ -28,9 +27,8 @@ static void discovery_registry_client_thread (void *arg_)
 {
     discovery_registry_sample_t *sample = (discovery_registry_sample_t *) arg_;
 
-    sample->discovered = wait_for_service_monitor_event_service (
-      sample->client_monitor, ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP,
-      k_service_name, 5000);
+    sample->discovered =
+      wait_for_discovery_service (sample->client_discovery, k_service_name, 5000);
 }
 
 int main (void)
@@ -70,8 +68,6 @@ int main (void)
     assert (zlink_discovery_connect_registry (
               sample.client_discovery, sample.registry_router)
             == ZLINK_CONNECT_OK);
-    sample.client_monitor = open_service_monitor (
-      sample.client_discovery, ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP);
 
     void *provider = zlink_thread_start (
       &discovery_registry_provider_thread, &sample);
@@ -88,7 +84,6 @@ int main (void)
             k_service_name);
 
     zlink_close (sample.provider);
-    zlink_monitor_close (&sample.client_monitor);
     zlink_discovery_destroy (&sample.client_discovery);
     zlink_discovery_destroy (&sample.provider_discovery);
     zlink_registry_destroy (&registry);

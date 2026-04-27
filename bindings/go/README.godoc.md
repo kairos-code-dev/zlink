@@ -38,7 +38,7 @@ The exported Go package reflects the shared bindings policy in
   `TopicMessage`, `SubscriptionEvent`, and `MonitorEvent`
 - raw option bags and raw flags are not exposed publicly
 - socket-specific capabilities are exposed only on concrete socket types
-- service monitor entry points are discovery-only
+- service-layer observability uses snapshot/query APIs
 - monitor open APIs take typed masks and default to `ALL` when omitted
 - callback delivery hops off native callback threads onto Go-managed
   dispatcher goroutines before user handlers run

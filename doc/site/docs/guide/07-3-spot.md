@@ -32,7 +32,7 @@ activation or hidden resource allocation.
 
 ```c
 void *ctx = zlink_ctx_new();
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:7001");
 
 void *spot = zlink_spot_new(node);
@@ -49,13 +49,26 @@ zlink_spot_node_destroy(&node);
 zlink_ctx_term(&ctx);
 ```
 
+Passing `NULL` keeps both topic and routed features enabled. If a process only
+needs one plane, pass `zlink_spot_node_options_t` at creation time:
+
+```c
+zlink_spot_node_options_t opts = {
+  .mode = ZLINK_SPOT_NODE_MODE_PUBSUB
+};
+void *node = zlink_spot_node_new(ctx, &opts);
+```
+
+Use `ZLINK_SPOT_NODE_MODE_ROUTED` for routed-only nodes. Disabled features fail
+with `ENOTSUP`; they do not create hidden internal sockets.
+
 ## 3. Bringing a node online
 
 ### 3.1 Manual peer wiring
 
 ```c
-void *a = zlink_spot_node_new(ctx);
-void *b = zlink_spot_node_new(ctx);
+void *a = zlink_spot_node_new(ctx, NULL);
+void *b = zlink_spot_node_new(ctx, NULL);
 
 zlink_spot_node_bind(a, "tcp://127.0.0.1:7101");
 zlink_spot_node_bind(b, "tcp://127.0.0.1:7102");
@@ -69,7 +82,7 @@ This is fine for tests and fixed topologies.
 ### 3.2 Discovery-backed wiring
 
 ```c
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
 
 void *discovery = zlink_discovery_new(
@@ -173,7 +186,7 @@ Two rules matter:
 ### 5.1 Automatic path
 
 ```c
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, NULL);
 
 void *spot_discovery = zlink_discovery_new(
   ctx,
@@ -373,7 +386,7 @@ Treat that `PUB` as a dedicated ingress source for the node.
 
 ## 10. Observability
 
-Use node snapshots and the generic service monitor for status and debugging.
+Use node snapshots and query results for status and debugging.
 
 ```c
 zlink_spot_node_status_t status;

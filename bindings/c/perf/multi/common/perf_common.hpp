@@ -223,28 +223,6 @@ inline bool open_configured_socket_monitor(void *socket_,
     return true;
 }
 
-inline bool open_configured_service_monitor(void *service_,
-                                            uint64_t events_,
-                                            ready_monitor_t *out_)
-{
-    if (!service_ || events_ == 0 || !out_)
-        return false;
-
-    out_->owner = service_;
-    out_->monitor = NULL;
-
-    zlink_service_monitor_open_options_t opts;
-    std::memset(&opts, 0, sizeof(opts));
-    opts.events = events_;
-    void *monitor = zlink_service_monitor_open(service_, &opts);
-    if (!monitor)
-        return false;
-
-    configure_perf_monitor_socket(monitor);
-    out_->monitor = monitor;
-    return true;
-}
-
 inline bool is_socket_monitor_error_event(uint64_t event_)
 {
     switch (event_) {
@@ -309,56 +287,6 @@ inline bool wait_for_socket_monitor_event(ready_monitor_t &monitor_,
                 return true;
             if (is_socket_monitor_error_event(event.event)) {
                 errno = event.value > 0 ? static_cast<int>(event.value) : EIO;
-                return false;
-            }
-        }
-    }
-
-    return false;
-}
-
-inline bool wait_for_service_monitor_event(ready_monitor_t &monitor_,
-                                           uint32_t success_event_,
-                                           uint32_t error_event_,
-                                           int timeout_ms_)
-{
-    if (!monitor_.monitor || success_event_ == 0)
-        return false;
-
-    const steady_clock_t::time_point deadline =
-      steady_clock_t::now()
-      + milliseconds_t(timeout_ms_ > 0 ? timeout_ms_ : 1);
-
-    while (steady_clock_t::now() < deadline) {
-        zlink_pollitem_t item = {monitor_.monitor, 0, ZLINK_POLLIN, 0};
-        const long timeout_ms = std::chrono::duration_cast<milliseconds_t>(
-                                  deadline - steady_clock_t::now())
-                                  .count();
-        const int poll_rc =
-          perf_socket_poll(
-            &item, 1, timeout_ms > 0 ? timeout_ms : 1);
-        if (poll_rc < 0) {
-            if (zlink_errno() == EINTR)
-                continue;
-            return false;
-        }
-        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        for (;;) {
-            zlink_service_monitor_event_t event;
-            if (zlink_service_monitor_recv(
-                  monitor_.monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT)
-                != 0) {
-                const int err = zlink_errno();
-                if (err == EAGAIN || err == EINTR)
-                    break;
-                return false;
-            }
-            if (event.event_type == success_event_)
-                return true;
-            if (error_event_ != 0 && event.event_type == error_event_) {
-                errno = event.error_code != 0 ? event.error_code : EIO;
                 return false;
             }
         }

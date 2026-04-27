@@ -345,7 +345,7 @@ void send_malformed_router_reply (void *router_,
 void test_spot_timer_dispatch_event_and_recv ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     void *timer = zlink_spot_timer_new (spot);
     TEST_ASSERT_NOT_NULL (ctx);
@@ -384,7 +384,7 @@ void test_spot_timer_dispatch_event_and_recv ()
 void test_spot_dispatch_subscribe_recv_inside_callback ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *sub_spot = zlink_spot_new (node);
     void *pub_spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (ctx);
@@ -431,7 +431,7 @@ void test_spot_dispatch_subscribe_recv_inside_callback ()
 void test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *sub_spot = zlink_spot_new (node);
     void *idle_spot = zlink_spot_new (node);
     void *pub_spot = zlink_spot_new (node);
@@ -488,7 +488,7 @@ void test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot ()
 void test_spot_dispatch_subscribe_drain_until_eagain ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *sub_spot = zlink_spot_new (node);
     void *pub_spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (ctx);
@@ -563,7 +563,7 @@ void test_spot_dispatch_subscribe_drain_until_eagain ()
 void test_spot_dispatch_routed_recv_inside_callback ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *receiver = zlink_spot_new (node);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (ctx);
@@ -616,7 +616,7 @@ void test_spot_dispatch_routed_recv_inside_callback ()
 void test_spot_dispatch_routed_drain_until_eagain ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *receiver = zlink_spot_new (node);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (ctx);
@@ -694,7 +694,7 @@ void test_spot_dispatch_routed_drain_until_eagain ()
 void test_spot_dispatch_channel_reply_inside_callback ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
@@ -778,7 +778,7 @@ void test_spot_dispatch_channel_reply_inside_callback ()
 void test_spot_dispatch_callbacks_are_serialized ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     void *pub_spot = zlink_spot_new (node);
     void *timer = zlink_spot_timer_new (spot);
@@ -855,7 +855,7 @@ void test_spot_dispatch_callbacks_are_serialized ()
 void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     void *dealer_a = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *dealer_b = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
@@ -956,7 +956,7 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
 void test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
@@ -1027,7 +1027,7 @@ void test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion ()
 void test_spot_dispatch_channel_reply_close_late_reply_no_double_completion ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
@@ -1100,7 +1100,7 @@ void test_spot_dispatch_channel_reply_close_late_reply_no_double_completion ()
 void test_spot_dispatch_channel_reply_malformed_reply_protocol_error_once ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);

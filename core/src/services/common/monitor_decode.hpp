@@ -135,31 +135,6 @@ static inline int recv_socket_monitor_event (void *monitor_socket_,
     return 0;
 }
 
-static inline int recv_service_monitor_event (void *monitor_,
-                                              zlink_service_event_t *event_,
-                                              int flags_)
-{
-    if (!monitor_ || !event_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    zlink_msg_t msg;
-    zlink_msg_init (&msg);
-    const int rc = recv_msg_internal (monitor_, &msg, flags_);
-    if (rc < 0) {
-        zlink_msg_close (&msg);
-        return -1;
-    }
-    if (zlink_msg_size (&msg) != sizeof (*event_)) {
-        zlink_msg_close (&msg);
-        errno = EPROTO;
-        return -1;
-    }
-    memcpy (event_, zlink_msg_data (&msg), sizeof (*event_));
-    zlink_msg_close (&msg);
-    return 0;
-}
 }
 
 #endif

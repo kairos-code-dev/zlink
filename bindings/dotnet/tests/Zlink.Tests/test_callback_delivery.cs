@@ -139,65 +139,6 @@ public sealed class test_callback_delivery
     }
 
     [Fact]
-    public void service_monitor_event_hops_to_registered_context()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var registry = new Registry(ctx);
-        registry.SetBroadcastInterval(50);
-
-        string registryPub = CoreTestSupport.NewEndpoint("tcp",
-            "callback-delivery-service-pub");
-        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
-            "callback-delivery-service-router");
-        registry.Bind(registryPub, registryRouter);
-
-        using var discovery = new Discovery(ctx, ServiceType.Socket,
-            "callback-delivery-service");
-        discovery.ConnectRegistry(registryRouter);
-
-        using var callbackSignal = new ManualResetEventSlim(false);
-        using var callbackContext = new SingleThreadSynchronizationContext();
-        var provider = new DealerSocket(ctx);
-        provider.AttachDiscovery(discovery);
-        ServiceMonitorEvent? observed = null;
-        int callbackThreadId = -1;
-
-        ServiceMonitor monitor = callbackContext.Invoke(() =>
-        {
-            ServiceMonitor opened = discovery.MonitorOpen();
-            opened.OnEvent(evt =>
-            {
-                callbackThreadId = Environment.CurrentManagedThreadId;
-                observed = evt;
-                callbackSignal.Set();
-            });
-            return opened;
-        });
-
-        try
-        {
-            string providerEndpoint = CoreTestSupport.NewEndpoint("tcp",
-                "callback-delivery-service-provider");
-            provider.Bind(providerEndpoint);
-
-            Assert.True(callbackSignal.Wait(5000));
-            Assert.Equal(callbackContext.ThreadId, callbackThreadId);
-            Assert.NotNull(observed);
-            Assert.Equal<ServiceEventType>(ServiceEventType.DiscoveryServiceUp,
-                observed!.EventType);
-            Assert.Equal("callback-delivery-service", observed.ServiceName);
-        }
-        finally
-        {
-            monitor.Dispose();
-            Assert.Throws<ZlinkCloseException>(() => provider.Close());
-        }
-    }
-
-    [Fact]
     public void spot_channel_reply_dispatch_and_callback_hop_to_registered_context()
     {
         if (!CoreTestSupport.IsNativeAvailable())

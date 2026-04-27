@@ -258,172 +258,32 @@ static inline void sample_pause_ms (int timeout_ms_)
     (void) zlink_poll (&item, 0, timeout_ms_, NULL);
 }
 
-/* ---- Service monitor helpers --------------------------------------------- */
+/* ---- Discovery / readiness helpers -------------------------------------- */
 
-static inline void *open_service_monitor (void *target,
-                                          zlink_service_monitor_event_mask_t mask)
+static inline int wait_for_discovery_service (void *discovery_,
+                                              const char *service_name_,
+                                              int timeout_ms)
 {
-    zlink_service_monitor_open_options_t opts;
-    memset (&opts, 0, sizeof (opts));
-    opts.events = mask;
-    void *monitor = zlink_service_monitor_open (target, &opts);
-    assert (monitor != NULL);
-    return monitor;
-}
-
-static inline int
-wait_for_service_monitor_event (void *monitor, uint32_t event_type,
-                                int64_t value, int timeout_ms)
-{
-    void *poller = zlink_poller_new ();
-    assert (poller != NULL);
-    int rc = zlink_poller_add (poller, monitor, NULL, ZLINK_POLLIN);
-    assert (rc == 0);
-
     struct timespec start;
     clock_gettime (CLOCK_MONOTONIC, &start);
 
     for (;;) {
-        struct timespec now;
-        clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
-        long remaining = (long) timeout_ms - elapsed_ms;
-        if (remaining <= 0)
-            break;
-
-        zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
-        if (rc <= 0)
-            continue;
-
-        zlink_service_monitor_event_t event;
-        rc = zlink_service_monitor_recv (monitor, &event, ZLINK_DONTWAIT);
-        if (rc != 0)
-            continue;
-        if (event.event_type != event_type)
-            continue;
-        if (value >= 0 && (int64_t) event.value != value)
-            continue;
-        zlink_poller_destroy (&poller);
-        return 1;
-    }
-
-    zlink_poller_destroy (&poller);
-    return 0;
-}
-
-static inline int
-wait_for_service_monitor_event_endpoint (void *monitor, uint32_t event_type,
-                                         const char *endpoint, int timeout_ms)
-{
-    void *poller = zlink_poller_new ();
-    assert (poller != NULL);
-    int rc = zlink_poller_add (poller, monitor, NULL, ZLINK_POLLIN);
-    assert (rc == 0);
-
-    struct timespec start;
-    clock_gettime (CLOCK_MONOTONIC, &start);
-
-    for (;;) {
-        struct timespec now;
-        clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
-        long remaining = (long) timeout_ms - elapsed_ms;
-        if (remaining <= 0)
-            break;
-
-        zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
-        if (rc <= 0)
-            continue;
-
-        zlink_service_monitor_event_t event;
-        rc = zlink_service_monitor_recv (monitor, &event, ZLINK_DONTWAIT);
-        if (rc != 0)
-            continue;
-        if (event.event_type != event_type)
-            continue;
-        if ((event.detail_flags & ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT) == 0)
-            continue;
-        if (strcmp (event.endpoint, endpoint) != 0)
-            continue;
-        zlink_poller_destroy (&poller);
-        return 1;
-    }
-
-    zlink_poller_destroy (&poller);
-    return 0;
-}
-
-static inline int
-wait_for_service_monitor_event_service (void *monitor,
-                                        uint32_t event_type,
-                                        const char *service_name,
-                                        int timeout_ms)
-{
-    void *poller = zlink_poller_new ();
-    assert (poller != NULL);
-    int rc = zlink_poller_add (poller, monitor, NULL, ZLINK_POLLIN);
-    assert (rc == 0);
-
-    struct timespec start;
-    clock_gettime (CLOCK_MONOTONIC, &start);
-
-    for (;;) {
-        struct timespec now;
-        clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
-        long remaining = (long) timeout_ms - elapsed_ms;
-        if (remaining <= 0)
-            break;
-
-        zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
-        if (rc <= 0)
-            continue;
-
-        zlink_service_monitor_event_t event;
-        rc = zlink_service_monitor_recv (monitor, &event, ZLINK_DONTWAIT);
-        if (rc != 0)
-            continue;
-        if (event.event_type != event_type)
-            continue;
-        if ((event.detail_flags & ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME) == 0)
-            continue;
-        if (strcmp (event.service_name, service_name) != 0)
-            continue;
-        zlink_poller_destroy (&poller);
-        return 1;
-    }
-
-    zlink_poller_destroy (&poller);
-    return 0;
-}
-
-static inline int
-wait_for_service_monitor_state (void *monitor, zlink_monitor_state_mask_t state,
-                                int timeout_ms)
-{
-    void *poller = zlink_poller_new ();
-    assert (poller != NULL);
-    int rc = zlink_poller_add (poller, monitor, NULL, ZLINK_POLLIN);
-    assert (rc == 0);
-
-    struct timespec start;
-    clock_gettime (CLOCK_MONOTONIC, &start);
-
-    for (;;) {
-        zlink_monitor_snapshot_t snapshot;
-        if (zlink_monitor_snapshot (monitor, &snapshot) == 0
-            && (snapshot.state_flags & state) == state) {
-            zlink_poller_destroy (&poller);
-            return 1;
+        size_t count = 0;
+        if (zlink_discovery_member_peers (discovery_, NULL, &count) == 0
+            && count > 0) {
+            zlink_member_peer_entry_t *entries =
+              (zlink_member_peer_entry_t *) calloc (count, sizeof (*entries));
+            assert (entries != NULL);
+            if (zlink_discovery_member_peers (discovery_, entries, &count) == 0) {
+                for (size_t i = 0; i < count; ++i) {
+                    if (!service_name_
+                        || strcmp (entries[i].service_name, service_name_) == 0) {
+                        free (entries);
+                        return 1;
+                    }
+                }
+            }
+            free (entries);
         }
 
         struct timespec now;
@@ -434,37 +294,14 @@ wait_for_service_monitor_state (void *monitor, zlink_monitor_state_mask_t state,
         long remaining = (long) timeout_ms - elapsed_ms;
         if (remaining <= 0)
             break;
-        if (remaining > 200)
-            remaining = 200;
+        if (remaining > 10)
+            remaining = 10;
 
-        zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
-        if (rc <= 0)
-            continue;
-
-        zlink_service_monitor_event_t event;
-        zlink_service_monitor_recv (monitor, &event, ZLINK_DONTWAIT);
+        zlink_pollitem_t item = {NULL, 0, 0, 0};
+        (void) zlink_poll (&item, 0, remaining, NULL);
     }
 
-    zlink_poller_destroy (&poller);
     return 0;
-}
-
-static inline int wait_spot_ready (void *sub_monitor, void *pub_monitor,
-                                   const char *endpoint, int timeout_ms)
-{
-    (void) endpoint;
-    if (!wait_for_service_monitor_event (
-          sub_monitor,
-          ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED, -1,
-          timeout_ms))
-        return 0;
-    if (!wait_for_service_monitor_event (
-          pub_monitor,
-          ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED, -1,
-          timeout_ms))
-        return 0;
-    return 1;
 }
 
 static inline int wait_for_spot_node_subject_ready (void *node_,

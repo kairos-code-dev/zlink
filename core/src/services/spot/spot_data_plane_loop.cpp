@@ -54,14 +54,22 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     }
 
     if (!state_->runtime_sockets_nodelay_applied) {
-        state_->mesh_pub->set_all_pipes_nodelay ();
-        state_->peer_ctrl_pub->set_all_pipes_nodelay ();
-        state_->peer_ctrl_sub->set_all_pipes_nodelay ();
-        state_->route_ingress->set_all_pipes_nodelay ();
-        state_->peer_route_ingress->set_all_pipes_nodelay ();
-        state_->node_router->set_all_pipes_nodelay ();
-        state_->ingress->set_all_pipes_nodelay ();
-        state_->fanout->set_all_pipes_nodelay ();
+        if (state_->mesh_pub)
+            state_->mesh_pub->set_all_pipes_nodelay ();
+        if (state_->peer_ctrl_pub)
+            state_->peer_ctrl_pub->set_all_pipes_nodelay ();
+        if (state_->peer_ctrl_sub)
+            state_->peer_ctrl_sub->set_all_pipes_nodelay ();
+        if (state_->route_ingress)
+            state_->route_ingress->set_all_pipes_nodelay ();
+        if (state_->peer_route_ingress)
+            state_->peer_route_ingress->set_all_pipes_nodelay ();
+        if (state_->node_router)
+            state_->node_router->set_all_pipes_nodelay ();
+        if (state_->ingress)
+            state_->ingress->set_all_pipes_nodelay ();
+        if (state_->fanout)
+            state_->fanout->set_all_pipes_nodelay ();
         state_->runtime_sockets_nodelay_applied = true;
     }
     spot_mesh_pub_budget_t::refresh_live_socket (
@@ -80,6 +88,8 @@ int drain_peer_ctrl_messages (spot_node_t *node_,
                               spot_data_plane_runtime_state_t *state_,
                               spot_data_plane_protocol_state_t *protocol_state_)
 {
+    if (!state_->peer_ctrl_sub)
+        return 0;
     return spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
       state_->peer_ctrl_sub, node_, protocol_state_);
 }
@@ -197,7 +207,7 @@ bool handle_mesh_event (socket_base_t *socket_,
                         bool *running_out_,
                         int *fatal_errno_out_)
 {
-    if (socket_ != state_->mesh_xsub)
+    if (!state_->mesh_xsub || socket_ != state_->mesh_xsub)
         return false;
 
     if (spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
@@ -252,7 +262,7 @@ bool handle_ingress_event (socket_base_t *socket_,
                            bool *running_out_,
                            int *fatal_errno_out_)
 {
-    if (socket_ != state_->ingress)
+    if (!state_->ingress || socket_ != state_->ingress)
         return false;
 
     if (spot_data_plane_forwarder_t::recv_and_forward_ingress (
@@ -328,7 +338,8 @@ int publish_bootstrap_if_due (spot_node_t *node_,
         return 0;
 
     const bool bootstrap_ready = !protocol_state_->peer_ready_filters.empty ();
-    if (spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
+    if (state_->mesh_pub
+        && spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
           runtime_, bootstrap_ready, *last_bootstrap_peer_version_out_)) {
         if (spot_data_plane_protocol_t::publish_bootstrap_descriptor (
               state_->mesh_pub, node_, runtime_)

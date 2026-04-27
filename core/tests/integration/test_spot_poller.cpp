@@ -53,7 +53,7 @@ void ignore_reply (zlink_request_result_t,
 void test_spot_poller_wait_reports_original_spot_for_subscribe ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *sub_spot = zlink_spot_new (node);
     void *pub_spot = zlink_spot_new (node);
     void *poller = zlink_poller_new ();
@@ -108,7 +108,7 @@ void test_spot_poller_wait_reports_original_spot_for_subscribe ()
 void test_spot_poller_wait_reports_original_spot_for_routed_recv ()
 {
     void *ctx = zlink_ctx_new ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *recv_spot = zlink_spot_new (node);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     void *poller = zlink_poller_new ();

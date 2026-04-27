@@ -44,7 +44,6 @@ run_test_file boundary_tests
 run_test_file option_tests
 run_test_file ownership_tests
 run_test_file monitor_tests
-run_test_file service_monitor_tests
 run_test_file service_surface_tests
 
 echo ""

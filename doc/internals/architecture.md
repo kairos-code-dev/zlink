@@ -1245,7 +1245,6 @@ core/
 |   |   +-- common/                  # Common service utilities
 |   |   |   +-- advertise_endpoint.hpp   # Endpoint resolution for service registration
 |   |   |   +-- monitor_decode.hpp       # Monitor event decoding
-|   |   |   +-- service_monitor.cpp/hpp  # Service-level monitor implementation
 |   |   |   +-- service_runtime_base.hpp # Service lifecycle kernel
 |   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
 |   |   +-- discovery/               # Service discovery

@@ -25,7 +25,10 @@ int default_mesh_pub_sndhwm (size_t managed_connections_,
     auto_hwm_socket_plan_t socket_plan;
     auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_fanout,
                                    ZLINK_CORE_SOCKET_PUB, managed_connections_,
-                                   active_connections_, &socket_plan);
+                                   active_connections_, &socket_plan, 0, -1,
+                                   -1, false, false, auto_hwm_scope_none, 1,
+                                   true,
+                                   ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
     return socket_plan.sndhwm;
 }
 

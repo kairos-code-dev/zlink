@@ -1,3 +1,4 @@
+[English](posd-module-structure.md) | [한국어](posd-module-structure.ko.md)
 
 # zlink POSD Module Structure
 
@@ -91,7 +92,7 @@ flowchart TB
 | `socket_api.cpp` · `socket_message_api.cpp` | Socket creation, bind/connect, send/recv |
 | `message_api.cpp` | Message lifecycle |
 | `service_api.cpp` · `service_*_api.cpp` | Service lifecycle, mode transition, handler registration |
-| `monitor_api.cpp` · `monitor_*_api.cpp` | Socket/service monitor open, recv, handler |
+| `monitor_api.cpp` · `monitor_*_api.cpp` | Socket monitor open, recv, handler |
 | `poller_api.cpp` | Poller operations |
 | `zlink_option.cpp` · `zlink_option_*_api.cpp` | Option set/get dispatch |
 
@@ -131,10 +132,23 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | `spot_sub_recv.cpp` | Sub-side recv handling |
 | `spot_data_plane.cpp` | Data plane core |
 | `spot_data_plane_forwarding.cpp` | Ingress/egress message forwarding |
+| `spot_data_plane_pending.cpp` | Pending message copy, reference accounting, and retry queues under backpressure |
 | `spot_data_plane_protocol.cpp` | Control messages, subscription updates, bootstrap |
 | `spot_data_plane_internal.hpp` | Data plane internal state and protocol definitions |
+| `spot_node_state.hpp` | Extracted SpotNode state bundles for discovery, TLS, endpoint, handle, and service attachment |
 | `spot_subject_access.cpp/hpp` | Subject-level API seam (publish, recv, option, handler) |
 | `spot_runtime.cpp/hpp` | Runtime lifecycle |
+
+Recent refactors moved the large internal state structs out of `spot_node_t`
+and into `spot_node_state.hpp`. `spot_node_t` still coordinates lifecycle and
+control flow, but discovery/service-attachment/summary ownership now lives in
+explicit state bundles instead of one monolithic header body.
+
+The data-plane forwarding path follows the same split. `spot_data_plane_forwarding.cpp`
+owns the delivery order between ingress, mesh, and local fanout. `spot_data_plane_pending.cpp`
+owns pending-queue memory admission, copied message parts, per-target reference
+accounting, and retry queue cleanup. This keeps slow-peer backpressure handling
+separate from the high-level forwarding sequence.
 
 **Discovery** (`services/discovery/`):
 
@@ -168,12 +182,17 @@ while common mechanism work is separated into runtime components.
 | `socket_base_monitor.cpp` | Monitor event emission |
 | `socket_base_msg.cpp` | Message send/recv mechanism |
 | `socket_base_routing.cpp` | routing_id handling |
+| `socket_base_request_reply_bridge.cpp` | Typed req/reply and part-helper bridge accessors |
 | `socket_runtime.cpp/hpp` | Runtime component aggregation |
 | `socket_close_ops.cpp/hpp` | Close/wait helper contract |
 
 Family implementations (pair, pub, sub, xpub, xsub, dealer, router, stream)
 focus on routing/subscription/load-balancing semantics and do not
 directly reference runtime internal fields.
+
+`socket_base_t` still acts as the semantic entrypoint, but req/reply state and
+part-helper state now sit behind typed bridge accessors rather than
+`shared_ptr<void>` storage and repeated casts in API code.
 
 ### 3.5 Runtime Core (`core/src/core/`)
 
@@ -192,6 +211,10 @@ owner responsible for validation/apply:
 per-category handlers. `options_dispatch_internal.hpp` provides template
 utilities and dispatch function declarations.
 
+The public-to-internal option mapping in `zlink_option.cpp` is also expressed as
+descriptor tables now, so the API layer does not drift back toward a large
+central switch hub.
+
 #### Logical Multipart Send
 
 `multipart_send_txn.cpp/hpp` is the shared logical multipart send module
@@ -201,6 +224,34 @@ used by `zlink_send` and `spot publish`.
 - blocking: whole-message retry until `sndtimeo` deadline
 - retry targets: `EAGAIN` and `EINTR` only; other errors fail immediately
 - Reuses `libzmq`'s `pipe/router/xpub/dist` lower layer rollback/HWM semantics
+
+#### Request/Reply Runtime Core
+
+`request_reply_runtime_core.hpp` is the small shared runtime core used by both
+socket req/reply and SPOT req/reply.
+
+- request sequence allocation
+- scheduler-backed timeout task creation helpers
+- socket req/reply wire I/O and router recv queue framing live in
+  `socket_request_reply_runtime_io.cpp`.
+
+Protocol-specific framing and routing stay in the socket/spot-specific modules,
+while identical state-machine mechanics live in one place.
+
+`socket_request_reply_dispatch.cpp` now keeps dispatch callback installation,
+pending completion cleanup, and close/drain lifecycle code. Actual
+framing/send/recv code is kept in the runtime I/O module so the dispatch file
+does not grow back into a broad helper collection.
+
+#### Stream / ASIO Policy Seams
+
+STREAM and ASIO fast-path policy defaults are kept out of the main hot-path
+implementation files.
+
+| Module | Role |
+|--------|------|
+| `sockets/stream_batch_policy.hpp` | STREAM batch/headroom defaults |
+| `engine/asio/asio_stream_fastpath_policy.hpp` | ASIO STREAM gather/speculative/drain policy and target-size calculation |
 
 ## 4. Dependency Direction
 
@@ -223,16 +274,16 @@ Prohibited directions:
 
 ```
 core/src/
-  api/           37 files — C API facade (split by concern)
-  core/          61 files — runtime core, options dispatch, multipart send
+  api/           76 files — C API facade (split by concern)
+  core/          76 files — runtime core, options dispatch, multipart send
   engine/asio/   — Boost.Asio execution backbone
-  sockets/       37 files — socket families + base runtime components
+  sockets/       47 files — socket families + base runtime components
   protocol/      — raw/zmp/metadata
   services/
-    common/       9 files — service_runtime_base, service_public_api_guard
+    common/      10 files — service_runtime_base, service_public_api_guard
     control/      2 files — service control runtime
-    discovery/   23 files — discovery + registry access + socket attachment
-    spot/        29 files — node/pub/sub/data_plane/handle/subject_access
+    discovery/   31 files — discovery + registry access + socket attachment
+    spot/        52 files — node/pub/sub/data_plane/handle/subject_access
   transports/    — tcp/ipc/tls/ws/pgm
   utils/         — domain-agnostic utilities
 ```

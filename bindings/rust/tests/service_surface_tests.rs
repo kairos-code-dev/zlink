@@ -24,10 +24,9 @@ fn block_on_ready<F: Future>(future: F) -> F::Output {
 }
 
 #[test]
-fn discovery_service_monitor_and_member_surfaces_exist() {
+fn discovery_member_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let discovery = Discovery::new(&ctx, ServiceType::Socket, "svc").unwrap();
-    let _ = discovery.monitor_open().unwrap();
     let _ = discovery.member_peers().unwrap();
     let _ = discovery.set_dealer_peer_mode(DiscoveryDealerPeerMode::Router);
 }

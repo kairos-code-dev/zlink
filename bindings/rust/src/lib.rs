@@ -43,16 +43,10 @@ pub use error::{
 };
 pub use flags::{RecvFlags, SendFlags};
 pub use message::{IntoMultipart, Message, RoutingId};
-pub use monitor::{
-    MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY, SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED,
-    SERVICE_MONITOR_EVENT_DISCOVERY_ERROR, SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
-    SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN, SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP,
-    ServiceMonitorEventMask, SocketMonitorEventMask,
-};
+pub use monitor::{MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY, SocketMonitorEventMask};
 pub use monitor::{
     MonitorEvent, MonitorEventType, MonitorSnapshot, MonitorSourceKind, MonitorTarget,
-    ServiceEvent, ServiceEventType, ServiceMonitor, ServiceMonitorTarget, SocketMonitor,
-    SubjectKind,
+    SocketMonitor,
 };
 pub use options::{
     CommonSocketOptions, DealerSocketOptions, PubSocketOptions, RouterSocketOptions,
@@ -63,12 +57,13 @@ pub use poller::{
 };
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
-    Discovery, DiscoveryDealerPeerMode, MemberPeerEntry, Registry,
-    RegistryQueryClient, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState,
-    RegistryStatus, RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole,
-    ServiceType, Spot, SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubjectKind, SpotNode,
-    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry,
-    SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState, SpotRole,
+    Discovery, DiscoveryDealerPeerMode, MemberPeerEntry, Registry, RegistryQueryClient,
+    RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
+    RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole, ServiceType,
+    SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubjectKind, SpotNode,
+    SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
+    SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter, SpotNodeState, SpotNodeStatus,
+    SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState, SpotRole,
     SpotServiceAttachmentRole, TopologySource, TopologyState,
 };
 pub use socket::{

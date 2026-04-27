@@ -231,9 +231,12 @@ Frame 4~N: Service entries (repeated service_count times)
   - `SNDHWM` → `fanout`, `mesh_pub`
   - `RCVHWM` → `ingress`, `mesh_xsub`
 - The default SpotNode internal data-plane HWM is no longer a fixed `1000`.
-  It comes from the context auto-HWM role buckets. With the default context
-  settings, topic send starts at `16`, while topic recv and routed send/recv
-  start at `8`.
+  It comes from the context auto-HWM role buckets and the current scope.
+  SpotNode shared sockets divide slots by shared targets, while per-spot
+  endpoint sockets first divide the role budget by spot count.
+- Role floors are not forced past the scoped budget. With the default context
+  settings and enough budget, topic send uses fanout floor `16`, while topic
+  recv and routed send/recv use floor `8`.
 - `peer_ctrl` is a control-plane socket and is not grouped into the SpotNode
   data-plane HWM family.
 
@@ -724,10 +727,8 @@ Baseline behavior:
   `ZLINK_SUBMIT_NOT_FOUND`.
 - Raw socket changes are exposed to the application via the socket monitor
   event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. Discovery-learned service peer
-  weight changes use the service monitor event
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. The implementation
-  carries both the peer identifier (`routing_id`) and the new weight inside
-  the same event payload.
+  weight changes update the local peer tables that feed discovery and SPOT
+  snapshot/query APIs.
 
 ## 11. Pairwise initiator rule (Discovery auto-connect)
 

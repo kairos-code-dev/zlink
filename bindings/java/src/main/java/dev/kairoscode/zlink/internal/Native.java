@@ -329,18 +329,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MONITOR_CLOSE = downcall("zlink_monitor_close",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SERVICE_MONITOR_OPEN = downcall(
-      "zlink_service_monitor_open",
-      FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SERVICE_MONITOR_HANDLER = downcall(
-      "zlink_service_monitor_handler",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SERVICE_MONITOR_RECV = downcall(
-      "zlink_service_monitor_recv",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ERRNO = downcall("zlink_errno",
             FunctionDescriptor.of(ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STRERROR = downcall("zlink_strerror",
@@ -711,7 +699,8 @@ public final class Native {
                 ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_SPOT_NODE_NEW = downcall("zlink_spot_node_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NEW = downcall("zlink_spot_new",
       FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_DESTROY = downcall("zlink_spot_destroy",
@@ -777,6 +766,11 @@ public final class Native {
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_SUBJECTS_SNAPSHOT = downcall(
             "zlink_spot_node_subjects_snapshot",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_INTERNAL_SOCKETS_SNAPSHOT =
+        downcall("zlink_spot_node_internal_sockets_snapshot",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
@@ -1671,42 +1665,6 @@ public final class Native {
             return (int) MH_MONITOR_CLOSE.invokeExact(holder);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_monitor_close failed", t);
-        }
-    }
-
-    public static MemorySegment serviceMonitorOpen(MemorySegment target,
-                                                   int events) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment options = arena.allocate(
-              NativeLayouts.SERVICE_MONITOR_OPEN_OPTIONS_LAYOUT);
-            options.set(ValueLayout.JAVA_INT,
-              NativeLayouts.SERVICE_MONITOR_OPEN_EVENTS_OFFSET, events);
-            return (MemorySegment) MH_SERVICE_MONITOR_OPEN.invokeExact(target,
-              options);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_service_monitor_open failed", t);
-        }
-    }
-
-    public static int serviceMonitorRecv(MemorySegment monitor,
-                                         MemorySegment eventOut,
-                                         int flags) {
-        try {
-            return (int) MH_SERVICE_MONITOR_RECV.invokeExact(monitor, eventOut,
-              flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_service_monitor_recv failed", t);
-        }
-    }
-
-    public static int serviceMonitorHandler(MemorySegment monitor,
-                                            MemorySegment handler,
-                                            MemorySegment userdata) {
-        try {
-            return (int) MH_SERVICE_MONITOR_HANDLER.invokeExact(monitor, handler,
-              userdata);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_service_monitor_handler failed", t);
         }
     }
 
@@ -2910,8 +2868,14 @@ public final class Native {
     }
 
     public static MemorySegment spotNodeNew(MemorySegment ctx) {
+        return spotNodeNew(ctx, MemorySegment.NULL);
+    }
+
+    public static MemorySegment spotNodeNew(MemorySegment ctx,
+                                            MemorySegment options) {
         try {
-            return (MemorySegment) MH_SPOT_NODE_NEW.invokeExact(ctx);
+            return (MemorySegment) MH_SPOT_NODE_NEW.invokeExact(ctx,
+                options);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_new failed", t);
         }
@@ -3162,6 +3126,19 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_subjects_snapshot failed", t);
+        }
+    }
+
+    public static int spotNodeInternalSocketsSnapshot(MemorySegment node,
+                                                      MemorySegment filter,
+                                                      MemorySegment entries,
+                                                      MemorySegment count) {
+        try {
+            return (int) MH_SPOT_NODE_INTERNAL_SOCKETS_SNAPSHOT.invokeExact(
+              node, filter, entries, count);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_internal_sockets_snapshot failed", t);
         }
     }
 

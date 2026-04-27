@@ -5,7 +5,6 @@
 #include "context.hpp"
 #include "message.hpp"
 #include "monitor.hpp"
-#include "service_monitor.hpp"
 #include "socket_handle.hpp"
 #include "types.hpp"
 

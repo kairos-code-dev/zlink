@@ -28,21 +28,19 @@ int attach_socket_monitor_handler_state (void *monitor_,
         return -1;
 
     monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
-    if (!state || state->service) {
+    if (!state) {
         errno = EINVAL;
         return -1;
     }
-    if (state->socket_handler.load (std::memory_order_acquire)
-        || state->service_handler.load (std::memory_order_acquire)) {
+    if (state->socket_handler.load (std::memory_order_acquire)) {
         errno = EBUSY;
         return -1;
     }
 
     return set_monitor_handler_state (
-      handle.socket, handler_, NULL, false,
+      handle.socket, handler_,
       state->snapshot_provider.load (std::memory_order_acquire),
-      state->snapshot_subject.load (std::memory_order_acquire), userdata_,
-      NULL);
+      state->snapshot_subject.load (std::memory_order_acquire), userdata_);
 }
 
 void *open_socket_monitor_with_handler_internal (
@@ -87,11 +85,10 @@ void *open_socket_monitor_with_handler_internal (
         return NULL;
     }
 
-    if (set_monitor_handler_state (monitor_socket_base, effective_handler, NULL,
-                                   false,
+    if (set_monitor_handler_state (monitor_socket_base, effective_handler,
                                    &socket_monitor_snapshot_provider,
                                    static_cast<void *> (handle.socket),
-                                   userdata_, NULL)
+                                   userdata_)
         != 0) {
         const int err = errno;
         zlink_close (monitor_socket);

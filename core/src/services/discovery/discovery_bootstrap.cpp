@@ -716,14 +716,6 @@ int discovery_t::set_tls_client (const char *ca_cert_,
                                                trust_system_);
 }
 
-void *discovery_t::monitor_open (int events_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return NULL;
-    return _monitor.open (events_);
-}
-
 int discovery_t::bootstrap_registry (const char *registry_endpoint_)
 {
     return _bootstrap_runtime->bootstrap_registry (this, registry_endpoint_);

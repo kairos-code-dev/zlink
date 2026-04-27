@@ -498,8 +498,8 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    void *publisher_node = zlink_spot_node_new (ctx.get ());
-    void *subscriber_node = zlink_spot_node_new (ctx.get ());
+    void *publisher_node = zlink_spot_node_new (ctx.get (), NULL);
+    void *subscriber_node = zlink_spot_node_new (ctx.get (), NULL);
     void *registry = zlink_registry_new (ctx.get ());
     void *publisher_discovery =
       zlink_discovery_new (ctx.get (), ZLINK_SERVICE_TYPE_SPOT, k_service_name);

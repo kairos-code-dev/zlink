@@ -154,7 +154,12 @@ internal static partial class NativeMethods
     internal static extern int zlink_discovery_destroy(ref IntPtr discovery);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_new(IntPtr ctx);
+    internal static extern IntPtr zlink_spot_node_new(IntPtr ctx, IntPtr options);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl,
+        EntryPoint = "zlink_spot_node_new")]
+    internal static extern IntPtr zlink_spot_node_new(IntPtr ctx,
+        ref ZlinkSpotNodeOptions options);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_destroy(ref IntPtr node);
@@ -207,6 +212,10 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_subjects_snapshot(IntPtr node,
         IntPtr filter, IntPtr entries, ref nuint count);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_internal_sockets_snapshot(
+        IntPtr node, IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_send_channel_part(IntPtr spot,

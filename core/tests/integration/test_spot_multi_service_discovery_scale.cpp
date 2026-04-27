@@ -52,7 +52,7 @@ void test_spot_multi_service_discovery_scale_and_churn ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_bind (registry, registry_pub, registry_router));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);

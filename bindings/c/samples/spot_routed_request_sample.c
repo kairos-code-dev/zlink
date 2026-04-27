@@ -129,7 +129,7 @@ int main (void)
     void *ctx = zlink_ctx_new ();
     assert (ctx != NULL);
 
-    void *requester_node = zlink_spot_node_new (ctx);
+    void *requester_node = zlink_spot_node_new (ctx, NULL);
     assert (requester_node != NULL);
     assert (zlink_set_routing_id (requester_node, "sample-requester-node",
                                   strlen ("sample-requester-node"))

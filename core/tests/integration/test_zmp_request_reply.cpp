@@ -661,8 +661,8 @@ void setup_connected_spot_case (spot_case_t *out_)
     out_->ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (out_->ctx);
 
-    out_->node_a = zlink_spot_node_new (out_->ctx);
-    out_->node_b = zlink_spot_node_new (out_->ctx);
+    out_->node_a = zlink_spot_node_new (out_->ctx, NULL);
+    out_->node_b = zlink_spot_node_new (out_->ctx, NULL);
     TEST_ASSERT_NOT_NULL (out_->node_a);
     TEST_ASSERT_NOT_NULL (out_->node_b);
 
@@ -1325,7 +1325,7 @@ void test_spot_to_spot_request_preserves_source_identity ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot_a = zlink_spot_new (node);
     void *spot_b = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (node);
@@ -1460,7 +1460,7 @@ void test_router_to_missing_spot_completes_with_enoent ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_NOT_NULL (router);

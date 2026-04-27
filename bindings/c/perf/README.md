@@ -36,19 +36,16 @@ message size before each run:
 | all multi perf sockets | `msg_size` |
 
 For non-SPOT patterns, the auto-HWM detail table is printed after the result
-rows. It uses the cached runtime snapshots, prints one row per observed message
-size, and includes `Size(B)`, `MsgUnit(B)`, `Scope`, and `ScopeCount` with the
-applied HWM and socket buffers. SPOT output keeps the separate common, socket,
-and budget tables because shared and per-spot scope splits are the main thing
-to verify there. `AutoBuffer(B)` is the planned auto-managed
-`SNDBUF + RCVBUF` cost multiplied by the planned connection count.
-`ManualBuffer(B)` reports user overrides and is not subtracted from the
-automatic queue budget.
+rows. It uses the cached runtime snapshots and includes the applied HWM and
+socket buffers.
 
-SPOT output separates shared SpotNode sockets from per-spot endpoint sockets.
-Shared rows divide message slots by the shared target count. Per-spot rows
-first divide the role budget by the spot count, so the scope fields are the
-primary way to verify the budget split.
+SPOT output uses `zlink_spot_node_internal_sockets_snapshot()` and prints only
+actual snapshot rows where `auto_hwm_visible == 1`. The default tables are
+`Auto-HWM spotnode` for node-owned sockets and `Auto-HWM spot` for per-spot
+sockets. Each row includes `Size(B)`, `MsgUnit(B)`, the internal socket name,
+the public socket type, role, connection counts, HWM, and effective buffers.
+If a SpotNode mode does not create a socket group, that group is absent from
+the perf output.
 
 ## Context Budget Tiers
 

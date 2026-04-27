@@ -103,12 +103,4 @@ int spot_sub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
     out_->state_flags &= ~ZLINK_MONITOR_STATE_READY;
     return 0;
 }
-
-void *spot_sub_t::monitor_open (int events_)
-{
-    lock_routing_id ();
-    if (ensure_monitor_bridge_started () != 0)
-        return NULL;
-    return _monitor.open (events_);
-}
 }

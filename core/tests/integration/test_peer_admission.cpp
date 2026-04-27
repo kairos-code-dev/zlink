@@ -338,37 +338,6 @@ bool wait_for_socket_peer_weight_event_local (
     return false;
 }
 
-bool wait_for_service_peer_weight_event_local (
-  void *monitor_,
-  const char *expected_endpoint_,
-  const zlink_routing_id_t *expected_rid_,
-  uint32_t expected_weight_,
-  int timeout_ms_)
-{
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
-        zlink_service_event_t event;
-        memset (&event, 0, sizeof (event));
-        if (recv_service_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
-            == 0) {
-            const bool routing_id_ok =
-              !expected_rid_ || event.routing_id.size == 0
-              || routing_id_equals_local (&event.routing_id, expected_rid_);
-            if (event.event_type
-                  == ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED
-                && event.value == static_cast<uint32_t> (expected_weight_)
-                && strcmp (event.endpoint, expected_endpoint_) == 0
-                && routing_id_ok) {
-                return true;
-            }
-            continue;
-        }
-        TEST_ASSERT_TRUE (errno == EAGAIN || errno == EINTR);
-        msleep (25);
-    }
-    return false;
-}
-
 bool wait_for_discovery_peer_weight_local (void *discovery_,
                                           const char *endpoint_,
                                           uint32_t expected_,
@@ -746,7 +715,7 @@ void test_router_weight_blocks_router_outbound_and_emits_monitor_event ()
     test_context_socket_close (router_a);
 }
 
-void test_discovery_member_peers_reports_weight_and_service_monitor_event ()
+void test_discovery_member_peers_reports_weight ()
 {
     if (!zlink_has ("tcp")) {
         TEST_IGNORE_MESSAGE ("TCP not available");
@@ -781,15 +750,6 @@ void test_discovery_member_peers_reports_weight_and_service_monitor_event ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       dealer_discovery, registry_router, 3000));
 
-    zlink_service_monitor_open_options_t service_monitor_opts;
-    memset (&service_monitor_opts, 0, sizeof (service_monitor_opts));
-    service_monitor_opts.events =
-      ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED;
-    void *service_monitor =
-      zlink_service_monitor_open (dealer_discovery, &service_monitor_opts);
-    TEST_ASSERT_NOT_NULL (service_monitor);
-    msleep (SETTLE_TIME);
-
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (router);
@@ -805,10 +765,6 @@ void test_discovery_member_peers_reports_weight_and_service_monitor_event ()
     TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
       dealer, 50320, dealer_endpoint, sizeof (dealer_endpoint)));
 
-    zlink_routing_id_t router_rid;
-    memset (&router_rid, 0, sizeof (router_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router, &router_rid));
-
     TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
       dealer_discovery, router_endpoint, 100, 5000));
 
@@ -816,19 +772,11 @@ void test_discovery_member_peers_reports_weight_and_service_monitor_event ()
       set_router_weight_local (router, 0));
     TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
       dealer_discovery, router_endpoint, 0, 5000));
-    TEST_ASSERT_TRUE (wait_for_service_peer_weight_event_local (
-      service_monitor, router_endpoint, &router_rid, 0,
-      5000));
-
     TEST_ASSERT_SUCCESS_ERRNO (
       set_router_weight_local (router, 100));
     TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
       dealer_discovery, router_endpoint, 100, 5000));
-    TEST_ASSERT_TRUE (wait_for_service_peer_weight_event_local (
-      service_monitor, router_endpoint, &router_rid, 100,
-      5000));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&service_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&dealer_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&router_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
@@ -846,7 +794,6 @@ int main ()
     RUN_TEST (test_dealer_dealer_weighted_ratio_100_50);
     RUN_TEST (test_router_weight_blocks_dealer_outbound_and_emits_monitor_event);
     RUN_TEST (test_router_weight_blocks_router_outbound_and_emits_monitor_event);
-    RUN_TEST (
-      test_discovery_member_peers_reports_weight_and_service_monitor_event);
+    RUN_TEST (test_discovery_member_peers_reports_weight);
     return UNITY_END ();
 }

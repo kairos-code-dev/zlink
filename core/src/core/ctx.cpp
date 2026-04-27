@@ -86,6 +86,15 @@ zlink::ctx_t::ctx_t () :
     _auto_hwm_enabled (ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0),
     _auto_hwm_total_memory_budget_mb (
       ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT),
+    _auto_hwm_recalc_debounce_ms (ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT),
+    _auto_hwm_stream_bootstrap (ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT),
+    _auto_hwm_spot_bootstrap (ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT),
+    _auto_hwm_recalc_pending (false),
+    _auto_hwm_last_change_ms (0),
+    _auto_hwm_recalc_deadline_ms (0),
+    _auto_hwm_pending_generation (0),
+    _auto_hwm_last_applied_generation (0),
+    _auto_hwm_recalc_task_id (0),
     _blocky (true),
     _ipv6 (false)
 {
@@ -106,6 +115,7 @@ zlink::ctx_t::~ctx_t ()
 {
     //  Check that there are no remaining _sockets.
     zlink_assert (_socket_registry.empty ());
+    stop_auto_hwm_recalc_task ();
     ctx_termination_t::teardown_runtime (*this);
 
     //  De-initialise crypto library, if needed.
@@ -146,6 +156,160 @@ zlink::service_control_runtime_t *zlink::ctx_t::spot_worker_runtime_for_key (
     if (!ctx_bootstrap_t::ensure_service_runtime (*this))
         return NULL;
     return _runtime_resources.spot_worker_runtime_for_key (key_);
+}
+
+void zlink::ctx_t::auto_hwm_recalc_task_main (void *arg_)
+{
+    static_cast<ctx_t *> (arg_)->auto_hwm_recalc_task ();
+}
+
+void zlink::ctx_t::ensure_auto_hwm_recalc_task_started ()
+{
+    if (_auto_hwm_recalc_task_id != 0)
+        return;
+
+    service_control_runtime_t *runtime = service_control_runtime ();
+    if (!runtime)
+        return;
+
+    _auto_hwm_recalc_task_id =
+      runtime->add_periodic_task (&ctx_t::auto_hwm_recalc_task_main, this, 10,
+                                  false);
+}
+
+void zlink::ctx_t::stop_auto_hwm_recalc_task ()
+{
+    const uint64_t task_id = _auto_hwm_recalc_task_id;
+    _auto_hwm_recalc_task_id = 0;
+    if (task_id == 0)
+        return;
+
+    service_control_runtime_t *runtime = _runtime_resources.service_control_runtime ();
+    if (runtime)
+        (void) runtime->remove_task (task_id);
+}
+
+void zlink::ctx_t::schedule_auto_hwm_recalculate ()
+{
+    const uint64_t now_ms = zlink::clock_t ().now_ms ();
+    int debounce_ms = 0;
+    {
+        scoped_lock_t locker (_opt_sync);
+        debounce_ms = _auto_hwm_recalc_debounce_ms;
+    }
+
+    {
+        scoped_lock_t lock (_slot_sync);
+        _auto_hwm_last_change_ms = now_ms;
+        ++_auto_hwm_pending_generation;
+
+        if (debounce_ms <= 0) {
+            _auto_hwm_recalc_pending = false;
+            _auto_hwm_recalc_deadline_ms = now_ms;
+        } else {
+            _auto_hwm_recalc_pending = true;
+            _auto_hwm_recalc_deadline_ms =
+              now_ms + static_cast<uint64_t> (debounce_ms);
+            ensure_auto_hwm_recalc_task_started ();
+            if (_auto_hwm_recalc_task_id != 0) {
+                service_control_runtime_t *runtime =
+                  _runtime_resources.service_control_runtime ();
+                if (runtime)
+                    (void) runtime->wakeup_task (_auto_hwm_recalc_task_id);
+            }
+        }
+    }
+
+    if (debounce_ms <= 0)
+        (void) auto_hwm_recalculate_now ();
+}
+
+int zlink::ctx_t::auto_hwm_recalculate_now ()
+{
+    bool enabled = false;
+    int total_memory_budget_mb = ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT;
+    {
+        scoped_lock_t locker (_opt_sync);
+        enabled = _auto_hwm_enabled;
+        total_memory_budget_mb = _auto_hwm_total_memory_budget_mb;
+    }
+
+    scoped_lock_t runtime_lock (_slot_sync);
+    _auto_hwm_recalc_pending = false;
+    _auto_hwm_recalc_deadline_ms = 0;
+    _auto_hwm_last_applied_generation = _auto_hwm_pending_generation;
+
+    if (!enabled)
+        return 0;
+
+    std::vector<socket_base_t *> sockets;
+    _socket_registry.collect_sockets (&sockets);
+    if (sockets.empty ())
+        return 0;
+
+    auto_hwm_context_plan_t context_plan;
+    auto_hwm_context_plan_from_budget_mb (
+      enabled, total_memory_budget_mb, &context_plan);
+
+    std::vector<auto_hwm_socket_plan_t> plans;
+    plans.reserve (sockets.size ());
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        socket_base_t *socket = sockets[i];
+        if (!socket) {
+            plans.push_back (auto_hwm_socket_plan_t ());
+            continue;
+        }
+
+        auto_hwm_socket_plan_t plan =
+          socket->prepare_auto_hwm_socket_plan (context_plan);
+        if (!socket->auto_hwm_policy_enabled ()) {
+            plan.planning_count = 0;
+            plan.context_total_planning_count = 0;
+            plan.socket_queue_share_bytes = 0;
+            plan.socket_message_slots = 0;
+            plan.auto_buffer_bytes = 0;
+            plan.buffer_connections = 0;
+        }
+        plans.push_back (plan);
+    }
+
+    if (!plans.empty ())
+        auto_hwm_context_finalize (&context_plan, &plans[0], plans.size ());
+
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        if (!sockets[i])
+            continue;
+        sockets[i]->apply_auto_hwm_socket_plan (
+          context_plan, plans[i], false, ZLINK_AUTO_HWM_RECALC_REASON_REFRESH);
+    }
+    return 0;
+}
+
+void zlink::ctx_t::auto_hwm_recalc_task ()
+{
+    bool should_run = false;
+    {
+        scoped_lock_t lock (_slot_sync);
+        if (_auto_hwm_recalc_pending
+            && zlink::clock_t ().now_ms () >= _auto_hwm_recalc_deadline_ms
+            && _auto_hwm_pending_generation != _auto_hwm_last_applied_generation)
+            should_run = true;
+    }
+
+    if (should_run)
+        (void) auto_hwm_recalculate_now ();
+}
+
+int zlink::ctx_t::auto_hwm_stream_bootstrap () const
+{
+    scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
+    return _auto_hwm_stream_bootstrap;
+}
+
+int zlink::ctx_t::auto_hwm_spot_bootstrap () const
+{
+    scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
+    return _auto_hwm_spot_bootstrap;
 }
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
@@ -256,6 +420,33 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
+        case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
+            if (is_int && value >= 0) {
+                scoped_lock_t locker (_opt_sync);
+                _auto_hwm_recalc_debounce_ms = value;
+                refresh_auto_hwm = true;
+                break;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
+            if (is_int && value >= 1) {
+                scoped_lock_t locker (_opt_sync);
+                _auto_hwm_stream_bootstrap = value;
+                refresh_auto_hwm = true;
+                break;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
+            if (is_int && value >= 1) {
+                scoped_lock_t locker (_opt_sync);
+                _auto_hwm_spot_bootstrap = value;
+                refresh_auto_hwm = true;
+                break;
+            }
+            break;
+
         case ZLINK_INTERNAL_OPT_IPV6:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
@@ -287,13 +478,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
     }
 
     if (refresh_auto_hwm) {
-        std::vector<socket_base_t *> sockets;
-        scoped_lock_t runtime_lock (_slot_sync);
-        _socket_registry.collect_sockets (&sockets);
-        for (size_t i = 0; i < sockets.size (); ++i) {
-            if (sockets[i])
-                sockets[i]->refresh_auto_hwm_policy ();
-        }
+        schedule_auto_hwm_recalculate ();
         return 0;
     }
 
@@ -350,6 +535,30 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _auto_hwm_total_memory_budget_mb;
+                return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _auto_hwm_recalc_debounce_ms;
+                return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _auto_hwm_stream_bootstrap;
+                return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _auto_hwm_spot_bootstrap;
                 return 0;
             }
             break;

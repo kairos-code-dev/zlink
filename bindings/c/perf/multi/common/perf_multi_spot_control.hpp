@@ -269,7 +269,7 @@ inline bool initialize_client_slot(ctx_guard_t &ctx,
         return false;
     }
 
-    slot->node = zlink_spot_node_new(ctx.get());
+    slot->node = zlink_spot_node_new(ctx.get(), NULL);
     if (!slot->node || !setup_tls_client(slot->node, transport)) {
         if (slot->node)
             zlink_spot_node_destroy(&slot->node);
@@ -366,8 +366,8 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
     }
 
     destroy_server_session(session);
-    session->node = zlink_spot_node_new(ctx.get());
-    session->control_node = zlink_spot_node_new(ctx.get());
+    session->node = zlink_spot_node_new(ctx.get(), NULL);
+    session->control_node = zlink_spot_node_new(ctx.get(), NULL);
     if (!session->node || !session->control_node
         || !setup_tls_server(session->node, transport)
         || !setup_tls_server(session->control_node, transport)

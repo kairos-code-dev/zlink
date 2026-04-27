@@ -36,7 +36,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink.SubSocket, "on_subscribe"))
         self.assertFalse(hasattr(zlink.XSubSocket, "on_subscribe"))
         self.assertFalse(hasattr(zlink.MonitorSocket, "try_recv"))
-        self.assertFalse(hasattr(zlink.ServiceMonitor, "try_recv"))
+        self.assertFalse(hasattr(zlink, "ServiceMonitor"))
         self.assertFalse(hasattr(zlink.Spot, "try_subscribe"))
         self.assertFalse(hasattr(zlink.Spot, "try_publish"))
         self.assertFalse(hasattr(zlink.Spot, "on_subscribe"))
@@ -61,7 +61,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink, "MonitorEvent"))
         self.assertTrue(hasattr(zlink, "MonitorEventMask"))
         self.assertEqual(zlink.MonitorEventMask.PEER_WEIGHT_CHANGED.value, 1 << 15)
-        self.assertEqual(zlink.ServiceMonitorMask.PEER_WEIGHT_CHANGED.value, 1 << 8)
         self.assertIs(zlink.SocketMonitorEvent, zlink.MonitorEvent)
 
     def test_context_options_use_snake_case(self):

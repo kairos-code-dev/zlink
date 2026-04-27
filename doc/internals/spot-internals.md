@@ -51,9 +51,12 @@ flowchart TB
 
 ## 2. Internal Socket Topology
 
-SpotNode creates 11 persistent sockets at startup,
-plus a monitor socket for connection state tracking (12 total).
-Three sender-cache sockets are created on demand as data paths are first used.
+SpotNode creates only the socket groups required by its creation mode.
+`ALL` mode creates both topic and routed groups. `PUBSUB` mode omits routed
+runtime sockets, and `ROUTED` mode omits topic runtime sockets. Disabled
+groups are not created by snapshot, monitor, or first use of the disabled API.
+Three sender-cache sockets are created on demand only when their owning routed
+path exists.
 
 ### 2.1 Socket Inventory
 
@@ -113,6 +116,10 @@ flowchart LR
 | `mesh_xsub_monitor` | Monitor | — | — | — | Tracks CONNECTION_READY/DISCONNECTED |
 
 All inproc endpoints follow the pattern: `inproc://zlink.spot.{node_id}.{suffix}`
+
+`zlink_spot_node_internal_sockets_snapshot()` reports the sockets that actually
+exist at the time of the call. It does not allocate lazy sockets. Perf uses
+that snapshot to decide which Auto-HWM rows are visible.
 
 ### 2.3 Sender Cache Sockets (on demand)
 
@@ -719,8 +726,8 @@ dealer map for cross-channel calls, and an external publish ingress path.
 |  peer ROUTER mesh (between SpotNodes in same channel)            |
 |  channel DEALER -> ROUTER(server) path (channel calls)           |
 |------------------------------------------------------------------|
-| service monitor                                                  |
-|  peer state, weight, topology change events                      |
+| snapshot and query plane                                         |
+|  peer state, weight, topology change inspection                  |
 +------------------------------------------------------------------+
 ```
 
@@ -787,14 +794,13 @@ dealer map for cross-channel calls, and an external publish ingress path.
 - When a `DEALER` exists but has no reachable peer, the result is
   normalized to `ENOTCONN`.
 
-### 11.5 Service monitor
+### 11.5 Snapshot and query observability
 
-- `SpotNode` observability uses `zlink_service_monitor_open()` /
-  `zlink_service_monitor_recv()` and the snapshot/query APIs.
-- Peer state, weight changes, and topology events are surfaced
-  through the monitor.
-- Monitor events are never multiplexed into the Spot dispatch readable
-  plane.
+- `SpotNode` observability uses the snapshot/query APIs.
+- Peer state, weight changes, and topology changes are read from those
+  APIs and compared over time by the caller when transition detection is
+  needed.
+- These reads are never multiplexed into the Spot dispatch readable plane.
 
 ### 11.6 Active set maintenance
 
@@ -821,10 +827,10 @@ and peer state so service-aware routing can avoid peers that advertise `0`.
   candidate is `0` the submit path normalizes the result to
   `ZLINK_SUBMIT_NOT_ADMITTED`. Direct SPOT requests targeting a
   peer whose remote weight cache shows `0` return the same result.
-- Weight changes learned through discovery are surfaced via the service monitor
-  event `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. Raw socket local
-  weight changes are exposed separately through the socket monitor event
-  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.
+- Weight changes learned through discovery update the peer cache that feeds
+  `zlink_spot_node_peers_snapshot()` and `zlink_spot_node_peers_query()`.
+  Raw socket local weight changes are exposed separately through the socket
+  monitor event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.
 - After a provider reconnects through discovery, the provider weight in the
   registry is rebuilt from the provider registration. SpotNode registrations
   use the default provider weight `100`; raw socket attachments advertise their

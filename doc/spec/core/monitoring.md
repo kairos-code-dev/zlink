@@ -9,14 +9,12 @@ focuses on monitor APIs, callbacks, and monitor snapshots.
 
 ## API Structure
 
-There are two distinct monitoring classes:
+There is one public monitoring class:
 
 - Socket monitoring:
   `zlink_socket_monitor_open()` with `zlink_socket_monitor_open_options_t`
-- Service monitoring:
-  `zlink_service_monitor_open()` with `zlink_service_monitor_open_options_t`
 
-Both classes follow the same **recv/callback delivery model**:
+Socket monitors follow this **recv/callback delivery model**:
 
 1. **Open** -- the monitor starts in **recv model**. Use the corresponding
    `*_recv()` function to pull events.
@@ -27,9 +25,9 @@ Both classes follow the same **recv/callback delivery model**:
 
 All monitors are closed with `zlink_monitor_close()`.
 
-Use socket monitors for transport/socket diagnostics. Use service
-monitors only for services that still expose a public service-monitor
-surface, such as Discovery.
+Use socket monitors for transport/socket diagnostics. Service-layer
+observability is provided by Discovery, Registry, and SPOT snapshot/query
+APIs rather than a separate public monitor handle.
 
 ## Types
 
@@ -94,11 +92,11 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t rcv_pending_msgs;
     uint32_t auto_hwm_enabled;
     uint32_t auto_hwm_role;
-    uint32_t auto_hwm_scope;
-    uint32_t auto_hwm_scope_count;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_observed_count;
+    uint32_t auto_hwm_planning_count;
+    uint32_t auto_hwm_context_total_planning_count;
     uint32_t auto_hwm_base_floor_per_connection;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
@@ -110,28 +108,20 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_queue_budget_bytes;
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_group_budget_bytes;
-    uint64_t auto_hwm_role_group_budget_bytes;
-    uint64_t auto_hwm_scope_group_budget_bytes;
-    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_socket_queue_share_bytes;
+    uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_auto_buffer_bytes;
-    uint64_t auto_hwm_manual_buffer_bytes;
-    uint32_t auto_hwm_buffer_connections;
-    uint64_t auto_hwm_control_budget_bytes;
-    uint64_t auto_hwm_routed_budget_bytes;
-    uint64_t auto_hwm_fanout_budget_bytes;
-    uint64_t auto_hwm_recv_ingress_budget_bytes;
-    uint32_t auto_hwm_control_active_connections;
-    uint32_t auto_hwm_routed_active_connections;
-    uint32_t auto_hwm_fanout_active_connections;
-    uint32_t auto_hwm_recv_ingress_active_connections;
     uint64_t auto_hwm_estimated_max_memory_bytes;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
+    uint32_t auto_hwm_send_blocked_ratio_ppm;
+    uint32_t auto_hwm_scope;
+    uint32_t auto_hwm_scope_count;
+    uint64_t auto_hwm_auto_buffer_bytes;
+    uint64_t auto_hwm_manual_buffer_bytes;
+    uint32_t auto_hwm_buffer_connections;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
-    uint32_t auto_hwm_send_blocked_ratio_ppm;
 } zlink_monitor_snapshot_t;
 ```
 
@@ -144,11 +134,11 @@ typedef struct zlink_monitor_snapshot_t
 | `rcv_pending_msgs` | Aggregate local inbound backlog snapshot when supported. |
 | `auto_hwm_enabled` | `1` when this source is currently using automatic HWM policy, otherwise `0`. |
 | `auto_hwm_role` | Diagnostic role-bucket id. Current values are `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`; callers must tolerate future values. |
-| `auto_hwm_scope` | Automatic HWM scope id. Current values are `0=none`, `1=shared`, `2=per_spot`; callers must tolerate future values. |
-| `auto_hwm_scope_count` | Scope target count used by the HWM calculation. |
 | `auto_hwm_managed_connections` | Connection count used by the current policy calculation. |
 | `auto_hwm_active_hwm_connections` | Connection count actually used to divide HWM slots. |
-| `auto_hwm_planning_transport_connections` | Connection count used for transport-buffer planning. |
+| `auto_hwm_observed_count` | Current observed connection count for this socket source. |
+| `auto_hwm_planning_count` | Planning count currently used for this socket source. This may stay above the observed count during bootstrap or debounce windows. |
+| `auto_hwm_context_total_planning_count` | Sum of planning counts across all auto-managed sockets in the same context. |
 | `auto_hwm_base_floor_per_connection` | Role-specific minimum HWM floor per connection. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |
@@ -160,25 +150,18 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_queue_budget_bytes` | Queue-budget portion used for HWM planning. |
 | `auto_hwm_transport_budget_bytes` | Transport-buffer budget portion. |
 | `auto_hwm_runtime_reserve_bytes` | Runtime reserve portion. |
-| `auto_hwm_group_budget_bytes` | Compatibility alias for `auto_hwm_scope_group_budget_bytes`. |
-| `auto_hwm_role_group_budget_bytes` | Queue budget assigned to the current role bucket before scope division. |
-| `auto_hwm_scope_group_budget_bytes` | Queue budget actually used for the current scope calculation. |
-| `auto_hwm_group_message_slots` | Message slots available to the current scope after dividing by effective message size. |
+| `auto_hwm_socket_queue_share_bytes` | Queue-budget share assigned to this socket after context-wide planning-count division. |
+| `auto_hwm_socket_message_slots` | Message slots available to this socket after dividing its queue share by the effective message size. |
 | `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
-| `auto_hwm_auto_buffer_bytes` | Auto-managed buffer budget subtracted before queue-budget calculation. |
-| `auto_hwm_manual_buffer_bytes` | User-managed buffer diagnostic value; it is not subtracted from the automatic queue budget. |
-| `auto_hwm_buffer_connections` | Planned connection count multiplied into buffer-budget accounting. |
-| `auto_hwm_control_budget_bytes` | Queue budget assigned to the control role bucket. |
-| `auto_hwm_routed_budget_bytes` | Queue budget assigned to the routed role bucket. |
-| `auto_hwm_fanout_budget_bytes` | Queue budget assigned to the fanout role bucket. |
-| `auto_hwm_recv_ingress_budget_bytes` | Queue budget assigned to the recv_ingress role bucket. |
-| `auto_hwm_control_active_connections` | Active connection count recorded for the control role bucket in this snapshot. `0` when this source belongs to another role. |
-| `auto_hwm_routed_active_connections` | Active connection count recorded for the routed role bucket in this snapshot. `0` when this source belongs to another role. |
-| `auto_hwm_fanout_active_connections` | Active connection count recorded for the fanout role bucket in this snapshot. `0` when this source belongs to another role. |
-| `auto_hwm_recv_ingress_active_connections` | Active connection count recorded for the recv_ingress role bucket in this snapshot. `0` when this source belongs to another role. |
 | `auto_hwm_estimated_max_memory_bytes` | Estimated maximum memory envelope derived from the current context budget. |
 | `auto_hwm_last_recalc_ms` | Timestamp of the most recent auto-HWM recalculation in milliseconds. |
 | `auto_hwm_last_recalc_reason` | Enum value that records why the latest recalculation ran. |
+| `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
+| `auto_hwm_scope` | Automatic HWM scope id. Current values are `0=none`, `1=shared`, `2=per_spot`; callers must tolerate future values. |
+| `auto_hwm_scope_count` | Scope target count used by the HWM calculation. |
+| `auto_hwm_auto_buffer_bytes` | Auto-managed buffer budget subtracted before queue-budget calculation. |
+| `auto_hwm_manual_buffer_bytes` | User-managed buffer diagnostic value; it is not subtracted from the automatic queue budget. |
+| `auto_hwm_buffer_connections` | Planned connection count multiplied into buffer-budget accounting. |
 | `auto_hwm_deferred_sndhwm` | Pending deferred send-HWM shrink, or `-1` when no shrink is deferred. |
 | `auto_hwm_deferred_rcvhwm` | Pending deferred recv-HWM shrink, or `-1` when no shrink is deferred. |
 | `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
@@ -340,7 +323,7 @@ zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
                              zlink_monitor_snapshot_t *out_);
 ```
 
-Reads the current aggregate snapshot for a socket or service monitor handle.
+Reads the current aggregate snapshot for a socket monitor handle.
 The snapshot is queried from the monitor source at call time. Queue counts are
 local message counts, and `rcv_pending_msgs` is approximate. Works in
 both recv model and callback model. When automatic HWM is enabled on the
@@ -349,7 +332,7 @@ values, and the queue/transport budget used for the calculation.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
-**See also:** `zlink_socket_monitor_open`, `zlink_service_monitor_open`
+**See also:** `zlink_socket_monitor_open`
 
 ---
 
@@ -370,7 +353,7 @@ snapshot access and want to silence the event stream).
 
 ### zlink_monitor_close
 
-Close any monitor handle (socket or service) and release its resources.
+Close a socket monitor handle and release its resources.
 
 ```c
 zlink_close_result_t zlink_monitor_close (void **monitor_p_);
@@ -381,248 +364,28 @@ executing the monitor callback, the close fails with `errno = EBUSY`.
 Self-close from within a callback succeeds and is deferred until the
 callback returns.
 
-This is the unified close function for **all** monitor types -- both socket
-monitors and service monitors.
-
 **Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
-**See also:** `zlink_socket_monitor_open`, `zlink_service_monitor_open`
+**See also:** `zlink_socket_monitor_open`
 
 ---
 
-## Service Monitor API
+## Service-Layer Observability
 
-Service monitors provide state transition events for service-layer
-components that expose a public service-monitor surface. Unlike raw
-socket monitors that report transport-level events, service monitors
-report higher-level service events such as Discovery membership changes.
+Discovery, Registry, and SPOT runtime state is observed through snapshot and
+query APIs rather than a separate public event stream.
 
-The target for `zlink_service_monitor_open()` is any service handle
-that still exposes public service monitoring, such as Discovery, SPOT,
-or SpotNode. The service kind is determined from the handle's runtime
-tag -- there is no per-service open function and no `role` parameter.
+- Discovery: `zlink_discovery_member_peers()`,
+  `zlink_discovery_member_peer_metadata()`
+- Registry: `zlink_registry_status_snapshot()`,
+  `zlink_registry_service_summary_snapshot()`,
+  `zlink_registry_topology_snapshot()`,
+  `zlink_registry_topology_query()`
+- SpotNode: `zlink_spot_node_status_snapshot()`,
+  `zlink_spot_node_peers_snapshot()`,
+  `zlink_spot_node_peers_query()`,
+  `zlink_spot_node_subjects_snapshot()`
 
-### zlink_service_event_t / zlink_service_monitor_event_t
-
-Describes a single service monitor event. `zlink_service_monitor_event_t`
-is a typedef of `zlink_service_event_t`.
-
-```c
-typedef struct zlink_service_event_t
-{
-    zlink_service_kind_t service_kind;
-    uint32_t event_type;
-    int32_t status;
-    int32_t error_code;
-    uint32_t value;
-    zlink_service_event_detail_mask_t detail_flags;
-    char service_name[256];
-    char endpoint[256];
-    zlink_routing_id_t routing_id;
-    char subject[256];
-    uint32_t subject_kind;
-} zlink_service_event_t;
-
-typedef zlink_service_event_t zlink_service_monitor_event_t;
-```
-
-| Field | Description |
-|-------|-------------|
-| `service_kind` | One of the `ZLINK_SERVICE_KIND_*` constants. |
-| `event_type` | Bitmask indicating the event. |
-| `status` | Event-specific status code. |
-| `error_code` | Error code when `event_type` indicates a failure. |
-| `value` | Event-specific numeric value. |
-| `detail_flags` | Bitmask of `ZLINK_EVENT_DETAIL_*` flags indicating which optional fields are populated. |
-| `service_name` | Null-terminated service name, valid when `ZLINK_EVENT_DETAIL_SERVICE_NAME` is set. |
-| `endpoint` | Null-terminated endpoint, valid when `ZLINK_EVENT_DETAIL_ENDPOINT` is set. |
-| `routing_id` | Routing identity, valid when the corresponding detail flag is set. |
-| `subject` | Null-terminated subject string, valid when `ZLINK_EVENT_DETAIL_SUBJECT` is set. |
-| `subject_kind` | Subject kind, valid when `ZLINK_EVENT_DETAIL_SUBJECT_KIND` is set. |
-
-### zlink_service_monitor_handler_fn
-
-```c
-typedef void (*zlink_service_monitor_handler_fn) (
-  const zlink_service_event_t *event_, void *userdata_);
-```
-
-Callback for service monitor events, invoked on the I/O thread.
-
-### zlink_service_monitor_open_options_t
-
-```c
-typedef struct zlink_service_monitor_open_options_t
-{
-    zlink_service_monitor_event_mask_t events;
-} zlink_service_monitor_open_options_t;
-```
-
-| Field | Description |
-|---|---|
-| `events` | Bitmask of service monitor event flags selecting which events to observe. Uses `zlink_service_monitor_event_mask_t`, the unified mask type for all service monitors. |
-
-### Supported Service Monitor Targets
-
-`zlink_service_monitor_open()` is currently defined for handles that expose a
-public service-monitor surface. Monitor targets are identified by
-`zlink_monitor_target_kind_t`.
-
-| Target | `zlink_monitor_target_kind_t` | Public recv surface |
-|--------|-------------------------------|---------------------|
-| `Discovery` handle | `ZLINK_MONITOR_TARGET_DISCOVERY = 2` | `zlink_service_monitor_recv()` |
-| raw socket | `ZLINK_MONITOR_TARGET_SOCKET = 1` | `zlink_socket_monitor_recv()` |
-| `Spot` facade | `ZLINK_MONITOR_TARGET_SPOT = 4` | `zlink_service_monitor_recv()` |
-| `SpotNode` handle | `ZLINK_MONITOR_TARGET_SPOT_NODE = 5` | `zlink_service_monitor_recv()` |
-
-`Spot` and `SpotNode` expose the generic service-monitor surface for
-operational events. A caller opens a monitor on the `SpotNode` target with
-`zlink_service_monitor_open()` and drains events with
-`zlink_service_monitor_recv()`. The returned
-`zlink_service_monitor_event_t` carries the usual monitor event fields.
-There is no dedicated `SpotNode`-specific monitor recv API.
-
-### Service Kind Constants
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery component |
-| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT sub-side service monitor event source |
-| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT pub-side service monitor event source |
-| `ZLINK_SERVICE_KIND_SOCKET` | 5 | Socket family service |
-
-### Service Event Constants
-
-#### Common Events
-
-| Constant | Bit | Description |
-|----------|-----|-------------|
-| `ZLINK_MONITOR_EVENT_ERROR` | `1 << 4` | An error occurred |
-| `ZLINK_MONITOR_EVENT_CLOSED` | `1 << 17` | Monitor closed |
-
-#### Discovery Events
-
-| Constant | Bit | Description |
-|----------|-----|-------------|
-| `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | A discovered service came up |
-| `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | A discovered service went down |
-| `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | The set of providers for a service changed |
-
-#### Service Monitor Event Mask Constants
-
-The following `ZLINK_SERVICE_MONITOR_EVENT_*` constants are the canonical
-names for building the `zlink_service_monitor_open_options_t.events` bitmask.
-They map to the same underlying bits as the per-service constants above.
-
-| Constant | Maps to |
-|----------|---------|
-| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | `ZLINK_MONITOR_EVENT_ERROR` |
-| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | `ZLINK_MONITOR_EVENT_CLOSED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` | Bit `1u << 8`. Discovery service monitors use this bit when a tracked peer's weight changes. `Spot` / `SpotNode` generic service monitors do not currently emit it. |
-| `ZLINK_SERVICE_MONITOR_EVENT_ALL` | All service events |
-
-### Spot / SpotNode Generic Events
-
-`zlink_service_monitor_open(spot, ...)` and
-`zlink_service_monitor_open(spot_node, ...)` support only the
-operational events produced by the SPOT pub/sub monitor bridges.
-
-| Event | `Spot` | `SpotNode` | Notes |
-|-------|--------|------------|-------|
-| `ZLINK_MONITOR_EVENT_ERROR` | Yes | Yes | Runtime or bridge error |
-| `ZLINK_MONITOR_EVENT_CLOSED` | Yes | Yes | Terminal close event |
-| `peer up` (`1u << 2`) | Yes | Yes | Peer became usable |
-| `peer down` (`1u << 3`) | Yes | Yes | Peer became unusable |
-| `connection ready` (`1u << 14`) | Yes | Yes | Data path ready |
-| `sub filter applied` (`1u << 13`) | Yes | Yes | Sub filter applied |
-| `pub queue full` (`1u << 15`) | Yes | Yes | Pub queue saturated |
-| `pub queue drained` (`1u << 16`) | Yes | Yes | Pub queue recovered |
-
-`SpotNode` monitor events are drained through the generic
-`zlink_service_monitor_recv()` surface. The returned event carries
-standard monitor fields; additional peer-level detail is available
-through snapshot/query APIs (`zlink_spot_node_peers_snapshot()`,
-`zlink_spot_node_peers_query()`).
-
-### Detail Flag Constants
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_EVENT_DETAIL_SERVICE_NAME` | `0x0001` | `service_name` field is populated |
-| `ZLINK_EVENT_DETAIL_ENDPOINT` | `0x0002` | `endpoint` field is populated |
-| `ZLINK_EVENT_DETAIL_SUBJECT_RID` | `0x0004` | `routing_id` contains the subject identity |
-| `ZLINK_EVENT_DETAIL_PEER_RID` | `0x0008` | `routing_id` contains a peer identity |
-| `ZLINK_EVENT_DETAIL_SUBJECT` | `0x0010` | `subject` field is populated |
-| `ZLINK_EVENT_DETAIL_SUBJECT_KIND` | `0x0020` | `subject_kind` field is populated |
-
----
-
-### zlink_service_monitor_open
-
-Open a unified service monitor in recv model.
-
-```c
-void *zlink_service_monitor_open (
-  void *target_,
-  const zlink_service_monitor_open_options_t *options_);
-```
-
-Creates a service monitor on a service handle that exposes public service
-monitoring and returns a handle. `target_` can be a Discovery handle,
-SPOT facade, or SpotNode handle.
-
-The `options_->events` bitmask selects which events to observe, using the
-unified `zlink_service_monitor_event_mask_t` type.
-
-The monitor starts in **recv model**; use `zlink_service_monitor_recv()` to
-pull events, or call `zlink_service_monitor_handler()` to transition to
-callback model.
-
-**Returns:** Monitor handle on success, or `NULL` on failure (errno is set).
-
-**Thread safety:** The monitor handle itself is a thread-safe child handle.
-
-**See also:** `zlink_service_monitor_recv`, `zlink_service_monitor_handler`,
-`zlink_monitor_close`
-
----
-
-### zlink_service_monitor_handler
-
-Attach a callback handler to a service monitor (one-way transition).
-
-```c
-zlink_handler_result_t zlink_service_monitor_handler (
-  void *monitor_,
-  zlink_service_monitor_handler_fn handler_,
-  void *userdata_);
-```
-
-Transitions the monitor from recv model to **callback-only model**. Once
-attached, `zlink_service_monitor_recv()` will return a `zlink_recv_result_t`
-indicating the monitor is in callback mode. This transition is one-way and
-cannot be reversed.
-
-**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
----
-
-### zlink_service_monitor_recv
-
-Receive the next event from a service monitor in recv model.
-
-```c
-zlink_recv_result_t zlink_service_monitor_recv (
-  void *monitor_, zlink_service_monitor_event_t *out_,
-  zlink_recv_flags_t flags_);
-```
-
-Reads the next pending event into `out_`. The `flags_` parameter accepts
-`ZLINK_DONTWAIT` for non-blocking operation. If the monitor has transitioned
-to callback model via `zlink_service_monitor_handler()`, this function returns
-a `zlink_recv_result_t` indicating the monitor is in callback mode.
-
-**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+Callers that need transition detection compare successive snapshots or query
+results in application code. This keeps the public contract aligned with
+`core/include/zlink.h`, which only exposes socket monitor handles.

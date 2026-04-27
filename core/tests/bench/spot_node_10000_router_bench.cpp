@@ -324,7 +324,7 @@ int main (int, char **)
         return 1;
     }
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
     if (!node || !router) {
         fprintf (stderr, "node/router create failed errno=%d (%s)\n", errno,

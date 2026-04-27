@@ -24,11 +24,8 @@ const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'surface-discovery
 discovery.setTlsClient('ca', 'host');
 discovery.setDealerPeerMode(zlink.DiscoveryDealerPeerMode.Router);
 discovery.resolveSpot(routingId);
-const discoveryMonitor = discovery.monitorOpen();
-discoveryMonitor.recv;
-discoveryMonitor.onEvent(() => {});
-discoveryMonitor.snapshot();
-discoveryMonitor.close();
+discovery.memberPeers();
+discovery.memberPeerMetadata(2, 'tcp://127.0.0.1:5555');
 zlink.MonitorSocket.ignoreHandler(new zlink.MonitorEvent({ event: 0, value: 0 }));
 
 const pub = new zlink.PubSocket(ctx);

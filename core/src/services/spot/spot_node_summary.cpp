@@ -3,10 +3,13 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
 
+#include "core/internal_defs.hpp"
+#include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 
 #include <algorithm>
@@ -111,6 +114,118 @@ static uint32_t unique_peer_count_local (const std::set<std::string> &manual_,
 
     return static_cast<uint32_t> (manual_.size () + discovery_.size ()
                                   - overlap);
+}
+
+static bool fixed_string_is_nul_terminated (const char *value_, size_t size_)
+{
+    return value_ && memchr (value_, '\0', size_) != NULL;
+}
+
+static zlink_socket_type_t public_socket_type_from_core (int type_)
+{
+    switch (type_) {
+        case ZLINK_CORE_SOCKET_PAIR:
+            return ZLINK_SOCKET_PAIR;
+        case ZLINK_CORE_SOCKET_PUB:
+            return ZLINK_SOCKET_PUB;
+        case ZLINK_CORE_SOCKET_SUB:
+            return ZLINK_SOCKET_SUB;
+        case ZLINK_CORE_SOCKET_DEALER:
+            return ZLINK_SOCKET_DEALER;
+        case ZLINK_CORE_SOCKET_ROUTER:
+            return ZLINK_SOCKET_ROUTER;
+        case ZLINK_CORE_SOCKET_XPUB:
+            return ZLINK_SOCKET_XPUB;
+        case ZLINK_CORE_SOCKET_XSUB:
+            return ZLINK_SOCKET_XSUB;
+        case ZLINK_CORE_SOCKET_STREAM:
+            return ZLINK_SOCKET_STREAM;
+        default:
+            return ZLINK_SOCKET_ANY;
+    }
+}
+
+static bool valid_public_socket_type_filter (zlink_socket_type_t type_)
+{
+    return type_ == ZLINK_SOCKET_ANY || type_ == ZLINK_SOCKET_PAIR
+           || type_ == ZLINK_SOCKET_PUB || type_ == ZLINK_SOCKET_SUB
+           || type_ == ZLINK_SOCKET_DEALER || type_ == ZLINK_SOCKET_ROUTER
+           || type_ == ZLINK_SOCKET_XPUB || type_ == ZLINK_SOCKET_XSUB
+           || type_ == ZLINK_SOCKET_STREAM;
+}
+
+static int copy_fixed_64 (char *dst_, const char *src_)
+{
+    const size_t len = src_ ? strlen (src_) : 0;
+    if (len >= 64) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    memset (dst_, 0, 64);
+    if (len != 0)
+        memcpy (dst_, src_, len);
+    return 0;
+}
+
+static bool auto_hwm_visible_from_snapshot (
+  const zlink_monitor_snapshot_t &snapshot_)
+{
+    return snapshot_.auto_hwm_enabled != 0 || snapshot_.auto_hwm_role != 0
+           || snapshot_.auto_hwm_applied_sndhwm != 0
+           || snapshot_.auto_hwm_applied_rcvhwm != 0
+           || snapshot_.auto_hwm_effective_sndbuf != 0
+           || snapshot_.auto_hwm_effective_rcvbuf != 0;
+}
+
+static bool socket_snapshot_matches_filter (
+  const zlink_spot_node_socket_snapshot_entry_t &entry_,
+  const zlink_spot_node_socket_snapshot_filter_t *filter_)
+{
+    if (!filter_)
+        return true;
+    if (filter_->owner != ZLINK_SPOT_NODE_SOCKET_OWNER_ANY
+        && filter_->owner != entry_.owner)
+        return false;
+    if (filter_->socket_type != ZLINK_SOCKET_ANY
+        && filter_->socket_type != entry_.socket_type)
+        return false;
+    if (filter_->socket_name[0] != '\0'
+        && strcmp (filter_->socket_name, entry_.socket_name) != 0)
+        return false;
+    return true;
+}
+
+static int append_socket_snapshot_row (
+  std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_,
+  const zlink_spot_node_socket_snapshot_filter_t *filter_,
+  zlink_spot_node_socket_owner_t owner_,
+  uint64_t owner_id_,
+  const char *owner_name_,
+  const char *socket_name_,
+  socket_base_t *socket_)
+{
+    if (!out_ || !socket_)
+        return 0;
+
+    zlink_spot_node_socket_snapshot_entry_t entry;
+    memset (&entry, 0, sizeof (entry));
+    entry.owner = owner_;
+    entry.owner_id = owner_id_;
+    if (copy_fixed_64 (entry.owner_name, owner_name_) != 0
+        || copy_fixed_64 (entry.socket_name, socket_name_) != 0)
+        return -1;
+    entry.socket_type = public_socket_type_from_core (socket_->socket_type ());
+    if (entry.socket_type == ZLINK_SOCKET_ANY) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (socket_->monitor_snapshot (&entry.snapshot) != 0)
+        return -1;
+    entry.auto_hwm_visible = auto_hwm_visible_from_snapshot (entry.snapshot) ? 1u
+                                                                             : 0u;
+    if (socket_snapshot_matches_filter (entry, filter_))
+        out_->push_back (entry);
+    return 0;
 }
 }
 
@@ -336,12 +451,7 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
     copy_text_field_local (out_->local_endpoint, sizeof (out_->local_endpoint),
                            local_endpoint);
 
-    spot_pub_t *pub = default_pub ();
-    spot_sub_t *sub = default_sub ();
-    if (pub)
-        (void) pub->routing_id (&out_->node_routing_id);
-    else if (sub)
-        (void) sub->routing_id (&out_->node_routing_id);
+    (void) node_routing_id (&out_->node_routing_id);
 
     std::vector<zlink_spot_node_subject_entry_t> subject_rows;
     if (snapshot_subjects (NULL, &subject_rows) == 0) {
@@ -600,6 +710,124 @@ int spot_node_t::snapshot_subjects (
         out_->push_back (entry);
     }
     std::sort (out_->begin (), out_->end (), spot_subject_entry_less_local);
+    return 0;
+}
+
+int spot_node_t::snapshot_internal_sockets (
+  const zlink_spot_node_socket_snapshot_filter_t *filter_,
+  std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (filter_) {
+        if (filter_->owner != ZLINK_SPOT_NODE_SOCKET_OWNER_ANY
+            && filter_->owner != ZLINK_SPOT_NODE_SOCKET_OWNER_NODE
+            && filter_->owner != ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (!valid_public_socket_type_filter (filter_->socket_type)
+            || !fixed_string_is_nul_terminated (
+                 filter_->socket_name, sizeof (filter_->socket_name))) {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+
+    out_->clear ();
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_runtime) {
+        if (append_socket_snapshot_row (
+              out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0, "spotnode",
+              "mesh_pub", _runtime->mesh_pub)
+            != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "mesh_xsub", _runtime->mesh_xsub)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "peer_ctrl_pub", _runtime->peer_ctrl_pub)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "peer_ctrl_sub", _runtime->peer_ctrl_sub)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "route_ingress", _runtime->route_ingress)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "peer_route_ingress",
+                 _runtime->peer_route_ingress)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "node_router", _runtime->node_router)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "route_ingress_tx", _runtime->route_ingress_tx)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "node_router_tx", _runtime->node_router_tx)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "peer_route_tx", _runtime->peer_route_tx)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "local_pub_ingress",
+                 _runtime->local_pub_ingress_sub)
+                 != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
+                 "spotnode", "local_fanout", _runtime->local_fanout_xpub)
+                 != 0)
+            return -1;
+    }
+
+    if (append_socket_snapshot_row (
+          out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0, "spotnode",
+          "default_pub",
+          _handle_state.handle_defaults.default_pub ()
+            ? _handle_state.handle_defaults.default_pub ()->snapshot_socket ()
+            : NULL)
+        != 0
+        || append_socket_snapshot_row (
+             out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0, "spotnode",
+             "internal_receiver",
+             _handle_state.handle_defaults.internal_receiver ()
+               ? _handle_state.handle_defaults.internal_receiver ()
+                   ->snapshot_socket ()
+               : NULL)
+             != 0)
+        return -1;
+
+    uint64_t owner_id = 1;
+    for (std::set<spot_handle_t *>::const_iterator it =
+           _handle_state.facades.begin ();
+         it != _handle_state.facades.end (); ++it, ++owner_id) {
+        spot_handle_t *spot = *it;
+        if (!spot)
+            continue;
+        if (append_socket_snapshot_row (
+              out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, owner_id,
+              "spot", "pub",
+              spot->pub ? spot->pub->snapshot_socket () : NULL)
+            != 0
+            || append_socket_snapshot_row (
+                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, owner_id,
+                 "spot", "sub",
+                 spot->sub ? spot->sub->snapshot_socket () : NULL)
+                 != 0)
+            return -1;
+    }
     return 0;
 }
 }

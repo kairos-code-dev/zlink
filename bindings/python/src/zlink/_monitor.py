@@ -4,12 +4,10 @@ import ctypes
 import queue
 import threading
 
-from ._enums import MonitorEventMask, ServiceMonitorMask
+from ._enums import MonitorEventMask
 from ._ffi import (
     ZlinkMonitorSnapshot,
     ZlinkMonitorEvent,
-    ZlinkServiceEvent,
-    ZlinkServiceMonitorOpenOptions,
     ZlinkSocketMonitorOpenOptions,
     lib,
 )
@@ -47,7 +45,9 @@ class MonitorSnapshot:
         auto_hwm_role=None,
         auto_hwm_managed_connections=None,
         auto_hwm_active_hwm_connections=None,
-        auto_hwm_planning_transport_connections=None,
+        auto_hwm_observed_count=None,
+        auto_hwm_planning_count=None,
+        auto_hwm_context_total_planning_count=None,
         auto_hwm_base_floor_per_connection=None,
         auto_hwm_applied_sndhwm=None,
         auto_hwm_applied_rcvhwm=None,
@@ -59,25 +59,15 @@ class MonitorSnapshot:
         auto_hwm_queue_budget_bytes=None,
         auto_hwm_transport_budget_bytes=None,
         auto_hwm_runtime_reserve_bytes=None,
-        auto_hwm_group_budget_bytes=None,
-        auto_hwm_group_message_slots=None,
+        auto_hwm_socket_queue_share_bytes=None,
+        auto_hwm_socket_message_slots=None,
         auto_hwm_effective_message_bytes=None,
-        auto_hwm_control_budget_bytes=None,
-        auto_hwm_routed_budget_bytes=None,
-        auto_hwm_fanout_budget_bytes=None,
-        auto_hwm_recv_ingress_budget_bytes=None,
-        auto_hwm_control_active_connections=None,
-        auto_hwm_routed_active_connections=None,
-        auto_hwm_fanout_active_connections=None,
-        auto_hwm_recv_ingress_active_connections=None,
         auto_hwm_estimated_max_memory_bytes=None,
         auto_hwm_last_recalc_ms=None,
         auto_hwm_last_recalc_reason=None,
         auto_hwm_send_blocked_ratio_ppm=None,
         auto_hwm_scope=None,
         auto_hwm_scope_count=None,
-        auto_hwm_role_group_budget_bytes=None,
-        auto_hwm_scope_group_budget_bytes=None,
         auto_hwm_auto_buffer_bytes=None,
         auto_hwm_manual_buffer_bytes=None,
         auto_hwm_buffer_connections=None,
@@ -93,8 +83,10 @@ class MonitorSnapshot:
         self.auto_hwm_role = auto_hwm_role
         self.auto_hwm_managed_connections = auto_hwm_managed_connections
         self.auto_hwm_active_hwm_connections = auto_hwm_active_hwm_connections
-        self.auto_hwm_planning_transport_connections = (
-            auto_hwm_planning_transport_connections
+        self.auto_hwm_observed_count = auto_hwm_observed_count
+        self.auto_hwm_planning_count = auto_hwm_planning_count
+        self.auto_hwm_context_total_planning_count = (
+            auto_hwm_context_total_planning_count
         )
         self.auto_hwm_base_floor_per_connection = auto_hwm_base_floor_per_connection
         self.auto_hwm_applied_sndhwm = auto_hwm_applied_sndhwm
@@ -107,27 +99,9 @@ class MonitorSnapshot:
         self.auto_hwm_queue_budget_bytes = auto_hwm_queue_budget_bytes
         self.auto_hwm_transport_budget_bytes = auto_hwm_transport_budget_bytes
         self.auto_hwm_runtime_reserve_bytes = auto_hwm_runtime_reserve_bytes
-        self.auto_hwm_group_budget_bytes = auto_hwm_group_budget_bytes
-        self.auto_hwm_group_message_slots = auto_hwm_group_message_slots
+        self.auto_hwm_socket_queue_share_bytes = auto_hwm_socket_queue_share_bytes
+        self.auto_hwm_socket_message_slots = auto_hwm_socket_message_slots
         self.auto_hwm_effective_message_bytes = auto_hwm_effective_message_bytes
-        self.auto_hwm_control_budget_bytes = auto_hwm_control_budget_bytes
-        self.auto_hwm_routed_budget_bytes = auto_hwm_routed_budget_bytes
-        self.auto_hwm_fanout_budget_bytes = auto_hwm_fanout_budget_bytes
-        self.auto_hwm_recv_ingress_budget_bytes = (
-            auto_hwm_recv_ingress_budget_bytes
-        )
-        self.auto_hwm_control_active_connections = (
-            auto_hwm_control_active_connections
-        )
-        self.auto_hwm_routed_active_connections = (
-            auto_hwm_routed_active_connections
-        )
-        self.auto_hwm_fanout_active_connections = (
-            auto_hwm_fanout_active_connections
-        )
-        self.auto_hwm_recv_ingress_active_connections = (
-            auto_hwm_recv_ingress_active_connections
-        )
         self.auto_hwm_estimated_max_memory_bytes = (
             auto_hwm_estimated_max_memory_bytes
         )
@@ -136,8 +110,6 @@ class MonitorSnapshot:
         self.auto_hwm_send_blocked_ratio_ppm = auto_hwm_send_blocked_ratio_ppm
         self.auto_hwm_scope = auto_hwm_scope
         self.auto_hwm_scope_count = auto_hwm_scope_count
-        self.auto_hwm_role_group_budget_bytes = auto_hwm_role_group_budget_bytes
-        self.auto_hwm_scope_group_budget_bytes = auto_hwm_scope_group_budget_bytes
         self.auto_hwm_auto_buffer_bytes = auto_hwm_auto_buffer_bytes
         self.auto_hwm_manual_buffer_bytes = auto_hwm_manual_buffer_bytes
         self.auto_hwm_buffer_connections = auto_hwm_buffer_connections
@@ -160,44 +132,67 @@ class MonitorEvent:
 SocketMonitorEvent = MonitorEvent
 
 
-class ServiceMonitorEvent:
-    def __init__(
-        self,
-        *,
-        service_kind,
-        event_type,
-        status,
-        error_code,
-        value,
-        detail_flags,
-        service_name,
-        endpoint,
-        routing_id,
-        subject,
-        subject_kind,
-    ):
-        self.service_kind = service_kind
-        self.event_type = event_type
-        self.status = status
-        self.error_code = error_code
-        self.value = value
-        self.detail_flags = detail_flags
-        self.service_name = service_name
-        self.endpoint = endpoint
-        self.routing_id = routing_id
-        self.subject = subject
-        self.subject_kind = subject_kind
-
-
-ServiceEvent = ServiceMonitorEvent
+def _monitor_snapshot_from_native(snapshot):
+    return MonitorSnapshot(
+        source_kind=int(snapshot.source_kind),
+        state_flags=int(snapshot.state_flags),
+        detail_flags=int(snapshot.detail_flags),
+        snd_pending_msgs=int(snapshot.snd_pending_msgs),
+        rcv_pending_msgs=int(snapshot.rcv_pending_msgs),
+        auto_hwm_enabled=bool(snapshot.auto_hwm_enabled),
+        auto_hwm_role=int(snapshot.auto_hwm_role),
+        auto_hwm_managed_connections=int(snapshot.auto_hwm_managed_connections),
+        auto_hwm_active_hwm_connections=int(snapshot.auto_hwm_active_hwm_connections),
+        auto_hwm_observed_count=int(snapshot.auto_hwm_observed_count),
+        auto_hwm_planning_count=int(snapshot.auto_hwm_planning_count),
+        auto_hwm_context_total_planning_count=int(
+            snapshot.auto_hwm_context_total_planning_count
+        ),
+        auto_hwm_base_floor_per_connection=int(
+            snapshot.auto_hwm_base_floor_per_connection
+        ),
+        auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
+        auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),
+        auto_hwm_requested_sndbuf=int(snapshot.auto_hwm_requested_sndbuf),
+        auto_hwm_requested_rcvbuf=int(snapshot.auto_hwm_requested_rcvbuf),
+        auto_hwm_effective_sndbuf=int(snapshot.auto_hwm_effective_sndbuf),
+        auto_hwm_effective_rcvbuf=int(snapshot.auto_hwm_effective_rcvbuf),
+        auto_hwm_total_memory_budget_bytes=int(
+            snapshot.auto_hwm_total_memory_budget_bytes
+        ),
+        auto_hwm_queue_budget_bytes=int(snapshot.auto_hwm_queue_budget_bytes),
+        auto_hwm_transport_budget_bytes=int(
+            snapshot.auto_hwm_transport_budget_bytes
+        ),
+        auto_hwm_runtime_reserve_bytes=int(snapshot.auto_hwm_runtime_reserve_bytes),
+        auto_hwm_socket_queue_share_bytes=int(
+            snapshot.auto_hwm_socket_queue_share_bytes
+        ),
+        auto_hwm_socket_message_slots=int(snapshot.auto_hwm_socket_message_slots),
+        auto_hwm_effective_message_bytes=int(
+            snapshot.auto_hwm_effective_message_bytes
+        ),
+        auto_hwm_estimated_max_memory_bytes=int(
+            snapshot.auto_hwm_estimated_max_memory_bytes
+        ),
+        auto_hwm_last_recalc_ms=int(snapshot.auto_hwm_last_recalc_ms),
+        auto_hwm_last_recalc_reason=int(snapshot.auto_hwm_last_recalc_reason),
+        auto_hwm_send_blocked_ratio_ppm=int(
+            snapshot.auto_hwm_send_blocked_ratio_ppm
+        ),
+        auto_hwm_scope=int(snapshot.auto_hwm_scope),
+        auto_hwm_scope_count=int(snapshot.auto_hwm_scope_count),
+        auto_hwm_auto_buffer_bytes=int(snapshot.auto_hwm_auto_buffer_bytes),
+        auto_hwm_manual_buffer_bytes=int(snapshot.auto_hwm_manual_buffer_bytes),
+        auto_hwm_buffer_connections=int(snapshot.auto_hwm_buffer_connections),
+        auto_hwm_deferred_sndhwm=int(snapshot.auto_hwm_deferred_sndhwm),
+        auto_hwm_deferred_rcvhwm=int(snapshot.auto_hwm_deferred_rcvhwm),
+    )
 
 
 _CALLBACK_SENTINEL = object()
 _SOCKET_MONITOR_HANDLER = ctypes.CFUNCTYPE(
     None, ctypes.POINTER(ZlinkMonitorEvent), ctypes.c_void_p
-)
-_SERVICE_MONITOR_HANDLER = ctypes.CFUNCTYPE(
-    None, ctypes.POINTER(ZlinkServiceEvent), ctypes.c_void_p
 )
 
 
@@ -223,14 +218,9 @@ class _BaseMonitor:
         self._handler = handler
         self._handler_stop = stop
 
-        if isinstance(self, MonitorSocket):
-            decode = MonitorSocket._decode_event
-            native_handler = _SOCKET_MONITOR_HANDLER
-            register = lib().zlink_socket_monitor_handler
-        else:
-            decode = ServiceMonitor._decode_event
-            native_handler = _SERVICE_MONITOR_HANDLER
-            register = lib().zlink_service_monitor_handler
+        decode = MonitorSocket._decode_event
+        native_handler = _SOCKET_MONITOR_HANDLER
+        register = lib().zlink_socket_monitor_handler
 
         def _callback(event_ptr, _):
             if stop.is_set():
@@ -271,95 +261,7 @@ class _BaseMonitor:
         rc = lib().zlink_monitor_snapshot(self._handle, ctypes.byref(snapshot))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return MonitorSnapshot(
-            source_kind=int(snapshot.source_kind),
-            state_flags=int(snapshot.state_flags),
-            detail_flags=int(snapshot.detail_flags),
-            snd_pending_msgs=int(snapshot.snd_pending_msgs),
-            rcv_pending_msgs=int(snapshot.rcv_pending_msgs),
-            auto_hwm_enabled=bool(snapshot.auto_hwm_enabled),
-            auto_hwm_role=int(snapshot.auto_hwm_role),
-            auto_hwm_managed_connections=int(snapshot.auto_hwm_managed_connections),
-            auto_hwm_active_hwm_connections=int(
-                snapshot.auto_hwm_active_hwm_connections
-            ),
-            auto_hwm_planning_transport_connections=int(
-                snapshot.auto_hwm_planning_transport_connections
-            ),
-            auto_hwm_base_floor_per_connection=int(
-                snapshot.auto_hwm_base_floor_per_connection
-            ),
-            auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
-            auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),
-            auto_hwm_requested_sndbuf=int(snapshot.auto_hwm_requested_sndbuf),
-            auto_hwm_requested_rcvbuf=int(snapshot.auto_hwm_requested_rcvbuf),
-            auto_hwm_effective_sndbuf=int(snapshot.auto_hwm_effective_sndbuf),
-            auto_hwm_effective_rcvbuf=int(snapshot.auto_hwm_effective_rcvbuf),
-            auto_hwm_total_memory_budget_bytes=int(
-                snapshot.auto_hwm_total_memory_budget_bytes
-            ),
-            auto_hwm_queue_budget_bytes=int(snapshot.auto_hwm_queue_budget_bytes),
-            auto_hwm_transport_budget_bytes=int(
-                snapshot.auto_hwm_transport_budget_bytes
-            ),
-            auto_hwm_runtime_reserve_bytes=int(
-                snapshot.auto_hwm_runtime_reserve_bytes
-            ),
-            auto_hwm_group_budget_bytes=int(snapshot.auto_hwm_group_budget_bytes),
-            auto_hwm_group_message_slots=int(snapshot.auto_hwm_group_message_slots),
-            auto_hwm_effective_message_bytes=int(
-                snapshot.auto_hwm_effective_message_bytes
-            ),
-            auto_hwm_control_budget_bytes=int(
-                snapshot.auto_hwm_control_budget_bytes
-            ),
-            auto_hwm_routed_budget_bytes=int(
-                snapshot.auto_hwm_routed_budget_bytes
-            ),
-            auto_hwm_fanout_budget_bytes=int(
-                snapshot.auto_hwm_fanout_budget_bytes
-            ),
-            auto_hwm_recv_ingress_budget_bytes=int(
-                snapshot.auto_hwm_recv_ingress_budget_bytes
-            ),
-            auto_hwm_control_active_connections=int(
-                snapshot.auto_hwm_control_active_connections
-            ),
-            auto_hwm_routed_active_connections=int(
-                snapshot.auto_hwm_routed_active_connections
-            ),
-            auto_hwm_fanout_active_connections=int(
-                snapshot.auto_hwm_fanout_active_connections
-            ),
-            auto_hwm_recv_ingress_active_connections=int(
-                snapshot.auto_hwm_recv_ingress_active_connections
-            ),
-            auto_hwm_estimated_max_memory_bytes=int(
-                snapshot.auto_hwm_estimated_max_memory_bytes
-            ),
-            auto_hwm_last_recalc_ms=int(snapshot.auto_hwm_last_recalc_ms),
-            auto_hwm_last_recalc_reason=int(
-                snapshot.auto_hwm_last_recalc_reason
-            ),
-            auto_hwm_send_blocked_ratio_ppm=int(
-                snapshot.auto_hwm_send_blocked_ratio_ppm
-            ),
-            auto_hwm_scope=int(snapshot.auto_hwm_scope),
-            auto_hwm_scope_count=int(snapshot.auto_hwm_scope_count),
-            auto_hwm_role_group_budget_bytes=int(
-                snapshot.auto_hwm_role_group_budget_bytes
-            ),
-            auto_hwm_scope_group_budget_bytes=int(
-                snapshot.auto_hwm_scope_group_budget_bytes
-            ),
-            auto_hwm_auto_buffer_bytes=int(snapshot.auto_hwm_auto_buffer_bytes),
-            auto_hwm_manual_buffer_bytes=int(
-                snapshot.auto_hwm_manual_buffer_bytes
-            ),
-            auto_hwm_buffer_connections=int(snapshot.auto_hwm_buffer_connections),
-            auto_hwm_deferred_sndhwm=int(snapshot.auto_hwm_deferred_sndhwm),
-            auto_hwm_deferred_rcvhwm=int(snapshot.auto_hwm_deferred_rcvhwm),
-        )
+        return _monitor_snapshot_from_native(snapshot)
 
     def close(self):
         if not self._handle:
@@ -425,43 +327,8 @@ class MonitorSocket(_BaseMonitor):
         self._start_event_dispatch(handler)
 
 
-class ServiceMonitor(_BaseMonitor):
-    @staticmethod
-    def _decode_event(native):
-        return ServiceMonitorEvent(
-            service_kind=int(native.service_kind),
-            event_type=int(native.event_type),
-            status=int(native.status),
-            error_code=int(native.error_code),
-            value=int(native.value),
-            detail_flags=int(native.detail_flags),
-            service_name=_decode_fixed(native.service_name),
-            endpoint=_decode_fixed(native.endpoint),
-            routing_id=_routing_id_bytes(native.routing_id),
-            subject=_decode_fixed(native.subject),
-            subject_kind=int(native.subject_kind),
-        )
-
-    def recv(self):
-        native = ZlinkServiceEvent()
-        rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native), 0)
-        if rc != 0:
-            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-        return self._decode_event(native)
-
-    def on_event(self, handler):
-        self._start_event_dispatch(handler)
-
-
 def open_socket_monitor(socket, events=MonitorEventMask.ALL):
     options = ZlinkSocketMonitorOpenOptions()
     options.events = int(events)
     handle = lib().zlink_socket_monitor_open(socket._handle, ctypes.byref(options))
     return MonitorSocket(handle)
-
-
-def open_service_monitor(service, events=ServiceMonitorMask.ALL):
-    options = ZlinkServiceMonitorOpenOptions()
-    options.events = int(events)
-    handle = lib().zlink_service_monitor_open(service._handle, ctypes.byref(options))
-    return ServiceMonitor(handle)

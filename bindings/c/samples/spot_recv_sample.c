@@ -7,7 +7,7 @@ int main (void)
     void *ctx = zlink_ctx_new ();
     assert (ctx != NULL);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     assert (node != NULL);
 
     void *spot = zlink_spot_new (node);

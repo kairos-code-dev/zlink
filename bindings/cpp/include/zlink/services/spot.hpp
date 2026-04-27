@@ -49,9 +49,6 @@ extern "C" zlink_recv_result_t zlink_spot_subscription_event_part (
   size_t topic_id_capacity_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_);
-
-class service_monitor_handle_t;
-
 namespace service
 {
 
@@ -374,10 +371,24 @@ class spot_node_t
 {
   public:
     explicit spot_node_t (context_t &ctx_)
-        : _node (zlink_spot_node_new (ctx_.handle ())), _last_error (0)
+        : _node (zlink_spot_node_new (ctx_.handle (), NULL)), _last_error (0)
     {
         if (!_node)
             _last_error = errno != 0 ? errno : EFAULT;
+    }
+
+    spot_node_t (context_t &ctx_,
+                 const zlink_spot_node_options_t &options_)
+        : _node (zlink_spot_node_new (ctx_.handle (), &options_)),
+          _last_error (0)
+    {
+        if (!_node)
+            _last_error = errno != 0 ? errno : EFAULT;
+    }
+
+    spot_node_t (context_t &ctx_, const spot_node_options_t &options_)
+        : spot_node_t (ctx_, options_.native ())
+    {
     }
 
     ~spot_node_t ()
@@ -646,6 +657,44 @@ class spot_node_t
         entries.reserve (native.size ());
         for (size_t i = 0; i < native.size (); ++i)
             entries.push_back (spot_node_subject_entry_t (native[i]));
+        return entries;
+    }
+
+    std::vector<spot_node_socket_snapshot_entry_t>
+    internal_sockets_snapshot (
+      const spot_node_socket_snapshot_filter_t *filter_ = NULL) const
+    {
+        zlink_spot_node_socket_snapshot_filter_t native_filter;
+        const zlink_spot_node_socket_snapshot_filter_t *filter_ptr = NULL;
+        if (filter_) {
+            std::memset (&native_filter, 0, sizeof (native_filter));
+            native_filter.owner =
+              static_cast<zlink_spot_node_socket_owner_t> (filter_->owner);
+            native_filter.socket_type =
+              static_cast<zlink_socket_type_t> (filter_->type);
+            std::snprintf (
+              native_filter.socket_name, sizeof (native_filter.socket_name),
+              "%s", filter_->socket_name.c_str ());
+            filter_ptr = &native_filter;
+        }
+
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_internal_sockets_snapshot (
+              _node, filter_ptr, NULL, &count)));
+        std::vector<zlink_spot_node_socket_snapshot_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_spot_node_internal_sockets_snapshot (
+                  _node, filter_ptr, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<spot_node_socket_snapshot_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (spot_node_socket_snapshot_entry_t (native[i]));
         return entries;
     }
 

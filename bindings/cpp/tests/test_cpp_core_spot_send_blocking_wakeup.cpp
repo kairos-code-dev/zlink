@@ -139,9 +139,9 @@ void setup_fixture (spot_fixture_t *fixture_)
     fixture_->ctx = zlink_ctx_new ();
     assert (fixture_->ctx != NULL);
 
-    fixture_->pub_node = zlink_spot_node_new (fixture_->ctx, NULL, NULL, NULL);
+    fixture_->pub_node = zlink_spot_node_new (fixture_->ctx, NULL);
     assert (fixture_->pub_node != NULL);
-    fixture_->sub_node = zlink_spot_node_new (fixture_->ctx, NULL, NULL, NULL);
+    fixture_->sub_node = zlink_spot_node_new (fixture_->ctx, NULL);
     assert (fixture_->sub_node != NULL);
 
     fixture_->spot_pub = zlink_spot_pub_new (fixture_->pub_node);

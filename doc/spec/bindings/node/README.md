@@ -1096,32 +1096,11 @@ class MonitorEvent {
 }
 ```
 
-`MonitorEventType` includes `peerAdmissionChanged` (bit 15). Service
-monitors surface the same change through
-`ServiceMonitorEventMask.peerAdmissionChanged` (bit 8).
-
-### ServiceMonitor
-
-Starts in recv model. `onEvent(...)` transitions one-way to callback-only
-model; after that `recv()` throws a busy recv error and `snapshot()` still works.
-
-```typescript
-class ServiceMonitor {
-    /** @throws {RecvError} */
-    recv(): ServiceEvent;
-    /** @throws {HandlerError} */
-    onEvent(handler: (event: ServiceEvent) => void): void;
-    /** @throws {ConfigError} */
-    snapshot(): MonitorSnapshot;
-    /** @throws {CloseError} */
-    close(): void;
-}
-```
+`MonitorEventType` includes `peerAdmissionChanged` (bit 15).
 
 ### MonitorSnapshot
 
-Runtime snapshot returned by `MonitorSocket.snapshot()` and
-`ServiceMonitor.snapshot()`.
+Runtime snapshot returned by `MonitorSocket.snapshot()`.
 
 ```typescript
 interface MonitorSnapshot {
@@ -1132,11 +1111,11 @@ interface MonitorSnapshot {
     readonly rcvPendingMsgs: bigint;         // uint64 recv-queue depth
     readonly autoHwmEnabled: boolean;
     readonly autoHwmRole: number;
-    readonly autoHwmScope: number;
-    readonly autoHwmScopeCount: number;
     readonly autoHwmManagedConnections: number;
     readonly autoHwmActiveHwmConnections: number;
-    readonly autoHwmPlanningTransportConnections: number;
+    readonly autoHwmObservedCount: number;
+    readonly autoHwmPlanningCount: number;
+    readonly autoHwmContextTotalPlanningCount: number;
     readonly autoHwmBaseFloorPerConnection: number;
     readonly autoHwmAppliedSndhwm: number;
     readonly autoHwmAppliedRcvhwm: number;
@@ -1148,48 +1127,22 @@ interface MonitorSnapshot {
     readonly autoHwmQueueBudgetBytes: bigint;
     readonly autoHwmTransportBudgetBytes: bigint;
     readonly autoHwmRuntimeReserveBytes: bigint;
-    readonly autoHwmGroupBudgetBytes: bigint;
-    readonly autoHwmRoleGroupBudgetBytes: bigint;
-    readonly autoHwmScopeGroupBudgetBytes: bigint;
-    readonly autoHwmGroupMessageSlots: bigint;
+    readonly autoHwmSocketQueueShareBytes: bigint;
+    readonly autoHwmSocketMessageSlots: bigint;
     readonly autoHwmEffectiveMessageBytes: bigint;
-    readonly autoHwmAutoBufferBytes: bigint;
-    readonly autoHwmManualBufferBytes: bigint;
-    readonly autoHwmBufferConnections: number;
-    readonly autoHwmControlBudgetBytes: bigint;
-    readonly autoHwmRoutedBudgetBytes: bigint;
-    readonly autoHwmFanoutBudgetBytes: bigint;
-    readonly autoHwmRecvIngressBudgetBytes: bigint;
-    readonly autoHwmControlActiveConnections: number;
-    readonly autoHwmRoutedActiveConnections: number;
-    readonly autoHwmFanoutActiveConnections: number;
-    readonly autoHwmRecvIngressActiveConnections: number;
     readonly autoHwmEstimatedMaxMemoryBytes: bigint;
     readonly autoHwmLastRecalcMs: bigint;
     readonly autoHwmLastRecalcReason: number;
+    readonly autoHwmSendBlockedRatioPpm: number;
+    readonly autoHwmScope: number;
+    readonly autoHwmScopeCount: number;
+    readonly autoHwmAutoBufferBytes: bigint;
+    readonly autoHwmManualBufferBytes: bigint;
+    readonly autoHwmBufferConnections: number;
     readonly autoHwmDeferredSndhwm: number;
     readonly autoHwmDeferredRcvhwm: number;
-    readonly autoHwmSendBlockedRatioPpm: number;
     /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
     isReady(): boolean;
-}
-```
-
-### ServiceEvent
-
-```typescript
-class ServiceEvent {
-    readonly serviceKind: number;            // zlink_service_kind_t (DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET)
-    readonly eventType: number;              // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
-    readonly status: number;                 // uint32 status code
-    readonly errorCode: number;              // uint32 errno (0 when not an error)
-    readonly value: bigint;                  // uint64 event-specific value
-    readonly detailFlags: number;            // uint32 detail bitmask
-    readonly serviceName: string;
-    readonly endpoint: string;
-    readonly routingId: RoutingId | null;    // peer routing id (null when not applicable)
-    readonly subject: string;                // subscribe subject (topic)
-    readonly subjectKind: number;            // subject kind enum
 }
 ```
 
@@ -1261,8 +1214,6 @@ class Discovery {
     /** @throws {ConfigError} */
     memberPeerMetadata(serviceRole: number, endpoint: string): Buffer;
     /** @throws {ConfigError} */
-    monitorOpen(events?: ServiceMonitorEventMask): ServiceMonitor;
-    /** @throws {ConfigError} */
     setTlsClient(ca: string, host: string, trust?: number): void;
     /**
      * Resolve the current owner node routing id for a logical spot routing id.
@@ -1283,6 +1234,7 @@ class Discovery {
 
 ```typescript
 class SpotNode {
+    constructor(ctx: Context, options?: SpotNodeOptions);
     constructor(ctx: Context);
     /** @throws {BindError} */
     bind(endpoint: string): void;
@@ -1312,6 +1264,7 @@ class SpotNode {
     peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[];
     /** @throws {ConfigError} */
     subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[];
+    internalSocketsSnapshot(filter?: SpotNodeSocketSnapshotFilter): SpotNodeSocketSnapshotEntry[];
     /** @throws {ConfigError} */
     // --- identity / routing ---
     /**
@@ -1738,8 +1691,6 @@ type SpotDispatchSubjectKind = number;
 type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
 type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
-type ServiceMonitorHandler = (event: ServiceEvent) => void;
-type ServiceMonitorEventMask = number;
 /** Monitor event type enum (CONNECTION_READY, CONNECTED, DISCONNECTED, ...). */
 type MonitorEventType = number;
 ```

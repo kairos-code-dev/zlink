@@ -77,6 +77,7 @@ func (c *Context) XPubSocket() (*XPubSocket, error)
 func (c *Context) XSubSocket() (*XSubSocket, error)
 func (c *Context) StreamSocket() (*StreamSocket, error)
 func (c *Context) SpotNode() (*SpotNode, error)
+func (c *Context) SpotNodeWithOptions(options SpotNodeOptions) (*SpotNode, error)
 func (c *Context) Registry() (*Registry, error)
 func (c *Context) Discovery(serviceType ServiceType, serviceName string) (*Discovery, error)
 func (c *Context) RegistryQueryClient() (*RegistryQueryClient, error)
@@ -953,25 +954,9 @@ var IgnoreMonitorHandler func(MonitorEvent)
 func (m *SocketMonitor) Close() error
 ```
 
-### ServiceMonitor
-
-Starts in recv model. `OnEvent(...)` transitions one-way to callback-only
-model; after that `Recv()` returns a busy recv error and `Snapshot()` still works.
-
-```go
-// Recv receives the next service event. Returns *RecvError on failure.
-func (m *ServiceMonitor) Recv() (*ServiceMonitorEvent, error)
-// Snapshot captures the monitor snapshot. Returns *ConfigError on failure.
-func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error)
-// OnEvent registers an event handler. Returns *HandlerError on failure.
-func (m *ServiceMonitor) OnEvent(handler func(*ServiceMonitorEvent)) error
-// Close closes the monitor. Returns *CloseError on failure.
-func (m *ServiceMonitor) Close() error
-```
-
 ### MonitorSnapshot
 
-Canonical socket / service monitor runtime snapshot.
+Canonical socket monitor runtime snapshot.
 
 ```go
 type MonitorSnapshot struct {
@@ -982,11 +967,11 @@ type MonitorSnapshot struct {
     RcvPendingMsgs                      uint64
     AutoHwmEnabled                      bool
     AutoHwmRole                         uint32
-    AutoHwmScope                        uint32
-    AutoHwmScopeCount                   uint32
     AutoHwmManagedConnections           uint32
     AutoHwmActiveHwmConnections         uint32
-    AutoHwmPlanningTransportConnections uint32
+    AutoHwmObservedCount                uint32
+    AutoHwmPlanningCount                uint32
+    AutoHwmContextTotalPlanningCount    uint32
     AutoHwmBaseFloorPerConnection       uint32
     AutoHwmAppliedSndHwm                int32
     AutoHwmAppliedRcvHwm                int32
@@ -998,28 +983,20 @@ type MonitorSnapshot struct {
     AutoHwmQueueBudgetBytes             uint64
     AutoHwmTransportBudgetBytes         uint64
     AutoHwmRuntimeReserveBytes          uint64
-    AutoHwmGroupBudgetBytes             uint64
-    AutoHwmRoleGroupBudgetBytes         uint64
-    AutoHwmScopeGroupBudgetBytes        uint64
-    AutoHwmGroupMessageSlots            uint64
+    AutoHwmSocketQueueShareBytes        uint64
+    AutoHwmSocketMessageSlots           uint64
     AutoHwmEffectiveMessageBytes        uint64
-    AutoHwmAutoBufferBytes              uint64
-    AutoHwmManualBufferBytes            uint64
-    AutoHwmBufferConnections            uint32
-    AutoHwmControlBudgetBytes           uint64
-    AutoHwmRoutedBudgetBytes            uint64
-    AutoHwmFanoutBudgetBytes            uint64
-    AutoHwmRecvIngressBudgetBytes       uint64
-    AutoHwmControlActiveConnections     uint32
-    AutoHwmRoutedActiveConnections      uint32
-    AutoHwmFanoutActiveConnections      uint32
-    AutoHwmRecvIngressActiveConnections uint32
     AutoHwmEstimatedMaxMemoryBytes      uint64
     AutoHwmLastRecalcMs                 uint64
     AutoHwmLastRecalcReason             uint32
+    AutoHwmSendBlockedRatioPPM          uint32
+    AutoHwmScope                        uint32
+    AutoHwmScopeCount                   uint32
+    AutoHwmAutoBufferBytes              uint64
+    AutoHwmManualBufferBytes            uint64
+    AutoHwmBufferConnections            uint32
     AutoHwmDeferredSndHwm               int32
     AutoHwmDeferredRcvHwm               int32
-    AutoHwmSendBlockedRatioPPM          uint32
 }
 
 // IsReady returns true when the ready bit is set in StateFlags.
@@ -1042,8 +1019,6 @@ type MonitorEvent struct {
 }
 
 // MonitorEventType includes MonitorEventPeerWeightChanged (bit 15).
-// Service monitors surface the same change through
-// ServiceMonitorEventPeerWeightChanged (bit 8).
 
 func (e *MonitorEvent) HasRoutingID() bool
 
@@ -1053,32 +1028,6 @@ func (e *MonitorEvent) IsDisconnected() bool
 func (e *MonitorEvent) IsListening() bool
 func (e *MonitorEvent) IsAccepted() bool
 func (e *MonitorEvent) IsConnectionReady() bool
-```
-
-### ServiceMonitorEvent
-
-Canonical discovery service monitor event. Commonly aliased as
-`ServiceEvent` in Go idiom.
-
-```go
-type ServiceMonitorEvent struct {
-    ServiceKind ServiceKind           // ZLINK_SERVICE_KIND_DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET
-    EventType   ServiceMonitorEventType // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
-    Status      uint32                // status code
-    ErrorCode   uint32                // errno on error events
-    Value       uint64                // event-specific value
-    DetailFlags uint32                // detail bitmask
-    ServiceName string                // service name
-    Endpoint    string                // endpoint
-    RoutingID   RoutingID             // peer routing id (empty when n/a)
-    Subject     string                // subscribe subject (topic)
-    SubjectKind SubjectKind           // subject kind
-}
-
-func (e *ServiceMonitorEvent) HasRoutingID() bool
-
-// ServiceEvent is the canonical alias callers use in application code.
-type ServiceEvent = ServiceMonitorEvent
 ```
 
 ---
@@ -1129,7 +1078,6 @@ func (d *Discovery) SetMetadata(data []byte) error
 func (d *Discovery) GetMetadata() (*Message, error)
 func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error)
 func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string) (*Message, error)
-func (d *Discovery) MonitorOpen(events ...ServiceMonitorEventMask) (*ServiceMonitor, error)
 func (d *Discovery) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
 // ResolveSpot resolves the current owner node routing id for a logical spot
 // routing id. Intended for send/request destination lookup. Maps to
@@ -1171,6 +1119,7 @@ func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
 func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error)
+func (n *SpotNode) InternalSocketsSnapshot(filter *SpotNodeSocketSnapshotFilter) ([]SpotNodeSocketSnapshotEntry, error)
 // Close closes the spot node after cascading close to all live Spot handles.
 // Returns *CloseError on failure.
 func (n *SpotNode) Close() error

@@ -178,8 +178,8 @@ bool initialize_reqrep_server_session(
     }
 
     perf_multi_spot_control::destroy_server_session(session);
-    session->node = zlink_spot_node_new(ctx.get());
-    session->control_node = zlink_spot_node_new(ctx.get());
+    session->node = zlink_spot_node_new(ctx.get(), NULL);
+    session->control_node = zlink_spot_node_new(ctx.get(), NULL);
     if (!session->node || !session->control_node
         || !setup_tls_server(session->node, transport)
         || !setup_tls_client(session->node, transport)

@@ -950,9 +950,6 @@ set(api-sources
     src/api/monitor_api.cpp
     src/api/monitor_dispatch_context.cpp
     src/api/monitor_query_api.cpp
-    src/api/monitor_service_open_api.cpp
-    src/api/monitor_service_api.cpp
-    src/api/monitor_service_snapshot_api.cpp
     src/api/monitor_socket_api.cpp
     src/api/internal_pair_queue_internal.cpp
     src/api/part_helper_api.cpp
@@ -1060,7 +1057,6 @@ set(protocol-sources
 
 set(discovery-sources
     src/services/control/service_control_runtime.cpp
-    src/services/common/service_monitor.cpp
     src/services/common/service_runtime_base.cpp
     src/services/discovery/discovery_access.cpp
     src/services/discovery/registry_access.cpp

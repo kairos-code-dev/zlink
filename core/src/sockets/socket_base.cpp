@@ -207,25 +207,14 @@ void zlink::socket_base_t::set_auto_hwm_policy_enabled (bool enabled_)
     refresh_auto_hwm_policy ();
 }
 
-void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
+bool zlink::socket_base_t::auto_hwm_policy_enabled () const
 {
-    ctx_t *ctx = get_ctx ();
-    if (!ctx)
-        return;
+    return _auto_hwm_policy_enabled;
+}
 
-    uint32_t recalc_reason = _auto_hwm_last_recalc_reason;
-    if (recalc_reason == ZLINK_AUTO_HWM_RECALC_REASON_NONE) {
-        recalc_reason = _auto_hwm_last_recalc_ms == 0
-                          ? ZLINK_AUTO_HWM_RECALC_REASON_INITIAL
-                          : ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
-    }
-
-    const bool enabled = ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0;
-    const int total_memory_budget_mb =
-      ctx->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB);
-    auto_hwm_context_plan_from_budget_mb (enabled, total_memory_budget_mb,
-                                          &_auto_hwm_context_plan);
-
+zlink::auto_hwm_socket_plan_t zlink::socket_base_t::prepare_auto_hwm_socket_plan (
+  const auto_hwm_context_plan_t &context_)
+{
     auto_hwm_role_t role = _auto_hwm_role_override ? _auto_hwm_role
                                                    : auto_hwm_role_none;
     if (role == auto_hwm_role_none)
@@ -245,33 +234,45 @@ void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
             pending_messages += pipe->get_rcv_pending_msgs_approx ();
         }
     }
-    auto_hwm_socket_plan_for_role (_auto_hwm_context_plan, role, options.type,
-                                   managed_connections, managed_connections,
-                                   &_auto_hwm_socket_plan,
-                                   options.auto_hwm_msg_unit_bytes,
-                                   options.sndbuf, options.rcvbuf,
-                                   _manual_sndbuf, _manual_rcvbuf,
-                                   _auto_hwm_scope,
-                                   _auto_hwm_scope_count);
-    _auto_hwm_context_plan.queue_budget_bytes =
-      _auto_hwm_context_plan.total_memory_budget_bytes
-          > _auto_hwm_context_plan.runtime_reserve_bytes
-              + _auto_hwm_socket_plan.auto_buffer_bytes
-        ? _auto_hwm_context_plan.total_memory_budget_bytes
-            - _auto_hwm_context_plan.runtime_reserve_bytes
-            - _auto_hwm_socket_plan.auto_buffer_bytes
-        : 0;
-    _auto_hwm_context_plan.transport_budget_bytes =
-      _auto_hwm_socket_plan.auto_buffer_bytes;
+
+    uint32_t planning_bootstrap = 1u;
+    if (options.type == ZLINK_CORE_SOCKET_STREAM) {
+        planning_bootstrap =
+          static_cast<uint32_t> (get_ctx ()->auto_hwm_stream_bootstrap ());
+    } else if (_auto_hwm_scope != auto_hwm_scope_none) {
+        planning_bootstrap =
+          static_cast<uint32_t> (get_ctx ()->auto_hwm_spot_bootstrap ());
+    }
+
+    auto_hwm_socket_plan_t plan;
+    auto_hwm_socket_plan_prepare (
+      role, options.type, managed_connections, managed_connections, &plan,
+      options.auto_hwm_msg_unit_bytes, options.sndbuf, options.rcvbuf,
+      _manual_sndbuf, _manual_rcvbuf, _auto_hwm_scope, _auto_hwm_scope_count,
+      true, planning_bootstrap);
+    plan.pending_messages = pending_messages;
+    plan.context_total_planning_count = context_.total_planning_count;
+    return plan;
+}
+
+void zlink::socket_base_t::apply_auto_hwm_socket_plan (
+  const auto_hwm_context_plan_t &context_,
+  const auto_hwm_socket_plan_t &plan_,
+  bool force_apply_,
+  uint32_t recalc_reason_)
+{
+    _auto_hwm_context_plan = context_;
+    _auto_hwm_socket_plan = plan_;
 
     if (!_auto_hwm_context_plan.enabled
         || (!_auto_hwm_policy_enabled && !force_apply_))
         return;
 
+    uint32_t recalc_reason = recalc_reason_;
     bool refresh_hwms = false;
     if (!_manual_sndhwm && options.sndhwm != _auto_hwm_socket_plan.sndhwm) {
         if (_auto_hwm_socket_plan.sndhwm >= options.sndhwm
-            || pending_messages
+            || _auto_hwm_socket_plan.pending_messages
                  <= static_cast<uint64_t> (_auto_hwm_socket_plan.sndhwm)) {
             options.sndhwm = _auto_hwm_socket_plan.sndhwm;
             _auto_hwm_deferred_sndhwm = -1;
@@ -283,7 +284,7 @@ void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
     }
     if (!_manual_rcvhwm && options.rcvhwm != _auto_hwm_socket_plan.rcvhwm) {
         if (_auto_hwm_socket_plan.rcvhwm >= options.rcvhwm
-            || pending_messages
+            || _auto_hwm_socket_plan.pending_messages
                  <= static_cast<uint64_t> (_auto_hwm_socket_plan.rcvhwm)) {
             options.rcvhwm = _auto_hwm_socket_plan.rcvhwm;
             _auto_hwm_deferred_rcvhwm = -1;
@@ -303,6 +304,31 @@ void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
 
     _auto_hwm_last_recalc_ms = _clock.now_ms ();
     _auto_hwm_last_recalc_reason = recalc_reason;
+}
+
+void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
+{
+    ctx_t *ctx = get_ctx ();
+    if (!ctx)
+        return;
+
+    uint32_t recalc_reason = _auto_hwm_last_recalc_reason;
+    if (recalc_reason == ZLINK_AUTO_HWM_RECALC_REASON_NONE) {
+        recalc_reason = _auto_hwm_last_recalc_ms == 0
+                          ? ZLINK_AUTO_HWM_RECALC_REASON_INITIAL
+                          : ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
+    }
+
+    const bool enabled = ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0;
+    const int total_memory_budget_mb =
+      ctx->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB);
+    auto_hwm_context_plan_from_budget_mb (enabled, total_memory_budget_mb,
+                                          &_auto_hwm_context_plan);
+    _auto_hwm_socket_plan = prepare_auto_hwm_socket_plan (_auto_hwm_context_plan);
+    auto_hwm_context_finalize (&_auto_hwm_context_plan, &_auto_hwm_socket_plan,
+                               1);
+    apply_auto_hwm_socket_plan (_auto_hwm_context_plan, _auto_hwm_socket_plan,
+                                force_apply_, recalc_reason);
 }
 
 static void copy_routing_id (zlink_routing_id_t *out_,

@@ -103,7 +103,9 @@ export interface MonitorSnapshot {
   readonly autoHwmRole: number;
   readonly autoHwmManagedConnections: number;
   readonly autoHwmActiveHwmConnections: number;
-  readonly autoHwmPlanningTransportConnections: number;
+  readonly autoHwmObservedCount: number;
+  readonly autoHwmPlanningCount: number;
+  readonly autoHwmContextTotalPlanningCount: number;
   readonly autoHwmBaseFloorPerConnection: number;
   readonly autoHwmAppliedSndHwm: number;
   readonly autoHwmAppliedRcvHwm: number;
@@ -115,25 +117,15 @@ export interface MonitorSnapshot {
   readonly autoHwmQueueBudgetBytes: bigint;
   readonly autoHwmTransportBudgetBytes: bigint;
   readonly autoHwmRuntimeReserveBytes: bigint;
-  readonly autoHwmGroupBudgetBytes: bigint;
-  readonly autoHwmGroupMessageSlots: bigint;
+  readonly autoHwmSocketQueueShareBytes: bigint;
+  readonly autoHwmSocketMessageSlots: bigint;
   readonly autoHwmEffectiveMessageBytes: bigint;
-  readonly autoHwmControlBudgetBytes: bigint;
-  readonly autoHwmRoutedBudgetBytes: bigint;
-  readonly autoHwmFanoutBudgetBytes: bigint;
-  readonly autoHwmRecvIngressBudgetBytes: bigint;
-  readonly autoHwmControlActiveConnections: number;
-  readonly autoHwmRoutedActiveConnections: number;
-  readonly autoHwmFanoutActiveConnections: number;
-  readonly autoHwmRecvIngressActiveConnections: number;
   readonly autoHwmEstimatedMaxMemoryBytes: bigint;
   readonly autoHwmLastRecalcMs: bigint;
   readonly autoHwmLastRecalcReason: number;
   readonly autoHwmSendBlockedRatioPpm: number;
   readonly autoHwmScope: number;
   readonly autoHwmScopeCount: number;
-  readonly autoHwmRoleGroupBudgetBytes: bigint;
-  readonly autoHwmScopeGroupBudgetBytes: bigint;
   readonly autoHwmAutoBufferBytes: bigint;
   readonly autoHwmManualBufferBytes: bigint;
   readonly autoHwmBufferConnections: number;
@@ -152,7 +144,9 @@ interface MonitorSnapshotRaw {
   autoHwmRole: number;
   autoHwmManagedConnections: number;
   autoHwmActiveHwmConnections: number;
-  autoHwmPlanningTransportConnections: number;
+  autoHwmObservedCount: number;
+  autoHwmPlanningCount: number;
+  autoHwmContextTotalPlanningCount: number;
   autoHwmBaseFloorPerConnection: number;
   autoHwmAppliedSndHwm: number;
   autoHwmAppliedRcvHwm: number;
@@ -164,25 +158,15 @@ interface MonitorSnapshotRaw {
   autoHwmQueueBudgetBytes: number | bigint;
   autoHwmTransportBudgetBytes: number | bigint;
   autoHwmRuntimeReserveBytes: number | bigint;
-  autoHwmGroupBudgetBytes: number | bigint;
-  autoHwmGroupMessageSlots: number | bigint;
+  autoHwmSocketQueueShareBytes: number | bigint;
+  autoHwmSocketMessageSlots: number | bigint;
   autoHwmEffectiveMessageBytes: number | bigint;
-  autoHwmControlBudgetBytes: number | bigint;
-  autoHwmRoutedBudgetBytes: number | bigint;
-  autoHwmFanoutBudgetBytes: number | bigint;
-  autoHwmRecvIngressBudgetBytes: number | bigint;
-  autoHwmControlActiveConnections: number;
-  autoHwmRoutedActiveConnections: number;
-  autoHwmFanoutActiveConnections: number;
-  autoHwmRecvIngressActiveConnections: number;
   autoHwmEstimatedMaxMemoryBytes: number | bigint;
   autoHwmLastRecalcMs: number | bigint;
   autoHwmLastRecalcReason: number;
   autoHwmSendBlockedRatioPpm: number;
   autoHwmScope: number;
   autoHwmScopeCount: number;
-  autoHwmRoleGroupBudgetBytes: number | bigint;
-  autoHwmScopeGroupBudgetBytes: number | bigint;
   autoHwmAutoBufferBytes: number | bigint;
   autoHwmManualBufferBytes: number | bigint;
   autoHwmBufferConnections: number;
@@ -236,17 +220,6 @@ export class MonitorEvent {
 
 Object.freeze(MonitorEvent);
 
-export const ServiceMonitorEventMask = Object.freeze({
-  error: 1 << 4,
-  discoveryServiceUp: 1 << 5,
-  discoveryServiceDown: 1 << 6,
-  discoveryProvidersChanged: 1 << 7,
-  peerWeightChanged: 1 << 8,
-  closed: 1 << 17,
-  all: (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 17)
-} as const);
-export type ServiceMonitorEventMask = number;
-
 const ServiceType = Object.freeze({ SPOT: 0x3002, SOCKET: 0x3003 } as const);
 const SERVICE_TYPE_SPOT = ServiceType.SPOT;
 const SERVICE_TYPE_SOCKET = ServiceType.SOCKET;
@@ -263,6 +236,8 @@ const ServiceKind = Object.freeze({
 const SpotPeerSource = Object.freeze({ MANUAL: 1, DISCOVERY: 2, MIXED: 3 } as const);
 const SpotPeerState = Object.freeze({ CONFIGURED: 1, CONNECTING: 2, CONNECTED: 3 } as const);
 const SpotNodeState = Object.freeze({ IDLE: 1, CONNECTING: 2, PARTIAL_READY: 3, READY: 4, ERROR: 5 } as const);
+export const SpotNodeMode = Object.freeze({ PUBSUB: 1, ROUTED: 2, ALL: 3 } as const);
+export const SpotNodeSocketOwner = Object.freeze({ ANY: 0, NODE: 1, SPOT: 2 } as const);
 const RegistryState = Object.freeze({ IDLE: 1, ACTIVE: 2, DEGRADED: 3, ERROR: 4 } as const);
 const TopologySource = Object.freeze({ MANUAL: 1, DISCOVERY: 2, REGISTRY: 3 } as const);
 const TopologyState = Object.freeze({ DISCOVERED: 1, CONNECTING: 2, READY: 3, LOST: 4, ERROR: 5, STOPPED: 6 } as const);
@@ -349,16 +324,24 @@ export interface SpotNodeSubjectEntry {
   readonly lastChangedMs: bigint;
 }
 
-const SpotServiceAttachmentRole = Object.freeze({
-  ROUTER: 1,
-  PUB: 2,
-  SUB: 3
-} as const);
+export interface SpotNodeOptions {
+  readonly mode?: number;
+}
 
-interface SpotServiceMonitorEvent {
-  readonly serviceName: string;
-  readonly role: number;
-  readonly event: MonitorEvent;
+export interface SpotNodeSocketSnapshotFilter {
+  readonly owner?: number;
+  readonly socketType?: number;
+  readonly socketName?: string;
+}
+
+export interface SpotNodeSocketSnapshotEntry {
+  readonly owner: number;
+  readonly ownerId: bigint;
+  readonly ownerName: string;
+  readonly socketName: string;
+  readonly socketType: number;
+  readonly autoHwmVisible: boolean;
+  readonly snapshot: MonitorSnapshot;
 }
 
 export interface RegistryServiceSummaryFilter {
@@ -388,48 +371,6 @@ export interface SpotNodeSubjectFilter {
   readonly subjectKind?: number;
 }
 
-interface ServiceEventValue {
-  serviceKind: number;
-  eventType: number;
-  status: number;
-  errorCode: number;
-  value: number | bigint;
-  detailFlags: number;
-  serviceName: string;
-  endpoint: string;
-  routingId: Buffer | null;
-  subject: string;
-  subjectKind: number;
-}
-
-export class ServiceEvent {
-  readonly serviceKind: number;
-  readonly eventType: number;
-  readonly status: number;
-  readonly errorCode: number;
-  readonly value: bigint;
-  readonly detailFlags: number;
-  readonly serviceName: string;
-  readonly endpoint: string;
-  readonly routingId: RoutingId | null;
-  readonly subject: string;
-  readonly subjectKind: number;
-
-  constructor(raw: ServiceEventValue) {
-    this.serviceKind = raw.serviceKind;
-    this.eventType = raw.eventType;
-    this.status = raw.status;
-    this.errorCode = raw.errorCode;
-    this.value = BigInt(raw.value);
-    this.detailFlags = raw.detailFlags;
-    this.serviceName = raw.serviceName;
-    this.endpoint = raw.endpoint;
-    this.routingId = wrapRoutingId(raw.routingId);
-    this.subject = raw.subject;
-    this.subjectKind = raw.subjectKind;
-  }
-}
-
 export type SocketRecvHandler = (message: Received) => void;
 export type SocketSubscribeHandler = (message: TopicMessage) => void;
 export type SocketSendReadyHandler = () => void;
@@ -451,7 +392,6 @@ export interface SpotDispatchInfo {
 export type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
 export type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 export type TimerHandler = (timer: Timer, fireCount: bigint) => void;
-export type ServiceMonitorHandler = (event: ServiceEvent) => void;
 
 function readErrno(): number {
   const native = requireNative();
@@ -594,7 +534,9 @@ function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
     autoHwmRole: raw.autoHwmRole,
     autoHwmManagedConnections: raw.autoHwmManagedConnections,
     autoHwmActiveHwmConnections: raw.autoHwmActiveHwmConnections,
-    autoHwmPlanningTransportConnections: raw.autoHwmPlanningTransportConnections,
+    autoHwmObservedCount: raw.autoHwmObservedCount,
+    autoHwmPlanningCount: raw.autoHwmPlanningCount,
+    autoHwmContextTotalPlanningCount: raw.autoHwmContextTotalPlanningCount,
     autoHwmBaseFloorPerConnection: raw.autoHwmBaseFloorPerConnection,
     autoHwmAppliedSndHwm: raw.autoHwmAppliedSndHwm,
     autoHwmAppliedRcvHwm: raw.autoHwmAppliedRcvHwm,
@@ -606,25 +548,15 @@ function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
     autoHwmQueueBudgetBytes: BigInt(raw.autoHwmQueueBudgetBytes),
     autoHwmTransportBudgetBytes: BigInt(raw.autoHwmTransportBudgetBytes),
     autoHwmRuntimeReserveBytes: BigInt(raw.autoHwmRuntimeReserveBytes),
-    autoHwmGroupBudgetBytes: BigInt(raw.autoHwmGroupBudgetBytes),
-    autoHwmGroupMessageSlots: BigInt(raw.autoHwmGroupMessageSlots),
+    autoHwmSocketQueueShareBytes: BigInt(raw.autoHwmSocketQueueShareBytes),
+    autoHwmSocketMessageSlots: BigInt(raw.autoHwmSocketMessageSlots),
     autoHwmEffectiveMessageBytes: BigInt(raw.autoHwmEffectiveMessageBytes),
-    autoHwmControlBudgetBytes: BigInt(raw.autoHwmControlBudgetBytes),
-    autoHwmRoutedBudgetBytes: BigInt(raw.autoHwmRoutedBudgetBytes),
-    autoHwmFanoutBudgetBytes: BigInt(raw.autoHwmFanoutBudgetBytes),
-    autoHwmRecvIngressBudgetBytes: BigInt(raw.autoHwmRecvIngressBudgetBytes),
-    autoHwmControlActiveConnections: raw.autoHwmControlActiveConnections,
-    autoHwmRoutedActiveConnections: raw.autoHwmRoutedActiveConnections,
-    autoHwmFanoutActiveConnections: raw.autoHwmFanoutActiveConnections,
-    autoHwmRecvIngressActiveConnections: raw.autoHwmRecvIngressActiveConnections,
     autoHwmEstimatedMaxMemoryBytes: BigInt(raw.autoHwmEstimatedMaxMemoryBytes),
     autoHwmLastRecalcMs: BigInt(raw.autoHwmLastRecalcMs),
     autoHwmLastRecalcReason: raw.autoHwmLastRecalcReason,
     autoHwmSendBlockedRatioPpm: raw.autoHwmSendBlockedRatioPpm,
     autoHwmScope: raw.autoHwmScope,
     autoHwmScopeCount: raw.autoHwmScopeCount,
-    autoHwmRoleGroupBudgetBytes: BigInt(raw.autoHwmRoleGroupBudgetBytes),
-    autoHwmScopeGroupBudgetBytes: BigInt(raw.autoHwmScopeGroupBudgetBytes),
     autoHwmAutoBufferBytes: BigInt(raw.autoHwmAutoBufferBytes),
     autoHwmManualBufferBytes: BigInt(raw.autoHwmManualBufferBytes),
     autoHwmBufferConnections: raw.autoHwmBufferConnections,
@@ -800,18 +732,6 @@ function mapSpotNodeSubjectEntry(entry: {
     readyPeerCount: entry.readyPeerCount,
     activePeerCount: entry.activePeerCount,
     lastChangedMs: BigInt(entry.lastChangedMs)
-  };
-}
-
-function mapSpotServiceMonitorEvent(entry: {
-  serviceName: string;
-  role: number;
-  event: MonitorEventValueRaw;
-}): SpotServiceMonitorEvent {
-  return {
-    serviceName: entry.serviceName,
-    role: entry.role,
-    event: new MonitorEvent(entry.event)
   };
 }
 
@@ -1169,26 +1089,6 @@ export class MonitorSocket extends NativeHandle {
     requireNative().monitorHandler(this._native, (event: MonitorEventValueRaw) => {
       handler(new MonitorEvent(event));
     });
-  }
-  snapshot(): MonitorSnapshot {
-    return materializeMonitorSnapshot(
-      requireNative().monitorSnapshot(this._native) as MonitorSnapshotRaw
-    );
-  }
-  close(): void { if (this._native) { requireNative().monitorClose(this._native); this._native = null; } }
-}
-
-export class ServiceMonitor extends NativeHandle {
-  recv(flags: RecvFlags = RecvFlags.None): ServiceEvent {
-    if ((flags | 0) & (RecvFlags.DontWait | 0)) {
-      const raw = requireNative().serviceMonitorRecvNoWait(this._native) as ServiceEventValue | null;
-      if (!raw) throw new RecvError(RecvResult.NoData, 11, 'service monitor recv failed');
-      return new ServiceEvent(raw);
-    }
-    return new ServiceEvent(requireNative().serviceMonitorRecv(this._native) as ServiceEventValue);
-  }
-  onEvent(handler: (event: ServiceEvent) => void): void {
-    requireNative().serviceMonitorHandler(this._native, (event: ServiceEventValue) => handler(new ServiceEvent(event)));
   }
   snapshot(): MonitorSnapshot {
     return materializeMonitorSnapshot(
@@ -1776,7 +1676,6 @@ export class Discovery extends NativeHandle {
       .map((entry) => mapMemberPeerEntry(entry as any));
   }
   memberPeerMetadata(serviceRole: number, endpoint: string): Buffer { return requireNative().discoveryMemberPeerMetadata(this._native, serviceRole, validateCString(endpoint, 'endpoint')) as Buffer; }
-  monitorOpen(events: ServiceMonitorEventMask = ServiceMonitorEventMask.all): ServiceMonitor { return new ServiceMonitor(requireNative().discoveryOpenMonitor(this._native, events | 0)); }
   setTlsClient(ca: string, host: string, trust = 0): void { requireNative().discoverySetTlsClient(this._native, validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER), validateCString(host, 'host', Number.MAX_SAFE_INTEGER), trust | 0); }
   close(): void { if (this._native) { requireNative().discoveryDestroy(this._native); this._native = null; } }
 }
@@ -1785,8 +1684,8 @@ export class SpotNode extends NativeHandle {
   private readonly _spots = new Set<Spot>();
   private readonly _channelDealers = new Map<string, DealerSocket>();
   private _nodeRoutingId: RoutingId;
-  constructor(ctx: Context) {
-    super(requireNative().spotNodeNew(ctx.nativeHandle()));
+  constructor(ctx: Context, options?: SpotNodeOptions) {
+    super(requireNative().spotNodeNew(ctx.nativeHandle(), options ?? undefined));
     this._nodeRoutingId = RoutingId.fromBytes(randomBytes(16));
   }
   nativeHandle(): unknown { return this._native; }
@@ -1881,6 +1780,18 @@ export class SpotNode extends NativeHandle {
   subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[] {
     return (requireNative().spotNodeSubjectsSnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>)
       .map((entry) => mapSpotNodeSubjectEntry(entry as any));
+  }
+  internalSocketsSnapshot(filter?: SpotNodeSocketSnapshotFilter): SpotNodeSocketSnapshotEntry[] {
+    return (requireNative().spotNodeInternalSocketsSnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>)
+      .map((entry) => ({
+        owner: entry.owner as number,
+        ownerId: BigInt(entry.ownerId as number | bigint),
+        ownerName: entry.ownerName as string,
+        socketName: entry.socketName as string,
+        socketType: entry.socketType as number,
+        autoHwmVisible: Boolean(entry.autoHwmVisible),
+        snapshot: materializeMonitorSnapshot(entry.snapshot as MonitorSnapshotRaw),
+      }));
   }
   close(): void {
     if (!this._native) {

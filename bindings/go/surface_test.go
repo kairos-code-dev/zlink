@@ -214,8 +214,8 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Discovery)(nil), "GetMetadata") {
 		t.Fatalf("Discovery should expose GetMetadata")
 	}
-	if !hasMethod((*zlink.Discovery)(nil), "MonitorOpen") {
-		t.Fatalf("Discovery should expose MonitorOpen")
+	if hasMethod((*zlink.Discovery)(nil), "MonitorOpen") {
+		t.Fatalf("Discovery should not expose MonitorOpen")
 	}
 	if !hasMethod((*zlink.Discovery)(nil), "ResolveSpot") {
 		t.Fatalf("Discovery should expose ResolveSpot")

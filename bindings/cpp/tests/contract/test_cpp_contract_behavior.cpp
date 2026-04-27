@@ -171,23 +171,6 @@ void test_socket_monitor_receive_returns_empty_without_event ()
     monitor.close ();
 }
 
-void test_service_monitor_receive_returns_empty_without_event ()
-{
-    zlink::context_t ctx;
-    zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::spot, "behavior-monitor");
-    assert (discovery.valid ());
-
-    zlink::service_monitor_handle_t monitor = discovery.monitor_open (
-      zlink::service_monitor_event::discovery_service_up);
-    assert (monitor.valid ());
-
-    const zlink::maybe_t<zlink::service_event_t> event =
-      monitor.recv (zlink::non_blocking_t {});
-    assert (!event);
-    monitor.close ();
-}
-
 void test_routing_id_from_accepts_maximum_size ()
 {
     zlink::routing_id_t routing_id;
@@ -228,7 +211,6 @@ int main ()
     test_publish_throws_on_general_error ();
     test_stream_receive_throws_in_callback_mode ();
     test_socket_monitor_receive_returns_empty_without_event ();
-    test_service_monitor_receive_returns_empty_without_event ();
     test_routing_id_from_accepts_maximum_size ();
     test_routing_id_from_rejects_oversize_input ();
     test_routing_id_from_rejects_null_pointer_for_non_empty_bytes ();

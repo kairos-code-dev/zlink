@@ -26,6 +26,7 @@ struct spot_handle_t
     spot_handle_t () :
         tag (0x1e6700dc),
         node (NULL),
+        mode (ZLINK_SPOT_NODE_MODE_ALL),
         pub (NULL),
         sub (NULL),
         handler (NULL),
@@ -38,6 +39,8 @@ struct spot_handle_t
     uint32_t tag;
     zlink::service_public_api_guard_t public_api;
     zlink::spot_node_t *node;
+    zlink_spot_node_mode_t mode;
+    zlink_routing_id_t spot_routing_id;
     zlink::spot_pub_t *pub;
     zlink::spot_sub_t *sub;
     zlink_subscribe_handler_fn handler;

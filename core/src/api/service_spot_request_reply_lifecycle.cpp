@@ -211,6 +211,10 @@ zlink::spot_reqrep_internal::try_find_spot_state (void *spot_)
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return std::shared_ptr<spot_request_reply_state_t> ();
+    if (spot->mode == ZLINK_SPOT_NODE_MODE_PUBSUB) {
+        errno = ENOTSUP;
+        return std::shared_ptr<spot_request_reply_state_t> ();
+    }
 
     if (spot->request_reply_state)
         return spot->request_reply_state;
@@ -328,6 +332,10 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return std::shared_ptr<spot_request_reply_state_t> ();
+    if (spot->mode == ZLINK_SPOT_NODE_MODE_PUBSUB) {
+        errno = ENOTSUP;
+        return std::shared_ptr<spot_request_reply_state_t> ();
+    }
 
     std::shared_ptr<spot_request_reply_state_t> state;
     if (spot->request_reply_state)

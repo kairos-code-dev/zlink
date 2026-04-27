@@ -34,8 +34,23 @@ public final class SpotNode implements AutoCloseable {
 
     /** Creates a spot node owned by the supplied context. */
     public SpotNode(Context ctx) {
+        this(ctx, null);
+    }
+
+    /** Creates a spot node with an explicit creation mode. */
+    public SpotNode(Context ctx, SpotNodeOptions options) {
         Objects.requireNonNull(ctx, "ctx");
-        this.handle = Native.spotNodeNew(InternalAccess.contextHandle(ctx));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeOptions = MemorySegment.NULL;
+            if (options != null) {
+                nativeOptions =
+                  arena.allocate(NativeLayouts.SPOT_NODE_OPTIONS_LAYOUT);
+                nativeOptions.set(ValueLayout.JAVA_INT, 0,
+                  options.mode().getValue());
+            }
+            this.handle = Native.spotNodeNew(
+              InternalAccess.contextHandle(ctx), nativeOptions);
+        }
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_spot_node_new");
     }
@@ -303,6 +318,50 @@ public final class SpotNode implements AutoCloseable {
             ArrayList<SpotNodeSubjectEntry> out = new ArrayList<>(actual);
             for (int i = 0; i < actual; i++) {
                 out.add(SpotNodeSubjectEntry.fromNative(entries.asSlice(
+                  (long) i * stride, stride)));
+            }
+            return List.copyOf(out);
+        }
+    }
+
+    /** Returns internal socket rows that actually exist on this node. */
+    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot() {
+        return internalSocketsSnapshot(null);
+    }
+
+    /** Returns internal socket rows matching the supplied filter. */
+    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot(
+      SpotNodeSocketSnapshotFilter filter) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
+              : filter.toNative(arena);
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = Native.spotNodeInternalSocketsSnapshot(handle,
+              nativeFilter, MemorySegment.NULL, count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_internal_sockets_snapshot");
+            }
+            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            if (available == 0)
+                return List.of();
+            MemorySegment entries = arena.allocate(
+              NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT, available);
+            count.set(ValueLayout.JAVA_LONG, 0, available);
+            rc = Native.spotNodeInternalSocketsSnapshot(handle, nativeFilter,
+              entries, count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_internal_sockets_snapshot");
+            }
+            int actual = Math.min(available, boundedCount(
+              count.get(ValueLayout.JAVA_LONG, 0)));
+            long stride =
+              NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteSize();
+            ArrayList<SpotNodeSocketSnapshotEntry> out =
+              new ArrayList<>(actual);
+            for (int i = 0; i < actual; i++) {
+                out.add(SpotNodeSocketSnapshotEntry.fromNative(entries.asSlice(
                   (long) i * stride, stride)));
             }
             return List.copyOf(out);

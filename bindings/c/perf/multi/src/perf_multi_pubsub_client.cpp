@@ -15,7 +15,7 @@
 namespace {
 
 static const char *k_pattern = "MULTI_PUBSUB";
-static const int k_client_socket_type = ZLINK_SOCKET_SUB;
+static const zlink_socket_type_t k_client_socket_type = ZLINK_SOCKET_SUB;
 static const char *k_pubsub_topic = "bench";
 
 using perf_multi_client::close_client_sockets;

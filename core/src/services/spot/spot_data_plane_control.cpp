@@ -202,8 +202,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
   spot_data_plane_protocol_state_t *state_,
   bool *running_out_)
 {
-    if (!ctrl_ || !node_ || !runtime_ || !poller_ || !mesh_pub_ || !mesh_xsub_
-        || !peer_ctrl_pub_ || !peer_ctrl_sub_ || !state_ || !running_out_) {
+    if (!ctrl_ || !node_ || !runtime_ || !poller_ || !peer_ctrl_pub_
+        || !peer_ctrl_sub_ || !state_ || !running_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -230,13 +230,14 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         const int mesh_pub_sndhwm =
           spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (runtime_, arg);
 
-        if (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                   &mesh_pub_sndhwm,
-                                   sizeof (mesh_pub_sndhwm))
-              != 0
-            || spot_node_t::apply_tls_server (mesh_pub_, cert, key) != 0
-            || spot_node_t::apply_tls_server (peer_ctrl_sub_, cert, key) != 0
-            || mesh_pub_->bind (arg.c_str ()) != 0) {
+        if ((mesh_pub_
+             && (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                        &mesh_pub_sndhwm,
+                                        sizeof (mesh_pub_sndhwm))
+                   != 0
+                 || spot_node_t::apply_tls_server (mesh_pub_, cert, key) != 0
+                 || mesh_pub_->bind (arg.c_str ()) != 0))
+            || spot_node_t::apply_tls_server (peer_ctrl_sub_, cert, key) != 0) {
             if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
                 return -1;
             return 0;
@@ -246,7 +247,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         {
             char resolved[256] = {0};
             size_t resolved_size = sizeof (resolved);
-            if (mesh_pub_->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
+            if (mesh_pub_
+                && mesh_pub_->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
                                        resolved, &resolved_size)
                 == 0) {
                 const size_t len =
@@ -278,11 +280,13 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             return 0;
         }
 
-        if (spot_node_t::apply_tls_server (runtime_->peer_route_ingress, cert,
-                                           key)
-              != 0
-            || runtime_->peer_route_ingress->bind (route_bind_endpoint.c_str ())
-                 != 0) {
+        if (runtime_->peer_route_ingress
+            && (spot_node_t::apply_tls_server (runtime_->peer_route_ingress,
+                                               cert, key)
+                  != 0
+                || runtime_->peer_route_ingress->bind (
+                     route_bind_endpoint.c_str ())
+                     != 0)) {
             const int saved_errno = errno != 0 ? errno : EIO;
             (void) peer_ctrl_sub_->term_endpoint (ctrl_bind_endpoint.c_str ());
             if (send_errno_reply (ctrl_, saved_errno) != 0)
@@ -320,12 +324,16 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             host = node_->_tls_state.tls_hostname;
             trust = node_->_tls_state.tls_trust_system;
         }
-        if (spot_node_t::apply_tls_client (mesh_xsub_, ca, host, trust) != 0
+        if ((mesh_xsub_
+             && (spot_node_t::apply_tls_client (mesh_xsub_, ca, host, trust)
+                   != 0
+                 || mesh_xsub_->connect (arg.c_str ()) != 0
+                 || send_subscription_update (mesh_xsub_, "", true) != 0))
             || spot_node_t::apply_tls_client (peer_ctrl_pub_, ca, host, trust)
                  != 0
-            || mesh_xsub_->connect (arg.c_str ()) != 0
-            || send_subscription_update (mesh_xsub_, "", true) != 0) {
-            (void) mesh_xsub_->term_endpoint (arg.c_str ());
+            ) {
+            if (mesh_xsub_)
+                (void) mesh_xsub_->term_endpoint (arg.c_str ());
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;
             return 0;
@@ -351,7 +359,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                          peer_ctrl_pub_, arg,
                          state_->outbound_ready_filters)
                          != 0) {
-                    (void) mesh_xsub_->term_endpoint (arg.c_str ());
+                    if (mesh_xsub_)
+                        (void) mesh_xsub_->term_endpoint (arg.c_str ());
                     if (send_errno_reply (ctrl_,
                                           errno != 0 ? errno : EIO)
                         != 0) {
@@ -445,13 +454,14 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             (void) peer_ctrl_sub_->term_endpoint (
               runtime_->peer_ctrl_endpoint.c_str ());
         runtime_->peer_ctrl_endpoint.clear ();
-        if (!runtime_->peer_route_bind_endpoint.empty ())
+        if (runtime_->peer_route_ingress
+            && !runtime_->peer_route_bind_endpoint.empty ())
             (void) runtime_->peer_route_ingress->term_endpoint (
               runtime_->peer_route_bind_endpoint.c_str ());
         runtime_->peer_route_bind_endpoint.clear ();
         runtime_->bound_endpoint.clear ();
         spot_mesh_pub_budget_t::reset_runtime_state (runtime_);
-        if (mesh_pub_->term_endpoint (arg.c_str ()) != 0) {
+        if (mesh_pub_ && mesh_pub_->term_endpoint (arg.c_str ()) != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;
             return 0;
@@ -486,7 +496,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             (void) peer_ctrl_pub_->term_endpoint (it->second.c_str ());
             state_->peer_ctrl_endpoints.erase (it);
         }
-        if (mesh_xsub_->term_endpoint (arg.c_str ()) != 0) {
+        if (mesh_xsub_ && mesh_xsub_->term_endpoint (arg.c_str ()) != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;
             return 0;

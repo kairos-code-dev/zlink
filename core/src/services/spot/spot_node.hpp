@@ -45,13 +45,18 @@ class spot_node_t : public discovery_observer_t
     typedef spot_node_pub_defaults_t pub_defaults_t;
     typedef spot_node_sub_defaults_t sub_defaults_t;
 
-    spot_node_t (ctx_t *ctx_);
+    spot_node_t (ctx_t *ctx_, zlink_spot_node_mode_t mode_);
     ~spot_node_t ();
 
     bool check_tag () const;
     service_public_api_guard_t &public_api_guard () { return _public_api; }
     service_mode_state_t &mode_state () { return _mode_state; }
     const service_mode_state_t &mode_state () const { return _mode_state; }
+    zlink_spot_node_mode_t spot_node_mode () const { return _spot_node_mode; }
+    bool pubsub_enabled () const;
+    bool routed_enabled () const;
+    int set_node_routing_id (const void *data_, size_t size_);
+    int node_routing_id (zlink_routing_id_t *out_) const;
 
     int bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
@@ -119,6 +124,9 @@ class spot_node_t : public discovery_observer_t
     int snapshot_subjects (
       const zlink_spot_node_subject_filter_t *filter_,
       std::vector<zlink_spot_node_subject_entry_t> *out_) const;
+    int snapshot_internal_sockets (
+      const zlink_spot_node_socket_snapshot_filter_t *filter_,
+      std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_) const;
     void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
                                         const std::string &subject_,
                                         const std::string &ack_source_id_,
@@ -296,6 +304,8 @@ class spot_node_t : public discovery_observer_t
     mutable mutex_t _sync;
 
     spot_runtime_t *_runtime;
+    zlink_spot_node_mode_t _spot_node_mode;
+    zlink_routing_id_t _node_routing_id;
     spot_peer_state_t _peer_state;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_handler_userdata;

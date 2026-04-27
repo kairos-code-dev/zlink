@@ -371,9 +371,8 @@ bool discovery_t::try_resolve_spot_from_cache_locked (
     const uint64_t current_service_seq = _service_state.service_update_seq ();
     const bool cache_is_fresh =
       it->second.validated_service_seq == current_service_seq
-      || (it->second.entry.last_reported_ms > 0
-          && now_ms_ - it->second.entry.last_reported_ms
-               <= resolve_spot_cache_ttl_ms);
+      && it->second.entry.last_reported_ms > 0
+      && now_ms_ - it->second.entry.last_reported_ms <= resolve_spot_cache_ttl_ms;
     if (!cache_is_fresh) {
         // Provider membership changed or the cache aged out, so the owner may
         // have moved even if the old endpoint still exists.

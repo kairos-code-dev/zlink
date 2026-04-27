@@ -23,7 +23,19 @@ Destroying a `Spot` facade does not destroy the backing `SpotNode`.
 ## Construction and teardown
 
 ```c
-void *zlink_spot_node_new(void *ctx);
+typedef enum zlink_spot_node_mode_t {
+  ZLINK_SPOT_NODE_MODE_PUBSUB = 1,
+  ZLINK_SPOT_NODE_MODE_ROUTED = 2,
+  ZLINK_SPOT_NODE_MODE_ALL = 3
+} zlink_spot_node_mode_t;
+
+typedef struct zlink_spot_node_options_t {
+  zlink_spot_node_mode_t mode;
+} zlink_spot_node_options_t;
+
+void *zlink_spot_node_new(
+  void *ctx,
+  const zlink_spot_node_options_t *options);
 zlink_close_result_t zlink_spot_node_destroy(void **node_p);
 
 void *zlink_spot_new(void *node);
@@ -31,11 +43,19 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 ```
 
 - `zlink_spot_node_new()` creates a SPOT node runtime.
+- `options == NULL` and `options->mode == 0` both select
+  `ZLINK_SPOT_NODE_MODE_ALL`.
+- Invalid mode values fail with `NULL` and `errno == EINVAL`.
+- `PUBSUB` mode enables topic publish/subscribe and rejects routed APIs with
+  `ENOTSUP`.
+- `ROUTED` mode enables routed request/reply and direct routed send, and
+  rejects topic publish/subscribe APIs with `ENOTSUP`.
+- `ALL` mode enables both planes.
 - `zlink_spot_new()` borrows an existing `SpotNode` and returns a unified
   facade.
-- A successful `zlink_spot_new()` means the Spot's routed receive plane is
-  already prepared. The first `zlink_spot_recv()` must not perform hidden
-  activation or hidden socket creation.
+- A `Spot` inherits the mode of its backing `SpotNode`; the mode cannot be
+  changed after creation.
+- Disabled planes fail without creating their internal sockets.
 - `zlink_spot_destroy()` closes only the facade.
 - `zlink_spot_destroy()` unregisters routed target lookup before closing owned
   subjects. Unread routed messages that were already queued for that Spot may
@@ -59,6 +79,43 @@ SpotNode and Spot do not expose a public weight setting. Peer weight can be
 configured only on raw ROUTER and DEALER sockets. Spot peer snapshots may still
 show a `weight` field; it is a remote peer state value learned from discovery
 or peer signaling, not a Spot/SpotNode local option.
+
+### Internal socket snapshot
+
+```c
+typedef struct zlink_spot_node_socket_snapshot_filter_t {
+  zlink_spot_node_socket_owner_t owner;
+  zlink_socket_type_t socket_type;
+  char socket_name[64];
+} zlink_spot_node_socket_snapshot_filter_t;
+
+typedef struct zlink_spot_node_socket_snapshot_entry_t {
+  zlink_spot_node_socket_owner_t owner;
+  uint64_t owner_id;
+  char owner_name[64];
+  char socket_name[64];
+  zlink_socket_type_t socket_type;
+  uint32_t auto_hwm_visible;
+  zlink_monitor_snapshot_t snapshot;
+} zlink_spot_node_socket_snapshot_entry_t;
+
+zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
+  void *node,
+  const zlink_spot_node_socket_snapshot_filter_t *filter,
+  zlink_spot_node_socket_snapshot_entry_t *entries,
+  size_t *count);
+```
+
+- The snapshot returns only internal sockets that already exist.
+- The snapshot never creates disabled or lazy sockets.
+- `entries == NULL` succeeds and writes the required row count to `*count`.
+- If `*count` is too small, the call fails with `ENOBUFS` and writes the
+  required row count.
+- `owner` may be `ANY`, `NODE`, or `SPOT`.
+- `socket_type` may be `ZLINK_SOCKET_ANY` or one of the public
+  `ZLINK_SOCKET_*` values.
+- `socket_name` filters by the exact internal socket name when non-empty.
+- `auto_hwm_visible == 1` marks a row for default Auto-HWM perf output.
 
 ### Topology and discovery
 
@@ -440,20 +497,6 @@ zlink_submit_result_t zlink_router_reply_spot(
 ## Monitoring and snapshots
 
 ```c
-void *zlink_service_monitor_open(
-  void *target,
-  const zlink_service_monitor_open_options_t *options);
-
-zlink_handler_result_t zlink_service_monitor_handler(
-  void *monitor,
-  zlink_service_monitor_handler_fn handler,
-  void *userdata);
-
-zlink_recv_result_t zlink_service_monitor_recv(
-  void *monitor,
-  zlink_service_monitor_event_t *out,
-  zlink_recv_flags_t flags);
-
 zlink_config_result_t zlink_spot_node_status_snapshot(
   void *node,
   zlink_spot_node_status_t *out);
@@ -476,8 +519,8 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
   size_t *count);
 ```
 
-There is no dedicated public SPOT-node monitor recv API. Use the generic
-service monitor plus snapshot/query functions.
+There is no dedicated public SPOT-node monitor recv API. Use the
+snapshot/query functions.
 
 ## Relationship to Poller
 

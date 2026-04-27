@@ -138,37 +138,11 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
     return 0;
 }
 
-int recv_service_monitor_event_unchecked (void *monitor_,
-                                          zlink_service_event_t *event_,
-                                          int flags_)
-{
-    if (!monitor_ || !event_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    zlink_msg_t msg;
-    zlink_msg_init (&msg);
-    const int rc = zlink::recv_msg_internal (monitor_, &msg, flags_);
-    if (rc < 0) {
-        zlink_msg_close (&msg);
-        return -1;
-    }
-    if (zlink_msg_size (&msg) != sizeof (*event_)) {
-        zlink_msg_close (&msg);
-        errno = EPROTO;
-        return -1;
-    }
-    memcpy (event_, zlink_msg_data (&msg), sizeof (*event_));
-    zlink_msg_close (&msg);
-    return 0;
-}
-
 zlink_recv_result_t zlink_socket_monitor_recv (void *monitor_,
                                                zlink_socket_monitor_event_t *out_,
                                                zlink_recv_flags_t flags_)
 {
-    if (require_monitor_recv_model (monitor_, false) != 0)
+    if (require_monitor_recv_model (monitor_) != 0)
         return zlink::recv_result_internal::from_errno (errno);
     return zlink::recv_result_internal::from_rc (
       recv_socket_monitor_event_unchecked (monitor_, out_,
@@ -202,16 +176,4 @@ zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
     }
 
     return zlink::config_result_internal::from_rc (provider (subject, out_));
-}
-
-zlink_recv_result_t zlink_service_monitor_recv (
-  void *monitor_,
-  zlink_service_monitor_event_t *out_,
-  zlink_recv_flags_t flags_)
-{
-    if (require_monitor_recv_model (monitor_, true) != 0)
-        return zlink::recv_result_internal::from_errno (errno);
-    return zlink::recv_result_internal::from_rc (
-      recv_service_monitor_event_unchecked (monitor_, out_,
-                                            static_cast<int> (flags_)));
 }

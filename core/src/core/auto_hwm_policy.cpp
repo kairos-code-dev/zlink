@@ -6,6 +6,7 @@
 #include "core/internal_defs.hpp"
 #include "zlink.h"
 
+#include <algorithm>
 #include <limits.h>
 
 namespace
@@ -25,30 +26,6 @@ int clamp_u64_to_int (uint64_t value_)
 {
     return value_ > static_cast<uint64_t> (INT_MAX) ? INT_MAX
                                                     : static_cast<int> (value_);
-}
-
-uint64_t role_budget_bytes (zlink::auto_hwm_role_t role_,
-                            const zlink::auto_hwm_context_plan_t &context_)
-{
-    const uint64_t queue_budget = context_.queue_budget_bytes;
-    const uint64_t control_budget = (queue_budget * 5ull) / 100ull;
-    const uint64_t routed_budget = (queue_budget * 25ull) / 100ull;
-    const uint64_t fanout_budget = (queue_budget * 50ull) / 100ull;
-    const uint64_t recv_ingress_budget =
-      queue_budget - control_budget - routed_budget - fanout_budget;
-
-    switch (role_) {
-        case zlink::auto_hwm_role_control:
-            return control_budget;
-        case zlink::auto_hwm_role_routed:
-            return routed_budget;
-        case zlink::auto_hwm_role_fanout:
-            return fanout_budget;
-        case zlink::auto_hwm_role_recv_ingress:
-            return recv_ingress_budget;
-        default:
-            return 0;
-    }
 }
 
 uint32_t base_floor_per_connection (zlink::auto_hwm_role_t role_,
@@ -82,8 +59,11 @@ uint32_t base_floor_per_connection (zlink::auto_hwm_role_t role_,
     }
 }
 
-uint32_t transport_bootstrap_connections (int socket_type_)
+uint32_t transport_bootstrap_connections (int socket_type_,
+                                          uint32_t planning_bootstrap_)
 {
+    if (planning_bootstrap_ > 0)
+        return planning_bootstrap_;
     return socket_type_ == ZLINK_CORE_SOCKET_STREAM ? 5000u : 1u;
 }
 
@@ -124,7 +104,9 @@ zlink::auto_hwm_context_plan_t::auto_hwm_context_plan_t () :
       * mib),
     queue_budget_bytes (0),
     transport_budget_bytes (0),
-    runtime_reserve_bytes (0)
+    total_auto_buffer_bytes (0),
+    runtime_reserve_bytes (0),
+    total_planning_count (0)
 {
 }
 
@@ -132,18 +114,19 @@ zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     role (auto_hwm_role_none),
     scope (auto_hwm_scope_none),
     scope_count (1),
-    group_budget_bytes (0),
-    role_group_budget_bytes (0),
-    scope_group_budget_bytes (0),
-    group_message_slots (0),
+    observed_count (0),
+    planning_count (1),
+    context_total_planning_count (1),
+    socket_queue_share_bytes (0),
+    socket_message_slots (0),
     auto_buffer_bytes (0),
     manual_buffer_bytes (0),
     buffer_connections (1),
     effective_message_bytes (auto_hwm_message_bytes),
     managed_connections (0),
     active_hwm_connections (0),
-    planning_transport_connections (1),
     base_floor_per_connection (0),
+    pending_messages (0),
     sndhwm (0),
     rcvhwm (0),
     requested_sndbuf (-1),
@@ -191,14 +174,15 @@ void zlink::auto_hwm_context_plan_from_budget_mb (bool enabled_,
       static_cast<uint64_t> (out_->total_memory_budget_mb) * mib;
     out_->runtime_reserve_bytes = out_->total_memory_budget_bytes / 10ull;
     out_->transport_budget_bytes = 0;
+    out_->total_auto_buffer_bytes = 0;
     out_->queue_budget_bytes =
       out_->total_memory_budget_bytes > out_->runtime_reserve_bytes
         ? out_->total_memory_budget_bytes - out_->runtime_reserve_bytes
         : 0;
+    out_->total_planning_count = 0;
 }
 
-void zlink::auto_hwm_socket_plan_for_role (
-  const auto_hwm_context_plan_t &context_,
+void zlink::auto_hwm_socket_plan_prepare (
   auto_hwm_role_t role_,
   int socket_type_,
   size_t managed_connections_,
@@ -208,10 +192,11 @@ void zlink::auto_hwm_socket_plan_for_role (
   int sndbuf_,
   int rcvbuf_,
   bool manual_sndbuf_,
-  bool manual_rcvbuf_,
-  auto_hwm_scope_t scope_,
-  size_t scope_count_,
-  bool buffer_cost_enabled_)
+                                    bool manual_rcvbuf_,
+                                    auto_hwm_scope_t scope_,
+                                    size_t scope_count_,
+                                    bool buffer_cost_enabled_,
+                                    uint32_t planning_bootstrap_)
 {
     if (!out_)
         return;
@@ -225,14 +210,14 @@ void zlink::auto_hwm_socket_plan_for_role (
       effective_message_bytes (socket_type_, message_unit_bytes_);
 
     const uint32_t bootstrap_connections =
-      transport_bootstrap_connections (socket_type_);
-    uint32_t planning_connections = 1;
-    if (out_->managed_connections > planning_connections)
-        planning_connections = out_->managed_connections;
-    if (bootstrap_connections > planning_connections)
-        planning_connections = bootstrap_connections;
-    out_->planning_transport_connections = planning_connections;
-    out_->buffer_connections = planning_connections;
+      transport_bootstrap_connections (socket_type_, planning_bootstrap_);
+    out_->observed_count = std::max (out_->managed_connections,
+                                     out_->active_hwm_connections);
+    out_->planning_count = std::max (out_->observed_count,
+                                     bootstrap_connections);
+    out_->context_total_planning_count = out_->planning_count;
+    out_->buffer_connections = out_->observed_count > 0 ? out_->observed_count
+                                                         : 1u;
 
     out_->requested_sndbuf = manual_sndbuf_ ? sndbuf_ : auto_hwm_default_sndbuf;
     out_->requested_rcvbuf = manual_rcvbuf_ ? rcvbuf_ : auto_hwm_default_rcvbuf;
@@ -251,43 +236,89 @@ void zlink::auto_hwm_socket_plan_for_role (
       (auto_sndbuf + auto_rcvbuf) * out_->buffer_connections;
     out_->manual_buffer_bytes =
       (manual_sndbuf + manual_rcvbuf) * out_->buffer_connections;
-
-    auto_hwm_context_plan_t adjusted_context = context_;
-    adjusted_context.queue_budget_bytes =
-      context_.total_memory_budget_bytes
-          > context_.runtime_reserve_bytes + out_->auto_buffer_bytes
-        ? context_.total_memory_budget_bytes - context_.runtime_reserve_bytes
-            - out_->auto_buffer_bytes
-        : 0;
-    adjusted_context.transport_budget_bytes = out_->auto_buffer_bytes;
-
-    out_->role_group_budget_bytes = role_budget_bytes (role_, adjusted_context);
     out_->scope_count = clamp_size_to_u32 (scope_count_ > 0 ? scope_count_ : 1);
-    if (out_->scope == auto_hwm_scope_per_spot)
-        out_->scope_group_budget_bytes =
-          out_->role_group_budget_bytes / out_->scope_count;
-    else
-        out_->scope_group_budget_bytes = out_->role_group_budget_bytes;
-
-    out_->group_budget_bytes = out_->scope_group_budget_bytes;
-    out_->group_message_slots = slots_from_budget (
-      out_->scope_group_budget_bytes, out_->effective_message_bytes);
     out_->base_floor_per_connection =
       base_floor_per_connection (role_, out_->managed_connections);
+}
 
-    uint32_t hwm_divisor = 1;
-    if (out_->scope == auto_hwm_scope_shared)
-        hwm_divisor = out_->scope_count > 0 ? out_->scope_count : 1;
-    else if (out_->scope == auto_hwm_scope_none)
-        hwm_divisor = out_->active_hwm_connections > 0
-                        ? out_->active_hwm_connections
-                        : 1;
+void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
+                                       auto_hwm_socket_plan_t *plans_,
+                                       size_t plan_count_)
+{
+    if (!context_ || !plans_)
+        return;
 
-    const uint64_t target_slots =
-      hwm_divisor > 0 ? out_->group_message_slots / hwm_divisor
-                      : out_->group_message_slots;
-    const uint64_t final_hwm =
-      clamp_floor_to_budget (out_->base_floor_per_connection, target_slots);
-    out_->sndhwm = clamp_u64_to_int (final_hwm);
-    out_->rcvhwm = clamp_u64_to_int (final_hwm);
+    uint64_t total_auto_buffer_bytes = 0;
+    uint64_t total_weight = 0;
+    for (size_t i = 0; i != plan_count_; ++i) {
+        total_auto_buffer_bytes += plans_[i].auto_buffer_bytes;
+        total_weight += plans_[i].planning_count;
+    }
+
+    context_->total_auto_buffer_bytes = total_auto_buffer_bytes;
+    context_->transport_budget_bytes = total_auto_buffer_bytes;
+    context_->queue_budget_bytes =
+      context_->total_memory_budget_bytes
+          > context_->runtime_reserve_bytes + total_auto_buffer_bytes
+        ? context_->total_memory_budget_bytes - context_->runtime_reserve_bytes
+            - total_auto_buffer_bytes
+        : 0;
+    context_->total_planning_count = clamp_size_to_u32 (total_weight);
+
+    if (total_weight == 0)
+        total_weight = 1;
+
+    for (size_t i = 0; i != plan_count_; ++i) {
+        auto_hwm_socket_plan_t &plan = plans_[i];
+        plan.context_total_planning_count = clamp_size_to_u32 (total_weight);
+        plan.socket_queue_share_bytes =
+          (context_->queue_budget_bytes * plan.planning_count) / total_weight;
+        plan.socket_message_slots = slots_from_budget (
+          plan.socket_queue_share_bytes, plan.effective_message_bytes);
+
+        uint32_t hwm_divisor = 1;
+        if (plan.scope == auto_hwm_scope_shared)
+            hwm_divisor = plan.scope_count > 0 ? plan.scope_count : 1;
+        else if (plan.scope == auto_hwm_scope_none)
+            hwm_divisor = plan.active_hwm_connections > 0
+                            ? plan.active_hwm_connections
+                            : 1;
+
+        const uint64_t target_slots =
+          hwm_divisor > 0 ? plan.socket_message_slots / hwm_divisor
+                          : plan.socket_message_slots;
+        const uint64_t final_hwm =
+          clamp_floor_to_budget (plan.base_floor_per_connection, target_slots);
+        plan.sndhwm = clamp_u64_to_int (final_hwm);
+        plan.rcvhwm = clamp_u64_to_int (final_hwm);
+    }
+}
+
+void zlink::auto_hwm_socket_plan_for_role (
+  const auto_hwm_context_plan_t &context_,
+  auto_hwm_role_t role_,
+  int socket_type_,
+  size_t managed_connections_,
+  size_t active_hwm_connections_,
+  auto_hwm_socket_plan_t *out_,
+  int message_unit_bytes_,
+  int sndbuf_,
+  int rcvbuf_,
+  bool manual_sndbuf_,
+  bool manual_rcvbuf_,
+  auto_hwm_scope_t scope_,
+  size_t scope_count_,
+  bool buffer_cost_enabled_,
+  uint32_t planning_bootstrap_)
+{
+    if (!out_)
+        return;
+
+    auto_hwm_socket_plan_prepare (
+      role_, socket_type_, managed_connections_, active_hwm_connections_, out_,
+      message_unit_bytes_, sndbuf_, rcvbuf_, manual_sndbuf_, manual_rcvbuf_,
+      scope_, scope_count_, buffer_cost_enabled_, planning_bootstrap_);
+
+    auto_hwm_context_plan_t adjusted_context = context_;
+    auto_hwm_context_finalize (&adjusted_context, out_, 1);
 }

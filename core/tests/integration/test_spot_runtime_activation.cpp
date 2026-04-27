@@ -20,7 +20,7 @@ void test_spot_new_keeps_routed_recv_lazy_until_first_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     void *spot = zlink_spot_new (node);
@@ -77,7 +77,7 @@ void test_spot_destroy_cleans_identity_with_unread_message ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (node, "node-activation",

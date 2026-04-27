@@ -233,13 +233,9 @@ bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (
         return false;
     }
 
-    spot_pub_t *node_pub = node_->ensure_default_pub ();
-    if (!node_pub)
-        return false;
-
     zlink_routing_id_t node_rid;
     memset (&node_rid, 0, sizeof (node_rid));
-    if (node_pub->routing_id (&node_rid) != 0 || node_rid.size == 0)
+    if (node_->node_routing_id (&node_rid) != 0 || node_rid.size == 0)
         return false;
 
     out_->assign (reinterpret_cast<const char *> (node_rid.data), node_rid.size);

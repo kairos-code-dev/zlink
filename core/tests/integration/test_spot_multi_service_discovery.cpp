@@ -97,7 +97,7 @@ void test_spot_service_discovery_replays_existing_filters_end_to_end ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       provider_discovery, registry_router, 3000));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -181,7 +181,7 @@ void test_spot_node_provider_registers_default_weight ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router, 3000));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_bind (node, "tcp://127.0.0.1:*"));
@@ -242,7 +242,7 @@ void test_spot_service_discovery_replays_filters_after_pubsub_churn ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       provider_discovery, registry_router, 3000));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -352,7 +352,7 @@ void test_spot_service_discovery_multi_router_distributes_across_candidates ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       provider_discovery, registry_router, 3000));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -431,7 +431,7 @@ void test_spot_service_discovery_many_router_candidates_attach_and_distribute ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       provider_discovery, registry_router, 3000));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);

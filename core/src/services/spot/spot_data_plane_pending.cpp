@@ -77,9 +77,9 @@ int spot_data_plane_pending_t::resolve_fanout_budget_bytes (
     auto_hwm_socket_plan_t socket_plan;
     auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_fanout,
                                    ZLINK_CORE_SOCKET_PUB, 0, 0, &socket_plan);
-    return socket_plan.group_budget_bytes > static_cast<uint64_t> (INT_MAX)
+    return socket_plan.socket_queue_share_bytes > static_cast<uint64_t> (INT_MAX)
              ? INT_MAX
-             : static_cast<int> (socket_plan.group_budget_bytes);
+             : static_cast<int> (socket_plan.socket_queue_share_bytes);
 }
 
 void spot_data_plane_pending_t::release_local_pending_ref (

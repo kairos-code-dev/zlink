@@ -205,9 +205,13 @@ static int compute_default_node_hwm (ctx_t *ctx_,
     }
 
     auto_hwm_socket_plan_t socket_plan;
+    const uint32_t planning_bootstrap =
+      static_cast<uint32_t> (ctx_->auto_hwm_spot_bootstrap ());
     auto_hwm_socket_plan_for_role (context_plan, role, socket_type,
                                    managed_connections, active_connections,
-                                   &socket_plan);
+                                   &socket_plan, 0, -1, -1, false, false,
+                                   auto_hwm_scope_none, 1, true,
+                                   planning_bootstrap);
     return option_ == ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM
              || option_ == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
              ? socket_plan.rcvhwm

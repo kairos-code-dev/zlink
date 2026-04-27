@@ -7,6 +7,9 @@
 
 #include <unity.h>
 
+#include <cstring>
+#include <vector>
+
 void setUp ()
 {
 }
@@ -17,12 +20,329 @@ void tearDown ()
 
 namespace
 {
+void noop_spot_handler (const zlink_routing_id_t *,
+                        const zlink_routing_id_t *,
+                        uint64_t,
+                        zlink_msg_t *,
+                        size_t,
+                        void *)
+{
+}
+
+void noop_reply_handler (zlink_request_result_t,
+                         zlink_msg_t *,
+                         size_t,
+                         void *)
+{
+}
+
+std::vector<zlink_spot_node_socket_snapshot_entry_t>
+read_socket_snapshot (void *node_)
+{
+    size_t count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_internal_sockets_snapshot (node_, NULL, NULL, &count));
+
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows (count);
+    if (count != 0) {
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_internal_sockets_snapshot (node_, NULL, &rows[0],
+                                                     &count));
+        rows.resize (count);
+    }
+    return rows;
+}
+
+bool snapshot_has_socket (void *node_, const char *socket_name_)
+{
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+      read_socket_snapshot (node_);
+    for (size_t i = 0; i < rows.size (); ++i) {
+        if (strcmp (rows[i].socket_name, socket_name_) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool snapshot_has_owner_socket (void *node_,
+                                zlink_spot_node_socket_owner_t owner_,
+                                const char *socket_name_)
+{
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+      read_socket_snapshot (node_);
+    for (size_t i = 0; i < rows.size (); ++i) {
+        if (rows[i].owner == owner_
+            && strcmp (rows[i].socket_name, socket_name_) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+size_t count_owner_rows (
+  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  zlink_spot_node_socket_owner_t owner_)
+{
+    size_t count = 0;
+    for (size_t i = 0; i < rows_.size (); ++i) {
+        if (rows_[i].owner == owner_)
+            ++count;
+    }
+    return count;
+}
+
+size_t count_socket_rows (
+  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  zlink_socket_type_t socket_type_)
+{
+    size_t count = 0;
+    for (size_t i = 0; i < rows_.size (); ++i) {
+        if (rows_[i].socket_type == socket_type_)
+            ++count;
+    }
+    return count;
+}
+
+size_t count_socket_name_rows (
+  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  const char *socket_name_)
+{
+    size_t count = 0;
+    for (size_t i = 0; i < rows_.size (); ++i) {
+        if (strcmp (rows_[i].socket_name, socket_name_) == 0)
+            ++count;
+    }
+    return count;
+}
+
+void test_spot_node_options_default_zero_and_invalid_mode ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *default_node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (default_node);
+    TEST_ASSERT_TRUE (snapshot_has_socket (default_node, "mesh_pub"));
+    TEST_ASSERT_TRUE (snapshot_has_socket (default_node, "node_router"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&default_node));
+
+    zlink_spot_node_options_t zero_options;
+    memset (&zero_options, 0, sizeof (zero_options));
+    void *zero_node = zlink_spot_node_new (ctx, &zero_options);
+    TEST_ASSERT_NOT_NULL (zero_node);
+    TEST_ASSERT_TRUE (snapshot_has_socket (zero_node, "mesh_pub"));
+    TEST_ASSERT_TRUE (snapshot_has_socket (zero_node, "node_router"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&zero_node));
+
+    zlink_spot_node_options_t invalid_options;
+    memset (&invalid_options, 0, sizeof (invalid_options));
+    invalid_options.mode = static_cast<zlink_spot_node_mode_t> (99);
+    errno = 0;
+    void *invalid_node = zlink_spot_node_new (ctx, &invalid_options);
+    TEST_ASSERT_NULL (invalid_node);
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_node_pubsub_mode_disables_routed_sockets_without_lazy_create ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.mode = ZLINK_SPOT_NODE_MODE_PUBSUB;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_TRUE (snapshot_has_socket (node, "mesh_pub"));
+    TEST_ASSERT_FALSE (snapshot_has_socket (node, "node_router"));
+    TEST_ASSERT_FALSE (snapshot_has_socket (node, "route_ingress"));
+
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    const size_t count_before = read_socket_snapshot (node).size ();
+    TEST_ASSERT_TRUE (snapshot_has_owner_socket (
+      node, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, "pub"));
+    TEST_ASSERT_TRUE (snapshot_has_owner_socket (
+      node, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, "sub"));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_NOT_SUPPORTED,
+      zlink_spot_handler (spot, &noop_spot_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_UINT (count_before, read_socket_snapshot (node).size ());
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    rid.size = 1;
+    rid.data[0] = 1;
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_NOT_SUPPORTED,
+      zlink_spot_request_spot_part (spot, &rid, &rid, &msg,
+                                    &noop_reply_handler, NULL, ZLINK_DONTWAIT,
+                                    ZLINK_PART_FINAL, 1));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+    TEST_ASSERT_EQUAL_UINT (count_before, read_socket_snapshot (node).size ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_node_routed_mode_disables_pubsub_sockets_without_lazy_create ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.mode = ZLINK_SPOT_NODE_MODE_ROUTED;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_TRUE (snapshot_has_socket (node, "node_router"));
+    TEST_ASSERT_TRUE (snapshot_has_socket (node, "route_ingress"));
+    TEST_ASSERT_FALSE (snapshot_has_socket (node, "mesh_pub"));
+    TEST_ASSERT_FALSE (snapshot_has_socket (node, "local_pub_ingress"));
+
+    const size_t count_before = read_socket_snapshot (node).size ();
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    TEST_ASSERT_FAILURE_RAW_ERRNO (ENOTSUP,
+                                   spot_subject_set_subscription (spot,
+                                                                  "alpha"));
+    TEST_ASSERT_FALSE (snapshot_has_owner_socket (
+      node, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, "pub"));
+    TEST_ASSERT_FALSE (snapshot_has_owner_socket (
+      node, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, "sub"));
+    TEST_ASSERT_EQUAL_UINT (count_before, read_socket_snapshot (node).size ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_node_internal_socket_snapshot_contract ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_spot_node_internal_sockets_snapshot (node, NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    size_t count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_internal_sockets_snapshot (node, NULL, NULL, &count));
+    TEST_ASSERT_TRUE (count > 0);
+
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> one (1);
+    size_t small_count = 0;
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INTERNAL_ERROR,
+      zlink_spot_node_internal_sockets_snapshot (node, NULL, &one[0],
+                                                 &small_count));
+    TEST_ASSERT_EQUAL_INT (ENOBUFS, errno);
+    TEST_ASSERT_EQUAL_UINT (count, small_count);
+
+    zlink_spot_node_socket_snapshot_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.owner = static_cast<zlink_spot_node_socket_owner_t> (99);
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    memset (&filter, 0, sizeof (filter));
+    filter.socket_type = static_cast<zlink_socket_type_t> (99);
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    memset (&filter, 0, sizeof (filter));
+    memset (filter.socket_name, 'x', sizeof (filter.socket_name));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    const std::vector<zlink_spot_node_socket_snapshot_entry_t> all_rows =
+      read_socket_snapshot (node);
+    TEST_ASSERT_TRUE (
+      count_owner_rows (all_rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE) > 0);
+    TEST_ASSERT_TRUE (
+      count_owner_rows (all_rows, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT) > 0);
+
+    for (size_t i = 0; i < all_rows.size (); ++i) {
+        TEST_ASSERT_TRUE (
+          all_rows[i].socket_type == ZLINK_SOCKET_PUB
+          || all_rows[i].socket_type == ZLINK_SOCKET_SUB
+          || all_rows[i].socket_type == ZLINK_SOCKET_XPUB
+          || all_rows[i].socket_type == ZLINK_SOCKET_XSUB
+          || all_rows[i].socket_type == ZLINK_SOCKET_DEALER
+          || all_rows[i].socket_type == ZLINK_SOCKET_ROUTER
+          || all_rows[i].socket_type == ZLINK_SOCKET_STREAM
+          || all_rows[i].socket_type == ZLINK_SOCKET_PAIR);
+        TEST_ASSERT_TRUE (all_rows[i].snapshot.source_kind
+                          == ZLINK_MONITOR_SOURCE_SOCKET
+                          || all_rows[i].snapshot.source_kind
+                               == ZLINK_MONITOR_SOURCE_SPOT_PUB
+                          || all_rows[i].snapshot.source_kind
+                               == ZLINK_MONITOR_SOURCE_SPOT_SUB);
+    }
+
+    memset (&filter, 0, sizeof (filter));
+    filter.owner = ZLINK_SPOT_NODE_SOCKET_OWNER_NODE;
+    count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (
+      count_owner_rows (all_rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE), count);
+
+    memset (&filter, 0, sizeof (filter));
+    filter.socket_type = ZLINK_SOCKET_ROUTER;
+    count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (count_socket_rows (all_rows, ZLINK_SOCKET_ROUTER),
+                            count);
+
+    memset (&filter, 0, sizeof (filter));
+    snprintf (filter.socket_name, sizeof (filter.socket_name), "%s",
+              "node_router");
+    count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (count_socket_name_rows (all_rows, "node_router"),
+                            count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_subject_access_resolves_composite_and_node_poller_sockets ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -66,7 +386,7 @@ void test_spot_subject_access_routes_subscription_and_routing_state ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -136,7 +456,7 @@ void test_spot_subject_access_routes_composite_and_node_options ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -190,7 +510,7 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -212,6 +532,7 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
       spot_subject_set_pub_option (spot, ZLINK_PUB_OPT_NODROP, &nodrop,
                                    sizeof (nodrop)));
     TEST_ASSERT_NOT_NULL (handle->pub);
+    TEST_ASSERT_NOT_NULL (resolve_spot_pub_subject_poller_socket (spot));
 
     int actual = 0;
     size_t actual_size = sizeof (actual);
@@ -242,6 +563,12 @@ int main ()
     setup_test_environment ();
 
     UNITY_BEGIN ();
+    RUN_TEST (test_spot_node_options_default_zero_and_invalid_mode);
+    RUN_TEST (
+      test_spot_node_pubsub_mode_disables_routed_sockets_without_lazy_create);
+    RUN_TEST (
+      test_spot_node_routed_mode_disables_pubsub_sockets_without_lazy_create);
+    RUN_TEST (test_spot_node_internal_socket_snapshot_contract);
     RUN_TEST (test_spot_subject_access_resolves_composite_and_node_poller_sockets);
     RUN_TEST (test_spot_subject_access_routes_subscription_and_routing_state);
     RUN_TEST (test_spot_subject_access_routes_composite_and_node_options);

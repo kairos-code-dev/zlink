@@ -212,17 +212,32 @@ int spot_subject_set_routing_id (void *handle_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        zlink::spot_pub_t *pub = ensure_spot_pub (spot);
-        return pub ? pub->set_routing_id (data_, size_) : -1;
+        if (!data_ || size_ == 0 || size_ > sizeof (spot->spot_routing_id.data)) {
+            errno = EINVAL;
+            return -1;
+        }
+        memset (&spot->spot_routing_id, 0, sizeof (spot->spot_routing_id));
+        spot->spot_routing_id.size = static_cast<uint8_t> (size_);
+        memcpy (spot->spot_routing_id.data, data_, size_);
+        if (!spot->node || spot->node->pubsub_enabled ()) {
+            zlink::spot_pub_t *pub = ensure_spot_pub (spot);
+            if (pub && pub->set_routing_id (data_, size_) != 0)
+                return -1;
+        }
+        return 0;
     }
     if (is_registered_spot_node_handle (handle_)) {
         zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (handle_);
         zlink::service_public_api_scope_t admission (node->public_api_guard ());
         if (!admission.acquired ())
             return -1;
-        zlink::spot_pub_t *pub = node->ensure_default_pub ();
-        if (!pub || pub->set_routing_id (data_, size_) != 0)
+        if (node->set_node_routing_id (data_, size_) != 0)
             return -1;
+        if (node->pubsub_enabled ()) {
+            zlink::spot_pub_t *pub = node->ensure_default_pub ();
+            if (pub && pub->set_routing_id (data_, size_) != 0)
+                return -1;
+        }
         (void) zlink_service_spot_node_refresh_routed_mesh_subscription (handle_);
         return 0;
     }
@@ -241,16 +256,19 @@ int spot_subject_get_routing_id (void *handle_, zlink_routing_id_t *out_)
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        zlink::spot_pub_t *pub = ensure_spot_pub (spot);
-        return pub ? pub->routing_id (out_) : -1;
+        if (!out_) {
+            errno = EINVAL;
+            return -1;
+        }
+        *out_ = spot->spot_routing_id;
+        return 0;
     }
     if (is_registered_spot_node_handle (handle_)) {
         zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (handle_);
         zlink::service_public_api_scope_t admission (node->public_api_guard ());
         if (!admission.acquired ())
             return -1;
-        zlink::spot_pub_t *pub = node->ensure_default_pub ();
-        return pub ? pub->routing_id (out_) : -1;
+        return node->node_routing_id (out_);
     }
     errno = EFAULT;
     return -1;

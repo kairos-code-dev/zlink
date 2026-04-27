@@ -1217,27 +1217,6 @@ impl SocketMonitor {
 }
 ```
 
-### ServiceMonitor
-
-Starts in recv model. `on_event(...)` transitions one-way to callback-only
-model; after that `recv()` returns a busy recv error and `snapshot()` still works.
-
-```rust
-impl ServiceMonitor {
-    /// # Errors: ConfigError
-    pub fn open<'a>(target: impl Into<ServiceMonitorTarget<'a>>) -> Result<Self, ConfigError>;
-    /// # Errors: RecvError
-    pub fn recv(&self) -> Result<ServiceEvent, RecvError>;
-    /// # Errors: ConfigError
-    pub fn snapshot(&self) -> Result<MonitorSnapshot, ConfigError>;
-    /// # Errors: HandlerError
-    pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(&ServiceEvent) + Send + 'static;
-    /// # Errors: CloseError
-    pub fn close(&mut self) -> Result<(), CloseError>;
-}
-```
-
 ### MonitorSnapshot
 
 ```rust
@@ -1249,11 +1228,11 @@ pub struct MonitorSnapshot {
     pub rcv_pending_msgs: u64,            // pending recv-queue message count
     pub auto_hwm_enabled: bool,
     pub auto_hwm_role: u32,
-    pub auto_hwm_scope: u32,
-    pub auto_hwm_scope_count: u32,
     pub auto_hwm_managed_connections: u32,
     pub auto_hwm_active_hwm_connections: u32,
-    pub auto_hwm_planning_transport_connections: u32,
+    pub auto_hwm_observed_count: u32,
+    pub auto_hwm_planning_count: u32,
+    pub auto_hwm_context_total_planning_count: u32,
     pub auto_hwm_base_floor_per_connection: u32,
     pub auto_hwm_applied_sndhwm: i32,
     pub auto_hwm_applied_rcvhwm: i32,
@@ -1265,28 +1244,20 @@ pub struct MonitorSnapshot {
     pub auto_hwm_queue_budget_bytes: u64,
     pub auto_hwm_transport_budget_bytes: u64,
     pub auto_hwm_runtime_reserve_bytes: u64,
-    pub auto_hwm_group_budget_bytes: u64,
-    pub auto_hwm_role_group_budget_bytes: u64,
-    pub auto_hwm_scope_group_budget_bytes: u64,
-    pub auto_hwm_group_message_slots: u64,
+    pub auto_hwm_socket_queue_share_bytes: u64,
+    pub auto_hwm_socket_message_slots: u64,
     pub auto_hwm_effective_message_bytes: u64,
-    pub auto_hwm_auto_buffer_bytes: u64,
-    pub auto_hwm_manual_buffer_bytes: u64,
-    pub auto_hwm_buffer_connections: u32,
-    pub auto_hwm_control_budget_bytes: u64,
-    pub auto_hwm_routed_budget_bytes: u64,
-    pub auto_hwm_fanout_budget_bytes: u64,
-    pub auto_hwm_recv_ingress_budget_bytes: u64,
-    pub auto_hwm_control_active_connections: u32,
-    pub auto_hwm_routed_active_connections: u32,
-    pub auto_hwm_fanout_active_connections: u32,
-    pub auto_hwm_recv_ingress_active_connections: u32,
     pub auto_hwm_estimated_max_memory_bytes: u64,
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
+    pub auto_hwm_send_blocked_ratio_ppm: u32,
+    pub auto_hwm_scope: u32,
+    pub auto_hwm_scope_count: u32,
+    pub auto_hwm_auto_buffer_bytes: u64,
+    pub auto_hwm_manual_buffer_bytes: u64,
+    pub auto_hwm_buffer_connections: u32,
     pub auto_hwm_deferred_sndhwm: i32,
     pub auto_hwm_deferred_rcvhwm: i32,
-    pub auto_hwm_send_blocked_ratio_ppm: u32,
 }
 
 impl MonitorSnapshot {
@@ -1312,30 +1283,7 @@ pub struct MonitorEvent {
 }
 ```
 
-`MonitorEventType` includes `PeerWeightChanged` (bit 15). Service
-monitors surface the same change through
-`ServiceMonitorEventMask::PeerWeightChanged` (bit 8).
-
-### ServiceEvent
-
-Event emitted by Discovery `ServiceMonitor::recv` / `on_event`.
-Required by all bindings.
-
-```rust
-pub struct ServiceEvent {
-    pub service_kind: ServiceKind,       // ZLINK_SERVICE_KIND_DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET
-    pub event_type: ServiceEventType,    // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
-    pub status: u32,                     // status code
-    pub error_code: u32,                 // errno on error events
-    pub value: u64,                      // event-specific value
-    pub detail_flags: u32,               // detail bitmask
-    pub service_name: String,            // service name
-    pub endpoint: String,                // endpoint
-    pub routing_id: Option<RoutingId>,   // peer routing id
-    pub subject: String,                 // subscribe subject (topic)
-    pub subject_kind: SubjectKind,       // subject category
-}
-```
+`MonitorEventType` includes `PeerWeightChanged` (bit 15).
 
 ---
 
@@ -1416,8 +1364,6 @@ impl Discovery {
     pub fn member_peer_metadata(&self, service_role: ServiceRole, endpoint: &str)
         -> Result<Message, ConfigError>;
     /// # Errors: ConfigError
-    pub fn monitor_open(&self) -> Result<ServiceMonitor, ConfigError>;
-    /// # Errors: ConfigError
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
         trust_system: bool) -> Result<(), ConfigError>;
     /// Resolve the current owner node routing id for a logical spot routing id.
@@ -1438,6 +1384,8 @@ impl Discovery {
 
 ```rust
 impl SpotNode {
+    pub fn new_with_options(ctx: &Context, options: SpotNodeOptions)
+        -> Result<Self, ConfigError>;
     /// # Errors: ConfigError
     pub fn new(ctx: &Context) -> Result<Self, ConfigError>;
     /// # Errors: BindError
@@ -1476,6 +1424,8 @@ impl SpotNode {
     /// # Errors: ConfigError
     pub fn subjects_snapshot(&self, filter: Option<&SpotNodeSubjectFilter>)
         -> Result<Vec<SpotNodeSubjectEntry>, ConfigError>;
+    pub fn internal_sockets_snapshot(&self, filter: Option<&SpotNodeSocketSnapshotFilter>)
+        -> Result<Vec<SpotNodeSocketSnapshotEntry>, ConfigError>;
     /// # Errors: ConfigError
     // --- identity / routing ---
     /// SpotNode's logical address.

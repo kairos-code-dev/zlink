@@ -27,6 +27,9 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_SPOT_WORKER_THREADS     11
 #define ZLINK_CTX_OPT_AUTO_HWM_ENABLE 12
 #define ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB 13
+#define ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS 14
+#define ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP 15
+#define ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP 16
 ```
 
 | 상수 | 값 | 설명 |
@@ -45,6 +48,9 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_SPOT_WORKER_THREADS` | 11 | `zlink_spot_dispatch_event_handler()` 전용 worker 수 (`0` = 자동) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
 | `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | 13 | 자동 HWM 정책이 계산에 사용하는 context 총 메모리 예산 (MB, `>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 디바운스 시간 (ms, `>= 0`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP` | 15 | 관리 대상 STREAM 소켓이 아직 실제 연결을 보지 못했을 때 계획 수로 쓰는 bootstrap 값 (`>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 16 | 관리 대상 SPOT pub/sub 소켓이 아직 실제 연결을 보지 못했을 때 계획 수로 쓰는 bootstrap 값 (`>= 1`) |
 
 ## 기본값
 
@@ -163,6 +169,10 @@ runtime이 시작된 뒤 이 값을 바꾸려 하면 `ZLINK_CONFIG_INVALID_ARGUM
 `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB`는 이미 만들어진 소켓에도
 즉시 반영되며, 아직 수동 `SNDHWM` / `RCVHWM` / `SNDBUF` / `RCVBUF` 값을
 주지 않은 소켓만 자동 정책으로 다시 계산합니다.
+`ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS`,
+`ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP`,
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`는 다음 재계산부터 쓰는 계획 정책을
+바꾸며, runtime 중에도 안전하게 조정할 수 있습니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -198,3 +208,28 @@ Context 옵션의 현재 값을 가져옵니다. `ZLINK_SOCKET_LIMIT` 및 `ZLINK
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 
 **참고:** `zlink_ctx_set`
+
+---
+
+### zlink_ctx_auto_hwm_recalculate
+
+현재 context 전체에 자동 HWM 계획을 즉시 다시 적용합니다.
+
+```c
+zlink_config_result_t zlink_ctx_auto_hwm_recalculate(void *context_);
+```
+
+이 함수는 아직 자동 queue/buffer 정책을 따르는 소켓에 대해 즉시 자동 HWM
+재계산을 실행합니다. 사용자가 수동으로 바꾼 값은 그대로 유지되고, 자동 HWM을
+꺼 둔 경우도 그대로 유지됩니다. context 전체 메모리 예산을 바꾼 직후나,
+새 bootstrap 계획 값을 바로 반영하고 싶을 때 사용합니다.
+
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값.
+`zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
+
+**에러:**
+- `EFAULT` -- 유효하지 않은 context 핸들.
+
+**스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
+
+**참고:** `zlink_ctx_set`, `zlink_monitor_snapshot`

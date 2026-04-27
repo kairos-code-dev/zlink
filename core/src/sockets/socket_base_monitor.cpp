@@ -20,31 +20,6 @@ uint32_t compute_blocked_ratio_ppm_local (uint64_t attempts_, uint64_t blocked_)
                                   : static_cast<uint32_t> (scaled);
 }
 
-void assign_role_active_connection_count (
-  zlink_monitor_snapshot_t *out_,
-  zlink::auto_hwm_role_t role_,
-  uint32_t active_connections_)
-{
-    if (!out_)
-        return;
-
-    switch (role_) {
-    case zlink::auto_hwm_role_control:
-        out_->auto_hwm_control_active_connections = active_connections_;
-        break;
-    case zlink::auto_hwm_role_routed:
-        out_->auto_hwm_routed_active_connections = active_connections_;
-        break;
-    case zlink::auto_hwm_role_fanout:
-        out_->auto_hwm_fanout_active_connections = active_connections_;
-        break;
-    case zlink::auto_hwm_role_recv_ingress:
-        out_->auto_hwm_recv_ingress_active_connections = active_connections_;
-        break;
-    default:
-        break;
-    }
-}
 }
 
 int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
@@ -80,8 +55,10 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
       _auto_hwm_socket_plan.managed_connections;
     out_->auto_hwm_active_hwm_connections =
       _auto_hwm_socket_plan.active_hwm_connections;
-    out_->auto_hwm_planning_transport_connections =
-      _auto_hwm_socket_plan.planning_transport_connections;
+    out_->auto_hwm_observed_count = _auto_hwm_socket_plan.observed_count;
+    out_->auto_hwm_planning_count = _auto_hwm_socket_plan.planning_count;
+    out_->auto_hwm_context_total_planning_count =
+      _auto_hwm_socket_plan.context_total_planning_count;
     out_->auto_hwm_base_floor_per_connection =
       _auto_hwm_socket_plan.base_floor_per_connection;
     out_->auto_hwm_applied_sndhwm = options.sndhwm;
@@ -100,23 +77,12 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
       _auto_hwm_context_plan.transport_budget_bytes;
     out_->auto_hwm_runtime_reserve_bytes =
       _auto_hwm_context_plan.runtime_reserve_bytes;
-    out_->auto_hwm_group_budget_bytes = _auto_hwm_socket_plan.group_budget_bytes;
-    out_->auto_hwm_group_message_slots =
-      _auto_hwm_socket_plan.group_message_slots;
+    out_->auto_hwm_socket_queue_share_bytes =
+      _auto_hwm_socket_plan.socket_queue_share_bytes;
+    out_->auto_hwm_socket_message_slots =
+      _auto_hwm_socket_plan.socket_message_slots;
     out_->auto_hwm_effective_message_bytes =
       _auto_hwm_socket_plan.effective_message_bytes;
-    out_->auto_hwm_control_budget_bytes =
-      (_auto_hwm_context_plan.queue_budget_bytes * 5ull) / 100ull;
-    out_->auto_hwm_routed_budget_bytes =
-      (_auto_hwm_context_plan.queue_budget_bytes * 25ull) / 100ull;
-    out_->auto_hwm_fanout_budget_bytes =
-      (_auto_hwm_context_plan.queue_budget_bytes * 50ull) / 100ull;
-    out_->auto_hwm_recv_ingress_budget_bytes =
-      _auto_hwm_context_plan.queue_budget_bytes
-      - out_->auto_hwm_control_budget_bytes - out_->auto_hwm_routed_budget_bytes
-      - out_->auto_hwm_fanout_budget_bytes;
-    assign_role_active_connection_count (
-      out_, _auto_hwm_socket_plan.role, _auto_hwm_socket_plan.active_hwm_connections);
     out_->auto_hwm_estimated_max_memory_bytes =
       _auto_hwm_context_plan.total_memory_budget_bytes;
     out_->auto_hwm_last_recalc_ms = _auto_hwm_last_recalc_ms;
@@ -127,10 +93,6 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     out_->auto_hwm_scope =
       static_cast<uint32_t> (_auto_hwm_socket_plan.scope);
     out_->auto_hwm_scope_count = _auto_hwm_socket_plan.scope_count;
-    out_->auto_hwm_role_group_budget_bytes =
-      _auto_hwm_socket_plan.role_group_budget_bytes;
-    out_->auto_hwm_scope_group_budget_bytes =
-      _auto_hwm_socket_plan.scope_group_budget_bytes;
     out_->auto_hwm_auto_buffer_bytes =
       _auto_hwm_socket_plan.auto_buffer_bytes;
     out_->auto_hwm_manual_buffer_bytes =

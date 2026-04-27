@@ -259,7 +259,7 @@
   - raw socket connect readiness:
     monitor event 또는 그와 동등한 readiness surface
   - service-layer readiness (`spot`, `discovery`, `registry query`):
-    status snapshot, peer snapshot, service monitor event, bounded query retry,
+    status snapshot, peer snapshot, bounded query retry,
     bounded request submit retry 중 하나
 - TCP bind/connect 직후 raw socket 메시징을 시작하는 샘플은 가능하면 monitor API로
   connection readiness를 확인한다.

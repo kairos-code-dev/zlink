@@ -123,7 +123,6 @@ public sealed class test_socket_surface
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Context)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SocketBase)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SocketMonitor)));
-        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(ServiceMonitor)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Message)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Poller)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(AtomicCounter)));
@@ -205,15 +204,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
             nameof(SocketBase.SetTlsClient), typeof(string), typeof(string),
             typeof(bool)));
-        MethodInfo discoveryMonitorOpen = typeof(Discovery).GetMethods(
-            BindingFlags.Instance | BindingFlags.Public)
-            .Single(method =>
-                method.Name == nameof(Discovery.MonitorOpen)
-                && method.GetParameters().Length == 1
-                && method.GetParameters()[0].ParameterType
-                    == typeof(ServiceMonitorEventMask[]));
-        Assert.True(discoveryMonitorOpen.GetParameters()[0]
-            .GetCustomAttribute<ParamArrayAttribute>() != null);
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen"));
     }
 
     [Fact]
@@ -282,7 +273,7 @@ public sealed class test_socket_surface
     }
 
     [Fact]
-    public void typed_option_facades_and_service_monitor_events_are_public()
+    public void typed_option_facades_and_spot_surfaces_are_public()
     {
         Assert.Equal(typeof(CommonSocketOptions),
             typeof(SocketBase).GetProperty(nameof(SocketBase.Options))!.PropertyType);
@@ -300,13 +291,6 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(SubSocketOptions),
             typeof(SubSocket).GetProperty(nameof(SubSocket.SubOptions))!
                 .PropertyType);
-        Assert.Equal(typeof(ServiceEventType),
-            typeof(ServiceMonitorEvent).GetProperty(nameof(ServiceMonitorEvent.EventType))!
-                .PropertyType);
-        Assert.False(HasPublicInstanceMethod(typeof(Spot), "MonitorOpen",
-            typeof(ServiceMonitorEvents)));
-        Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
-            typeof(ServiceMonitorEvents)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealer",
             typeof(Discovery), typeof(DealerSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealerManual",
@@ -359,8 +343,6 @@ public sealed class test_socket_surface
             typeof(SpotNodePeerFilter)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "SubjectsSnapshot",
             typeof(SpotNodeSubjectFilter)));
-        Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
-            typeof(ServiceMonitorEvents)));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Snapshot"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Peers"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Subjects"));
@@ -380,31 +362,15 @@ public sealed class test_socket_surface
             nameof(Discovery.ResolveSpot), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.SetDealerPeerMode), typeof(DiscoveryDealerPeerMode)));
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
-            typeof(ServiceMonitorEventMask[])));
-        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
-            typeof(ServiceMonitorEvents)));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen"));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "GetMemberPeerMetadata"));
         Assert.True(typeof(DiscoveryDealerPeerMode).IsEnum);
 
-        Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "Recv"));
-        Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "Recv",
-            typeof(bool)));
-        Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "TryRecv",
-            typeof(ServiceMonitorEvent).MakeByRefType()));
-        Assert.True(HasPublicInstanceMethod(typeof(ServiceMonitor), "OnEvent",
-            typeof(Action<ServiceMonitorEvent>)));
-        Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "Receive"));
-        Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor), "TryReceive"));
-        Assert.False(HasPublicInstanceMethod(typeof(ServiceMonitor),
-            "AttachHandler"));
         Assert.True(HasPublicInstanceMethod(typeof(Message), "GetProperty",
             typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase), "MonitorOpen",
             typeof(SocketEvent)));
-        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen",
-            typeof(ServiceMonitorEvents)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.SetRoutingId), typeof(RoutingId)));
         Assert.Equal(typeof(RoutingId),
@@ -487,11 +453,5 @@ public sealed class test_socket_surface
         Assert.True(Enum.IsDefined(typeof(MonitorEventType),
             nameof(MonitorEventType.PeerWeightChanged)));
         Assert.Equal(0x8000, (int)MonitorEventType.PeerWeightChanged);
-        Assert.True(Enum.IsDefined(typeof(ServiceMonitorEventMask),
-            nameof(ServiceMonitorEventMask.PeerWeightChanged)));
-        Assert.Equal(1u << 8, (uint)ServiceMonitorEventMask.PeerWeightChanged);
-        Assert.True(Enum.IsDefined(typeof(ServiceEventType),
-            nameof(ServiceEventType.PeerWeightChanged)));
-        Assert.Equal(1u << 8, (uint)ServiceEventType.PeerWeightChanged);
     }
 }

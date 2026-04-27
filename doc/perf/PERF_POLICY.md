@@ -203,13 +203,13 @@ total: 29 bytes (고정)
   판정한다.
 - SPOT / SPOT_REQREP perf ready gate는 monitor event 나 snapshot 이 아니라
   benchmark control protocol 로 판정한다.
-- single SPOT 은 service monitor 대신 local pub/sub probe 를 사용한다.
+- single SPOT 은 별도 서비스 이벤트 스트림 대신 local pub/sub probe 를 사용한다.
   sender 가 metric header가 찍힌 probe payload 를 publish 하고, recv
   쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
 - single SPOT 수신은 direct message callback으로 처리하지 않는다.
   `dispatch_event` callback이 오면 그 안에서 recv drain 하여 유효 payload를
   확인해야 한다.
-- single SPOT_REQREP 은 service monitor 대신 routed request/reply probe 를
+- single SPOT_REQREP 은 별도 서비스 이벤트 스트림 대신 routed request/reply probe 를
   사용한다. requester 가 metric header가 찍힌 probe request 를 보내고
   replier 의 reply 를 수신하면 ready 로 판정한다.
 - multi SPOT / multi SPOT_REQREP barrier 의 `READY` 는 `connect_peer()` 직후
@@ -231,7 +231,7 @@ total: 29 bytes (고정)
     barrier 만 수행해야 한다.
   - multi SPOT / multi SPOT_REQREP 에서는 control handshake
     (`CONNECTED`/`READY_COUNT`/`START`) barrier 만 수행해야 한다.
-  - delivery-ready event, service monitor, snapshot polling 을 helper 뒤에
+  - delivery-ready event, 별도 서비스 이벤트 스트림, snapshot polling 을 helper 뒤에
     숨기면 안 된다.
 - suite별 정책 문서는 pattern별 low-cost ready gate event를 명시해야 한다.
   perf는 그 표에 없는 추가 precondition(`FILTER_APPLIED`, delivery-ready exact count,
@@ -274,7 +274,7 @@ total: 29 bytes (고정)
 - raw pattern 의 ready gate event 는
   [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   raw socket monitoring 절을 단일 기준으로 따른다.
-- SPOT 과 SPOT_REQREP 은 service monitor 를 사용하지 않으며, perf-ready 는
+- SPOT 과 SPOT_REQREP 은 별도 서비스 이벤트 스트림을 사용하지 않으며, perf-ready 는
   suite별 benchmark barrier protocol 로만 정의한다.
 - monitor event rename:
   - raw socket ready event 는 `CONNECTION_READY` 이다.
@@ -310,8 +310,10 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   현재 테스트 메시지 크기와 같은 값으로 설정한다. 일반 패턴의 perf 출력은
   결과 행 뒤에 runtime snapshot에서 실제 수집한 `Auto-HWM detail` 표를 붙이고,
   `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과 함께 보여야
-  한다. SPOT 계열은 shared/per-spot budget 확인이 중요하므로 common, socket,
-  budget 표를 분리해서 보여준다.
+  한다. SPOT 계열은 `zlink_spot_node_internal_sockets_snapshot()` 결과 중
+  `auto_hwm_visible == 1`인 row만 기본 출력에 사용한다. `Auto-HWM spotnode`
+  표는 node 소유 socket을, `Auto-HWM spot` 표는 spot 소유 socket을 보여준다.
+  꺼진 SpotNode mode의 socket은 생성되지 않으므로 perf 출력에도 나오지 않는다.
 - SPOT per-spot scope는 spot 수로 role budget을 나눈다. 큰 payload와 높은
   client 수를 함께 쓰면 HWM이 목표 동시성보다 작아질 수 있으므로, 100-client
   `MULTI_SPOT_SENDSEND` 64 KiB 검증에는 2048 MiB tier를 추가로 확인한다.

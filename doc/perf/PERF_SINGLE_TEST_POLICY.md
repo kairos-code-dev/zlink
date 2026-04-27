@@ -352,7 +352,7 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
   수행한다.
 - 위 settle은 additional ready source가 아니며, transport/binding별 임의 조정
   단계로 확장하면 안 된다.
-- single SPOT / single SPOT_REQREP 은 service monitor 를 사용하지 않는다.
+- single SPOT / single SPOT_REQREP 은 별도 서비스 이벤트 스트림을 사용하지 않는다.
 - single SPOT 은 local pub/sub setup 완료 후 sender 가 metric header가 찍힌
   probe payload 를 publish 하고, recv 측이 첫 유효 payload 를 확인하면
   ready 를 닫는다.

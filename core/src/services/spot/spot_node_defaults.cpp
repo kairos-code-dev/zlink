@@ -102,6 +102,10 @@ int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
 spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
   const pub_defaults_t &defaults_, bool node_owned_default_)
 {
+    if (!pubsub_enabled ()) {
+        errno = ENOTSUP;
+        return NULL;
+    }
     if (ensure_healthy () != 0)
         return NULL;
     uint64_t attachment_id = 0;
@@ -179,6 +183,10 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
 spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
   const sub_defaults_t &defaults_, bool node_owned_default_)
 {
+    if (!pubsub_enabled ()) {
+        errno = ENOTSUP;
+        return NULL;
+    }
     if (ensure_healthy () != 0)
         return NULL;
     uint64_t attachment_id = 0;

@@ -18,7 +18,6 @@ static const size_t k_router_handler_slot_count = 8;
 static const size_t k_subscribe_handler_slot_count = 8;
 static const size_t k_send_ready_handler_slot_count = 8;
 static const size_t k_socket_monitor_handler_slot_count = 8;
-static const size_t k_service_monitor_handler_slot_count = 8;
 static const int32_t k_stream_dispatch_none = 0;
 static const int32_t k_stream_dispatch_len32be = 1;
 static const int32_t k_legacy_socket_pair = 0;
@@ -84,11 +83,6 @@ struct subscribe_handler_js_payload_t
 struct socket_monitor_handler_js_payload_t
 {
     zlink_monitor_event_t event;
-};
-
-struct service_monitor_handler_js_payload_t
-{
-    zlink_service_event_t event;
 };
 
 struct request_result_js_payload_t
@@ -181,17 +175,6 @@ struct socket_monitor_handler_js_state_t
     napi_threadsafe_function tsfn;
 };
 
-struct service_monitor_handler_js_state_t
-{
-    service_monitor_handler_js_state_t ()
-      : used (false), monitor (NULL), env (NULL), tsfn (NULL) {}
-
-    bool used;
-    void *monitor;
-    napi_env env;
-    napi_threadsafe_function tsfn;
-};
-
 static std::mutex g_recv_handler_slots_mu;
 static recv_handler_js_state_t g_recv_handler_slots[k_recv_handler_slot_count];
 static std::mutex g_router_handler_slots_mu;
@@ -206,9 +189,6 @@ static send_ready_handler_js_state_t
 static std::mutex g_socket_monitor_handler_slots_mu;
 static socket_monitor_handler_js_state_t
   g_socket_monitor_handler_slots[k_socket_monitor_handler_slot_count];
-static std::mutex g_service_monitor_handler_slots_mu;
-static service_monitor_handler_js_state_t
-  g_service_monitor_handler_slots[k_service_monitor_handler_slot_count];
 
 stream_js_state_t *find_stream_slot_by_socket_unsafe(void *socket)
 {
@@ -322,27 +302,6 @@ socket_monitor_handler_js_state_t *find_free_socket_monitor_handler_slot_unsafe(
     return NULL;
 }
 
-service_monitor_handler_js_state_t *find_service_monitor_handler_slot_by_monitor_unsafe(
-  void *monitor)
-{
-    for (size_t i = 0; i < k_service_monitor_handler_slot_count; ++i) {
-        if (g_service_monitor_handler_slots[i].used
-            && g_service_monitor_handler_slots[i].monitor == monitor) {
-            return &g_service_monitor_handler_slots[i];
-        }
-    }
-    return NULL;
-}
-
-service_monitor_handler_js_state_t *find_free_service_monitor_handler_slot_unsafe()
-{
-    for (size_t i = 0; i < k_service_monitor_handler_slot_count; ++i) {
-        if (!g_service_monitor_handler_slots[i].used)
-            return &g_service_monitor_handler_slots[i];
-    }
-    return NULL;
-}
-
 stream_js_state_t *find_free_stream_slot_unsafe()
 {
     for (size_t i = 0; i < k_stream_slot_count; ++i) {
@@ -408,17 +367,6 @@ void reset_send_ready_handler_slot_unsafe(send_ready_handler_js_state_t *state)
 
 void reset_socket_monitor_handler_slot_unsafe(
   socket_monitor_handler_js_state_t *state)
-{
-    if (!state)
-        return;
-    state->used = false;
-    state->monitor = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
-}
-
-void reset_service_monitor_handler_slot_unsafe(
-  service_monitor_handler_js_state_t *state)
 {
     if (!state)
         return;
@@ -1004,54 +952,6 @@ napi_value create_socket_monitor_event_value(napi_env env,
     return obj;
 }
 
-napi_value create_service_monitor_event_value(
-  napi_env env,
-  const zlink_service_event_t &event)
-{
-    napi_value obj;
-    napi_create_object(env, &obj);
-
-    napi_value value;
-    napi_create_uint32(env, static_cast<uint32_t>(event.service_kind), &value);
-    napi_set_named_property(env, obj, "serviceKind", value);
-
-    napi_create_uint32(env, event.event_type, &value);
-    napi_set_named_property(env, obj, "eventType", value);
-
-    napi_create_int32(env, event.status, &value);
-    napi_set_named_property(env, obj, "status", value);
-
-    napi_create_int32(env, event.error_code, &value);
-    napi_set_named_property(env, obj, "errorCode", value);
-
-    napi_create_uint32(env, event.value, &value);
-    napi_set_named_property(env, obj, "value", value);
-
-    napi_create_uint32(env, event.detail_flags, &value);
-    napi_set_named_property(env, obj, "detailFlags", value);
-
-    napi_value service_name;
-    napi_create_string_utf8(
-      env, event.service_name, NAPI_AUTO_LENGTH, &service_name);
-    napi_set_named_property(env, obj, "serviceName", service_name);
-
-    napi_value endpoint;
-    napi_create_string_utf8(env, event.endpoint, NAPI_AUTO_LENGTH, &endpoint);
-    napi_set_named_property(env, obj, "endpoint", endpoint);
-
-    napi_value routing_id = create_routing_id_value(env, event.routing_id);
-    napi_set_named_property(env, obj, "routingId", routing_id);
-
-    napi_value subject;
-    napi_create_string_utf8(env, event.subject, NAPI_AUTO_LENGTH, &subject);
-    napi_set_named_property(env, obj, "subject", subject);
-
-    napi_create_uint32(env, event.subject_kind, &value);
-    napi_set_named_property(env, obj, "subjectKind", value);
-
-    return obj;
-}
-
 napi_value create_subscribed_value(napi_env env,
                                    const zlink_routing_id_t &routing_id,
                                    const char *topic,
@@ -1374,20 +1274,6 @@ void socket_monitor_handler_tsfn_finalize(napi_env env,
     reset_socket_monitor_handler_slot_unsafe(state);
 }
 
-void service_monitor_handler_tsfn_finalize(napi_env env,
-                                           void *finalize_data,
-                                           void *finalize_hint)
-{
-    (void) env;
-    (void) finalize_hint;
-    service_monitor_handler_js_state_t *state =
-      static_cast<service_monitor_handler_js_state_t *>(finalize_data);
-    if (!state)
-        return;
-    std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
-    reset_service_monitor_handler_slot_unsafe(state);
-}
-
 void stream_tsfn_call_js(napi_env env,
                          napi_value js_cb,
                          void *context,
@@ -1630,25 +1516,6 @@ void socket_monitor_handler_tsfn_call_js(napi_env env,
 
     napi_value argv[1];
     argv[0] = create_socket_monitor_event_value(env, payload->event);
-    napi_value recv;
-    napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
-}
-
-void service_monitor_handler_tsfn_call_js(napi_env env,
-                                          napi_value js_cb,
-                                          void *context,
-                                          void *data)
-{
-    std::unique_ptr<service_monitor_handler_js_payload_t> payload(
-      static_cast<service_monitor_handler_js_payload_t *>(data));
-    (void) context;
-    if (!env || !js_cb || !payload)
-        return;
-
-    napi_value argv[1];
-    argv[0] = create_service_monitor_event_value(env, payload->event);
     napi_value recv;
     napi_value this_arg;
     napi_get_undefined(env, &this_arg);
@@ -2151,48 +2018,6 @@ static socket_monitor_handler_slot_callback_t
 };
 #undef SOCKET_MONITOR_HANDLER_SLOT_CALLBACK
 
-#define SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(N) \
-  &service_monitor_handler_slot_callback<N>
-typedef void (*service_monitor_handler_slot_callback_t)(
-  const zlink_service_event_t *, void *);
-template <size_t Slot>
-void service_monitor_handler_slot_callback(const zlink_service_event_t *event_,
-                                           void *userdata_)
-{
-    (void) userdata_;
-    std::unique_ptr<service_monitor_handler_js_payload_t> payload(
-      new service_monitor_handler_js_payload_t());
-    service_monitor_handler_js_state_t *state =
-      &g_service_monitor_handler_slots[Slot];
-    napi_threadsafe_function tsfn = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
-        if (!state->used || !state->tsfn)
-            return;
-        tsfn = state->tsfn;
-        if (event_)
-            payload->event = *event_;
-        else
-            memset(&payload->event, 0, sizeof(payload->event));
-    }
-
-    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
-        == napi_ok) {
-        payload.release();
-    }
-}
-static service_monitor_handler_slot_callback_t
-  g_service_monitor_handler_slot_callbacks[k_service_monitor_handler_slot_count] = {
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(0),
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(1),
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(2),
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(3),
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(4),
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(5),
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(6),
-    SERVICE_MONITOR_HANDLER_SLOT_CALLBACK(7),
-};
-#undef SERVICE_MONITOR_HANDLER_SLOT_CALLBACK
 static send_ready_handler_slot_callback_t
   g_send_ready_handler_slot_callbacks[k_send_ready_handler_slot_count] = {
     SEND_READY_HANDLER_SLOT_CALLBACK(0),
@@ -2373,58 +2198,6 @@ bool attach_socket_monitor_handler(napi_env env,
     return true;
 }
 
-bool attach_service_monitor_handler(napi_env env,
-                                    void *monitor,
-                                    napi_value handler)
-{
-    service_monitor_handler_js_state_t *slot = NULL;
-    size_t slot_index = 0;
-    {
-        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
-        if (find_service_monitor_handler_slot_by_monitor_unsafe(monitor)) {
-            napi_throw_error(env, NULL, "serviceMonitorHandler already attached");
-            return false;
-        }
-        slot = find_free_service_monitor_handler_slot_unsafe();
-        if (!slot) {
-            napi_throw_error(env, NULL, "no free serviceMonitorHandler slot");
-            return false;
-        }
-        slot_index = static_cast<size_t>(slot - g_service_monitor_handler_slots);
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8(
-      env, "zlink-service-monitor-handler", NAPI_AUTO_LENGTH, &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function(
-      env, handler, NULL, resource_name, 0, 1, slot,
-      service_monitor_handler_tsfn_finalize, slot,
-      service_monitor_handler_tsfn_call_js, &tsfn);
-    if (tsfn_status != napi_ok) {
-        napi_throw_error(
-          env, NULL, "serviceMonitorHandler failed to create callback queue");
-        return false;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
-        slot->used = true;
-        slot->monitor = monitor;
-        slot->env = env;
-        slot->tsfn = tsfn;
-    }
-
-    int rc = zlink_service_monitor_handler(
-      monitor, g_service_monitor_handler_slot_callbacks[slot_index], slot);
-    if (rc != 0) {
-        release_service_monitor_handler_slot(monitor);
-        throw_last_error(env, "serviceMonitorHandler failed");
-        return false;
-    }
-    return true;
-}
-
 } // namespace
 
 void release_socket_recv_handler_slot(void *socket)
@@ -2469,22 +2242,6 @@ void release_socket_monitor_handler_slot(void *monitor)
             return;
         tsfn = state->tsfn;
         reset_socket_monitor_handler_slot_unsafe(state);
-    }
-    if (tsfn)
-        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
-}
-
-void release_service_monitor_handler_slot(void *monitor)
-{
-    napi_threadsafe_function tsfn = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_service_monitor_handler_slots_mu);
-        service_monitor_handler_js_state_t *state =
-          find_service_monitor_handler_slot_by_monitor_unsafe(monitor);
-        if (!state)
-            return;
-        tsfn = state->tsfn;
-        reset_service_monitor_handler_slot_unsafe(state);
     }
     if (tsfn)
         (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
@@ -4224,30 +3981,6 @@ napi_value monitor_handler(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value service_monitor_handler(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *mon = NULL;
-    napi_get_value_external(env, argv[0], &mon);
-
-    napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[1], &handler_type);
-    if (handler_type != napi_function) {
-        napi_throw_type_error(
-          env, NULL, "serviceMonitorHandler handler must be a function");
-        return NULL;
-    }
-
-    if (!attach_service_monitor_handler(env, mon, argv[1]))
-        return NULL;
-
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value monitor_recv(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -4327,7 +4060,9 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_value snd_pending, rcv_pending;
     napi_value auto_hwm_enabled, auto_hwm_role;
     napi_value auto_hwm_managed_connections, auto_hwm_active_hwm_connections;
-    napi_value auto_hwm_planning_transport_connections;
+    napi_value auto_hwm_observed_count;
+    napi_value auto_hwm_planning_count;
+    napi_value auto_hwm_context_total_planning_count;
     napi_value auto_hwm_base_floor_per_connection;
     napi_value auto_hwm_applied_sndhwm, auto_hwm_applied_rcvhwm;
     napi_value auto_hwm_requested_sndbuf, auto_hwm_requested_rcvbuf;
@@ -4336,24 +4071,14 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_value auto_hwm_queue_budget_bytes;
     napi_value auto_hwm_transport_budget_bytes;
     napi_value auto_hwm_runtime_reserve_bytes;
-    napi_value auto_hwm_group_budget_bytes;
-    napi_value auto_hwm_group_message_slots;
+    napi_value auto_hwm_socket_queue_share_bytes;
+    napi_value auto_hwm_socket_message_slots;
     napi_value auto_hwm_effective_message_bytes;
-    napi_value auto_hwm_control_budget_bytes;
-    napi_value auto_hwm_routed_budget_bytes;
-    napi_value auto_hwm_fanout_budget_bytes;
-    napi_value auto_hwm_recv_ingress_budget_bytes;
-    napi_value auto_hwm_control_active_connections;
-    napi_value auto_hwm_routed_active_connections;
-    napi_value auto_hwm_fanout_active_connections;
-    napi_value auto_hwm_recv_ingress_active_connections;
     napi_value auto_hwm_estimated_max_memory_bytes;
     napi_value auto_hwm_last_recalc_ms;
     napi_value auto_hwm_last_recalc_reason;
     napi_value auto_hwm_send_blocked_ratio_ppm;
     napi_value auto_hwm_scope, auto_hwm_scope_count;
-    napi_value auto_hwm_role_group_budget_bytes;
-    napi_value auto_hwm_scope_group_budget_bytes;
     napi_value auto_hwm_auto_buffer_bytes;
     napi_value auto_hwm_manual_buffer_bytes;
     napi_value auto_hwm_buffer_connections;
@@ -4372,8 +4097,12 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                        &auto_hwm_managed_connections);
     napi_create_uint32(env, snapshot.auto_hwm_active_hwm_connections,
                        &auto_hwm_active_hwm_connections);
-    napi_create_uint32(env, snapshot.auto_hwm_planning_transport_connections,
-                       &auto_hwm_planning_transport_connections);
+    napi_create_uint32(env, snapshot.auto_hwm_observed_count,
+                       &auto_hwm_observed_count);
+    napi_create_uint32(env, snapshot.auto_hwm_planning_count,
+                       &auto_hwm_planning_count);
+    napi_create_uint32(env, snapshot.auto_hwm_context_total_planning_count,
+                       &auto_hwm_context_total_planning_count);
     napi_create_uint32(env, snapshot.auto_hwm_base_floor_per_connection,
                        &auto_hwm_base_floor_per_connection);
     napi_create_int32(env, snapshot.auto_hwm_applied_sndhwm,
@@ -4404,39 +4133,17 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                         snapshot.auto_hwm_runtime_reserve_bytes),
                       &auto_hwm_runtime_reserve_bytes);
     napi_create_int64(env,
-                      static_cast<int64_t> (snapshot.auto_hwm_group_budget_bytes),
-                      &auto_hwm_group_budget_bytes);
+                      static_cast<int64_t> (
+                        snapshot.auto_hwm_socket_queue_share_bytes),
+                      &auto_hwm_socket_queue_share_bytes);
     napi_create_int64(env,
-                      static_cast<int64_t> (snapshot.auto_hwm_group_message_slots),
-                      &auto_hwm_group_message_slots);
+                      static_cast<int64_t> (
+                        snapshot.auto_hwm_socket_message_slots),
+                      &auto_hwm_socket_message_slots);
     napi_create_int64(env,
                       static_cast<int64_t> (
                         snapshot.auto_hwm_effective_message_bytes),
                       &auto_hwm_effective_message_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_control_budget_bytes),
-                      &auto_hwm_control_budget_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_routed_budget_bytes),
-                      &auto_hwm_routed_budget_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_fanout_budget_bytes),
-                      &auto_hwm_fanout_budget_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_recv_ingress_budget_bytes),
-                      &auto_hwm_recv_ingress_budget_bytes);
-    napi_create_uint32(env, snapshot.auto_hwm_control_active_connections,
-                       &auto_hwm_control_active_connections);
-    napi_create_uint32(env, snapshot.auto_hwm_routed_active_connections,
-                       &auto_hwm_routed_active_connections);
-    napi_create_uint32(env, snapshot.auto_hwm_fanout_active_connections,
-                       &auto_hwm_fanout_active_connections);
-    napi_create_uint32(env, snapshot.auto_hwm_recv_ingress_active_connections,
-                       &auto_hwm_recv_ingress_active_connections);
     napi_create_int64(env,
                       static_cast<int64_t> (
                         snapshot.auto_hwm_estimated_max_memory_bytes),
@@ -4451,14 +4158,6 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_create_uint32(env, snapshot.auto_hwm_scope, &auto_hwm_scope);
     napi_create_uint32(env, snapshot.auto_hwm_scope_count,
                        &auto_hwm_scope_count);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_role_group_budget_bytes),
-                      &auto_hwm_role_group_budget_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_scope_group_budget_bytes),
-                      &auto_hwm_scope_group_budget_bytes);
     napi_create_int64(env,
                       static_cast<int64_t> (
                         snapshot.auto_hwm_auto_buffer_bytes),
@@ -4484,8 +4183,12 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                             auto_hwm_managed_connections);
     napi_set_named_property(env, obj, "autoHwmActiveHwmConnections",
                             auto_hwm_active_hwm_connections);
-    napi_set_named_property(env, obj, "autoHwmPlanningTransportConnections",
-                            auto_hwm_planning_transport_connections);
+    napi_set_named_property(env, obj, "autoHwmObservedCount",
+                            auto_hwm_observed_count);
+    napi_set_named_property(env, obj, "autoHwmPlanningCount",
+                            auto_hwm_planning_count);
+    napi_set_named_property(env, obj, "autoHwmContextTotalPlanningCount",
+                            auto_hwm_context_total_planning_count);
     napi_set_named_property(env, obj, "autoHwmBaseFloorPerConnection",
                             auto_hwm_base_floor_per_connection);
     napi_set_named_property(env, obj, "autoHwmAppliedSndHwm",
@@ -4508,28 +4211,12 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                             auto_hwm_transport_budget_bytes);
     napi_set_named_property(env, obj, "autoHwmRuntimeReserveBytes",
                             auto_hwm_runtime_reserve_bytes);
-    napi_set_named_property(env, obj, "autoHwmGroupBudgetBytes",
-                            auto_hwm_group_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmGroupMessageSlots",
-                            auto_hwm_group_message_slots);
+    napi_set_named_property(env, obj, "autoHwmSocketQueueShareBytes",
+                            auto_hwm_socket_queue_share_bytes);
+    napi_set_named_property(env, obj, "autoHwmSocketMessageSlots",
+                            auto_hwm_socket_message_slots);
     napi_set_named_property(env, obj, "autoHwmEffectiveMessageBytes",
                             auto_hwm_effective_message_bytes);
-    napi_set_named_property(env, obj, "autoHwmControlBudgetBytes",
-                            auto_hwm_control_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmRoutedBudgetBytes",
-                            auto_hwm_routed_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmFanoutBudgetBytes",
-                            auto_hwm_fanout_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmRecvIngressBudgetBytes",
-                            auto_hwm_recv_ingress_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmControlActiveConnections",
-                            auto_hwm_control_active_connections);
-    napi_set_named_property(env, obj, "autoHwmRoutedActiveConnections",
-                            auto_hwm_routed_active_connections);
-    napi_set_named_property(env, obj, "autoHwmFanoutActiveConnections",
-                            auto_hwm_fanout_active_connections);
-    napi_set_named_property(env, obj, "autoHwmRecvIngressActiveConnections",
-                            auto_hwm_recv_ingress_active_connections);
     napi_set_named_property(env, obj, "autoHwmEstimatedMaxMemoryBytes",
                             auto_hwm_estimated_max_memory_bytes);
     napi_set_named_property(env, obj, "autoHwmLastRecalcMs",
@@ -4541,10 +4228,6 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_set_named_property(env, obj, "autoHwmScope", auto_hwm_scope);
     napi_set_named_property(env, obj, "autoHwmScopeCount",
                             auto_hwm_scope_count);
-    napi_set_named_property(env, obj, "autoHwmRoleGroupBudgetBytes",
-                            auto_hwm_role_group_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmScopeGroupBudgetBytes",
-                            auto_hwm_scope_group_budget_bytes);
     napi_set_named_property(env, obj, "autoHwmAutoBufferBytes",
                             auto_hwm_auto_buffer_bytes);
     napi_set_named_property(env, obj, "autoHwmManualBufferBytes",
@@ -4566,7 +4249,6 @@ napi_value monitor_close(napi_env env, napi_callback_info info)
     void *monitor = NULL;
     napi_get_value_external(env, argv[0], &monitor);
     release_socket_monitor_handler_slot(monitor);
-    release_service_monitor_handler_slot(monitor);
     void *tmp = monitor;
     int rc = zlink_monitor_close(&tmp);
     if (rc != 0)

@@ -44,7 +44,10 @@ class spot_internal_receiver_t
         return _sub ? _sub->fill_monitor_snapshot (out_) : -1;
     }
 
-    void *monitor_open (int events_) { return _sub ? _sub->monitor_open (events_) : NULL; }
+    socket_base_t *snapshot_socket () const
+    {
+        return _sub ? _sub->snapshot_socket () : NULL;
+    }
 
     int set_direct_handler (spot_sub_direct_handler_fn handler_, void *userdata_)
     {

@@ -328,54 +328,6 @@ internal enum MonitorSnapshotDetail
     ReceivePendingMessages = 1 << 2
 }
 
-[Flags]
-public enum ServiceMonitorEventMask : uint
-{
-    None = 0,
-    Error = 1u << 4,
-    DiscoveryServiceUp = 1u << 5,
-    DiscoveryServiceDown = 1u << 6,
-    DiscoveryProvidersChanged = 1u << 7,
-    PeerWeightChanged = 1u << 8,
-    Closed = 1u << 17,
-    All = Error
-        | Closed
-        | DiscoveryServiceUp
-        | DiscoveryServiceDown
-        | DiscoveryProvidersChanged
-        | PeerWeightChanged
-}
-
-[Flags]
-internal enum ServiceMonitorEvents : uint
-{
-    None = 0,
-    Error = 1u << 4,
-    DiscoveryServiceUp = 1u << 5,
-    DiscoveryServiceDown = 1u << 6,
-    DiscoveryProvidersChanged = 1u << 7,
-    PeerWeightChanged = 1u << 8,
-    Closed = 1u << 17,
-    All = Error
-        | Closed
-        | DiscoveryServiceUp
-        | DiscoveryServiceDown
-        | DiscoveryProvidersChanged
-        | PeerWeightChanged
-}
-
-[Flags]
-internal enum ServiceMonitorDetailFlags : uint
-{
-    None = 0,
-    ServiceName = 0x0001,
-    Endpoint = 0x0002,
-    SubjectRoutingId = 0x0004,
-    PeerRoutingId = 0x0008,
-    Subject = 0x0010,
-    SubjectKind = 0x0020
-}
-
 public enum PollEvents
 {
     None = 0,

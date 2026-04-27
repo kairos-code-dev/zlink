@@ -166,11 +166,10 @@ the application typically only needs this event to update diagnostics or
 dashboards. Once every known peer is `0`, new
 submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
 
-If you want the service-layer view of the same change, open a service
-monitor against the `Discovery` handle that manages those peers. That
-monitor can emit `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`, and
-`zlink_service_monitor_recv()` returns the changed peer endpoint,
-routing id, and new weight.
+If you want the service-layer view of the same change, poll the
+`Discovery` view with `zlink_discovery_member_peers()` and compare the
+returned peer set over time. The public contract no longer exposes a
+separate service-event stream for Discovery.
 
 ## 5. Event Flow Diagrams
 
@@ -308,7 +307,13 @@ Query the current aggregate state from a monitor handle at any time.
 | `rcv_pending_msgs` | Messages pending in receive queue (capped by RCVHWM, approximate) |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | Automatically applied HWM values on the socket |
 | `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | Transport-buffer values requested by the automatic policy |
-| `auto_hwm_total_memory_budget_bytes` and related budget fields | Current context budget split and role allocation |
+| `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | Planned auto-managed buffer cost and user-managed buffer diagnostic cost |
+| `auto_hwm_effective_message_bytes` | Message unit used to convert the queue share into HWM slots |
+| `auto_hwm_observed_count` / `auto_hwm_planning_count` | Current observed connection count and the planning count used by the policy |
+| `auto_hwm_context_total_planning_count` | Sum of planning counts across the whole context |
+| `auto_hwm_socket_queue_share_bytes` / `auto_hwm_socket_message_slots` | Queue-budget share and resulting message slots assigned to this socket |
+| `auto_hwm_scope` / `auto_hwm_scope_count` | Scope used by the HWM calculation, including shared and per-spot scopes |
+| `auto_hwm_total_memory_budget_bytes` and related budget fields | Current context budget split and current buffer reservation state |
 
 `snd_pending_msgs` and `rcv_pending_msgs` are directly related to HWM settings.
 When these values approach the HWM, backpressure is occurring.
@@ -358,79 +363,18 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 }
 ```
 
-## 8.1 Service Monitor
+## 8.1 Service-Layer State Checks
 
-The service monitor observes state changes on service handles that still
-expose a public service-monitor surface, such as Discovery. It is a
-separate API from the socket monitor.
+The current public C API does not expose a separate service-event
+handle. For service-layer checks, read snapshots or query results and
+compare them over time.
 
-- **Event type**: `zlink_service_event_t` (different from socket monitor's `zlink_monitor_event_t`)
-- **Callback type**: `zlink_service_monitor_handler_fn`
-- **Open**: `zlink_service_monitor_open(target, &options)`
-- **Close**: `zlink_monitor_close(&mon)` (same as socket monitor)
-
-### Opening a service monitor
-
-```c
-/* Discovery service monitor */
-zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_SERVICE_MONITOR_EVENT_ERROR
-              | ZLINK_SERVICE_MONITOR_EVENT_CLOSED
-              | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED
-};
-void *mon = zlink_service_monitor_open(discovery, &opts);
-```
-
-Pass a service handle that supports public service monitoring.
-SPOT and SpotNode do not expose a public service-monitor surface.
-
-### Callback mode
-
-```c
-void on_service_event(const zlink_service_event_t *ev, void *userdata)
-{
-    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED) {
-        printf("provider set changed\n");
-    }
-    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_ERROR) {
-        printf("service error: %d\n", ev->error_code);
-    }
-}
-
-zlink_service_monitor_handler(mon, on_service_event, NULL);
-```
-
-### Recv mode
-
-```c
-zlink_service_event_t ev;
-zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
-if (rc == ZLINK_RECV_OK) {
-    printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
-}
-```
-
-### Service event table
-
-Events observed via `zlink_service_monitor_open()`.
-Different services emit different events.
-
-#### Discovery events
-
-| Constant | Description | `value` | After this event |
-|---|---|---|---|
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | discovered service came up | — | — |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | discovered service went down | — | — |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | provider set changed | — | — |
-
-#### Common events (all services)
-
-| Constant | Description |
-|---|---|
-| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | error occurred |
-| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | monitor closed |
-
-See [events.md](../spec/core/events.md) for the full event catalog.
+- Discovery membership: `zlink_discovery_member_peers()`
+- Registry overview: `zlink_registry_status_snapshot()`,
+  `zlink_registry_topology_snapshot()`
+- Spot node state: `zlink_spot_node_status_snapshot()`,
+  `zlink_spot_node_peers_snapshot()`,
+  `zlink_spot_node_subjects_snapshot()`
 
 ## 9. Multi-Socket Monitoring
 
@@ -500,8 +444,8 @@ zlink_monitor_close(&mon);
 
 ## 11. Knowing When Messaging Is Ready
 
-When you need to know the exact moment a socket or service can send and
-receive, wait for the right event.
+When you need to know the exact moment a socket can send and receive,
+wait for the right event.
 
 ### 11.1 Raw sockets — PAIR, DEALER, ROUTER
 
@@ -596,7 +540,7 @@ zlink_monitor_close(&sub_mon);
 
 ### 11.4 Services — SPOT
 
-SPOT does not expose a public service-monitor surface. For internal
+SPOT does not expose a separate public monitor handle. For internal
 perf on SPOT, use an explicit benchmark control barrier instead of
 monitor events.
 

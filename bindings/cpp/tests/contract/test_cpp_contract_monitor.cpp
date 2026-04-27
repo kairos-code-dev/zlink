@@ -14,8 +14,6 @@ namespace {
 
 static_assert (!std::is_constructible<zlink::monitor_handle_t, void *>::value,
                "monitor_handle_t must not expose a raw void* constructor");
-static_assert (!std::is_constructible<zlink::service_monitor_handle_t, void *>::value,
-               "service_monitor_handle_t must not expose a raw void* constructor");
 static_assert (!std::is_constructible<zlink::monitor_handle_t, const zlink::base_socket_t &, zlink::monitor_event>::value,
                "monitor_handle_t must not expose a public direct constructor");
 
@@ -233,25 +231,6 @@ void test_socket_monitor_on_event_callback ()
     assert (snapshot_ready);
 }
 
-void test_discovery_service_monitor_open_recv ()
-{
-    zlink::context_t ctx;
-    zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::spot, "monitor-contract");
-    assert (discovery.valid ());
-
-    zlink::service_monitor_handle_t monitor = discovery.monitor_open (
-      zlink::service_monitor_event::discovery_service_up);
-    assert (monitor.valid ());
-    monitor.on_event (static_cast<zlink::service_event_handler_fn> (NULL), NULL);
-    try {
-        (void) monitor.recv (zlink::non_blocking_t {});
-        assert (false);
-    } catch (const zlink::recv_error_t &err) {
-        assert (err.result () == zlink::recv_result_t::busy);
-    }
-}
-
 } // namespace
 
 int main ()
@@ -259,6 +238,5 @@ int main ()
     test_socket_monitor_open_recv_snapshot ();
     test_socket_monitor_ignore_handler_and_poller_size ();
     test_socket_monitor_on_event_callback ();
-    test_discovery_service_monitor_open_recv ();
     return 0;
 }

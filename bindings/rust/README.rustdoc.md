@@ -32,4 +32,4 @@ bindings/rust/target/doc/zlink/index.html
 - Perf or readiness verification in Rust bindings must follow the shared perf
   policy.
 - raw sockets: `CONNECTION_READY` event counting
-- SPOT: explicit benchmark barrier protocol; no service monitor gate
+- SPOT: explicit benchmark barrier protocol; no separate service-event gate

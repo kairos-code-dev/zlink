@@ -249,18 +249,13 @@ void *discovery = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
-/* Observe service state via monitor */
-zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
-            | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
-};
-void *mon = zlink_service_monitor_open(discovery, &opts);
-zlink_service_monitor_handler(mon, on_discovery_event, NULL);
+/* 현재 member 집합을 조회 */
+size_t peer_count = 0;
+zlink_discovery_member_peers(discovery, NULL, &peer_count);
 
-/* ... Discovery delivers events through the callback ... */
+/* ... 응용에서 이전 조회 결과와 비교한다 ... */
 
 /* Cleanup */
-zlink_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
 
@@ -306,7 +301,7 @@ zlink_discovery_destroy(&discovery);
 channel별로 `DEALER`를 attach한다.
 
 ```c
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, NULL);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* SPOT mesh — 이 node 자신의 channel */

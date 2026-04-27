@@ -136,6 +136,7 @@ and is used only through the request APIs of `DEALER` and `ROUTER`.
 ```c
 typedef enum zlink_socket_type_t
 {
+    ZLINK_SOCKET_ANY    = 0,
     ZLINK_SOCKET_PAIR   = 0x1001,
     ZLINK_SOCKET_PUB    = 0x1002,
     ZLINK_SOCKET_SUB    = 0x1003,
@@ -147,7 +148,9 @@ typedef enum zlink_socket_type_t
 } zlink_socket_type_t;
 ```
 
-Always use the fully qualified `ZLINK_SOCKET_*` constants shown above.
+`ZLINK_SOCKET_ANY` is not a creatable socket type. It is a wildcard for filter
+APIs that need to match every socket type. Use the fully qualified
+`ZLINK_SOCKET_*` constants shown above when creating sockets.
 
 ### Send Flags
 

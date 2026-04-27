@@ -62,23 +62,17 @@ bool zlink::spot_reqrep_internal::resolve_spot_identity (
         if (!admission.acquired ())
             return false;
 
-        zlink::spot_pub_t *spot_pub = ensure_spot_pub (spot);
-        zlink::spot_pub_t *node_pub =
-          spot->node ? spot->node->ensure_default_pub () : NULL;
-        if (!spot_pub || !node_pub)
+        if (!spot->node)
             return false;
 
         zlink_routing_id_t node_rid;
-        zlink_routing_id_t spot_rid;
         memset (&node_rid, 0, sizeof (node_rid));
-        memset (&spot_rid, 0, sizeof (spot_rid));
-        if (node_pub->routing_id (&node_rid) != 0
-            || spot_pub->routing_id (&spot_rid) != 0) {
+        if (spot->node->node_routing_id (&node_rid) != 0) {
             return false;
         }
 
         out_->node_rid = routing_id_key (&node_rid);
-        out_->spot_rid = routing_id_key (&spot_rid);
+        out_->spot_rid = routing_id_key (&spot->spot_routing_id);
         return !out_->node_rid.empty () && !out_->spot_rid.empty ();
     }
 

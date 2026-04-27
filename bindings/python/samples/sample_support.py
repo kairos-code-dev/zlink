@@ -61,21 +61,6 @@ def wait_socket_monitor_event(monitor, expected_event, timeout_ms=5000):
             return event
 
 
-def wait_service_event_type(monitor, expected_event_type, timeout_ms=5000):
-    deadline = time.monotonic() + (timeout_ms / 1000.0)
-    expected_value = int(expected_event_type)
-
-    while True:
-        if time.monotonic() >= deadline:
-            raise TimeoutError("service monitor did not produce the expected event")
-        if not monitor.snapshot().is_ready():
-            _MONITOR_WAIT.wait(_MONITOR_POLL_SLEEP_S)
-            continue
-        event = monitor.recv()
-        if int(event.event_type) == expected_value:
-            return event
-
-
 def wait_until(predicate, timeout_ms=5000, description="condition"):
     deadline = time.monotonic() + (timeout_ms / 1000.0)
     waiter = threading.Event()

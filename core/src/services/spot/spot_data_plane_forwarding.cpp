@@ -154,21 +154,25 @@ void refresh_fixed_poller_interest_local (
 
     const short ingress_events =
       state_->interest.ingress_pollin_paused ? 0 : ZLINK_POLLIN;
-    if (state_->interest.ingress_pollin_armed != (ingress_events != 0)) {
+    if (state_->ingress
+        && state_->interest.ingress_pollin_armed != (ingress_events != 0)) {
         (void) state_->poller->modify (state_->ingress, ingress_events);
         state_->interest.ingress_pollin_armed = ingress_events != 0;
     }
 
     const short mesh_xsub_events =
       state_->interest.mesh_xsub_pollin_paused ? 0 : ZLINK_POLLIN;
-    if (state_->interest.mesh_xsub_pollin_armed != (mesh_xsub_events != 0)) {
+    if (state_->mesh_xsub
+        && state_->interest.mesh_xsub_pollin_armed
+             != (mesh_xsub_events != 0)) {
         (void) state_->poller->modify (state_->mesh_xsub, mesh_xsub_events);
         state_->interest.mesh_xsub_pollin_armed = mesh_xsub_events != 0;
     }
 
     const bool mesh_pub_need_pollout =
       !state_->remote_mesh.broadcast_pending_message_ids.empty ();
-    if (mesh_pub_need_pollout != state_->remote_mesh.pollout_armed) {
+    if (state_->mesh_pub
+        && mesh_pub_need_pollout != state_->remote_mesh.pollout_armed) {
         (void) state_->poller->modify (
           state_->mesh_pub, mesh_pub_need_pollout ? ZLINK_POLLOUT : 0);
         state_->remote_mesh.pollout_armed = mesh_pub_need_pollout;

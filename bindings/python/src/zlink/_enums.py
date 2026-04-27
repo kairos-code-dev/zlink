@@ -4,6 +4,7 @@ from enum import IntEnum, IntFlag
 
 
 class SocketType(IntEnum):
+    ANY = 0
     PAIR = 0x1001
     PUB = 0x1002
     SUB = 0x1003
@@ -253,23 +254,6 @@ class ServiceRole(IntEnum):
     SUB = 6
 
 
-class ServiceMonitorMask(IntFlag):
-    ERROR = 1 << 4
-    DISCOVERY_SERVICE_UP = 1 << 5
-    DISCOVERY_SERVICE_DOWN = 1 << 6
-    DISCOVERY_PROVIDERS_CHANGED = 1 << 7
-    PEER_WEIGHT_CHANGED = 1 << 8
-    CLOSED = 1 << 17
-    ALL = (
-        ERROR
-        | DISCOVERY_SERVICE_UP
-        | DISCOVERY_SERVICE_DOWN
-        | DISCOVERY_PROVIDERS_CHANGED
-        | PEER_WEIGHT_CHANGED
-        | CLOSED
-    )
-
-
 class RegistrySocketRole(IntEnum):
     PUB = 1
     ROUTER = 2
@@ -290,6 +274,18 @@ class SpotNodeSocketRole(IntEnum):
     PUB = 1
     SUB = 2
     DEALER = 3
+
+
+class SpotNodeMode(IntEnum):
+    PUBSUB = 1
+    ROUTED = 2
+    ALL = 3
+
+
+class SpotNodeSocketOwner(IntEnum):
+    ANY = 0
+    NODE = 1
+    SPOT = 2
 
 
 class SpotNodeOption(IntEnum):

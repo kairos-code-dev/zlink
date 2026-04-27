@@ -232,7 +232,9 @@ zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
   `zlink_discovery_resolve_spot()`를 사용합니다.
 - `ZLINK_DISCOVERY_SERVICE_UP`,
   `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
-  `zlink_service_monitor_open(discovery, &options)`으로 관찰합니다.
+  `zlink_discovery_member_peers()`와
+  `zlink_discovery_member_peer_metadata()`로 현재 뷰를 읽습니다. 서비스 수준
+  상태 변화를 추적하려면 이 조회 결과를 주기적으로 비교합니다.
   `zlink_monitor_close()`로 닫습니다.
 - 전역 요약 상태는 registry topology snapshot/query API로 조회합니다.
 - Discovery는 `zlink_set_option(discovery, ZLINK_OPT_*, ...)`을 지원하며,

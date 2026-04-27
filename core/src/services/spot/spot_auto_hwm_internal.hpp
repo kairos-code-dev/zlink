@@ -50,10 +50,15 @@ inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
           std::max<size_t> (policy_.managed_connections,
                             policy_.active_connections),
           1u);
+    const uint32_t planning_bootstrap =
+      static_cast<uint32_t> (
+        ctx_ ? ctx_->auto_hwm_spot_bootstrap ()
+             : ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
     auto_hwm_socket_plan_for_role (
       context_plan, policy_.role, policy_.socket_type,
       policy_.managed_connections, policy_.active_connections, &socket_plan,
-      policy_.message_unit_bytes, -1, -1, false, false, scope, scope_count);
+      policy_.message_unit_bytes, -1, -1, false, false, scope, scope_count,
+      true, planning_bootstrap);
     return socket_plan;
 }
 

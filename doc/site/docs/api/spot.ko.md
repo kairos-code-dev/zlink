@@ -24,7 +24,19 @@ SPOT 공개 표면은 두 핸들로 나뉜다.
 ## 생성과 종료
 
 ```c
-void *zlink_spot_node_new(void *ctx);
+typedef enum zlink_spot_node_mode_t {
+  ZLINK_SPOT_NODE_MODE_PUBSUB = 1,
+  ZLINK_SPOT_NODE_MODE_ROUTED = 2,
+  ZLINK_SPOT_NODE_MODE_ALL = 3
+} zlink_spot_node_mode_t;
+
+typedef struct zlink_spot_node_options_t {
+  zlink_spot_node_mode_t mode;
+} zlink_spot_node_options_t;
+
+void *zlink_spot_node_new(
+  void *ctx,
+  const zlink_spot_node_options_t *options);
 zlink_close_result_t zlink_spot_node_destroy(void **node_p);
 
 void *zlink_spot_new(void *node);
@@ -32,10 +44,18 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 ```
 
 - `zlink_spot_node_new()`는 새 SPOT node runtime을 만든다.
+- `options == NULL`이면 `ZLINK_SPOT_NODE_MODE_ALL`로 동작한다.
+- `options->mode == 0`도 `ZLINK_SPOT_NODE_MODE_ALL`로 동작한다.
+- 잘못된 mode 값은 `NULL`과 `errno == EINVAL`로 실패한다.
+- `PUBSUB` mode는 topic publish/subscribe만 켠다. routed API는
+  `ENOTSUP`으로 실패한다.
+- `ROUTED` mode는 routed request/reply와 direct routed send만 켠다.
+  topic publish/subscribe API는 `ENOTSUP`으로 실패한다.
+- `ALL` mode는 두 기능을 모두 켠다.
 - `zlink_spot_new()`는 기존 `SpotNode`를 빌려 unified `Spot` facade를 만든다.
-- `zlink_spot_new()`가 성공하면 해당 `Spot`의 routed recv 평면은 이미 준비된
-  상태여야 한다. 첫 `zlink_spot_recv()`가 숨은 activation이나 숨은 socket 생성을
-  수행하지는 않는다.
+- `Spot`은 backing `SpotNode`의 mode를 그대로 물려받는다. 생성 뒤에는 mode를
+  바꿀 수 없다.
+- 꺼진 기능을 호출하면 내부 socket을 새로 만들지 않고 실패한다.
 - `zlink_spot_destroy()`는 facade만 닫는다.
 - `zlink_spot_destroy()`는 routed target lookup을 먼저 제거한 뒤 owned subject를
   닫는다. destroy 시점에 남아 있던 unread routed 메시지는 close 과정에서 버려질
@@ -59,6 +79,41 @@ SpotNode와 Spot에는 public weight 설정 옵션이 없습니다. peer weight�
 ROUTER와 DEALER 소켓에서만 설정합니다. Spot peer snapshot에 남아 있는
 `weight` 필드는 discovery나 peer 신호에서 배운 remote peer 상태이며,
 Spot/SpotNode의 로컬 옵션이 아닙니다.
+
+### 내부 socket snapshot
+
+```c
+typedef struct zlink_spot_node_socket_snapshot_filter_t {
+  zlink_spot_node_socket_owner_t owner;
+  zlink_socket_type_t socket_type;
+  char socket_name[64];
+} zlink_spot_node_socket_snapshot_filter_t;
+
+typedef struct zlink_spot_node_socket_snapshot_entry_t {
+  zlink_spot_node_socket_owner_t owner;
+  uint64_t owner_id;
+  char owner_name[64];
+  char socket_name[64];
+  zlink_socket_type_t socket_type;
+  uint32_t auto_hwm_visible;
+  zlink_monitor_snapshot_t snapshot;
+} zlink_spot_node_socket_snapshot_entry_t;
+
+zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
+  void *node,
+  const zlink_spot_node_socket_snapshot_filter_t *filter,
+  zlink_spot_node_socket_snapshot_entry_t *entries,
+  size_t *count);
+```
+
+- snapshot은 이미 존재하는 내부 socket만 반환한다.
+- snapshot 호출은 꺼진 기능이나 lazy socket을 새로 만들지 않는다.
+- `entries == NULL`이면 성공하며 필요한 row 수를 `*count`에 쓴다.
+- `*count`가 부족하면 `ENOBUFS`로 실패하고 필요한 row 수를 쓴다.
+- `owner`는 `ANY`, `NODE`, `SPOT` 중 하나다.
+- `socket_type`은 `ZLINK_SOCKET_ANY` 또는 공개 `ZLINK_SOCKET_*` 값만 받는다.
+- `socket_name`이 비어 있지 않으면 정확히 같은 내부 socket 이름만 반환한다.
+- `auto_hwm_visible == 1`인 row는 기본 Auto-HWM perf 출력 대상이다.
 
 ### 토폴로지와 discovery
 
@@ -501,20 +556,6 @@ zlink_submit_result_t zlink_router_reply_spot(
 ## 관찰과 스냅샷
 
 ```c
-void *zlink_service_monitor_open(
-  void *target,
-  const zlink_service_monitor_open_options_t *options);
-
-zlink_handler_result_t zlink_service_monitor_handler(
-  void *monitor,
-  zlink_service_monitor_handler_fn handler,
-  void *userdata);
-
-zlink_recv_result_t zlink_service_monitor_recv(
-  void *monitor,
-  zlink_service_monitor_event_t *out,
-  zlink_recv_flags_t flags);
-
 zlink_config_result_t zlink_spot_node_status_snapshot(
   void *node,
   zlink_spot_node_status_t *out);
@@ -538,7 +579,7 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
 ```
 
 - SPOT node monitor 전용 별도 recv API는 현재 공개 계약에 없다.
-- service monitor와 snapshot/query API를 사용해 상태를 관찰한다.
+- snapshot/query API를 사용해 상태를 관찰한다.
 - `zlink_spot_node_status_t`와 peer/subject entry 구조체의 `service_name`
   필드는 현재 공개 이름을 유지한다.
 

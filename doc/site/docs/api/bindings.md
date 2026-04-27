@@ -292,7 +292,7 @@ public shape를 기준으로 고정한다.
   가정하면 안 된다.
 - readiness gate 가 필요하면 low-cost event edge 를 직접 사용해야 한다.
 - raw perf/샘플은 `CONNECTION_READY` event counting 을 사용한다.
-- SPOT perf/샘플은 service monitor gate 를 사용하지 않는다.
+- SPOT perf/샘플은 별도 서비스 이벤트 gate 를 사용하지 않는다.
 - SPOT perf 는 explicit `READY/START` barrier protocol 을 사용한다.
 - delivery-ready/count 계열 monitor event 를 새 gate contract 로 만들면 안 된다.
 
@@ -800,26 +800,8 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 | `detail_flags` | `uint32` | 세부 비트마스크 |
 | `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
 | `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
+| `auto_hwm_*` budget/buffer/diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t` 의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. 계획 수, context 전체 planning 합계, socket queue share, `MsgUnit(B)`, 자동/수동 buffer 비용, 최근 재계산 정보, deferred shrink, blocked ratio 를 포함한다 |
 | `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
-
-#### `ServiceEvent`
-
-Discovery `ServiceMonitor` 가 방출하는 이벤트.
-모든 바인딩이 **필수 노출**.
-
-| 구성 | 타입 | 의미 |
-|------|------|------|
-| `service_kind` | enum | `ZLINK_SERVICE_KIND_DISCOVERY`, `ZLINK_SERVICE_KIND_SPOT_SUB`, `ZLINK_SERVICE_KIND_SPOT_PUB`, `ZLINK_SERVICE_KIND_SOCKET` |
-| `event_type` | enum | `UP`, `DOWN`, `PROVIDERS_CHANGED`, `ERROR` 등 |
-| `status` | `uint32` | status code |
-| `error_code` | `uint32` | 에러 시 errno |
-| `value` | `uint64` | 이벤트별 값 |
-| `detail_flags` | `uint32` | 세부 플래그 |
-| `service_name` | `string` | 서비스명 |
-| `endpoint` | `string` | 엔드포인트 |
-| `routing_id` | `RoutingId?` | peer routing id |
-| `subject` | `string` | subscribe subject (topic) |
-| `subject_kind` | enum | subject 종류 |
 
 #### 서비스 계층 엔트리 객체
 
@@ -1193,35 +1175,20 @@ RegistryQueryClient (원격 토폴로지 조회)
 - 원격에서 Registry 토폴로지를 조회하기 위한 클라이언트다.
 - Discovery와 별개로 사용할 수 있다.
 
-### Service Monitor Policy
-- Discovery만 ServiceMonitor를 열 수 있다.
-- SPOT(SpotNode, Spot)은 ServiceMonitor를 노출하지 않는다.
-  SPOT 관찰은 `statusSnapshot`, `peersSnapshot`, `subjectsSnapshot` API를 사용한다.
-- ServiceMonitor는 소켓의 SocketMonitor와 별도 타입이다.
-- SocketMonitor와 ServiceMonitor는 둘 다 기본이 recv model 이다.
-- `onEvent(handler)`를 호출하면 callback-only model로 일방 전환된다.
-  이후 `recv()`는 `BUSY` / `EBUSY` 계열 오류를 반환해야 한다.
-- `snapshot()`은 recv model과 callback-only model 양쪽에서 모두 동작해야 한다.
-- ServiceMonitor API:
-  - `recv()`: blocking/non-blocking event 수신 (flags로 제어)
-  - `onEvent(handler)`: callback 등록
-  - `snapshot()`: 현재 상태 스냅샷
-  - `close()`
-- ServiceMonitor event는 typed event surface로 노출해야 한다.
-- raw int event mask만 노출하면 안 된다.
-- ServiceMonitor `onEvent` callback 해제 정책:
-  - 소켓 callback과 동일 — `null`/`None` 설정 해제 금지
-  - callback 해제는 `close()`로만 이루어진다
-- SocketMonitor callback 해제 정책도 동일하다.
-  - SocketMonitor는 callback 등록 API가 없으면 해당 없음
+### Service Observability Policy
+- 공개 서비스 계층 관찰은 별도 monitor handle 대신 snapshot/query surface로 한다.
+- Discovery 관찰은 `memberPeers`, `memberPeerMetadata`를 기준으로 한다.
+- SPOT(SpotNode, Spot) 관찰은 `statusSnapshot`, `peersSnapshot`,
+  `peersQuery`, `subjectsSnapshot` API를 사용한다.
+- Registry 관찰은 `statusSnapshot`, `serviceSummarySnapshot`,
+  `topologySnapshot`, `topologyQuery`를 사용한다.
+- 상태 전이가 필요하면 연속된 snapshot/query 결과를 비교한다.
+- SocketMonitor callback 해제 정책은 기존과 같다.
   - callback 등록 API가 있는 경우 `close()`로만 해제한다
-- ServiceMonitor event 종류 (Discovery 전용):
-  - `error`, `serviceUp`, `serviceDown`, `providersChanged`, `closed`
 
 ### Service Layer Domain Objects
 - 서비스 계층도 domain object를 사용해야 한다.
 - 최소 핵심 domain object:
-  - `ServiceEvent`: ServiceMonitor에서 수신하는 이벤트
   - `MonitorSnapshot`: monitor 상태 스냅샷
   - `SpotNodeStatus`: SpotNode 상태 (state, peer count 등)
   - `MemberPeerEntry`: 서비스 멤버 peer 정보
@@ -1306,10 +1273,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 | RegistryQueryClient | `connect` | Registry에 연결 |
 | RegistryQueryClient | `snapshot` | 토폴로지 스냅샷 (필터 선택) |
 | RegistryQueryClient | `close` | 클라이언트 종료 |
-| ServiceMonitor | `recv` | event 수신 |
-| ServiceMonitor | `onEvent` | event callback |
-| ServiceMonitor | `snapshot` | 상태 스냅샷 |
-| ServiceMonitor | `close` | monitor 종료 |
 
 ### Service Layer Testing Policy
 - 서비스 계층은 sample이나 perf에서 직접 검증되지 않는 컴포넌트를 포함한다.
@@ -1323,9 +1286,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Discovery capability matrix 정렬 확인
 - Registry capability matrix 정렬 확인 (구현된 경우)
 - RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
-- ServiceMonitor canonical surface 존재 확인 — Discovery 전용 (`recv`,
-  `onEvent`, `snapshot`)
-- typed domain object 존재 확인 (ServiceEvent, SpotNodeStatus,
+- typed domain object 존재 확인 (SpotNodeStatus,
   MemberPeerEntry 등)
 - typed enum 존재 확인 (ServiceType, ServiceRole, SpotNodeState 등)
 
@@ -1336,7 +1297,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Discovery close 시 연결된 participant(SpotNode 등) 종료 확인
 - Registry: create/bind/close lifecycle 누수 없음 (구현된 경우)
 - RegistryQueryClient: create/connect/close lifecycle (구현된 경우)
-- ServiceMonitor: open/close lifecycle 누수 없음 (Discovery 전용)
 - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
 
 #### Service Layer Behavior Tests
@@ -1360,14 +1320,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Socket attachDiscovery → connect/disconnect/unbind/close 차단 확인
   (Discovery 지원 시)
 
-#### Service Layer Monitor Tests
-- ServiceMonitor blocking recv 성공 경로 (Discovery 전용)
-- ServiceMonitor non-blocking recv empty 경로 (Discovery 전용)
-- ServiceMonitor onEvent callback 호출 확인 (Discovery 전용)
-- ServiceMonitor snapshot 상태 반환 확인 (Discovery 전용)
-- Discovery monitor: serviceUp/serviceDown event 수신 확인 (Discovery
-  지원 시)
-
 #### Service Layer Introspection Tests
 - SpotNode statusSnapshot → SpotNodeStatus 필드 검증
   (state, peerCount, subjectCount 등)
@@ -1388,12 +1340,10 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Surface | Required | Required | 구현 시 Required | 구현 시 Required |
 | Contract | Required | Required | 구현 시 Required | 구현 시 Required |
 | Behavior | Required | Required | 구현 시 Required | 구현 시 Required |
-| Monitor | Required | Required | — | — |
 | Introspection | Required | Required | 구현 시 Required | 구현 시 Required |
 
 - service/spot 계열이 없는 바인딩은 이 테스트를 제외할 수 있다.
-- 여기서 `SpotNode+Spot` 의 monitor 설명은 socket monitor 기준으로만
-  뜻한다. `ServiceMonitor` open surface 를 뜻하지 않는다.
+- 여기서 monitor 설명은 socket monitor 기준이다.
 
 ### Service Layer Sample Policy
 - Canonical Sample Set에 정의된 서비스 계열 샘플:
@@ -1412,7 +1362,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Discovery | 해당 바인딩에 discovery 지원이 있으면 Required |
 | Registry | Target (서버 측 컴포넌트, 전체 바인딩 필수 아님) |
 | RegistryQueryClient | Target (조회 전용 클라이언트) |
-| ServiceMonitor | Discovery 지원 시 Required (SPOT은 ServiceMonitor 미사용) |
 
 ### Callback API Policy
 - callback 등록 API는 각 소켓 타입의 capability에 따라 노출한다.
@@ -1742,7 +1691,9 @@ int zlink_router_send_spot(void *router,
 void *zlink_spot_new(void *node);          /* SPOT facade 생성 */
 int zlink_spot_destroy(void **spot_p);     /* SPOT facade 해제 */
 
-void *zlink_spot_node_new(void *ctx);      /* SPOT Node 런타임 생성 */
+void *zlink_spot_node_new(
+    void *ctx,
+    const zlink_spot_node_options_t *options); /* SPOT Node 런타임 생성 */
 int zlink_spot_node_destroy(void **node_p);/* SPOT Node 해제 */
 int zlink_spot_node_bind(void *node, const char *endpoint);
 int zlink_spot_node_connect_peer(void *node, const char *peer_endpoint);
@@ -1752,6 +1703,12 @@ int zlink_spot_node_attach_channel_dealer(void *node, void *discovery, void *dea
 int zlink_spot_node_attach_channel_dealer_manual(void *node, const char *channel_name, void *dealer);
 int zlink_spot_node_attach_pub_ingress(void *node, void *pub);
 ```
+
+`options == NULL` 또는 `options->mode == 0`은 모든 SPOT 기능을 켠다. 바인딩은
+각 언어의 기본 생성자에서 이 기본값을 사용하고, mode를 노출하는 경우
+`PUBSUB`, `ROUTED`, `ALL` 값을 C 계약과 같은 의미로 매핑한다. 내부 socket
+관찰 API는 `zlink_spot_node_internal_sockets_snapshot()`을 기준으로 하며,
+이미 생성된 socket만 반환한다.
 
 바인딩 규칙:
 - `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
@@ -1975,39 +1932,6 @@ zlink_recv_result_t zlink_router_recv(void *router,
 - raw `SUB`, `XSUB` 는 recv-only 이다.
 - 바인딩은 `zlink_subscribe()` typed receive surface 를 노출한다.
 - direct topic callback install surface 는 raw pub/sub family 에 두지 않는다.
-
-#### Service Monitor
-
-Discovery service view 를 모니터링하는 event surface 다.
-
-```c
-typedef void (*zlink_service_monitor_handler_fn)(
-    const zlink_service_event_t *event, void *userdata);
-
-void *zlink_service_monitor_open(void *target,
-    const zlink_service_monitor_open_options_t *options);
-int zlink_service_monitor_handler(void *monitor,
-    zlink_service_monitor_handler_fn handler, void *userdata);
-int zlink_service_monitor_recv(void *monitor,
-    zlink_service_monitor_event_t *out, int flags);
-```
-
-이벤트 종류:
-- `ZLINK_SERVICE_MONITOR_EVENT_ERROR` — 서비스 계층 에러
-- `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` — monitor 종료
-- `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` — Discovery가 본 서비스 활성화
-- `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` — Discovery가 본 서비스 비활성화
-- `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` — provider 집합 변경
-- `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` — Discovery가 추적하는 peer 가중치 변경
-
-바인딩 규칙:
-- monitor 는 typed handle 로 노출한다.
-- Discovery 지원 바인딩에서는 `ServiceMonitor` 를 노출해야 한다.
-- Spot/SpotNode 지원 바인딩에서는 public `ServiceMonitor` surface를
-  함께 노출해야 한다.
-- event 수신은 handler callback 또는 direct recv 로 제공한다.
-- event mask 필터링은 open 옵션으로 설정한다.
-- `zlink_service_event_t` 는 바인딩이 언어별 typed event object 로 변환한다.
 
 #### SPOT Node Status Query
 
@@ -2305,7 +2229,6 @@ surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개
 - 값 범위 `0..100`, 기본값 `100`
 - submit 결과 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) — target peer 가중치가 `0`이면 반환
 - socket monitor 이벤트 `ZLINK_EVENT_PEER_WEIGHT_CHANGED` (bit 15)
-- service monitor 이벤트 `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` (bit 8)
 - `zlink_spot_node_peer_entry_t.weight` / `zlink_member_peer_entry_t.weight`
 
 바인딩 규칙:
@@ -3392,6 +3315,12 @@ Bindings must expose `ZLINK_OPT_RID_DUPLICATE_POLICY`,
 `ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_RID_DUPLICATE_HANDOVER`, and the connect
 result values `NOT_FOUND`, `CONFLICT`, and `BUSY` using each language's
 normal enum/error mapping style.
+
+Bindings that expose raw common socket options must also expose
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`. Typed wrappers may
+name it as an automatic-HWM message-unit option, but the contract stays the
+same as C: `int` bytes, raw default `0`, and negative values fail with
+`EINVAL`.
 
 ## Related Docs
 - `bindings/cpp/`

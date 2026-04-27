@@ -250,7 +250,7 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router.c_str (), 3000));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -328,8 +328,8 @@ void test_discovery_resolve_spot_is_scoped_by_service_name ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery_b, registry_router.c_str (), 3000));
 
-    void *node_a = zlink_spot_node_new (ctx);
-    void *node_b = zlink_spot_node_new (ctx);
+    void *node_a = zlink_spot_node_new (ctx, NULL);
+    void *node_b = zlink_spot_node_new (ctx, NULL);
     void *spot_a = zlink_spot_new (node_a);
     void *spot_b = zlink_spot_new (node_b);
     TEST_ASSERT_NOT_NULL (node_a);
@@ -412,7 +412,7 @@ void test_discovery_resolve_spot_returns_enoent_after_owner_unregister ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router.c_str (), 3000));
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -479,8 +479,8 @@ void test_discovery_resolve_spot_handover_switches_owner ()
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       resolver_discovery, registry_router.c_str (), 3000));
 
-    void *node_a = zlink_spot_node_new (ctx);
-    void *node_b = zlink_spot_node_new (ctx);
+    void *node_a = zlink_spot_node_new (ctx, NULL);
+    void *node_b = zlink_spot_node_new (ctx, NULL);
     void *spot_a = zlink_spot_new (node_a);
     void *spot_b = zlink_spot_new (node_b);
     TEST_ASSERT_NOT_NULL (node_a);

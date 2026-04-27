@@ -30,7 +30,7 @@ enum spot_node_monitor_subject_t
 
 struct spot_node_access_t
 {
-    static void *create (ctx_t *ctx_);
+    static void *create (ctx_t *ctx_, zlink_spot_node_mode_t mode_);
     static ctx_t *ctx (spot_node_t *node_);
     static mutex_t &sync (spot_node_t *node_);
     static spot_node_t *from_handle (void *node_);
@@ -85,6 +85,10 @@ struct spot_node_access_t
       spot_node_t *node_,
       const zlink_spot_node_subject_filter_t *filter_,
       std::vector<zlink_spot_node_subject_entry_t> *out_);
+    static int internal_sockets_snapshot (
+      spot_node_t *node_,
+      const zlink_spot_node_socket_snapshot_filter_t *filter_,
+      std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_);
     static int attach_discovery (spot_node_t *node_, void *discovery_);
     static int attach_channel_dealer (spot_node_t *node_,
                                       void *discovery_,
@@ -97,12 +101,10 @@ struct spot_node_access_t
                                          spot_handle_t *spot_);
     static void unregister_spot_facade (spot_node_t *node_,
                                         spot_handle_t *spot_);
-    static void *monitor_open (spot_node_t *node_,
-                               zlink_spot_role_t role_,
-                               int events_,
-                               void **snapshot_subject_out_,
-                               spot_node_monitor_subject_t *subject_kind_out_);
     static spot_runtime_t *runtime (spot_node_t *node_);
+    static zlink_spot_node_mode_t mode (spot_node_t *node_);
+    static bool pubsub_enabled (spot_node_t *node_);
+    static bool routed_enabled (spot_node_t *node_);
     static void track_owned_socket (spot_node_t *node_, socket_base_t *socket_);
     static void untrack_owned_socket (spot_node_t *node_,
                                      const socket_base_t *socket_);

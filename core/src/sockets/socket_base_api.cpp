@@ -88,7 +88,8 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
     }
 
     xattach_pipe (pipe_, subscribe_to_all_, locally_initiated_);
-    refresh_auto_hwm_policy ();
+    if (get_ctx ())
+        get_ctx ()->schedule_auto_hwm_recalculate ();
 
     if (is_terminating ()) {
         register_term_acks (1);
@@ -369,7 +370,8 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
         unregister_term_ack ();
     }
 
-    refresh_auto_hwm_policy ();
+    if (get_ctx ())
+        get_ctx ()->schedule_auto_hwm_recalculate ();
 }
 
 int zlink::socket_base_t::socket_id () const

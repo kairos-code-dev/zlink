@@ -321,7 +321,6 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             entry.last_reported_ms = zlink::clock_t ().now_ms ();
             upsert_service_summary (entry);
         }
-        _monitor.emit (events[i]);
     }
 }
 }

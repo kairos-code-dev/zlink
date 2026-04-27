@@ -150,39 +150,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public ServiceMonitor MonitorOpen(params ServiceMonitorEventMask[] events)
-    {
-        EnsureNotDisposed();
-        uint mask = 0;
-        if (events == null || events.Length == 0)
-        {
-            mask = (uint)ServiceMonitorEventMask.All;
-        }
-        else
-        {
-            foreach (ServiceMonitorEventMask value in events)
-            {
-                EnumValidation.EnsureServiceMonitorEvents(value,
-                    nameof(events));
-                mask |= (uint)value;
-            }
-        }
-        var options = new ZlinkServiceMonitorOpenOptions
-        {
-            Events = mask
-        };
-        IntPtr monitor = NativeMethods.zlink_service_monitor_open(_handle,
-            in options);
-        if (monitor == IntPtr.Zero)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        return new ServiceMonitor(monitor);
-    }
-
-    internal ServiceMonitor MonitorOpen(ServiceMonitorEvents events)
-    {
-        return MonitorOpen((ServiceMonitorEventMask)(uint)events);
-    }
-
     public void Close()
     {
         Dispose();

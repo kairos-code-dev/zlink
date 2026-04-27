@@ -13,6 +13,88 @@ using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
+public enum SpotNodeMode
+{
+    PubSub = 1,
+    Routed = 2,
+    All = 3
+}
+
+public enum SpotNodeSocketOwner
+{
+    Any = 0,
+    Node = 1,
+    Spot = 2
+}
+
+public enum SpotNodeSocketType
+{
+    Any = 0,
+    Pair = 0x1001,
+    Pub = 0x1002,
+    Sub = 0x1003,
+    Dealer = 0x1004,
+    Router = 0x1005,
+    XPub = 0x1006,
+    XSub = 0x1007,
+    Stream = 0x1008
+}
+
+public sealed class SpotNodeOptions
+{
+    public SpotNodeMode Mode { get; init; } = SpotNodeMode.All;
+}
+
+public sealed class SpotNodeSocketSnapshotFilter
+{
+    public SpotNodeSocketOwner? Owner { get; init; }
+    public SpotNodeSocketType? SocketType { get; init; }
+    public string? SocketName { get; init; }
+}
+
+public sealed class SpotNodeSocketSnapshotEntry
+{
+    public SpotNodeSocketSnapshotEntry(SpotNodeSocketOwner owner,
+        ulong ownerId, string ownerName, string socketName,
+        SpotNodeSocketType socketType, bool autoHwmVisible,
+        MonitorSnapshot snapshot)
+    {
+        Owner = owner;
+        OwnerId = ownerId;
+        OwnerName = ownerName;
+        SocketName = socketName;
+        SocketType = socketType;
+        AutoHwmVisible = autoHwmVisible;
+        Snapshot = snapshot;
+    }
+
+    public SpotNodeSocketOwner Owner { get; }
+    public ulong OwnerId { get; }
+    public string OwnerName { get; }
+    public string SocketName { get; }
+    public SpotNodeSocketType SocketType { get; }
+    public bool AutoHwmVisible { get; }
+    public MonitorSnapshot Snapshot { get; }
+
+    internal static unsafe SpotNodeSocketSnapshotEntry FromNative(
+        ref ZlinkSpotNodeSocketSnapshotEntry native)
+    {
+        fixed (byte* ownerName = native.OwnerName)
+        fixed (byte* socketName = native.SocketName)
+        {
+            ZlinkMonitorSnapshot snapshot = native.Snapshot;
+            return new SpotNodeSocketSnapshotEntry(
+                native.Owner,
+                native.OwnerId,
+                NativeHelpers.ReadFixedString(ownerName, 64),
+                NativeHelpers.ReadFixedString(socketName, 64),
+                native.SocketType,
+                native.AutoHwmVisible != 0,
+                MonitorSnapshot.FromNative(ref snapshot));
+        }
+    }
+}
+
 public sealed class SpotNode : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
@@ -24,10 +106,28 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     public SpotNodeSubscriberOptions SubscriberOptions { get; }
 
     public SpotNode(Context context)
+        : this(context, null)
+    {
+    }
+
+    public SpotNode(Context context, SpotNodeOptions? options)
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        _handle = NativeMethods.zlink_spot_node_new(context.Handle);
+        if (options == null)
+        {
+            _handle = NativeMethods.zlink_spot_node_new(context.Handle,
+                IntPtr.Zero);
+        }
+        else
+        {
+            ZlinkSpotNodeOptions nativeOptions = new()
+            {
+                Mode = options.Mode
+            };
+            _handle = NativeMethods.zlink_spot_node_new(context.Handle,
+                ref nativeOptions);
+        }
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         PublisherOptions = new SpotNodePublisherOptions(this);
@@ -290,6 +390,35 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
+    public SpotNodeSocketSnapshotEntry[] InternalSocketsSnapshot(
+        SpotNodeSocketSnapshotFilter? filter = null)
+    {
+        EnsureNotDisposed();
+        unsafe
+        {
+            ZlinkSpotNodeSocketSnapshotFilter nativeFilter = default;
+            IntPtr filterPtr = IntPtr.Zero;
+            if (filter != null)
+            {
+                SpotNodeSocketSnapshotFilter value = filter;
+                nativeFilter.Owner =
+                    value.Owner.GetValueOrDefault(SpotNodeSocketOwner.Any);
+                nativeFilter.SocketType =
+                    value.SocketType.GetValueOrDefault(SpotNodeSocketType.Any);
+                if (!string.IsNullOrEmpty(value.SocketName))
+                {
+                    BoundaryValidation.ValidateFixedUtf8(value.SocketName,
+                        nameof(SpotNodeSocketSnapshotFilter.SocketName));
+                    WriteFixedString(value.SocketName,
+                        nativeFilter.SocketName, 64);
+                }
+                filterPtr = (IntPtr)(&nativeFilter);
+            }
+
+            return ReadInternalSocketEntries(filterPtr);
+        }
+    }
+
     public void Close()
     {
         Dispose();
@@ -459,6 +588,44 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
                 ZlinkSpotNodeSubjectEntry native =
                     Marshal.PtrToStructure<ZlinkSpotNodeSubjectEntry>(current);
                 result[i] = SpotNodeSubjectEntry.FromNative(ref native);
+            }
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(entries);
+        }
+    }
+
+    private SpotNodeSocketSnapshotEntry[] ReadInternalSocketEntries(
+        IntPtr filterPtr)
+    {
+        nuint count = 0;
+        int rc = NativeMethods.zlink_spot_node_internal_sockets_snapshot(
+            _handle, filterPtr, IntPtr.Zero, ref count);
+        ZlinkException.ThrowConfigIfError(rc);
+        if (count == 0)
+            return Array.Empty<SpotNodeSocketSnapshotEntry>();
+
+        int entrySize = Marshal.SizeOf<ZlinkSpotNodeSocketSnapshotEntry>();
+        IntPtr entries = Marshal.AllocHGlobal(
+            checked((int)(count * (nuint)entrySize)));
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_spot_node_internal_sockets_snapshot(
+                _handle, filterPtr, entries, ref actual);
+            ZlinkException.ThrowConfigIfError(rc);
+
+            SpotNodeSocketSnapshotEntry[] result =
+                new SpotNodeSocketSnapshotEntry[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                IntPtr current = IntPtr.Add(entries, i * entrySize);
+                ZlinkSpotNodeSocketSnapshotEntry native =
+                    Marshal.PtrToStructure<ZlinkSpotNodeSocketSnapshotEntry>(
+                        current);
+                result[i] = SpotNodeSocketSnapshotEntry.FromNative(ref native);
             }
             return result;
         }

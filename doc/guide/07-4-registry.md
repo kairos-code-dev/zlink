@@ -529,29 +529,29 @@ publication.
   mechanism
 - Eventually consistent: all nodes converge to the same state
 
-## 8. Role Separation: Registry vs Monitor
+## 8. Role Separation: Registry vs Local Snapshots
 
-Registry and local service monitors serve different purposes:
+Registry and local snapshot/query APIs serve different purposes:
 
-| Aspect | Registry Topology | Local Service Monitor |
-|--------|-------------------|----------------------|
+| Aspect | Registry Topology | Local Snapshot / Query |
+|--------|-------------------|------------------------|
 | **Scope** | Global summary across all services | Detailed local state for one service handle |
-| **Granularity** | Coarse: `READY` / `LOST` / `ERROR` | Fine: individual connection events, filter application |
-| **Freshness** | Eventually consistent (heartbeat + broadcast cycle) | Real-time (immediate callback) |
+| **Granularity** | Coarse: `READY` / `LOST` / `ERROR` | Fine: peer lists, local state, subject lists |
+| **Freshness** | Eventually consistent (heartbeat + broadcast cycle) | Caller-controlled polling interval |
 | **Access** | Local or remote via query client | Local only (same process) |
 
 ### When to Use Which
 
 - **Registry topology**: "How many `payment-service` instances are READY
   cluster-wide?" — first-pass operational assessment.
-- **Local monitor**: "Why is this specific service not connecting to
+- **Local snapshot/query**: "Why is this specific service not connecting to
   peer X?" — detailed root-cause analysis.
 
 Recommended workflow:
 
 1. Query Registry topology snapshot for a global overview
 2. Identify anomalies (`LOST`, `ERROR` entries)
-3. Drill into the affected process's local service monitor for details
+3. Drill into the affected process's local snapshot/query results for details
 
 ## 9. Next Steps
 

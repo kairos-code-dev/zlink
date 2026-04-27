@@ -14,6 +14,7 @@ use crate::error::{
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
+use crate::monitor::MonitorSnapshot;
 use crate::request_progress::RequestProgressGuard;
 use crate::socket::{
     CallbackBox, cstr_buf_to_string, prepare_send_parts, routing_id_from_ptr,
@@ -184,7 +185,7 @@ impl ServiceRole {
     }
 }
 
-/// The service kind reported by service monitors and topology snapshots.
+/// The service kind reported by topology snapshots and service entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServiceKind {
     Discovery,
@@ -244,6 +245,96 @@ pub enum SpotNodeState {
     PartialReady,
     Ready,
     Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpotNodeMode {
+    PubSub,
+    Routed,
+    All,
+}
+
+impl SpotNodeMode {
+    fn to_raw(self) -> ffi::zlink_spot_node_mode_t {
+        match self {
+            Self::PubSub => ffi::zlink_spot_node_mode_t::ZLINK_SPOT_NODE_MODE_PUBSUB,
+            Self::Routed => ffi::zlink_spot_node_mode_t::ZLINK_SPOT_NODE_MODE_ROUTED,
+            Self::All => ffi::zlink_spot_node_mode_t::ZLINK_SPOT_NODE_MODE_ALL,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SocketType {
+    Any = 0,
+    Pair = 0x1001,
+    Pub = 0x1002,
+    Sub = 0x1003,
+    Dealer = 0x1004,
+    Router = 0x1005,
+    XPub = 0x1006,
+    XSub = 0x1007,
+    Stream = 0x1008,
+}
+
+impl SocketType {
+    fn from_raw(raw: ffi::zlink_socket_type_t) -> Self {
+        match raw {
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_ANY => Self::Any,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_PAIR => Self::Pair,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_PUB => Self::Pub,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_SUB => Self::Sub,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_DEALER => Self::Dealer,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_ROUTER => Self::Router,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_XPUB => Self::XPub,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_XSUB => Self::XSub,
+            ffi::zlink_socket_type_t::ZLINK_SOCKET_STREAM => Self::Stream,
+        }
+    }
+
+    fn to_raw(self) -> ffi::zlink_socket_type_t {
+        match self {
+            Self::Any => ffi::zlink_socket_type_t::ZLINK_SOCKET_ANY,
+            Self::Pair => ffi::zlink_socket_type_t::ZLINK_SOCKET_PAIR,
+            Self::Pub => ffi::zlink_socket_type_t::ZLINK_SOCKET_PUB,
+            Self::Sub => ffi::zlink_socket_type_t::ZLINK_SOCKET_SUB,
+            Self::Dealer => ffi::zlink_socket_type_t::ZLINK_SOCKET_DEALER,
+            Self::Router => ffi::zlink_socket_type_t::ZLINK_SOCKET_ROUTER,
+            Self::XPub => ffi::zlink_socket_type_t::ZLINK_SOCKET_XPUB,
+            Self::XSub => ffi::zlink_socket_type_t::ZLINK_SOCKET_XSUB,
+            Self::Stream => ffi::zlink_socket_type_t::ZLINK_SOCKET_STREAM,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpotNodeSocketOwner {
+    Any,
+    Node,
+    Spot,
+}
+
+impl SpotNodeSocketOwner {
+    fn to_raw(self) -> ffi::zlink_spot_node_socket_owner_t {
+        match self {
+            Self::Any => ffi::zlink_spot_node_socket_owner_t::ZLINK_SPOT_NODE_SOCKET_OWNER_ANY,
+            Self::Node => ffi::zlink_spot_node_socket_owner_t::ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+            Self::Spot => ffi::zlink_spot_node_socket_owner_t::ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT,
+        }
+    }
+
+    fn from_raw(raw: ffi::zlink_spot_node_socket_owner_t) -> Self {
+        match raw {
+            ffi::zlink_spot_node_socket_owner_t::ZLINK_SPOT_NODE_SOCKET_OWNER_ANY => Self::Any,
+            ffi::zlink_spot_node_socket_owner_t::ZLINK_SPOT_NODE_SOCKET_OWNER_NODE => Self::Node,
+            ffi::zlink_spot_node_socket_owner_t::ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT => Self::Spot,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpotNodeOptions {
+    pub mode: SpotNodeMode,
 }
 
 impl SpotNodeState {
@@ -486,6 +577,38 @@ pub struct SpotNodeSubjectFilter {
     pub role: Option<SpotRole>,
     pub subject: Option<String>,
     pub subject_kind: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpotNodeSocketSnapshotFilter {
+    pub owner: Option<SpotNodeSocketOwner>,
+    pub socket_type: Option<SocketType>,
+    pub socket_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpotNodeSocketSnapshotEntry {
+    pub owner: SpotNodeSocketOwner,
+    pub owner_id: u64,
+    pub owner_name: String,
+    pub socket_name: String,
+    pub socket_type: SocketType,
+    pub auto_hwm_visible: bool,
+    pub snapshot: MonitorSnapshot,
+}
+
+impl SpotNodeSocketSnapshotEntry {
+    fn from_raw(raw: &ffi::zlink_spot_node_socket_snapshot_entry_t) -> Self {
+        Self {
+            owner: SpotNodeSocketOwner::from_raw(raw.owner),
+            owner_id: raw.owner_id,
+            owner_name: fixed_cstr_to_string(&raw.owner_name),
+            socket_name: fixed_cstr_to_string(&raw.socket_name),
+            socket_type: SocketType::from_raw(raw.socket_type),
+            auto_hwm_visible: raw.auto_hwm_visible != 0,
+            snapshot: MonitorSnapshot::from_raw(&raw.snapshot),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -750,10 +873,6 @@ impl Discovery {
         })
     }
 
-    pub fn monitor_open(&self) -> Result<crate::monitor::ServiceMonitor, ConfigError> {
-        crate::monitor::ServiceMonitor::open(self)
-    }
-
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
             ffi::zlink_discovery_member_peers(self.handle, ptr::null_mut(), count)
@@ -836,16 +955,36 @@ unsafe impl Send for SpotNode {}
 
 impl SpotNode {
     pub fn new(ctx: &crate::ctx::Context) -> Result<Self, ConfigError> {
-        let handle = unsafe { ffi::zlink_spot_node_new(ctx.raw()) };
+        let handle = unsafe { ffi::zlink_spot_node_new(ctx.raw(), std::ptr::null()) };
         if handle.is_null() {
             return Err(ConfigError::new(
                 crate::error::ConfigResult::InvalidHandle,
                 last_errno(),
             ));
         }
-        Ok(Self {
-            handle,
-        })
+        Ok(Self { handle })
+    }
+
+    pub fn new_with_options(
+        ctx: &crate::ctx::Context,
+        options: SpotNodeOptions,
+    ) -> Result<Self, ConfigError> {
+        let raw_options = ffi::zlink_spot_node_options_t {
+            mode: options.mode.to_raw(),
+        };
+        let handle = unsafe {
+            ffi::zlink_spot_node_new(
+                ctx.raw(),
+                (&raw_options as *const ffi::zlink_spot_node_options_t).cast(),
+            )
+        };
+        if handle.is_null() {
+            return Err(ConfigError::new(
+                crate::error::ConfigResult::InvalidHandle,
+                last_errno(),
+            ));
+        }
+        Ok(Self { handle })
     }
 
     pub fn bind(&self, endpoint: &str) -> Result<(), BindError> {
@@ -874,10 +1013,7 @@ impl SpotNode {
 
     pub fn disconnect_peer_rid(&self, target_node_rid: &RoutingId) -> Result<(), ConnectError> {
         check_connect_rc(unsafe {
-            ffi::zlink_spot_node_disconnect_peer_rid(
-                self.handle,
-                target_node_rid.as_raw(),
-            )
+            ffi::zlink_spot_node_disconnect_peer_rid(self.handle, target_node_rid.as_raw())
         })
     }
 
@@ -1029,6 +1165,13 @@ impl SpotNode {
         filter: Option<&SpotNodeSubjectFilter>,
     ) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError> {
         self.subjects_query_opt(filter)
+    }
+
+    pub fn internal_sockets_snapshot(
+        &self,
+        filter: Option<&SpotNodeSocketSnapshotFilter>,
+    ) -> Result<Vec<SpotNodeSocketSnapshotEntry>, ConfigError> {
+        self.internal_sockets_snapshot_opt(filter)
     }
 
     #[allow(dead_code)]
@@ -1223,7 +1366,9 @@ impl Spot {
     }
 
     pub fn drain_channel_reply_from(&self, subject: *mut c_void) -> Result<(), ConfigError> {
-        check_config_rc(unsafe { ffi::zlink_spot_channel_reply_progress_from(self.handle, subject) })
+        check_config_rc(unsafe {
+            ffi::zlink_spot_channel_reply_progress_from(self.handle, subject)
+        })
     }
 
     pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError> {
@@ -1517,9 +1662,7 @@ impl SpotDispatchEvent {
 impl SpotDispatchSubjectKind {
     fn from_raw(raw: ffi::zlink_spot_dispatch_subject_kind_t) -> Self {
         match raw {
-            ffi::zlink_spot_dispatch_subject_kind_t::ZLINK_SPOT_DISPATCH_SUBJECT_SPOT => {
-                Self::Spot
-            }
+            ffi::zlink_spot_dispatch_subject_kind_t::ZLINK_SPOT_DISPATCH_SUBJECT_SPOT => Self::Spot,
             ffi::zlink_spot_dispatch_subject_kind_t::ZLINK_SPOT_DISPATCH_SUBJECT_TIMER => {
                 Self::Timer
             }
@@ -2058,6 +2201,24 @@ fn with_spot_node_subject_filter_config<T>(
     f(ptr)
 }
 
+fn with_spot_node_socket_snapshot_filter_config<T>(
+    filter: &SpotNodeSocketSnapshotFilter,
+    f: impl FnOnce(*const ffi::zlink_spot_node_socket_snapshot_filter_t) -> Result<T, ConfigError>,
+) -> Result<T, ConfigError> {
+    let mut raw = MaybeUninit::<ffi::zlink_spot_node_socket_snapshot_filter_t>::zeroed();
+    let ptr = raw.as_mut_ptr();
+    unsafe {
+        (*ptr).owner = filter.owner.unwrap_or(SpotNodeSocketOwner::Any).to_raw();
+        if let Some(socket_type) = filter.socket_type {
+            (*ptr).socket_type = socket_type.to_raw();
+        }
+        if let Some(socket_name) = &filter.socket_name {
+            write_c_array_config(&mut (*ptr).socket_name, socket_name, "socket_name")?;
+        }
+    }
+    f(ptr)
+}
+
 fn with_registry_service_summary_filter_config<T>(
     filter: &RegistryServiceSummaryFilter,
     f: impl FnOnce(*const ffi::zlink_registry_service_summary_filter_t) -> Result<T, ConfigError>,
@@ -2147,6 +2308,52 @@ impl SpotNode {
 
         match filter {
             Some(filter) => with_spot_node_subject_filter_config(filter, read),
+            None => read(ptr::null()),
+        }
+    }
+
+    fn internal_sockets_snapshot_opt(
+        &self,
+        filter: Option<&SpotNodeSocketSnapshotFilter>,
+    ) -> Result<Vec<SpotNodeSocketSnapshotEntry>, ConfigError> {
+        let read = |filter_ptr: *const ffi::zlink_spot_node_socket_snapshot_filter_t| {
+            let count = count_entries_config(|count| unsafe {
+                ffi::zlink_spot_node_internal_sockets_snapshot(
+                    self.handle,
+                    filter_ptr,
+                    ptr::null_mut(),
+                    count,
+                )
+            })?;
+            if count == 0 {
+                return Ok(Vec::new());
+            }
+
+            let mut entries =
+                vec![
+                    unsafe { std::mem::zeroed::<ffi::zlink_spot_node_socket_snapshot_entry_t>() };
+                    count
+                ];
+            let actual = read_entries_config(
+                count,
+                |entries_ptr, count_ptr| unsafe {
+                    ffi::zlink_spot_node_internal_sockets_snapshot(
+                        self.handle,
+                        filter_ptr,
+                        entries_ptr,
+                        count_ptr,
+                    )
+                },
+                entries.as_mut_ptr(),
+            )?;
+            Ok(entries[..actual]
+                .iter()
+                .map(SpotNodeSocketSnapshotEntry::from_raw)
+                .collect())
+        };
+
+        match filter {
+            Some(filter) => with_spot_node_socket_snapshot_filter_config(filter, read),
             None => read(ptr::null()),
         }
     }

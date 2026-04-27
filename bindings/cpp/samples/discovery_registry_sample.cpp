@@ -8,12 +8,9 @@ int main ()
     zlink::service::registry_t registry (ctx);
     zlink::service::discovery_t discovery (
       ctx, zlink::service_type::socket, detail::k_spot_service);
-    zlink::service_monitor_handle_t discovery_monitor = discovery.monitor_open (
-      zlink::service_monitor_event::discovery_service_up);
     zlink::pub_socket_t provider (ctx);
     assert (registry.valid ());
     assert (discovery.valid ());
-    assert (discovery_monitor.valid ());
     assert (provider.valid ());
 
     const std::string registry_pub = detail::unique_tcp ("registry-pub");
@@ -24,13 +21,24 @@ int main ()
     provider.attach_discovery (discovery);
     provider.bind (service_endpoint);
 
-    assert (detail::wait_for_monitor_readable (discovery_monitor, 5000));
-    const zlink::service_event_t event = discovery_monitor.recv ();
-    assert (event.event_type
-            == zlink::service_monitor_event::discovery_service_up);
-    assert (event.service_name == detail::k_spot_service);
-    if ((event.detail_flags & ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT) != 0)
-        assert (event.endpoint == service_endpoint);
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (5000);
+    bool discovered = false;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::vector<zlink::member_peer_entry_t> peers =
+          discovery.member_peers ();
+        for (size_t i = 0; i < peers.size (); ++i) {
+            if (peers[i].service_name == detail::k_spot_service
+                && peers[i].endpoint == service_endpoint) {
+                discovered = true;
+                break;
+            }
+        }
+        if (discovered)
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    assert (discovered);
 
     std::printf (
       "[discovery-registry] service: \"%s\" -> discovered\n",

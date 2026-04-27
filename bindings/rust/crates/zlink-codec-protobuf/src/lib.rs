@@ -69,7 +69,10 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let original = Ping { payload: "hello-zlink".into(), seq: 7 };
+        let original = Ping {
+            payload: "hello-zlink".into(),
+            seq: 7,
+        };
         let msg = encode(&original).expect("encode");
         let got: Ping = decode(&msg).expect("decode");
         assert_eq!(original, got);

@@ -305,9 +305,7 @@ int spot_node_t::ensure_registered ()
         return -1;
     }
 
-    spot_pub_t *node_pub = ensure_default_pub ();
-    if (!node_pub || node_pub->routing_id (&node_rid) != 0
-        || node_rid.size == 0) {
+    if (node_routing_id (&node_rid) != 0 || node_rid.size == 0) {
         return -1;
     }
 

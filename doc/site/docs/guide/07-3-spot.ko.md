@@ -32,7 +32,7 @@ SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 
 ```c
 void *ctx = zlink_ctx_new();
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:7001");
 
 void *spot = zlink_spot_new(node);
@@ -49,6 +49,19 @@ zlink_spot_node_destroy(&node);
 zlink_ctx_term(&ctx);
 ```
 
+`NULL`을 넘기면 topic 기능과 routed 기능을 모두 켠다. 한쪽 기능만 필요한
+프로세스라면 생성 시점에 `zlink_spot_node_options_t`를 넘긴다.
+
+```c
+zlink_spot_node_options_t opts = {
+  .mode = ZLINK_SPOT_NODE_MODE_PUBSUB
+};
+void *node = zlink_spot_node_new(ctx, &opts);
+```
+
+routed 전용 node는 `ZLINK_SPOT_NODE_MODE_ROUTED`를 쓴다. 꺼진 기능은
+`ENOTSUP`으로 실패하며, 숨은 내부 socket을 만들지 않는다.
+
 이 예제는 한 프로세스 안에서 SPOT node를 만들고, unified `Spot` facade로
 토픽 하나를 발행하는 가장 작은 흐름이다.
 
@@ -59,8 +72,8 @@ zlink_ctx_term(&ctx);
 고정된 endpoint를 알고 있으면 node끼리 직접 연결할 수 있다.
 
 ```c
-void *a = zlink_spot_node_new(ctx);
-void *b = zlink_spot_node_new(ctx);
+void *a = zlink_spot_node_new(ctx, NULL);
+void *b = zlink_spot_node_new(ctx, NULL);
 
 zlink_spot_node_bind(a, "tcp://127.0.0.1:7101");
 zlink_spot_node_bind(b, "tcp://127.0.0.1:7102");
@@ -76,7 +89,7 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 운영 환경에서는 discovery를 붙여 SPOT mesh를 자동으로 구성하는 쪽이 보통 낫다.
 
 ```c
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, NULL);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
 
 void *discovery = zlink_discovery_new(
@@ -186,7 +199,7 @@ int rc = zlink_spot_subscribe(
 이 방식은 discovery가 관리하는 `DEALER`를 node에 등록한다.
 
 ```c
-void *node = zlink_spot_node_new(ctx);
+void *node = zlink_spot_node_new(ctx, NULL);
 
 void *spot_discovery = zlink_discovery_new(
   ctx,
@@ -457,7 +470,7 @@ attach 뒤에는 다른 일반 용도로 함께 쓰지 않는 편이 맞다.
 
 ## 12. 상태 확인
 
-디버깅이나 운영 상태 확인에는 node snapshot과 service monitor를 사용한다.
+디버깅이나 운영 상태 확인에는 node snapshot과 query API를 사용한다.
 
 ```c
 zlink_spot_node_status_t status;
@@ -467,5 +480,4 @@ size_t peer_count = 0;
 zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 ```
 
-좀 더 자세한 상태 이벤트가 필요하면 `zlink_service_monitor_open()`으로 monitor를
-열고 `zlink_service_monitor_recv()` 또는 handler를 사용한다.
+좀 더 자세한 상태 변화가 필요하면 연속된 snapshot/query 결과를 비교한다.

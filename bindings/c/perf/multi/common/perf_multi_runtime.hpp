@@ -12,6 +12,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <set>
@@ -186,18 +187,6 @@ inline const char *perf_auto_hwm_scope_name(uint32_t scope_)
     }
 }
 
-inline zlink_service_monitor_event_mask_t
-perf_auto_hwm_service_monitor_events(const char *label_)
-{
-    const std::string label = label_ ? std::string(label_) : std::string();
-    if (label.find("sub") != std::string::npos)
-        return static_cast<zlink_service_monitor_event_mask_t>(1u << 13);
-    if (label.find("pub") != std::string::npos
-        || label.find("data") != std::string::npos)
-        return static_cast<zlink_service_monitor_event_mask_t>(1u << 15);
-    return ZLINK_SERVICE_MONITOR_EVENT_ALL;
-}
-
 inline std::string perf_auto_hwm_env_or_default(const char *name_,
                                                 const char *fallback_)
 {
@@ -207,12 +196,237 @@ inline std::string perf_auto_hwm_env_or_default(const char *name_,
     return fallback_ ? std::string(fallback_) : std::string();
 }
 
+inline const char *perf_socket_type_name(uint32_t type_)
+{
+    switch (type_) {
+        case ZLINK_SOCKET_PAIR:
+            return "pair";
+        case ZLINK_SOCKET_PUB:
+            return "pub";
+        case ZLINK_SOCKET_SUB:
+            return "sub";
+        case ZLINK_SOCKET_DEALER:
+            return "dealer";
+        case ZLINK_SOCKET_ROUTER:
+            return "router";
+        case ZLINK_SOCKET_XPUB:
+            return "xpub";
+        case ZLINK_SOCKET_XSUB:
+            return "xsub";
+        case ZLINK_SOCKET_STREAM:
+            return "stream";
+        default:
+            return "unknown";
+    }
+}
+
+inline bool perf_auto_hwm_snapshot_row_less(
+  const zlink_spot_node_socket_snapshot_entry_t &lhs_,
+  const zlink_spot_node_socket_snapshot_entry_t &rhs_)
+{
+    if (lhs_.owner_id != rhs_.owner_id)
+        return lhs_.owner_id < rhs_.owner_id;
+    const int socket_cmp =
+      std::strcmp(lhs_.socket_name, rhs_.socket_name);
+    if (socket_cmp != 0)
+        return socket_cmp < 0;
+    return lhs_.snapshot.auto_hwm_role < rhs_.snapshot.auto_hwm_role;
+}
+
+inline size_t perf_auto_hwm_effective_msg_size(size_t msg_size_)
+{
+    if (msg_size_ != 0)
+        return msg_size_;
+    const char *value = std::getenv("PERF_MSG_SIZES");
+    if (!value || !*value)
+        value = std::getenv("PERF_MULTI_MSG_SIZES");
+    if (!value || !*value)
+        return 0;
+    errno = 0;
+    char *end = NULL;
+    const unsigned long parsed = std::strtoul(value, &end, 10);
+    if (errno != 0 || end == value)
+        return 0;
+    return static_cast<size_t>(parsed);
+}
+
+inline void perf_print_auto_hwm_snapshot_table(
+  const char *title_,
+  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  const std::string &transport_,
+  size_t msg_size_)
+{
+    if (rows_.empty())
+        return;
+
+    std::cout << title_ << ":" << std::endl;
+    std::cout
+      << "  | Transport | Size(B) | MsgUnit(B) | Socket | Type | Role | Managed | Active | SNDHWM | RCVHWM | SNDBUF | RCVBUF |"
+      << std::endl;
+    std::cout
+      << "  |-----------|---------|------------|--------|------|------|---------|--------|--------|--------|--------|--------|"
+      << std::endl;
+    for (size_t i = 0; i < rows_.size(); ++i) {
+        const zlink_monitor_snapshot_t &snapshot = rows_[i].snapshot;
+        std::cout << "  | " << transport_
+                  << " | " << msg_size_
+                  << " | " << snapshot.auto_hwm_effective_message_bytes
+                  << " | " << rows_[i].socket_name
+                  << " | " << perf_socket_type_name(rows_[i].socket_type)
+                  << " | " << perf_auto_hwm_role_name(snapshot.auto_hwm_role)
+                  << " | " << snapshot.auto_hwm_managed_connections
+                  << " | " << snapshot.auto_hwm_active_hwm_connections
+                  << " | " << snapshot.auto_hwm_applied_sndhwm
+                  << " | " << snapshot.auto_hwm_applied_rcvhwm
+                  << " | " << snapshot.auto_hwm_effective_sndbuf
+                  << " | " << snapshot.auto_hwm_effective_rcvbuf
+                  << " |" << std::endl;
+    }
+}
+
+inline void perf_emit_spot_node_auto_hwm_detail(
+  const zlink_spot_node_socket_snapshot_entry_t &row_,
+  const std::string &transport_,
+  size_t msg_size_)
+{
+    const zlink_monitor_snapshot_t &snapshot = row_.snapshot;
+    const size_t msg_size = perf_auto_hwm_effective_msg_size(msg_size_);
+    const std::string pattern =
+      perf_auto_hwm_env_or_default("PERF_MULTI_PATTERN", "unknown");
+    const std::string component =
+      perf_auto_hwm_env_or_default("PERF_MULTI_COMPONENT", "process");
+    const char *owner =
+      row_.owner == ZLINK_SPOT_NODE_SOCKET_OWNER_NODE ? "node" : "spot";
+    const char *scope =
+      row_.owner == ZLINK_SPOT_NODE_SOCKET_OWNER_NODE ? "shared" : "per-spot";
+
+    std::cout << "AUTO_HWM_DETAIL"
+              << ",pattern=" << pattern
+              << ",transport=" << transport_
+              << ",component=" << component
+              << ",label=" << row_.socket_name
+              << ",owner=" << owner
+              << ",owner_id=" << row_.owner_id
+              << ",socket=" << row_.socket_name
+              << ",socket_type=" << perf_socket_type_name(row_.socket_type)
+              << ",msg_size=" << msg_size
+              << ",source=spotnode_snapshot"
+              << ",enabled=" << snapshot.auto_hwm_enabled
+              << ",role=" << perf_auto_hwm_role_name(snapshot.auto_hwm_role)
+              << ",role_id=" << snapshot.auto_hwm_role
+              << ",managed_connections="
+              << snapshot.auto_hwm_managed_connections
+              << ",active_connections="
+              << snapshot.auto_hwm_active_hwm_connections
+              << ",observed_count="
+              << snapshot.auto_hwm_observed_count
+              << ",scope=" << scope
+              << ",scope_id=" << snapshot.auto_hwm_scope
+              << ",scope_count=" << snapshot.auto_hwm_scope_count
+              << ",planning_count="
+              << snapshot.auto_hwm_planning_count
+              << ",context_total_planning_count="
+              << snapshot.auto_hwm_context_total_planning_count
+              << ",base_floor_per_connection="
+              << snapshot.auto_hwm_base_floor_per_connection
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",requested_sndbuf="
+              << snapshot.auto_hwm_requested_sndbuf
+              << ",requested_rcvbuf="
+              << snapshot.auto_hwm_requested_rcvbuf
+              << ",effective_sndbuf="
+              << snapshot.auto_hwm_effective_sndbuf
+              << ",effective_rcvbuf="
+              << snapshot.auto_hwm_effective_rcvbuf
+              << ",total_budget_bytes="
+              << snapshot.auto_hwm_total_memory_budget_bytes
+              << ",queue_budget_bytes="
+              << snapshot.auto_hwm_queue_budget_bytes
+              << ",transport_budget_bytes="
+              << snapshot.auto_hwm_transport_budget_bytes
+              << ",auto_buffer_bytes="
+              << snapshot.auto_hwm_auto_buffer_bytes
+              << ",manual_buffer_bytes="
+              << snapshot.auto_hwm_manual_buffer_bytes
+              << ",buffer_connections="
+              << snapshot.auto_hwm_buffer_connections
+              << ",runtime_reserve_bytes="
+              << snapshot.auto_hwm_runtime_reserve_bytes
+              << ",socket_queue_share_bytes="
+              << snapshot.auto_hwm_socket_queue_share_bytes
+              << ",socket_message_slots="
+              << snapshot.auto_hwm_socket_message_slots
+              << ",effective_message_bytes="
+              << snapshot.auto_hwm_effective_message_bytes
+              << ",last_recalc_reason="
+              << perf_auto_hwm_recalc_reason_name(
+                   snapshot.auto_hwm_last_recalc_reason)
+              << std::endl;
+}
+
+inline bool perf_print_spot_node_auto_hwm_snapshot(void *node_,
+                                                   const std::string &transport_,
+                                                   size_t msg_size_)
+{
+    static std::mutex sync;
+    static std::set<std::string> emitted;
+    const std::string key = std::to_string(
+                              reinterpret_cast<unsigned long long>(node_))
+                            + "|" + transport_ + "|"
+                            + std::to_string(msg_size_);
+    {
+        std::lock_guard<std::mutex> lock(sync);
+        if (emitted.find(key) != emitted.end())
+            return true;
+        emitted.insert(key);
+    }
+
+    size_t count = 0;
+    if (zlink_spot_node_internal_sockets_snapshot(node_, NULL, NULL, &count)
+        != ZLINK_CONFIG_OK)
+        return false;
+    if (count == 0)
+        return true;
+
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows(count);
+    if (zlink_spot_node_internal_sockets_snapshot(node_, NULL, &rows[0], &count)
+        != ZLINK_CONFIG_OK)
+        return false;
+    rows.resize(count);
+
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> node_rows;
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> spot_rows;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (rows[i].auto_hwm_visible == 0)
+            continue;
+        perf_emit_spot_node_auto_hwm_detail(rows[i], transport_, msg_size_);
+        if (rows[i].owner == ZLINK_SPOT_NODE_SOCKET_OWNER_NODE)
+            node_rows.push_back(rows[i]);
+        else if (rows[i].owner == ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT)
+            spot_rows.push_back(rows[i]);
+    }
+
+    std::sort(node_rows.begin(), node_rows.end(),
+              &perf_auto_hwm_snapshot_row_less);
+    std::sort(spot_rows.begin(), spot_rows.end(),
+              &perf_auto_hwm_snapshot_row_less);
+
+    perf_print_auto_hwm_snapshot_table("Auto-HWM spotnode", node_rows,
+                                       transport_, msg_size_);
+    perf_print_auto_hwm_snapshot_table("Auto-HWM spot", spot_rows,
+                                       transport_, msg_size_);
+    return true;
+}
+
 inline void perf_print_auto_hwm_snapshot(void *handle_,
                                          bool service_handle_,
                                          const char *label_,
                                          const std::string &transport_,
                                          bool allow_service_fallback_ = true,
-                                         size_t msg_size_ = 0)
+                                         size_t msg_size_ = 0,
+                                         zlink_socket_type_t socket_type_ =
+                                           ZLINK_SOCKET_ANY)
 {
     if (!handle_ || !perf_auto_hwm_detail_enabled())
         return;
@@ -223,14 +437,7 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
     void *monitor = NULL;
     zlink_config_result_t rc = ZLINK_CONFIG_INVALID_HANDLE;
     if (service_handle_) {
-        zlink_service_monitor_open_options_t opts;
-        std::memset(&opts, 0, sizeof(opts));
-        opts.events = perf_auto_hwm_service_monitor_events(label_);
-        monitor = zlink_service_monitor_open(handle_, &opts);
-        if (monitor) {
-            rc = zlink_monitor_snapshot(monitor, &snapshot);
-            zlink_monitor_close(&monitor);
-        }
+        rc = ZLINK_CONFIG_INVALID_HANDLE;
     } else {
         zlink_socket_monitor_open_options_t opts;
         std::memset(&opts, 0, sizeof(opts));
@@ -239,16 +446,6 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
         if (monitor) {
             rc = zlink_monitor_snapshot(monitor, &snapshot);
             zlink_monitor_close(&monitor);
-        }
-        if (rc != ZLINK_CONFIG_OK && allow_service_fallback_) {
-            zlink_service_monitor_open_options_t service_opts;
-            std::memset(&service_opts, 0, sizeof(service_opts));
-            service_opts.events = perf_auto_hwm_service_monitor_events(label_);
-            monitor = zlink_service_monitor_open(handle_, &service_opts);
-            if (monitor) {
-                rc = zlink_monitor_snapshot(monitor, &snapshot);
-                zlink_monitor_close(&monitor);
-            }
         }
     }
     const bool snapshot_from_monitor = rc == ZLINK_CONFIG_OK;
@@ -292,6 +489,12 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
         : transport_;
     const char *label = label_ && *label_ ? label_ : "socket";
 
+    if (service_handle_ && std::strncmp(label, "spotnode", 8) == 0
+        && perf_print_spot_node_auto_hwm_snapshot(handle_, transport,
+                                                  msg_size_)) {
+        return;
+    }
+
     const std::string key =
       pattern + "|" + transport + "|" + component + "|" + label + "|"
       + std::to_string(msg_size_) + "|"
@@ -318,6 +521,7 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << ",transport=" << transport
               << ",component=" << component
               << ",label=" << label
+              << ",socket_type=" << perf_socket_type_name (socket_type_)
               << ",msg_size=" << msg_size_
               << ",source="
               << (snapshot_from_monitor ? "monitor_snapshot"
@@ -329,11 +533,15 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << snapshot.auto_hwm_managed_connections
               << ",active_connections="
               << snapshot.auto_hwm_active_hwm_connections
+              << ",observed_count="
+              << snapshot.auto_hwm_observed_count
               << ",scope=" << perf_auto_hwm_scope_name(snapshot.auto_hwm_scope)
               << ",scope_id=" << snapshot.auto_hwm_scope
               << ",scope_count=" << snapshot.auto_hwm_scope_count
-              << ",planning_transport_connections="
-              << snapshot.auto_hwm_planning_transport_connections
+              << ",planning_count="
+              << snapshot.auto_hwm_planning_count
+              << ",context_total_planning_count="
+              << snapshot.auto_hwm_context_total_planning_count
               << ",base_floor_per_connection="
               << snapshot.auto_hwm_base_floor_per_connection
               << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
@@ -360,24 +568,12 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << snapshot.auto_hwm_buffer_connections
               << ",runtime_reserve_bytes="
               << snapshot.auto_hwm_runtime_reserve_bytes
-              << ",role_group_budget_bytes="
-              << snapshot.auto_hwm_role_group_budget_bytes
-              << ",scope_group_budget_bytes="
-              << snapshot.auto_hwm_scope_group_budget_bytes
-              << ",group_budget_bytes="
-              << snapshot.auto_hwm_group_budget_bytes
-              << ",group_message_slots="
-              << snapshot.auto_hwm_group_message_slots
+              << ",socket_queue_share_bytes="
+              << snapshot.auto_hwm_socket_queue_share_bytes
+              << ",socket_message_slots="
+              << snapshot.auto_hwm_socket_message_slots
               << ",effective_message_bytes="
               << snapshot.auto_hwm_effective_message_bytes
-              << ",control_budget_bytes="
-              << snapshot.auto_hwm_control_budget_bytes
-              << ",routed_budget_bytes="
-              << snapshot.auto_hwm_routed_budget_bytes
-              << ",fanout_budget_bytes="
-              << snapshot.auto_hwm_fanout_budget_bytes
-              << ",recv_ingress_budget_bytes="
-              << snapshot.auto_hwm_recv_ingress_budget_bytes
               << ",estimated_max_memory_bytes="
               << snapshot.auto_hwm_estimated_max_memory_bytes
               << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
@@ -575,7 +771,8 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
     }
 }
 
-inline int perf_auto_hwm_msg_unit_for_socket(int socket_type_, size_t msg_size_)
+inline int perf_auto_hwm_msg_unit_for_socket(zlink_socket_type_t socket_type_,
+                                             size_t msg_size_)
 {
     (void) socket_type_;
     const size_t unit = msg_size_;
@@ -584,7 +781,7 @@ inline int perf_auto_hwm_msg_unit_for_socket(int socket_type_, size_t msg_size_)
 }
 
 inline void apply_benchmark_auto_hwm_msg_unit(void *socket_,
-                                              int socket_type_,
+                                              zlink_socket_type_t socket_type_,
                                               size_t msg_size_)
 {
     if (!socket_ || msg_size_ == 0)
@@ -686,7 +883,8 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport)
 inline void apply_benchmark_socket_options(void *socket_,
                                            int hwm_value,
                                            const std::string &transport,
-                                           int socket_type = 0,
+                                           zlink_socket_type_t socket_type =
+                                             ZLINK_SOCKET_ANY,
                                            size_t msg_size = 0,
                                            bool print_auto_hwm_snapshot = true)
 {
@@ -717,7 +915,7 @@ inline void apply_benchmark_socket_options(void *socket_,
     apply_debug_timeouts(socket_, transport);
     if (print_auto_hwm_snapshot)
         perf_print_auto_hwm_snapshot(
-          socket_, false, "endpoint", transport, false, msg_size);
+          socket_, false, "endpoint", transport, false, msg_size, socket_type);
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)

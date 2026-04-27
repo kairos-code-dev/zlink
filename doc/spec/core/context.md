@@ -29,7 +29,10 @@ typedef enum zlink_ctx_option_t
     ZLINK_CTX_OPT_BLOCKY          = 10,
     ZLINK_SPOT_WORKER_THREADS     = 11,
     ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
-    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13
+    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13,
+    ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
+    ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP = 15,
+    ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP = 16
 } zlink_ctx_option_t;
 ```
 
@@ -49,6 +52,9 @@ typedef enum zlink_ctx_option_t
 | `ZLINK_SPOT_WORKER_THREADS` | 11 | Worker count for `zlink_spot_dispatch_event_handler()` callbacks (`0` = auto) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | Whether automatic HWM policy is enabled (`0` = disabled, `1` = enabled) |
 | `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | 13 | Total context memory budget in MB used by the automatic HWM policy (`>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP` | 15 | Bootstrap planning count used when a managed STREAM socket has not observed any live connection yet (`>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 16 | Bootstrap planning count used when a managed SPOT publisher/subscriber socket has not observed any live connection yet (`>= 1`) |
 
 ## Default Values
 
@@ -167,7 +173,10 @@ semantics. `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` and
 `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` take effect on existing
 sockets immediately, but only for sockets that still use automatic
 `SNDHWM` / `RCVHWM` / `SNDBUF` / `RCVBUF` values rather than manual
-overrides.
+overrides. `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS`,
+`ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP`, and
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` update the planning policy used by
+the next recalculation and are safe to change while the context is live.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -204,3 +213,31 @@ the detailed internal errno for diagnostics.
 **Thread safety:** Safe to call from any thread.
 
 **See also:** `zlink_ctx_set`
+
+---
+
+### zlink_ctx_auto_hwm_recalculate
+
+Run the automatic HWM planner for the whole context immediately.
+
+```c
+zlink_config_result_t zlink_ctx_auto_hwm_recalculate(void *context_);
+```
+
+This function forces an immediate automatic HWM refresh for every socket in
+the context that still follows the automatic queue and buffer policy. Manual
+overrides remain manual, and disabled automatic HWM remains disabled. The call
+is useful when an application has just changed the context-wide memory budget
+or wants to apply a new planning baseline without waiting for the normal
+debounced refresh path.
+
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a
+`zlink_config_result_t` value. `zlink_errno()` retains the detailed internal
+errno for diagnostics.
+
+**Errors:**
+- `EFAULT` -- invalid context handle.
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_ctx_set`, `zlink_monitor_snapshot`

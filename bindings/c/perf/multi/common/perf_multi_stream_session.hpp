@@ -80,7 +80,7 @@ struct session_t
         send_count(0),
         pending_count(0),
         auto_hwm_msg_size(0),
-        auto_hwm_socket_type(0),
+        auto_hwm_socket_type(ZLINK_SOCKET_ANY),
         auto_hwm_hwm_value(0),
         transport(),
         pending_queue()
@@ -92,7 +92,7 @@ struct session_t
     std::atomic<unsigned long long> send_count;
     std::atomic<unsigned long long> pending_count;
     std::atomic<size_t> auto_hwm_msg_size;
-    int auto_hwm_socket_type;
+    zlink_socket_type_t auto_hwm_socket_type;
     int auto_hwm_hwm_value;
     std::string transport;
     std::mutex pending_mutex;
@@ -110,7 +110,7 @@ inline bool is_stop_payload(const unsigned char *data,
 
 inline void reset_session(session_t *session,
                           void *send_socket,
-                          int auto_hwm_socket_type,
+                          zlink_socket_type_t auto_hwm_socket_type,
                           int auto_hwm_hwm_value,
                           const std::string &transport)
 {

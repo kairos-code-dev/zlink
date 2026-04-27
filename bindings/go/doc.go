@@ -13,7 +13,7 @@
 //   - typed domain objects model routing IDs, multipart receive results, topic
 //     messages, subscription events, and monitor events
 //   - raw option bags and raw flags are not exposed publicly
-//   - service monitor entry points are discovery-only
+//   - service-layer observability uses snapshot and query APIs
 //   - monitor open APIs use typed event masks and default to ALL when omitted
 //   - callback delivery hops from native threads onto Go-managed dispatcher
 //     goroutines before invoking user handlers

@@ -376,8 +376,12 @@ void test_socket_option_auto_hwm_buffer_accounting ()
         - snapshot.auto_hwm_runtime_reserve_bytes
         - snapshot.auto_hwm_auto_buffer_bytes,
       snapshot.auto_hwm_queue_budget_bytes);
-    TEST_ASSERT_EQUAL_UINT64 (snapshot.auto_hwm_group_budget_bytes,
-                              snapshot.auto_hwm_scope_group_budget_bytes);
+    TEST_ASSERT_EQUAL_UINT32 (snapshot.auto_hwm_observed_count,
+                              snapshot.auto_hwm_managed_connections);
+    TEST_ASSERT_EQUAL_UINT32 (snapshot.auto_hwm_planning_count,
+                              snapshot.auto_hwm_context_total_planning_count);
+    TEST_ASSERT_EQUAL_UINT64 (snapshot.auto_hwm_queue_budget_bytes,
+                              snapshot.auto_hwm_socket_queue_share_bytes);
 
     const int sndbuf = 1048576;
     const int rcvbuf = 2097152;
@@ -396,6 +400,8 @@ void test_socket_option_auto_hwm_buffer_accounting ()
       snapshot.auto_hwm_total_memory_budget_bytes
         - snapshot.auto_hwm_runtime_reserve_bytes,
       snapshot.auto_hwm_queue_budget_bytes);
+    TEST_ASSERT_EQUAL_UINT64 (snapshot.auto_hwm_queue_budget_bytes,
+                              snapshot.auto_hwm_socket_queue_share_bytes);
 
     test_context_socket_close (router);
 }

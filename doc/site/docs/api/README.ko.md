@@ -1,28 +1,30 @@
+[English](README.md) | [한국어](README.ko.md)
 
-# zlink API 레퍼런스
+[스펙 목차](../README.ko.md)
 
-zlink C 라이브러리는 경량 I/O 스레드와 락프리 큐를 기반으로 구축된 메시징 및
-서비스 디스커버리 툴킷을 제공합니다. 메시지 수신은 두 가지 모드를 지원합니다:
-핸들러를 attach하여 콜백으로 dispatch하는 모드와, `zlink_recv()`로 동기적으로
-pull하는 모드입니다. 소켓은 recv 모드로 시작하며, 핸들러를 attach하면 callback
-모드로 전환됩니다. 이 레퍼런스는 `<zlink.h>`에서 제공하는 모든 공개 함수, 타입,
-상수를 다룹니다.
+# zlink 코어 스펙
 
-## API 그룹
+이 스펙은 zlink 라이브러리의 공개 C 인터페이스를 정의한다.
+이 섹션의 모든 요구사항을 충족하는 구현체는 적합한 zlink C 라이브러리를 구성한다.
+공개 인터페이스는 `core/include/zlink.h`에 정의된다.
 
-| 그룹 | 파일 | 설명 | 함수 수 |
-|------|------|------|---------|
-| 에러 처리 & 버전 | [errors.ko.md](errors.ko.md) | 에러 코드, 에러 문자열, 버전 조회 | 3 |
-| Context | [context.ko.md](context.ko.md) | Context 생성, 종료, 옵션 설정 | 5 |
-| Message | [message.ko.md](message.ko.md) | 메시지 생명주기, 데이터 접근, 속성 | 16 |
-| Socket | [socket.ko.md](socket.ko.md) | 소켓 생성, 핸들러, 옵션, bind/connect, 송수신 | 19 |
-| Monitoring | [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, 이벤트, 피어 검사 | 7 |
-| Events | [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 | - |
-| Registry | [registry.ko.md](registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 | 9 |
-| Discovery | [discovery.ko.md](discovery.ko.md) | 서비스 디스커버리, Registry 연결, TLS, 라우팅 ID | 6 |
-| SPOT | [spot.ko.md](spot.ko.md) | 토픽 기반 PUB/SUB 노드, 퍼블리셔, 서브스크라이버 | 27 |
-| 프록시 & 유틸리티 | [polling.ko.md](polling.ko.md) | 프록시 헬퍼 및 기능 조회 | 3 |
-| Utilities | [utilities.ko.md](utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹, 기능 조회 | ~20 |
+## 스펙 문서
+
+| 문서 | 설명 |
+|------|------|
+| [errors.ko.md](errors.ko.md) | 에러 코드, 에러 문자열, 버전 조회 |
+| [errno-map.ko.md](errno-map.ko.md) | send, request, reply 함수별 errno 매트릭스 |
+| [context.ko.md](context.ko.md) | Context 생성, 종료, 옵션 설정 |
+| [message.ko.md](message.ko.md) | 메시지 생명주기, 데이터 접근, ownership, 속성 |
+| [socket/](socket/README.ko.md) | 소켓 스펙 (공통 + 타입별) |
+| [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, monitor snapshot, 피어 검사 |
+| [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 |
+| [service/README.ko.md](service/README.ko.md) | 서비스 계층 공통 개념과 문서 책임 분리 |
+| [service/registry.ko.md](service/registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 |
+| [service/discovery.ko.md](service/discovery.ko.md) | 서비스 디스커버리, 구독, 피어 조회 |
+| [service/spot.ko.md](service/spot.ko.md) | SPOT 토픽 기반 PUB/SUB, routed 메시징 |
+| [polling.ko.md](polling.ko.md) | 프록시 헬퍼 및 기능 조회 |
+| [utilities.ko.md](utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹 |
 
 ## 타입
 
@@ -30,23 +32,24 @@ pull하는 모드입니다. 소켓은 recv 모드로 시작하며, 핸들러를 
 |------|-----------|------|
 | [`zlink_msg_t`](message.ko.md) | message.ko.md | 불투명 메시지 컨테이너 (64B, 스택 할당 가능) |
 | [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 |
-| `zlink_socket_msg_handler_fn` | socket.ko.md | 소켓 메시지 수신 콜백 (아래 [콜백 타입](#콜백-타입) 참조) |
+| `zlink_socket_msg_handler_fn` | [socket/](socket/README.ko.md) | raw `STREAM` raw 수신 콜백 |
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
 | [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | monitor snapshot (state, queue depth) |
-| [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체 |
 | [`zlink_fd_t`](polling.ko.md) | polling.ko.md | 플랫폼 의존적 파일 디스크립터 타입 |
 
 ## 콜백 타입
 
 | 타입 | 정의 위치 | 설명 |
 |------|-----------|------|
-| [`zlink_socket_msg_handler_fn`](socket.ko.md) | socket.ko.md | 소켓 멀티파트 메시지 dispatch 콜백 |
-| [`zlink_subscribe_handler_fn`](socket.ko.md) | socket.ko.md | 토픽 기반 메시지 dispatch 콜백 |
+| [`zlink_socket_msg_handler_fn`](socket/README.ko.md) | socket/ | raw `STREAM`의 raw 수신 콜백 타입 |
+| [`zlink_stream_packet_handler_fn`](socket/README.ko.md) | socket/ | raw `STREAM`의 packet 수신 콜백 타입 |
+| [`zlink_reply_handler_fn`](socket/README.ko.md) | socket/ | 비동기 request-reply 완료 콜백 |
+| [`zlink_spot_handler_fn`](service/spot.ko.md) | service/spot.ko.md | SPOT routed 메시지 dispatch 콜백 |
+| [`zlink_spot_dispatch_event_handler_fn`](service/spot.ko.md) | service/spot.ko.md | SPOT dispatch 이벤트 콜백 |
 | [`zlink_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |
-| [`zlink_service_monitor_handler_fn`](monitoring.ko.md) | monitoring.ko.md | 서비스 모니터 이벤트 콜백 |
-| [`zlink_send_ready_handler_fn`](socket.ko.md) | socket.ko.md | send-ready 전환 콜백 |
+| [`zlink_send_ready_handler_fn`](socket/README.ko.md) | socket/ | send-ready 전환 콜백 |
 | [`zlink_free_fn`](message.ko.md) | message.ko.md | 제로카피 메시지를 위한 해제 콜백 |
-| [`zlink_timer_fn`](utilities.ko.md) | utilities.ko.md | 타이머 만료 콜백 |
+| [`zlink_timer_handler_fn`](utilities.ko.md) | utilities.ko.md | 타이머 만료 콜백 |
 | [`zlink_thread_fn`](utilities.ko.md) | utilities.ko.md | 스레드 진입점 함수 |
 
 ## 내부 아키텍처
@@ -75,9 +78,9 @@ Public API Facade  →  Service Access Layer  →  Service/Socket Runtime
 Option dispatch는 세 카테고리로 분리되어 각 도메인 소유자가 validation/apply를
 담당한다: core_socket, transport_network, protocol_metadata.
 
-내부 아키텍처 상세는 [POSD 모듈 구조 문서](../internals/posd-module-structure.ko.md)를
+내부 아키텍처 상세는 [POSD 모듈 구조 문서](../../internals/posd-module-structure.ko.md)를
 참조하세요.
 
 ---
 
-개념 가이드와 튜토리얼은 [사용자 가이드](../guide/01-overview.ko.md)를 참조하세요.
+개념 가이드와 튜토리얼은 [사용자 가이드](../../guide/01-overview.ko.md)를 참조하세요.

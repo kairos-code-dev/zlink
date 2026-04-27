@@ -10,8 +10,6 @@
 
 namespace zlink
 {
-class service_monitor_handle_t;
-
 namespace service
 {
 
@@ -154,9 +152,6 @@ class discovery_t
               endpoint_.c_str (), &native)));
         metadata_out_.adopt (&native);
     }
-
-    ZLINK_CPP_NODISCARD service_monitor_handle_t
-    monitor_open (service_monitor_event events_ = service_monitor_event::all);
 
     routing_id_t resolve_spot (const routing_id_t &spot_rid_)
     {

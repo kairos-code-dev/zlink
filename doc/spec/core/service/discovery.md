@@ -238,9 +238,10 @@ Not every call has the same timing constraints, though.
   connect API. Discovery learns the broadcast and uplink paths internally.
 - Use `zlink_discovery_resolve_spot()` when the caller starts from a logical
   `spot_rid` and needs the current destination `node_rid`.
-- Use `zlink_service_monitor_open(discovery, &options)` for state transitions
-  such as `ZLINK_DISCOVERY_SERVICE_UP` and `ZLINK_DISCOVERY_PROVIDERS_CHANGED`.
-  Close with `zlink_monitor_close()`.
+- Use `zlink_discovery_member_peers()` and
+  `zlink_discovery_member_peer_metadata()` for the current Discovery view.
+  When the caller needs a stable service-level picture, poll these query
+  functions and compare snapshots over time.
 - Use Registry topology snapshot/query APIs for global summary inspection.
 - Discovery supports `zlink_set_option(discovery, ZLINK_OPT_*, ...)` which
   applies to its managed socket set as fan-out. No getter

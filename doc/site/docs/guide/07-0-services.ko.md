@@ -97,7 +97,7 @@ publish/subscribe를 함께 수행한다.
   `zlink_spot_subscription_event()`
 - readable 알림은 한 콜백 surface로 통합:
   `zlink_spot_dispatch_event_handler()`
-- 모니터링은 service monitor와 snapshot/query API로 관찰
+- 모니터링은 snapshot/query API로 관찰
 - **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 여러 스레드가
   operational API를 동시에 호출 가능
 

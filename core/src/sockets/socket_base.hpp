@@ -280,6 +280,14 @@ class socket_base_t : public own_t,
                                 size_t routing_id_size_) const;
 
     int monitor_snapshot (zlink_monitor_snapshot_t *out_);
+    bool auto_hwm_policy_enabled () const;
+    auto_hwm_socket_plan_t prepare_auto_hwm_socket_plan (
+      const auto_hwm_context_plan_t &context_);
+    void apply_auto_hwm_socket_plan (
+      const auto_hwm_context_plan_t &context_,
+      const auto_hwm_socket_plan_t &plan_,
+      bool force_apply_,
+      uint32_t recalc_reason_);
     void refresh_auto_hwm_policy (bool force_apply_ = false);
     void set_auto_hwm_role (auto_hwm_role_t role_);
     void set_auto_hwm_scope (auto_hwm_scope_t scope_, size_t scope_count_);

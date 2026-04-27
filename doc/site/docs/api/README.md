@@ -1,28 +1,31 @@
+[English](README.md) | [한국어](README.ko.md)
 
-# zlink API Reference
+[Spec Index](../README.md)
 
-The zlink C library provides a messaging and service-discovery toolkit built
-on top of lightweight I/O threads. Message receiving supports two modes:
-callback dispatch via an attached handler and synchronous pull via
-`zlink_recv()`. Sockets start in recv mode; attaching a handler transitions
-to callback mode. This reference covers every public function, type, and
-constant exported by `<zlink.h>`.
+# zlink Core Specification
 
-## API Groups
+This specification defines the public C interface of the zlink library.
+A conforming implementation MUST provide every function, type, and constant
+described in this section with the specified semantics. The public surface
+is defined in `core/include/zlink.h`.
 
-| Group | File | Description |
-|-------|------|-------------|
-| Error Handling & Version | [errors.md](errors.md) | Error codes, error strings, and version query |
-| Context | [context.md](context.md) | Context creation, termination, and option tuning |
-| Message | [message.md](message.md) | Message lifecycle, data access, and properties |
-| Socket | [socket.md](socket.md) | Socket creation, handler, options, bind/connect, send/recv, pub/sub data-plane, and STREAM API |
-| Monitoring | [monitoring.md](monitoring.md) | Socket monitors, service monitors, and peer inspection |
-| Events | [events.md](events.md) | Canonical event catalog and readiness semantics |
-| Registry | [registry.md](registry.md) | Service registry creation, configuration, topology, and clustering |
-| Discovery | [discovery.md](discovery.md) | Service discovery, subscription, and peer lookup |
-| SPOT | [spot.md](spot.md) | Topic-based PUB/SUB nodes and unified spot facades |
-| Proxy & Utilities | [polling.md](polling.md) | Proxy helpers and capability query |
-| Utilities | [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |
+## Spec Documents
+
+| Document | Description |
+|----------|-------------|
+| [errors.md](errors.md) | Error codes, error strings, and version query |
+| [errno-map.md](errno-map.md) | Errno matrix for send, request, and reply functions |
+| [context.md](context.md) | Context creation, termination, and option tuning |
+| [message.md](message.md) | Message lifecycle, data access, ownership, and properties |
+| [socket/](socket/README.md) | Socket specifications (common + per-type) |
+| [monitoring.md](monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
+| [events.md](events.md) | Canonical event catalog and readiness semantics |
+| [service/README.md](service/README.md) | Shared service-layer concepts and document split |
+| [service/registry.md](service/registry.md) | Service registry creation, configuration, and clustering |
+| [service/discovery.md](service/discovery.md) | Service discovery, subscription, and peer lookup |
+| [service/spot.md](service/spot.md) | SPOT topic-based PUB/SUB and routed messaging |
+| [polling.md](polling.md) | Proxy helpers and capability query |
+| [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |
 
 ## Types
 
@@ -30,23 +33,24 @@ constant exported by `<zlink.h>`.
 |------|-----------|-------------|
 | [`zlink_msg_t`](message.md) | message.md | Opaque message container (64-byte, stack-allocatable) |
 | [`zlink_routing_id_t`](message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
-| `zlink_socket_msg_handler_fn` | socket.md | Socket message receive callback (see [Callback Types](#callback-types)) |
+| `zlink_socket_msg_handler_fn` | [socket/](socket/README.md) | Raw `STREAM` raw receive callback |
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
 | [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |
-| [`zlink_service_event_t`](events.md) | events.md | Service monitor event structure and subject-aware payload |
 | [`zlink_fd_t`](polling.md) | polling.md | Platform-dependent file descriptor type |
 
 ## Callback Types
 
 | Type | Defined in | Description |
 |------|-----------|-------------|
-| [`zlink_socket_msg_handler_fn`](socket.md) | socket.md | Socket multipart message dispatch callback |
-| [`zlink_subscribe_handler_fn`](socket.md) | socket.md | Topic-based message dispatch callback |
+| [`zlink_socket_msg_handler_fn`](socket/README.md) | socket/ | Raw receive callback type for raw `STREAM` |
+| [`zlink_stream_packet_handler_fn`](socket/README.md) | socket/ | Packet receive callback type for raw `STREAM` |
+| [`zlink_reply_handler_fn`](socket/README.md) | socket/ | Asynchronous request-reply completion callback |
+| [`zlink_spot_handler_fn`](service/spot.md) | service/spot.md | SPOT routed message dispatch callback |
+| [`zlink_spot_dispatch_event_handler_fn`](service/spot.md) | service/spot.md | SPOT dispatch event callback |
 | [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
-| [`zlink_service_monitor_handler_fn`](monitoring.md) | monitoring.md | Service monitor event callback |
-| [`zlink_send_ready_handler_fn`](socket.md) | socket.md | Send-ready transition callback |
+| [`zlink_send_ready_handler_fn`](socket/README.md) | socket/ | Send-ready transition callback |
 | [`zlink_free_fn`](message.md) | message.md | Deallocation callback for zero-copy messages |
-| [`zlink_timer_fn`](utilities.md) | utilities.md | Timer expiry callback |
+| [`zlink_timer_handler_fn`](utilities.md) | utilities.md | Timer expiry callback |
 | [`zlink_thread_fn`](utilities.md) | utilities.md | Thread entry-point function |
 
 ## Internal Architecture
@@ -78,8 +82,8 @@ domain owner for validation/apply: core_socket, transport_network,
 protocol_metadata.
 
 For internal architecture details, see the
-[POSD Module Structure](../internals/posd-module-structure.md) document.
+[POSD Module Structure](../../internals/posd-module-structure.md) document.
 
 ---
 
-For conceptual guides and tutorials, see the [User Guide](../guide/01-overview.md).
+For conceptual guides and tutorials, see the [User Guide](../../guide/01-overview.md).

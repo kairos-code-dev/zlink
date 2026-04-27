@@ -4,20 +4,14 @@
 
 #include "api/service_handle_internal.hpp"
 #include "services/spot/spot_pub.hpp"
-#include "services/common/monitor_decode.hpp"
-#include "services/common/socket_monitor_bridge.hpp"
-#include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_control_protocol.hpp"
-#include "services/spot/spot_monitor_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
 #include "core/multipart_send_txn.hpp"
 #include "sockets/socket_base.hpp"
-#include "utils/clock.hpp"
 #include "utils/err.hpp"
 #include "utils/random.hpp"
-#include "utils/sleep.hpp"
 
 #include <string.h>
 namespace zlink
@@ -32,18 +26,6 @@ static void preserve_first_error (int rc_, int *first_error_)
         return;
     *first_error_ = errno != 0 ? errno : EIO;
 }
-
-namespace
-{
-static void emit_monitor_event_batch (service_monitor_hub_t *monitor_,
-                                      zlink_service_event_t *events_,
-                                      size_t count_)
-{
-    if (!monitor_ || !events_ || count_ == 0)
-        return;
-    monitor_->emit_batch (events_, count_);
-}
-}
 }
 
 namespace
@@ -54,56 +36,6 @@ static void spot_pub_send_ready_adapter (void *subject_, void *)
     if (pub)
         pub->dispatch_send_ready ();
 }
-}
-
-static void fill_terminal_monitor_event (zlink_service_event_t *event_,
-                                         uint32_t event_type_,
-                                         const zlink_routing_id_t &rid_)
-{
-    memset (event_, 0, sizeof (*event_));
-    event_->service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
-    event_->event_type = event_type_;
-    event_->detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
-    event_->routing_id = rid_;
-}
-
-static void copy_endpoint (char *dst_, size_t dst_size_, const char *src_)
-{
-    if (!dst_ || dst_size_ == 0)
-        return;
-    dst_[0] = '\0';
-    if (!src_ || src_[0] == '\0')
-        return;
-    const size_t copy_size = strlen (src_) < dst_size_ - 1 ? strlen (src_)
-                                                           : dst_size_ - 1;
-    if (copy_size > 0)
-        memcpy (dst_, src_, copy_size);
-    dst_[copy_size] = '\0';
-}
-
-static void copy_subject (char *dst_, size_t dst_size_, const char *src_)
-{
-    copy_endpoint (dst_, dst_size_, src_);
-}
-
-static void fill_socket_monitor_event (zlink_service_event_t *event_,
-                                       uint32_t event_type_,
-                                       const zlink_monitor_event_t &raw_)
-{
-    memset (event_, 0, sizeof (*event_));
-    event_->service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
-    event_->event_type = event_type_;
-    event_->status = static_cast<int32_t> (raw_.event);
-    event_->value = static_cast<uint32_t> (raw_.value);
-    if (raw_.routing_id.size > 0) {
-        event_->routing_id = raw_.routing_id;
-        event_->detail_flags |= ZLINK_EVENT_DETAIL_PEER_RID;
-    }
-    if (raw_.remote_addr[0] != '\0') {
-        copy_endpoint (event_->endpoint, sizeof (event_->endpoint),
-                       raw_.remote_addr);
-        event_->detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
-    }
 }
 
 spot_pub_t::spot_pub_t (spot_node_t *node_,
@@ -120,13 +52,7 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
     _send_ready_handler (NULL),
     _send_ready_subject (NULL),
     _send_ready_userdata (NULL),
-    _destroying (false),
-    _monitor (node_ ? node_->ctx () : NULL),
-    _monitor_event_queue (),
-    _monitor_event_draining (false),
-    _monitor_event_pending (0),
-    _raw_monitor_socket (NULL),
-    _monitor_task_id (0)
+    _destroying (false)
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
     initialize_routing_id (&_routing_id);
@@ -147,13 +73,6 @@ bool spot_pub_t::check_tag () const
 bool spot_pub_t::is_node_owned_default () const
 {
     return _node_owned_default;
-}
-
-void spot_pub_t::emit_monitor_event (const zlink_service_event_t &event_)
-{
-    if (_destroying.load (std::memory_order_acquire))
-        return;
-    _monitor.emit (event_);
 }
 
 socket_base_t *spot_pub_t::socket () const
@@ -347,14 +266,6 @@ int spot_pub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
     return 0;
 }
 
-void *spot_pub_t::monitor_open (int events_)
-{
-    lock_routing_id ();
-    if (ensure_monitor_bridge_started () != 0)
-        return NULL;
-    return _monitor.open (events_);
-}
-
 bool spot_pub_t::owns_socket (const socket_base_t *socket_) const
 {
     return socket_ && socket_ == socket ();
@@ -386,158 +297,6 @@ void spot_pub_t::dispatch_send_ready ()
                  _send_ready_userdata.load (std::memory_order_acquire));
 }
 
-void spot_pub_t::monitor_task_main (void *arg_)
-{
-    static_cast<spot_pub_t *> (arg_)->pump_monitor_events ();
-}
-
-int spot_pub_t::ensure_monitor_bridge_started ()
-{
-    socket_base_t *socket = this->socket ();
-    scoped_lock_t lock (_sync);
-    if (_raw_monitor_socket)
-        return 0;
-    if (_destroying.load (std::memory_order_acquire)) {
-        errno = EFSM;
-        return -1;
-    }
-    if (!socket) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    void *monitor_socket = open_socket_monitor_bridge (
-      socket, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
-                 | ZLINK_EVENT_DISCONNECTED
-                 | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
-                 | ZLINK_EVENT_CLOSE_FAILED
-                 | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                 | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                 | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
-    if (!monitor_socket)
-        return -1;
-
-    service_control_runtime_t *runtime =
-      _node && _node->ctx () ? _node->ctx ()->service_control_runtime () : NULL;
-    if (!runtime) {
-        static_cast<socket_base_t *> (monitor_socket)->close ();
-        errno = ETERM;
-        return -1;
-    }
-
-    const uint64_t task_id =
-      runtime->add_periodic_task (&spot_pub_t::monitor_task_main, this, 10, true);
-    if (task_id == 0) {
-        static_cast<socket_base_t *> (monitor_socket)->close ();
-        return -1;
-    }
-
-    _raw_monitor_socket = monitor_socket;
-    _monitor_task_id = task_id;
-    return 0;
-}
-
-int spot_pub_t::stop_monitor_bridge ()
-{
-    void *raw_monitor_socket = NULL;
-    uint64_t monitor_task_id = 0;
-    ctx_t *ctx = _node ? _node->ctx () : NULL;
-    socket_base_t *socket = this->socket ();
-    int first_error = 0;
-    {
-        scoped_lock_t lock (_sync);
-        raw_monitor_socket = _raw_monitor_socket;
-        _raw_monitor_socket = NULL;
-        monitor_task_id = _monitor_task_id;
-        _monitor_task_id = 0;
-    }
-
-    if (socket)
-        preserve_first_error (socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR),
-                              &first_error);
-
-    service_control_runtime_t *runtime =
-      ctx ? ctx->service_control_runtime () : NULL;
-    if (runtime && monitor_task_id != 0)
-        preserve_first_error (runtime->remove_task (monitor_task_id), &first_error);
-    if (raw_monitor_socket) {
-        socket_base_t *monitor_socket =
-          static_cast<socket_base_t *> (raw_monitor_socket);
-        if (_node && ctx)
-            preserve_first_error (
-              _node->_lifecycle.close_socket (monitor_socket, 2000),
-                                  &first_error);
-        else {
-            monitor_socket->stop ();
-            monitor_socket->close ();
-            monitor_socket = NULL;
-        }
-    }
-    if (first_error != 0) {
-        errno = first_error;
-        return -1;
-    }
-    return 0;
-}
-
-void spot_pub_t::pump_monitor_events ()
-{
-    void *raw_monitor_socket = NULL;
-    {
-        scoped_lock_t lock (_sync);
-        raw_monitor_socket = _raw_monitor_socket;
-    }
-    if (!raw_monitor_socket)
-        return;
-
-    zlink_pollitem_t item = {raw_monitor_socket, 0, ZLINK_POLLIN, 0};
-    const int poll_rc = zlink_poll (&item, 1, 0, NULL);
-    if (poll_rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
-        return;
-
-    while (true) {
-        zlink_monitor_event_t raw;
-        if (recv_socket_monitor_event (raw_monitor_socket, &raw, ZLINK_DONTWAIT)
-            != 0) {
-            if (errno == EAGAIN || errno == EINTR)
-                return;
-            return;
-        }
-
-        zlink_service_event_t event;
-        switch (raw.event) {
-            case ZLINK_EVENT_CONNECTED:
-            case ZLINK_EVENT_ACCEPTED:
-                fill_socket_monitor_event (&event, zlink_spot_monitor_event_peer_up,
-                                           raw);
-                emit_monitor_event (event);
-                break;
-
-            case ZLINK_EVENT_DISCONNECTED:
-                fill_socket_monitor_event (&event, zlink_spot_monitor_event_peer_down,
-                                           raw);
-                emit_monitor_event (event);
-                break;
-
-            case ZLINK_EVENT_BIND_FAILED:
-            case ZLINK_EVENT_ACCEPT_FAILED:
-            case ZLINK_EVENT_CLOSE_FAILED:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
-            case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
-                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_ERROR,
-                                           raw);
-                event.error_code = static_cast<int32_t> (raw.value);
-                emit_monitor_event (event);
-                submit_error_summary (static_cast<int> (raw.value));
-                break;
-
-            default:
-                break;
-        }
-    }
-}
-
 int spot_pub_t::destroy_internal (bool allow_embedded_default_,
                                   bool notify_node_)
 {
@@ -556,13 +315,6 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
         _node->remove_spot_pub (this);
     if (notify_node_ && _node)
         _node->submit_pub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
-
-    preserve_first_error (stop_monitor_bridge (), &first_error);
-
-    zlink_service_event_t terminal;
-    fill_terminal_monitor_event (&terminal, ZLINK_MONITOR_EVENT_CLOSED,
-                                 _routing_id);
-    _monitor.close_all (&terminal);
 
     if (socket) {
         if (_node)

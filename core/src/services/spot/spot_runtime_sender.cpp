@@ -64,6 +64,10 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
         errno = EFAULT;
         return -1;
     }
+    if (!owner->routed_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
 
     scoped_lock_t lock (owner->_sync);
     if (stop.get () != 0 || faulted
@@ -130,6 +134,10 @@ int spot_runtime_t::ensure_peer_route_sender_socket (
 {
     if (!owner || !owner->_ctx || !out_ || target_endpoint_.empty ()) {
         errno = EFAULT;
+        return -1;
+    }
+    if (!owner->routed_enabled ()) {
+        errno = ENOTSUP;
         return -1;
     }
 

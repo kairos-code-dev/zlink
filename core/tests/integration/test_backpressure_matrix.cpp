@@ -871,8 +871,8 @@ static void setup_spot_case (const char *transport_,
 {
     void *ctx = get_test_context ();
 
-    out_->pub_node = zlink_spot_node_new (ctx);
-    out_->sub_node = zlink_spot_node_new (ctx);
+    out_->pub_node = zlink_spot_node_new (ctx, NULL);
+    out_->sub_node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (out_->pub_node);
     TEST_ASSERT_NOT_NULL (out_->sub_node);
 

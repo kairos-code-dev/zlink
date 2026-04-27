@@ -21,6 +21,11 @@ static void set_string_property(napi_env env,
                                 napi_value obj,
                                 const char *name,
                                 const char *value);
+static napi_value create_monitor_snapshot_value(
+  napi_env env, const zlink_monitor_snapshot_t &snapshot);
+static bool build_spot_node_socket_snapshot_filter(
+  napi_env env, napi_value value,
+  zlink_spot_node_socket_snapshot_filter_t *out);
 
 static const size_t k_spot_send_ready_slot_count = 8;
 
@@ -1539,6 +1544,128 @@ bool build_spot_node_subject_filter(napi_env env,
     return true;
 }
 
+static bool build_spot_node_socket_snapshot_filter(
+  napi_env env,
+  napi_value value,
+  zlink_spot_node_socket_snapshot_filter_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    out->owner = ZLINK_SPOT_NODE_SOCKET_OWNER_ANY;
+    out->socket_type = ZLINK_SOCKET_ANY;
+    if (value == NULL)
+        return false;
+    napi_valuetype type = napi_undefined;
+    if (napi_typeof(env, value, &type) != napi_ok
+        || type == napi_undefined || type == napi_null) {
+        return false;
+    }
+
+    napi_value prop;
+    bool has_prop = false;
+    if (napi_has_named_property(env, value, "owner", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "owner", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->owner = static_cast<zlink_spot_node_socket_owner_t>(raw);
+    }
+    if (napi_has_named_property(env, value, "socketType", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "socketType", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->socket_type = static_cast<zlink_socket_type_t>(raw);
+    }
+    if (napi_has_named_property(env, value, "socketName", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "socketName", &prop) == napi_ok) {
+        std::string socket_name = get_string(env, prop);
+        strncpy(out->socket_name, socket_name.c_str(),
+                sizeof(out->socket_name) - 1);
+    }
+    return true;
+}
+
+static napi_value create_monitor_snapshot_value(
+  napi_env env,
+  const zlink_monitor_snapshot_t &snapshot)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    set_uint32_property(env, obj, "sourceKind",
+                        static_cast<uint32_t>(snapshot.source_kind));
+    set_uint32_property(env, obj, "stateFlags", snapshot.state_flags);
+    set_uint32_property(env, obj, "detailFlags", snapshot.detail_flags);
+    set_int64_property(env, obj, "sndPendingMsgs",
+                       static_cast<int64_t>(snapshot.snd_pending_msgs));
+    set_int64_property(env, obj, "rcvPendingMsgs",
+                       static_cast<int64_t>(snapshot.rcv_pending_msgs));
+    napi_value auto_hwm_enabled;
+    napi_get_boolean(env, snapshot.auto_hwm_enabled != 0, &auto_hwm_enabled);
+    napi_set_named_property(env, obj, "autoHwmEnabled", auto_hwm_enabled);
+    set_uint32_property(env, obj, "autoHwmRole", snapshot.auto_hwm_role);
+    set_uint32_property(env, obj, "autoHwmManagedConnections",
+                        snapshot.auto_hwm_managed_connections);
+    set_uint32_property(env, obj, "autoHwmActiveHwmConnections",
+                        snapshot.auto_hwm_active_hwm_connections);
+    set_uint32_property(env, obj, "autoHwmObservedCount",
+                        snapshot.auto_hwm_observed_count);
+    set_uint32_property(env, obj, "autoHwmPlanningCount",
+                        snapshot.auto_hwm_planning_count);
+    set_uint32_property(env, obj, "autoHwmContextTotalPlanningCount",
+                        snapshot.auto_hwm_context_total_planning_count);
+    set_uint32_property(env, obj, "autoHwmBaseFloorPerConnection",
+                        snapshot.auto_hwm_base_floor_per_connection);
+    set_int64_property(env, obj, "autoHwmAppliedSndHwm",
+                       snapshot.auto_hwm_applied_sndhwm);
+    set_int64_property(env, obj, "autoHwmAppliedRcvHwm",
+                       snapshot.auto_hwm_applied_rcvhwm);
+    set_int64_property(env, obj, "autoHwmRequestedSndBuf",
+                       snapshot.auto_hwm_requested_sndbuf);
+    set_int64_property(env, obj, "autoHwmRequestedRcvBuf",
+                       snapshot.auto_hwm_requested_rcvbuf);
+    set_int64_property(env, obj, "autoHwmEffectiveSndBuf",
+                       snapshot.auto_hwm_effective_sndbuf);
+    set_int64_property(env, obj, "autoHwmEffectiveRcvBuf",
+                       snapshot.auto_hwm_effective_rcvbuf);
+    set_int64_property(env, obj, "autoHwmTotalMemoryBudgetBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_total_memory_budget_bytes));
+    set_int64_property(env, obj, "autoHwmQueueBudgetBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_queue_budget_bytes));
+    set_int64_property(env, obj, "autoHwmTransportBudgetBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_transport_budget_bytes));
+    set_int64_property(env, obj, "autoHwmRuntimeReserveBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_runtime_reserve_bytes));
+    set_int64_property(env, obj, "autoHwmSocketQueueShareBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_socket_queue_share_bytes));
+    set_int64_property(env, obj, "autoHwmSocketMessageSlots",
+                       static_cast<int64_t>(snapshot.auto_hwm_socket_message_slots));
+    set_int64_property(env, obj, "autoHwmEffectiveMessageBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_effective_message_bytes));
+    set_int64_property(env, obj, "autoHwmEstimatedMaxMemoryBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_estimated_max_memory_bytes));
+    set_int64_property(env, obj, "autoHwmLastRecalcMs",
+                       static_cast<int64_t>(snapshot.auto_hwm_last_recalc_ms));
+    set_uint32_property(env, obj, "autoHwmLastRecalcReason",
+                        snapshot.auto_hwm_last_recalc_reason);
+    set_uint32_property(env, obj, "autoHwmSendBlockedRatioPpm",
+                        snapshot.auto_hwm_send_blocked_ratio_ppm);
+    set_uint32_property(env, obj, "autoHwmScope", snapshot.auto_hwm_scope);
+    set_uint32_property(env, obj, "autoHwmScopeCount",
+                        snapshot.auto_hwm_scope_count);
+    set_int64_property(env, obj, "autoHwmAutoBufferBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_auto_buffer_bytes));
+    set_int64_property(env, obj, "autoHwmManualBufferBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_manual_buffer_bytes));
+    set_uint32_property(env, obj, "autoHwmBufferConnections",
+                        snapshot.auto_hwm_buffer_connections);
+    set_int64_property(env, obj, "autoHwmDeferredSndHwm",
+                       snapshot.auto_hwm_deferred_sndhwm);
+    set_int64_property(env, obj, "autoHwmDeferredRcvHwm",
+                       snapshot.auto_hwm_deferred_rcvhwm);
+    return obj;
+}
+
 } // namespace
 
 napi_value router_spot_send(napi_env env, napi_callback_info info)
@@ -1948,12 +2075,31 @@ napi_value router_spot_recv(napi_env env, napi_callback_info info)
 
 napi_value spot_node_new(napi_env env, napi_callback_info info)
 {
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[2];
+    size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     napi_get_value_external(env, argv[0], &ctx);
-    void *node = zlink_spot_node_new(ctx);
+    zlink_spot_node_options_t options;
+    zlink_spot_node_options_t *options_ptr = NULL;
+    memset(&options, 0, sizeof(options));
+    if (argc >= 2) {
+        napi_valuetype type = napi_undefined;
+        if (napi_typeof(env, argv[1], &type) == napi_ok
+            && type != napi_undefined && type != napi_null) {
+            napi_value mode_value;
+            bool has_mode = false;
+            if (napi_has_named_property(env, argv[1], "mode", &has_mode) == napi_ok
+                && has_mode
+                && napi_get_named_property(env, argv[1], "mode", &mode_value) == napi_ok) {
+                uint32_t raw_mode = 0;
+                napi_get_value_uint32(env, mode_value, &raw_mode);
+                options.mode = static_cast<zlink_spot_node_mode_t>(raw_mode);
+                options_ptr = &options;
+            }
+        }
+    }
+    void *node = zlink_spot_node_new(ctx, options_ptr);
     if (!node)
         return throw_last_error(env, "spot_node_new failed");
     napi_value ext;
@@ -2321,6 +2467,53 @@ napi_value spot_node_subjects_snapshot(napi_env env, napi_callback_info info)
         set_uint32_property(env, obj, "activePeerCount", entries[i].active_peer_count);
         set_int64_property(env, obj, "lastChangedMs",
                            static_cast<int64_t>(entries[i].last_changed_ms));
+        napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
+    }
+    return arr;
+}
+
+napi_value spot_node_internal_sockets_snapshot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_spot_node_socket_snapshot_filter_t filter;
+    zlink_spot_node_socket_snapshot_filter_t *filter_ptr =
+      build_spot_node_socket_snapshot_filter(
+        env, argc >= 2 ? argv[1] : NULL, &filter) ? &filter : NULL;
+
+    size_t count = 0;
+    int rc = zlink_spot_node_internal_sockets_snapshot(node, filter_ptr, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_internal_sockets_snapshot failed");
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    if (count == 0)
+        return arr;
+
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> entries(count);
+    rc = zlink_spot_node_internal_sockets_snapshot(
+      node, filter_ptr, entries.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_internal_sockets_snapshot failed");
+    for (size_t i = 0; i < count; ++i) {
+        napi_value obj;
+        napi_create_object(env, &obj);
+        set_uint32_property(env, obj, "owner",
+                            static_cast<uint32_t>(entries[i].owner));
+        set_int64_property(env, obj, "ownerId",
+                           static_cast<int64_t>(entries[i].owner_id));
+        set_string_property(env, obj, "ownerName", entries[i].owner_name);
+        set_string_property(env, obj, "socketName", entries[i].socket_name);
+        set_uint32_property(env, obj, "socketType",
+                            static_cast<uint32_t>(entries[i].socket_type));
+        napi_value visible;
+        napi_get_boolean(env, entries[i].auto_hwm_visible != 0, &visible);
+        napi_set_named_property(env, obj, "autoHwmVisible", visible);
+        napi_value snapshot = create_monitor_snapshot_value(env, entries[i].snapshot);
+        napi_set_named_property(env, obj, "snapshot", snapshot);
         napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
     }
     return arr;

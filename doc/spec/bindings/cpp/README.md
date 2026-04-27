@@ -1042,8 +1042,7 @@ event fires, `value` holds the new `0..100` weight for the peer.
 
 ### monitor_snapshot_t
 
-Runtime status snapshot returned by `monitor_handle_t::snapshot()` and
-`service_monitor_handle_t::snapshot()`.
+Runtime status snapshot returned by `monitor_handle_t::snapshot()`.
 
 ```cpp
 struct monitor_snapshot_t {
@@ -1054,11 +1053,11 @@ struct monitor_snapshot_t {
     uint64_t rcv_pending_msgs;                // recv-queue pending message count
     bool auto_hwm_enabled;                    // automatic HWM currently active
     uint32_t auto_hwm_role;                   // diagnostic role bucket
-    uint32_t auto_hwm_scope;                  // 0=none, 1=shared, 2=per_spot
-    uint32_t auto_hwm_scope_count;            // scope target count
     uint32_t auto_hwm_managed_connections;    // connection count used for HWM planning
     uint32_t auto_hwm_active_hwm_connections; // connection count used to divide HWM slots
-    uint32_t auto_hwm_planning_transport_connections; // connection count used for transport buffers
+    uint32_t auto_hwm_observed_count;         // observed connection count
+    uint32_t auto_hwm_planning_count;         // planning count used by the policy
+    uint32_t auto_hwm_context_total_planning_count; // total planning count across the context
     uint32_t auto_hwm_base_floor_per_connection;      // role floor
     int32_t auto_hwm_applied_sndhwm;          // applied send HWM
     int32_t auto_hwm_applied_rcvhwm;          // applied recv HWM
@@ -1070,51 +1069,22 @@ struct monitor_snapshot_t {
     uint64_t auto_hwm_queue_budget_bytes;
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_group_budget_bytes;
-    uint64_t auto_hwm_role_group_budget_bytes;
-    uint64_t auto_hwm_scope_group_budget_bytes;
-    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_socket_queue_share_bytes;
+    uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_auto_buffer_bytes;
-    uint64_t auto_hwm_manual_buffer_bytes;
-    uint32_t auto_hwm_buffer_connections;
-    uint64_t auto_hwm_control_budget_bytes;
-    uint64_t auto_hwm_routed_budget_bytes;
-    uint64_t auto_hwm_fanout_budget_bytes;
-    uint64_t auto_hwm_recv_ingress_budget_bytes;
-    uint32_t auto_hwm_control_active_connections;
-    uint32_t auto_hwm_routed_active_connections;
-    uint32_t auto_hwm_fanout_active_connections;
-    uint32_t auto_hwm_recv_ingress_active_connections;
     uint64_t auto_hwm_estimated_max_memory_bytes;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
+    uint32_t auto_hwm_send_blocked_ratio_ppm;
+    uint32_t auto_hwm_scope;                  // 0=none, 1=shared, 2=per_spot
+    uint32_t auto_hwm_scope_count;            // scope target count
+    uint64_t auto_hwm_auto_buffer_bytes;
+    uint64_t auto_hwm_manual_buffer_bytes;
+    uint32_t auto_hwm_buffer_connections;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
-    uint32_t auto_hwm_send_blocked_ratio_ppm;
 
     bool is_ready() const noexcept;           // convenience: checks ready bit in state_flags
-};
-```
-
-### service_event_t
-
-Discovery service monitor event payload.
-Returned by `service_monitor_handle_t::recv()`.
-
-```cpp
-struct service_event_t {
-    service_kind_t service_kind;              // ZLINK_SERVICE_KIND_DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET
-    service_event_type_t event_type;          // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
-    uint32_t status;                          // status code
-    uint32_t error_code;                      // errno on error; 0 otherwise
-    uint64_t value;                           // event-specific value
-    uint32_t detail_flags;                    // detail bitmask
-    std::string service_name;                 // service name
-    std::string endpoint;                     // endpoint
-    std::optional<routing_id_t> routing_id;   // peer routing id; nullopt when event carries none
-    std::string subject;                      // subscribe subject (topic)
-    service_event_subject_kind_t subject_kind; // subject kind
 };
 ```
 
@@ -1202,15 +1172,9 @@ enum class disconnect_reason : int {
 };
 ```
 
-#### Service, spot, and topology enums
+#### Spot and topology enums
 
 ```cpp
-enum class service_event_subject_kind : int {
-    none,
-    topic,
-    pattern
-};
-
 enum class monitor_target_kind : int {
     socket,
     discovery,
@@ -1298,8 +1262,6 @@ using monitor_source_kind_t = monitor_source_kind;
 using service_type_t = service_type;
 using service_role_t = service_role;
 using service_kind_t = service_kind;
-using service_event_type_t = service_monitor_event;
-using service_event_subject_kind_t = service_event_subject_kind;
 using monitor_target_kind_t = monitor_target_kind;
 using spot_role_t = spot_socket_role;
 using spot_node_state_t = spot_node_state;
@@ -1565,13 +1527,13 @@ public:
 
 ##### close_error_t
 
-Wraps `close_result_t`. Thrown by socket/service `close()` and
+Wraps `close_result_t`. Thrown by socket `close()` and
 `destroy()` that invoke native close/destroy paths returning
 `zlink_close_result_t`.
 
 **`noexcept` carve-out**: RAII value types that own local resources only
 (`message_t::close()`, `monitor_handle_t::close()`,
-`service_monitor_handle_t::close()`, `poller_t::destroy()`) are marked
+`poller_t::destroy()`) are marked
 `noexcept` because their cleanup cannot fail in a way that the native C
 API reports via `zlink_close_result_t`. These methods do not throw
 `close_error_t`.
@@ -1739,38 +1701,6 @@ class monitor_handle_t {
     static zlink_monitor_handler_fn ignore_handler;
 };
 ```
-
-### service_monitor_handle_t
-
-RAII wrapper for service-level monitoring (discovery peer events, subject changes).
-Starts in recv model. `on_event(...)` transitions one-way to callback-only
-model; after that `recv(...)` fails with busy and `snapshot()` still works.
-
-```cpp
-class service_monitor_handle_t {
-    service_monitor_handle_t();
-    ~service_monitor_handle_t();
-
-    service_monitor_handle_t(service_monitor_handle_t&& other) noexcept;
-    service_monitor_handle_t& operator=(service_monitor_handle_t&& other) noexcept;
-
-    bool valid() const noexcept;
-    void* handle() noexcept;
-    const void* handle() const noexcept;
-
-    /// @throws handler_error_t
-    void on_event(service_event_handler_fn handler, void* userdata = NULL);
-    /// @throws recv_error_t
-    service_event_t recv();
-    /// @throws recv_error_t
-    maybe_t<service_event_t> recv(non_blocking_t);
-    /// @throws config_error_t
-    monitor_snapshot_t snapshot() const;
-    void close() noexcept;
-};
-```
-
----
 
 ## Services
 
@@ -1941,12 +1871,6 @@ struct spot_service_attachment_stats_t {
     uint32_t auto_sub_count;
 };
 
-struct spot_service_monitor_event_t {
-    std::string service_name;
-    spot_service_attachment_role_t role;
-    monitor_event_t event;
-};
-
 struct spot_node_subject_filter_t {
     spot_role_t role;
     std::string subject;
@@ -2019,7 +1943,7 @@ class registry_t {
 ### service::discovery_t
 
 Fixed-service discovery view. Tracks one service type/name pair and
-provides metadata, member peer snapshots, and service monitor access.
+provides metadata and member peer snapshots.
 
 ```cpp
 namespace service {
@@ -2055,9 +1979,6 @@ class discovery_t {
     /// @throws config_error_t
     void member_peer_metadata(service_role service_role, const std::string& endpoint,
                               message_t& metadata_out) const;
-
-    /// @throws config_error_t
-    service_monitor_handle_t monitor_open(service_monitor_event events = service_monitor_event::all);
 
     /// Resolve current owner node rid for a logical spot rid. Intended for
     /// send/request destination lookup. Maps to zlink_discovery_resolve_spot.

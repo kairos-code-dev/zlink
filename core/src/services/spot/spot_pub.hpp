@@ -5,10 +5,8 @@
 
 #include "core/msg.hpp"
 #include "utils/macros.hpp"
-#include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
-#include "../../../external/moodycamel/concurrentqueue.h"
 
 #include <atomic>
 #include <string>
@@ -42,8 +40,8 @@ class spot_pub_t
                                 void *userdata_);
     int routing_id (zlink_routing_id_t *out_) const;
     int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
-    void *monitor_open (int events_);
     socket_base_t *poller_socket () const { return socket (); }
+    socket_base_t *snapshot_socket () const { return socket (); }
     bool owns_socket (const socket_base_t *socket_) const;
     void invoke_send_ready_for_testing ();
     spot_node_t *node () const { return _node; }
@@ -55,13 +53,8 @@ class spot_pub_t
     int abort_create ();
 
   private:
-    static void monitor_task_main (void *arg_);
-    void pump_monitor_events ();
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     void submit_error_summary (int error_code_);
-    int ensure_monitor_bridge_started ();
-    int stop_monitor_bridge ();
-    void emit_monitor_event (const zlink_service_event_t &event_);
     void lock_routing_id ();
     static int initialize_routing_id (zlink_routing_id_t *out_);
     socket_base_t *socket () const;
@@ -80,12 +73,6 @@ class spot_pub_t
     std::atomic<void *> _send_ready_subject;
     std::atomic<void *> _send_ready_userdata;
     std::atomic<bool> _destroying;
-    service_monitor_hub_t _monitor;
-    moodycamel::ConcurrentQueue<zlink_service_event_t> _monitor_event_queue;
-    std::atomic<bool> _monitor_event_draining;
-    std::atomic<uint32_t> _monitor_event_pending;
-    void *_raw_monitor_socket;
-    uint64_t _monitor_task_id;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_pub_t)
 };

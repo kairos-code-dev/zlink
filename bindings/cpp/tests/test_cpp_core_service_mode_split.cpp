@@ -5,7 +5,7 @@
 static void test_spot_node_default_facades_created()
 {
     zlink::context_t ctx;
-    void *node = zlink_spot_node_new (ctx.handle (), NULL, NULL, NULL);
+    void *node = zlink_spot_node_new (ctx.handle (), NULL);
     assert (node != NULL);
 
     assert (zlink_spot_node_default_pub (node) != NULL);

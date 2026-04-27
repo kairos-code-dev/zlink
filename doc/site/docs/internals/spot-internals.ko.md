@@ -51,9 +51,11 @@ flowchart TB
 
 ## 2. 내부 소켓 토폴로지
 
-SpotNode는 시작 시점에 11개의 상시 소켓을 생성하고,
-연결 상태 추적용 monitor 소켓 1개를 추가로 생성한다 (총 12개).
-데이터 전달 경로에서 최초 필요 시점에 sender cache 소켓 3개가 추가로 생성된다.
+SpotNode는 생성 mode에 필요한 socket 묶음만 만든다. `ALL` mode는 topic 묶음과
+routed 묶음을 모두 만든다. `PUBSUB` mode는 routed runtime socket을 만들지
+않고, `ROUTED` mode는 topic runtime socket을 만들지 않는다. 꺼진 묶음은
+snapshot, monitor, 꺼진 API의 첫 호출로도 생성되지 않는다. 세 sender-cache
+socket은 소유한 routed 경로가 존재할 때만 필요 시 생성된다.
 
 ### 2.1 소켓 목록
 
@@ -113,6 +115,10 @@ flowchart LR
 | `mesh_xsub_monitor` | Monitor | — | — | — | CONNECTION_READY/DISCONNECTED 추적 |
 
 모든 inproc endpoint 패턴: `inproc://zlink.spot.{node_id}.{suffix}`
+
+`zlink_spot_node_internal_sockets_snapshot()`은 호출 시점에 실제로 존재하는
+socket만 보고한다. 이 API는 lazy socket을 할당하지 않는다. perf는 이 snapshot을
+사용해 Auto-HWM 출력 row를 결정한다.
 
 ### 2.3 Sender Cache 소켓 (on-demand)
 
@@ -417,30 +423,36 @@ identity lookup 정보가 함께 묶여 있다. 이 routed ingress는 `zlink_spo
 
 ```text
 +------------------------------------------------------------------+
-|  Spot Handle HWM                                                  |
-|  (public facade pub/sub 소켓)                                      |
-|  ┌──────────────────────────────────────────────────────────────┐ |
-|  │  SpotNode Data-Plane HWM                                     │ |
-|  │  ┌─────────────────────────┬────────────────────────────┐    │ |
-|  │  │  SNDHWM 적용 대상:       │  RCVHWM 적용 대상:          │    │ |
-|  │  │  - fanout (PUB)         │  - ingress (SUB)            │    │ |
-|  │  │  - mesh_pub (PUB)       │  - mesh_xsub (XSUB)        │    │ |
-|  │  │  - node_router (SND)    │  - route_ingress (ROUTER)   │    │ |
-|  │  │                         │  - node_router (RCV)        │    │ |
-|  │  └─────────────────────────┴────────────────────────────┘    │ |
-|  │                                                               �� |
-|  │  peer_ctrl은 CONTROL PLANE → 별도 HWM (1024)                 │ |
-|  └──────────────────────────────────────────────────────────────┘ |
+|  Spot Handle HWM                                                 |
+|  (public facade pub/sub sockets)                                 |
+|  +------------------------------------------------------------+  |
+|  |  SpotNode Data-Plane HWM                                  |  |
+|  |  +----------------------+------------------------------+  |  |
+|  |  |  SNDHWM targets      |  RCVHWM targets              |  |  |
+|  |  |  fanout, mesh_pub    |  ingress, mesh_xsub          |  |  |
+|  |  |  node_router send    |  route_ingress, router recv  |  |  |
+|  |  +----------------------+------------------------------+  |  |
+|  |  peer_ctrl uses control-plane HWM separately              |  |
+|  +------------------------------------------------------------+  |
 +------------------------------------------------------------------+
 ```
 
 기본 내부 data-plane HWM은 고정 `1000`이 아니다. SpotNode runtime은
-context auto HWM 정책에서 나온 역할별 값을 쓴다.
+context auto HWM 정책에서 나온 역할별 값을 쓰며, 예산 scope를 두 가지로
+나눈다.
 
-- `fanout`, `mesh_pub`: 기본 floor `16`
-- `ingress`, `mesh_xsub`: 기본 floor `8`
-- `node_router`, `route_ingress`: 기본 floor `8`
-- `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: control 역할로 분리되며 기본 floor `4`
+- shared scope: SpotNode 공유 소켓은 역할 예산 전체를 기준으로 슬롯을 계산한
+  뒤 shared 대상 수로 나눈다.
+- per-spot scope: spot endpoint와 attachment 소켓은 역할 예산을 먼저 spot 수로
+  나눈다.
+
+역할 floor는 예산을 초과하면서까지 강제하지 않는다. scope 예산으로 계산한 슬롯이
+floor보다 작으면 예산에서 나온 값을 그대로 사용한다.
+
+- `fanout`, `mesh_pub`: fanout 역할 floor `16`
+- `ingress`, `mesh_xsub`: recv-ingress 역할 floor `8`
+- `node_router`, `route_ingress`: routed 역할 floor `8`
+- `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: control 역할로 분리되며 floor `4`
 
 Topic과 routed HWM은 `zlink_set_spot_node_option()`으로 독립 설정 가능:
 - `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`
@@ -711,8 +723,8 @@ ingress 경로다.
 |  peer ROUTER mesh (같은 channel SpotNode 사이)                    |
 |  channel DEALER -> ROUTER(server) 경로 (channel 호출)             |
 |------------------------------------------------------------------|
-| service monitor                                                  |
-|  peer state, weight, topology 변경 이벤트                         |
+| snapshot and query plane                                         |
+|  peer state, weight, topology change inspection                  |
 +------------------------------------------------------------------+
 ```
 
@@ -769,12 +781,12 @@ ingress 경로다.
   reply를 다시 `channel_name`으로 재탐색하지 않는다.
 - `DEALER`가 있으나 현재 전송 가능한 peer가 없으면 `ENOTCONN`으로 정규화된다.
 
-### 11.5 Service monitor
+### 11.5 Snapshot과 query 관찰
 
-- `SpotNode` 상태 관찰은 `zlink_service_monitor_open()` /
-  `zlink_service_monitor_recv()`와 snapshot/query API를 사용한다.
-- peer state, 가중치 변경, topology 이벤트가 monitor를 통해 노출된다.
-- monitor event는 Spot dispatch readable plane에 섞이지 않는다.
+- `SpotNode` 상태 관찰은 snapshot/query API를 사용한다.
+- peer state, 가중치 변경, topology 변화가 필요하면 이 결과를 시간에 따라
+  비교해서 판단한다.
+- 이 조회는 Spot dispatch readable plane에 섞이지 않는다.
 
 ### 11.6 Active set 유지
 
@@ -801,9 +813,9 @@ service-aware routing이 `0`을 advertise한 peer를 후보에서 제외할 수 
   제외하고, 후보가 모두 `0`이면 submit은
   `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화되어 반환된다. 직접 SPOT request도
   대상 peer의 remote weight cache가 `0`으로 보이면 같은 결과를 낸다.
-- discovery에서 배운 weight 변경은 service monitor의
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로 노출된다. raw socket의
-  로컬 weight 변경은 별도로 socket monitor의
+- discovery에서 배운 weight 변경은 peer cache를 갱신하고,
+  `zlink_spot_node_peers_snapshot()` / `zlink_spot_node_peers_query()` 결과에
+  반영된다. raw socket의 로컬 weight 변경은 별도로 socket monitor의
   `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 surface된다.
 - provider가 discovery를 통해 재연결되면 registry의 provider weight는
   provider registration으로 다시 구성된다. SpotNode registration은 기본

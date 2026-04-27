@@ -117,6 +117,10 @@ zlink_handler_result_t zlink_spot_handler (void *spot_,
 
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
+    if (!state) {
+        spot_revert_callback_transition (as_spot_handle (spot_));
+        return zlink::handler_result_internal::from_errno (errno);
+    }
     std::lock_guard<std::mutex> lock (state->mutex);
     if (state->recv.request_handler || state->dispatch.handler) {
         spot_revert_callback_transition (as_spot_handle (spot_));
@@ -148,6 +152,10 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler (
 
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
+    if (!state) {
+        spot_revert_callback_transition (as_spot_handle (spot_));
+        return zlink::handler_result_internal::from_errno (errno);
+    }
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         if (state->recv.request_handler || state->dispatch.handler) {
@@ -347,6 +355,8 @@ extern "C" int zlink_spot_request_reply_set_default_timeout (
 
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
+    if (!state)
+        return -1;
     std::lock_guard<std::mutex> lock (state->mutex);
     state->requests.default_timeout_ms = static_cast<uint32_t> (timeout_ms);
     return 0;
@@ -368,6 +378,8 @@ extern "C" int zlink_spot_request_reply_get_default_timeout (
 
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
+    if (!state)
+        return -1;
     int timeout_ms = 0;
     {
         std::lock_guard<std::mutex> lock (state->mutex);

@@ -4,56 +4,13 @@
 
 # 이벤트 카탈로그
 
-이 문서는 raw socket monitor 이벤트와 남아 있는 service monitor 이벤트의
-canonical catalog입니다.
+이 문서는 raw socket monitor 이벤트의 canonical catalog입니다.
 
 사용 기준:
 - [monitoring.ko.md](monitoring.ko.md): monitor API와 peer inspection API
 - 이 문서: 이벤트 의미, payload 필드, 권장 gate
 - [socket-family-monitor-contract-spec.ko.md](../../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md):
   패밀리별 제어 가능 범위와 회귀 테스트 기준
-
-## Service Event 모델
-
-```c
-typedef struct zlink_service_event_t
-{
-    zlink_service_kind_t service_kind;
-    uint32_t event_type;
-    int32_t status;
-    int32_t error_code;
-    uint32_t value;
-    zlink_service_event_detail_mask_t detail_flags;
-    char service_name[256];
-    char endpoint[256];
-    zlink_routing_id_t routing_id;
-    char subject[256];
-    uint32_t subject_kind;
-} zlink_service_event_t;
-```
-
-필드 의미:
-- `value`는 이벤트별 숫자 값이며 aggregate readiness 카운트로 해석하지
-  않습니다.
-- `subject`는 `detail_flags`에 `ZLINK_EVENT_DETAIL_SUBJECT`가 있을 때만
-  유효합니다.
-- `subject_kind`는 `detail_flags`에
-  `ZLINK_EVENT_DETAIL_SUBJECT_KIND`가 있을 때만 유효합니다.
-- 문자열/식별자 필드는 항상 초기화되지만, 계약상 의미는 대응하는
-  `detail_flags` 비트가 있을 때만 유효합니다.
-
-subject kind 상수:
-- `ZLINK_SERVICE_EVENT_SUBJECT_NONE`
-- `ZLINK_SERVICE_EVENT_SUBJECT_TOPIC`
-- `ZLINK_SERVICE_EVENT_SUBJECT_PATTERN`
-
-detail flag:
-- `ZLINK_EVENT_DETAIL_SERVICE_NAME`
-- `ZLINK_EVENT_DETAIL_ENDPOINT`
-- `ZLINK_EVENT_DETAIL_SUBJECT_RID`
-- `ZLINK_EVENT_DETAIL_PEER_RID`
-- `ZLINK_EVENT_DETAIL_SUBJECT`
-- `ZLINK_EVENT_DETAIL_SUBJECT_KIND`
 
 ## semantic level
 
@@ -64,7 +21,7 @@ detail flag:
 권장 perf gate:
 - raw socket perf: `ZLINK_EVENT_CONNECTION_READY`를 expected client 수만큼
   센다
-- SPOT perf: service monitor를 사용하지 않고 explicit `READY/START`
+- SPOT perf: 별도 readiness 스트림을 사용하지 않고 explicit `READY/START`
   barrier protocol을 사용한다
 - delivery-ready 또는 aggregate-ready monitor event를 perf gate로 사용하지 않음
 
@@ -94,36 +51,6 @@ disconnect reason:
 - `ZLINK_DISCONNECT_HANDSHAKE_FAILED`
 - `ZLINK_DISCONNECT_TRANSPORT_ERROR`
 - `ZLINK_DISCONNECT_CTX_TERM`
-
-## Service Monitor 이벤트
-
-### 공통
-
-| 상수 | 의미 |
-|---|---|
-| `ZLINK_MONITOR_EVENT_ERROR` | 오류 발생 |
-| `ZLINK_MONITOR_EVENT_CLOSED` | monitor terminal 이벤트 |
-
-### Discovery
-
-| 상수 | 의미 |
-|---|---|
-| `ZLINK_DISCOVERY_SERVICE_UP` | provider 가용 |
-| `ZLINK_DISCOVERY_SERVICE_DOWN` | provider 소실 |
-| `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 |
-
-### 서비스 공통 (service-aware)
-
-| 상수 | 의미 |
-|---|---|
-| `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED` | 같은 서비스의 peer 가중치가 바뀜. 소켓 쪽 대응 이벤트는 `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`(= `ZLINK_EVENT_PEER_WEIGHT_CHANGED`)이다 |
-
-service monitor는 `zlink_monitor_target_kind_t`의
-`ZLINK_MONITOR_TARGET_DISCOVERY`와 `ZLINK_MONITOR_TARGET_SPOT_NODE`를 대상으로
-받습니다. Spot facade(`ZLINK_MONITOR_TARGET_SPOT`)는 공개 monitor 대상이
-아닙니다. SpotNode monitor event는 `SpotNode`를 대상으로
-`zlink_service_monitor_open()`을 연 뒤 `zlink_service_monitor_recv()`로
-꺼냅니다. SpotNode 전용 별도 monitor recv API는 없습니다.
 
 ## 예시
 

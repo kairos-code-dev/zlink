@@ -219,25 +219,19 @@ public sealed class MonitorSnapshot
         uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs,
         uint autoHwmEnabled, uint autoHwmRole,
         uint autoHwmManagedConnections, uint autoHwmActiveHwmConnections,
-        uint autoHwmPlanningTransportConnections,
+        uint autoHwmObservedCount,
+        uint autoHwmPlanningCount,
+        uint autoHwmContextTotalPlanningCount,
         uint autoHwmBaseFloorPerConnection, int autoHwmAppliedSndHwm,
         int autoHwmAppliedRcvHwm, int autoHwmRequestedSndBuf,
         int autoHwmRequestedRcvBuf, int autoHwmEffectiveSndBuf,
         int autoHwmEffectiveRcvBuf, ulong autoHwmTotalMemoryBudgetBytes,
         ulong autoHwmQueueBudgetBytes, ulong autoHwmTransportBudgetBytes,
-        ulong autoHwmRuntimeReserveBytes, ulong autoHwmGroupBudgetBytes,
-        ulong autoHwmGroupMessageSlots, ulong autoHwmEffectiveMessageBytes,
-        ulong autoHwmControlBudgetBytes, ulong autoHwmRoutedBudgetBytes,
-        ulong autoHwmFanoutBudgetBytes, ulong autoHwmRecvIngressBudgetBytes,
-        uint autoHwmControlActiveConnections,
-        uint autoHwmRoutedActiveConnections,
-        uint autoHwmFanoutActiveConnections,
-        uint autoHwmRecvIngressActiveConnections,
+        ulong autoHwmRuntimeReserveBytes, ulong autoHwmSocketQueueShareBytes,
+        ulong autoHwmSocketMessageSlots, ulong autoHwmEffectiveMessageBytes,
         ulong autoHwmEstimatedMaxMemoryBytes, ulong autoHwmLastRecalcMs,
         uint autoHwmLastRecalcReason, uint autoHwmSendBlockedRatioPpm,
         uint autoHwmScope, uint autoHwmScopeCount,
-        ulong autoHwmRoleGroupBudgetBytes,
-        ulong autoHwmScopeGroupBudgetBytes,
         ulong autoHwmAutoBufferBytes, ulong autoHwmManualBufferBytes,
         uint autoHwmBufferConnections,
         int autoHwmDeferredSndHwm, int autoHwmDeferredRcvHwm)
@@ -251,7 +245,9 @@ public sealed class MonitorSnapshot
         AutoHwmRole = autoHwmRole;
         AutoHwmManagedConnections = autoHwmManagedConnections;
         AutoHwmActiveHwmConnections = autoHwmActiveHwmConnections;
-        AutoHwmPlanningTransportConnections = autoHwmPlanningTransportConnections;
+        AutoHwmObservedCount = autoHwmObservedCount;
+        AutoHwmPlanningCount = autoHwmPlanningCount;
+        AutoHwmContextTotalPlanningCount = autoHwmContextTotalPlanningCount;
         AutoHwmBaseFloorPerConnection = autoHwmBaseFloorPerConnection;
         AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
         AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;
@@ -263,25 +259,15 @@ public sealed class MonitorSnapshot
         AutoHwmQueueBudgetBytes = autoHwmQueueBudgetBytes;
         AutoHwmTransportBudgetBytes = autoHwmTransportBudgetBytes;
         AutoHwmRuntimeReserveBytes = autoHwmRuntimeReserveBytes;
-        AutoHwmGroupBudgetBytes = autoHwmGroupBudgetBytes;
-        AutoHwmGroupMessageSlots = autoHwmGroupMessageSlots;
+        AutoHwmSocketQueueShareBytes = autoHwmSocketQueueShareBytes;
+        AutoHwmSocketMessageSlots = autoHwmSocketMessageSlots;
         AutoHwmEffectiveMessageBytes = autoHwmEffectiveMessageBytes;
-        AutoHwmControlBudgetBytes = autoHwmControlBudgetBytes;
-        AutoHwmRoutedBudgetBytes = autoHwmRoutedBudgetBytes;
-        AutoHwmFanoutBudgetBytes = autoHwmFanoutBudgetBytes;
-        AutoHwmRecvIngressBudgetBytes = autoHwmRecvIngressBudgetBytes;
-        AutoHwmControlActiveConnections = autoHwmControlActiveConnections;
-        AutoHwmRoutedActiveConnections = autoHwmRoutedActiveConnections;
-        AutoHwmFanoutActiveConnections = autoHwmFanoutActiveConnections;
-        AutoHwmRecvIngressActiveConnections = autoHwmRecvIngressActiveConnections;
         AutoHwmEstimatedMaxMemoryBytes = autoHwmEstimatedMaxMemoryBytes;
         AutoHwmLastRecalcMs = autoHwmLastRecalcMs;
         AutoHwmLastRecalcReason = autoHwmLastRecalcReason;
         AutoHwmSendBlockedRatioPpm = autoHwmSendBlockedRatioPpm;
         AutoHwmScope = autoHwmScope;
         AutoHwmScopeCount = autoHwmScopeCount;
-        AutoHwmRoleGroupBudgetBytes = autoHwmRoleGroupBudgetBytes;
-        AutoHwmScopeGroupBudgetBytes = autoHwmScopeGroupBudgetBytes;
         AutoHwmAutoBufferBytes = autoHwmAutoBufferBytes;
         AutoHwmManualBufferBytes = autoHwmManualBufferBytes;
         AutoHwmBufferConnections = autoHwmBufferConnections;
@@ -298,7 +284,9 @@ public sealed class MonitorSnapshot
     public uint AutoHwmRole { get; }
     public uint AutoHwmManagedConnections { get; }
     public uint AutoHwmActiveHwmConnections { get; }
-    public uint AutoHwmPlanningTransportConnections { get; }
+    public uint AutoHwmObservedCount { get; }
+    public uint AutoHwmPlanningCount { get; }
+    public uint AutoHwmContextTotalPlanningCount { get; }
     public uint AutoHwmBaseFloorPerConnection { get; }
     public int AutoHwmAppliedSndHwm { get; }
     public int AutoHwmAppliedRcvHwm { get; }
@@ -310,25 +298,15 @@ public sealed class MonitorSnapshot
     public ulong AutoHwmQueueBudgetBytes { get; }
     public ulong AutoHwmTransportBudgetBytes { get; }
     public ulong AutoHwmRuntimeReserveBytes { get; }
-    public ulong AutoHwmGroupBudgetBytes { get; }
-    public ulong AutoHwmGroupMessageSlots { get; }
+    public ulong AutoHwmSocketQueueShareBytes { get; }
+    public ulong AutoHwmSocketMessageSlots { get; }
     public ulong AutoHwmEffectiveMessageBytes { get; }
-    public ulong AutoHwmControlBudgetBytes { get; }
-    public ulong AutoHwmRoutedBudgetBytes { get; }
-    public ulong AutoHwmFanoutBudgetBytes { get; }
-    public ulong AutoHwmRecvIngressBudgetBytes { get; }
-    public uint AutoHwmControlActiveConnections { get; }
-    public uint AutoHwmRoutedActiveConnections { get; }
-    public uint AutoHwmFanoutActiveConnections { get; }
-    public uint AutoHwmRecvIngressActiveConnections { get; }
     public ulong AutoHwmEstimatedMaxMemoryBytes { get; }
     public ulong AutoHwmLastRecalcMs { get; }
     public uint AutoHwmLastRecalcReason { get; }
     public uint AutoHwmSendBlockedRatioPpm { get; }
     public uint AutoHwmScope { get; }
     public uint AutoHwmScopeCount { get; }
-    public ulong AutoHwmRoleGroupBudgetBytes { get; }
-    public ulong AutoHwmScopeGroupBudgetBytes { get; }
     public ulong AutoHwmAutoBufferBytes { get; }
     public ulong AutoHwmManualBufferBytes { get; }
     public uint AutoHwmBufferConnections { get; }
@@ -344,7 +322,9 @@ public sealed class MonitorSnapshot
             native.RcvPendingMsgs, native.AutoHwmEnabled, native.AutoHwmRole,
             native.AutoHwmManagedConnections,
             native.AutoHwmActiveHwmConnections,
-            native.AutoHwmPlanningTransportConnections,
+            native.AutoHwmObservedCount,
+            native.AutoHwmPlanningCount,
+            native.AutoHwmContextTotalPlanningCount,
             native.AutoHwmBaseFloorPerConnection,
             native.AutoHwmAppliedSndHwm, native.AutoHwmAppliedRcvHwm,
             native.AutoHwmRequestedSndBuf, native.AutoHwmRequestedRcvBuf,
@@ -353,25 +333,15 @@ public sealed class MonitorSnapshot
             native.AutoHwmQueueBudgetBytes,
             native.AutoHwmTransportBudgetBytes,
             native.AutoHwmRuntimeReserveBytes,
-            native.AutoHwmGroupBudgetBytes,
-            native.AutoHwmGroupMessageSlots,
+            native.AutoHwmSocketQueueShareBytes,
+            native.AutoHwmSocketMessageSlots,
             native.AutoHwmEffectiveMessageBytes,
-            native.AutoHwmControlBudgetBytes,
-            native.AutoHwmRoutedBudgetBytes,
-            native.AutoHwmFanoutBudgetBytes,
-            native.AutoHwmRecvIngressBudgetBytes,
-            native.AutoHwmControlActiveConnections,
-            native.AutoHwmRoutedActiveConnections,
-            native.AutoHwmFanoutActiveConnections,
-            native.AutoHwmRecvIngressActiveConnections,
             native.AutoHwmEstimatedMaxMemoryBytes,
             native.AutoHwmLastRecalcMs,
             native.AutoHwmLastRecalcReason,
             native.AutoHwmSendBlockedRatioPpm,
             native.AutoHwmScope,
             native.AutoHwmScopeCount,
-            native.AutoHwmRoleGroupBudgetBytes,
-            native.AutoHwmScopeGroupBudgetBytes,
             native.AutoHwmAutoBufferBytes,
             native.AutoHwmManualBufferBytes,
             native.AutoHwmBufferConnections,

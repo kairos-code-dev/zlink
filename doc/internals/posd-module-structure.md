@@ -92,7 +92,7 @@ flowchart TB
 | `socket_api.cpp` · `socket_message_api.cpp` | Socket creation, bind/connect, send/recv |
 | `message_api.cpp` | Message lifecycle |
 | `service_api.cpp` · `service_*_api.cpp` | Service lifecycle, mode transition, handler registration |
-| `monitor_api.cpp` · `monitor_*_api.cpp` | Socket/service monitor open, recv, handler |
+| `monitor_api.cpp` · `monitor_*_api.cpp` | Socket monitor open, recv, handler |
 | `poller_api.cpp` | Poller operations |
 | `zlink_option.cpp` · `zlink_option_*_api.cpp` | Option set/get dispatch |
 

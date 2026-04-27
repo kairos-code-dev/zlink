@@ -6,7 +6,6 @@
 #include "core/ctx.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
-#include "services/common/service_monitor.hpp"
 #include "services/discovery/discovery_observer.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
 #include "utils/atomic_counter.hpp"
@@ -60,8 +59,6 @@ class discovery_t
     int member_peer_metadata (uint16_t service_role_,
                               const char *endpoint_,
                               zlink_msg_t *metadata_out_) const;
-    void *monitor_open (int events_);
-
     int destroy ();
     int register_service (uint16_t service_type_,
                           const char *service_name_,
@@ -254,7 +251,6 @@ class discovery_t
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     discovery_local_state_t _local_state;
     std::map<topology_key_t, topology_summary_t> _summary_store;
-    service_monitor_hub_t _monitor;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };
 }

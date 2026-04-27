@@ -154,8 +154,7 @@ zlink_close_result_t zlink_close (void *s_)
         }
 
         const bool monitor_dispatch_detached =
-          !monitor_state->socket_handler.load (std::memory_order_acquire)
-          && !monitor_state->service_handler.load (std::memory_order_acquire);
+          !monitor_state->socket_handler.load (std::memory_order_acquire);
         if (monitor_state->close_requested.load (std::memory_order_acquire)
             || monitor_state->callback_depth.load (std::memory_order_acquire)
                  > 0) {

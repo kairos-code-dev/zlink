@@ -3,7 +3,6 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_sub.hpp"
-#include "services/spot/spot_monitor_internal.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
@@ -27,53 +26,6 @@ static std::string routing_id_to_hex (const zlink_routing_id_t &rid_)
         out.push_back (hex[byte & 0x0f]);
     }
     return out;
-}
-
-static void copy_endpoint (char *dst_, size_t dst_size_, const char *src_)
-{
-    if (!dst_ || dst_size_ == 0)
-        return;
-    dst_[0] = '\0';
-    if (!src_ || src_[0] == '\0')
-        return;
-    const size_t copy_size = strlen (src_) < dst_size_ - 1 ? strlen (src_)
-                                                           : dst_size_ - 1;
-    if (copy_size > 0)
-        memcpy (dst_, src_, copy_size);
-    dst_[copy_size] = '\0';
-}
-
-static void copy_subject (char *dst_, size_t dst_size_, const char *src_)
-{
-    copy_endpoint (dst_, dst_size_, src_);
-}
-
-static void fill_subject_monitor_event (zlink_service_event_t *event_,
-                                        uint32_t event_type_,
-                                        const zlink_routing_id_t &rid_,
-                                        const char *endpoint_,
-                                        const char *subject_,
-                                        uint32_t subject_kind_,
-                                        uint32_t value_)
-{
-    memset (event_, 0, sizeof (*event_));
-    event_->service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
-    event_->event_type = event_type_;
-    event_->routing_id = rid_;
-    event_->value = value_;
-    event_->detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
-    if (endpoint_ && endpoint_[0] != '\0') {
-        copy_endpoint (event_->endpoint, sizeof (event_->endpoint), endpoint_);
-        event_->detail_flags |= ZLINK_EVENT_DETAIL_ENDPOINT;
-    }
-    if (subject_ && subject_[0] != '\0') {
-        copy_subject (event_->subject, sizeof (event_->subject), subject_);
-        event_->detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT;
-    }
-    if (subject_kind_ != ZLINK_SERVICE_EVENT_SUBJECT_NONE) {
-        event_->subject_kind = subject_kind_;
-        event_->detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT_KIND;
-    }
 }
 
 static std::string make_subject_key (const std::string &subject_,
@@ -347,15 +299,8 @@ void spot_sub_t::append_subjects_for_raw_filter (
 void spot_sub_t::emit_filter_applied_event (const char *subject_,
                                             uint32_t subject_kind_)
 {
-    zlink_service_event_t event;
-    {
-        scoped_lock_t lock (_sync);
-        fill_subject_monitor_event (&event,
-                                    zlink_spot_monitor_event_sub_filter_applied,
-                                    _routing_id, NULL, subject_,
-                                    subject_kind_, 0);
-    }
-    emit_monitor_event (event);
+    LIBZLINK_UNUSED (subject_);
+    LIBZLINK_UNUSED (subject_kind_);
 }
 
 void spot_sub_t::mark_subject_subscription_ready (

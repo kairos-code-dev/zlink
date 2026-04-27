@@ -418,13 +418,6 @@ int discovery_t::destroy ()
     }
     _stop.set (1);
     emit_ready_changed (0);
-    zlink_service_event_t terminal;
-    memset (&terminal, 0, sizeof (terminal));
-    terminal.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
-    terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
-    terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
-    terminal.routing_id = _bootstrap_runtime->routing_id_value ();
-    _monitor.close_all (&terminal);
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _task_id != 0)
         runtime->remove_task (_task_id);

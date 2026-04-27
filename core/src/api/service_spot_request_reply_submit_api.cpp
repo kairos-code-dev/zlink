@@ -129,6 +129,8 @@ int start_spot_request_common (void *spot_,
 
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
+    if (!state)
+        return -1;
     pending_spot_key_t key;
     uint64_t request_seq = 0;
     {
@@ -426,6 +428,8 @@ zlink_submit_result_t spot_request_channel_impl (
 
     std::shared_ptr<spot_request_reply_state_t> state =
       find_or_create_spot_state (spot_);
+    if (!state)
+        return zlink::submit_result_internal::from_errno (errno);
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         if (state->completion_state.channel_reply_sources.count (router) == 0) {

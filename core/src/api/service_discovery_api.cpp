@@ -199,10 +199,6 @@ zlink_close_result_t zlink_discovery_destroy (void **discovery_p_)
       zlink::discovery_access_t::from_handle (*discovery_p_);
     if (!discovery)
         return ZLINK_CLOSE_INVALID_HANDLE;
-    if (has_open_service_monitor_for_subject (discovery)) {
-        errno = EBUSY;
-        return ZLINK_CLOSE_BUSY;
-    }
     if (zlink::discovery_access_t::destroy (discovery) != 0)
         return zlink::close_result_internal::from_rc (-1);
     zlink::discovery_access_t::delete_handle (discovery);

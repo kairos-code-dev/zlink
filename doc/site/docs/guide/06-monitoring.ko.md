@@ -170,11 +170,9 @@ DEALER는 가중치가 `0`인 ROUTER를 후보에서 자동으로 제외하므�
 ROUTER가 모두 `0`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
 실패하기 시작한다.
 
-서비스 계층에서 같은 변화를 보고 싶다면 그 peer를 관리하는
-`Discovery` handle에 service monitor를 연다. 그 monitor는
-`ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를 내보낼 수 있고,
-`zlink_service_monitor_recv()`로 바뀐 peer의 endpoint, routing id,
-새 가중치를 읽을 수 있다.
+서비스 계층에서 같은 변화를 보고 싶다면
+`zlink_discovery_member_peers()`를 주기적으로 읽고 이전 결과와 비교한다.
+현재 공개 계약에는 별도 서비스 이벤트 스트림이 없다.
 
 ## 5. 이벤트 흐름 다이어그램
 
@@ -312,7 +310,13 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 | `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, approximate) |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | 현재 적용된 자동 HWM 값 |
 | `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 transport buffer 값 |
-| `auto_hwm_total_memory_budget_bytes` 등 budget 필드 | 현재 context 예산과 role별 배분 상태 |
+| `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | 자동 관리 buffer 비용과 사용자가 직접 설정한 buffer 진단값 |
+| `auto_hwm_effective_message_bytes` | queue share를 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |
+| `auto_hwm_observed_count` / `auto_hwm_planning_count` | 현재 관찰 연결 수와 정책이 계산에 쓴 계획 수 |
+| `auto_hwm_context_total_planning_count` | context 전체에 대해 합산한 계획 수 |
+| `auto_hwm_socket_queue_share_bytes` / `auto_hwm_socket_message_slots` | 현재 소켓에 배정된 queue share와 결과 슬롯 수 |
+| `auto_hwm_scope` / `auto_hwm_scope_count` | shared/per-spot을 포함한 HWM 계산 scope |
+| `auto_hwm_total_memory_budget_bytes` 등 budget 필드 | 현재 context 예산과 buffer 예약 상태 |
 
 `snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
 이 값이 HWM에 근접하면 백프레셔가 발생하고 있다는 의미이다.
@@ -359,79 +363,17 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 }
 ```
 
-## 8.1 서비스 모니터
+## 8.1 서비스 계층 상태 확인
 
-서비스 모니터는 공개 service-monitor surface를 유지하는 서비스 핸들의
-상태 변화를 관찰한다. 대표 대상은 Discovery이며, socket monitor와는
-별도 API다.
+현재 공개 C API에는 별도 서비스 이벤트 handle이 없다. 서비스 계층
+상태는 snapshot 또는 query 결과를 읽고 시간에 따라 비교해서 확인한다.
 
-- **이벤트 타입**: `zlink_service_event_t` (socket monitor의 `zlink_monitor_event_t`와 다름)
-- **콜백 타입**: `zlink_service_monitor_handler_fn`
-- **열기**: `zlink_service_monitor_open(target, &options)`
-- **닫기**: `zlink_monitor_close(&mon)` (socket monitor와 동일)
-
-### 서비스 모니터 열기
-
-```c
-/* Discovery service monitor */
-zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_SERVICE_MONITOR_EVENT_ERROR
-              | ZLINK_SERVICE_MONITOR_EVENT_CLOSED
-              | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED
-};
-void *mon = zlink_service_monitor_open(discovery, &opts);
-```
-
-공개 service monitor 를 제공하는 handle 을 넘기면 된다.
-SPOT 과 SpotNode 는 공개 service-monitor surface 를 제공하지 않는다.
-
-### 콜백 모드
-
-```c
-void on_service_event(const zlink_service_event_t *ev, void *userdata)
-{
-    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED) {
-        printf("provider set changed\n");
-    }
-    if (ev->event_type & ZLINK_SERVICE_MONITOR_EVENT_ERROR) {
-        printf("service error: %d\n", ev->error_code);
-    }
-}
-
-zlink_service_monitor_handler(mon, on_service_event, NULL);
-```
-
-### Recv 모드
-
-```c
-zlink_service_event_t ev;
-zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
-if (rc == ZLINK_RECV_OK) {
-    printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
-}
-```
-
-### 서비스 이벤트 전체 표
-
-`zlink_service_monitor_open()`으로 관찰하는 이벤트다.
-서비스별로 발생하는 이벤트가 다르다.
-
-#### Discovery 이벤트
-
-| 상수 | 설명 | `value` | 이후 가능한 동작 |
-|---|---|---|---|
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | 검색된 서비스 활성화 | — | — |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | 검색된 서비스 비활성화 | — | — |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 | — | — |
-
-#### 공통 이벤트 (모든 서비스)
-
-| 상수 | 설명 |
-|---|---|
-| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | 에러 발생 |
-| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | 모니터 닫힘 |
-
-상세 이벤트 목록은 [events.ko.md](../spec/core/events.ko.md)를 참고한다.
+- Discovery membership: `zlink_discovery_member_peers()`
+- Registry overview: `zlink_registry_status_snapshot()`,
+  `zlink_registry_topology_snapshot()`
+- Spot node state: `zlink_spot_node_status_snapshot()`,
+  `zlink_spot_node_peers_snapshot()`,
+  `zlink_spot_node_subjects_snapshot()`
 
 ## 9. 다중 소켓 모니터링
 
@@ -496,15 +438,8 @@ zlink_monitor_snapshot(mon, &snapshot);
 ### 원격 모니터링
 
 모니터 API는 **inproc 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
-원격 모니터링이 필요하면 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
-
-```c
-zlink_service_event_t ev;
-zlink_recv_result_t rc = zlink_service_monitor_recv(mon, &ev, 0);
-if (rc == ZLINK_RECV_OK) {
-    printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
-}
-```
+원격 모니터링이 필요하면 socket monitor callback에서 이벤트를 수신하고 PUB
+소켓으로 중계한다.
 
 ```c
 zlink_set_subscription(sub, "topic");
@@ -632,7 +567,7 @@ printf("sndq=%llu, rcvq=%llu\n",
 
 ### 11.4 서비스 — SPOT
 
-SPOT 은 공개 service-monitor surface 를 제공하지 않는다.
+SPOT 은 별도 공개 monitor handle 을 제공하지 않는다.
 SPOT perf 는 monitor event 대신 명시적 benchmark control barrier 를 사용한다.
 
 ```c

@@ -1,3 +1,4 @@
+[English](07-4-registry.md) | [한국어](07-4-registry.ko.md)
 
 # Registry (Central Service Directory)
 
@@ -161,14 +162,13 @@ memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_send(client, &part, 1, 0);
 
 /* Receive reply */
+zlink_routing_id_t source_rid;
 zlink_msg_t *reply_parts = NULL;
 size_t reply_count = 0;
-zlink_recv(client, &reply_parts, &reply_count, 0);
+zlink_recv(client, &source_rid, &reply_parts, &reply_count, 0);
 
 /* Cleanup (reverse order) */
-zlink_close(client);
 zlink_discovery_destroy(&client_disc);
-zlink_close(server);
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
@@ -432,11 +432,11 @@ free(peers);
 /* Retrieve opaque metadata blob for a specific peer */
 zlink_msg_t metadata;
 zlink_msg_init(&metadata);
-int rc = zlink_registry_member_peer_metadata(registry,
+zlink_config_result_t rc = zlink_registry_member_peer_metadata(registry,
     ZLINK_SERVICE_TYPE_SOCKET, "payment-service",
     ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
     &metadata);
-if (rc == 0) {
+if (rc == ZLINK_CONFIG_OK) {
     printf("metadata size=%zu\n", zlink_msg_size(&metadata));
 }
 zlink_msg_close(&metadata);
@@ -529,29 +529,29 @@ publication.
   mechanism
 - Eventually consistent: all nodes converge to the same state
 
-## 8. Role Separation: Registry vs Monitor
+## 8. Role Separation: Registry vs Local Snapshots
 
-Registry and local service monitors serve different purposes:
+Registry and local snapshot/query APIs serve different purposes:
 
-| Aspect | Registry Topology | Local Service Monitor |
-|--------|-------------------|----------------------|
+| Aspect | Registry Topology | Local Snapshot / Query |
+|--------|-------------------|------------------------|
 | **Scope** | Global summary across all services | Detailed local state for one service handle |
-| **Granularity** | Coarse: `READY` / `LOST` / `ERROR` | Fine: individual connection events, filter application |
-| **Freshness** | Eventually consistent (heartbeat + broadcast cycle) | Real-time (immediate callback) |
+| **Granularity** | Coarse: `READY` / `LOST` / `ERROR` | Fine: peer lists, local state, subject lists |
+| **Freshness** | Eventually consistent (heartbeat + broadcast cycle) | Caller-controlled polling interval |
 | **Access** | Local or remote via query client | Local only (same process) |
 
 ### When to Use Which
 
 - **Registry topology**: "How many `payment-service` instances are READY
   cluster-wide?" — first-pass operational assessment.
-- **Local monitor**: "Why is this specific service not connecting to
+- **Local snapshot/query**: "Why is this specific service not connecting to
   peer X?" — detailed root-cause analysis.
 
 Recommended workflow:
 
 1. Query Registry topology snapshot for a global overview
 2. Identify anomalies (`LOST`, `ERROR` entries)
-3. Drill into the affected process's local service monitor for details
+3. Drill into the affected process's local snapshot/query results for details
 
 ## 9. Next Steps
 

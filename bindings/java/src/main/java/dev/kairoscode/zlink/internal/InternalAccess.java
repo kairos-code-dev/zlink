@@ -8,7 +8,6 @@ import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
-import dev.kairoscode.zlink.ServiceMonitor;
 import java.lang.foreign.MemorySegment;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.Spot;
@@ -35,10 +34,6 @@ public final class InternalAccess {
 
     public static MemorySegment spotHandle(Spot spot) {
         return dev.kairoscode.zlink.InternalAccess.spotHandle(spot);
-    }
-
-    public static ServiceMonitor serviceMonitor(MemorySegment handle) {
-        return dev.kairoscode.zlink.InternalAccess.serviceMonitor(handle);
     }
 
     public static MemorySegment messageDataSegment(Message message) {

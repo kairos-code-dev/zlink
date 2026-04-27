@@ -14,9 +14,9 @@
 
 namespace zlink
 {
-void *spot_node_access_t::create (ctx_t *ctx_)
+void *spot_node_access_t::create (ctx_t *ctx_, zlink_spot_node_mode_t mode_)
 {
-    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_);
+    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, mode_);
     if (!node) {
         errno = ENOMEM;
         return NULL;
@@ -219,6 +219,21 @@ int spot_node_access_t::subjects_snapshot (
     return node_->snapshot_subjects (filter_, out_);
 }
 
+int spot_node_access_t::internal_sockets_snapshot (
+  spot_node_t *node_,
+  const zlink_spot_node_socket_snapshot_filter_t *filter_,
+  std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return -1;
+    }
+    service_public_api_scope_t admission (node_->public_api_guard ());
+    if (!admission.acquired ())
+        return -1;
+    return node_->snapshot_internal_sockets (filter_, out_);
+}
+
 int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
 {
     if (!node_ || !discovery_) {
@@ -276,55 +291,24 @@ void spot_node_access_t::unregister_spot_facade (spot_node_t *node_,
         node_->unregister_spot_facade (spot_);
 }
 
-void *spot_node_access_t::monitor_open (spot_node_t *node_,
-                                        zlink_spot_role_t role_,
-                                        int events_,
-                                        void **snapshot_subject_out_,
-                                        spot_node_monitor_subject_t *subject_kind_out_)
-{
-    if (snapshot_subject_out_)
-        *snapshot_subject_out_ = NULL;
-    if (subject_kind_out_)
-        *subject_kind_out_ = spot_node_monitor_subject_none;
-
-    if (!node_) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    service_public_api_scope_t admission (node_->public_api_guard ());
-    if (!admission.acquired ())
-        return NULL;
-
-    if (role_ == ZLINK_SPOT_ROLE_PUB) {
-        spot_pub_t *pub = node_->ensure_default_pub ();
-        if (!pub)
-            return NULL;
-        if (snapshot_subject_out_)
-            *snapshot_subject_out_ = pub;
-        if (subject_kind_out_)
-            *subject_kind_out_ = spot_node_monitor_subject_pub;
-        return pub->monitor_open (events_);
-    }
-
-    if (role_ == ZLINK_SPOT_ROLE_SUB) {
-        spot_internal_receiver_t *receiver = node_->ensure_internal_receiver ();
-        if (!receiver)
-            return NULL;
-        if (snapshot_subject_out_)
-            *snapshot_subject_out_ = receiver;
-        if (subject_kind_out_)
-            *subject_kind_out_ = spot_node_monitor_subject_internal_receiver;
-        return receiver->monitor_open (events_);
-    }
-
-    errno = EINVAL;
-    return NULL;
-}
-
 spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
 {
     return node_ ? node_->runtime () : NULL;
+}
+
+zlink_spot_node_mode_t spot_node_access_t::mode (spot_node_t *node_)
+{
+    return node_ ? node_->spot_node_mode () : ZLINK_SPOT_NODE_MODE_ALL;
+}
+
+bool spot_node_access_t::pubsub_enabled (spot_node_t *node_)
+{
+    return node_ && node_->pubsub_enabled ();
+}
+
+bool spot_node_access_t::routed_enabled (spot_node_t *node_)
+{
+    return node_ && node_->routed_enabled ();
 }
 
 void spot_node_access_t::track_owned_socket (spot_node_t *node_,

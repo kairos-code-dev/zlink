@@ -49,7 +49,9 @@ class ZlinkMonitorSnapshot(ctypes.Structure):
         ("auto_hwm_role", ctypes.c_uint32),
         ("auto_hwm_managed_connections", ctypes.c_uint32),
         ("auto_hwm_active_hwm_connections", ctypes.c_uint32),
-        ("auto_hwm_planning_transport_connections", ctypes.c_uint32),
+        ("auto_hwm_observed_count", ctypes.c_uint32),
+        ("auto_hwm_planning_count", ctypes.c_uint32),
+        ("auto_hwm_context_total_planning_count", ctypes.c_uint32),
         ("auto_hwm_base_floor_per_connection", ctypes.c_uint32),
         ("auto_hwm_applied_sndhwm", ctypes.c_int32),
         ("auto_hwm_applied_rcvhwm", ctypes.c_int32),
@@ -61,51 +63,21 @@ class ZlinkMonitorSnapshot(ctypes.Structure):
         ("auto_hwm_queue_budget_bytes", ctypes.c_uint64),
         ("auto_hwm_transport_budget_bytes", ctypes.c_uint64),
         ("auto_hwm_runtime_reserve_bytes", ctypes.c_uint64),
-        ("auto_hwm_group_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_group_message_slots", ctypes.c_uint64),
+        ("auto_hwm_socket_queue_share_bytes", ctypes.c_uint64),
+        ("auto_hwm_socket_message_slots", ctypes.c_uint64),
         ("auto_hwm_effective_message_bytes", ctypes.c_uint64),
-        ("auto_hwm_control_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_routed_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_fanout_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_recv_ingress_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_control_active_connections", ctypes.c_uint32),
-        ("auto_hwm_routed_active_connections", ctypes.c_uint32),
-        ("auto_hwm_fanout_active_connections", ctypes.c_uint32),
-        ("auto_hwm_recv_ingress_active_connections", ctypes.c_uint32),
         ("auto_hwm_estimated_max_memory_bytes", ctypes.c_uint64),
         ("auto_hwm_last_recalc_ms", ctypes.c_uint64),
         ("auto_hwm_last_recalc_reason", ctypes.c_uint32),
         ("auto_hwm_send_blocked_ratio_ppm", ctypes.c_uint32),
         ("auto_hwm_scope", ctypes.c_uint32),
         ("auto_hwm_scope_count", ctypes.c_uint32),
-        ("auto_hwm_role_group_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_scope_group_budget_bytes", ctypes.c_uint64),
         ("auto_hwm_auto_buffer_bytes", ctypes.c_uint64),
         ("auto_hwm_manual_buffer_bytes", ctypes.c_uint64),
         ("auto_hwm_buffer_connections", ctypes.c_uint32),
         ("auto_hwm_deferred_sndhwm", ctypes.c_int32),
         ("auto_hwm_deferred_rcvhwm", ctypes.c_int32),
     ]
-
-
-class ZlinkServiceEvent(ctypes.Structure):
-    _fields_ = [
-        ("service_kind", ctypes.c_uint32),
-        ("event_type", ctypes.c_uint32),
-        ("status", ctypes.c_int32),
-        ("error_code", ctypes.c_int32),
-        ("value", ctypes.c_uint32),
-        ("detail_flags", ctypes.c_uint32),
-        ("service_name", ctypes.c_char * 256),
-        ("endpoint", ctypes.c_char * 256),
-        ("routing_id", ZlinkRoutingId),
-        ("subject", ctypes.c_char * 256),
-        ("subject_kind", ctypes.c_uint32),
-    ]
-
-
-class ZlinkServiceMonitorOpenOptions(ctypes.Structure):
-    _fields_ = [("events", ctypes.c_uint32)]
 
 
 class ZlinkSpotNodeStatus(ctypes.Structure):
@@ -161,6 +133,30 @@ class ZlinkSpotNodeSubjectFilter(ctypes.Structure):
         ("role", ctypes.c_uint32),
         ("subject", ctypes.c_char * 256),
         ("subject_kind", ctypes.c_uint32),
+    ]
+
+
+class ZlinkSpotNodeOptions(ctypes.Structure):
+    _fields_ = [("mode", ctypes.c_uint32)]
+
+
+class ZlinkSpotNodeSocketSnapshotFilter(ctypes.Structure):
+    _fields_ = [
+        ("owner", ctypes.c_uint32),
+        ("socket_type", ctypes.c_uint32),
+        ("socket_name", ctypes.c_char * 64),
+    ]
+
+
+class ZlinkSpotNodeSocketSnapshotEntry(ctypes.Structure):
+    _fields_ = [
+        ("owner", ctypes.c_uint32),
+        ("owner_id", ctypes.c_uint64),
+        ("owner_name", ctypes.c_char * 64),
+        ("socket_name", ctypes.c_char * 64),
+        ("socket_type", ctypes.c_uint32),
+        ("auto_hwm_visible", ctypes.c_uint32),
+        ("snapshot", ZlinkMonitorSnapshot),
     ]
 
 
@@ -877,7 +873,11 @@ class _Lib:
             [ctypes.POINTER(ctypes.c_void_p)],
             ctypes.c_int,
         )
-        self._require("zlink_spot_node_new", [ctypes.c_void_p], ctypes.c_void_p)
+        self._require(
+            "zlink_spot_node_new",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkSpotNodeOptions)],
+            ctypes.c_void_p,
+        )
         self._require(
             "zlink_spot_node_destroy",
             [ctypes.POINTER(ctypes.c_void_p)],
@@ -953,6 +953,16 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkSpotNodeSubjectFilter),
                 ctypes.POINTER(ZlinkSpotNodeSubjectEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_internal_sockets_snapshot",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkSpotNodeSocketSnapshotFilter),
+                ctypes.POINTER(ZlinkSpotNodeSocketSnapshotEntry),
                 ctypes.POINTER(ctypes.c_size_t),
             ],
             ctypes.c_int,
@@ -1107,22 +1117,6 @@ class _Lib:
                 ctypes.c_uint32,
                 ctypes.c_int,
             ],
-            ctypes.c_int,
-        )
-
-        self._require(
-            "zlink_service_monitor_open",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkServiceMonitorOpenOptions)],
-            ctypes.c_void_p,
-        )
-        self._require(
-            "zlink_service_monitor_handler",
-            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_service_monitor_recv",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkServiceEvent), ctypes.c_uint32],
             ctypes.c_int,
         )
 

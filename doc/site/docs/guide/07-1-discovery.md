@@ -1,3 +1,4 @@
+[English](07-1-discovery.md) | [한국어](07-1-discovery.ko.md)
 
 # Service Discovery
 
@@ -162,6 +163,46 @@ For socket family services, Discovery matches peers by **service role**:
 The role is derived automatically from the socket type at attach time --
 no configuration needed.
 
+For ROUTER ↔ ROUTER auto-connect, where both sides could start an
+outbound, **the library decides which side dials per pair.** Two ROUTERs
+that see each other through Discovery still produce only one `connect`.
+You do not need to configure who-dials-whom; the rule is a built-in
+internal policy that reduces duplicate-connection races and handover
+churn. It applies to Discovery-managed auto-connect only -- manual
+`zlink_connect()` calls made through the raw API are not mediated by the
+library.
+
+#### Who dials whom -- pairwise initiator rule
+
+When Discovery pairs two ROUTER peers of the same service, the library
+picks exactly one side as the initiator per pair. The comparison key is
+a total order over the advertised `routing_id` first, then the advertise
+endpoint as a tie-breaker, so both ends independently arrive at the same
+decision. Users do not configure this -- same-service ROUTERs can be
+added to Discovery symmetrically, and only the chosen side produces a
+`connect`.
+
+```mermaid
+sequenceDiagram
+    participant A as ROUTER orders-exec-a
+    participant Reg as Registry
+    participant B as ROUTER orders-exec-b
+
+    A->>Reg: register (rid=A, advertise=tcp://hostA:9100)
+    B->>Reg: register (rid=B, advertise=tcp://hostB:9100)
+    Reg-->>A: service_list {A, B}
+    Reg-->>B: service_list {A, B}
+    Note over A,B: both evaluate order(A, B): A < B → B dials A
+    B->>A: connect (tcp://hostA:9100)
+```
+
+The exceptional case where the same `routing_id` appears from two different
+hosts (misconfiguration, zombie instance, rolling restart overlap) still uses
+the duplicate policy. Keep the default
+`ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_REJECT` to preserve the
+existing pipe, or set `ZLINK_RID_DUPLICATE_HANDOVER` explicitly when the newer
+connection should take over.
+
 ## 3. Registry Setup
 
 Registry is the central coordination server. In production, deploy a
@@ -213,20 +254,19 @@ void *discovery = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
-/* Observe service state via monitor */
-zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
-            | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
-};
-void *mon = zlink_service_monitor_open(discovery, &opts);
-zlink_service_monitor_handler(mon, on_discovery_event, NULL);
+/* Poll the current member set */
+size_t peer_count = 0;
+zlink_discovery_member_peers(discovery, NULL, &peer_count);
 
-/* ... Discovery delivers events through the callback ... */
+/* ... compare successive snapshots in application code ... */
 
 /* Cleanup */
-zlink_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
+
+For the new multi-service SpotNode topology, use
+`ZLINK_SERVICE_TYPE_SOCKET` per attached socket — see the SPOT guide
+[§3.1 Discovery-Based Automatic Mesh](07-3-spot.md#31-discovery-based-automatic-mesh).
 
 ## 4.1 Socket Family Discovery
 
@@ -257,6 +297,45 @@ zlink_discovery_destroy(&discovery);
 **Lifecycle:** Once a socket is attached, manual `connect`, `disconnect`,
 `unbind`, and `close` calls fail. Destroying the Discovery instance
 terminates all attached sockets.
+
+## 4.2 Attaching Channel Dealers to a SpotNode
+
+A `SpotNode` uses one SPOT Discovery for its own mesh wiring
+(see the [SPOT Guide](07-3-spot.md)). When the node needs to call
+**other channels**, it attaches a `DEALER` per channel.
+
+```c
+void *node = zlink_spot_node_new(ctx, NULL);
+zlink_spot_node_bind(node, "tcp://*:9000");
+
+/* SPOT mesh — this node's own channel */
+void *spot_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SPOT, "alpha");
+zlink_discovery_connect_registry(spot_disc, "tcp://registry1:5551");
+zlink_spot_node_attach_discovery(node, spot_disc);
+
+/* Channel call to "orders-exec" via automatic dealer */
+void *orders_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+zlink_discovery_connect_registry(orders_disc, "tcp://registry1:5551");
+
+void *orders_dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_socket_attach_discovery(orders_dealer, orders_disc);
+
+zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
+```
+
+Rules to keep in mind:
+
+- **One SPOT Discovery per node.** `zlink_spot_node_attach_discovery()`
+  accepts only `ZLINK_SERVICE_TYPE_SPOT`. A second attach is `EBUSY`.
+- **One DEALER per channel name.** Automatic and manual attach share the
+  same namespace. Attaching a second `DEALER` for the same channel fails
+  with `EBUSY`.
+- **Attached dealers are dedicated.** The caller keeps socket ownership,
+  but must not reuse the socket elsewhere after attach.
+- **Discovery destroy removes its peer set.** Destroying a Discovery
+  removes only the automatic connections it was supplying.
 
 ## 5. Liveness and Summary Updates
 

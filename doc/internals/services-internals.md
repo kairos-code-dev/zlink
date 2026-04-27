@@ -727,10 +727,8 @@ Baseline behavior:
   `ZLINK_SUBMIT_NOT_FOUND`.
 - Raw socket changes are exposed to the application via the socket monitor
   event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. Discovery-learned service peer
-  weight changes use the service monitor event
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`. The implementation
-  carries both the peer identifier (`routing_id`) and the new weight inside
-  the same event payload.
+  weight changes update the local peer tables that feed discovery and SPOT
+  snapshot/query APIs.
 
 ## 11. Pairwise initiator rule (Discovery auto-connect)
 

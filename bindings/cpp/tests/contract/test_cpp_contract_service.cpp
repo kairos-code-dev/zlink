@@ -237,22 +237,6 @@ template<typename T> class has_close_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-template<typename T> class has_on_event_t
-{
-  private:
-    template<typename U>
-    static auto test (int)
-      -> decltype (std::declval<U &> ().on_event (
-                      static_cast<zlink::service_event_handler_fn> (NULL),
-                      static_cast<void *> (NULL)),
-                    std::true_type ());
-
-    template<typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<T> (0))::value;
-};
-
 template<typename T> class has_resolve_spot_t
 {
   private:
@@ -327,8 +311,8 @@ static_assert (!has_attach_router_t<zlink::service::spot_node_t>::value,
                "spot_node_t must not expose attach_router");
 static_assert (!has_attach_pubsub_t<zlink::service::spot_node_t>::value,
                "spot_node_t must not expose attach_pubsub");
-static_assert (has_monitor_open_t<zlink::service::discovery_t>::value,
-               "discovery_t must expose monitor_open");
+static_assert (!has_monitor_open_t<zlink::service::discovery_t>::value,
+               "discovery_t must not expose monitor_open");
 static_assert (has_resolve_spot_t<zlink::service::discovery_t>::value,
                "discovery_t must expose resolve_spot");
 static_assert (has_set_dealer_peer_mode_t<zlink::service::discovery_t>::value,
@@ -339,17 +323,10 @@ static_assert (has_close_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose close");
 static_assert (has_close_t<zlink::service::discovery_t>::value,
                "discovery_t must expose close");
-static_assert (has_close_t<zlink::service_monitor_handle_t>::value,
-               "service_monitor_handle_t must expose close");
-static_assert (has_on_event_t<zlink::service_monitor_handle_t>::value,
-               "service_monitor_handle_t must expose on_event");
 static_assert (has_routing_id_getter_t<zlink::service::spot_t>::value,
                "spot_t must expose routing_id()");
 static_assert (has_routing_id_getter_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose routing_id()");
-static_assert (!std::is_constructible<zlink::service_monitor_handle_t, void *>::value,
-               "service_monitor_handle_t must not expose a raw void* constructor");
-
 void test_registry_query_and_discovery_metadata ()
 {
     zlink::context_t ctx;

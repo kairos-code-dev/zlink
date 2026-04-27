@@ -9,8 +9,6 @@ from ._ffi import (
     ZlinkPollerEvent,
     ZlinkRegistryTopologyEntry,
     ZlinkRoutingId,
-    ZlinkServiceEvent,
-    ZlinkServiceMonitorOpenOptions,
     ZlinkSocketMonitorOpenOptions,
     lib,
 )
@@ -24,8 +22,6 @@ __all__ = [
     "ZlinkPollerEvent",
     "ZlinkRegistryTopologyEntry",
     "ZlinkRoutingId",
-    "ZlinkServiceEvent",
-    "ZlinkServiceMonitorOpenOptions",
     "ZlinkSocketMonitorOpenOptions",
     "lib",
 ]

@@ -31,8 +31,7 @@ discovery_t::discovery_t (ctx_t *ctx_,
     _service_type (service_type_),
     _service_name (service_name_),
     _dealer_peer_mode (ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER),
-    _discovery_summary_enabled (true),
-    _monitor (ctx_)
+    _discovery_summary_enabled (true)
 {
     zlink_assert (_ctx);
     zlink_assert (discovery_protocol::is_valid_service_type (_service_type));

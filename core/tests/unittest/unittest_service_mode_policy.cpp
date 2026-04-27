@@ -226,7 +226,7 @@ void test_spot_callback_policy ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -345,7 +345,7 @@ void test_spot_node_topic_surface_and_callback_modes ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     void *poller = zlink_poller_new ();
@@ -405,7 +405,7 @@ void test_spot_tls_configuration_is_node_owned ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -439,7 +439,7 @@ void test_spot_node_discovery_attach_limits_service_aware_facades ()
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
@@ -466,7 +466,7 @@ void test_spot_node_attach_discovery_rejects_preexisting_multiple_facades ()
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     void *spot_a = zlink_spot_new (node);
@@ -495,7 +495,7 @@ void test_spot_node_attach_discovery_rejects_duplicate_discovery ()
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
@@ -519,7 +519,7 @@ void test_spot_publish_service_name_matches_attached_discovery ()
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
 
@@ -550,7 +550,7 @@ void test_spot_publish_service_name_rejects_mismatch ()
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
 
@@ -579,7 +579,7 @@ void test_spot_node_manual_service_attachment_limits_service_aware_facades ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -864,7 +864,7 @@ void test_spot_node_attach_discovery_rejects_unsupported_socket_role ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     void *registry = zlink_registry_new (ctx);
@@ -962,7 +962,7 @@ void test_spot_service_send_and_request_fail_for_missing_service ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -998,7 +998,7 @@ void test_spot_send_channel_rejects_inactive_dealer_attachment ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
@@ -1031,7 +1031,7 @@ void test_spot_node_attach_channel_dealer_manual_rejects_duplicate_channel ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *dealer_a = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *dealer_b = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (node);
@@ -1089,7 +1089,7 @@ void test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch (
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_NOT_NULL (dealer);
@@ -1113,7 +1113,7 @@ void test_spot_node_attach_pub_ingress_rejects_duplicate_attach ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     void *pub_a = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     void *pub_b = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     TEST_ASSERT_NOT_NULL (node);

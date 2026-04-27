@@ -150,7 +150,7 @@ static void destroy_node_and_default_handle (void **node_p_)
 static void *create_node (void *ctx_, const char *service_name_)
 {
     LIBZLINK_UNUSED (service_name_);
-    void *node = zlink_spot_node_new (ctx_);
+    void *node = zlink_spot_node_new (ctx_, NULL);
     TEST_ASSERT_NOT_NULL (node);
     set_linger_zero (node);
     return node;
@@ -348,8 +348,8 @@ static void test_spot_unified_spot_basic ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *pub_node = zlink_spot_node_new (ctx);
-    void *sub_node = zlink_spot_node_new (ctx);
+    void *pub_node = zlink_spot_node_new (ctx, NULL);
+    void *sub_node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
     void *pub_spot = zlink_spot_new (pub_node);

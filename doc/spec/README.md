@@ -25,7 +25,7 @@ zlink C library.
 | [context.md](core/context.md) | Context creation, termination, and option tuning |
 | [message.md](core/message.md) | Message lifecycle, data access, ownership, and properties |
 | [socket/](core/socket/README.md) | Socket specifications (common + per-type) |
-| [monitoring.md](core/monitoring.md) | Socket monitors, service monitors, and peer inspection |
+| [monitoring.md](core/monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
 | [events.md](core/events.md) | Canonical event catalog and readiness semantics |
 | [service/README.md](core/service/README.md) | Shared service-layer concepts and document split |
 | [registry.md](core/service/registry.md) | Service registry creation, configuration, and clustering |

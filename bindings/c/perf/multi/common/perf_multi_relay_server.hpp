@@ -59,7 +59,7 @@ struct relay_server_config_t
 };
 
 inline bool relay_router_once (void *server,
-                               int socket_type,
+                               zlink_socket_type_t socket_type,
                                int hwm_value,
                                const std::string &transport,
                                size_t *active_msg_size)
@@ -107,7 +107,7 @@ inline bool relay_router_once (void *server,
         apply_benchmark_hwm (server, hwm_value);
         *active_msg_size = msg_size;
         perf_print_auto_hwm_snapshot (
-          server, false, "server", transport, true, msg_size);
+          server, false, "server", transport, true, msg_size, socket_type);
     }
 
     const zlink_submit_result_t send_rc =

@@ -215,6 +215,10 @@ func (c *Context) SpotNode() (*SpotNode, error) {
 	return newSpotNode(c)
 }
 
+func (c *Context) SpotNodeWithOptions(options SpotNodeOptions) (*SpotNode, error) {
+	return newSpotNodeWithOptions(c, &options)
+}
+
 func (c *Context) Registry() (*Registry, error) {
 	return newRegistry(c)
 }

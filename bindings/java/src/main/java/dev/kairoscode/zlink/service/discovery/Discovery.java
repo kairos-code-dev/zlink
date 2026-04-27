@@ -6,7 +6,6 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
 import dev.kairoscode.zlink.service.registry.ServiceRole;
-import dev.kairoscode.zlink.ServiceMonitorEventMask;
 import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
@@ -26,8 +25,7 @@ import java.util.Objects;
  * Fixed-service discovery view.
  *
  * <p>One instance tracks exactly one {@link ServiceType}/{@code serviceName}
- * pair and exposes discovery metadata, member peer snapshots, and
- * service-monitor access for that view.
+ * pair and exposes discovery metadata plus member peer snapshots for that view.
  */
 public final class Discovery implements AutoCloseable {
     private MemorySegment handle;
@@ -166,22 +164,6 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    /** Opens a service monitor for this discovery handle with all events. */
-    public dev.kairoscode.zlink.ServiceMonitor monitorOpen() {
-        return monitorOpen(ServiceMonitorEventMask.ALL);
-    }
-
-    /** Opens a service monitor for this discovery handle and typed service mask. */
-    public dev.kairoscode.zlink.ServiceMonitor monitorOpen(
-      ServiceMonitorEventMask... events) {
-        MemorySegment monitor = Native.serviceMonitorOpen(handle,
-          resolveMonitorEvents(events));
-        if (monitor == null || monitor.address() == 0) {
-            throw ZlinkException.fromLastError("zlink_service_monitor_open");
-        }
-        return InternalAccess.serviceMonitor(monitor);
-    }
-
     /** Returns the current discovery member peers snapshot. */
     public List<MemberPeerEntry> memberPeers() {
         int count = memberPeerCount();
@@ -296,15 +278,4 @@ public final class Discovery implements AutoCloseable {
         return InternalAccess.routingIdFromTrusted(value);
     }
 
-    private static int resolveMonitorEvents(ServiceMonitorEventMask... events) {
-        if (events == null || events.length == 0) {
-            return (int) ServiceMonitorEventMask.ALL.getValue();
-        }
-        long mask = 0L;
-        for (ServiceMonitorEventMask event : events) {
-            Objects.requireNonNull(event, "events");
-            mask |= event.getValue();
-        }
-        return Math.toIntExact(mask);
-    }
 }

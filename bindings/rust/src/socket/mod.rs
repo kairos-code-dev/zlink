@@ -18,7 +18,7 @@ pub use sub::SubSocket;
 pub use xpub::XPubSocket;
 pub use xsub::XSubSocket;
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::time::Duration;
@@ -26,10 +26,10 @@ use std::time::Duration;
 use crate::ctx::duration_to_millis;
 use crate::domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
 use crate::error::{
-    check_bind_rc, check_close_rc, check_config_rc, check_connect_rc, check_handler_rc,
-    check_recv_rc, check_submit_rc, config_validation_error, last_errno, submit_validation_error,
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
-    SubmitError,
+    SubmitError, check_bind_rc, check_close_rc, check_config_rc, check_connect_rc,
+    check_handler_rc, check_recv_rc, check_submit_rc, config_validation_error, last_errno,
+    submit_validation_error,
 };
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};

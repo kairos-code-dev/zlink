@@ -20,7 +20,9 @@ internal struct ZlinkMonitorSnapshot
     public uint AutoHwmRole;
     public uint AutoHwmManagedConnections;
     public uint AutoHwmActiveHwmConnections;
-    public uint AutoHwmPlanningTransportConnections;
+    public uint AutoHwmObservedCount;
+    public uint AutoHwmPlanningCount;
+    public uint AutoHwmContextTotalPlanningCount;
     public uint AutoHwmBaseFloorPerConnection;
     public int AutoHwmAppliedSndHwm;
     public int AutoHwmAppliedRcvHwm;
@@ -32,52 +34,20 @@ internal struct ZlinkMonitorSnapshot
     public ulong AutoHwmQueueBudgetBytes;
     public ulong AutoHwmTransportBudgetBytes;
     public ulong AutoHwmRuntimeReserveBytes;
-    public ulong AutoHwmGroupBudgetBytes;
-    public ulong AutoHwmGroupMessageSlots;
+    public ulong AutoHwmSocketQueueShareBytes;
+    public ulong AutoHwmSocketMessageSlots;
     public ulong AutoHwmEffectiveMessageBytes;
-    public ulong AutoHwmControlBudgetBytes;
-    public ulong AutoHwmRoutedBudgetBytes;
-    public ulong AutoHwmFanoutBudgetBytes;
-    public ulong AutoHwmRecvIngressBudgetBytes;
-    public uint AutoHwmControlActiveConnections;
-    public uint AutoHwmRoutedActiveConnections;
-    public uint AutoHwmFanoutActiveConnections;
-    public uint AutoHwmRecvIngressActiveConnections;
     public ulong AutoHwmEstimatedMaxMemoryBytes;
     public ulong AutoHwmLastRecalcMs;
     public uint AutoHwmLastRecalcReason;
     public uint AutoHwmSendBlockedRatioPpm;
     public uint AutoHwmScope;
     public uint AutoHwmScopeCount;
-    public ulong AutoHwmRoleGroupBudgetBytes;
-    public ulong AutoHwmScopeGroupBudgetBytes;
     public ulong AutoHwmAutoBufferBytes;
     public ulong AutoHwmManualBufferBytes;
     public uint AutoHwmBufferConnections;
     public int AutoHwmDeferredSndHwm;
     public int AutoHwmDeferredRcvHwm;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct ZlinkServiceMonitorOpenOptions
-{
-    public uint Events;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal unsafe struct ZlinkServiceEvent
-{
-    public int ServiceKind;
-    public uint EventType;
-    public int Status;
-    public int ErrorCode;
-    public uint Value;
-    public uint DetailFlags;
-    public fixed byte ServiceName[256];
-    public fixed byte Endpoint[256];
-    public ZlinkRoutingId RoutingId;
-    public fixed byte Subject[256];
-    public uint SubjectKind;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -134,6 +104,32 @@ internal unsafe struct ZlinkSpotNodeSubjectFilter
     public int Role;
     public fixed byte Subject[256];
     public uint SubjectKind;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotNodeOptions
+{
+    public global::Zlink.SpotNodeMode Mode;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkSpotNodeSocketSnapshotFilter
+{
+    public global::Zlink.SpotNodeSocketOwner Owner;
+    public global::Zlink.SpotNodeSocketType SocketType;
+    public fixed byte SocketName[64];
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkSpotNodeSocketSnapshotEntry
+{
+    public global::Zlink.SpotNodeSocketOwner Owner;
+    public ulong OwnerId;
+    public fixed byte OwnerName[64];
+    public fixed byte SocketName[64];
+    public global::Zlink.SpotNodeSocketType SocketType;
+    public uint AutoHwmVisible;
+    public ZlinkMonitorSnapshot Snapshot;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -221,12 +217,4 @@ internal unsafe struct ZlinkSpotServiceAttachmentStats
     public uint AutoRouterCount;
     public uint AutoPubCount;
     public uint AutoSubCount;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal unsafe struct ZlinkSpotServiceMonitorEvent
-{
-    public fixed byte ServiceName[256];
-    public int Role;
-    public ZlinkMonitorEvent Event;
 }

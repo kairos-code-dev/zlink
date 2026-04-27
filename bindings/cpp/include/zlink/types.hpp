@@ -24,6 +24,7 @@ class topic_message_t;
 
 enum class socket_type : int
 {
+    any = ZLINK_SOCKET_ANY,
     pair = ZLINK_SOCKET_PAIR,
     pub = ZLINK_SOCKET_PUB,
     sub = ZLINK_SOCKET_SUB,
@@ -976,41 +977,6 @@ enum class service_kind : int
     socket = ZLINK_SERVICE_KIND_SOCKET
 };
 
-enum class service_event_subject_kind : int
-{
-    none = ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-    topic = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC,
-    pattern = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
-};
-
-enum class monitor_target_kind : int
-{
-    socket = ZLINK_MONITOR_TARGET_SOCKET,
-    discovery = ZLINK_MONITOR_TARGET_DISCOVERY,
-    spot = ZLINK_MONITOR_TARGET_SPOT,
-    spot_node = ZLINK_MONITOR_TARGET_SPOT_NODE
-};
-
-enum class service_monitor_event : uint32_t
-{
-    error = ZLINK_SERVICE_MONITOR_EVENT_ERROR,
-    closed = ZLINK_SERVICE_MONITOR_EVENT_CLOSED,
-    discovery_service_up = ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP,
-    discovery_service_down =
-      ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN,
-    discovery_providers_changed =
-      ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
-    peer_weight_changed = ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED,
-    all = ZLINK_SERVICE_MONITOR_EVENT_ALL
-};
-
-inline service_monitor_event operator| (service_monitor_event a,
-                                        service_monitor_event b)
-{
-    return static_cast<service_monitor_event> (
-      static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
-}
-
 struct monitor_event_t
 {
     monitor_event_t ()
@@ -1046,7 +1012,8 @@ struct monitor_snapshot_t
           auto_hwm_enabled (false), auto_hwm_role (0),
           auto_hwm_managed_connections (0),
           auto_hwm_active_hwm_connections (0),
-          auto_hwm_planning_transport_connections (0),
+          auto_hwm_observed_count (0), auto_hwm_planning_count (0),
+          auto_hwm_context_total_planning_count (0),
           auto_hwm_base_floor_per_connection (0),
           auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
           auto_hwm_requested_sndbuf (0), auto_hwm_requested_rcvbuf (0),
@@ -1055,24 +1022,14 @@ struct monitor_snapshot_t
           auto_hwm_queue_budget_bytes (0),
           auto_hwm_transport_budget_bytes (0),
           auto_hwm_runtime_reserve_bytes (0),
-          auto_hwm_group_budget_bytes (0),
-          auto_hwm_group_message_slots (0),
+          auto_hwm_socket_queue_share_bytes (0),
+          auto_hwm_socket_message_slots (0),
           auto_hwm_effective_message_bytes (0),
-          auto_hwm_control_budget_bytes (0),
-          auto_hwm_routed_budget_bytes (0),
-          auto_hwm_fanout_budget_bytes (0),
-          auto_hwm_recv_ingress_budget_bytes (0),
-          auto_hwm_control_active_connections (0),
-          auto_hwm_routed_active_connections (0),
-          auto_hwm_fanout_active_connections (0),
-          auto_hwm_recv_ingress_active_connections (0),
           auto_hwm_estimated_max_memory_bytes (0),
           auto_hwm_last_recalc_ms (0),
           auto_hwm_last_recalc_reason (0),
           auto_hwm_send_blocked_ratio_ppm (0), auto_hwm_scope (0),
-          auto_hwm_scope_count (0), auto_hwm_role_group_budget_bytes (0),
-          auto_hwm_scope_group_budget_bytes (0),
-          auto_hwm_auto_buffer_bytes (0),
+          auto_hwm_scope_count (0), auto_hwm_auto_buffer_bytes (0),
           auto_hwm_manual_buffer_bytes (0),
           auto_hwm_buffer_connections (0), auto_hwm_deferred_sndhwm (-1),
           auto_hwm_deferred_rcvhwm (-1)
@@ -1091,8 +1048,10 @@ struct monitor_snapshot_t
           auto_hwm_managed_connections (native_.auto_hwm_managed_connections),
           auto_hwm_active_hwm_connections (
             native_.auto_hwm_active_hwm_connections),
-          auto_hwm_planning_transport_connections (
-            native_.auto_hwm_planning_transport_connections),
+          auto_hwm_observed_count (native_.auto_hwm_observed_count),
+          auto_hwm_planning_count (native_.auto_hwm_planning_count),
+          auto_hwm_context_total_planning_count (
+            native_.auto_hwm_context_total_planning_count),
           auto_hwm_base_floor_per_connection (
             native_.auto_hwm_base_floor_per_connection),
           auto_hwm_applied_sndhwm (native_.auto_hwm_applied_sndhwm),
@@ -1108,26 +1067,12 @@ struct monitor_snapshot_t
             native_.auto_hwm_transport_budget_bytes),
           auto_hwm_runtime_reserve_bytes (
             native_.auto_hwm_runtime_reserve_bytes),
-          auto_hwm_group_budget_bytes (native_.auto_hwm_group_budget_bytes),
-          auto_hwm_group_message_slots (native_.auto_hwm_group_message_slots),
+          auto_hwm_socket_queue_share_bytes (
+            native_.auto_hwm_socket_queue_share_bytes),
+          auto_hwm_socket_message_slots (
+            native_.auto_hwm_socket_message_slots),
           auto_hwm_effective_message_bytes (
             native_.auto_hwm_effective_message_bytes),
-          auto_hwm_control_budget_bytes (
-            native_.auto_hwm_control_budget_bytes),
-          auto_hwm_routed_budget_bytes (
-            native_.auto_hwm_routed_budget_bytes),
-          auto_hwm_fanout_budget_bytes (
-            native_.auto_hwm_fanout_budget_bytes),
-          auto_hwm_recv_ingress_budget_bytes (
-            native_.auto_hwm_recv_ingress_budget_bytes),
-          auto_hwm_control_active_connections (
-            native_.auto_hwm_control_active_connections),
-          auto_hwm_routed_active_connections (
-            native_.auto_hwm_routed_active_connections),
-          auto_hwm_fanout_active_connections (
-            native_.auto_hwm_fanout_active_connections),
-          auto_hwm_recv_ingress_active_connections (
-            native_.auto_hwm_recv_ingress_active_connections),
           auto_hwm_estimated_max_memory_bytes (
             native_.auto_hwm_estimated_max_memory_bytes),
           auto_hwm_last_recalc_ms (native_.auto_hwm_last_recalc_ms),
@@ -1136,10 +1081,6 @@ struct monitor_snapshot_t
             native_.auto_hwm_send_blocked_ratio_ppm),
           auto_hwm_scope (native_.auto_hwm_scope),
           auto_hwm_scope_count (native_.auto_hwm_scope_count),
-          auto_hwm_role_group_budget_bytes (
-            native_.auto_hwm_role_group_budget_bytes),
-          auto_hwm_scope_group_budget_bytes (
-            native_.auto_hwm_scope_group_budget_bytes),
           auto_hwm_auto_buffer_bytes (native_.auto_hwm_auto_buffer_bytes),
           auto_hwm_manual_buffer_bytes (native_.auto_hwm_manual_buffer_bytes),
           auto_hwm_buffer_connections (native_.auto_hwm_buffer_connections),
@@ -1162,7 +1103,9 @@ struct monitor_snapshot_t
     uint32_t auto_hwm_role;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_observed_count;
+    uint32_t auto_hwm_planning_count;
+    uint32_t auto_hwm_context_total_planning_count;
     uint32_t auto_hwm_base_floor_per_connection;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
@@ -1174,25 +1117,15 @@ struct monitor_snapshot_t
     uint64_t auto_hwm_queue_budget_bytes;
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_group_budget_bytes;
-    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_socket_queue_share_bytes;
+    uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_control_budget_bytes;
-    uint64_t auto_hwm_routed_budget_bytes;
-    uint64_t auto_hwm_fanout_budget_bytes;
-    uint64_t auto_hwm_recv_ingress_budget_bytes;
-    uint32_t auto_hwm_control_active_connections;
-    uint32_t auto_hwm_routed_active_connections;
-    uint32_t auto_hwm_fanout_active_connections;
-    uint32_t auto_hwm_recv_ingress_active_connections;
     uint64_t auto_hwm_estimated_max_memory_bytes;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
     uint32_t auto_hwm_scope;
     uint32_t auto_hwm_scope_count;
-    uint64_t auto_hwm_role_group_budget_bytes;
-    uint64_t auto_hwm_scope_group_budget_bytes;
     uint64_t auto_hwm_auto_buffer_bytes;
     uint64_t auto_hwm_manual_buffer_bytes;
     uint32_t auto_hwm_buffer_connections;
@@ -1200,53 +1133,7 @@ struct monitor_snapshot_t
     int32_t auto_hwm_deferred_rcvhwm;
 };
 
-struct service_event_t
-{
-    service_event_t ()
-        : service_kind (service_kind::socket),
-          event_type (service_monitor_event::error), status (0),
-          error_code (0), value (0), detail_flags (0), service_name (),
-          endpoint (), routing_id (std::nullopt), subject (),
-          subject_kind (service_event_subject_kind::none)
-    {
-    }
-
-    explicit service_event_t (const zlink_service_event_t &native_)
-        : service_kind (
-            static_cast<zlink::service_kind> (native_.service_kind)),
-          event_type (static_cast<service_monitor_event> (native_.event_type)),
-          status (native_.status),
-          error_code (native_.error_code),
-          value (native_.value),
-          detail_flags (native_.detail_flags),
-          service_name (native_.service_name),
-          endpoint (native_.endpoint),
-          routing_id (native_.routing_id.size > 0
-                        ? std::optional<routing_id_t> (
-                            routing_id_t (native_.routing_id))
-                        : std::nullopt),
-          subject (native_.subject),
-          subject_kind (
-            static_cast<service_event_subject_kind> (native_.subject_kind))
-    {
-    }
-
-    zlink::service_kind service_kind;
-    service_monitor_event event_type;
-    uint32_t status;
-    uint32_t error_code;
-    uint64_t value;
-    uint32_t detail_flags;
-    std::string service_name;
-    std::string endpoint;
-    std::optional<routing_id_t> routing_id;
-    std::string subject;
-    service_event_subject_kind subject_kind;
-};
-
 using monitor_event_handler_fn = void (*) (const monitor_event_t *event_,
-                                           void *userdata_);
-using service_event_handler_fn = void (*) (const service_event_t *event_,
                                            void *userdata_);
 
 enum class registry_socket_role : int
@@ -1282,6 +1169,20 @@ enum class spot_node_state : int
     partial_ready = ZLINK_SPOT_NODE_STATE_PARTIAL_READY,
     ready = ZLINK_SPOT_NODE_STATE_READY,
     error = ZLINK_SPOT_NODE_STATE_ERROR
+};
+
+enum class spot_node_mode : int
+{
+    pubsub = ZLINK_SPOT_NODE_MODE_PUBSUB,
+    routed = ZLINK_SPOT_NODE_MODE_ROUTED,
+    all = ZLINK_SPOT_NODE_MODE_ALL
+};
+
+enum class spot_node_socket_owner : int
+{
+    any = ZLINK_SPOT_NODE_SOCKET_OWNER_ANY,
+    node = ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+    spot = ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT
 };
 
 enum class spot_peer_source : int
@@ -1337,11 +1238,10 @@ using monitor_source_kind_t = monitor_source_kind;
 using service_type_t = service_type;
 using service_role_t = service_role;
 using service_kind_t = service_kind;
-using service_event_type_t = service_monitor_event;
-using service_event_subject_kind_t = service_event_subject_kind;
-using monitor_target_kind_t = monitor_target_kind;
 using spot_role_t = spot_socket_role;
 using spot_node_state_t = spot_node_state;
+using spot_node_mode_t = spot_node_mode;
+using spot_node_socket_owner_t = spot_node_socket_owner;
 using spot_peer_source_t = spot_peer_source;
 using spot_peer_state_t = spot_peer_state;
 using topology_source_t = topology_source;
@@ -1615,6 +1515,56 @@ struct spot_node_subject_filter_t
     zlink::subject_kind subject_kind = zlink::subject_kind::none;
 };
 
+struct spot_node_options_t
+{
+    spot_node_mode mode = spot_node_mode::all;
+
+    zlink_spot_node_options_t native () const
+    {
+        zlink_spot_node_options_t options;
+        std::memset (&options, 0, sizeof (options));
+        options.mode = static_cast<zlink_spot_node_mode_t> (mode);
+        return options;
+    }
+};
+
+struct spot_node_socket_snapshot_filter_t
+{
+    spot_node_socket_owner owner = spot_node_socket_owner::any;
+    socket_type type = socket_type::any;
+    std::string socket_name;
+};
+
+struct spot_node_socket_snapshot_entry_t
+{
+    spot_node_socket_snapshot_entry_t ()
+        : owner (spot_node_socket_owner::any), owner_id (0), owner_name (),
+          socket_name (), type (socket_type::any),
+          auto_hwm_visible (false), snapshot ()
+    {
+    }
+
+    explicit spot_node_socket_snapshot_entry_t (
+      const zlink_spot_node_socket_snapshot_entry_t &entry_)
+        : owner (static_cast<spot_node_socket_owner> (entry_.owner)),
+          owner_id (entry_.owner_id),
+          owner_name (fixed_string_to_string (entry_.owner_name)),
+          socket_name (fixed_string_to_string (entry_.socket_name)),
+          type (static_cast<socket_type> (entry_.socket_type)),
+          auto_hwm_visible (entry_.auto_hwm_visible != 0),
+          snapshot (entry_.snapshot)
+    {
+    }
+
+    spot_node_socket_owner owner;
+    uint64_t owner_id;
+    std::string owner_name;
+    std::string socket_name;
+    socket_type type;
+    bool auto_hwm_visible;
+    monitor_snapshot_t snapshot;
+};
+
 enum class spot_service_attachment_role_t
 {
     router = 1,
@@ -1631,13 +1581,6 @@ struct spot_service_attachment_stats_t
     uint32_t auto_router_count = 0;
     uint32_t auto_pub_count = 0;
     uint32_t auto_sub_count = 0;
-};
-
-struct spot_service_monitor_event_t
-{
-    std::string service_name;
-    spot_service_attachment_role_t role = spot_service_attachment_role_t::router;
-    monitor_event_t event;
 };
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
@@ -1731,22 +1674,6 @@ inline std::string routing_id_to_string (const routing_id_t &routing_id_)
 inline std::string routing_id_to_string (const zlink_routing_id_t &routing_id_)
 {
     return routing_id_t (routing_id_).to_string ();
-}
-
-inline std::string
-service_name (const zlink_service_event_t &event_)
-{
-    return fixed_string_to_string (event_.service_name);
-}
-
-inline std::string endpoint (const zlink_service_event_t &event_)
-{
-    return fixed_string_to_string (event_.endpoint);
-}
-
-inline std::string subject (const zlink_service_event_t &event_)
-{
-    return fixed_string_to_string (event_.subject);
 }
 
 inline std::string

@@ -55,7 +55,7 @@ public abstract class ZlinkException extends RuntimeException {
             return new HandlerException(mapHandlerResult(errno), errno);
         }
         if (containsAny(op, "recv", "receive", "subscription_event",
-                "socket_monitor_recv", "service_monitor_recv", "monitor_recv")
+                "socket_monitor_recv", "monitor_recv")
             || (op.contains("subscribe")
                 && !containsAny(op, "set_subscription", "unset_subscription",
                     "subscribe_handler"))) {

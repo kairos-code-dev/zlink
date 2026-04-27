@@ -51,14 +51,20 @@ static int recv_ascii_command (socket_base_t *socket_,
     return frames_->empty () ? -1 : 0;
 }
 
-spot_node_t::spot_node_t (ctx_t *ctx_) :
+spot_node_t::spot_node_t (ctx_t *ctx_, zlink_spot_node_mode_t mode_) :
     _ctx (ctx_),
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
+    _spot_node_mode (mode_),
     _runtime (NULL),
     _send_ready_handler (NULL),
     _send_ready_handler_userdata (NULL)
 {
+    memset (&_node_routing_id, 0, sizeof (_node_routing_id));
+    const uint32_t node_rid_value = generate_random ();
+    _node_routing_id.size = sizeof (node_rid_value);
+    memcpy (_node_routing_id.data, &node_rid_value, sizeof (node_rid_value));
+
     _lifecycle.transition_to (service_state_starting);
 
     _runtime = new (std::nothrow) spot_runtime_t (this);
@@ -99,6 +105,42 @@ spot_node_t::~spot_node_t ()
 bool spot_node_t::check_tag () const
 {
     return _tag == spot_node_tag_value;
+}
+
+bool spot_node_t::pubsub_enabled () const
+{
+    return _spot_node_mode == ZLINK_SPOT_NODE_MODE_PUBSUB
+           || _spot_node_mode == ZLINK_SPOT_NODE_MODE_ALL;
+}
+
+bool spot_node_t::routed_enabled () const
+{
+    return _spot_node_mode == ZLINK_SPOT_NODE_MODE_ROUTED
+           || _spot_node_mode == ZLINK_SPOT_NODE_MODE_ALL;
+}
+
+int spot_node_t::set_node_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_node_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (_sync);
+    memset (&_node_routing_id, 0, sizeof (_node_routing_id));
+    _node_routing_id.size = static_cast<uint8_t> (size_);
+    memcpy (_node_routing_id.data, data_, size_);
+    return 0;
+}
+
+int spot_node_t::node_routing_id (zlink_routing_id_t *out_) const
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    *out_ = _node_routing_id;
+    return 0;
 }
 
 bool spot_node_t::peer_has_positive_weight (const zlink_routing_id_t *peer_rid_) const

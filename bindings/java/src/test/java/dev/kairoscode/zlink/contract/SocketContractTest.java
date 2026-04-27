@@ -16,8 +16,6 @@ import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
-import dev.kairoscode.zlink.ServiceMonitor;
-import dev.kairoscode.zlink.ServiceMonitorEventMask;
 import dev.kairoscode.zlink.service.discovery.DiscoveryDealerPeerMode;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
 import dev.kairoscode.zlink.service.registry.ServiceType;
@@ -264,11 +262,7 @@ public class SocketContractTest {
                 dev.kairoscode.zlink.MonitorEventType[].class));
             assertFalse(hasPublicMethod(PairSocket.class, "monitorOpen",
                 int.class));
-            assertTrue(hasPublicMethod(Discovery.class, "monitorOpen"));
-            assertTrue(hasPublicMethod(Discovery.class, "monitorOpen",
-                ServiceMonitorEventMask[].class));
-            assertFalse(hasPublicMethod(Discovery.class, "monitorOpen",
-                int.class));
+            assertFalse(hasPublicMethod(Discovery.class, "monitorOpen"));
 
             String cert = Path.of("tests/certs/server.crt").toAbsolutePath().toString();
             String key = Path.of("tests/certs/server.key").toAbsolutePath().toString();
@@ -352,8 +346,6 @@ public class SocketContractTest {
         assertFalse(isPublicClass("dev.kairoscode.zlink.ZlinkVersion"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.SocketType"));
         assertFalse(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class,
-            "recv", RecvFlags.class));
-        assertFalse(hasPublicMethod(dev.kairoscode.zlink.ServiceMonitor.class,
             "recv", RecvFlags.class));
     }
 
@@ -527,8 +519,6 @@ public class SocketContractTest {
                 String.class));
             assertTrue(hasPublicMethod(Message.class, "refCount"));
             assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
-            assertFalse(hasPublicConstructor(ServiceMonitor.class,
-                MemorySegment.class));
             assertFalse(hasPublicMethod(PairSocket.class, "sendNoWaitResult", Message.class));
             assertFalse(hasPublicMethod(PairSocket.class, "recvNoWait"));
             assertFalse(hasPublicMethod(MonitorSocket.class, "recvNoWait"));
@@ -593,9 +583,6 @@ public class SocketContractTest {
             "fromNative", java.lang.foreign.MemorySegment.class));
         assertFalse(hasPublicMethod(
             dev.kairoscode.zlink.service.registry.MemberPeerEntry.class,
-            "fromNative", java.lang.foreign.MemorySegment.class));
-        assertFalse(hasPublicMethod(
-            dev.kairoscode.zlink.service.registry.ServiceEvent.class,
             "fromNative", java.lang.foreign.MemorySegment.class));
         assertEquals(7, MemberPeerEntry.class.getRecordComponents().length);
         assertEquals("weight",

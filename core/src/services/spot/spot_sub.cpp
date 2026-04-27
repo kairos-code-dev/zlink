@@ -36,13 +36,7 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
     _active_direct_handler (NULL),
     _handler_state (handler_none),
     _callback_inflight (0),
-    _destroying (false),
-    _monitor (node_ ? node_->ctx () : NULL),
-    _monitor_event_queue (),
-    _monitor_event_draining (false),
-    _monitor_event_pending (0),
-    _raw_monitor_socket (NULL),
-    _monitor_task_id (0)
+    _destroying (false)
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
     initialize_routing_id (&_routing_id);
@@ -63,13 +57,6 @@ bool spot_sub_t::check_tag () const
 bool spot_sub_t::is_node_owned_default () const
 {
     return _node_owned_default;
-}
-
-void spot_sub_t::emit_monitor_event (const zlink_service_event_t &event_)
-{
-    if (_destroying.load (std::memory_order_acquire))
-        return;
-    _monitor.emit (event_);
 }
 
 socket_base_t *spot_sub_t::socket () const

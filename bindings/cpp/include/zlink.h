@@ -121,6 +121,9 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_SPOT_WORKER_THREADS_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT 1
 #define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
+#define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
+#define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 5000
+#define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 500
 
 /**
  * @brief Create a new zlink context.
@@ -172,6 +175,17 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
  */
 ZLINK_EXPORT int zlink_ctx_get (void *context_, zlink_ctx_option_t option_,
                                 zlink_config_result_t *error_out_);
+
+/**
+ * @brief Recalculate and apply auto HWM for the entire context immediately.
+ *
+ * If auto HWM is disabled, this is a no-op that returns success.
+ *
+ * @param context_  Context handle.
+ * @return 0 on success, -1 on failure (errno is set).
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_auto_hwm_recalculate (
+  void *context_);
 
 /******************************************************************************/
 /*  0MQ message definition.                                                   */
@@ -878,7 +892,9 @@ typedef struct zlink_monitor_snapshot_t
     uint32_t auto_hwm_role;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_planning_transport_connections;
+    uint32_t auto_hwm_observed_count;
+    uint32_t auto_hwm_planning_count;
+    uint32_t auto_hwm_context_total_planning_count;
     uint32_t auto_hwm_base_floor_per_connection;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
@@ -890,25 +906,15 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_queue_budget_bytes;
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_group_budget_bytes;
-    uint64_t auto_hwm_group_message_slots;
+    uint64_t auto_hwm_socket_queue_share_bytes;
+    uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_control_budget_bytes;
-    uint64_t auto_hwm_routed_budget_bytes;
-    uint64_t auto_hwm_fanout_budget_bytes;
-    uint64_t auto_hwm_recv_ingress_budget_bytes;
-    uint32_t auto_hwm_control_active_connections;
-    uint32_t auto_hwm_routed_active_connections;
-    uint32_t auto_hwm_fanout_active_connections;
-    uint32_t auto_hwm_recv_ingress_active_connections;
     uint64_t auto_hwm_estimated_max_memory_bytes;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
     uint32_t auto_hwm_scope;
     uint32_t auto_hwm_scope_count;
-    uint64_t auto_hwm_role_group_budget_bytes;
-    uint64_t auto_hwm_scope_group_budget_bytes;
     uint64_t auto_hwm_auto_buffer_bytes;
     uint64_t auto_hwm_manual_buffer_bytes;
     uint32_t auto_hwm_buffer_connections;
@@ -934,7 +940,7 @@ ZLINK_EXPORT zlink_recv_result_t zlink_socket_monitor_recv (
   zlink_socket_monitor_event_t *out_,
   zlink_recv_flags_t flags_);
 
-/** @brief Read the current snapshot for a socket or service monitor handle. */
+/** @brief Read the current snapshot for a monitor handle. */
 ZLINK_EXPORT zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
                                          zlink_monitor_snapshot_t *out_);
 
@@ -1098,14 +1104,22 @@ ZLINK_EXPORT zlink_close_result_t zlink_spot_destroy (void **spot_p);
 
 /* SPOT Node --------------------------------------------------------------- */
 
+typedef struct zlink_spot_node_options_t
+{
+    zlink_spot_node_mode_t mode;
+} zlink_spot_node_options_t;
+
 /**
  * @brief Create a SPOT node runtime for topology, discovery, and lifecycle.
  *
- * SPOT node handles own the internal pub/sub runtime that backs
- * `zlink_spot_new(node)` but do not expose the generic data-plane facade
- * directly.
+ * If options is NULL or options->mode is 0, the node enables all SPOT
+ * features. A node created with PUBSUB mode rejects routed request/reply APIs
+ * with ENOTSUP. A node created with ROUTED mode rejects topic pub/sub APIs with
+ * ENOTSUP.
  */
-ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ZLINK_EXPORT void *zlink_spot_node_new (
+  void *ctx,
+  const zlink_spot_node_options_t *options);
 
 /**
  * @brief Destroy a SPOT node and release all resources.
@@ -1164,51 +1178,6 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (
   void *node_,
   void *pub_);
 
-/******************************************************************************/
-/*  Service Monitor / Topology API                                            */
-/******************************************************************************/
-
-typedef struct zlink_service_event_t
-{
-    zlink_service_kind_t service_kind;
-    uint32_t event_type;
-    int32_t status;
-    int32_t error_code;
-    uint32_t value;
-    zlink_service_event_detail_mask_t detail_flags;
-    char service_name[256];
-    char endpoint[256];
-    zlink_routing_id_t routing_id;
-    char subject[256];
-    uint32_t subject_kind;
-} zlink_service_event_t;
-
-typedef void (*zlink_service_monitor_handler_fn) (
-  const zlink_service_event_t *event_, void *userdata_);
-
-typedef zlink_service_event_t zlink_service_monitor_event_t;
-typedef zlink_service_event_detail_mask_t
-  zlink_service_monitor_event_detail_mask_t;
-
-typedef struct zlink_service_monitor_open_options_t
-{
-    zlink_service_monitor_event_mask_t events;
-} zlink_service_monitor_open_options_t;
-
-ZLINK_EXPORT void *zlink_service_monitor_open (
-  void *target_,
-  const zlink_service_monitor_open_options_t *options_);
-
-ZLINK_EXPORT zlink_handler_result_t zlink_service_monitor_handler (
-  void *monitor_,
-  zlink_service_monitor_handler_fn handler_,
-  void *userdata_);
-
-ZLINK_EXPORT zlink_recv_result_t zlink_service_monitor_recv (
-  void *monitor_,
-  zlink_service_monitor_event_t *out_,
-  zlink_recv_flags_t flags_);
-
 typedef struct zlink_spot_node_status_t
 {
     char service_name[256];
@@ -1259,6 +1228,24 @@ typedef struct zlink_spot_node_subject_filter_t
     char subject[256];
     uint32_t subject_kind;
 } zlink_spot_node_subject_filter_t;
+
+typedef struct zlink_spot_node_socket_snapshot_filter_t
+{
+    zlink_spot_node_socket_owner_t owner;
+    zlink_socket_type_t socket_type;
+    char socket_name[64];
+} zlink_spot_node_socket_snapshot_filter_t;
+
+typedef struct zlink_spot_node_socket_snapshot_entry_t
+{
+    zlink_spot_node_socket_owner_t owner;
+    uint64_t owner_id;
+    char owner_name[64];
+    char socket_name[64];
+    zlink_socket_type_t socket_type;
+    uint32_t auto_hwm_visible;
+    zlink_monitor_snapshot_t snapshot;
+} zlink_spot_node_socket_snapshot_entry_t;
 
 typedef struct zlink_registry_status_t
 {
@@ -1320,6 +1307,11 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_subjects_snapshot (
   void *node_,
   const zlink_spot_node_subject_filter_t *filter_,
   zlink_spot_node_subject_entry_t *entries_,
+  size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_internal_sockets_snapshot (
+  void *node_,
+  const zlink_spot_node_socket_snapshot_filter_t *filter_,
+  zlink_spot_node_socket_snapshot_entry_t *entries_,
   size_t *count_);
 ZLINK_EXPORT zlink_config_result_t zlink_registry_status_snapshot (
   void *registry_,

@@ -142,8 +142,6 @@ type RegistryQueryClient struct {
 	closed bool
 }
 
-type ServiceEvent = ServiceMonitorEvent
-
 type SpotNodeStatus struct {
 	ServiceName         string
 	LocalEndpoint       string
@@ -451,20 +449,6 @@ func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string)
 	return msg, nil
 }
 
-func (d *Discovery) MonitorOpen(events ...ServiceMonitorEventMask) (*ServiceMonitor, error) {
-	if d == nil || d.closed {
-		return nil, stateError("discovery is closed")
-	}
-	options := C.zlink_service_monitor_open_options_t{
-		events: C.zlink_service_monitor_event_mask_t(resolveServiceMonitorEvents(events)),
-	}
-	monitor := C.zlink_service_monitor_open(d.raw(), &options)
-	if monitor == nil {
-		return nil, lastError()
-	}
-	return &ServiceMonitor{handle: monitor}, nil
-}
-
 func (d *Discovery) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
 	if d == nil || d.closed {
 		return stateError("discovery is closed")
@@ -704,6 +688,24 @@ func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNo
 	})
 }
 
+func (n *SpotNode) InternalSocketsSnapshot(filter *SpotNodeSocketSnapshotFilter) ([]SpotNodeSocketSnapshotEntry, error) {
+	if n == nil || n.closed {
+		return nil, stateError("spot node is closed")
+	}
+	var rawFilter *C.zlink_spot_node_socket_snapshot_filter_t
+	var cfilter C.zlink_spot_node_socket_snapshot_filter_t
+	if filter != nil {
+		if err := validateSpotNodeSocketSnapshotFilter(*filter); err != nil {
+			return nil, err
+		}
+		cfilter = filter.toC()
+		rawFilter = &cfilter
+	}
+	return querySpotNodeInternalSockets(func(entries *C.zlink_spot_node_socket_snapshot_entry_t, count *C.size_t) error {
+		return checkRC(C.zlink_spot_node_internal_sockets_snapshot(n.raw(), rawFilter, entries, count))
+	})
+}
+
 func querySpotNodePeers(fetch func(*C.zlink_spot_node_peer_entry_t, *C.size_t) error) ([]SpotNodePeerEntry, error) {
 	return queryCountedSnapshot(
 		func() (int, error) {
@@ -741,6 +743,26 @@ func querySpotNodeSubjects(fetch func(*C.zlink_spot_node_subject_entry_t, *C.siz
 			return int(count), nil
 		},
 		spotNodeSubjectEntryFromC,
+	)
+}
+
+func querySpotNodeInternalSockets(fetch func(*C.zlink_spot_node_socket_snapshot_entry_t, *C.size_t) error) ([]SpotNodeSocketSnapshotEntry, error) {
+	return queryCountedSnapshot(
+		func() (int, error) {
+			var count C.size_t
+			if err := fetch(nil, &count); err != nil {
+				return 0, err
+			}
+			return int(count), nil
+		},
+		func(native []C.zlink_spot_node_socket_snapshot_entry_t) (int, error) {
+			count := C.size_t(len(native))
+			if err := fetch(&native[0], &count); err != nil {
+				return 0, err
+			}
+			return int(count), nil
+		},
+		spotNodeSocketSnapshotEntryFromC,
 	)
 }
 
@@ -900,6 +922,16 @@ func (f SpotNodeSubjectFilter) toC() C.zlink_spot_node_subject_filter_t {
 	return out
 }
 
+func (f SpotNodeSocketSnapshotFilter) toC() C.zlink_spot_node_socket_snapshot_filter_t {
+	var out C.zlink_spot_node_socket_snapshot_filter_t
+	out.owner = C.zlink_spot_node_socket_owner_t(f.Owner)
+	out.socket_type = C.zlink_socket_type_t(f.SocketType)
+	if f.SocketName != "" {
+		mustCopyFixedCString(unsafe.Pointer(&out.socket_name[0]), 64, f.SocketName)
+	}
+	return out
+}
+
 func mustCopyFixedCString(ptr unsafe.Pointer, size int, value string) {
 	if ptr == nil || size <= 0 || len(value) == 0 {
 		return
@@ -951,6 +983,18 @@ func spotNodeSubjectEntryFromC(raw C.zlink_spot_node_subject_entry_t) SpotNodeSu
 		ReadyPeerCount:  uint32(raw.ready_peer_count),
 		ActivePeerCount: uint32(raw.active_peer_count),
 		LastChangedMs:   uint64(raw.last_changed_ms),
+	}
+}
+
+func spotNodeSocketSnapshotEntryFromC(raw C.zlink_spot_node_socket_snapshot_entry_t) SpotNodeSocketSnapshotEntry {
+	return SpotNodeSocketSnapshotEntry{
+		Owner:          SpotNodeSocketOwner(raw.owner),
+		OwnerID:        uint64(raw.owner_id),
+		OwnerName:      C.GoString(&raw.owner_name[0]),
+		SocketName:     C.GoString(&raw.socket_name[0]),
+		SocketType:     SocketType(raw.socket_type),
+		AutoHwmVisible: uint32(raw.auto_hwm_visible) != 0,
+		Snapshot:       monitorSnapshotFromC(raw.snapshot),
 	}
 }
 
@@ -1109,6 +1153,19 @@ func validateSpotNodePeerFilter(filter SpotNodePeerFilter) error {
 		return nil
 	}
 	return validateFixedCString("peer_endpoint", *filter.PeerEndpoint)
+}
+
+func validateSpotNodeSocketSnapshotFilter(filter SpotNodeSocketSnapshotFilter) error {
+	if filter.SocketName == "" {
+		return nil
+	}
+	if strings.IndexByte(filter.SocketName, 0) >= 0 {
+		return validationError("socket_name contains null byte")
+	}
+	if len(filter.SocketName) > 63 {
+		return validationError("socket_name length %d exceeds 63", len(filter.SocketName))
+	}
+	return nil
 }
 
 func validateRegistryServiceSummaryFilter(filter RegistryServiceSummaryFilter) error {

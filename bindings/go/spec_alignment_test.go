@@ -182,8 +182,11 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertField("SourceKind", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
 	assertField("SndPendingMsgs", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
 	assertField("RcvPendingMsgs", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
-	assertField("AutoHwmControlBudgetBytes", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
-	assertField("AutoHwmControlActiveConnections", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
+	assertField("AutoHwmObservedCount", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
+	assertField("AutoHwmPlanningCount", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
+	assertField("AutoHwmContextTotalPlanningCount", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
+	assertField("AutoHwmSocketQueueShareBytes", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
+	assertField("AutoHwmSocketMessageSlots", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
 	assertField("AutoHwmLastRecalcReason", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
 	assertField("AutoHwmSendBlockedRatioPPM", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
 	assertField("AutoHwmScope", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint32)
@@ -191,6 +194,8 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertField("AutoHwmAutoBufferBytes", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
 	assertField("AutoHwmManualBufferBytes", reflect.TypeOf(MonitorSnapshot{}), reflect.Uint64)
 	assertField("AutoHwmDeferredSndHwm", reflect.TypeOf(MonitorSnapshot{}), reflect.Int32)
+	assertNoField("AutoHwmControlBudgetBytes", reflect.TypeOf(MonitorSnapshot{}))
+	assertNoField("AutoHwmControlActiveConnections", reflect.TypeOf(MonitorSnapshot{}))
 	assertNoField("SendPendingMsg", reflect.TypeOf(MonitorSnapshot{}))
 	assertNoField("RecvPendingMsg", reflect.TypeOf(MonitorSnapshot{}))
 
@@ -213,7 +218,6 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 		name string
 	}{
 		{reflect.TypeOf(&MonitorEvent{}), "HasRoutingID"},
-		{reflect.TypeOf(&ServiceMonitorEvent{}), "HasRoutingID"},
 		{reflect.TypeOf(&MemberPeerEntry{}), "HasRoutingID"},
 		{reflect.TypeOf(&RegistryTopologyEntry{}), "HasRoutingID"},
 		{reflect.TypeOf(&SpotNodeStatus{}), "HasNodeRoutingID"},

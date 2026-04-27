@@ -32,10 +32,6 @@ public final class InternalAccess {
         return spot.handleInternal();
     }
 
-    public static ServiceMonitor serviceMonitor(MemorySegment handle) {
-        return new ServiceMonitor(handle);
-    }
-
     public static MemorySegment messageDataSegment(Message message) {
         return message.dataSegment();
     }

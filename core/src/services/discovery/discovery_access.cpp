@@ -164,11 +164,6 @@ void discovery_access_t::delete_handle (discovery_t *discovery_)
     delete discovery_;
 }
 
-void *discovery_access_t::monitor_open (discovery_t *discovery_, int events_)
-{
-    return discovery_ ? discovery_->monitor_open (events_) : NULL;
-}
-
 void discovery_access_t::set_summary_enabled (discovery_t *discovery_,
                                               bool enabled_)
 {

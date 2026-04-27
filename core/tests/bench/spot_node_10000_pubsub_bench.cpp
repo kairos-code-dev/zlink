@@ -261,7 +261,7 @@ int main (int, char **)
         return 1;
     }
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     if (!node) {
         fprintf (stderr, "zlink_spot_node_new failed errno=%d (%s)\n", errno,
                  zlink_strerror (errno));

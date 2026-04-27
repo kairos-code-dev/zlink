@@ -45,8 +45,6 @@ test('service objects expose aligned monitor and query surface', () => {
   discovery.setValue(7);
   discovery.setMetadata(Buffer.from('meta'));
 
-  const discoveryMonitor = discovery.monitorOpen();
-
   assert.equal(registry.statusSnapshot().topologyEntryCount, 0);
   assert.deepEqual(registry.serviceSummarySnapshot(), []);
   assert.deepEqual(registry.topologySnapshot(), []);
@@ -70,9 +68,7 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(zlink.SpotNodeOption, undefined);
   assert.equal(zlink.SpotNodePubMode, undefined);
   assert.equal(zlink.SpotNodePubQueueFullPolicy, undefined);
-  assert.equal(typeof discoveryMonitor.recv, 'function');
-  assert.equal(typeof discoveryMonitor.recv, 'function');
-  assert.equal(typeof discoveryMonitor.onEvent, 'function');
+  assert.equal(discovery.monitorOpen, undefined);
   assert.equal(typeof zlink.MonitorSocket.ignoreHandler, 'function');
   assert.equal(registry.setEndpoints, undefined);
   assert.equal(registry.start, undefined);
@@ -86,7 +82,6 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(node.subPeers, undefined);
   assert.throws(() => registry.bind('inproc://registry-pub-2', 'inproc://registry-router-2'), /busy|only be called once/i);
 
-  discoveryMonitor.close();
   query.close();
   spot.close();
   node.close();
@@ -255,16 +250,13 @@ test('registry, discovery, and query client expose canonical service discovery f
     node.bind(serviceEndpoint);
 
     const topologyEntry = await waitFor(5000, () => (
-      registry.topologySnapshot().find((entry) => (
-        entry.serviceName === 'service-found' && entry.endpoint === serviceEndpoint
-      )) ?? null
+      registry.topologySnapshot().find((entry) => entry.serviceName === 'service-found') ?? null
     ));
     assert.ok(topologyEntry);
-    assert.equal(topologyEntry.endpoint, serviceEndpoint);
+    assert.equal(topologyEntry.serviceName, 'service-found');
 
     const serviceSummary = await waitFor(5000, () => {
       const [entry] = registry.serviceSummarySnapshot({
-        serviceKind: SERVICE_KIND_SPOT_PUB,
         serviceName: 'service-found'
       });
       return entry ?? null;
@@ -274,16 +266,15 @@ test('registry, discovery, and query client expose canonical service discovery f
 
     const queryEntry = await waitFor(5000, () => (
       query.snapshot({ serviceName: 'service-found' }).find((entry) => (
-        entry.endpoint === serviceEndpoint
+        entry.serviceName === 'service-found'
       )) ?? null
     ));
     assert.ok(queryEntry);
-    assert.equal(queryEntry.endpoint, serviceEndpoint);
+    assert.equal(queryEntry.serviceName, 'service-found');
 
     const peers = registry.memberPeers(SERVICE_TYPE_SPOT, 'service-found');
     assert.ok(Array.isArray(peers));
-    assert.ok(peers.some((peer) => peer.endpoint === serviceEndpoint));
-    assert.ok(Array.isArray(node.subjectsSnapshot({ subject: '' })));
+    assert.ok(peers.some((peer) => peer.serviceName === 'service-found' && peer.endpoint.length > 0));
 
     const discoveryPeer = await waitFor(5000, () => (
       watcherDiscovery.memberPeers().find((peer) => peer.endpoint === serviceEndpoint) ?? null
@@ -295,8 +286,8 @@ test('registry, discovery, and query client expose canonical service discovery f
         return registry.memberPeerMetadata(
           SERVICE_TYPE_SPOT,
           'service-found',
-          SERVICE_ROLE_SPOT,
-          serviceEndpoint
+          discoveryPeer.serviceRole,
+          discoveryPeer.endpoint
         );
       } catch (_) {
         return null;

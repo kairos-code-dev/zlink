@@ -1362,53 +1362,6 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 }
 ```
 
-### ServiceMonitor
-
-Service-level event monitor for discovery.
-Implements `IDisposable` and `IAsyncDisposable`.
-Starts in recv model. `OnEvent(...)` transitions one-way to callback-only
-model; after that `Recv(...)` raises busy and `Snapshot()` still works.
-
-```csharp
-[Flags]
-public enum ServiceMonitorEventMask : uint
-{
-    None = 0,
-    Error = 1u << 4,
-    DiscoveryServiceUp = 1u << 5,
-    DiscoveryServiceDown = 1u << 6,
-    DiscoveryProvidersChanged = 1u << 7,
-    PeerWeightChanged = 1u << 8,
-    Closed = 1u << 17,
-    All = Error
-        | Closed
-        | DiscoveryServiceUp
-        | DiscoveryServiceDown
-        | DiscoveryProvidersChanged
-        | PeerWeightChanged
-}
-```
-
-```csharp
-public sealed class ServiceMonitor : IDisposable, IAsyncDisposable
-{
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnEvent(Action<ServiceEvent> handler);
-    /// <exception cref="ZlinkRecvException"/>
-    ServiceEvent Recv();
-    /// <exception cref="ZlinkRecvException"/>
-    ServiceEvent? Recv(bool nonBlocking);
-    /// <exception cref="ZlinkConfigException"/>
-    MonitorSnapshot Snapshot();
-    /// <exception cref="ZlinkCloseException"/>
-    void Close();
-    /// <exception cref="ZlinkCloseException"/>
-    void Dispose();
-    /// <exception cref="ZlinkCloseException"/>
-    ValueTask DisposeAsync();
-}
-```
-
 ### MonitorEvent
 
 Socket monitor event. Pure value object.
@@ -1423,13 +1376,11 @@ public sealed record MonitorEvent(
 ```
 
 `MonitorEventType` includes `PeerWeightChanged` (bit 15). When this event
-fires, `Value` carries the new `0..100` weight for the peer. The same
-change is also surfaced via service monitors as
-`ServiceMonitorEventMask.PeerWeightChanged` (bit 8).
+fires, `Value` carries the new `0..100` weight for the peer.
 
 ### MonitorSnapshot
 
-Runtime snapshot of a socket or service monitor handle.
+Runtime snapshot of a socket monitor handle.
 
 ```csharp
 public sealed class MonitorSnapshot
@@ -1441,11 +1392,11 @@ public sealed class MonitorSnapshot
     ulong RcvPendingMsgs { get; }            // recv-queue pending messages
     bool AutoHwmEnabled { get; }
     uint AutoHwmRole { get; }
-    uint AutoHwmScope { get; }
-    uint AutoHwmScopeCount { get; }
     uint AutoHwmManagedConnections { get; }
     uint AutoHwmActiveHwmConnections { get; }
-    uint AutoHwmPlanningTransportConnections { get; }
+    uint AutoHwmObservedCount { get; }
+    uint AutoHwmPlanningCount { get; }
+    uint AutoHwmContextTotalPlanningCount { get; }
     uint AutoHwmBaseFloorPerConnection { get; }
     int AutoHwmAppliedSndHwm { get; }
     int AutoHwmAppliedRcvHwm { get; }
@@ -1457,50 +1408,23 @@ public sealed class MonitorSnapshot
     ulong AutoHwmQueueBudgetBytes { get; }
     ulong AutoHwmTransportBudgetBytes { get; }
     ulong AutoHwmRuntimeReserveBytes { get; }
-    ulong AutoHwmGroupBudgetBytes { get; }
-    ulong AutoHwmRoleGroupBudgetBytes { get; }
-    ulong AutoHwmScopeGroupBudgetBytes { get; }
-    ulong AutoHwmGroupMessageSlots { get; }
+    ulong AutoHwmSocketQueueShareBytes { get; }
+    ulong AutoHwmSocketMessageSlots { get; }
     ulong AutoHwmEffectiveMessageBytes { get; }
-    ulong AutoHwmAutoBufferBytes { get; }
-    ulong AutoHwmManualBufferBytes { get; }
-    uint AutoHwmBufferConnections { get; }
-    ulong AutoHwmControlBudgetBytes { get; }
-    ulong AutoHwmRoutedBudgetBytes { get; }
-    ulong AutoHwmFanoutBudgetBytes { get; }
-    ulong AutoHwmRecvIngressBudgetBytes { get; }
-    uint AutoHwmControlActiveConnections { get; }
-    uint AutoHwmRoutedActiveConnections { get; }
-    uint AutoHwmFanoutActiveConnections { get; }
-    uint AutoHwmRecvIngressActiveConnections { get; }
     ulong AutoHwmEstimatedMaxMemoryBytes { get; }
     ulong AutoHwmLastRecalcMs { get; }
     uint AutoHwmLastRecalcReason { get; }
+    uint AutoHwmSendBlockedRatioPpm { get; }
+    uint AutoHwmScope { get; }
+    uint AutoHwmScopeCount { get; }
+    ulong AutoHwmAutoBufferBytes { get; }
+    ulong AutoHwmManualBufferBytes { get; }
+    uint AutoHwmBufferConnections { get; }
     int AutoHwmDeferredSndHwm { get; }
     int AutoHwmDeferredRcvHwm { get; }
-    uint AutoHwmSendBlockedRatioPpm { get; }
 
     bool IsReady { get; }                    // raw socket monitor source의 ready bit
 }
-```
-
-### ServiceEvent
-
-Discovery service monitor event. Pure value object.
-
-```csharp
-public sealed record ServiceEvent(
-    ServiceKind ServiceKind,                 // ZLINK_SERVICE_KIND_DISCOVERY, SPOT_SUB, SPOT_PUB, SOCKET
-    ServiceEventType EventType,              // UP, DOWN, PROVIDERS_CHANGED, ERROR, ...
-    uint Status,                             // status code
-    uint ErrorCode,                          // errno on error, 0 otherwise
-    ulong Value,                             // per-event value
-    uint DetailFlags,                        // detail bitmask
-    string ServiceName,
-    string Endpoint,
-    RoutingId? RoutingId,                    // peer routing id (null when not applicable)
-    string Subject,                          // subscribe subject (topic)
-    SubjectKind SubjectKind);                // subject kind
 ```
 
 ---
@@ -1594,9 +1518,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     void SetDealerPeerMode(DiscoveryDealerPeerMode mode);
 
-    /// <exception cref="ZlinkConfigException"/>
-    ServiceMonitor MonitorOpen(params ServiceMonitorEventMask[] events);
-
     /// <exception cref="ZlinkCloseException"/>
     void Close();
     /// <exception cref="ZlinkCloseException"/>
@@ -1615,6 +1536,7 @@ Implements `IDisposable` and `IAsyncDisposable`.
 public sealed class SpotNode : IDisposable, IAsyncDisposable
 {
     SpotNode(Context context);
+    SpotNode(Context context, SpotNodeOptions options);
 
     // --- identity / routing ---
     /// <summary>
@@ -1662,6 +1584,8 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     SpotNodeSubjectEntry[] SubjectsSnapshot(
         SpotNodeSubjectFilter? filter = null);
+    SpotNodeSocketSnapshotEntry[] InternalSocketsSnapshot(
+        SpotNodeSocketSnapshotFilter? filter = null);
     // Spot 생성은 반드시 SpotNode 에서만
     /// <exception cref="ZlinkConfigException"/>
     Spot CreateSpot();

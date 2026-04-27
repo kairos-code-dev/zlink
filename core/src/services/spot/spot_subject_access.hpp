@@ -38,12 +38,6 @@ static inline void *resolve_spot_sub_side_handle (void *handle_)
 }
 
 int infer_spot_monitor_role (void *target_, uint32_t events_);
-void *spot_pub_monitor_open (void *spot_pub_, int events_);
-void *spot_sub_monitor_open (void *spot_sub_, int events_);
-void *spot_handle_monitor_open (void *spot_,
-                                zlink_spot_role_t role_,
-                                int events_,
-                                void **snapshot_subject_out_);
 int spot_subject_publish (void *subject_,
                           const char *topic_id_,
                           zlink_msg_t *parts_,

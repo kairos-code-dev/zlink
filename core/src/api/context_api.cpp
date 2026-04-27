@@ -30,6 +30,9 @@ static bool is_public_ctx_set_option (int option_)
         case ZLINK_SPOT_WORKER_THREADS:
         case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
         case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
+        case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
+        case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
+        case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
             return true;
         default:
             return false;
@@ -48,7 +51,10 @@ static bool is_public_ctx_get_option (int option_)
            || option_ == ZLINK_CTX_OPT_BLOCKY
            || option_ == ZLINK_SPOT_WORKER_THREADS
            || option_ == ZLINK_CTX_OPT_AUTO_HWM_ENABLE
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB;
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP;
 }
 }
 
@@ -168,4 +174,14 @@ int zlink_ctx_get (void *ctx_,
             *error_out_ = ZLINK_CONFIG_OK;
     }
     return result;
+}
+
+zlink_config_result_t zlink_ctx_auto_hwm_recalculate (void *ctx_)
+{
+    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    return zlink::config_result_internal::from_rc (
+      (static_cast<zlink::ctx_t *> (ctx_))->auto_hwm_recalculate_now ());
 }

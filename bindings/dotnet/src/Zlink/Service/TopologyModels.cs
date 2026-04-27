@@ -95,30 +95,6 @@ public enum SpotRole
     Sub = 2
 }
 
-internal enum SpotServiceAttachmentRole
-{
-    Router = 1,
-    Pub = 2,
-    Sub = 3
-}
-
-public enum ServiceEventType : uint
-{
-    None = 0,
-    Error = 1u << 4,
-    DiscoveryServiceUp = 1u << 5,
-    DiscoveryServiceDown = 1u << 6,
-    DiscoveryProvidersChanged = 1u << 7,
-    PeerWeightChanged = 1u << 8,
-    Closed = 1u << 17,
-    All = Error
-        | Closed
-        | DiscoveryServiceUp
-        | DiscoveryServiceDown
-        | DiscoveryProvidersChanged
-        | PeerWeightChanged
-}
-
 public sealed record SpotNodePeerFilter(
     string? PeerEndpoint = null,
     SpotPeerSource? Source = null,
@@ -332,24 +308,6 @@ internal sealed record SpotServiceAttachmentStats(
     }
 }
 
-internal sealed record SpotServiceMonitorEvent(
-    string ServiceName,
-    SpotServiceAttachmentRole Role,
-    MonitorEventType Event)
-{
-    internal static unsafe SpotServiceMonitorEvent FromNative(
-        ref ZlinkSpotServiceMonitorEvent native)
-    {
-        fixed (byte* serviceName = native.ServiceName)
-        {
-            return new SpotServiceMonitorEvent(
-                NativeHelpers.ReadFixedString(serviceName, 256),
-                (SpotServiceAttachmentRole)native.Role,
-                (MonitorEventType)(native.Event.Event & 0xFFFFFFFFuL));
-        }
-    }
-}
-
 public sealed record SpotNodeSubjectEntry(
     SpotRole Role,
     string Subject,
@@ -368,38 +326,6 @@ public sealed record SpotNodeSubjectEntry(
                 (SubjectKind)native.SubjectKind,
                 native.ReadyPeerCount, native.ActivePeerCount,
                 native.LastChangedMs);
-        }
-    }
-}
-
-public sealed record ServiceEvent(
-    ServiceKind ServiceKind,
-    ServiceEventType EventType,
-    uint Status,
-    uint ErrorCode,
-    ulong Value,
-    uint DetailFlags,
-    string ServiceName,
-    string Endpoint,
-    RoutingId? RoutingId,
-    string Subject,
-    SubjectKind SubjectKind)
-{
-    internal static unsafe ServiceEvent FromNative(ref ZlinkServiceEvent native)
-    {
-        fixed (byte* serviceName = native.ServiceName)
-        fixed (byte* endpoint = native.Endpoint)
-        fixed (byte* subject = native.Subject)
-        {
-            return new ServiceEvent((ServiceKind)native.ServiceKind,
-                (ServiceEventType)native.EventType, (uint)native.Status,
-                (uint)native.ErrorCode, native.Value, native.DetailFlags,
-                NativeHelpers.ReadFixedString(serviceName, 256),
-                NativeHelpers.ReadFixedString(endpoint, 256),
-                RoutingIdCodec.ToRoutingId(
-                    NativeHelpers.ReadRoutingId(ref native.RoutingId)),
-                NativeHelpers.ReadFixedString(subject, 256),
-                (SubjectKind)native.SubjectKind);
         }
     }
 }

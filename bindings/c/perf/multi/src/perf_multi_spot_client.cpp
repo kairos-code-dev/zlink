@@ -1073,7 +1073,7 @@ bool create_control_spot(ctx_guard_t &ctx,
     if (!state)
         return false;
 
-    state->control_node = zlink_spot_node_new(ctx.get());
+    state->control_node = zlink_spot_node_new(ctx.get(), NULL);
     if (!state->control_node
         || !setup_tls_server(state->control_node, transport)
         || !setup_tls_client(state->control_node, transport)) {
@@ -1175,7 +1175,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
             return false;
         slot->index = i;
 
-        slot->node = zlink_spot_node_new(ctx.get());
+        slot->node = zlink_spot_node_new(ctx.get(), NULL);
         if (!slot->node || !setup_tls_client(slot->node, transport)) {
             g_last_spot_slot_failure =
               "node create/tls failed slot=" + std::to_string (i)

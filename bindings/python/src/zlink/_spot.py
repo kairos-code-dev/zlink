@@ -18,6 +18,8 @@ from ._request_reply import _ensure_reply_flags_supported
 from ._enums import (
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
+    SpotNodeMode,
+    SpotNodeSocketOwner,
     SpotNodeState,
     SpotPeerSource,
     SpotPeerState,
@@ -30,6 +32,9 @@ from ._ffi import (
     ZlinkSpotDispatchInfo,
     ZlinkSpotNodePeerEntry,
     ZlinkSpotNodePeerFilter,
+    ZlinkSpotNodeOptions,
+    ZlinkSpotNodeSocketSnapshotEntry,
+    ZlinkSpotNodeSocketSnapshotFilter,
     ZlinkSpotNodeStatus,
     ZlinkSpotNodeSubjectEntry,
     ZlinkSpotNodeSubjectFilter,
@@ -76,6 +81,7 @@ from ._core import (
     _validated_c_string_value,
     _validated_routing_id_bytes,
 )
+from ._monitor import MonitorSnapshot, _monitor_snapshot_from_native
 
 
 _SPOT_CALLBACK_SENTINEL = object()
@@ -471,9 +477,33 @@ class SpotNodeSubjectFilter:
     subject_kind: int | None = None
 
 
+@dataclass(frozen=True)
+class SpotNodeSocketSnapshotFilter:
+    owner: int | None = None
+    socket_type: int | None = None
+    socket_name: str | None = None
+
+
+@dataclass(frozen=True)
+class SpotNodeSocketSnapshotEntry:
+    owner: int
+    owner_id: int
+    owner_name: str
+    socket_name: str
+    socket_type: int
+    auto_hwm_visible: bool
+    snapshot: MonitorSnapshot
+
+
 class SpotNode:
-    def __init__(self, ctx):
-        self._handle = lib().zlink_spot_node_new(ctx._handle)
+    def __init__(self, ctx, mode: int | SpotNodeMode | None = None):
+        native_options = None
+        options_ptr = None
+        if mode is not None:
+            native_options = ZlinkSpotNodeOptions()
+            native_options.mode = int(mode)
+            options_ptr = ctypes.byref(native_options)
+        self._handle = lib().zlink_spot_node_new(ctx._handle, options_ptr)
         if not self._handle:
             _raise_config_error_from_errno()
         self._spots = set()
@@ -719,6 +749,48 @@ class SpotNode:
                 ready_peer_count=int(entry.ready_peer_count),
                 active_peer_count=int(entry.active_peer_count),
                 last_changed_ms=int(entry.last_changed_ms),
+            )
+            for entry in entries[: int(count.value)]
+        ]
+
+    def internal_sockets_snapshot(self, filter_=None):
+        count = ctypes.c_size_t()
+        filter_ptr = None
+        filter_native = None
+        if filter_ is not None:
+            filter_native = ZlinkSpotNodeSocketSnapshotFilter()
+            filter_native.owner = (
+                int(SpotNodeSocketOwner.ANY)
+                if filter_.owner is None
+                else int(filter_.owner)
+            )
+            filter_native.socket_type = (
+                0 if filter_.socket_type is None else int(filter_.socket_type)
+            )
+            filter_native.socket_name = _fixed_buffer_value(filter_.socket_name, 64)
+            filter_ptr = ctypes.byref(filter_native)
+        rc = lib().zlink_spot_node_internal_sockets_snapshot(
+            self._handle, filter_ptr, None, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        if count.value == 0:
+            return []
+        entries = (ZlinkSpotNodeSocketSnapshotEntry * int(count.value))()
+        rc = lib().zlink_spot_node_internal_sockets_snapshot(
+            self._handle, filter_ptr, entries, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return [
+            SpotNodeSocketSnapshotEntry(
+                owner=SpotNodeSocketOwner(int(entry.owner)),
+                owner_id=int(entry.owner_id),
+                owner_name=_decode_fixed(entry.owner_name),
+                socket_name=_decode_fixed(entry.socket_name),
+                socket_type=int(entry.socket_type),
+                auto_hwm_visible=bool(entry.auto_hwm_visible),
+                snapshot=_monitor_snapshot_from_native(entry.snapshot),
             )
             for entry in entries[: int(count.value)]
         ]

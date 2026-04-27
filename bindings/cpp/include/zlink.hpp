@@ -9,7 +9,6 @@
 #include "zlink/context.hpp"
 #include "zlink/socket_types.hpp"
 #include "zlink/monitor.hpp"
-#include "zlink/service_monitor.hpp"
 #include "zlink/poller.hpp"
 #include "zlink/services/registry.hpp"
 #include "zlink/services/query.hpp"

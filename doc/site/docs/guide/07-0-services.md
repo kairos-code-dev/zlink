@@ -89,7 +89,7 @@ channel send/request, peer routed communication, and publish/subscribe.
   `zlink_spot_subscription_event()`.
 - Readable notifications share one callback surface:
   `zlink_spot_dispatch_event_handler()`.
-- Monitoring uses the generic service monitor plus snapshot/query APIs.
+- Monitoring uses snapshot/query APIs.
 - **Thread-safe** -- a single `spot` / `spot_node` handle admits concurrent
   operational API calls from multiple threads.
 

@@ -249,25 +249,6 @@ func (s *monitorCallbackState) close() {
 	s.dispatcher.close()
 }
 
-type serviceMonitorCallbackState struct {
-	dispatcher *callbackDispatcher
-	handler    func(*ServiceMonitorEvent)
-}
-
-func newServiceMonitorCallbackState(handler func(*ServiceMonitorEvent)) *serviceMonitorCallbackState {
-	return &serviceMonitorCallbackState{
-		dispatcher: newCallbackDispatcher(),
-		handler:    handler,
-	}
-}
-
-func (s *serviceMonitorCallbackState) close() {
-	if s == nil {
-		return
-	}
-	s.dispatcher.close()
-}
-
 type streamPacketCallbackState struct {
 	dispatcher *callbackDispatcher
 	handler    func(RoutingID, *Message, *Message)

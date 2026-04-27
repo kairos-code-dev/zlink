@@ -28,7 +28,6 @@ API directly. The public contract is:
 - raw public option bags like `setsockopt` and `getsockopt` are not exposed
 - typed option families are exposed through properties and capability objects
 - monitor sockets use canonical `monitor_open()`, `recv()`, and `snapshot()`
-- service monitors use canonical `monitor_open()`, `recv()`, and `on_event()`
 - monitor masks use `MonitorEventMask`; decoded monitor payload uses
   `MonitorEvent`
 - resource-owning types support sync and async context manager cleanup
@@ -180,4 +179,4 @@ layers behind the benchmark wrapper.
 Readiness gates in Python perf and samples must use low-cost event counting
 rather than monitor payload counts or monitor snapshot ready counts.
 - raw sockets: `CONNECTION_READY` event counting
-- SPOT: explicit benchmark barrier protocol; no service monitor gate
+- SPOT: explicit benchmark barrier protocol; no separate service-event gate

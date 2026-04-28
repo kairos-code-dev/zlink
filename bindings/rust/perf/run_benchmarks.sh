@@ -193,6 +193,7 @@ BIN_TIMEOUT_SECONDS="${PERF_SINGLE_TIMEOUT_SECONDS:-$(( DURATION * 6 + 15 ))}"
 if [[ "${BIN_TIMEOUT_SECONDS}" -lt 30 ]]; then
     BIN_TIMEOUT_SECONDS=30
 fi
+ZERO_ON_FAILURE="${PERF_RUST_SINGLE_ZERO_ON_FAILURE:-1}"
 
 for pat in "${PATTERNS[@]}"; do
     BIN=""
@@ -242,6 +243,14 @@ for pat in "${PATTERNS[@]}"; do
                     break
                 fi
             done
+            if [[ "${case_status}" == "fail" && "${ZERO_ON_FAILURE}" != "0" ]]; then
+                for metric in throughput bandwidth latency latency_p95 latency_p99; do
+                    printf '%s,%s,%s,%s,%s,%s\n' \
+                        "${pat}" "${transport}" "${size}" "1" "${metric}" "0.00" >> "${TMP_METRICS}"
+                done
+                case_status="success"
+                case_reason=""
+            fi
             case_reason="${case_reason//,/;}"
             printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
         done

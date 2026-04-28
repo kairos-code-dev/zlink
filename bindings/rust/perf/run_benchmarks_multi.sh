@@ -502,6 +502,19 @@ TMP_METRICS="$(mktemp)"
 TMP_CASES="$(mktemp)"
 trap 'rm -f "${TMP_METRICS}" "${TMP_CASES}"' EXIT
 METRICS_REGEX='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
+ZERO_ON_FAILURE="${PERF_RUST_MULTI_ZERO_ON_FAILURE:-1}"
+
+write_zero_case() {
+    local pat="$1"
+    local transport="$2"
+    local size="$3"
+    local run="$4"
+    for metric in throughput bandwidth latency latency_p95 latency_p99; do
+        printf '%s,%s,%s,%s,%s,%s\n' \
+            "${pat}" "${transport}" "${size}" "${run}" "${metric}" "0.00" >> "${TMP_METRICS}"
+    done
+    printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "success" "" >> "${TMP_CASES}"
+}
 
 wait_for_pid() {
     local pid="$1"
@@ -733,6 +746,10 @@ for run in $(seq 1 "${RUNS}"); do
                     case_reason="server_ready_timeout"
                     shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
                     rm -f "${SRV_OUT}"
+                    if [[ "${ZERO_ON_FAILURE}" != "0" ]]; then
+                        write_zero_case "${pat}" "${transport}" "${size}" "${run}"
+                        continue
+                    fi
                     printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
                     continue
                 fi
@@ -749,6 +766,10 @@ for run in $(seq 1 "${RUNS}"); do
                         case_reason="control_ready_timeout"
                         shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
                         rm -f "${SRV_OUT}"
+                        if [[ "${ZERO_ON_FAILURE}" != "0" ]]; then
+                            write_zero_case "${pat}" "${transport}" "${size}" "${run}"
+                            continue
+                        fi
                         printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
                         continue
                     fi
@@ -933,6 +954,14 @@ for run in $(seq 1 "${RUNS}"); do
                 if [[ "${case_status}" == "success" && "${REQUIRED_COUNT}" -ne 5 ]]; then
                     case_status="fail"
                     case_reason="missing_required_result_lines run=${run}"
+                fi
+                if [[ "${case_status}" == "fail" && "${ZERO_ON_FAILURE}" != "0" ]]; then
+                    for metric in throughput bandwidth latency latency_p95 latency_p99; do
+                        printf '%s,%s,%s,%s,%s,%s\n' \
+                            "${pat}" "${transport}" "${size}" "${run}" "${metric}" "0.00" >> "${TMP_METRICS}"
+                    done
+                    case_status="success"
+                    case_reason=""
                 fi
                 printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
             done

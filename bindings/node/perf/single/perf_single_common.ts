@@ -75,6 +75,9 @@ function applySocketPolicy(socket, options = {}) {
   const recvTimeout = Number.isFinite(options.recvTimeoutMs)
     ? options.recvTimeoutMs
     : integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200);
+  const linger = Number.isFinite(options.lingerMs)
+    ? options.lingerMs
+    : integerEnv('PERF_SINGLE_LINGER_MS', 0);
 
   if (typeof socket.setSendHighWaterMark === 'function') {
     socket.setSendHighWaterMark(sendHwm);
@@ -87,6 +90,9 @@ function applySocketPolicy(socket, options = {}) {
   }
   if (typeof socket.setReceiveTimeout === 'function') {
     socket.setReceiveTimeout(options.recvTimeout ?? recvTimeout);
+  }
+  if (typeof socket.setLinger === 'function') {
+    socket.setLinger(linger);
   }
   if (typeof socket.setNoDrop === 'function' && options.noDrop !== undefined) {
     socket.setNoDrop(Boolean(options.noDrop));

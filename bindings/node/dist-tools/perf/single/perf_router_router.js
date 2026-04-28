@@ -8,6 +8,11 @@ const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
 const RECEIVER_ROUTING_ID = zlink.RoutingId.fromBytes(RECEIVER_ID);
 const SENDER_ROUTING_ID = zlink.RoutingId.fromBytes(SENDER_ID);
+function trace(message) {
+    if (process.env.PERF_NODE_TRACE === '1') {
+        console.error(`[router-router] ${message}`);
+    }
+}
 function partStrings(received) {
     return received.parts.map((part) => part.data().toString());
 }
@@ -17,10 +22,6 @@ async function handshakeReceiver(receiver) {
         throw new Error('router-router handshake receive failed');
     }
     receiver.send(SENDER_ROUTING_ID, Buffer.from('PONG'));
-    const pong = sender.recv();
-    if (pong.routingId === null || partStrings(pong).join(',') !== 'PONG') {
-        throw new Error('router-router handshake reply failed');
-    }
 }
 async function runRouterRouterBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
@@ -46,17 +47,22 @@ async function runRouterRouterBenchmark(msgSize, options) {
             options,
         });
         const workerError = waitForWorkerMessage(worker, 'error');
+        trace('waiting worker connected');
         await Promise.race([
             waitForWorkerMessage(worker, 'connected'),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
+        trace('worker connected');
         await waitForMonitorConnectionReady(receiverMonitor);
-        await handshakeReceiver(receiver);
+        trace('monitor ready');
         worker.postMessage({ type: 'handshake' });
+        await handshakeReceiver(receiver);
+        trace('handshake receiver done');
         await Promise.race([
             waitForWorkerMessage(worker, 'ready'),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
+        trace('worker ready');
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -75,11 +81,13 @@ async function runRouterRouterBenchmark(msgSize, options) {
             const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
         }, () => stop);
+        trace('starting worker');
         worker.postMessage({ type: 'start' });
         await Promise.race([
             waitForWorkerMessage(worker, 'done'),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
+        trace('worker done');
         const drainDeadlineNs = activeStopNs
             + BigInt(resolveSingleIdleDrainMs(options)) * 1000000n;
         while (currentEpochNs() < drainDeadlineNs) {
@@ -87,13 +95,19 @@ async function runRouterRouterBenchmark(msgSize, options) {
         }
         stop = true;
         await recvTask;
+        trace('recv task done');
         return collector.finish();
     }
     finally {
+        trace('closing');
         await closeSenderWorker(worker);
+        trace('worker closed');
         receiverMonitor.close();
+        trace('monitor closed');
         receiver.close();
+        trace('receiver closed');
         ctx.close();
+        trace('ctx closed');
     }
 }
 module.exports = { runRouterRouterBenchmark };

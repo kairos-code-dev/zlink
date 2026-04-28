@@ -29,7 +29,7 @@ async function main() {
     applySocketPolicy(stream);
     stream.bind(options.endpoint);
     stream.onPacket((routingId, header, body) => {
-      stream.send(routingId, buildPacketFrame(header, body));
+      stream.send(routingId, body.data());
     });
     console.log(`READY,${options.endpoint}`);
 

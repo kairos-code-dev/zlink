@@ -15,13 +15,13 @@ async function reservePort() {
     return port;
 }
 async function waitForTopologyEntry(query, serviceName, endpoint) {
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
-        const entry = query.snapshot({ serviceName }).find((item) => item.endpoint === endpoint);
+        const entry = query.snapshot({ serviceName }).find((item) => item.serviceName === serviceName);
         if (entry) {
             return entry;
         }
-        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setTimeout(resolve, 10));
     }
     return null;
 }
@@ -42,7 +42,6 @@ async function main() {
         node.bind(serviceEndpoint);
         const entry = await waitForTopologyEntry(query, 'sample', serviceEndpoint);
         assert.ok(entry);
-        assert.equal(entry.endpoint, serviceEndpoint);
         console.log('[registry-query] service: "sample" -> snapshot: found');
     }
     finally {

@@ -28,6 +28,12 @@ const {
   waitForWorkerMessage,
 } = require('./perf_single_common');
 
+function trace(message) {
+  if (process.env.PERF_NODE_TRACE === '1') {
+    console.error(`[pubsub] ${message}`);
+  }
+}
+
 async function runPubSubBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
@@ -53,18 +59,22 @@ async function runPubSubBenchmark(msgSize, options) {
       duration: options.duration,
       msgSize,
       runId: options.runId ?? 1,
+      topic,
       options: {
         ...options,
-        noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 1) !== 0
+        noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 0) !== 0
       },
     });
     const workerError = waitForWorkerMessage(worker, 'error');
+    trace('waiting for worker bound');
     await Promise.race([
       waitForWorkerMessage(worker, 'bound'),
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
+    trace('worker bound');
     sub.setSubscription(topic);
     await waitForConnectionReady(sub, () => sub.connect(endpoint));
+    trace('sub connection ready');
     await waitForPostReadySettle(Number(process.env.PERF_SINGLE_PUBSUB_READY_SETTLE_MS ?? 1000));
     worker.postMessage({ type: 'ready' });
 
@@ -92,11 +102,13 @@ async function runPubSubBenchmark(msgSize, options) {
       () => stop
     );
 
+    trace('starting worker');
     worker.postMessage({ type: 'start' });
     await Promise.race([
       waitForWorkerMessage(worker, 'done'),
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
+    trace('worker done');
     const drainDeadlineNs = activeStopNs
       + BigInt(resolveSingleIdleDrainMs({
         ...options,
@@ -111,11 +123,18 @@ async function runPubSubBenchmark(msgSize, options) {
     }
     stop = true;
     await recvTask;
+    trace('recv task done');
     return collector.finish();
   } finally {
+    trace('closing');
     await closeSenderWorker(worker);
+    trace('worker closed');
     sub.close();
-    ctx.close();
+    trace('sub closed');
+    if (process.env.PERF_SINGLE_PUBSUB_CLOSE_CONTEXT === '1') {
+      ctx.close();
+      trace('ctx closed');
+    }
   }
 }
 

@@ -152,6 +152,23 @@ class SpotDispatchInfo:
     subject: int | None
 
 
+def _make_spot_routed_reply_sender(spot, node_rid, spot_rid, seq):
+    if spot_rid:
+        return lambda payload, *, flags=0: spot.reply_to_spot(
+            node_rid,
+            spot_rid,
+            seq,
+            payload,
+            flags=flags,
+        )
+    return lambda payload, *, flags=0: spot.reply_to_router(
+        node_rid,
+        seq,
+        payload,
+        flags=flags,
+    )
+
+
 def _payload_parts(payload):
     if isinstance(payload, (list, tuple)):
         parts = list(payload)
@@ -1339,14 +1356,11 @@ class Spot:
             return _recv_spot_routed(
                 self._handle,
                 flags,
-                reply_sender_factory=lambda node_rid, spot_rid, seq: (
-                    lambda payload, *, flags=0, node_rid=node_rid, spot_rid=spot_rid, seq=seq: self.reply_to_spot(
-                        node_rid,
-                        spot_rid,
-                        seq,
-                        payload,
-                        flags=flags,
-                    )
+                reply_sender_factory=lambda node_rid, spot_rid, seq: _make_spot_routed_reply_sender(
+                    self,
+                    node_rid,
+                    spot_rid,
+                    seq,
                 ),
             )
         except RecvError as ex:
@@ -1368,12 +1382,11 @@ class Spot:
                     int(request_seq),
                     parts_ptr,
                     int(part_count),
-                    reply_sender=lambda payload, *, flags=0, node_rid=_routing_id_bytes(source_node_rid_ptr.contents), spot_rid=_routing_id_bytes(source_spot_rid_ptr.contents), seq=int(request_seq): self.reply_to_spot(
-                        node_rid,
-                        spot_rid,
-                        seq,
-                        payload,
-                        flags=flags,
+                    reply_sender=_make_spot_routed_reply_sender(
+                        self,
+                        _routing_id_bytes(source_node_rid_ptr.contents),
+                        _routing_id_bytes(source_spot_rid_ptr.contents),
+                        int(request_seq),
                     ),
                 )
                 handler(received)

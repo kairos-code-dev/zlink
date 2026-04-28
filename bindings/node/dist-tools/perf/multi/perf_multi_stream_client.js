@@ -244,6 +244,22 @@ async function connectStreamTransport(endpoint, transport) {
     }
     throw new Error(`unsupported stream transport: ${transport}`);
 }
+async function nextFrameWithTimeout(reader, timeoutMs) {
+    let timeout = null;
+    try {
+        return await Promise.race([
+            reader.nextFrame(),
+            new Promise((resolve) => {
+                timeout = setTimeout(() => resolve(null), timeoutMs);
+            })
+        ]);
+    }
+    finally {
+        if (timeout) {
+            clearTimeout(timeout);
+        }
+    }
+}
 async function connectAllStreamTransports(endpoint, transport, clientCount) {
     const concurrency = resolveMultiConnectConcurrency(clientCount);
     const connected = [];
@@ -289,7 +305,10 @@ async function main() {
             for (let i = 0; i < transports.length; i += 1) {
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
                 await transports[i].writeFrame(buildPacketFrame(payloads[i]));
-                const echoed = await readers[i].nextFrame();
+                const echoed = await nextFrameWithTimeout(readers[i], Number(process.env.PERF_MULTI_STREAM_FRAME_TIMEOUT_MS ?? 1000));
+                if (!echoed) {
+                    break;
+                }
                 collector.record(decodeMetricHeader(echoed), currentEpochNs());
                 seq += 1n;
             }

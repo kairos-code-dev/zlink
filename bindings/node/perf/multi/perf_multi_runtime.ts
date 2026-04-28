@@ -23,6 +23,7 @@ function applySocketPolicy(socket, options = {}) {
   const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
   const sendTimeout = integerEnv('PERF_MULTI_SNDTIMEO_MS', 200);
   const recvTimeout = integerEnv('PERF_MULTI_RCVTIMEO_MS', 200);
+  const linger = integerEnv('PERF_MULTI_LINGER_MS', 0);
 
   if (typeof socket.setSendHighWaterMark === 'function') {
     socket.setSendHighWaterMark(sendHwm);
@@ -35,6 +36,9 @@ function applySocketPolicy(socket, options = {}) {
   }
   if (typeof socket.setReceiveTimeout === 'function') {
     socket.setReceiveTimeout(options.recvTimeout ?? recvTimeout);
+  }
+  if (typeof socket.setLinger === 'function') {
+    socket.setLinger(linger);
   }
   if (typeof socket.setNoDrop === 'function' && options.noDrop !== undefined) {
     socket.setNoDrop(Boolean(options.noDrop));

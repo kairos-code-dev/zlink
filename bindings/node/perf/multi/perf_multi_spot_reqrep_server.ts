@@ -25,6 +25,13 @@ const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(
   Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii')
 );
+const TRACE = process.env.PERF_MULTI_SPOT_REQREP_TRACE === '1';
+
+function trace(message) {
+  if (TRACE) {
+    console.error(`[multi-spot-reqrep-server] ${message}`);
+  }
+}
 
 function tryRecvRouted(spot) {
   try {
@@ -37,12 +44,18 @@ function tryRecvRouted(spot) {
   }
 }
 
+function closeQuietly(resource) {
+  try {
+    resource?.close();
+  } catch {
+  }
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   applyContextPolicy(ctx, 'server', 'MULTI_SPOT_REQREP');
   const node = new zlink.SpotNode(ctx);
-  const dealer = new zlink.DealerSocket(ctx);
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
   const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
@@ -54,28 +67,28 @@ async function main() {
   let stop = false;
   let connectedControlEndpoint = '';
   let rl = null;
+  let responderLoop = null;
 
   try {
-    node.attachChannelDealerManual(SERVICE_NAME, dealer);
-    applySocketPolicy(dealer);
-    node.setRoutingId(SERVER_NODE_ROUTING_ID);
-    node.bind(options.peerEndpoint);
     spot = node.createSpot();
     applySocketPolicy(spot);
+    node.setRoutingId(SERVER_NODE_ROUTING_ID);
     spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
-    spot.onDispatchEvent(() => {
-      while (true) {
+    node.bind(options.peerEndpoint);
+    responderLoop = (async () => {
+      while (!stop) {
         const received = tryRecvRouted(spot);
         if (!received) {
-          return;
+          await sleepImmediate();
+          continue;
         }
         try {
-          received.reply(received.parts);
+          received.reply(received.parts.map((part) => zlink.Message.from(Buffer.from(part.data()))));
         } finally {
           received.close();
         }
       }
-    });
+    })();
 
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
@@ -84,6 +97,7 @@ async function main() {
 
     console.log(`READY,${options.endpoint}`);
     console.log(`CONTROL_READY,${options.controlEndpoint}`);
+    trace('ready');
 
     rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     (async () => {
@@ -124,6 +138,7 @@ async function main() {
         await controlSubWaiter.wait(POLLIN);
       }
     }
+    trace(`control-ready connected=${connected} ready=${readyCount} start=${startRequested}`);
 
     if (stop) {
       return;
@@ -139,18 +154,20 @@ async function main() {
     while (!stop) {
       await sleepImmediate();
     }
+    trace('stop');
   } finally {
+    stop = true;
+    if (responderLoop) {
+      await responderLoop;
+    }
     rl?.close();
     controlSubWaiter.close();
     controlPubWaiter.close();
-    if (spot) {
-      spot.close();
-    }
-    controlPub.close();
-    controlSub.close();
-    dealer.close();
-    node.close();
-    ctx.close();
+    closeQuietly(spot);
+    closeQuietly(controlPub);
+    closeQuietly(controlSub);
+    closeQuietly(node);
+    closeQuietly(ctx);
   }
 }
 

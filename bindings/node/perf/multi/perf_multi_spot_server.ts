@@ -36,6 +36,13 @@ function trySpotPublish(spot, serviceName, topic, payload) {
   }, topic, payload);
 }
 
+function closeQuietly(resource) {
+  try {
+    resource?.close();
+  } catch {
+  }
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
@@ -67,7 +74,7 @@ async function main() {
     node.bind(dataBindEndpoint);
     spot = node.createSpot();
     applySocketPolicy(spot, {
-      noDrop: Number(process.env.PERF_MULTI_SPOT_XPUB_NODROP ?? 1) !== 0
+      noDrop: Number(process.env.PERF_MULTI_SPOT_XPUB_NODROP ?? 0) !== 0
     });
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
@@ -179,15 +186,13 @@ async function main() {
     rl?.close();
     controlSubWaiter.close();
     controlPubWaiter.close();
-    if (spot) {
-      spot.close();
-    }
-    controlPub.close();
-    controlSub.close();
-    discovery.close();
-    registry.close();
-    node.close();
-    ctx.close();
+    closeQuietly(spot);
+    closeQuietly(controlPub);
+    closeQuietly(controlSub);
+    closeQuietly(discovery);
+    closeQuietly(registry);
+    closeQuietly(node);
+    closeQuietly(ctx);
   }
 }
 

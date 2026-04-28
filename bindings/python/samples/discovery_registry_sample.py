@@ -14,21 +14,26 @@ def main():
     ctx = zlink.Context()
     registry = zlink.Registry(ctx)
     discovery = zlink.Discovery(ctx, zlink.ServiceType.SOCKET, SERVICE_NAME)
+    query = zlink.RegistryQueryClient(ctx)
     provider = zlink.PubSocket(ctx)
     try:
         registry.bind(registry_pub_endpoint, registry_router_endpoint)
         discovery.connect_registry(registry_router_endpoint)
         provider.attach_discovery(discovery)
         provider.bind(service_endpoint)
-        wait_until(
-            lambda: any(
-                entry.service_name == SERVICE_NAME for entry in discovery.member_peers()
-            ),
-            description="discovery registry sample",
-        )
+        query.connect(registry_router_endpoint)
+
+        def found():
+            try:
+                entries = query.snapshot()
+            except zlink.ConfigError:
+                return False
+            return any(entry.service_name == SERVICE_NAME for entry in entries)
+
+        wait_until(found, description="discovery registry sample")
         print('[discovery-registry] service: "sample" -> discovered')
     finally:
-        for resource in (provider, discovery, registry, ctx):
+        for resource in (provider, query, discovery, registry, ctx):
             with suppress(Exception):
                 resource.close()
 

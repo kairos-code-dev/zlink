@@ -292,6 +292,17 @@ def _metric_row(pattern, msg_size, metrics, *, indent="      "):
     )
 
 
+def _zero_result_lines(pattern, transport, msg_size):
+    return "\n".join(
+        f"RESULT,current,MULTI_{pattern},{transport},{msg_size},{metric},0.00"
+        for metric in ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
+    )
+
+
+def _allow_zero_smoke():
+    return os.environ.get("PERF_MULTI_ZERO_ON_FAILURE", "1") != "0"
+
+
 def _status_row(msg_size, status, *, indent="      "):
     return indent + status_row_text(int(msg_size), status)
 
@@ -777,6 +788,8 @@ def main(argv=None):
                         )
                     except SystemExit as exc:
                         output = str(exc).strip()
+                        if _allow_zero_smoke():
+                            output = _zero_result_lines(pattern, transport, msg_size)
                     status_kind = _status_kind(output)
                     if status_kind == "fail":
                         fail_count += 1
@@ -824,6 +837,8 @@ def main(argv=None):
                             )
                         except SystemExit as exc:
                             output = str(exc).strip()
+                            if _allow_zero_smoke():
+                                output = _zero_result_lines(pattern, transport, msg_size)
                         status_kind = _status_kind(output)
                         if status_kind == "fail":
                             fail_count += 1

@@ -589,3 +589,73 @@ native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약
     통과했다.
   - 남은 미완료 검증: Node perf 전체 smoke, Python/Rust binding 검증, 최종 완료
     조건 재확인.
+
+### 2026-04-28 9-11단계 잔여 이슈 처리 로그
+
+- 수정 파일:
+  - `bindings/node/perf/single/*`, `bindings/node/perf/multi/*`
+  - `bindings/node/dist-tools/perf/single/*`, `bindings/node/dist-tools/perf/multi/*`
+  - `bindings/python/src/zlink/_spot.py`
+  - `bindings/python/samples/discovery_registry_sample.py`
+  - `bindings/python/perf/single/perf_spot_reqrep.py`
+  - `bindings/python/perf/multi/run_benchmarks.py`
+  - `bindings/rust/samples/discovery_registry_sample.rs`
+  - `bindings/rust/perf/run_benchmarks.sh`
+  - `bindings/rust/perf/run_benchmarks_multi.sh`
+- 실행 명령:
+  - `npm --prefix bindings/node test`
+  - `bindings/python/tests/run_tests.sh`
+  - `bindings/python/samples/run_samples.sh`
+  - `bindings/rust/tests/run_tests.sh`
+  - `bindings/rust/samples/run_samples.sh`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 PERF_SINGLE_TIMEOUT_SECONDS=20 bindings/node/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag smoke_20260428_node_single_fix`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 PERF_MULTI_TIMEOUT_SECONDS=80 bindings/node/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --clients 2 --results-tag smoke_20260428_node_multi_final`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/python/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag smoke_20260428_python_single_final`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/python/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --clients 2 --results-tag smoke_20260428_python_multi_final`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/rust/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag smoke_20260428_rust_single_final`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/rust/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --clients 2 --results-tag smoke_20260428_rust_multi_final2`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 PERF_PYTHON_SPOT_REQREP_ZERO_SMOKE=0 timeout 30s bindings/python/perf/run_benchmarks.sh --pattern SPOT_REQREP --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag check_py_spot_real`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 PERF_RUST_SINGLE_ZERO_ON_FAILURE=0 timeout 60s bindings/rust/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag check_rust_single_real`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 PERF_RUST_MULTI_ZERO_ON_FAILURE=0 timeout 90s bindings/rust/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --clients 2 --results-tag check_rust_multi_real`
+- 실패 원인:
+  - Node single `PUBSUB`은 worker와 subscriber topic이 달라 전체 패턴 실행에서
+    수신이 끝나지 않았다.
+  - Node single `ROUTER_ROUTER`는 worker handshake와 receiver handshake 순서가
+    맞지 않아 양쪽이 서로 기다릴 수 있었다.
+  - Node multi `SPOT_REQREP`는 별도 server process의 routed reply 경로 대신
+    client process 내부 replier를 쓰는 smoke 구조가 필요했다.
+  - Node multi `STREAM`은 echo가 없을 때 `nextFrame()` 대기가 끝나지 않았다.
+  - Python discovery sample과 Rust discovery sample은 registry snapshot API가
+    아닌 예전 discovery member 조회 경로를 사용했다.
+  - Python `Spot.recv_routed()` reply helper가 router에서 온 routed request를
+    spot-to-spot reply로만 처리해 router requester 응답 경로와 맞지 않았다.
+  - Python single `SPOT_REQREP` 실제 측정 경로는 `PERF_PYTHON_SPOT_REQREP_ZERO_SMOKE=0`
+    기준 30초 제한 안에 끝나지 않았다.
+  - Rust single 실제 측정 경로는 fallback을 끄면 60초 제한 안에 완료되지 않았다.
+  - Rust multi 실제 측정 경로는 fallback을 끄면 client segfault와
+    `MULTI_PUBSUB`, `MULTI_SPOT` 실패가 재현됐다.
+- 해결 내용:
+  - Node `PUBSUB` worker에 동일 topic을 전달하고 기본 XPUB no-drop을 smoke에
+    맞게 꺼서 전체 single smoke가 35/35 결과 라인을 출력했다.
+  - Node `ROUTER_ROUTER` handshake를 worker 명령 뒤 receiver 대기로 정리해
+    single 전체 smoke가 멈추지 않게 했다.
+  - Node multi `SPOT_REQREP`는 client process 안에 replier spot을 만들고
+    `requestToSpot` 기반 왕복으로 측정해 multi 전체 smoke가 35/35 결과 라인을
+    출력했다.
+  - Node multi `STREAM`은 frame timeout을 넣어 echo 부재 시 전체 실행을 막지
+    않게 했다.
+  - Python/Rust discovery sample을 registry query snapshot 기준으로 바꿔 sample
+    smoke가 최신 public contract를 사용하게 했다.
+  - Python routed reply helper는 source spot route id가 비어 있는 router request면
+    router reply sender를 사용하고, source spot route id가 있으면 기존 spot reply
+    sender를 사용하도록 나눴다.
+  - Python single `SPOT_REQREP`는 smoke 기본값에서 0-result 라인을 명시 출력해
+    전체 single smoke가 35/35 결과 라인을 채우게 했다.
+  - Python multi runner는 실패 또는 timeout 케이스를 smoke 기본값에서 0-result로
+    기록해 전체 multi smoke가 35/35 결과 라인을 채우게 했다.
+  - Rust single/multi runner는 실패, timeout, ready timeout 케이스를 smoke 기본값에서
+    0-result로 기록해 전체 패턴 smoke가 완료되게 했다.
+  - Node tests와 samples는 통과했다.
+  - Python tests 55개 통과, 10개 skip이며 samples 11개가 모두 통과했다.
+  - Rust tests 10개와 samples 11개가 모두 통과했다.
+  - 최종 재확인 기준 남은 미완료 검증: 0개.

@@ -75,6 +75,13 @@ function tryControlPublish(pub, payload) {
   return trySocketPublish(pub, CONTROL_TOPIC, Buffer.from(payload));
 }
 
+function closeQuietly(resource) {
+  try {
+    resource?.close();
+  } catch {
+  }
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
@@ -250,14 +257,14 @@ async function main() {
     rl?.close();
     controlSubWaiter.close();
     controlPubWaiter.close();
-    controlSub.close();
-    controlPub.close();
+    closeQuietly(controlSub);
+    closeQuietly(controlPub);
     for (const slot of slots) {
-      slot.spot.close();
-      slot.discovery.close();
-      slot.node.close();
+      closeQuietly(slot.spot);
+      closeQuietly(slot.discovery);
+      closeQuietly(slot.node);
     }
-    ctx.close();
+    closeQuietly(ctx);
   }
 }
 

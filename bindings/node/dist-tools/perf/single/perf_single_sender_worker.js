@@ -5,12 +5,17 @@ const { parentPort, workerData } = require('node:worker_threads');
 const zlink = require('../../dist/canonical');
 const { createPayload, stampPayload } = require('../common/perf_metrics');
 const { applyContextPolicy, applySocketPolicy, configureTlsClient, configureTlsServer, waitForConnectionReady, } = require('./perf_single_common');
-const TOPIC = 'perf.topic';
+const DEFAULT_TOPIC = 'perf.topic';
 function ensureParentPort() {
     if (!parentPort) {
         throw new Error('sender worker requires parentPort');
     }
     return parentPort;
+}
+function trace(message) {
+    if (process.env.PERF_NODE_TRACE === '1') {
+        console.error(`[sender-worker] ${message}`);
+    }
 }
 function waitForCommand(port, type) {
     return new Promise((resolve) => {
@@ -43,13 +48,13 @@ async function handshakeRouterSender(port, sender, receiverRoutingId) {
         reply.close();
     }
 }
-function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, receiverRoutingId) {
+function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, receiverRoutingId, topic) {
     const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(duration * 1_000_000_000));
     let seq = seqStart;
     while (process.hrtime.bigint() < activeStopNs) {
         stampPayload(payload, { phase: 1, runId, msgSize, seq });
         if (kind === 'pubsub') {
-            socket.publish(TOPIC, payload);
+            socket.publish(topic, payload, zlink.SendFlags.DontWait);
         }
         else if (kind === 'router_router') {
             socket.send(receiverRoutingId, payload);
@@ -61,7 +66,7 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
     }
     stampPayload(payload, { phase: 2, runId, msgSize, seq });
     if (kind === 'pubsub') {
-        socket.publish(TOPIC, payload);
+        socket.publish(topic, payload, zlink.SendFlags.DontWait);
     }
     else if (kind === 'router_router') {
         socket.send(receiverRoutingId, payload);
@@ -73,6 +78,9 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
 async function main() {
     const port = ensureParentPort();
     const { kind, transport, endpoint, duration, msgSize, runId, receiverRoutingIdBytes, senderRoutingIdBytes, options } = workerData;
+    const topic = typeof workerData.topic === 'string' && workerData.topic.length > 0
+        ? workerData.topic
+        : DEFAULT_TOPIC;
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
     const payload = createPayload(msgSize);
@@ -99,6 +107,7 @@ async function main() {
                 applySocketPolicy(socket, options);
                 configureTlsServer(socket, transport);
                 socket.bind(endpoint);
+                trace('pubsub bound');
                 port.postMessage({ type: 'bound' });
                 break;
             case 'router_router': {
@@ -116,17 +125,24 @@ async function main() {
             port.postMessage({ type: 'ready' });
         }
         else if (kind === 'pubsub') {
+            trace('waiting ready');
             await waitForCommand(port, 'ready');
+            trace('ready received');
         }
         else {
             port.postMessage({ type: 'ready' });
         }
+        trace('waiting start');
         await waitForCommand(port, 'start');
+        trace('start received');
         sendLoop(kind, socket, payload, duration, runId, msgSize, 1n, receiverRoutingIdBytes
             ? zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes))
-            : null);
+            : null, topic);
+        trace('send loop done');
         port.postMessage({ type: 'done' });
+        trace('waiting stop');
         await waitForCommand(port, 'stop');
+        trace('stop received');
     }
     catch (error) {
         port.postMessage({

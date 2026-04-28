@@ -71,6 +71,7 @@ libtestutil.a
 libunity.a
 
 # Some build outputs and temporal files
+*.log
 *.o
 *.gcno
 *.gcda

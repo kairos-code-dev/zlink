@@ -996,6 +996,21 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_spot_request_spot_part",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_int,
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_spot_publish_part",
             [
                 ctypes.c_void_p,

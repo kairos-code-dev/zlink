@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
+const SERVICE_NAME: &str = "perf-spot-svc";
 const TOPIC: &str = "bench.topic";
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -48,10 +49,10 @@ enum ClientEvent {
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
-    let (data_endpoint, control_endpoint) = args
+    let (registry_router_endpoint, control_endpoint) = args
         .endpoint
         .split_once(',')
-        .expect("spot client expects data,control endpoint");
+        .expect("spot client expects registry,control endpoint");
 
     let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
     let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
@@ -112,24 +113,32 @@ fn main() {
     let ctx = common::perf_client_context();
     let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
     let mut nodes: Vec<SpotNode> = Vec::with_capacity(settings.clients);
-    let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
+    let mut discoveries: Vec<Discovery> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let node = SpotNode::new(&ctx).expect("spot node");
+        let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
+        discovery
+            .connect_registry(registry_router_endpoint)
+            .expect("discovery connect");
+        node.attach_discovery(&discovery).expect("attach discovery");
         if matches!(args.transport.as_str(), "tls" | "wss") {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
             let pem = common::load_tls_pem(&tls);
             node.set_tls_client(&pem.ca, "localhost", false)
                 .expect("spot tls");
         }
-        let mut spot = Box::new(node.create_spot().expect("spot"));
-        node.connect_peer(data_endpoint).expect("connect peer");
+        let Some(bind_endpoint) =
+            common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-client")
+        else {
+            return;
+        };
+        node.bind(&bind_endpoint).expect("client bind");
+        let spot = Box::new(node.create_spot().expect("spot"));
         spot.set_subscription(TOPIC).expect("subscription");
-        let poller = Poller::new().expect("poller");
-        poller.add_socket(&*spot, POLLIN).expect("poller add");
         nodes.push(node);
+        discoveries.push(discovery);
         spots.push(spot);
-        pollers.push(poller);
     }
 
     let mut ready_sender = None::<TcpStream>;
@@ -157,45 +166,7 @@ fn main() {
     {
         let stream = ready_sender.as_mut().expect("ready sender");
         writeln!(stream, "CONNECTED").expect("write connected");
-        writeln!(stream, "READY_COUNT,{},{}", args.msg_size, settings.clients)
-            .expect("write ready count");
-        stream.flush().expect("flush ready count");
-    }
-
-    println!("CLIENT_READY,{}", args.msg_size);
-    io::stdout().flush().ok();
-
-    let mut runner_start = false;
-    let start_deadline = Instant::now() + ready_timeout;
-    while Instant::now() < start_deadline {
-        let remaining = start_deadline.saturating_duration_since(Instant::now());
-        match event_rx.recv_timeout(remaining) {
-            Ok(ClientEvent::RunnerStart) => runner_start = true,
-            Ok(ClientEvent::Started) => {}
-            Ok(ClientEvent::Stop) => return,
-            Ok(ClientEvent::ReadySender(_)) => {}
-            Err(mpsc::RecvTimeoutError::Timeout) => break,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-        if runner_start {
-            break;
-        }
-    }
-    if !runner_start {
-        panic!("spot client start handshake timeout");
-    }
-
-    if std::env::var("PERF_RUST_MULTI_SPOT_ZERO_SMOKE").unwrap_or_else(|_| "1".into()) != "0" {
-        thread::sleep(Duration::from_secs(settings.duration_seconds));
-        let stats = latency.lock().expect("latency lock").finish();
-        common::print_result(
-            "MULTI_SPOT",
-            &args.transport,
-            args.msg_size,
-            settings.duration_seconds,
-            &stats,
-        );
-        std::process::exit(0);
+        stream.flush().expect("flush connected");
     }
 
     let mut ready_seen = vec![false; spots.len()];
@@ -203,12 +174,6 @@ fn main() {
     while Instant::now() < warmup_deadline {
         let mut progressed = false;
         for (index, spot) in spots.iter().enumerate() {
-            let Some(event) = pollers[index].wait(0).expect("poller wait") else {
-                continue;
-            };
-            if !event.is_readable() {
-                continue;
-            }
             loop {
                 match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
                     Ok(received) => {
@@ -282,12 +247,6 @@ fn main() {
     while Instant::now() < idle_deadline {
         let mut progressed = false;
         for (index, spot) in spots.iter().enumerate() {
-            let Some(event) = pollers[index].wait(0).expect("poller wait") else {
-                continue;
-            };
-            if !event.is_readable() {
-                continue;
-            }
             loop {
                 match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
                     Ok(received) => {

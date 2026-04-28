@@ -9,7 +9,6 @@ from perf_multi_common import (
     benchmark_endpoint,
     parse_server_args,
     recv_nonblocking,
-    safe_poll,
     send_nonblocking,
 )
 
@@ -33,42 +32,30 @@ def main(argv=None):
             apply_multi_socket_options(router)
             router.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            with zlink.Poller() as poller:
-                poller.add_socket(
-                    router,
-                    zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
-                )
-                while not stop.is_set():
-                    events = safe_poll(poller, 100)
-                    if not events:
-                        continue
-                    for event in events:
-                        event_mask = int(event["events"])
-                        if event_mask & int(zlink.PollEvent.POLLOUT):
-                            while pending:
-                                routing_id, payload = pending[0]
-                                if not send_nonblocking(
-                                    router,
-                                    payload,
-                                    routing_id=routing_id,
-                                ):
-                                    break
-                                pending.popleft()
-                        if not (event_mask & int(zlink.PollEvent.POLLIN)):
-                            continue
-                        while True:
-                            received = recv_nonblocking(router)
-                            if received is None:
-                                break
-                            with received:
-                                payload = received.to_bytes_list()[0]
-                                routing_id = bytes(received.routing_id)
-                            if pending or not send_nonblocking(
-                                router,
-                                payload,
-                                routing_id=routing_id,
-                            ):
-                                pending.append((routing_id, payload))
+            while not stop.is_set():
+                progressed = False
+                while pending:
+                    routing_id, payload = pending[0]
+                    if not send_nonblocking(router, payload, routing_id=routing_id):
+                        break
+                    pending.popleft()
+                    progressed = True
+                while True:
+                    received = recv_nonblocking(router)
+                    if received is None:
+                        break
+                    with received:
+                        payload = received.to_bytes_list()[0]
+                        routing_id = bytes(received.routing_id)
+                    if pending or not send_nonblocking(
+                        router,
+                        payload,
+                        routing_id=routing_id,
+                    ):
+                        pending.append((routing_id, payload))
+                    progressed = True
+                if not progressed:
+                    stop.wait(0.001)
 
 
 if __name__ == "__main__":

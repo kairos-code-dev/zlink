@@ -43,13 +43,20 @@ enum ServerEvent {
     Stop,
     RunnerStart,
     ClientConnected,
-    ReadyCount(usize),
+    DataEndpoint(String),
+    ReadyCount,
     StartSender(TcpStream),
+}
+
+fn trace_enabled() -> bool {
+    std::env::var("PERF_RUST_MULTI_SPOT_REQREP_TRACE")
+        .ok()
+        .as_deref()
+        == Some("1")
 }
 
 fn main() {
     let args = common::MultiArgs::parse();
-    let settings = common::MultiSettings::from_env();
     let stop = Arc::new(AtomicBool::new(false));
     let (event_tx, event_rx) = mpsc::channel::<ServerEvent>();
 
@@ -86,6 +93,9 @@ fn main() {
                             let text = line.trim();
                             if text == "CONNECTED" {
                                 let _ = event_tx.send(ServerEvent::ClientConnected);
+                            } else if let Some(endpoint) = text.strip_prefix("DATA_ENDPOINT,") {
+                                let _ =
+                                    event_tx.send(ServerEvent::DataEndpoint(endpoint.to_string()));
                             } else if let Some(rest) = text.strip_prefix("READY_COUNT,") {
                                 let mut parts = rest.split(',');
                                 let size =
@@ -93,8 +103,8 @@ fn main() {
                                 let count =
                                     parts.next().and_then(|value| value.parse::<usize>().ok());
                                 if size == Some(args.msg_size) {
-                                    let _ =
-                                        event_tx.send(ServerEvent::ReadyCount(count.unwrap_or(0)));
+                                    let _ = count;
+                                    let _ = event_tx.send(ServerEvent::ReadyCount);
                                 }
                             } else if matches!(text, "STOP" | "QUIT") {
                                 let _ = event_tx.send(ServerEvent::Stop);
@@ -136,8 +146,7 @@ fn main() {
     let stop_dispatch = Arc::clone(&stop);
     let spot_ptr = (&spot as *const Spot) as usize;
     spot.on_dispatch_event(move |info| {
-        if stop_dispatch.load(Ordering::Acquire)
-            || info.event != SpotDispatchEvent::RoutedReadable
+        if stop_dispatch.load(Ordering::Acquire) || info.event != SpotDispatchEvent::RoutedReadable
         {
             return;
         }
@@ -145,17 +154,28 @@ fn main() {
         loop {
             match spot.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
                 Ok(received) => {
+                    if trace_enabled() {
+                        eprintln!(
+                            "spot reqrep server received routed request node_len={} spot_len={} seq={}",
+                            received.routing_id().map(|rid| rid.size()).unwrap_or(0),
+                            received.spot_rid.as_ref().map(|rid| rid.size()).unwrap_or(0),
+                            received.request_seq().unwrap_or(0)
+                        );
+                    }
                     let reply = Message::copy_from(common::message_payload(received.parts()))
                         .expect("reply");
-                    received.reply(vec![reply]).expect("reply");
+                    if let Err(err) = received.reply(vec![reply]) {
+                        if trace_enabled() {
+                            eprintln!("spot reqrep reply failed: {err}");
+                        }
+                    }
                 }
                 Err(err) if err.code() == RecvResult::NoData => break,
-                Err(err) => panic!("spot reqrep server recv_routed drain failed: {err}"),
+                Err(_) => break,
             }
         }
     })
     .expect("dispatch event");
-
     let Some(data_bind_endpoint) =
         common::resolve_server_bind_endpoint("MULTI_SPOT_REQREP", &args.transport)
     else {
@@ -177,34 +197,63 @@ fn main() {
     let ready_timeout = common::resolve_multi_connect_ready_timeout();
     let mut runner_start = false;
     let mut client_connected = false;
-    let mut ready_count = 0usize;
+    let mut data_endpoint_count = 0usize;
     let mut start_sender = None::<TcpStream>;
-    let handshake_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
-    while Instant::now() < handshake_deadline {
-        let remaining = handshake_deadline.saturating_duration_since(Instant::now());
+    let control_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
+    while Instant::now() < control_deadline {
+        let remaining = control_deadline
+            .saturating_duration_since(Instant::now())
+            .min(Duration::from_millis(10));
         match event_rx.recv_timeout(remaining) {
             Ok(ServerEvent::Stop) => return,
             Ok(ServerEvent::RunnerStart) => runner_start = true,
             Ok(ServerEvent::ClientConnected) => client_connected = true,
-            Ok(ServerEvent::ReadyCount(count)) => ready_count += count,
+            Ok(ServerEvent::DataEndpoint(endpoint)) => {
+                if trace_enabled() {
+                    eprintln!("spot reqrep server connect data endpoint: {endpoint}");
+                }
+                node.connect_peer(&endpoint).expect("connect client data");
+                data_endpoint_count += 1;
+            }
+            Ok(ServerEvent::ReadyCount) => {}
             Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
-            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        if runner_start
-            && client_connected
-            && ready_count >= settings.clients
-            && start_sender.is_some()
-        {
+        if client_connected && data_endpoint_count >= 1 && start_sender.is_some() {
             break;
         }
     }
-    if !runner_start
-        || !client_connected
-        || ready_count < settings.clients
-        || start_sender.is_none()
-    {
-        panic!("spot reqrep server handshake timeout");
+    if !client_connected || data_endpoint_count < 1 || start_sender.is_none() {
+        panic!("spot reqrep server control handshake timeout");
+    }
+
+    let start_deadline = Instant::now() + ready_timeout;
+    while Instant::now() < start_deadline {
+        let remaining = start_deadline
+            .saturating_duration_since(Instant::now())
+            .min(Duration::from_millis(10));
+        match event_rx.recv_timeout(remaining) {
+            Ok(ServerEvent::Stop) => return,
+            Ok(ServerEvent::RunnerStart) => runner_start = true,
+            Ok(ServerEvent::ClientConnected) => {}
+            Ok(ServerEvent::DataEndpoint(endpoint)) => {
+                if trace_enabled() {
+                    eprintln!("spot reqrep server connect late data endpoint: {endpoint}");
+                }
+                node.connect_peer(&endpoint).expect("connect client data");
+            }
+            Ok(ServerEvent::ReadyCount) => {}
+            Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        if runner_start {
+            break;
+        }
+    }
+    if !runner_start {
+        panic!("spot reqrep server start handshake timeout");
     }
 
     {
@@ -213,9 +262,28 @@ fn main() {
         stream.flush().expect("flush start");
     }
 
-    while let Ok(event) = event_rx.recv() {
-        if matches!(event, ServerEvent::Stop) {
+    while !stop.load(Ordering::Acquire) {
+        while let Ok(event) = event_rx.try_recv() {
+            match event {
+                ServerEvent::Stop => {
+                    stop.store(true, Ordering::Release);
+                    break;
+                }
+                ServerEvent::DataEndpoint(endpoint) => {
+                    if trace_enabled() {
+                        eprintln!("spot reqrep server connect runtime data endpoint: {endpoint}");
+                    }
+                    node.connect_peer(&endpoint).expect("connect client data");
+                }
+                ServerEvent::RunnerStart
+                | ServerEvent::ClientConnected
+                | ServerEvent::ReadyCount
+                | ServerEvent::StartSender(_) => {}
+            }
+        }
+        if stop.load(Ordering::Acquire) {
             break;
         }
+        thread::sleep(Duration::from_millis(1));
     }
 }

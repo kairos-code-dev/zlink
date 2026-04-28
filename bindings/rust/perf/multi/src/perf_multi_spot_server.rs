@@ -110,6 +110,8 @@ fn main() {
     }
 
     let ctx = common::perf_server_context();
+    let registry = Registry::new(&ctx).expect("registry");
+    let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
     let node = SpotNode::new(&ctx).expect("spot node");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
@@ -117,19 +119,36 @@ fn main() {
         node.set_tls_server(&pem.cert, &pem.key, false)
             .expect("spot tls");
     }
-    let spot = node.create_spot().expect("spot");
-    let Some(bind_endpoint) = common::resolve_server_bind_endpoint("MULTI_SPOT", &args.transport)
+    let Some(registry_pub_endpoint) =
+        common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-registry-pub")
     else {
         return;
     };
-    if let Err(err) = node.bind(&bind_endpoint) {
+    let Some(registry_router_endpoint) =
+        common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-registry-router")
+    else {
+        return;
+    };
+    let Some(data_endpoint) =
+        common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-data")
+    else {
+        return;
+    };
+    registry
+        .bind(&registry_pub_endpoint, &registry_router_endpoint)
+        .expect("registry bind");
+    discovery
+        .connect_registry(&registry_router_endpoint)
+        .expect("discovery connect");
+    node.attach_discovery(&discovery).expect("attach discovery");
+    if let Err(err) = node.bind(&data_endpoint) {
         if common::handle_transport_setup_error("MULTI_SPOT", &args.transport, "bind", err) {
             return;
         }
         panic!("bind: {err}");
     }
-    let endpoint = node.last_endpoint().expect("endpoint");
-    common::print_ready(&endpoint);
+    let spot = node.create_spot().expect("spot");
+    common::print_ready(&registry_router_endpoint);
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();
 
@@ -174,7 +193,9 @@ fn main() {
             Err(err)
                 if matches!(
                     err.code(),
-                    SubmitResult::NotConnected | SubmitResult::NotFound | SubmitResult::Backpressured
+                    SubmitResult::NotConnected
+                        | SubmitResult::NotFound
+                        | SubmitResult::Backpressured
                 ) => {}
             Err(err) => panic!("warmup publish: {err}"),
         }
@@ -183,7 +204,7 @@ fn main() {
         match event_rx.recv_timeout(wait_slice) {
             Ok(ServerEvent::Stop) => return,
             Ok(ServerEvent::RunnerStart) => runner_start = true,
-            Ok(ServerEvent::ClientConnected) => client_connected = true,
+            Ok(ServerEvent::ClientConnected) => {}
             Ok(ServerEvent::ReadyCount(count)) => ready_count = count,
             Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -200,8 +221,8 @@ fn main() {
         match event_rx.recv_timeout(remaining) {
             Ok(ServerEvent::Stop) => return,
             Ok(ServerEvent::RunnerStart) => runner_start = true,
-            Ok(ServerEvent::ClientConnected) => client_connected = true,
-            Ok(ServerEvent::ReadyCount(count)) => ready_count = count,
+            Ok(ServerEvent::ClientConnected) => {}
+            Ok(ServerEvent::ReadyCount(_)) => {}
             Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
             Err(mpsc::RecvTimeoutError::Timeout) => break,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,

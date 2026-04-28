@@ -42,6 +42,28 @@ enum ClientEvent {
     Stop,
 }
 
+fn request_spot_reply(
+    spot: &Spot,
+    node_rid: RoutingId,
+    spot_rid: RoutingId,
+    msg: Message,
+    timeout: Duration,
+) -> Option<Vec<Message>> {
+    match spot.request_to_spot(node_rid, spot_rid, vec![msg], timeout) {
+        Ok(parts) => Some(parts),
+        Err(err) => {
+            if std::env::var("PERF_RUST_MULTI_SPOT_REQREP_TRACE")
+                .ok()
+                .as_deref()
+                == Some("1")
+            {
+                eprintln!("spot reqrep request failed: {err}");
+            }
+            None
+        }
+    }
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
@@ -106,41 +128,39 @@ fn main() {
     let node_rid = RoutingId::from_bytes(SERVER_NODE_RID);
     let spot_rid = RoutingId::from_bytes(SERVER_SPOT_RID);
     let ctx = common::perf_client_context();
-    let request_timeout =
-        Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms));
     let mut latency = common::LatencyStats::new();
-    let mut routers = Vec::with_capacity(settings.clients);
-    let mut pollers = Vec::with_capacity(settings.clients);
+    let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
+    let mut data_endpoints = Vec::with_capacity(settings.clients);
     let mut payloads = Vec::with_capacity(settings.clients);
-    let mut waiting_reply = vec![false; settings.clients];
-    let mut send_pending = vec![false; settings.clients];
     let mut seqs = vec![1u64; settings.clients];
+    let node = SpotNode::new(&ctx).expect("spot node");
+    node.set_routing_id(&RoutingId::from_bytes(b"spot-req-client-node"))
+        .expect("node rid");
+    if matches!(args.transport.as_str(), "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        let pem = common::load_tls_pem(&tls);
+        node.set_tls_client(&pem.ca, "localhost", false)
+            .expect("spot tls");
+    }
+    let Some(bind_endpoint) = common::benchmark_endpoint(
+        "MULTI_SPOT_REQREP",
+        &args.transport,
+        "multi-spot-reqrep-client",
+    ) else {
+        return;
+    };
+    node.bind(&bind_endpoint).expect("client bind");
+    data_endpoints.push(node.last_endpoint().expect("client endpoint"));
+    node.connect_peer(data_endpoint).expect("connect peer");
+
     for index in 0..settings.clients {
-        let router = ctx.router_socket().expect("router");
-        let poller = Poller::new().expect("poller");
-        router
-            .common_options()
-            .set_send_hwm(settings.send_hwm)
-            .expect("sndhwm");
-        router
-            .common_options()
-            .set_recv_hwm(settings.recv_hwm)
-            .expect("rcvhwm");
-        router
-            .common_options()
-            .set_recv_timeout(request_timeout)
-            .expect("recv timeout");
-        let rid = RoutingId::from_bytes(format!("SPOT-REQ-{index}").as_bytes());
-        router.set_routing_id(&rid).expect("set rid");
-        if matches!(args.transport.as_str(), "tls" | "wss") {
-            let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
-            common::setup_raw_tls_client(&router, &tls).expect("client tls");
-        }
-        router.connect(data_endpoint).expect("connect");
-        poller.add_socket(&router, POLLIN).expect("poller add");
+        let spot = Box::new(node.create_spot().expect("spot"));
+        spot.set_routing_id(&RoutingId::from_bytes(
+            format!("spot-req-client-spot-{index}").as_bytes(),
+        ))
+        .expect("spot rid");
         payloads.push(vec![0u8; args.msg_size.max(common::HEADER_SIZE)]);
-        routers.push(router);
-        pollers.push(poller);
+        spots.push(spot);
     }
 
     let mut ready_sender = None::<TcpStream>;
@@ -164,9 +184,48 @@ fn main() {
 
     thread::sleep(ready_settle);
     thread::sleep(control_settle);
+
+    {
+        let stream = ready_sender.as_mut().expect("ready sender");
+        for endpoint in &data_endpoints {
+            writeln!(stream, "DATA_ENDPOINT,{endpoint}").expect("write data endpoint");
+        }
+        stream.flush().expect("flush data endpoints");
+    }
+
+    thread::sleep(control_settle);
+
     {
         let stream = ready_sender.as_mut().expect("ready sender");
         writeln!(stream, "CONNECTED").expect("write connected");
+        stream.flush().expect("flush connected");
+    }
+
+    let probe_deadline = Instant::now() + ready_timeout;
+    let mut probe = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
+    common::encode_header(&mut probe, common::PHASE_WARMUP, args.msg_size as u32, 0);
+    let mut probe_ready = false;
+    while Instant::now() < probe_deadline {
+        if request_spot_reply(
+            &spots[0],
+            node_rid.clone(),
+            spot_rid.clone(),
+            Message::copy_from(&probe).expect("probe"),
+            Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms)),
+        )
+        .is_some()
+        {
+            probe_ready = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    if !probe_ready {
+        panic!("spot reqrep probe-ready timeout");
+    }
+
+    {
+        let stream = ready_sender.as_mut().expect("ready sender");
         writeln!(stream, "READY_COUNT,{},{}", args.msg_size, settings.clients)
             .expect("write ready count");
         stream.flush().expect("flush ready count");
@@ -199,114 +258,48 @@ fn main() {
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     while Instant::now() < deadline {
         let mut progressed = false;
-        for index in 0..routers.len() {
-            if waiting_reply[index] || send_pending[index] {
-                continue;
-            }
+        for index in 0..spots.len() {
             common::encode_header(
                 &mut payloads[index],
                 common::PHASE_ACTIVE,
                 args.msg_size as u32,
                 seqs[index],
             );
-            match routers[index].send_to_spot_with_flags(
-                &node_rid,
-                &spot_rid,
-                vec![Message::copy_from(&payloads[index]).expect("request")],
-                SendFlags::DONT_WAIT,
-            ) {
-                Ok(()) => {
-                    waiting_reply[index] = true;
-                    seqs[index] += 1;
-                    progressed = true;
-                }
-                Err(err) if err.code() == SubmitResult::Backpressured => {
-                    send_pending[index] = true;
-                    pollers[index]
-                        .modify_socket(&routers[index], POLLIN | POLLOUT)
-                        .expect("poller modify");
-                }
-                Err(err) if err.code() == SubmitResult::NotConnected => {}
-                Err(err) => panic!("spot reqrep request failed: {err}"),
+            let Some(reply) = request_spot_reply(
+                &spots[index],
+                node_rid.clone(),
+                spot_rid.clone(),
+                Message::copy_from(&payloads[index]).expect("request"),
+                Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms)),
+            ) else {
+                continue;
+            };
+            let data = common::message_payload(&reply);
+            if Instant::now() <= deadline && common::is_valid_active_message(data, args.msg_size) {
+                let sent_ts_ns = common::decode_sent_ts_ns(data);
+                let latency_ns =
+                    common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
+                latency.record_ns(latency_ns);
+                seqs[index] += 1;
+                progressed = true;
+            } else if std::env::var("PERF_RUST_MULTI_SPOT_REQREP_TRACE")
+                .ok()
+                .as_deref()
+                == Some("1")
+            {
+                eprintln!(
+                    "spot reqrep invalid reply len={} magic={} phase={} msg_size={}",
+                    data.len(),
+                    common::decode_magic(data),
+                    common::decode_phase(data),
+                    common::decode_msg_size(data)
+                );
             }
         }
         if progressed {
             continue;
         }
-
-        let mut saw_event = false;
-        for index in 0..pollers.len() {
-            let Some(event) = pollers[index].wait(0).expect("poller wait") else {
-                continue;
-            };
-            saw_event = true;
-            if event.is_writable() {
-                send_pending[index] = false;
-                pollers[index]
-                    .modify_socket(&routers[index], POLLIN)
-                    .expect("poller modify");
-            }
-            if !event.is_readable() {
-                continue;
-            }
-            loop {
-                match routers[index].recv_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(received) => {
-                        waiting_reply[index] = false;
-                        let data = common::message_payload(received.parts());
-                        if Instant::now() > deadline
-                            || !common::is_valid_active_message(data, args.msg_size)
-                        {
-                            continue;
-                        }
-                        let sent_ts_ns = common::decode_sent_ts_ns(data);
-                        let latency_ns =
-                            common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
-                        latency.record_ns(latency_ns);
-                    }
-                    Err(err) if err.code() == RecvResult::NoData => break,
-                    Err(err) => panic!("spot reqrep client recv failed: {err}"),
-                }
-            }
-        }
-        if saw_event {
-            continue;
-        }
-
-        for index in 0..pollers.len() {
-            let Some(event) = pollers[index].wait(1).expect("poller wait") else {
-                continue;
-            };
-            if event.is_writable() {
-                send_pending[index] = false;
-                pollers[index]
-                    .modify_socket(&routers[index], POLLIN)
-                    .expect("poller modify");
-            }
-            if !event.is_readable() {
-                continue;
-            }
-            loop {
-                match routers[index].recv_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(received) => {
-                        waiting_reply[index] = false;
-                        let data = common::message_payload(received.parts());
-                        if Instant::now() > deadline
-                            || !common::is_valid_active_message(data, args.msg_size)
-                        {
-                            continue;
-                        }
-                        let sent_ts_ns = common::decode_sent_ts_ns(data);
-                        let latency_ns =
-                            common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
-                        latency.record_ns(latency_ns);
-                    }
-                    Err(err) if err.code() == RecvResult::NoData => break,
-                    Err(err) => panic!("spot reqrep client recv failed: {err}"),
-                }
-            }
-            break;
-        }
+        thread::sleep(Duration::from_millis(1));
     }
 
     common::print_result(

@@ -47,8 +47,6 @@ fn main() {
     }
     let endpoint = router.last_endpoint().expect("endpoint");
     common::print_ready(&endpoint);
-    let poller = Poller::new().expect("poller");
-    poller.add_socket(&router, POLLIN).expect("poller add");
     let mut pending = VecDeque::<(RoutingId, Vec<u8>)>::new();
     let stop = Arc::new(AtomicBool::new(false));
     let stop_reader = stop.clone();
@@ -63,62 +61,36 @@ fn main() {
         }
     });
     while !stop.load(Ordering::Acquire) {
-        poller
-            .modify_socket(
-                &router,
-                if pending.is_empty() {
-                    POLLIN
-                } else {
-                    POLLIN | POLLOUT
-                },
-            )
-            .expect("poller modify");
-        match poller.wait(25) {
-            Ok(Some(event)) => {
-                if event.is_readable() {
-                    loop {
-                        match router.recv_with_flags(RecvFlags::DONT_WAIT) {
-                            Ok(received) => {
-                                let Some(rid) = received.routing_id().cloned() else {
-                                    continue;
-                                };
-                                let reply_bytes =
-                                    common::message_payload(received.parts()).to_vec();
-                                if pending.is_empty() {
-                                    match router.try_send(
-                                        &rid,
-                                        vec![Message::copy_from(&reply_bytes).expect("reply")],
-                                    ) {
-                                        Ok(true) => continue,
-                                        Ok(false) => {}
-                                        Err(err) => panic!("reply send failed: {err}"),
-                                    }
-                                }
-                                pending.push_back((rid, reply_bytes));
-                            }
-                            Err(err) if err.code() == RecvResult::NoData => break,
-                            Err(err) => panic!("router recv failed: {err}"),
-                        }
-                    }
+        let mut progressed = false;
+        loop {
+            match router.recv_with_flags(RecvFlags::DONT_WAIT) {
+                Ok(received) => {
+                    let Some(rid) = received.routing_id().cloned() else {
+                        continue;
+                    };
+                    let reply_bytes = common::message_payload(received.parts()).to_vec();
+                    pending.push_back((rid, reply_bytes));
+                    progressed = true;
                 }
-                if event.is_writable() {
-                    while let Some((rid, reply_bytes)) = pending.pop_front() {
-                        match router.try_send(
-                            &rid,
-                            vec![Message::copy_from(&reply_bytes).expect("pending reply")],
-                        ) {
-                            Ok(true) => {}
-                            Ok(false) => {
-                                pending.push_front((rid, reply_bytes));
-                                break;
-                            }
-                            Err(err) => panic!("pending reply failed: {err}"),
-                        }
-                    }
-                }
+                Err(err) if err.code() == RecvResult::NoData => break,
+                Err(err) => panic!("router recv failed: {err}"),
             }
-            Ok(None) => {}
-            Err(err) => panic!("poller wait failed: {err}"),
+        }
+        while let Some((rid, reply_bytes)) = pending.pop_front() {
+            match router.try_send(
+                &rid,
+                vec![Message::copy_from(&reply_bytes).expect("pending reply")],
+            ) {
+                Ok(true) => progressed = true,
+                Ok(false) => {
+                    pending.push_front((rid, reply_bytes));
+                    break;
+                }
+                Err(err) => panic!("pending reply failed: {err}"),
+            }
+        }
+        if !progressed {
+            std::thread::sleep(Duration::from_millis(1));
         }
     }
 }

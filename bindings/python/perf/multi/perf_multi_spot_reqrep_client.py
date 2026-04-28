@@ -3,27 +3,21 @@ import socket
 import sys
 import threading
 import time
-from contextlib import ExitStack
 
 import zlink
 
 from perf_multi_common import (
-    apply_multi_socket_options,
-    extract_metric_payload,
+    benchmark_endpoint,
     HEADER_SIZE,
     benchmark_run_id,
     is_active_message,
     latency_ns_from_message,
     print_result_lines,
-    recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
-    safe_poll,
-    send_to_spot_nonblocking,
     stamp_payload,
-    wait_monitor_event,
 )
 
 SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
@@ -56,6 +50,35 @@ def _listen_tcp():
     sock.bind(("127.0.0.1", 0))
     sock.listen(1)
     return sock
+
+
+def _request_spot_reply(spot, payload, timeout_s):
+    done = threading.Event()
+    box = {}
+
+    def on_reply(result, messages):
+        box["result"] = result
+        box["messages"] = messages
+        done.set()
+
+    submitted = spot.request_to_spot(
+        SERVER_NODE_RID,
+        SERVER_SPOT_RID,
+        [bytes(payload)],
+        on_reply,
+        flags=zlink.SendFlags.DONT_WAIT,
+        timeout=timeout_s,
+    )
+    if not submitted:
+        return None
+    if not done.wait(timeout_s + 0.1):
+        return None
+    if box.get("result") != zlink.RequestResult.OK:
+        return None
+    messages = box.get("messages") or []
+    if not messages:
+        return None
+    return messages[0].to_bytes()
 
 
 def main(argv=None):
@@ -120,142 +143,123 @@ def main(argv=None):
     threading.Thread(target=stdin_loop, daemon=True).start()
 
     with zlink.Context() as ctx:
-        sockets = [zlink.RouterSocket(ctx) for _ in range(args.clients)]
+        node = zlink.SpotNode(ctx)
+        node.set_routing_id(b"spot-req-client-node")
+        node.bind(benchmark_endpoint(args.transport, "multi-spot-reqrep-client"))
+        data_endpoint_local = node.last_endpoint()
+        node.connect_peer(data_endpoint)
+        spots = []
         payloads = [bytearray(args.msg_size) for _ in range(args.clients)]
-        waiting_reply = [False] * args.clients
-        send_pending = [True] * args.clients
         seq = 0
         try:
-            with ExitStack() as stack:
-                monitors = []
-                for index, sock in enumerate(sockets):
-                    sock.set_routing_id(f"SPOT-REQREP-{index}".encode("ascii"))
-                    monitor = stack.enter_context(
-                        sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
-                    )
-                    apply_multi_socket_options(sock)
-                    sock.connect(data_endpoint)
-                    monitors.append(monitor)
-                for monitor in monitors:
-                    wait_monitor_event(
-                        monitor,
-                        zlink.MonitorEventMask.CONNECTION_READY,
-                        timeout_ms=resolve_multi_connect_ready_timeout_ms(),
-                    )
+            for index in range(args.clients):
+                spot = node.create_spot()
+                spot.set_routing_id(f"spot-req-client-spot-{index}".encode("ascii"))
+                spots.append(spot)
 
-                deadline = time.perf_counter() + ready_timeout_s
-                while time.perf_counter() < deadline:
-                    if control_connected.is_set():
-                        break
-                    control_connected.wait(0.01)
-                if not control_connected.is_set():
-                    raise RuntimeError("control connection handshake timeout")
+            deadline = time.perf_counter() + ready_timeout_s
+            while time.perf_counter() < deadline:
+                if control_connected.is_set():
+                    break
+                control_connected.wait(0.01)
+            if not control_connected.is_set():
+                raise RuntimeError("control connection handshake timeout")
 
-                time.sleep(ready_settle_s)
-                time.sleep(control_settle_s)
-                ready_sender[0].sendall(b"CONNECTED\n")
-                ready_sender[0].sendall(
-                    f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8")
-                )
-                print(f"CLIENT_READY,{args.msg_size}", flush=True)
+            time.sleep(ready_settle_s)
+            time.sleep(control_settle_s)
+            ready_sender[0].sendall(f"DATA_ENDPOINT,{data_endpoint_local}\n".encode("utf-8"))
+            time.sleep(control_settle_s)
+            ready_sender[0].sendall(b"CONNECTED\n")
 
-                start_deadline = time.perf_counter() + ready_timeout_s
-                while time.perf_counter() < start_deadline:
-                    if (
-                        runner_start.is_set()
-                        and started_event.is_set()
-                        and started_size[0] == args.msg_size
-                    ):
-                        break
-                    runner_start.wait(0.01)
-                if not (
+            probe_deadline = time.perf_counter() + ready_timeout_s
+            probe = stamp_payload(
+                bytearray(args.msg_size),
+                phase=0,
+                run_id=run_id,
+                seq=0,
+            )
+            while time.perf_counter() < probe_deadline:
+                if _request_spot_reply(spots[0], probe, ready_timeout_s) is not None:
+                    break
+                time.sleep(0.01)
+            else:
+                raise RuntimeError("spot reqrep probe-ready timeout")
+
+            ready_sender[0].sendall(
+                f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8")
+            )
+            print(f"CLIENT_READY,{args.msg_size}", flush=True)
+
+            start_deadline = time.perf_counter() + ready_timeout_s
+            while time.perf_counter() < start_deadline:
+                if (
                     runner_start.is_set()
                     and started_event.is_set()
                     and started_size[0] == args.msg_size
                 ):
-                    raise RuntimeError("spot reqrep start handshake timeout")
+                    break
+                runner_start.wait(0.01)
+            if not (
+                runner_start.is_set()
+                and started_event.is_set()
+                and started_size[0] == args.msg_size
+            ):
+                raise RuntimeError("spot reqrep start handshake timeout")
 
-                active_deadline = time.perf_counter() + args.duration
-                with zlink.Poller() as poller:
-                    for index, sock in enumerate(sockets):
-                        poller.add_socket(
-                            sock,
-                            zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
-                            tag=index,
-                        )
-                    while time.perf_counter() < active_deadline:
-                        events = safe_poll(poller, 100)
-                        if not events:
-                            continue
-                        for event in events:
-                            index = event["tag"]
-                            current_sock = event["socket"]
-                            event_mask = int(event["events"])
-                            if (
-                                event_mask & int(zlink.PollEvent.POLLOUT)
-                                and not waiting_reply[index]
-                                and send_pending[index]
-                            ):
-                                seq += 1
-                                payload = stamp_payload(
-                                    payloads[index],
-                                    phase=1,
-                                    run_id=run_id,
-                                    seq=seq,
-                                )
-                                if send_to_spot_nonblocking(
-                                    current_sock,
-                                    SERVER_NODE_RID,
-                                    SERVER_SPOT_RID,
-                                    [bytes(payload)],
-                                ):
-                                    waiting_reply[index] = True
-                                    send_pending[index] = False
-                            if not (event_mask & int(zlink.PollEvent.POLLIN)):
-                                continue
-                            while True:
-                                received = recv_nonblocking(current_sock)
-                                if received is None:
-                                    break
-                                with received:
-                                    data = extract_metric_payload(
-                                        received.to_bytes_list()
-                                    )
-                                waiting_reply[index] = False
-                                if time.perf_counter() < active_deadline:
-                                    send_pending[index] = True
-                                if not is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=run_id,
-                                ):
-                                    continue
-                                latencies.append(
-                                    latency_ns_from_message(data) / 2.0
-                                )
-
-                if not latencies:
-                    raise RuntimeError(
-                        "multi spot reqrep benchmark did not receive any active reply"
+            active_deadline = time.perf_counter() + args.duration
+            while time.perf_counter() < active_deadline:
+                progressed = False
+                for index, spot in enumerate(spots):
+                    seq += 1
+                    payload = stamp_payload(
+                        payloads[index],
+                        phase=1,
+                        run_id=run_id,
+                        seq=seq,
                     )
-                metrics = result_metrics(
-                    count=len(latencies),
-                    msg_size=args.msg_size,
-                    elapsed_s=max(args.duration, 0.001),
-                    latencies_ns=latencies,
-                    bandwidth_multiplier=2.0,
+                    data = _request_spot_reply(
+                        spot,
+                        payload,
+                        max(
+                            resolve_multi_connect_ready_timeout_ms() / 1000.0,
+                            0.2,
+                        ),
+                    )
+                    if data is None:
+                        continue
+                    progressed = True
+                    if is_active_message(
+                        data,
+                        expected_msg_size=args.msg_size,
+                        run_id=run_id,
+                    ):
+                        latencies.append(latency_ns_from_message(data) / 2.0)
+                if not progressed:
+                    time.sleep(0.001)
+
+            if not latencies:
+                raise RuntimeError(
+                    "multi spot reqrep benchmark did not receive any active reply"
                 )
-                print_result_lines(
-                    "MULTI_SPOT_REQREP", args.transport, args.msg_size, metrics
-                )
+            metrics = result_metrics(
+                count=len(latencies),
+                msg_size=args.msg_size,
+                elapsed_s=max(args.duration, 0.001),
+                latencies_ns=latencies,
+                bandwidth_multiplier=2.0,
+            )
+            print_result_lines(
+                "MULTI_SPOT_REQREP", args.transport, args.msg_size, metrics
+            )
         finally:
             ready_listener.close()
             start_reader.close()
-            for sock in sockets:
+            for spot in spots:
                 try:
-                    sock.close()
+                    spot.close()
                 except Exception:
                     pass
+            node.close()
 
 
 if __name__ == "__main__":

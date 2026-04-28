@@ -290,6 +290,7 @@ pub fn wait_monitor_ready(mon: &mut SocketMonitor, timeout: Duration, name: &str
 
 pub fn perf_context() -> Context {
     let ctx = Context::new().expect("context");
+    ctx.options().set_blocky(false).expect("set blocky");
     if let Ok(value) = std::env::var("PERF_IO_THREADS") {
         if let Ok(io_threads) = value.parse::<i32>() {
             if io_threads > 0 {
@@ -425,7 +426,7 @@ pub fn print_result(
 }
 
 pub fn run_single_recv_loop<F>(
-    poller: &Poller,
+    _poller: &Poller,
     active_deadline: Instant,
     hard_deadline: Instant,
     done: CompletionSignal,
@@ -441,14 +442,10 @@ pub fn run_single_recv_loop<F>(
             break;
         }
 
-        match poller.wait(50) {
-            Ok(Some(event)) if event.is_readable() => {
-                if drain(now < active_deadline) {
-                    idle_since = None;
-                }
-            }
-            Ok(Some(_)) | Ok(None) => {}
-            Err(err) => panic!("single perf poller wait failed: {err}"),
+        if drain(now < active_deadline) {
+            idle_since = None;
+        } else {
+            std::thread::sleep(Duration::from_millis(1));
         }
 
         if done.is_done() {
@@ -519,10 +516,10 @@ pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<L
 // so that natural backpressure throttles the sender.
 
 /// One-way send loop: active only.
-/// `send_fn` performs the blocking send (may be plain or routed).
-pub fn send_loop<S>(active_deadline: Instant, msg_size: usize, phase: u8, send_fn: S)
+/// `send_fn` returns false when nonblocking send cannot accept a message yet.
+pub fn send_loop<S>(active_deadline: Instant, msg_size: usize, phase: u8, mut send_fn: S)
 where
-    S: Fn(Message),
+    S: FnMut(Message) -> bool,
 {
     let mut seq: u64 = 0;
     let mut buf = vec![0u8; msg_size.max(HEADER_SIZE)];
@@ -530,13 +527,22 @@ where
     while Instant::now() < active_deadline {
         encode_header(&mut buf, phase, msg_size as u32, seq);
         let msg = Message::copy_from(&buf).expect("msg");
-        send_fn(msg);
-        seq += 1;
+        if send_fn(msg) {
+            seq += 1;
+        } else {
+            std::thread::yield_now();
+        }
     }
 
     encode_header(&mut buf, PHASE_COOLDOWN, msg_size as u32, seq);
-    let cooldown = Message::copy_from(&buf).expect("cooldown msg");
-    send_fn(cooldown);
+    let cooldown_deadline = Instant::now() + Duration::from_millis(100);
+    while Instant::now() < cooldown_deadline {
+        let cooldown = Message::copy_from(&buf).expect("cooldown msg");
+        if send_fn(cooldown) {
+            break;
+        }
+        std::thread::yield_now();
+    }
 }
 
 // -- CLI config --------------------------------------------------------------

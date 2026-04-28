@@ -86,7 +86,11 @@ fn main() {
     let sender_done = done.clone();
     let send_thread = std::thread::spawn(move || {
         common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
-            sender.send(msg).expect("active send");
+            match sender.try_send(msg) {
+                Ok(sent) => sent,
+                Err(err) if err.code() == SubmitResult::NotConnected => false,
+                Err(err) => panic!("active send: {err}"),
+            }
         });
         sender_done.signal_done();
     });

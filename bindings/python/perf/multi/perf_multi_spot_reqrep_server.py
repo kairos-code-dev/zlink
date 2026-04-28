@@ -23,6 +23,7 @@ def main(argv=None):
     stop = threading.Event()
     start_runner = threading.Event()
     control_connected = threading.Event()
+    data_connected = threading.Event()
     ready_count = [0]
     ready_lock = threading.Lock()
     control_peer_endpoint = [""]
@@ -87,6 +88,10 @@ def main(argv=None):
                         text = line.strip()
                         if text == "CONNECTED":
                             control_connected.set()
+                        elif text.startswith("DATA_ENDPOINT,"):
+                            endpoint = text.split(",", 1)[1]
+                            data_node.connect_peer(endpoint)
+                            data_connected.set()
                         elif text.startswith("READY_COUNT,"):
                             _, size_text, count_text = text.split(",", 2)
                             if int(size_text) == args.msg_size:
@@ -124,6 +129,7 @@ def main(argv=None):
                         ready_ok = ready_count[0] >= args.clients
                     if (
                         control_connected.is_set()
+                        and data_connected.is_set()
                         and start_runner.is_set()
                         and ready_ok
                         and start_sender[0] is not None
@@ -136,6 +142,7 @@ def main(argv=None):
                     ready_ok = ready_count[0] >= args.clients
                 if not (
                     control_connected.is_set()
+                    and data_connected.is_set()
                     and start_runner.is_set()
                     and ready_ok
                     and start_sender[0] is not None

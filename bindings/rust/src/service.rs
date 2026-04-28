@@ -1369,6 +1369,82 @@ impl Spot {
         check_submit_rc(rc)
     }
 
+    pub fn request_to_spot(
+        &self,
+        dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId,
+        parts: impl IntoMultipart,
+        timeout: Duration,
+    ) -> Result<Vec<Message>, ZlinkError> {
+        let (tx, rx) = mpsc::channel();
+        self.request_to_spot_callback(
+            dest_node_rid,
+            dest_spot_rid,
+            parts,
+            move |result| {
+                let _ = tx.send(result);
+            },
+            SendFlags::NONE,
+            timeout,
+        )?;
+        rx.recv()
+            .unwrap_or_else(|_| {
+                Err(RequestError::new(
+                    crate::error::RequestResult::ProtocolError,
+                    libc::EINVAL,
+                ))
+            })
+            .map_err(ZlinkError::from)
+    }
+
+    pub fn request_to_spot_callback<F>(
+        &self,
+        dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId,
+        parts: impl IntoMultipart,
+        callback: F,
+        flags: SendFlags,
+        timeout: Duration,
+    ) -> Result<(), SubmitError>
+    where
+        F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
+    {
+        let mut parts = parts.into_parts();
+        let mut native = prepare_send_parts(&mut parts)?;
+        let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
+            callback: Some(Box::new(callback)),
+            _progress: RequestProgressGuard::attach_spot(self.handle),
+        }));
+        let timeout_ms = timeout_to_timeout_ms(timeout);
+        let rc = submit_part_sequence(&mut native, |part, part_flag, is_final| unsafe {
+            ffi::zlink_spot_request_spot_part(
+                self.handle,
+                dest_node_rid.as_raw(),
+                dest_spot_rid.as_raw(),
+                part,
+                if is_final {
+                    Some(spot_reply_callback)
+                } else {
+                    None
+                },
+                if is_final {
+                    state_ptr.cast()
+                } else {
+                    std::ptr::null_mut()
+                },
+                flags.bits(),
+                part_flag,
+                if is_final { timeout_ms } else { 0 },
+            )
+        })?;
+        if rc != 0 {
+            unsafe {
+                drop(Box::from_raw(state_ptr));
+            }
+        }
+        check_submit_rc(rc)
+    }
+
     pub fn drain_channel_reply_from(&self, subject: *mut c_void) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
             ffi::zlink_spot_channel_reply_progress_from(self.handle, subject)
@@ -1918,12 +1994,7 @@ unsafe extern "C" fn spot_handler_trampoline<
     } else {
         unsafe { RoutingId::from_raw(*spot_rid) }
     };
-    handler(
-        source,
-        spot,
-        request_seq,
-        take_parts(parts, part_count),
-    );
+    handler(source, spot, request_seq, take_parts(parts, part_count));
 }
 
 unsafe extern "C" fn spot_dispatch_trampoline<F: Fn(SpotDispatchInfo) + Send + 'static>(

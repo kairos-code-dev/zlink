@@ -12,7 +12,8 @@ fn drain_socket(
     msg_size: usize,
     latency_stats: &mut common::LatencyStats,
     active_count: &mut u64,
-) {
+) -> bool {
+    let mut processed = false;
     loop {
         match socket.recv_with_flags(RecvFlags::DONT_WAIT) {
             Ok(received) => {
@@ -24,11 +25,13 @@ fn drain_socket(
                 latency_stats
                     .record_ns(common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64);
                 *active_count += 1;
+                processed = true;
             }
             Err(err) if err.code == RecvResult::NoData => break,
             Err(err) => panic!("recv failed: {err}"),
         }
     }
+    processed
 }
 
 fn main() {
@@ -37,12 +40,10 @@ fn main() {
 
     let ctx = common::perf_client_context();
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
-    let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
     let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
-        let poller = Poller::new().expect("poller");
         sock.common_options()
             .set_send_hwm(settings.send_hwm)
             .expect("sndhwm");
@@ -58,9 +59,7 @@ fn main() {
         }
         let mon = SocketMonitor::open(&sock).expect("monitor");
         sock.connect(&args.endpoint).expect("connect");
-        poller.add_socket(&sock, POLLIN).expect("poller add");
         sockets.push(sock);
-        pollers.push(poller);
         monitors.push(mon);
     }
 
@@ -93,38 +92,13 @@ fn main() {
     let mut active_count: u64 = 0;
 
     while Instant::now() < deadline {
-        let mut saw_event = false;
-        for (index, poller) in pollers.iter().enumerate() {
-            let Some(event) = poller.wait(0).expect("poller wait") else {
-                continue;
-            };
-            if !event.is_readable() {
-                continue;
-            }
-            saw_event = true;
-            drain_socket(
-                &sockets[index],
-                args.msg_size,
-                &mut latency_stats,
-                &mut active_count,
-            );
+        let mut progressed = false;
+        for socket in &sockets {
+            progressed |=
+                drain_socket(socket, args.msg_size, &mut latency_stats, &mut active_count);
         }
-        if !saw_event {
-            for (index, poller) in pollers.iter().enumerate() {
-                let Some(event) = poller.wait(1).expect("poller wait") else {
-                    continue;
-                };
-                if !event.is_readable() {
-                    continue;
-                }
-                drain_socket(
-                    &sockets[index],
-                    args.msg_size,
-                    &mut latency_stats,
-                    &mut active_count,
-                );
-                break;
-            }
+        if !progressed {
+            std::thread::sleep(Duration::from_millis(1));
         }
     }
 

@@ -13,7 +13,6 @@ from perf_multi_common import (
     print_result_lines,
     recv_nonblocking,
     result_metrics,
-    safe_poll,
 )
 
 
@@ -47,29 +46,26 @@ def main(argv=None):
 
             started = time.perf_counter()
             deadline = started + args.duration
-            with zlink.Poller() as poller:
-                for sock in sockets:
-                    poller.add_socket(sock, zlink.PollEvent.POLLIN)
-                while time.perf_counter() < deadline:
-                    events = safe_poll(poller, 100)
-                    if not events:
-                        continue
-                    for event in events:
-                        current_sock = event["socket"]
-                        while True:
-                            received = recv_nonblocking(current_sock, method="subscribe")
-                            if received is None:
-                                break
-                            with received:
-                                data = received.to_bytes_list()[0]
-                            if not is_active_message(
-                                data,
-                                expected_msg_size=args.msg_size,
-                                run_id=run_id,
-                            ):
-                                continue
-                            latencies.append(latency_ns_from_message(data))
-                            count += 1
+            while time.perf_counter() < deadline:
+                progressed = False
+                for current_sock in sockets:
+                    while True:
+                        received = recv_nonblocking(current_sock, method="subscribe")
+                        if received is None:
+                            break
+                        with received:
+                            data = received.to_bytes_list()[0]
+                        progressed = True
+                        if not is_active_message(
+                            data,
+                            expected_msg_size=args.msg_size,
+                            run_id=run_id,
+                        ):
+                            continue
+                        latencies.append(latency_ns_from_message(data))
+                        count += 1
+                if not progressed:
+                    time.sleep(0.001)
 
             elapsed = time.perf_counter() - started
             if count <= 0:

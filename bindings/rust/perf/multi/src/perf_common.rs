@@ -3,6 +3,7 @@
 //! Multi perf common utilities.
 
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -418,6 +419,7 @@ pub fn wait_monitor_ready(mon: &mut SocketMonitor, timeout: Duration, name: &str
 
 fn perf_context_with_env(primary_env: &str) -> Context {
     let ctx = Context::new().expect("context");
+    ctx.options().set_blocky(false).expect("set blocky");
     let io_threads = std::env::var(primary_env)
         .ok()
         .or_else(|| std::env::var("PERF_IO_THREADS").ok())
@@ -454,6 +456,33 @@ pub fn resolve_server_bind_endpoint(pattern: &str, transport: &str) -> Option<St
             None
         }
     }
+}
+
+pub fn benchmark_endpoint(pattern: &str, transport: &str, suffix: &str) -> Option<String> {
+    match transport {
+        "tcp" => Some(format!("tcp://127.0.0.1:{}", reserve_tcp_port())),
+        "tls" => Some(format!("tls://127.0.0.1:{}", reserve_tcp_port())),
+        "ws" => Some(format!("ws://127.0.0.1:{}", reserve_tcp_port())),
+        "wss" => Some(format!("wss://127.0.0.1:{}", reserve_tcp_port())),
+        "ipc" => Some(format!(
+            "ipc:///tmp/zlink-rust-perf-{suffix}-{}-{}.ipc",
+            std::process::id(),
+            now_ns()
+        )),
+        _ => {
+            emit_unsupported(pattern, transport, "unsupported_transport");
+            None
+        }
+    }
+}
+
+fn reserve_tcp_port() -> u16 {
+    let listener = try_reserve_tcp_port().expect("reserve tcp port");
+    listener.local_addr().expect("reserved addr").port()
+}
+
+fn try_reserve_tcp_port() -> io::Result<std::net::TcpListener> {
+    std::net::TcpListener::bind(("127.0.0.1", 0))
 }
 
 // -- Settings from env -------------------------------------------------------

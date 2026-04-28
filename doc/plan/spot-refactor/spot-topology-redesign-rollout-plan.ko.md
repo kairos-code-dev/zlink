@@ -719,3 +719,67 @@ native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약
   - Python single 전체 패턴 smoke, Rust single 전체 패턴 smoke, Rust multi 전체
     패턴 smoke는 모두 35/35 결과 라인으로 완료했다.
   - 최종 재확인 기준 남은 미완료 검증: 0개.
+
+### 2026-04-29 Python/Rust perf 실제 실행 경로 재검증 로그
+
+- 수정 파일:
+  - `bindings/python/src/zlink/_ffi.py`
+  - `bindings/python/src/zlink/_spot.py`
+  - `bindings/python/perf/single/perf_spot_reqrep.py`
+  - `bindings/python/perf/multi/run_benchmarks.py`
+  - `bindings/python/perf/multi/perf_multi_dealer_router_client.py`
+  - `bindings/python/perf/multi/perf_multi_dealer_router_server.py`
+  - `bindings/python/perf/multi/perf_multi_pubsub_client.py`
+  - `bindings/python/perf/multi/perf_multi_pubsub_server.py`
+  - `bindings/python/perf/multi/perf_multi_router_router_client.py`
+  - `bindings/python/perf/multi/perf_multi_router_router_server.py`
+  - `bindings/python/perf/multi/perf_multi_spot_reqrep_client.py`
+  - `bindings/python/perf/multi/perf_multi_spot_reqrep_server.py`
+  - `bindings/python/perf/multi/perf_multi_stream_server.py`
+  - `bindings/rust/src/ffi.rs`
+  - `bindings/rust/src/service.rs`
+  - `bindings/rust/perf/run_benchmarks.sh`
+  - `bindings/rust/perf/run_benchmarks_multi.sh`
+  - `bindings/rust/perf/single/src/*`
+  - `bindings/rust/perf/multi/src/*`
+- 실행 명령:
+  - `rg -n "ZERO_ON_FAILURE|ZERO_SMOKE|0-result|write_zero_case|PERF_RUST_MULTI_.*ZERO|PERF_RUST_SINGLE_ZERO|PERF_MULTI_ZERO|PERF_PYTHON_SPOT_REQREP_ZERO|PERF_RUST_MULTI_PUBSUB_ZERO|PERF_RUST_MULTI_SPOT_ZERO" bindings/rust/perf bindings/python/perf`
+  - `python -m py_compile bindings/python/src/zlink/_spot.py bindings/python/perf/single/perf_spot_reqrep.py bindings/python/perf/multi/perf_multi_spot_reqrep_client.py bindings/python/perf/multi/perf_multi_spot_reqrep_server.py bindings/python/perf/multi/perf_multi_stream_server.py`
+  - `PYTHONPATH="$PWD/bindings/python/src" PERF_DISABLE_RESOURCE_METRICS=1 timeout 60s python -u bindings/python/perf/single/perf_spot_reqrep.py --transport tcp --duration 1 --msg-size 64`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 timeout 220s bindings/python/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag py_single_all_real_after_spot_fix`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 timeout 260s bindings/python/perf/multi/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --clients 2 --results-tag py_multi_all_real_final`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 timeout 220s bindings/rust/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag rust_single_all_real_final`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 timeout 300s bindings/rust/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --clients 2 --results-tag rust_multi_all_real_final2`
+- 실패 원인:
+  - Python single `SPOT_REQREP`와 Python multi runner에는 smoke 편의를 위한
+    0-result 완료 경로가 남아 있어 실제 perf 실패를 숨길 수 있었다.
+  - Rust single/multi runner도 timeout, ready timeout, failure를 0-result로
+    바꾸는 smoke 경로가 남아 있어 실제 binding 또는 core 오류를 확인하기
+    어려웠다.
+  - Python/Rust multi `SPOT_REQREP` perf는 routed request contract가 아니라
+    다른 socket 조합 또는 process 내부 reply로 우회해 실제 `spot request` 경로를
+    측정하지 않았다.
+  - Python single `SPOT_REQREP`는 실제 `Spot.request_to_spot()` 경로로 바꾸면
+    종료 시점에 native handle 수명과 request progress pump가 겹쳐 간헐적으로
+    segmentation fault가 났고, 연결 해제 없이 `SpotNode` destroy가 오래 걸릴 수
+    있었다.
+  - Python/Rust multi `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB` 일부 경로는
+    poller writable 또는 release-frame 처리에 의존해 실제 수신 루프가 멈추거나
+    결과 라인을 내지 못할 수 있었다.
+- 해결 내용:
+  - Python/Rust perf runner의 0-result fallback과 관련 환경 변수를 제거했다.
+    잔존 검색 결과 fake/zero 키워드는 0건이다.
+  - Python과 Rust binding에 `spot request to spot` public wrapper를 추가하고,
+    single/multi `SPOT_REQREP` perf를 실제 `Spot.request_to_spot()` 경로로
+    바꿨다.
+  - Python `Spot` request progress pump는 native handle 파괴 전에 멈추고,
+    연속 request 동안 짧게 살아 있도록 바꿔 스레드 폭증과 종료 race를 줄였다.
+  - Python single `SPOT_REQREP`는 request/replier `SpotNode`를 명시적으로
+    연결 해제하고 non-blocking context로 닫아 종료 지연을 제거했다.
+  - Python/Rust multi의 dealer/router/pubsub/stream 루프는 direct non-blocking
+    send/receive와 pending queue 중심으로 바꿔 poller writable 의존을 제거했다.
+  - Python single 전체 패턴은 35/35, Python multi 전체 패턴은 35/35,
+    Rust single 전체 패턴은 35/35, Rust multi 전체 패턴은 35/35 결과 라인으로
+    완료했다.
+  - 최종 재확인 기준 남은 0-result smoke 경로: 0개.
+  - 최종 재확인 기준 남은 Python/Rust perf 미완료 검증: 0개.

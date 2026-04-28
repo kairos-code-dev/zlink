@@ -89,7 +89,18 @@ fn main() {
     let sender_done = done.clone();
     let send_thread = std::thread::spawn(move || {
         common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
-            pub_sock.publish("P", msg).expect("active publish");
+            match pub_sock.publish_with_flags("P", msg, SendFlags::DONT_WAIT) {
+                Ok(()) => true,
+                Err(err)
+                    if matches!(
+                        err.code(),
+                        SubmitResult::Backpressured | SubmitResult::NotConnected
+                    ) =>
+                {
+                    false
+                }
+                Err(err) => panic!("active publish: {err}"),
+            }
         });
         sender_done.signal_done();
     });

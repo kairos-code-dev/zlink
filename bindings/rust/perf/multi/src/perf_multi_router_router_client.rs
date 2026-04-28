@@ -4,53 +4,33 @@ mod common;
 use std::time::{Duration, Instant};
 use zlink::*;
 
-fn handle_socket_event(
+fn drain_socket(
     index: usize,
-    poller: &Poller,
     socket: &RouterSocket,
     msg_size: usize,
     latency: &mut common::LatencyStats,
     waiting_reply: &mut [bool],
-    send_pending: &mut [bool],
-    timeout_ms: i64,
 ) -> bool {
-    let Some(event) = poller.wait(timeout_ms).expect("poller wait") else {
-        return false;
-    };
-
-    if event.is_writable() {
-        send_pending[index] = false;
-        poller
-            .modify_socket(socket, POLLIN)
-            .expect("poller modify");
-    }
-
-    if event.is_readable() {
-        loop {
-            match socket.recv_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(received) => {
-                    let data = common::message_payload(received.parts());
-                    if !common::is_valid_active_message(data, msg_size) {
-                        continue;
-                    }
-                    let sent_ts_ns = common::decode_sent_ts_ns(data);
-                    let latency_ns =
-                        common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
-                    latency.record_ns(latency_ns);
-                    waiting_reply[index] = false;
+    let mut processed = false;
+    loop {
+        match socket.recv_with_flags(RecvFlags::DONT_WAIT) {
+            Ok(received) => {
+                let data = common::message_payload(received.parts());
+                if !common::is_valid_active_message(data, msg_size) {
+                    continue;
                 }
-                Err(err) if err.code() == RecvResult::NoData => break,
-                Err(err) => panic!("recv failed: {err}"),
+                let sent_ts_ns = common::decode_sent_ts_ns(data);
+                let latency_ns =
+                    common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64 / 2.0;
+                latency.record_ns(latency_ns);
+                waiting_reply[index] = false;
+                processed = true;
             }
-        }
-        if !send_pending[index] {
-            poller
-                .modify_socket(socket, POLLIN)
-                .expect("poller modify");
+            Err(err) if err.code() == RecvResult::NoData => break,
+            Err(err) => panic!("recv failed: {err}"),
         }
     }
-
-    true
+    processed
 }
 
 fn main() {
@@ -60,7 +40,6 @@ fn main() {
     let ctx = common::perf_client_context();
     let server_rid = RoutingId::from_bytes(b"perf-rr-server");
     let mut sockets: Vec<RouterSocket> = Vec::with_capacity(settings.clients);
-    let mut pollers: Vec<Poller> = Vec::with_capacity(settings.clients);
     let mut payloads: Vec<Vec<u8>> = Vec::with_capacity(settings.clients);
     let mut waiting_reply = vec![false; settings.clients];
     let mut send_pending = vec![false; settings.clients];
@@ -69,7 +48,6 @@ fn main() {
 
     for index in 0..settings.clients {
         let sock = ctx.router_socket().expect("router");
-        let poller = Poller::new().expect("poller");
         sock.common_options()
             .set_send_hwm(settings.send_hwm)
             .expect("sndhwm");
@@ -90,10 +68,8 @@ fn main() {
         }
         let mon = SocketMonitor::open(&sock).expect("monitor");
         sock.connect(&args.endpoint).expect("connect");
-        poller.add_socket(&sock, POLLIN).expect("poller add");
         payloads.push(vec![0u8; args.msg_size.max(common::HEADER_SIZE)]);
         sockets.push(sock);
-        pollers.push(poller);
         monitors.push(mon);
     }
 
@@ -107,29 +83,36 @@ fn main() {
     while Instant::now() < deadline {
         let mut progressed = false;
         for index in 0..sockets.len() {
-            if waiting_reply[index] || send_pending[index] {
+            progressed |= drain_socket(
+                index,
+                &sockets[index],
+                args.msg_size,
+                &mut latency,
+                &mut waiting_reply,
+            );
+            if waiting_reply[index] {
                 continue;
             }
-            common::encode_header(
-                &mut payloads[index],
-                common::PHASE_ACTIVE,
-                args.msg_size as u32,
-                seqs[index],
-            );
+            if !send_pending[index] {
+                common::encode_header(
+                    &mut payloads[index],
+                    common::PHASE_ACTIVE,
+                    args.msg_size as u32,
+                    seqs[index],
+                );
+            }
             match sockets[index].try_send(
                 &server_rid,
                 vec![Message::copy_from(&payloads[index]).expect("msg")],
             ) {
                 Ok(true) => {
                     waiting_reply[index] = true;
+                    send_pending[index] = false;
                     seqs[index] += 1;
                     progressed = true;
                 }
                 Ok(false) => {
                     send_pending[index] = true;
-                    pollers[index]
-                        .modify_socket(&sockets[index], POLLIN | POLLOUT)
-                        .expect("poller modify");
                 }
                 Err(err) => panic!("send failed: {err}"),
             }
@@ -137,38 +120,7 @@ fn main() {
         if progressed {
             continue;
         }
-
-        let mut saw_event = false;
-        for (index, poller) in pollers.iter().enumerate() {
-            if handle_socket_event(
-                index,
-                poller,
-                &sockets[index],
-                args.msg_size,
-                &mut latency,
-                &mut waiting_reply,
-                &mut send_pending,
-                0,
-            ) {
-                saw_event = true;
-            }
-        }
-        if !saw_event {
-            for (index, poller) in pollers.iter().enumerate() {
-                if handle_socket_event(
-                    index,
-                    poller,
-                    &sockets[index],
-                    args.msg_size,
-                    &mut latency,
-                    &mut waiting_reply,
-                    &mut send_pending,
-                    1,
-                ) {
-                    break;
-                }
-            }
-        }
+        std::thread::sleep(Duration::from_millis(1));
     }
 
     common::print_result(

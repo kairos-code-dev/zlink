@@ -5,6 +5,7 @@ import ctypes
 import errno
 import queue
 import threading
+import time
 from dataclasses import dataclass
 
 from ._socket_base import (
@@ -89,6 +90,7 @@ _ERRNO_ETERM = getattr(errno, "ETERM", 156)
 _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
 _SPOT_INIT_TOKEN = object()
 _UNSET = object()
+_REQUEST_PROGRESS_IDLE_GRACE_S = 0.1
 
 _SPOT_ROUTED_HANDLER = ctypes.CFUNCTYPE(
     None,
@@ -313,10 +315,13 @@ class _RequestProgressPump:
         self._step = step
         self._is_active = is_active
         self._lock = threading.Lock()
+        self._stop = threading.Event()
         self._thread = None
 
     def ensure_running(self):
         with self._lock:
+            if self._stop.is_set():
+                return
             if self._thread is not None and self._thread.is_alive():
                 return
             self._thread = threading.Thread(
@@ -327,19 +332,39 @@ class _RequestProgressPump:
             self._thread.start()
 
     def _run(self):
+        idle_since = None
         try:
-            while self._is_active():
-                try:
-                    self._step()
-                except Exception:
-                    pass
-                if not self._is_active():
-                    break
-                threading.Event().wait(0.001)
+            while not self._stop.is_set():
+                if self._is_active():
+                    idle_since = None
+                    try:
+                        self._step()
+                    except Exception:
+                        pass
+                else:
+                    if idle_since is None:
+                        idle_since = time.monotonic()
+                    elif (
+                        time.monotonic() - idle_since
+                        >= _REQUEST_PROGRESS_IDLE_GRACE_S
+                    ):
+                        break
+                self._stop.wait(0.001)
         finally:
             with self._lock:
                 if self._thread is threading.current_thread():
                     self._thread = None
+
+    def stop(self):
+        self._stop.set()
+        with self._lock:
+            thread = self._thread
+        if (
+            thread is not None
+            and thread.is_alive()
+            and thread is not threading.current_thread()
+        ):
+            thread.join(timeout=1.0)
 
 
 def _recv_spot_subscribed(handle, flags):
@@ -1113,6 +1138,80 @@ class Spot:
             self._request_progress_targets.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
+    def request_to_spot(self, dest_node_rid, dest_spot_rid, payload, *args, timeout=0, flags=_UNSET):
+        if len(args) > 1:
+            raise TypeError(
+                "request_to_spot() takes at most 4 positional arguments after self"
+            )
+        if not args:
+            if flags is not _UNSET:
+                raise TypeError(
+                    "request_to_spot() got an unexpected keyword argument 'flags'"
+                )
+            async def _run():
+                loop = asyncio.get_running_loop()
+                pending = _PendingRequest(loop=loop)
+                handle = id(pending)
+                self._request_pending[handle] = pending
+                try:
+                    self._start_spot_request(
+                        dest_node_rid, dest_spot_rid, payload, 0, timeout, handle
+                    )
+                except Exception:
+                    self._request_pending.pop(handle, None)
+                    self._request_progress_targets.pop(handle, None)
+                    raise
+                self._request_progress.ensure_running()
+                return await pending.future
+
+            return _run()
+        callback = args[0]
+        callback_flags = 0 if flags is _UNSET else flags
+        pending = _PendingRequest(callback=callback)
+        handle = id(pending)
+        self._request_pending[handle] = pending
+        try:
+            self._start_spot_request(
+                dest_node_rid, dest_spot_rid, payload, callback_flags, timeout, handle
+            )
+            self._request_progress.ensure_running()
+            return True
+        except SubmitError as ex:
+            self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
+            if int(callback_flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+        except Exception:
+            self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
+            raise
+
+    def _start_spot_request(self, dest_node_rid, dest_spot_rid, payload, flags, timeout, handle):
+        native_parts = self._native_parts_from_payload(payload)
+        native_node = _copy_routing_id(dest_node_rid)
+        native_spot = _copy_routing_id(dest_spot_rid)
+        reply_handler = self._ensure_request_reply_handler()
+        self._request_progress_targets[handle] = self._request_progress_target()
+        rc, err = _submit_parts(
+            native_parts,
+            lambda part_ptr, part_flag: lib().zlink_spot_request_spot_part(
+                self._handle,
+                ctypes.byref(native_node),
+                ctypes.byref(native_spot),
+                part_ptr,
+                reply_handler,
+                ctypes.c_void_p(handle),
+                int(flags),
+                part_flag,
+                _timeout_to_ms(timeout),
+            ),
+        )
+        if rc != 0:
+            self._request_pending.pop(handle, None)
+            self._request_progress_targets.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, err)
+
     def _recv_subscribed(self, flags):
         return _recv_spot_subscribed(self._handle, flags)
 
@@ -1524,6 +1623,7 @@ class Spot:
         self._dispatch_handler = None
         self._dispatch_handler_cb = None
         self._cancel_pending_requests()
+        self._request_progress.stop()
         self._request_reply_handler = None
         handle = ctypes.c_void_p(self._handle)
         self._handle = None

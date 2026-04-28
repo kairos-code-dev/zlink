@@ -1,5 +1,6 @@
 import sys
 import threading
+from collections import deque
 
 import zlink
 
@@ -7,6 +8,7 @@ from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_endpoint,
     parse_server_args,
+    send_nonblocking,
 )
 
 
@@ -14,6 +16,8 @@ def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     endpoint = benchmark_endpoint(args.transport, "multi-stream")
     stop = threading.Event()
+    pending = deque()
+    pending_lock = threading.Lock()
 
     def wait_stop():
         for line in sys.stdin:
@@ -31,11 +35,27 @@ def main(argv=None):
             print(f"READY,{endpoint}", flush=True)
 
             def packet_handler(routing_id, header, body):
-                server.send(routing_id, build_packet_frame(header, body))
+                frame = build_packet_frame(header, body)
+                with pending_lock:
+                    pending.append((bytes(routing_id), frame))
 
             server.on_packet(packet_handler)
             while not stop.is_set():
-                stop.wait(0.1)
+                progressed = False
+                while True:
+                    with pending_lock:
+                        item = pending[0] if pending else None
+                    if item is None:
+                        break
+                    routing_id, frame = item
+                    if not send_nonblocking(server, frame, routing_id=routing_id):
+                        break
+                    with pending_lock:
+                        if pending and pending[0] == item:
+                            pending.popleft()
+                    progressed = True
+                if not progressed:
+                    stop.wait(0.001)
 
 
 def build_packet_frame(header, body):

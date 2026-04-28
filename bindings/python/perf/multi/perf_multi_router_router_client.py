@@ -16,7 +16,6 @@ from perf_multi_common import (
     recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     result_metrics,
-    safe_poll,
     send_nonblocking,
     stamp_payload,
     wait_monitor_event,
@@ -54,58 +53,43 @@ def main(argv=None):
                     )
 
                 active_deadline = time.perf_counter() + args.duration
-                with zlink.Poller() as poller:
-                    for index, sock in enumerate(sockets):
-                        poller.add_socket(
-                            sock,
-                            zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
-                            tag=index,
-                        )
-                    while time.perf_counter() < active_deadline:
-                        events = safe_poll(poller, 100)
-                        if not events:
-                            continue
-                        for event in events:
-                            index = event["tag"]
-                            current_sock = event["socket"]
-                            event_mask = int(event["events"])
-                            if (
-                                event_mask & int(zlink.PollEvent.POLLOUT)
-                                and not waiting_reply[index]
-                                and send_pending[index]
+                while time.perf_counter() < active_deadline:
+                    progressed = False
+                    for index, current_sock in enumerate(sockets):
+                        if not waiting_reply[index] and send_pending[index]:
+                            seq += 1
+                            payload = stamp_payload(
+                                payloads[index],
+                                phase=1,
+                                run_id=run_id,
+                                seq=seq,
+                            )
+                            if send_nonblocking(
+                                current_sock,
+                                payload,
+                                routing_id=b"SERVER",
                             ):
-                                seq += 1
-                                payload = stamp_payload(
-                                    payloads[index],
-                                    phase=1,
-                                    run_id=run_id,
-                                    seq=seq,
-                                )
-                                if send_nonblocking(
-                                    current_sock,
-                                    payload,
-                                    routing_id=b"SERVER",
-                                ):
-                                    waiting_reply[index] = True
-                                    send_pending[index] = False
-                            if not (event_mask & int(zlink.PollEvent.POLLIN)):
-                                continue
-                            while True:
-                                received = recv_nonblocking(current_sock)
-                                if received is None:
-                                    break
-                                with received:
-                                    data = extract_metric_payload(received.to_bytes_list())
-                                waiting_reply[index] = False
-                                if time.perf_counter() < active_deadline:
-                                    send_pending[index] = True
-                                if not is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=run_id,
-                                ):
-                                    continue
+                                waiting_reply[index] = True
+                                send_pending[index] = False
+                                progressed = True
+                        while True:
+                            received = recv_nonblocking(current_sock)
+                            if received is None:
+                                break
+                            with received:
+                                data = extract_metric_payload(received.to_bytes_list())
+                            waiting_reply[index] = False
+                            if time.perf_counter() < active_deadline:
+                                send_pending[index] = True
+                            if is_active_message(
+                                data,
+                                expected_msg_size=args.msg_size,
+                                run_id=run_id,
+                            ):
                                 latencies.append(latency_ns_from_message(data) / 2.0)
+                            progressed = True
+                    if not progressed:
+                        time.sleep(0.001)
                 if not latencies:
                     raise RuntimeError(
                         "multi router-router benchmark did not receive any active reply"

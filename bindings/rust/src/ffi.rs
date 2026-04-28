@@ -1178,6 +1178,17 @@ unsafe extern "C" {
         part_flag: zlink_part_flag_t,
         timeout_ms: u32,
     ) -> c_int;
+    pub fn zlink_spot_request_spot_part(
+        spot: *mut c_void,
+        dest_node_rid: *const zlink_routing_id_t,
+        dest_spot_rid: *const zlink_routing_id_t,
+        part: *mut zlink_msg_t,
+        handler: Option<zlink_reply_handler_fn>,
+        userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        part_flag: zlink_part_flag_t,
+        timeout_ms: u32,
+    ) -> c_int;
     pub fn zlink_spot_request_progress_internal(spot: *mut c_void) -> c_int;
     pub fn zlink_spot_channel_reply_progress_from(spot: *mut c_void, subject: *mut c_void)
     -> c_int;

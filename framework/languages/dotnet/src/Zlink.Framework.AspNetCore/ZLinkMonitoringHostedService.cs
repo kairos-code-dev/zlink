@@ -22,11 +22,10 @@ internal sealed class ZLinkMonitoringHostedService(
     {
         if (frameworkRuntime is null
             && (registration.SocketSources.Count > 0
-                || registration.DiscoverySources.Count > 0
                 || registration.SpotSources.Count > 0))
         {
             throw new ZLinkConfigurationException(
-                "Monitoring socket, discovery, or spot sources require AddZLinkFramework(...).");
+                "Monitoring socket or spot sources require AddZLinkFramework(...).");
         }
 
         if (registryRuntime is null && registration.RegistrySources.Count > 0)
@@ -49,7 +48,6 @@ internal sealed class ZLinkMonitoringHostedService(
 
             await PreflightPollingSourcesAsync(frameworkRuntime, registryRuntime, cancellationToken);
             AttachSocketMonitors(frameworkRuntime);
-            AttachDiscoveryMonitors(frameworkRuntime);
         }
         catch
         {
@@ -146,45 +144,8 @@ internal sealed class ZLinkMonitoringHostedService(
                 monitor.OnEvent(
                     monitorEvent =>
                     {
-                        var mapped = MapSocketEvent(source, monitorEvent);
+                        var mapped = ZLinkMonitoringEventMapper.MapSocketEvent(source, monitorEvent);
                         if (mapped is ZLinkSocketEvent @event)
-                        {
-                            QueueDispatch(@event);
-                        }
-                    });
-                return 0;
-            });
-            _monitors.Add(monitor);
-        }
-    }
-
-    private void AttachDiscoveryMonitors(ZLinkFrameworkRuntime? frameworkRuntime)
-    {
-        if (frameworkRuntime is null)
-        {
-            return;
-        }
-
-        foreach (var source in registration.DiscoverySources.Values)
-        {
-            IZLinkBackendDiscovery discovery;
-            try
-            {
-                discovery = frameworkRuntime.GetMonitoringDiscovery(source.SourceName);
-            }
-            catch (InvalidOperationException ex)
-            {
-                throw new ZLinkConfigurationException(ex.Message);
-            }
-
-            var monitor = _monitoringAdapter.OpenDiscoveryMonitor(discovery);
-            RegisterWithoutSynchronizationContext(() =>
-            {
-                monitor.OnEvent(
-                    serviceEvent =>
-                    {
-                        var mapped = MapDiscoveryEvent(source, serviceEvent);
-                        if (mapped is ZLinkDiscoveryEvent @event)
                         {
                             QueueDispatch(@event);
                         }
@@ -410,79 +371,6 @@ internal sealed class ZLinkMonitoringHostedService(
                 }
             },
             cancellationToken);
-    }
-
-    private ZLinkSocketEvent? MapSocketEvent(
-        ZLinkSocketMonitoringRegistration source,
-        ZLinkBackendSocketMonitorEvent monitorEvent)
-    {
-        var eventKind = monitorEvent.NativeEvent switch
-        {
-            ZLinkSocketNativeEventType.Connected => ZLinkSocketEventKind.Connected,
-            ZLinkSocketNativeEventType.ConnectionReady => ZLinkSocketEventKind.ConnectionReady,
-            ZLinkSocketNativeEventType.Disconnected => ZLinkSocketEventKind.Disconnected,
-            ZLinkSocketNativeEventType.HandshakeFailedNoDetail => ZLinkSocketEventKind.HandshakeFailed,
-            ZLinkSocketNativeEventType.HandshakeFailedProtocol => ZLinkSocketEventKind.HandshakeFailed,
-            ZLinkSocketNativeEventType.HandshakeFailedAuth => ZLinkSocketEventKind.HandshakeFailed,
-            ZLinkSocketNativeEventType.PeerAdmissionChanged => ZLinkSocketEventKind.PeerAdmissionChanged,
-            ZLinkSocketNativeEventType.Closed => ZLinkSocketEventKind.Closed,
-            ZLinkSocketNativeEventType.CloseFailed => ZLinkSocketEventKind.Closed,
-            ZLinkSocketNativeEventType.MonitorStopped => ZLinkSocketEventKind.Closed,
-            _ => ZLinkSocketEventKind.Internal,
-        };
-
-        if (source.Events.Count > 0 && !source.Events.Contains(eventKind))
-        {
-            return null;
-        }
-
-        return new ZLinkSocketEvent(
-            source.SourceName,
-            DateTimeOffset.UtcNow,
-            eventKind,
-            monitorEvent.RoutingId,
-            monitorEvent.LocalAddr,
-            monitorEvent.RemoteAddr,
-            new ZLinkSocketDiagnostic(
-                monitorEvent.NativeEvent,
-                monitorEvent.Value));
-    }
-
-    private ZLinkDiscoveryEvent? MapDiscoveryEvent(
-        ZLinkDiscoveryMonitoringRegistration source,
-        ZLinkBackendDiscoveryMonitorEvent serviceEvent)
-    {
-        var eventKind = serviceEvent.NativeEvent switch
-        {
-            ZLinkDiscoveryNativeEventType.DiscoveryServiceUp => ZLinkDiscoveryEventKind.ServiceUp,
-            ZLinkDiscoveryNativeEventType.DiscoveryServiceDown => ZLinkDiscoveryEventKind.ServiceDown,
-            ZLinkDiscoveryNativeEventType.DiscoveryProvidersChanged => ZLinkDiscoveryEventKind.ProvidersChanged,
-            ZLinkDiscoveryNativeEventType.PeerAdmissionChanged => ZLinkDiscoveryEventKind.PeerAdmissionChanged,
-            ZLinkDiscoveryNativeEventType.Error => ZLinkDiscoveryEventKind.Error,
-            ZLinkDiscoveryNativeEventType.Closed => ZLinkDiscoveryEventKind.Closed,
-            _ => ZLinkDiscoveryEventKind.Internal,
-        };
-
-        if (source.Events.Count > 0 && !source.Events.Contains(eventKind))
-        {
-            return null;
-        }
-
-        return new ZLinkDiscoveryEvent(
-            source.SourceName,
-            DateTimeOffset.UtcNow,
-            eventKind,
-            serviceEvent.ServiceName,
-            serviceEvent.Endpoint,
-            serviceEvent.RoutingId,
-            serviceEvent.Subject,
-            serviceEvent.SubjectKind,
-            new ZLinkDiscoveryDiagnostic(
-                serviceEvent.NativeEvent,
-                serviceEvent.Status,
-                serviceEvent.ErrorCode,
-                serviceEvent.Value,
-                serviceEvent.DetailFlags));
     }
 
     private async ValueTask DisposeMonitorsAsync()

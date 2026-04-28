@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Spots;
 
 public readonly record struct ZLinkSpotCreateResult(
     global::Zlink.RoutingId SpotRid,
@@ -45,13 +45,6 @@ public interface IZLinkSpotClient
     IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);
-
-    ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
-        global::Zlink.RoutingId spotRid,
-        IZLinkActor actor,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-        where TRequest : IZLinkRequest<TReply>;
 }
 
 public interface IZLinkSpotPublisherClient
@@ -118,13 +111,14 @@ public interface IZLinkSpotTimerHandler<TSpot>
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpotActorJoinHandler<TSpot, in TRequest, TReply>
+public interface IZLinkSpotActorJoinHandler<TSpot, in TActor, in TRequest, TReply>
     where TSpot : ZLinkSpot
+    where TActor : IZLinkActor
     where TRequest : IZLinkRequest<TReply>
 {
     ValueTask<TReply> HandleAsync(
         TSpot spot,
-        IZLinkActor actor,
+        TActor actor,
         TRequest request,
         CancellationToken cancellationToken);
 }

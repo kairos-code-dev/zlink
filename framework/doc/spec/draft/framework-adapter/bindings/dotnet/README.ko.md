@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Streaming Client](./streaming-client.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
+[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity Stream Connector](./unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
 
 # Draft -- ZLink Framework For .NET
 
@@ -69,6 +69,12 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
   [doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)의
   `Naming Policy`를 그대로 따른다. `.NET`에서는 public API 전체를 `PascalCase`로
   적고, 단어 구성 자체를 임의로 바꾸지 않는다.
+- `zlink.systems` 도메인 기반 package와 namespace는 역순 도메인 규칙을 따른다.
+  `.NET` NuGet package id와 namespace는 `Systems.Zlink.*`를 사용한다.
+  Unity package id는 lowercase reverse-DNS인 `systems.zlink.*`를 사용한다.
+  예를 들어 framework는 `Systems.Zlink.Framework`, Stream Connector는
+  `Systems.Zlink.Stream.Connector`, Unity adapter는
+  `systems.zlink.stream.connector.unity`를 사용한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다. 같은 capability 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
 - send/publish는 기본 blocking submit으로 설명하고, optional non-blocking
@@ -101,9 +107,10 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 | [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, packet/raw session, monitor 기반 lifecycle, recv 비지원 방향 |
-| [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity client connector, TCP/TLS/WS/WSS transport, header/body packet 송수신 |
+| [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP/TLS/WS/WSS transport, header/body packet 송수신 |
+| [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) | Unity package, `MonoBehaviour` wrapper, main thread callback dispatch, lifecycle |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping의 결정 기준 |
-| [aspnet-core-monitoring.ko.md](./aspnet-core-monitoring.ko.md) | socket/discovery/registry/spot runtime monitoring 이벤트와 등록 모델 |
+| [aspnet-core-monitoring.ko.md](./aspnet-core-monitoring.ko.md) | socket/registry/spot runtime monitoring 이벤트와 snapshot 조회 모델 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 필요한 추가 조건 |
 | [aspnet-core-registry.ko.md](./aspnet-core-registry.ko.md) | Registry embedded/standalone 구동, topology 조회, 클러스터링 |
 
@@ -129,7 +136,8 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 |------|------------|
 | [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, channel send/request, publish를 한 번에 보는 샘플 |
-| [stream-samples.ko.md](./stream-samples.ko.md) | STREAM packet/raw session과 등록 코드를 한 번에 보는 샘플 |
+| [stream-samples.ko.md](./stream-samples.ko.md) | STREAM packet/raw/header session과 등록 코드를 한 번에 보는 샘플 |
+| [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor를 함께 쓰는 틱택토 게임 샘플 초안 |
 
 ### 2.5 범위 원칙
 

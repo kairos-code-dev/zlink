@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Spots;
 
 public enum ZLinkSpotNodeState
 {
@@ -55,7 +55,7 @@ public sealed record ZLinkSpotNodePeerEntry(
     string PeerEndpoint,
     ZLinkSpotPeerSource Source,
     ZLinkSpotPeerState State,
-    ZLinkAdmissionState AdmissionState,
+    uint Weight,
     ulong ConnectedSinceMs,
     ulong LastChangedMs);
 

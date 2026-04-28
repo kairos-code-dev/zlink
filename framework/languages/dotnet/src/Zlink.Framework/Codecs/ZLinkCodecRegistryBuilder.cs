@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Codecs;
 
 internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder
 {

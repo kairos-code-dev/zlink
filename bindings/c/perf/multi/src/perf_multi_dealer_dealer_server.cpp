@@ -60,6 +60,8 @@ inline recv_result_t receive_one_message (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
+  bool *detail_emitted,
+  const std::string *transport,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -126,6 +128,17 @@ inline recv_result_t receive_one_message (
     }
     if (matched && count_message && message_count)
         (*message_count)++;
+    if (matched && detail_emitted && !*detail_emitted && transport) {
+        perf_print_auto_hwm_snapshot (
+          server,
+          false,
+          "server",
+          *transport,
+          true,
+          expected_msg_size,
+          k_server_socket_type);
+        *detail_emitted = true;
+    }
 
     if (matched && collect_latency && lat_sum && lat_count) {
         const uint64_t now_ns = perf_multi_metric::now_ns ();
@@ -147,6 +160,8 @@ inline bool drain_non_blocking_messages (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
+  bool *detail_emitted,
+  const std::string *transport,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -161,6 +176,8 @@ inline bool drain_non_blocking_messages (
           expected_msg_size,
           expected_run_id,
           expected_phase,
+          detail_emitted,
+          transport,
           count_message,
           collect_latency,
           message_count,
@@ -180,6 +197,8 @@ inline bool run_receive_window (
   size_t expected_msg_size,
   uint32_t expected_run_id,
   perf_multi_metric::phase_t expected_phase,
+  bool *detail_emitted,
+  const std::string *transport,
   double measure_seconds,
   double local_wait_seconds,
   bool count_message,
@@ -231,6 +250,8 @@ inline bool run_receive_window (
           expected_msg_size,
           expected_run_id,
           expected_phase,
+          detail_emitted,
+          transport,
           count_message,
           collect_latency,
           message_count,
@@ -247,6 +268,8 @@ inline bool run_receive_window (
               expected_msg_size,
               expected_run_id,
               expected_phase,
+              detail_emitted,
+              transport,
               count_message,
               collect_latency,
               message_count,
@@ -292,6 +315,8 @@ inline bool drain_phase_until_idle (void *server,
           expected_msg_size,
           expected_run_id,
           expected_phase,
+          NULL,
+          NULL,
           false,
           false,
           NULL,
@@ -341,11 +366,14 @@ inline bool run_one_size_benchmark (
     double lat_sum = 0.0;
     long lat_count = 0;
     bench_latency_sampler_t lat_samples;
+    bool detail_emitted = false;
     const bool active_ok = run_receive_window (
       server,
       msg_size,
       run_id,
       perf_multi_metric::phase_active,
+      &detail_emitted,
+      &transport,
       active_s,
       std::max (active_s + 2.0, active_s + 5.0),
       true,
@@ -478,8 +506,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         apply_benchmark_auto_hwm_msg_unit (
           server, k_server_socket_type, sizes[si]);
         apply_benchmark_hwm (server, settings.hwm);
-        perf_print_auto_hwm_snapshot (
-          server, false, "server", transport, true, sizes[si]);
         if (!perf_multi_handshake::wait_for_start_from_stdin (sizes[si])) {
             if (bench_transition_debug_enabled ()) {
                 std::cerr << "[multi-dealer-dealer-server] start gate failed size="
@@ -487,6 +513,12 @@ inline int run_server_benchmark (const std::string &lib_name,
             }
             ok = false;
             break;
+        }
+        if (zlink_ctx_auto_hwm_recalculate (ctx.get ()) != ZLINK_CONFIG_OK
+            && bench_debug_enabled ()) {
+            std::cerr
+              << "[multi-dealer-dealer-server] ctx auto-hwm recalc failed err="
+              << zlink_errno () << std::endl;
         }
         if (bench_transition_debug_enabled ()) {
             std::cerr << "[multi-dealer-dealer-server] start size="

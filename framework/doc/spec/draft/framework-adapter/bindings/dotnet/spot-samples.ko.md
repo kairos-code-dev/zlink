@@ -669,7 +669,7 @@ public sealed class SampleSpot : ZLinkSpot
     {
         AddPacket<SampleGetStateHandler>();
         AddPacket<SampleReportStateHandler>();
-        AddActorJoin<SampleJoinRoomHandler, SampleJoinRoomRequest, SampleJoinRoomReply>();
+        AddActorJoin<SampleJoinRoomHandler, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>();
 
         AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
@@ -735,8 +735,12 @@ actor는 room에 남아 있을 수 있고, 새 stream이 같은
 `accountId`로 다시 들어오면 같은 actor에 다시 연결할 수 있다.
 그리고 이 모델이 public 계약으로 보이려면 actor attach는 `ZLinkSpot` override가
 아니라 `IZLinkSpotClient.JoinActorAsync(...)`와
-`IZLinkSpotActorJoinHandler<...>` 조합으로 보여야 한다. join 승인과 attach는
+`IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 조합으로 보여야 한다.
+join 승인과 attach는
 반드시 target `Spot` 실행 문맥에서 함께 처리되어야 하기 때문이다.
+actor 타입은 handler의 generic 인자로 명시한다. 이렇게 하면 handler 내부에서
+`IZLinkActor`를 다시 캐스팅하지 않아도 되고, 잘못된 actor 타입을 등록하거나
+전달한 경우 runtime이 명확한 오류로 막을 수 있다.
 
 샘플을 읽기 전에 먼저 봐야 하는 framework draft 계약은 actor contract 하나다.
 
@@ -852,7 +856,7 @@ public sealed class SampleSpot : ZLinkSpot
     {
         AddPacket<SampleGetStateHandler>();
         AddPacket<SampleReportStateHandler>();
-        AddActorJoin<SampleJoinRoomHandler, SampleJoinRoomRequest, SampleJoinRoomReply>();
+        AddActorJoin<SampleJoinRoomHandler, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>();
 
         AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
@@ -1276,7 +1280,7 @@ public sealed class SampleSession
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask OnPacketAsync(
+    public async ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message header,
         Message body,
@@ -1391,16 +1395,16 @@ public sealed class SampleSession
 }
 
 public sealed class SampleJoinRoomHandler
-    : IZLinkSpotActorJoinHandler<SampleSpot, SampleJoinRoomRequest, SampleJoinRoomReply>
+    : IZLinkSpotActorJoinHandler<SampleSpot, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>
 {
     public ValueTask<SampleJoinRoomReply> HandleAsync(
         SampleSpot spot,
-        IZLinkActor actor,
+        SampleActor actor,
         SampleJoinRoomRequest request,
         CancellationToken cancellationToken)
     {
         return spot.JoinActorAsync(
-            (SampleActor)actor,
+            actor,
             request,
             cancellationToken);
     }

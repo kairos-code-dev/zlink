@@ -54,7 +54,6 @@
 | value | `ZLinkStreamError` | stream error detail + errno helper | 4.4 |
 | value | `ZLinkDispatchMode` | dispatch activation/performance mode enum | 4.4.3 |
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event | 10.3 |
-| value | `ZLinkDiscoveryEventKind`, `ZLinkDiscoveryEvent` | discovery runtime event | 10.3 |
 | value | `ZLinkRegistryEventKind`, `ZLinkRegistryEvent` | registry runtime event | 10.3 |
 | value | `ZLinkSpotEventKind`, `ZLinkSpotEvent` | spot runtime event | 10.3 |
 | options | `IZLinkMonitoringOptions` | runtime monitoring source 등록 옵션 | 10.3 |
@@ -237,8 +236,9 @@ public abstract class ZLinkSpot
         return ValueTask.FromResult<IZLinkTimer>(default!);
     }
 
-    protected void AddActorJoin<THandler, TRequest, TReply>()
+    protected void AddActorJoin<THandler, TActor, TRequest, TReply>()
         where THandler : class
+        where TActor : IZLinkActor
         where TRequest : IZLinkRequest<TReply>
     {
     }
@@ -519,9 +519,31 @@ public interface IZLinkPacketStreamSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
-    ValueTask OnPacketAsync(
+    ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message header,
+        Message body,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkStreamHeaderSession
+{
+    ValueTask OnConnectedAsync(
+        IZLinkStream stream,
+        CancellationToken cancellationToken);
+
+    ValueTask OnDisconnectedAsync(
+        IZLinkStream stream,
+        CancellationToken cancellationToken);
+
+    ValueTask OnErrorAsync(
+        IZLinkStream stream,
+        ZLinkStreamError error,
+        CancellationToken cancellationToken);
+
+    ValueTask OnDispatchAsync(
+        IZLinkStream stream,
+        ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
@@ -541,7 +563,7 @@ public interface IZLinkRawStreamSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
-    ValueTask OnRawAsync(
+    ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message payload,
         CancellationToken cancellationToken);
@@ -564,9 +586,9 @@ session에 raw payload 또는 framed packet을 submit하는 동작으로 본다.
 즉 현재 방향은 아래처럼 정리된다.
 
 - packet session
-  - `OnPacketAsync(...)`로 framed `header/body`를 받는다.
+  - `OnDispatchAsync(...)`로 framed `header/body`를 받는다.
 - raw session
-  - `OnRawAsync(...)`로 raw payload chunk를 받는다.
+  - `OnDispatchAsync(...)`로 raw payload chunk를 받는다.
   - session이 자기 framing 규칙으로 chunk를 재조립한다.
   - 재조립이 끝나면 framework 쪽 표준 형태인 `header/body` pair로 다시 만든다.
   - actor나 상위 dispatch에는 이 `header/body` pair를 넘기는 쪽을 기본으로 본다.
@@ -595,7 +617,7 @@ protobuf/json decode helper가 가능한 한 추가 메모리 할당 없이 동�
 
 actor join, actor factory, stream-attached actor 모델은 현재 draft framework core
 구현 범위에 포함한다. 공개 계약은 `IZLinkActor`, `IZLinkSpotClient.JoinActorAsync`,
-`ZLinkSpot.AddActorJoin<THandler, TRequest, TReply>()`, 그리고 stream session에서
+`ZLinkSpot.AddActorJoin<THandler, TActor, TRequest, TReply>()`, 그리고 stream session에서
 actor attach/submit/disconnect를 이어 주는 `IZLinkActorRuntime`까지를 기준으로
 설명한다. `stage-wrapper-on-spot.ko.md`는 이 계약 위에서 room/stage wrapper를
 어떻게 조직하는지 보여 주는 상위 모델 문서로 읽는다.
@@ -995,6 +1017,9 @@ public interface IZLinkStreamNodeBuilder
 
     void AddPacketSession<TSession>()
         where TSession : class, IZLinkPacketStreamSession;
+
+    void AddHeaderSession<TSession>()
+        where TSession : class, IZLinkStreamHeaderSession;
 
     void AddRawSession<TSession>()
         where TSession : class, IZLinkRawStreamSession;
@@ -1585,7 +1610,7 @@ topology snapshot만 제공한다. 원격 요청이므로 이 인터페이스도
 
 ### 10.3 runtime monitoring
 
-runtime monitoring은 socket/discovery의 하부 monitor와, registry/spot의
+runtime monitoring은 socket 하부 monitor와, registry/spot의
 snapshot diff를 함께 감싸는 운영 표면이다. 공용 handler shape는 아래처럼 두는
 편이 자연스럽다.
 
@@ -1595,10 +1620,6 @@ public interface IZLinkMonitoringOptions
     void AddSocketEvents(
         string sourceName,
         params ZLinkSocketEventKind[] events);
-
-    void AddDiscoveryEvents(
-        string sourceName,
-        params ZLinkDiscoveryEventKind[] events);
 
     void AddRegistryEvents(
         string sourceName,
@@ -1631,8 +1652,8 @@ event kind는 enum으로 두고, 실제 callback payload는 record struct로 두
 framework가 항상 보장하는 필수 계약이 아니라, backend가 제공할 수 있을 때만
 채워지는 optional diagnostic detail로 두는 편이 backend 교체 정책과도 맞다.
 
-`AddSocketEvents(...)`, `AddDiscoveryEvents(...)`에서 event 목록을 비워 두면, 해당
-source가 올릴 수 있는 모든 logical event kind를 구독하는 뜻으로 읽는다.
+`AddSocketEvents(...)`에서 event 목록을 비워 두면, 해당 source가 올릴 수 있는
+모든 logical event kind를 구독하는 뜻으로 읽는다.
 
 ```csharp
 public enum ZLinkSocketEventKind
@@ -1658,35 +1679,6 @@ public readonly record struct ZLinkSocketEvent(
 public readonly record struct ZLinkSocketDiagnostic(
     ZLinkSocketNativeEventType NativeEvent,
     uint NativeValue);
-
-public enum ZLinkDiscoveryEventKind
-{
-    ServiceUp = 0,
-    ServiceDown,
-    ProvidersChanged,
-    PeerAdmissionChanged,
-    Error,
-    Closed,
-    Internal
-}
-
-public readonly record struct ZLinkDiscoveryEvent(
-    string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkDiscoveryEventKind Event,
-    string ServiceName,
-    string Endpoint,
-    RoutingId? RoutingId,
-    string Subject,
-    ZLinkSubjectKind SubjectKind,
-    ZLinkDiscoveryDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
-
-public readonly record struct ZLinkDiscoveryDiagnostic(
-    ZLinkDiscoveryNativeEventType NativeEventType,
-    uint Status,
-    uint ErrorCode,
-    ulong NativeValue,
-    uint DetailFlags);
 
 public enum ZLinkRegistryEventKind
 {
@@ -1727,10 +1719,9 @@ public readonly record struct ZLinkSpotEvent(
   - 하부 `SocketMonitor`를 감싼다.
   - source 이름은 `channel + capability` 또는 `spot node + capability`가 자연스럽다.
   - 예: `profile.server`, `profile.client`, `stage-node.router`
-- discovery event
-  - 하부 `ServiceMonitor`를 감싼다.
-  - source 이름은 logical discovery registration 이름을 쓴다.
-  - 예: `profile.client.discovery`, `game.stage.discovery`
+- discovery state
+  - runtime event로 올리지 않는다.
+  - 현재 provider 상태는 registry topology/service/member snapshot으로 조회한다.
 - registry event
   - 하부 raw monitor가 아니라 `StatusSnapshotAsync()`, `TopologySnapshotAsync()`,
     `ServiceSummarySnapshotAsync()`의 polling + diff로 만든다.

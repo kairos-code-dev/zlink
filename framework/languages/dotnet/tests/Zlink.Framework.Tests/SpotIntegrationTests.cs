@@ -5,6 +5,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using Systems.Zlink.Stream.Connector.Abstractions;
+using Systems.Zlink.Stream.Connector.Headers;
+using Systems.Zlink.Stream.Connector.Metadata;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
@@ -420,7 +423,6 @@ public sealed class SpotIntegrationTests
         await host.StartAsync();
 
         var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
-        var spotClient = host.Services.GetRequiredService<IZLinkSpotClient>();
         var actorRuntime = host.Services.GetRequiredService<IZLinkActorRuntime>();
         var recorder = host.Services.GetRequiredService<ActorIntegrationRecorder>();
 
@@ -428,14 +430,14 @@ public sealed class SpotIntegrationTests
         var second = await manager.CreateAsync("actor-stage");
         var actor = new TestActor("actor-1", recorder);
 
-        var firstReply = await spotClient.JoinActorAsync<JoinStageRequest, JoinStageReply>(
+        var firstReply = await actorRuntime.JoinAsync<JoinStageRequest, JoinStageReply>(
             first.SpotRid,
             actor,
             new JoinStageRequest("room-1"));
         Assert.Equal("room-1", firstReply.RoomId);
         Assert.Equal(first.SpotRid, actor.Spot?.SpotRid);
 
-        var secondReply = await spotClient.JoinActorAsync<JoinStageRequest, JoinStageReply>(
+        var secondReply = await actorRuntime.JoinAsync<JoinStageRequest, JoinStageReply>(
             second.SpotRid,
             actor,
             new JoinStageRequest("room-2"));
@@ -447,14 +449,22 @@ public sealed class SpotIntegrationTests
 
         using var header = global::Zlink.Message.FromString("header");
         using var body = global::Zlink.Message.FromString("payload");
-        await actorRuntime.SubmitAsync(actor, header, body);
+        await actorRuntime.SubmitAsync(
+            actor,
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "dispatch",
+                ZlinkStreamMetadata.Empty),
+            body);
 
         await RetryAsync(
             () => recorder.DispatchBodies.Contains("payload"),
             TimeSpan.FromSeconds(5));
 
         Assert.False(recorder.ConcurrentViolation);
-        Assert.Equal("session-1", actor.Stream?.SessionId);
         Assert.Equal("room-2", recorder.DispatchRooms.LastOrDefault());
         Assert.DoesNotContain("room-1", recorder.DispatchRooms);
 
@@ -483,13 +493,12 @@ public sealed class SpotIntegrationTests
         await host.StartAsync();
 
         var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
-        var spotClient = host.Services.GetRequiredService<IZLinkSpotClient>();
         var actorRuntime = host.Services.GetRequiredService<IZLinkActorRuntime>();
         var recorder = host.Services.GetRequiredService<ActorIntegrationRecorder>();
         var created = await manager.CreateAsync("actor-stage");
         var actor = new TestActor("actor-2", recorder);
 
-        _ = await spotClient.JoinActorAsync<JoinStageRequest, JoinStageReply>(
+        _ = await actorRuntime.JoinAsync<JoinStageRequest, JoinStageReply>(
             created.SpotRid,
             actor,
             new JoinStageRequest("room-disconnect"));
@@ -501,11 +510,8 @@ public sealed class SpotIntegrationTests
 
         await actorRuntime.DisconnectAsync(actor, staleStream);
         Assert.Equal(0, recorder.DisconnectCount);
-        Assert.Equal("session-current", actor.Stream?.SessionId);
-
         await actorRuntime.DisconnectAsync(actor, currentStream);
         Assert.Equal(1, recorder.DisconnectCount);
-        Assert.Null(actor.Stream);
 
         await host.StopAsync();
     }
@@ -645,7 +651,7 @@ public sealed class SpotIntegrationTests
             : base(spotRid, nodeRid)
         {
             _recorder = recorder;
-            AddActorJoin<ActorJoinHandler, JoinStageRequest, JoinStageReply>();
+            AddActorJoin<ActorJoinHandler, TestActor, JoinStageRequest, JoinStageReply>();
         }
 
         internal IDisposable EnterScope(string source)
@@ -707,15 +713,15 @@ public sealed class SpotIntegrationTests
 
     public sealed record JoinStageReply(string RoomId);
 
-    public sealed class ActorJoinHandler : IZLinkSpotActorJoinHandler<ActorStageSpot, JoinStageRequest, JoinStageReply>
+    public sealed class ActorJoinHandler : IZLinkSpotActorJoinHandler<ActorStageSpot, TestActor, JoinStageRequest, JoinStageReply>
     {
         public ValueTask<JoinStageReply> HandleAsync(
             ActorStageSpot spot,
-            IZLinkActor actor,
+            TestActor actor,
             JoinStageRequest request,
             CancellationToken cancellationToken)
         {
-            return spot.JoinActorAsync((TestActor)actor, request, cancellationToken);
+            return spot.JoinActorAsync(actor, request, cancellationToken);
         }
     }
 
@@ -723,19 +729,9 @@ public sealed class SpotIntegrationTests
     {
         public string ActorKey { get; } = actorKey;
 
-        public IZLinkStream? Stream { get; private set; }
-
         public ZLinkSpot? Spot { get; private set; }
 
         public string? CurrentRoomId { get; set; }
-
-        public ValueTask AttachAsync(IZLinkStream stream, CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            Stream = stream;
-            return ValueTask.CompletedTask;
-        }
-
         public ValueTask OnAttachedAsync(ZLinkSpot spot, CancellationToken cancellationToken)
         {
             _ = cancellationToken;
@@ -760,17 +756,19 @@ public sealed class SpotIntegrationTests
         public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
             _ = cancellationToken;
-            Stream = null;
             Interlocked.Increment(ref recorder.DisconnectCount);
             return ValueTask.CompletedTask;
         }
 
         public ValueTask OnDispatchAsync(
-            global::Zlink.Message header,
+            IZLinkActorContext context,
+            ZlinkStreamHeader header,
             global::Zlink.Message body,
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
+            _ = context;
+            _ = header;
 
             if (Spot is not ActorStageSpot stageSpot)
             {

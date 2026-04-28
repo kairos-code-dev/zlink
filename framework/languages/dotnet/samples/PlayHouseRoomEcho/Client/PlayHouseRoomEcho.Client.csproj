@@ -7,4 +7,8 @@
     <LangVersion>12.0</LangVersion>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
+  </ItemGroup>
 </Project>

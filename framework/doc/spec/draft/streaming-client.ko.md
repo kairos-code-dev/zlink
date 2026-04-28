@@ -1,6 +1,6 @@
 [Framework 초안](./README.ko.md)
 
-# Draft -- ZLink Streaming Client
+# Draft -- ZLink Stream Connector
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, 아직 `core/include/zlink.h`, 언어별 바인딩, 패키지,
@@ -10,7 +10,7 @@
 
 ## 1. 목적
 
-`ZLink Streaming Client`는 `ZLink STREAM` 서버에 접속하는 클라이언트 쪽
+`ZLink Stream Connector`는 `ZLink STREAM` 서버에 접속하는 클라이언트 쪽
 커넥터다. 서버 framework의 `STREAM` packet callback이 받는 것과 같은
 `header + body` 단위 메시지를 클라이언트에서도 보내고 받을 수 있게 한다.
 
@@ -18,6 +18,11 @@
 도메인 개념은 넣지 않는다. 사용자는 이 커넥터 위에서 자기 애플리케이션에 맞는
 채팅 클라이언트, 게임 클라이언트, 장비 제어 클라이언트, 알림 클라이언트 같은
 상위 모델을 만든다.
+
+Stream Connector는 framework adapter 구현물에 묶여서만 배포되는 기능이 아니다.
+각 언어별 connector는 별도 package로 배포할 수 있어야 한다. 애플리케이션 개발자는
+ZLink 서버 framework 전체를 참조하지 않고도 connector package만 받아서 TCP, TLS, WS,
+WSS transport로 STREAM 서버에 접속할 수 있어야 한다.
 
 ## 2. 문서 범위
 
@@ -27,7 +32,7 @@
 
 현재 언어별 상세 문서:
 
-- [.NET streaming client](./framework-adapter/bindings/dotnet/streaming-client.ko.md)
+- [.NET stream connector](./framework-adapter/bindings/dotnet/streaming-client.ko.md)
 
 ## 3. 메시지 단위
 
@@ -35,20 +40,20 @@
 정의하지 않아도 되도록 상위 helper는 아래 의미를 제공한다.
 
 - packet 이름은 기본적으로 body 타입 이름 또는 사용자가 지정한 문자열 이름이다.
-- optional header는 작은 metadata 객체다. JSON object로 표현할 수 있어야 한다.
+- optional metadata는 작은 key-value 객체다.
 - body는 사용자가 선택한 payload다.
 - JSON, MessagePack, Protobuf helper는 body 객체를 직렬화하고, packet 이름과
-  optional header metadata를 공통 header로 만든다.
+  optional metadata를 공통 header로 만든다.
 - raw packet API는 `header`와 `body`를 byte sequence로 직접 보낼 수 있어야 한다.
 
-streaming client core transport는 raw `header` 내용을 해석하지 않는다. packet 이름,
+Stream Connector core transport는 raw `header` 내용을 해석하지 않는다. packet 이름,
 metadata, correlation id 같은 helper 규칙은 core packet 전송 위에 얹는 공통 helper
 계층에서 다룬다. 서버 framework는 기존처럼 `header, body`를 받는다. helper를
 추가하기 위해 서버 STREAM callback 계약을 바꾸지 않는다.
 
 서버의 packet callback과 대응되는 관계는 아래와 같다.
 
-| 서버 framework | streaming client |
+| 서버 framework | Stream Connector |
 |----------------|------------------|
 | `OnPacket(header, body)` 수신 | packet callback 또는 receive API로 `header`, `body` 수신 |
 | `stream.Write(header, body)` 송신 | send API로 `header`, `body` 송신 |
@@ -108,7 +113,7 @@ transport를 바꾸더라도 상위 packet 처리 코드는 가능하면 바뀌�
 - `header + body` packet send
 - raw byte payload send
 - body 타입 이름 또는 지정한 packet 이름으로 packet send
-- optional JSON object header metadata 지정
+- optional metadata 지정
 - body compression flag 처리
 - zero-copy 또는 copy 감소 send 경로
 - segmented send 경로
@@ -117,16 +122,17 @@ transport를 바꾸더라도 상위 packet 처리 코드는 가능하면 바뀌�
 - push message 수신
 - partial read 처리
 - 여러 packet이 한 번에 들어온 경우 순서대로 dispatch
-- large payload 처리와 최대 frame 크기 제한
+- send/request 전에 송신 frame 크기 제한 검사
+- large payload 수신 처리
 
 ### 5.4 요청/응답 helper
 
 request/response는 core packet 전송 위의 선택 helper다. 도메인 protocol은 아니지만,
-많은 client가 필요로 하므로 streaming client 기능 범위에는 포함한다.
+많은 client가 필요로 하므로 Stream Connector 기능 범위에는 포함한다.
 
 - request callback 방식
 - async request 방식
-- send helper와 같은 packet 이름, optional JSON object header, body 객체 규칙
+- send helper와 같은 packet 이름, optional metadata, body 객체 규칙
 - request timeout
 - pending request 관리
 - response correlation
@@ -134,15 +140,15 @@ request/response는 core packet 전송 위의 선택 helper다. 도메인 protoc
 - 연결 종료 시 pending request 실패 처리
 
 correlation id의 위치와 header 형식은 공통 byte header 위의 helper 규칙으로
-정한다. helper header는 JSON object로 표현 가능한 metadata를 담을 수 있어야 하지만,
-core transport가 특정 직렬화 포맷을 강제하면 안 된다.
+정한다. helper header는 작은 metadata key-value를 담을 수 있어야 하지만, core
+transport가 특정 직렬화 포맷을 강제하면 안 된다.
 
 ### 5.5 Error 처리
 
 - disconnected 상태에서 send/request 시 error 반환 또는 callback 호출
 - request timeout error
 - frame decode error
-- payload size limit error
+- send payload size limit error
 - transport connect error
 - TLS certificate validation error
 - remote close
@@ -171,7 +177,7 @@ extension 또는 별도 package로 둔다.
 - MessagePack
 - Protobuf
 
-codec extension은 packet 이름 결정, optional header metadata 생성, payload parse를
+codec extension은 packet 이름 결정, optional metadata 생성, payload parse를
 돕지만, transport framing과 request lifecycle을 바꾸면 안 된다.
 
 ### 5.8 Compression
@@ -179,13 +185,15 @@ codec extension은 packet 이름 결정, optional header metadata 생성, payloa
 compression은 body에만 적용한다. header는 routing, request correlation, codec,
 metadata를 담기 때문에 압축하지 않는다.
 
-server-to-client 방향은 자동 해제를 제공한다.
+server-to-client 방향은 typed API에서 자동 해제를 제공한다.
 
 - 서버 쪽 send helper는 설정한 threshold 이상인 body를 압축할 수 있다.
 - 압축된 body를 보낼 때 helper header `flags`에 `body_compressed`를 표시한다.
-- client connector는 수신한 helper header에 `body_compressed`가 있으면 body를
-  자동으로 압축 해제한다.
-- client 사용자 callback이나 receive API에는 압축 해제된 body를 전달한다.
+- client connector는 typed 수신 경로에서 helper header에 `body_compressed`가 있으면
+  body를 자동으로 압축 해제한다.
+- typed client callback이나 request reply에는 압축 해제된 body를 전달한다.
+- raw packet callback이나 raw receive API는 transport에서 받은 header와 body를 그대로
+  전달한다.
 
 client-to-server 방향은 명시 요청일 때만 압축한다.
 
@@ -196,13 +204,13 @@ client-to-server 방향은 명시 요청일 때만 압축한다.
   필요하면 body를 압축 해제한다.
 
 압축 알고리즘은 packet마다 header에 넣지 않고 connector 또는 서버 send helper 설정에
-둔다. 한 연결 안에서 여러 압축 알고리즘을 섞는 모델은 기본 범위에 넣지 않는다.
-초기 후보는 LZ4다. 알고리즘 혼용이 필요해지면 helper header v2에서 별도 필드를
-추가한다.
+둔다. 현재 계약에서 지원하는 압축 알고리즘은 LZ4 하나다. 서버와 클라이언트가 같은
+알고리즘을 사용하도록 설정하는 책임은 사용자에게 있다. 한 연결 안에서 여러 압축
+알고리즘을 섞는 모델은 범위에 넣지 않는다.
 
 ## 6. 빼야 할 범위
 
-아래 기능은 streaming client core에 넣지 않는다.
+아래 기능은 Stream Connector core에 넣지 않는다.
 
 - room 생성, room 입장, stage, actor 같은 도메인 모델
 - 인증 packet 이름과 인증 payload schema
@@ -212,7 +220,7 @@ client-to-server 방향은 명시 요청일 때만 압축한다.
 - 서버 상태 저장소
 - match making, lobby, party 같은 상위 서비스 모델
 
-이 기능들은 사용자가 streaming client 위에 만드는 애플리케이션 protocol 또는
+이 기능들은 사용자가 Stream Connector 위에 만드는 애플리케이션 protocol 또는
 별도 framework extension에서 다룬다.
 
 ## 7. Framing 원칙
@@ -224,9 +232,14 @@ framing은 서버의 STREAM packet callback과 정확히 맞아야 한다.
 - `body_size`는 4바이트 unsigned integer다.
 - size 값은 network byte order를 사용한다.
 - header와 body는 각각 빈 값일 수 있다.
-- 최대 크기 제한은 반드시 적용한다.
+- connector가 보내는 frame에는 최대 크기 제한을 적용한다.
 - partial read와 여러 packet이 한 번에 들어오는 경우를 모두 처리한다.
 - frame decode 실패는 연결 error로 보고 사용자에게 알려야 한다.
+
+수신 payload에 대한 도메인별 크기 제한은 Stream Connector 공통 계약에 넣지 않는다.
+필요한 애플리케이션은 handler나 상위 protocol에서 별도로 검사한다. 구현은 메모리
+보호를 위해 내부 safety limit을 둘 수 있지만, 그 값은 도메인 protocol 계약으로
+보장하지 않는다.
 
 ```text
 +------------------+------------------+------------------+------------------+
@@ -234,23 +247,20 @@ framing은 서버의 STREAM packet callback과 정확히 맞아야 한다.
 +------------------+------------------+------------------+------------------+
 ```
 
-`header_size`는 header byte 수를 나타내는 frame prefix다. connector helper의 packet
-version은 이 2바이트 prefix가 아니라 `header bytes` 내부에 넣는다.
+`header_size`는 header byte 수를 나타내는 frame prefix다.
 
-connector helper header v1은 binary header다. 문자열 JSON envelope를 header에
-그대로 넣지 않는다. `kind`와 `codec`은 문자열이 아니라 1바이트 enum으로 인코딩한다.
+connector helper header는 binary header다. 문자열 JSON envelope를 header에 그대로
+넣지 않는다. `kind`와 `codec`은 문자열이 아니라 1바이트 enum으로 인코딩한다.
 
 ```text
 +--------+---------+----------+----------+-----------+-----------+
-| ver u8 | kind u8 | codec u8 | flags u8 | rid u64?  | name u8+n |
+| kind u8| codec u8| flags u8 | rid u64? | name u8+n | meta?     |
 +--------+---------+----------+----------+-----------+-----------+
-| meta u16+bytes?                                           |
-+-----------------------------------------------------------+
 ```
 
-필드 의미는 아래와 같다.
+필드 순서와 byte order는 아래 규칙으로 고정한다.
 
-- `ver`: connector helper header version. 최초 값은 `1`이다.
+- 모든 multi-byte integer는 network byte order를 사용한다.
 - `kind`: message kind enum이다.
 - `codec`: body codec enum이다.
 - `flags`: 선택 필드 존재 여부와 확장 bit를 담는다.
@@ -258,13 +268,36 @@ connector helper header v1은 binary header다. 문자열 JSON envelope를 heade
 - `name`: `u8 name_len` 뒤에 UTF-8 packet name이 온다.
 - `meta`: `u16 meta_len` 뒤에 metadata bytes가 온다. metadata가 있을 때만 들어간다.
 
-`name_len`은 최대 255 bytes다. 긴 namespace 전체 이름을 header에 그대로 넣지 말고,
+`rid`가 있으면 항상 `flags`에 `has rid`를 켠다. `meta`가 있으면 항상 `has metadata`를
+켠다. flag와 실제 필드 존재 여부가 맞지 않으면 decode error다. 알 수 없는 `kind`,
+`codec`, flag bit는 decode error다.
+
+connector가 생성하는 `rid`는 같은 connector instance 안에서 동시에 pending 상태인
+request 사이에 중복되면 안 된다. 값 `0`은 사용하지 않는다.
+
+`name_len`은 1 이상 255 bytes 이하여야 한다. 긴 namespace 전체 이름을 header에 그대로 넣지 말고,
 짧은 packet name 또는 alias를 사용한다. `meta_len`은 wire에서 `u16`이지만 connector
 기본 최대값은 1024 bytes로 둔다. 구현은 옵션으로 이 값을 낮추거나 높일 수 있지만,
 65535 bytes를 넘길 수 없다. metadata에는 trace id, tenant id, locale처럼 작은 값만
 넣고 큰 업무 payload는 body에 넣는다.
 
-enum 값은 최초 draft에서 아래처럼 둔다.
+metadata bytes는 아래 순서의 binary key-value 목록이다.
+
+```text
++---------------+-------------+-------------+
+| count u8      | entry...    | entry...    |
++---------------+-------------+-------------+
+
+entry:
++-------------+-------------+-------------+-------------+
+| key_len u8  | key bytes   | val_len u16 | value bytes |
++-------------+-------------+-------------+-------------+
+```
+
+metadata key와 value는 UTF-8 문자열이다. `key_len`은 1 이상이어야 한다. 같은 key가
+두 번 나오면 decode error다. `count`는 뒤따르는 entry 개수와 정확히 일치해야 한다.
+
+enum 값은 아래처럼 둔다.
 
 | enum | value | 의미 |
 |------|-------|------|
@@ -277,7 +310,7 @@ enum 값은 최초 draft에서 아래처럼 둔다.
 | codec messagepack | `2` | MessagePack body |
 | codec protobuf | `3` | Protobuf body |
 
-`flags` bit는 최초 draft에서 아래처럼 둔다.
+`flags` bit는 아래처럼 둔다.
 
 | flag | value | 의미 |
 |------|-------|------|
@@ -289,6 +322,27 @@ enum 값은 최초 draft에서 아래처럼 둔다.
 한다. helper를 쓰는 서버 쪽 adapter나 actor helper는 `header bytes`를 위 형식으로
 파싱한 뒤 packet name과 body 객체를 처리한다.
 
+request/response 규칙은 아래와 같다.
+
+- `send`: `rid`가 없어야 한다. response를 기대하지 않는다.
+- `request`: `rid`가 있어야 한다. connector가 pending request map에 등록한다.
+- `response`: `rid`가 있어야 한다. 같은 `rid`의 pending request를 완료한다.
+- `error`: `rid`가 있으면 request 실패 response다. `rid`가 없으면 connector error
+  message다.
+- `response`와 `error`의 packet name은 원 request packet name과 같아야 한다.
+- `error`는 `codec=json`을 사용한다.
+- request timeout, close, disconnect 시 pending request는 실패 처리하고 map에서
+  제거한다.
+
+`error` body는 codec과 무관하게 UTF-8 JSON object로 인코딩한다.
+
+```json
+{"code":"error_code","message":"message"}
+```
+
+error body schema는 connector helper 전용이다. 애플리케이션 도메인 error를 body
+payload로 보내고 싶으면 `response` kind와 사용자 body schema를 사용한다.
+
 ## 8. 완료 기준
 
 공통 완료 기준은 아래와 같다.
@@ -296,24 +350,24 @@ enum 값은 최초 draft에서 아래처럼 둔다.
 - TCP, TLS, WS, WSS transport가 모두 같은 packet API로 동작한다.
 - client가 보낸 `header + body` packet을 framework STREAM 서버 packet callback이
   받는다.
-- client가 body 객체만 넘겨도 packet 이름과 body가 만들어지고, optional JSON object
-  header metadata를 함께 보낼 수 있다.
+- client가 body 객체만 넘겨도 packet 이름과 body가 만들어지고, optional metadata를
+  함께 보낼 수 있다.
 - 서버가 `stream.Write(header, body)`로 보낸 packet을 client가 받는다.
 - callback receive와 explicit receive API가 모두 검증된다.
 - request callback과 async request가 timeout, response, close 상황을 처리한다.
-- partial read, multi-packet read, large frame limit, close 중 send 실패를 테스트한다.
+- partial read, multi-packet read, send frame limit, close 중 send 실패를 테스트한다.
 - codec extension이 core transport 계약을 바꾸지 않는지 검증한다.
-- server-to-client compressed body를 client connector가 자동으로 압축 해제한다.
+- server-to-client compressed body를 client connector typed API가 자동으로 압축
+  해제한다.
 - client-to-server compression은 명시 호출에서만 적용된다.
 - Unity adapter는 main thread callback dispatch를 검증한다.
 - Unreal plugin은 Game Thread callback dispatch를 검증한다.
 
-## 9. Open Items
+## 9. 결정 사항
 
-- body type 이름을 기본 packet 이름으로 쓸 때 namespace와 version 정보를 어떻게
-  다룰지 정해야 한다.
-- 공통 packet header helper의 byte layout과 correlation id 위치를 정해야 한다.
-- TLS certificate validation option 이름을 언어별로 어느 정도 맞출지 정해야 한다.
-- WebSocket path와 URI 기반 설정을 동시에 둘 때 우선순위를 정해야 한다.
-- codec extension을 streaming client repo 안에 둘지, 언어별 binding codec package와
-  같은 정책으로 둘지 정해야 한다.
+- body type 이름을 기본 packet 이름으로 쓸 때는 namespace를 제외한 짧은 타입 이름을
+  사용한다. 다른 이름이 필요하면 언어별 attribute나 resolver를 사용한다.
+- TLS certificate validation option 이름은 언어별 관용구를 따르되, 의미는 "server
+  certificate validation 생략"으로 맞춘다.
+- WebSocket path는 endpoint URI에 포함한다. 별도 path option을 두지 않는다.
+- codec extension은 Stream Connector package 계열의 별도 package로 둔다.

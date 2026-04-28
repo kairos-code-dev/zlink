@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Handlers;
 
 public interface IZLinkHandlerContext
 {

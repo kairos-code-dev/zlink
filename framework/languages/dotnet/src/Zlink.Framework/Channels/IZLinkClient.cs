@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Channels;
 
 public interface IZLinkClient
 {

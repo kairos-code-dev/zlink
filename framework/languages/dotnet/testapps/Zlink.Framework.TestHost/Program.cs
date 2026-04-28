@@ -1,8 +1,12 @@
 using System.Text;
 using System.Text.Json;
+using System.Buffers.Binary;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Systems.Zlink.Stream.Connector.Abstractions;
+using Systems.Zlink.Stream.Connector.Headers;
+using Systems.Zlink.Stream.Connector.Metadata;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 
@@ -392,7 +396,7 @@ internal static class TestHostScenarioConfigurator
             {
                 stream.Bind(options.StreamEndpoint
                     ?? throw new InvalidOperationException("STREAM raw mode requires --stream-endpoint."));
-                stream.AddRawSession<TestHostRawStreamSession>();
+                stream.AddHeaderSession<TestHostRawStreamSession>();
             });
         });
     }
@@ -630,8 +634,10 @@ internal sealed class TestHostRawStreamRecorder(TestHostEventSink sink)
     }
 }
 
-internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorder) : IZLinkRawStreamSession
+internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorder) : IZLinkStreamHeaderSession
 {
+    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
+
     public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
     {
         _ = cancellationToken;
@@ -657,15 +663,35 @@ internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorde
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnRawAsync(
+    public ValueTask OnDispatchAsync(
         IZLinkStream stream,
+        ZlinkStreamHeader header,
         global::Zlink.Message payload,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
+        _ = header;
         recorder.RecordPayload(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
-        using var reply = global::Zlink.Message.FromString("pong");
+        var replyHeader = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Response,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRid,
+            header.RequestId,
+            header.Name,
+            ZlinkStreamMetadata.Empty);
+        var frame = EncodeFrame(HeaderCodec.Encode(replyHeader).Span, "\"pong\""u8);
+        using var reply = global::Zlink.Message.FromBytes(frame);
         stream.Write(reply);
         return ValueTask.CompletedTask;
+    }
+
+    private static byte[] EncodeFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body)
+    {
+        var frame = new byte[6 + header.Length + body.Length];
+        BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
+        header.CopyTo(frame.AsSpan(6, header.Length));
+        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
+        return frame;
     }
 }

@@ -418,7 +418,7 @@ exec
 void test_typed_spot_node_unified_options ()
 {
     void *ctx = new_ctx ();
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     int pub_hwm = 77;
@@ -766,7 +766,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -873,7 +873,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -1084,7 +1084,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -1193,7 +1193,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -1312,7 +1312,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -1421,7 +1421,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -1620,7 +1620,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -1749,7 +1749,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -1829,7 +1829,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -1948,7 +1948,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -2077,7 +2077,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -2157,7 +2157,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -2279,7 +2279,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -2408,7 +2408,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -2488,7 +2488,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -2607,7 +2607,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -2736,7 +2736,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -2816,7 +2816,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -2956,7 +2956,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -3085,7 +3085,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -3165,7 +3165,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -3285,7 +3285,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -3414,7 +3414,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -3494,7 +3494,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -3613,7 +3613,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -3742,7 +3742,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -3822,7 +3822,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -3941,7 +3941,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -4070,7 +4070,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -4150,7 +4150,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -4271,7 +4271,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -4400,7 +4400,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -4480,7 +4480,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -4599,7 +4599,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -4728,7 +4728,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -4808,7 +4808,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -4927,7 +4927,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -5056,7 +5056,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -5136,7 +5136,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -5255,7 +5255,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -5384,7 +5384,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -5464,7 +5464,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -5588,7 +5588,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -5717,7 +5717,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -5797,7 +5797,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -5924,7 +5924,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -6053,7 +6053,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -6133,7 +6133,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -6252,7 +6252,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -6381,7 +6381,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -6461,7 +6461,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -6602,7 +6602,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -6731,7 +6731,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -6811,7 +6811,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -6935,7 +6935,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -7064,7 +7064,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -7144,7 +7144,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -7285,7 +7285,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -7414,7 +7414,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -7494,7 +7494,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -7613,7 +7613,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -7742,7 +7742,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -7822,7 +7822,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -7941,7 +7941,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -8070,7 +8070,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -8150,7 +8150,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -8285,7 +8285,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -8414,7 +8414,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -8494,7 +8494,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -8677,7 +8677,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -8806,7 +8806,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -8886,7 +8886,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -9027,7 +9027,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -9156,7 +9156,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -9236,7 +9236,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -9399,7 +9399,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -9528,7 +9528,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -9608,7 +9608,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -9749,7 +9749,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -9878,7 +9878,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -9958,7 +9958,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -10099,7 +10099,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -10228,7 +10228,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -10308,7 +10308,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -10440,7 +10440,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -10569,7 +10569,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -10649,7 +10649,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -10790,7 +10790,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -10919,7 +10919,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -10999,7 +10999,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -11140,7 +11140,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -11269,7 +11269,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -11349,7 +11349,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -11487,7 +11487,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -11616,7 +11616,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -11696,7 +11696,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -11837,7 +11837,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -11966,7 +11966,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -12046,7 +12046,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -12211,7 +12211,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -12340,7 +12340,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -12420,7 +12420,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -12605,7 +12605,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -12734,7 +12734,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -12814,7 +12814,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -12971,7 +12971,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..1d2e84310eb99e586f95faf22b26610a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,14 +570,20 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -13100,7 +13100,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -13180,7 +13180,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -13352,7 +13352,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -13497,7 +13497,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -13577,7 +13577,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -13734,7 +13734,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -13879,7 +13879,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -13959,7 +13959,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -14117,7 +14117,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -14262,7 +14262,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -14342,7 +14342,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -14513,7 +14513,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -14658,7 +14658,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -14738,7 +14738,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -14897,7 +14897,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -15042,7 +15042,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -15122,7 +15122,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -15341,7 +15341,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -15486,7 +15486,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -15566,7 +15566,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -15975,7 +15975,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -16120,7 +16120,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -16200,7 +16200,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -16504,7 +16504,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..382ca4e3cfd429ee5682974ee0196f73
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +570,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -16649,7 +16649,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -16729,7 +16729,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -17073,7 +17073,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -17219,7 +17219,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -17299,7 +17299,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -17615,7 +17615,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -17761,7 +17761,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..d24b2fb63ec8e5e9d1a0ca5742d095c7
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +524,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -17841,7 +17841,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -18186,7 +18186,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -18344,7 +18344,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -18425,7 +18425,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -18741,7 +18741,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -18899,7 +18899,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -18980,7 +18980,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -19299,7 +19299,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -19457,7 +19457,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -19538,7 +19538,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -19854,7 +19854,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -20012,7 +20012,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -20093,7 +20093,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -20409,7 +20409,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -20567,7 +20567,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -20648,7 +20648,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -20964,7 +20964,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -21122,7 +21122,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -21203,7 +21203,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -21540,7 +21540,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -21698,7 +21698,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -21779,7 +21779,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -22161,7 +22161,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -22319,7 +22319,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -22400,7 +22400,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -22781,7 +22781,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -22939,7 +22939,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -23020,7 +23020,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -23374,7 +23374,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -23532,7 +23532,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -23613,7 +23613,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -23968,7 +23968,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -24126,7 +24126,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -24207,7 +24207,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -24561,7 +24561,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -24719,7 +24719,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -24800,7 +24800,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -25154,7 +25154,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -25312,7 +25312,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -25393,7 +25393,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -25747,7 +25747,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -25905,7 +25905,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -25986,7 +25986,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -26340,7 +26340,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -26498,7 +26498,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -26579,7 +26579,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -26933,7 +26933,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -27091,7 +27091,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -27172,7 +27172,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -27526,7 +27526,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -27684,7 +27684,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -27765,7 +27765,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -28140,7 +28140,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -28298,7 +28298,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -28379,7 +28379,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -28735,7 +28735,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -28893,7 +28893,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -28974,7 +28974,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -29330,7 +29330,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -29488,7 +29488,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -29569,7 +29569,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -29923,7 +29923,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -30081,7 +30081,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -30162,7 +30162,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -30544,7 +30544,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -30702,7 +30702,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -30783,7 +30783,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -31159,7 +31159,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -31317,7 +31317,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -31398,7 +31398,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -31759,7 +31759,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -31917,7 +31917,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -31998,7 +31998,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -32397,7 +32397,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -32555,7 +32555,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -32636,7 +32636,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -33012,7 +33012,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -33170,7 +33170,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -33251,7 +33251,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -33648,7 +33648,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -33806,7 +33806,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -33887,7 +33887,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -34264,7 +34264,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -34422,7 +34422,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -34503,7 +34503,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -34881,7 +34881,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -35039,7 +35039,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -35120,7 +35120,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -35497,7 +35497,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -35655,7 +35655,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -35736,7 +35736,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -36135,7 +36135,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -36293,7 +36293,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -36374,7 +36374,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -36772,7 +36772,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -36930,7 +36930,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -37011,7 +37011,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -37410,7 +37410,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -37568,7 +37568,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -37649,7 +37649,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -38047,7 +38047,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -38205,7 +38205,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -38286,7 +38286,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -38675,7 +38675,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -38833,7 +38833,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -38914,7 +38914,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -39364,7 +39364,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -39522,7 +39522,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -39603,7 +39603,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -40022,7 +40022,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -40180,7 +40180,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -40261,7 +40261,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -40976,7 +40976,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -41134,7 +41134,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -41215,7 +41215,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -41812,7 +41812,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -41970,7 +41970,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -42051,7 +42051,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -42649,7 +42649,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -42807,7 +42807,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -42888,7 +42888,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -43485,7 +43485,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -43643,7 +43643,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -43724,7 +43724,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -44321,7 +44321,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -44479,7 +44479,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -44560,7 +44560,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -45157,7 +45157,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -45315,7 +45315,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -45396,7 +45396,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -45993,7 +45993,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -46151,7 +46151,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -46232,7 +46232,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -46829,7 +46829,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -46987,7 +46987,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -47068,7 +47068,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -47665,7 +47665,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -47823,7 +47823,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -47904,7 +47904,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -48501,7 +48501,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -48659,7 +48659,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -48740,7 +48740,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -49358,7 +49358,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -49516,7 +49516,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -49597,7 +49597,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -50262,7 +50262,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -50420,7 +50420,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -50501,7 +50501,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -51137,7 +51137,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -51295,7 +51295,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -51376,7 +51376,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -52025,7 +52025,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -52183,7 +52183,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -52264,7 +52264,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -52919,7 +52919,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -53077,7 +53077,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -53158,7 +53158,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -53809,7 +53809,7 @@ index 97eb00d82b11d18eb65442ceba8930799d176f9f..6fcd70ecac7df0d8a26f3ba24fe8828a
  {
      for (size_t i = 0; i < part_count_; ++i)
 @@ -528,28 +582,34 @@
-     void *sub = zlink_spot_node_new (ctx);
+     void *sub = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (pub);
      TEST_ASSERT_NOT_NULL (sub);
 +    void *pub_handle = default_spot_handle (pub);
@@ -53967,7 +53967,7 @@ index 3805875027aeabf9c049bf7f0bdc3c47e9d70a54..b89dcd12d748277a030e62841a65c195
  {
      const char *selected = getenv ("ZLINK_TEST_CASE");
 @@ -482,18 +536,11 @@
-         sub_nodes[i] = zlink_spot_node_new (ctx);
+         sub_nodes[i] = zlink_spot_node_new (ctx, NULL);
          TEST_ASSERT_NOT_NULL (pub_nodes[i]);
          TEST_ASSERT_NOT_NULL (sub_nodes[i]);
 -        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
@@ -54048,7 +54048,7 @@ index d33a6d5a4706c002dc8f2e704c2ea600a5b6e3a7..ed37007bc780acd5eff6707b96d66582
  }
 @@ -193,6 +226,8 @@
      void *ctx = new_ctx ();
-     void *node = zlink_spot_node_new (ctx);
+     void *node = zlink_spot_node_new (ctx, NULL);
      TEST_ASSERT_NOT_NULL (node);
 +    void *spot = make_test_spot_handle (node);
 +    TEST_ASSERT_NOT_NULL (spot);

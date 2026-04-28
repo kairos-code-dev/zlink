@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Timers;
 
 internal sealed class ZLinkTimer : IZLinkTimer
 {

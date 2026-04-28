@@ -20,6 +20,22 @@ Implementation follow-up:
 - Perf and sample projects must continue to compile against the public
   assembly surface only.
 
+## Framework Stream And Actor Contract
+
+The framework-level STREAM and actor surface follows these rules.
+
+- STREAM nodes register only `IZLinkStreamHeaderSession`.
+- The public framework contract does not expose packet-session or raw-session
+  variants.
+- `IZLinkActor` is a callback contract. Stream attachment state and SPOT join
+  execution helpers are provided by `IZLinkActorRuntime` and
+  `IZLinkActorContext`.
+- `IZLinkSpotClient` is reserved for SPOT-side channel send, request, and
+  publish operations. Actor join is not part of the SPOT client contract.
+- Actor-to-client STREAM replies and sends are typed operations exposed
+  through `IZLinkActorContext.Client`, with per-message builder options for
+  metadata, message name override, and forced compression.
+
 ---
 
 ## Current Core Alignment Overrides

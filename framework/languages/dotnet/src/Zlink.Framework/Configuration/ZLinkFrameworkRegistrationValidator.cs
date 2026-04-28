@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Configuration;
 
 internal static class ZLinkFrameworkRegistrationValidator
 {
@@ -68,16 +68,10 @@ internal static class ZLinkFrameworkRegistrationValidator
                 $"STREAM node '{streamNode.StreamNodeName}' must define a bind endpoint.");
         }
 
-        if (streamNode.PacketSessionType is not null && streamNode.RawSessionType is not null)
+        if (streamNode.HeaderSessionType is null)
         {
             throw new ZLinkConfigurationException(
-                $"STREAM node '{streamNode.StreamNodeName}' cannot register packet and raw sessions together.");
-        }
-
-        if (streamNode.PacketSessionType is null && streamNode.RawSessionType is null)
-        {
-            throw new ZLinkConfigurationException(
-                $"STREAM node '{streamNode.StreamNodeName}' must register either a packet or raw session.");
+                $"STREAM node '{streamNode.StreamNodeName}' must register a header stream session.");
         }
     }
 

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Systems.Zlink.Stream.Connector.Abstractions;
+using Systems.Zlink.Stream.Connector.Headers;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 
@@ -91,7 +93,7 @@ internal static class FixtureSamples
             options.AddStreamNode("stream.raw", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:7401");
-                stream.AddRawSession<FixtureRawStreamSession>();
+                stream.AddHeaderSession<FixtureRawStreamSession>();
             });
         });
         return builder;
@@ -147,7 +149,6 @@ internal static class FixtureSamples
         builder.Services.AddZLinkMonitoring(options =>
         {
             options.AddSocketEvents("orders.server", ZLinkSocketEventKind.ConnectionReady);
-            options.AddDiscoveryEvents("orders", ZLinkDiscoveryEventKind.ProvidersChanged);
             options.AddRegistryEvents("registry", TimeSpan.FromMilliseconds(250));
             options.AddSpotEvents("stage-node", TimeSpan.FromMilliseconds(250));
         });
@@ -171,7 +172,7 @@ internal static class FixtureSamples
             options.AddStreamNode("stream.actor", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:7701");
-                stream.AddPacketSession<FixtureActorPacketSession>();
+                stream.AddHeaderSession<FixtureActorPacketSession>();
             });
 
             options.AddSpotNode("actor-node", spot =>
@@ -248,7 +249,7 @@ internal sealed class FixtureSendHandler
 
 internal sealed record FixtureSendCommand(string Value);
 
-internal sealed class FixtureRawStreamSession : IZLinkRawStreamSession
+internal sealed class FixtureRawStreamSession : IZLinkStreamHeaderSession
 {
     public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
     {
@@ -275,12 +276,14 @@ internal sealed class FixtureRawStreamSession : IZLinkRawStreamSession
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnRawAsync(
+    public ValueTask OnDispatchAsync(
         IZLinkStream stream,
+        ZlinkStreamHeader header,
         global::Zlink.Message payload,
         CancellationToken cancellationToken)
     {
         _ = stream;
+        _ = header;
         _ = payload;
         _ = cancellationToken;
         return ValueTask.CompletedTask;
@@ -294,16 +297,16 @@ internal sealed class FixtureActorSpot : ZLinkSpot
         global::Zlink.RoutingId nodeRid)
         : base(spotRid, nodeRid)
     {
-        AddActorJoin<FixtureActorJoinHandler, FixtureActorJoinRequest, FixtureActorJoinReply>();
+        AddActorJoin<FixtureActorJoinHandler, FixtureActor, FixtureActorJoinRequest, FixtureActorJoinReply>();
     }
 }
 
 internal sealed class FixtureActorJoinHandler
-    : IZLinkSpotActorJoinHandler<FixtureActorSpot, FixtureActorJoinRequest, FixtureActorJoinReply>
+    : IZLinkSpotActorJoinHandler<FixtureActorSpot, FixtureActor, FixtureActorJoinRequest, FixtureActorJoinReply>
 {
     public async ValueTask<FixtureActorJoinReply> HandleAsync(
         FixtureActorSpot spot,
-        IZLinkActor actor,
+        FixtureActor actor,
         FixtureActorJoinRequest request,
         CancellationToken cancellationToken)
     {
@@ -322,16 +325,7 @@ internal sealed class FixtureActor : IZLinkActor
 {
     public string ActorKey => "fixture";
 
-    public IZLinkStream? Stream { get; private set; }
-
     public ZLinkSpot? Spot { get; private set; }
-
-    public ValueTask AttachAsync(IZLinkStream stream, CancellationToken cancellationToken)
-    {
-        _ = cancellationToken;
-        Stream = stream;
-        return ValueTask.CompletedTask;
-    }
 
     public ValueTask OnAttachedAsync(ZLinkSpot spot, CancellationToken cancellationToken)
     {
@@ -354,15 +348,16 @@ internal sealed class FixtureActor : IZLinkActor
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        Stream = null;
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnDispatchAsync(
-        global::Zlink.Message header,
+        IZLinkActorContext context,
+        ZlinkStreamHeader header,
         global::Zlink.Message body,
         CancellationToken cancellationToken)
     {
+        _ = context;
         _ = header;
         _ = body;
         _ = cancellationToken;
@@ -372,9 +367,8 @@ internal sealed class FixtureActor : IZLinkActor
 
 internal sealed class FixtureActorPacketSession(
     IZLinkSpotManager spotManager,
-    IZLinkSpotClient spotClient,
     IZLinkActorRuntime actorRuntime)
-    : IZLinkPacketStreamSession
+    : IZLinkStreamHeaderSession
 {
     private readonly FixtureActor _actor = new();
 
@@ -382,7 +376,7 @@ internal sealed class FixtureActorPacketSession(
     {
         await actorRuntime.AttachAsync(_actor, stream, cancellationToken);
         var created = await spotManager.CreateAsync("fixture-actor-stage", cancellationToken);
-        _ = await spotClient.JoinActorAsync<FixtureActorJoinRequest, FixtureActorJoinReply>(
+        _ = await actorRuntime.JoinAsync<FixtureActorJoinRequest, FixtureActorJoinReply>(
             created.SpotRid,
             _actor,
             new FixtureActorJoinRequest("fixture-room"),
@@ -405,9 +399,9 @@ internal sealed class FixtureActorPacketSession(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnPacketAsync(
+    public ValueTask OnDispatchAsync(
         IZLinkStream stream,
-        global::Zlink.Message header,
+        ZlinkStreamHeader header,
         global::Zlink.Message body,
         CancellationToken cancellationToken)
     {

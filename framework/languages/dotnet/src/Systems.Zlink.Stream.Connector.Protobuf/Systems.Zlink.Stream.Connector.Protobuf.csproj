@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
+    <AssemblyName>Systems.Zlink.Stream.Connector.Protobuf</AssemblyName>
+    <RootNamespace>Systems.Zlink.Stream.Connector.Protobuf</RootNamespace>
+    <Description>Protobuf codec for the ZLink STREAM connector.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
+  </ItemGroup>
+</Project>

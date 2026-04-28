@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Handlers;
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkRequestAttribute : Attribute

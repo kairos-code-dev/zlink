@@ -1,14 +1,10 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Monitoring;
 
 public interface IZLinkMonitoringOptions
 {
     void AddSocketEvents(
         string sourceName,
         params ZLinkSocketEventKind[] events);
-
-    void AddDiscoveryEvents(
-        string sourceName,
-        params ZLinkDiscoveryEventKind[] events);
 
     void AddRegistryEvents(
         string sourceName,
@@ -77,52 +73,6 @@ public readonly record struct ZLinkSocketEvent(
     string LocalAddr,
     string RemoteAddr,
     ZLinkSocketDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
-
-public enum ZLinkDiscoveryEventKind
-{
-    ServiceUp = 0,
-    ServiceDown = 1,
-    ProvidersChanged = 2,
-    PeerAdmissionChanged = 3,
-    Error = 4,
-    Closed = 5,
-    Internal = 6,
-}
-
-public enum ZLinkDiscoveryNativeEventType : uint
-{
-    None = 0,
-    Error = 1u << 4,
-    DiscoveryServiceUp = 1u << 5,
-    DiscoveryServiceDown = 1u << 6,
-    DiscoveryProvidersChanged = 1u << 7,
-    PeerAdmissionChanged = 1u << 8,
-    Closed = 1u << 17,
-    All = Error
-        | Closed
-        | DiscoveryServiceUp
-        | DiscoveryServiceDown
-        | DiscoveryProvidersChanged
-        | PeerAdmissionChanged,
-}
-
-public readonly record struct ZLinkDiscoveryDiagnostic(
-    ZLinkDiscoveryNativeEventType NativeEventType,
-    uint Status,
-    uint ErrorCode,
-    ulong NativeValue,
-    uint DetailFlags);
-
-public readonly record struct ZLinkDiscoveryEvent(
-    string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkDiscoveryEventKind Event,
-    string ServiceName,
-    string Endpoint,
-    global::Zlink.RoutingId? RoutingId,
-    string Subject,
-    ZLinkSubjectKind SubjectKind,
-    ZLinkDiscoveryDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
 
 public enum ZLinkRegistryEventKind
 {

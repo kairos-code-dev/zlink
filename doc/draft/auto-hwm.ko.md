@@ -6,6 +6,13 @@
 > 현재 공개 계약이 아니며, `core/include/zlink.h`에 없는 API, 상수, 기본 동작을
 > 보장하지 않는다.
 > 구현과 공개 헤더, 관련 테스트, 정식 문서가 확정되면 정식 spec 문서에 합친다.
+>
+> 주의:
+> 이 문서 안의 일부 계산식과 예시는 초기 초안 기준으로 적혀 있다.
+> 특히 역할 묶음 고정 비율로 queue budget을 자르는 부분은 최신 방향이 아니다.
+> 재계산 시점과 최신 계산식 방향은
+> [auto-hwm-recalculation-policy.ko.md](./auto-hwm-recalculation-policy.ko.md)
+> 를 우선 기준으로 본다.
 
 ## 1. 목적
 

@@ -28,7 +28,7 @@
 - spot packet/subscribe/timer registration
 - `AddStreamNode(...)`와 packet/raw session 한 종류 등록
 - `AddZLinkRegistry(...)`, `IZLinkRegistryQuery`, `IZLinkRegistryQueryClient`
-- `AddZLinkMonitoring(...)`과 socket/discovery/registry/spot source
+- `AddZLinkMonitoring(...)`과 socket/registry/spot source
 - `.NET DI`와 hosted service lifecycle 통합
 - backend adapter layer와 backend dependency policy 적용
 - 저장소가 현재 패키징하는 runtime RID 전체(`win-x64`, `win-arm64`, `linux-x64`,

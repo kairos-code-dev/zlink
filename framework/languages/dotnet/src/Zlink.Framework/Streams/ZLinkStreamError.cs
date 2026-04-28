@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Streams;
 
 public readonly record struct ZLinkStreamDiagnostic(
     int NativeCode,

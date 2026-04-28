@@ -5,6 +5,10 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using System.Buffers.Binary;
+using Systems.Zlink.Stream.Connector.Abstractions;
+using Systems.Zlink.Stream.Connector.Headers;
+using Systems.Zlink.Stream.Connector.Metadata;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
@@ -20,10 +24,10 @@ public sealed class StreamIntegrationTests
     private static readonly TimeSpan PollingInterval = TimeSpan.FromMilliseconds(150);
 
     [Fact]
-    public async Task RawStreamSession_Receives_Writes_And_Tracks_Lifecycle()
+    public async Task HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle()
     {
         var endpoint = GetFreeTcpEndpoint();
-        var recorder = new RawStreamRecorder();
+        var recorder = new HeaderStreamRecorder();
         using var callbackCapture = CallbackExceptionCapture.Start();
 
         var host = await CreateHostAsync(endpoint, services =>
@@ -31,10 +35,10 @@ public sealed class StreamIntegrationTests
             services.AddSingleton(recorder);
             services.AddZLinkFramework(options =>
             {
-                options.AddStreamNode("raw.node", stream =>
+                options.AddStreamNode("header.node", stream =>
                 {
                     stream.Bind(endpoint);
-                    stream.AddRawSession<RawStreamSession>();
+                    stream.AddHeaderSession<HeaderStreamSession>();
                 });
             });
         });
@@ -48,7 +52,15 @@ public sealed class StreamIntegrationTests
                 await RetryAsync(
                     async () =>
                     {
-                        SendAll(network, "ping"u8);
+                        SendAll(network, BuildStreamPacketFrame(
+                            new ZlinkStreamHeader(
+                                ZlinkStreamMessageKind.Request,
+                                ZlinkStreamCodec.Json,
+                                ZlinkStreamHeaderFlags.HasRid,
+                                new ZlinkStreamRequestId(1),
+                                "ping",
+                                ZlinkStreamMetadata.Empty),
+                            "\"ping\""u8));
                         await Task.Yield();
                         callbackCapture.ThrowIfAny();
                         return recorder.ReceivedPayloads.Contains("ping");
@@ -69,7 +81,10 @@ public sealed class StreamIntegrationTests
                     && callbackCapture.IsEmpty,
                 TimeSpan.FromSeconds(5));
             callbackCapture.ThrowIfAny();
-            Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
+            var reply = ReceiveFrame(network);
+            Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
+            Assert.Equal("ping", reply.Header.Name);
+            Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Body));
             Assert.NotNull(recorder.LastSessionId);
             Assert.NotNull(recorder.LastRoutingId);
             AssertStreamMetadata(endpoint, clientLocalPort, recorder.LastLocalAddr, recorder.LastRemoteAddr);
@@ -80,68 +95,6 @@ public sealed class StreamIntegrationTests
                 () => recorder.DisconnectedCount > 0 && recorder.ErrorCount > 0,
                 TimeSpan.FromSeconds(5));
             Assert.Equal(ZLinkStreamSessionError.TransportError, recorder.LastError?.Error);
-        }
-        finally
-        {
-            await host.StopAsync();
-            host.Dispose();
-        }
-    }
-
-    [Fact]
-    public async Task PacketStreamSession_Receives_Header_And_Body()
-    {
-        var endpoint = GetFreeTcpEndpoint();
-        var recorder = new PacketStreamRecorder();
-        using var callbackCapture = CallbackExceptionCapture.Start();
-
-        var host = await CreateHostAsync(endpoint, services =>
-        {
-            services.AddSingleton(recorder);
-            services.AddZLinkFramework(options =>
-            {
-                options.AddStreamNode("packet.node", stream =>
-                {
-                    stream.Bind(endpoint);
-                    stream.AddPacketSession<PacketStreamSession>();
-                });
-            });
-        });
-        try
-        {
-            using var client = ConnectRawClient(endpoint);
-            var clientLocalPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
-            var network = client.GetStream();
-            try
-            {
-                await RetryAsync(
-                    async () =>
-                    {
-                        SendAll(network, BuildStreamPacketFrame("hdr"u8, "body"u8));
-                        await Task.Yield();
-                        callbackCapture.ThrowIfAny();
-                        return recorder.LastHeader == "hdr" && recorder.LastBody == "body";
-                    },
-                    received => received,
-                    TimeSpan.FromSeconds(5));
-            }
-            catch (Exception ex) when (ex is TimeoutException or AggregateException)
-            {
-                throw new TimeoutException(
-                    $"STREAM packet retry timed out. Connected={recorder.ConnectedCount}, Header={recorder.LastHeader ?? "<null>"}, Body={recorder.LastBody ?? "<null>"}",
-                    ex);
-            }
-
-            await RetryAsync(
-                () => recorder.LastSessionId is not null
-                    && recorder.LastRoutingId is not null
-                    && callbackCapture.IsEmpty,
-                TimeSpan.FromSeconds(5));
-            callbackCapture.ThrowIfAny();
-            Assert.NotNull(recorder.LastSessionId);
-            Assert.NotNull(recorder.LastRoutingId);
-            AssertStreamMetadata(endpoint, clientLocalPort, recorder.LastLocalAddr, recorder.LastRemoteAddr);
-            Assert.Equal(1, recorder.ConnectedCount);
         }
         finally
         {
@@ -256,20 +209,32 @@ public sealed class StreamIntegrationTests
     }
 
     private static byte[] BuildStreamPacketFrame(
-        ReadOnlySpan<byte> header,
+        ZlinkStreamHeader header,
         ReadOnlySpan<byte> body)
     {
-        var frame = new byte[6 + header.Length + body.Length];
-        frame[0] = (byte)(header.Length >> 8);
-        frame[1] = (byte)header.Length;
+        var headerBytes = new ZlinkStreamHeaderCodec().Encode(header).ToArray();
+        var frame = new byte[6 + headerBytes.Length + body.Length];
+        frame[0] = (byte)(headerBytes.Length >> 8);
+        frame[1] = (byte)headerBytes.Length;
         frame[2] = (byte)(body.Length >> 24);
         frame[3] = (byte)(body.Length >> 16);
         frame[4] = (byte)(body.Length >> 8);
         frame[5] = (byte)body.Length;
 
-        header.CopyTo(frame.AsSpan(6, header.Length));
-        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
+        headerBytes.CopyTo(frame.AsSpan(6, headerBytes.Length));
+        body.CopyTo(frame.AsSpan(6 + headerBytes.Length, body.Length));
         return frame;
+    }
+
+    private static (ZlinkStreamHeader Header, byte[] Body) ReceiveFrame(NetworkStream stream)
+    {
+        var lengths = ReceiveExact(stream, 6);
+        var headerLength = (lengths[0] << 8) | lengths[1];
+        var bodyLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
+        var headerBytes = ReceiveExact(stream, headerLength);
+        var bodyBytes = ReceiveExact(stream, bodyLength);
+        var header = new ZlinkStreamHeaderCodec().Decode(headerBytes);
+        return (header, bodyBytes);
     }
 
     private static void AssertStreamMetadata(
@@ -288,7 +253,7 @@ public sealed class StreamIntegrationTests
         Assert.Contains($":{clientLocalPort}", remoteAddr!, StringComparison.Ordinal);
     }
 
-    public sealed class RawStreamRecorder
+    public sealed class HeaderStreamRecorder
     {
         public ConcurrentBag<string> ReceivedPayloads { get; } = [];
 
@@ -309,8 +274,10 @@ public sealed class StreamIntegrationTests
         public ZLinkStreamError? LastError { get; set; }
     }
 
-    public sealed class RawStreamSession(RawStreamRecorder recorder) : IZLinkRawStreamSession
+    public sealed class HeaderStreamSession(HeaderStreamRecorder recorder) : IZLinkStreamHeaderSession
     {
+        private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
+
         public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
         {
             _ = cancellationToken;
@@ -342,78 +309,37 @@ public sealed class StreamIntegrationTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnRawAsync(
+        public ValueTask OnDispatchAsync(
             IZLinkStream stream,
+            ZlinkStreamHeader header,
             global::Zlink.Message payload,
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
-            recorder.ReceivedPayloads.Add(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
-            using var reply = global::Zlink.Message.FromString("pong");
+            _ = header;
+            recorder.ReceivedPayloads.Add(Encoding.UTF8.GetString(payload.AsReadOnlySpan()).Trim('"'));
+            var replyHeader = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Response,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.HasRid,
+                header.RequestId,
+                header.Name,
+                ZlinkStreamMetadata.Empty);
+            var bodyBytes = Encoding.UTF8.GetBytes("\"pong\"");
+            var frame = EncodeFrame(HeaderCodec.Encode(replyHeader).Span, bodyBytes);
+            using var reply = global::Zlink.Message.FromBytes(frame);
             Assert.True(stream.Write(reply));
             return ValueTask.CompletedTask;
         }
-    }
 
-    public sealed class PacketStreamRecorder
-    {
-        public string? LastHeader { get; set; }
-
-        public string? LastBody { get; set; }
-
-        public string? LastSessionId { get; set; }
-
-        public global::Zlink.RoutingId? LastRoutingId { get; set; }
-
-        public string? LastLocalAddr { get; set; }
-
-        public string? LastRemoteAddr { get; set; }
-
-        public int ConnectedCount { get; set; }
-    }
-
-    public sealed class PacketStreamSession(PacketStreamRecorder recorder) : IZLinkPacketStreamSession
-    {
-        public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
+        private static byte[] EncodeFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body)
         {
-            _ = cancellationToken;
-            recorder.LastSessionId = stream.SessionId;
-            recorder.LastRoutingId = stream.RoutingId;
-            recorder.LastLocalAddr = stream.LocalAddr;
-            recorder.LastRemoteAddr = stream.RemoteAddr;
-            recorder.ConnectedCount++;
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask OnDisconnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
-        {
-            _ = stream;
-            _ = cancellationToken;
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask OnErrorAsync(
-            IZLinkStream stream,
-            ZLinkStreamError error,
-            CancellationToken cancellationToken)
-        {
-            _ = stream;
-            _ = error;
-            _ = cancellationToken;
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask OnPacketAsync(
-            IZLinkStream stream,
-            global::Zlink.Message header,
-            global::Zlink.Message body,
-            CancellationToken cancellationToken)
-        {
-            _ = stream;
-            _ = cancellationToken;
-            recorder.LastHeader = Encoding.UTF8.GetString(header.AsReadOnlySpan());
-            recorder.LastBody = Encoding.UTF8.GetString(body.AsReadOnlySpan());
-            return ValueTask.CompletedTask;
+            var frame = new byte[6 + header.Length + body.Length];
+            BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
+            BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
+            header.CopyTo(frame.AsSpan(6, header.Length));
+            body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
+            return frame;
         }
     }
 

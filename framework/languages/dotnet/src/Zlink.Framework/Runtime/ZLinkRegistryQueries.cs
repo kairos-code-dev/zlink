@@ -1,6 +1,6 @@
 using Zlink.Framework.Backend;
 
-namespace Zlink.Framework;
+namespace Zlink.Framework.Runtime;
 
 internal sealed class ZLinkRegistryQuery(ZLinkRegistryRuntime runtime) : IZLinkRegistryQuery
 {

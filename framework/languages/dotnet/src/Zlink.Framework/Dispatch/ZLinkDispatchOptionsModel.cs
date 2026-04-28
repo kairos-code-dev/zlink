@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Dispatch;
 
 internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
 {

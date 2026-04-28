@@ -223,7 +223,7 @@ two-pass 조회 방식이다.
 모두 만족하는 row만 반환한다.
 
 - `owner != ANY`이면 node 소유 소켓과 spot 소유 소켓 중 하나만 반환한다.
-- `socket_type != 0`이면 해당 socket type만 반환한다.
+- `socket_type != ZLINK_SOCKET_ANY`이면 해당 socket type만 반환한다.
 - `socket_name[0] != '\0'`이면 해당 내부 socket 이름만 반환한다.
 
 `owner_id`는 같은 snapshot 결과 안에서 owner를 구분하기 위한 값이다. node 소유
@@ -254,11 +254,12 @@ runtime에서 실제로 쓰는 이름을 그대로 사용한다. perf는 이 값
 | 필드 | 기본값 | 의미 |
 |------|--------|------|
 | `owner` | `ANY` | node 소유 소켓과 spot 소유 소켓 중 어느 쪽을 볼지 정한다 |
-| `socket_type` | `0` | `ZLINK_SOCKET_PUB`, `ZLINK_SOCKET_SUB`, `ZLINK_SOCKET_ROUTER` 같은 실제 socket type으로 제한한다 |
+| `socket_type` | `ZLINK_SOCKET_ANY` | `ZLINK_SOCKET_PUB`, `ZLINK_SOCKET_SUB`, `ZLINK_SOCKET_ROUTER` 같은 실제 socket type으로 제한한다 |
 | `socket_name` | 빈 문자열 | 내부 socket 이름이 정확히 일치하는 row만 반환한다 |
 
-`socket_type == 0`은 전체 socket type을 뜻한다. 공개 socket type 값은
-`ZLINK_SOCKET_PAIR`부터 시작하므로 `0`은 필터 기본값으로 사용할 수 있다.
+`socket_type == ZLINK_SOCKET_ANY`는 전체 socket type을 뜻한다.
+`ZLINK_SOCKET_ANY`는 생성 가능한 socket type이 아니라 filter API에서만 쓰는
+wildcard enum 값이다.
 
 `zlink_spot_node_socket_snapshot_entry_t`는 실제 생성된 내부 소켓 하나를
 나타낸다.
@@ -676,7 +677,8 @@ mode가 꺼진 기능을 호출하면 아래 원칙을 따른다.
 disabled 기능은 내부 소켓을 늦게 만들면서 자동으로 켜지지 않는다. mode는 node 생성
 시점에 고정된다.
 
-snapshot의 `socket_type`은 `0` 또는 공개 `ZLINK_SOCKET_*` 값만 허용한다. 내부
+snapshot의 `socket_type`은 `ZLINK_SOCKET_ANY` 또는 공개 `ZLINK_SOCKET_*` 값만
+허용한다. 내부
 `ZLINK_CORE_SOCKET_*` 값을 filter로 넣으면 `EINVAL`로 실패한다.
 
 ## 9. 무인 구현 순서

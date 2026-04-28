@@ -155,7 +155,7 @@ core/src/api/service_spot_node_api.cpp:82:    zlink::spot_node_t *node = zlink::
 core/src/api/service_spot_node_api.cpp:86:    if (in_spot_node_send_ready_callback (node)
 core/src/api/service_spot_node_api.cpp:87:        || in_spot_node_monitor_callback (node)) {
 core/src/api/service_spot_node_api.cpp:97:    return zlink_spot_node_destroy (&node_handle);
-core/src/api/service_spot_node_api.cpp:100:void *zlink_spot_node_new (void *ctx_)
+core/src/api/service_spot_node_api.cpp:100:void *zlink_spot_node_new (void *ctx_, NULL)
 core/src/api/service_spot_node_api.cpp:106:    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
 core/src/api/service_spot_node_api.cpp:107:      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_)));
 core/src/api/service_spot_node_api.cpp:110:    register_spot_node_mode_state (node);
@@ -260,7 +260,7 @@ exec
 /bin/bash -lc "rg -n \"spot_node\" core/tests/unittest/unittest_service_mode_policy.cpp && sed -n '260,520p' core/tests/unittest/unittest_service_mode_policy.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
 148:        if (zlink_spot_node_bind (node_, endpoint.str ().c_str ()) == 0)
 324:void test_spot_node_generic_data_plane_surface_removed ()
-329:    void *node = zlink_spot_node_new (ctx);
+329:    void *node = zlink_spot_node_new (ctx, NULL);
 369:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
 378:    TEST_ASSERT_TRUE (is_valid_service_type (service_type_spot_node));
 387:                                service_type_spot_node));
@@ -303,22 +303,22 @@ static void spot_node_publish_worker (node_publish_probe_t *probe_)
 exec
 /bin/bash -lc 'rg -n "zlink_(publish|subscribe|subscribe_handler|send_ready_handler|set_subscription|unset_subscription).*spot_node|zlink_spot_node_.*|spot_node.*publish|spot_node.*subscribe|spot_node.*recv|spot_node.*send_ready|spot_node.*poller" core/tests/e2e/spot core/tests/integration core/tests/e2e/discovery core/tests/integration/monitoring' in /home/hep7/project/kairos/zlink succeeded in 0ms:
 core/tests/integration/monitoring/test_monitor_service_contract.cpp:143:        if (zlink_spot_node_bind (node_, endpoint_) == 0) {
-core/tests/integration/monitoring/test_monitor_service_contract.cpp:527:    void *pub = zlink_spot_node_new (ctx);
-core/tests/integration/monitoring/test_monitor_service_contract.cpp:528:    void *sub = zlink_spot_node_new (ctx);
+core/tests/integration/monitoring/test_monitor_service_contract.cpp:527:    void *pub = zlink_spot_node_new (ctx, NULL);
+core/tests/integration/monitoring/test_monitor_service_contract.cpp:528:    void *sub = zlink_spot_node_new (ctx, NULL);
 core/tests/integration/monitoring/test_monitor_service_contract.cpp:569:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (sub, endpoint));
 core/tests/integration/monitoring/test_monitor_service_contract.cpp:602:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub));
 core/tests/integration/monitoring/test_monitor_service_contract.cpp:603:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub));
-core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:74:    void *sub_node = zlink_spot_node_new (ctx);
+core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:74:    void *sub_node = zlink_spot_node_new (ctx, NULL);
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:91:      zlink_spot_node_connect_peer (sub_node, endpoint));
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:109:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:110:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
-core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:125:    void *sub_a = zlink_spot_node_new (ctx);
-core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:126:    void *sub_b = zlink_spot_node_new (ctx);
+core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:125:    void *sub_a = zlink_spot_node_new (ctx, NULL);
+core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:126:    void *sub_b = zlink_spot_node_new (ctx, NULL);
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:149:      zlink_spot_node_connect_peer (sub_a, endpoint));
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:163:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_b));
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:164:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_a));
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:165:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
-core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:175:    void *sub_node = zlink_spot_node_new (ctx);
+core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:175:    void *sub_node = zlink_spot_node_new (ctx, NULL);
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:196:      zlink_spot_node_connect_peer (sub_node, endpoint));
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:206:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
 core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp:207:    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
@@ -573,10 +573,10 @@ exec
 /bin/bash -lc 'rg -n "spot_pub|spot_sub|zlink_spot_.*new|zlink_spot_pub|zlink_spot_sub" core/include/zlink.h core/src/api core/tests | head -n 200' in /home/hep7/project/kairos/zlink succeeded in 0ms:
 core/include/zlink.h:1107:ZLINK_EXPORT void *zlink_spot_new (void *ctx);
 core/include/zlink.h:1119: * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
-core/include/zlink.h:1121:ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+core/include/zlink.h:1121:ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
 core/src/api/zlink_testing.hpp:14:service_public_api_guard_t *spot_public_api_guard_for_testing (void *spot_);
 core/src/api/service_spot_node_api.cpp:46:void *zlink_spot_new (void *ctx_)
-core/src/api/service_spot_node_api.cpp:100:void *zlink_spot_node_new (void *ctx_)
+core/src/api/service_spot_node_api.cpp:100:void *zlink_spot_node_new (void *ctx_, NULL)
 core/src/api/monitor_service_snapshot_api.cpp:10:#include "services/spot/spot_pub.hpp"
 core/src/api/monitor_service_snapshot_api.cpp:11:#include "services/spot/spot_sub.hpp"
 core/src/api/monitor_service_snapshot_api.cpp:24:int spot_pub_monitor_snapshot_provider (void *subject_,
@@ -589,7 +589,7 @@ core/src/api/service_option_api.cpp:281:    if (zlink_service_spot_subscription_
 core/tests/unittest/unittest_service_mode_policy.cpp:83:void spot_sub_monitor_handler (const zlink_service_event_t *event_, void *userdata_)
 core/tests/unittest/unittest_service_mode_policy.cpp:104:void spot_pub_monitor_handler (const zlink_service_event_t *event_, void *userdata_)
 core/tests/unittest/unittest_service_mode_policy.cpp:210:    void *spot = zlink_spot_new (ctx);
-core/tests/unittest/unittest_service_mode_policy.cpp:329:    void *node = zlink_spot_node_new (ctx);
+core/tests/unittest/unittest_service_mode_policy.cpp:329:    void *node = zlink_spot_node_new (ctx, NULL);
 core/tests/CMakeLists.txt:57:  ${E2E_TEST_ROOT}/spot/test_spot_pubsub_scenario
 exec
 /bin/bash -lc "sed -n '1080,1155p' core/include/zlink.h" in /home/hep7/project/kairos/zlink succeeded in 0ms:
@@ -702,7 +702,7 @@ exec
     83	
     84	void *create_spot_node (void *ctx_, const char *service_name_)
     85	{
-    86	    void *node = zlink_spot_node_new (ctx_);
+    86	    void *node = zlink_spot_node_new (ctx_, NULL);
     87	    if (!node)
     88	        return NULL;
     89	
@@ -895,7 +895,7 @@ M /home/hep7/project/kairos/zlink/core/tests/e2e/spot/spot_pubsub_scenario_share
 @@ -85,2 +87,3 @@
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
 @@ -89,16 +92,2 @@
  
 -    queued_spot_probe_t *probe = ensure_queued_spot_probe (node, true);
@@ -953,7 +953,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..a29ff3203e86262915515c8532fa7c47
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
          return NULL;
  
@@ -1020,7 +1020,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..a29ff3203e86262915515c8532fa7c47
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
          return NULL;
  
@@ -1320,7 +1320,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..a29ff3203e86262915515c8532fa7c47
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
          return NULL;
  
@@ -1524,7 +1524,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..a29ff3203e86262915515c8532fa7c47
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
          return NULL;
  
@@ -1766,7 +1766,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -2020,7 +2020,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -2580,7 +2580,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -3008,7 +3008,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -3110,7 +3110,7 @@ file update
 M /home/hep7/project/kairos/zlink/core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp
 @@ -73,9 +73,9 @@
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -3140,8 +3140,8 @@ M /home/hep7/project/kairos/zlink/core/tests/e2e/spot/spot_pubsub_scenario_callb
  
 @@ -124,4 +124,4 @@
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -3180,7 +3180,7 @@ M /home/hep7/project/kairos/zlink/core/tests/e2e/spot/spot_pubsub_scenario_callb
      TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe_a.calls, 1, 3000));
 @@ -174,9 +174,9 @@
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -3220,7 +3220,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -3262,8 +3262,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -3314,7 +3314,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -3681,7 +3681,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -3788,7 +3788,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -3830,8 +3830,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -3882,7 +3882,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -4249,7 +4249,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -4378,7 +4378,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -4420,8 +4420,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -4472,7 +4472,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..ac12b7d5e3415c64366d654f6c64295e
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -4839,7 +4839,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -4941,10 +4941,10 @@ file update
 M /home/hep7/project/kairos/zlink/core/tests/e2e/spot/spot_pubsub_scenario_callback_cases.cpp
 @@ -242,5 +242,5 @@
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
 @@ -249,8 +249,10 @@
@@ -4997,7 +4997,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -5039,8 +5039,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -5091,7 +5091,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -5133,10 +5133,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -5514,7 +5514,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -5621,7 +5621,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -5663,8 +5663,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -5715,7 +5715,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -5757,10 +5757,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -6138,7 +6138,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -6291,7 +6291,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -6333,8 +6333,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -6385,7 +6385,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -6427,10 +6427,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -6874,7 +6874,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -6981,7 +6981,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -7023,8 +7023,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -7075,7 +7075,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -7117,10 +7117,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -7564,7 +7564,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -7705,7 +7705,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -7747,8 +7747,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -7799,7 +7799,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -7841,10 +7841,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -8288,7 +8288,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -8442,7 +8442,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -8484,8 +8484,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -8536,7 +8536,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -8578,10 +8578,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -9025,7 +9025,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -9193,7 +9193,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -9235,8 +9235,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -9287,7 +9287,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -9329,10 +9329,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -9776,7 +9776,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -9947,7 +9947,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -9989,8 +9989,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -10041,7 +10041,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -10083,10 +10083,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -10530,7 +10530,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -10744,7 +10744,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -10786,8 +10786,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -10838,7 +10838,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -10880,10 +10880,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -11327,7 +11327,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -11559,7 +11559,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -11601,8 +11601,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -11653,7 +11653,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -11695,10 +11695,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -12142,7 +12142,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -12369,7 +12369,7 @@ file update
 M /home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp
 @@ -737,5 +737,7 @@
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -12414,7 +12414,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -12456,8 +12456,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -12508,7 +12508,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -12550,10 +12550,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -12997,7 +12997,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -13223,7 +13223,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..2a11f39fe2aaad25eda908bec602a9a0
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -13275,7 +13275,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -13317,8 +13317,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -13369,7 +13369,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -13411,10 +13411,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -13858,7 +13858,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -14084,7 +14084,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..2a11f39fe2aaad25eda908bec602a9a0
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -14159,7 +14159,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -14201,8 +14201,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -14253,7 +14253,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -14295,10 +14295,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -14742,7 +14742,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -14968,7 +14968,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..2a11f39fe2aaad25eda908bec602a9a0
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -15041,7 +15041,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -15083,8 +15083,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -15135,7 +15135,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -15177,10 +15177,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -15624,7 +15624,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -15850,7 +15850,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..2a11f39fe2aaad25eda908bec602a9a0
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -15913,7 +15913,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -15955,8 +15955,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -16007,7 +16007,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -16049,10 +16049,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -16496,7 +16496,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -16732,7 +16732,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -16784,7 +16784,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -16826,8 +16826,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -16878,7 +16878,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -16920,10 +16920,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -17367,7 +17367,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -17603,7 +17603,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -17680,7 +17680,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -17722,8 +17722,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -17774,7 +17774,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -17816,10 +17816,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -18263,7 +18263,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -18499,7 +18499,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -18568,7 +18568,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -18610,8 +18610,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -18662,7 +18662,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -18704,10 +18704,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -19151,7 +19151,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -19387,7 +19387,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -19440,7 +19440,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -19482,8 +19482,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -19534,7 +19534,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -19576,10 +19576,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -20023,7 +20023,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -20259,7 +20259,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -20333,7 +20333,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -20375,8 +20375,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -20427,7 +20427,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -20469,10 +20469,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -20916,7 +20916,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -21152,7 +21152,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -21211,7 +21211,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -21253,8 +21253,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -21305,7 +21305,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -21347,10 +21347,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -21794,7 +21794,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -22030,7 +22030,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -22104,7 +22104,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -22146,8 +22146,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -22198,7 +22198,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -22240,10 +22240,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -22687,7 +22687,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -22923,7 +22923,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -22997,7 +22997,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -23039,8 +23039,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -23091,7 +23091,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -23133,10 +23133,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -23580,7 +23580,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -23816,7 +23816,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -23877,7 +23877,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -23919,8 +23919,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -23971,7 +23971,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -24013,10 +24013,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -24460,7 +24460,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -24696,7 +24696,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -24770,7 +24770,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -24812,8 +24812,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -24864,7 +24864,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -24906,10 +24906,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -25353,7 +25353,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..7d19a8e7cc9212ed15837427cbbc6041
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -25589,7 +25589,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -25677,7 +25677,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -25719,8 +25719,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -25771,7 +25771,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -25813,10 +25813,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -26260,7 +26260,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -26496,7 +26496,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -26548,7 +26548,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -26590,8 +26590,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -26642,7 +26642,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -26684,10 +26684,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -27131,7 +27131,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -27367,7 +27367,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..178b8d4d6d4973ee55004841d53f411d
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -27472,7 +27472,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -27514,8 +27514,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -27566,7 +27566,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -27608,10 +27608,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -28055,7 +28055,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -28335,7 +28335,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -28387,7 +28387,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -28429,8 +28429,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -28481,7 +28481,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -28523,10 +28523,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -28970,7 +28970,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -29250,7 +29250,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -29303,7 +29303,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -29345,8 +29345,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -29397,7 +29397,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -29439,10 +29439,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -29886,7 +29886,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -30166,7 +30166,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -30232,7 +30232,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -30274,8 +30274,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -30326,7 +30326,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -30368,10 +30368,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -30815,7 +30815,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -31095,7 +31095,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -31148,7 +31148,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -31190,8 +31190,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -31242,7 +31242,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -31284,10 +31284,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -31731,7 +31731,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -32011,7 +32011,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -32085,7 +32085,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -32127,8 +32127,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -32179,7 +32179,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -32221,10 +32221,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -32668,7 +32668,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..140f23e28f6deb8fc6ae441dcbbfb273
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -32948,7 +32948,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -33074,7 +33074,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -33116,8 +33116,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -33168,7 +33168,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -33210,10 +33210,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -33668,7 +33668,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -33989,7 +33989,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -34041,7 +34041,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -34083,8 +34083,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -34135,7 +34135,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -34177,10 +34177,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -34635,7 +34635,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -34956,7 +34956,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..dad64c607f132a78a4391dfccb16662a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -35098,7 +35098,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -35140,8 +35140,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -35192,7 +35192,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -35234,10 +35234,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -35692,7 +35692,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -36020,7 +36020,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -36072,7 +36072,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -36114,8 +36114,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -36166,7 +36166,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -36208,10 +36208,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -36666,7 +36666,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -36994,7 +36994,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -37047,7 +37047,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -37089,8 +37089,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -37141,7 +37141,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -37183,10 +37183,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -37641,7 +37641,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -37969,7 +37969,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -38035,7 +38035,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -38077,8 +38077,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -38129,7 +38129,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -38171,10 +38171,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -38629,7 +38629,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -38957,7 +38957,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -39010,7 +39010,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -39052,8 +39052,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -39104,7 +39104,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -39146,10 +39146,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -39604,7 +39604,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -39932,7 +39932,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -39984,7 +39984,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -40026,8 +40026,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -40078,7 +40078,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -40120,10 +40120,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -40578,7 +40578,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -40906,7 +40906,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -40980,7 +40980,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -41022,8 +41022,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -41074,7 +41074,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -41116,10 +41116,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -41574,7 +41574,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -41902,7 +41902,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -41954,7 +41954,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -41996,8 +41996,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -42048,7 +42048,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -42090,10 +42090,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -42548,7 +42548,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -42876,7 +42876,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -42928,7 +42928,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -42970,8 +42970,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -43022,7 +43022,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -43064,10 +43064,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -43522,7 +43522,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -43850,7 +43850,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -43929,7 +43929,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -43971,8 +43971,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -44023,7 +44023,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -44065,10 +44065,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -44523,7 +44523,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -44851,7 +44851,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -44937,7 +44937,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -44979,8 +44979,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -45031,7 +45031,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -45073,10 +45073,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -45531,7 +45531,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -45859,7 +45859,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);
@@ -45947,7 +45947,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-basic");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -45989,8 +45989,8 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
--    void *sub_a = zlink_spot_node_new (ctx);
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
 +    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
      TEST_ASSERT_NOT_NULL (pub_node);
@@ -46041,7 +46041,7 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_spot_node (ctx, "spot-callback-rid");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
      TEST_ASSERT_NOT_NULL (pub_node);
      TEST_ASSERT_NOT_NULL (sub_node);
@@ -46083,10 +46083,10 @@ index b7cc9772e546685e06d22ab9bbbb833564467676..470aa7011d68f06eb97496694570345a
        connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
  
      void *pub_a = create_spot_node (ctx, "spot-svc-a");
--    void *sub_a = zlink_spot_node_new (ctx);
+-    void *sub_a = zlink_spot_node_new (ctx, NULL);
 +    void *sub_a = create_spot_node (ctx, "spot-svc-a");
      void *pub_b = create_spot_node (ctx, "spot-svc-b");
--    void *sub_b = zlink_spot_node_new (ctx);
+-    void *sub_b = zlink_spot_node_new (ctx, NULL);
 +    void *sub_b = create_spot_node (ctx, "spot-svc-b");
      TEST_ASSERT_NOT_NULL (pub_a);
      TEST_ASSERT_NOT_NULL (sub_a);
@@ -46541,7 +46541,7 @@ index f5358b748a8b92a6683e1da148af93112be2ca49..82e9bd7e302a72192abfb76c6f3b081b
  void *create_spot_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      if (!node)
 -        return NULL;
 -
@@ -46869,7 +46869,7 @@ index d2959c57586e42d3468c21d4e1326f3eb8a2a4bf..81c954216020887b7f42ec505848edc9
      TEST_ASSERT_NOT_NULL (ctx);
  
      void *pub_node = create_node (ctx, "spot-callback");
--    void *sub_node = zlink_spot_node_new (ctx);
+-    void *sub_node = zlink_spot_node_new (ctx, NULL);
 +    void *sub_node = create_node (ctx, "spot-callback");
      TEST_ASSERT_NOT_NULL (sub_node);
 -    set_linger_zero (sub_node);

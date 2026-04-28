@@ -70,9 +70,31 @@ public interface IZLinkPacketStreamSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
-    ValueTask OnPacketAsync(
+    ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message header,
+        Message body,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkStreamHeaderSession
+{
+    ValueTask OnConnectedAsync(
+        IZLinkStream stream,
+        CancellationToken cancellationToken);
+
+    ValueTask OnDisconnectedAsync(
+        IZLinkStream stream,
+        CancellationToken cancellationToken);
+
+    ValueTask OnErrorAsync(
+        IZLinkStream stream,
+        ZLinkStreamError error,
+        CancellationToken cancellationToken);
+
+    ValueTask OnDispatchAsync(
+        IZLinkStream stream,
+        ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
@@ -92,7 +114,7 @@ public interface IZLinkRawStreamSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
-    ValueTask OnRawAsync(
+    ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message payload,
         CancellationToken cancellationToken);
@@ -167,7 +189,7 @@ public sealed class ClientPacketSession
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask OnPacketAsync(
+    public async ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message header,
         Message body,
@@ -331,7 +353,7 @@ public sealed class ClientRawSession : IZLinkRawStreamSession
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnRawAsync(
+    public ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message payload,
         CancellationToken cancellationToken)

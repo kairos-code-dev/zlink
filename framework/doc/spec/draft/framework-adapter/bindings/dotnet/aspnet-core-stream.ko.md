@@ -102,9 +102,31 @@ public interface IZLinkPacketStreamSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
-    ValueTask OnPacketAsync(
+    ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message header,
+        Message body,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkStreamHeaderSession
+{
+    ValueTask OnConnectedAsync(
+        IZLinkStream stream,
+        CancellationToken cancellationToken);
+
+    ValueTask OnDisconnectedAsync(
+        IZLinkStream stream,
+        CancellationToken cancellationToken);
+
+    ValueTask OnErrorAsync(
+        IZLinkStream stream,
+        ZLinkStreamError error,
+        CancellationToken cancellationToken);
+
+    ValueTask OnDispatchAsync(
+        IZLinkStream stream,
+        ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
@@ -124,7 +146,7 @@ public interface IZLinkRawStreamSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
-    ValueTask OnRawAsync(
+    ValueTask OnDispatchAsync(
         IZLinkStream stream,
         Message payload,
         CancellationToken cancellationToken);
@@ -163,16 +185,16 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.AddPacketSession<ClientPacketSession>();
+        stream.AddHeaderSession<ClientHeaderSession>();
     });
 });
 ```
 
 이 등록 모델에서 중요한 점은 아래와 같다.
 
-- packet session과 raw session을 분리해서 붙인다.
-- 한 `stream node`에는 packet session 또는 raw session 중 한 종류만 둔다.
-- 같은 node에 `AddPacketSession(...)`와 `AddRawSession(...)`를 함께 두지 않는다.
+- packet session, zlink stream header session, raw session을 분리해서 붙인다.
+- 한 `stream node`에는 세 session 종류 중 한 종류만 둔다.
+- 같은 node에 stream session을 둘 이상 함께 두지 않는다.
 - recv callback이나 recv loop를 application이 직접 노출받지 않는다.
 - 어떤 session이 packet path인지 raw path인지 등록 시점에 분명히 보인다.
 
@@ -220,9 +242,9 @@ application 표면으로는 올리지 않는다**는 뜻이다.
 
 ## 7. 결정된 기준
 
-- packet session과 raw session 등록은 attribute 기반으로 열지 않는다.
-  `AddStreamNode(...).AddPacketSession<T>()`, `AddRawSession<T>()` 같은 명시 등록만
-  기본 표면으로 둔다.
+- packet session, zlink stream header session, raw session 등록은 attribute 기반으로
+  열지 않는다. `AddStreamNode(...).AddPacketSession<T>()`,
+  `AddHeaderSession<T>()`, `AddRawSession<T>()` 같은 명시 등록만 기본 표면으로 둔다.
 - body decode helper와 encode helper는 framework 본체가 아니라 serializer 확장
   패키지가 맡는다.
   framework core는 `Message`, `AsReadOnlySpan()`, session contract까지만 책임진다.

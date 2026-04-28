@@ -234,7 +234,7 @@ exec
 core/src/api/service_spot_node_api.cpp:86:    if (in_spot_node_send_ready_callback (node)
 core/src/api/service_spot_node_api.cpp:87:        || in_spot_node_monitor_callback (node)) {
 core/src/api/service_spot_node_api.cpp:97:    return zlink_spot_node_destroy (&node_handle);
-core/src/api/service_spot_node_api.cpp:100:void *zlink_spot_node_new (void *ctx_)
+core/src/api/service_spot_node_api.cpp:100:void *zlink_spot_node_new (void *ctx_, NULL)
 core/src/api/service_spot_node_api.cpp:114:int zlink_spot_node_destroy (void **node_p_)
 core/src/api/service_spot_node_api.cpp:123:    if (in_spot_node_send_ready_callback (node)
 core/src/api/service_spot_node_api.cpp:124:        || in_spot_node_monitor_callback (node)) {
@@ -1134,8 +1134,8 @@ exec
 
     const char *topic = "svc.contract";
 
-    void *pub = zlink_spot_node_new (ctx);
-    void *sub = zlink_spot_node_new (ctx);
+    void *pub = zlink_spot_node_new (ctx, NULL);
+    void *sub = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
     configure_service_handle (pub);
@@ -1172,7 +1172,7 @@ exec
 exec
 /bin/bash -lc 'rg -n "zlink_spot_node_|wait_for_spot_node_ready_state|open_spot_node_monitor_with_probe|wait_for_node_message|bind_spot_node_with_port_seed|create_spot_node|destroy_spot_pub_sub" /home/hep7/project/kairos/zlink/core/tests/e2e/spot/spot_pubsub_scenario_shared.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
 84:void *create_spot_node (void *ctx_, const char *service_name_)
-86:    void *node = zlink_spot_node_new (ctx_);
+86:    void *node = zlink_spot_node_new (ctx_, NULL);
 92:        zlink_spot_node_destroy (&node);
 99:        zlink_spot_node_destroy (&node);
 205:int destroy_spot_pub_sub (void **pub_p, void **sub_p)
@@ -1399,7 +1399,7 @@ M /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_service_mode_poli
  {
 @@ -209,4 +209,4 @@
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -1455,8 +1455,8 @@ M /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_service_mode_poli
  {
 @@ -328,46 +328,4 @@
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -1499,7 +1499,7 @@ M /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_service_mode_poli
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
 @@ -375,5 +333,7 @@
@@ -1606,7 +1606,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -1846,7 +1846,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -1915,8 +1915,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -1959,7 +1959,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -2064,7 +2064,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -2304,7 +2304,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -2373,8 +2373,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -2417,7 +2417,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -2545,7 +2545,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -2785,7 +2785,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -2854,8 +2854,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -2898,7 +2898,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -3025,7 +3025,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -3265,7 +3265,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -3334,8 +3334,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -3378,7 +3378,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -3525,7 +3525,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -3765,7 +3765,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -3834,8 +3834,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -3878,7 +3878,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -4038,7 +4038,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -4278,7 +4278,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -4347,8 +4347,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -4391,7 +4391,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -4566,7 +4566,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -4806,7 +4806,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -4875,8 +4875,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -4919,7 +4919,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -5079,7 +5079,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -5319,7 +5319,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -5388,8 +5388,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -5432,7 +5432,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -5592,7 +5592,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -5832,7 +5832,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -5901,8 +5901,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -5945,7 +5945,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -6126,7 +6126,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -6366,7 +6366,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -6435,8 +6435,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -6479,7 +6479,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -6662,7 +6662,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -6902,7 +6902,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -6971,8 +6971,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -7015,7 +7015,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -7190,7 +7190,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -7430,7 +7430,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -7499,8 +7499,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -7543,7 +7543,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -7717,7 +7717,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -7957,7 +7957,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -8026,8 +8026,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -8070,7 +8070,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -8230,7 +8230,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -8470,7 +8470,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -8539,8 +8539,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -8583,7 +8583,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -8743,7 +8743,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -8983,7 +8983,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -9052,8 +9052,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -9096,7 +9096,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -9256,7 +9256,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -9496,7 +9496,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -9565,8 +9565,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -9609,7 +9609,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -9769,7 +9769,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -10009,7 +10009,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -10078,8 +10078,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -10122,7 +10122,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -10282,7 +10282,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -10522,7 +10522,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -10591,8 +10591,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -10635,7 +10635,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -10795,7 +10795,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -11035,7 +11035,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -11104,8 +11104,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -11148,7 +11148,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -11308,7 +11308,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -11548,7 +11548,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -11617,8 +11617,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -11661,7 +11661,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -11821,7 +11821,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -12061,7 +12061,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -12130,8 +12130,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -12174,7 +12174,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -12334,7 +12334,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -12574,7 +12574,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -12643,8 +12643,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -12687,7 +12687,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -12859,7 +12859,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -13099,7 +13099,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -13168,8 +13168,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -13212,7 +13212,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -13379,7 +13379,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -13619,7 +13619,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -13688,8 +13688,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -13732,7 +13732,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -13892,7 +13892,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -14132,7 +14132,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -14201,8 +14201,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -14245,7 +14245,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -14426,7 +14426,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -14666,7 +14666,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -14735,8 +14735,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -14779,7 +14779,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -14940,7 +14940,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -15180,7 +15180,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -15249,8 +15249,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -15293,7 +15293,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -15453,7 +15453,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -15693,7 +15693,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -15762,8 +15762,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -15806,7 +15806,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -15966,7 +15966,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -16206,7 +16206,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -16275,8 +16275,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -16319,7 +16319,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -16502,7 +16502,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -16742,7 +16742,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -16811,8 +16811,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -16855,7 +16855,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();
@@ -17017,7 +17017,7 @@ index ba494ba877f59c81ba03f4f78d3679290ada77ea..89a59b0bb9ebacbd57a2ffadd6e74af9
 + * but do not expose the generic data-plane facade directly. Use
 + * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
   */
- ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
  
 diff --git a/core/src/api/service_handler_api.cpp b/core/src/api/service_handler_api.cpp
 index 5b7d6d0ab6de6ee61bba593be2324a7efacf8b91..51d10ea9463c37e629ef88f45bd0bdf0a7274d79
@@ -17257,7 +17257,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *node = zlink_spot_node_new (ctx);
+-    void *node = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (node);
 +    void *spot = zlink_spot_new (ctx);
 +    TEST_ASSERT_NOT_NULL (spot);
@@ -17326,8 +17326,8 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
      void *ctx = zlink_ctx_new ();
      TEST_ASSERT_NOT_NULL (ctx);
  
--    void *server = zlink_spot_node_new (ctx);
--    void *client = zlink_spot_node_new (ctx);
+-    void *server = zlink_spot_node_new (ctx, NULL);
+-    void *client = zlink_spot_node_new (ctx, NULL);
 -    TEST_ASSERT_NOT_NULL (server);
 -    TEST_ASSERT_NOT_NULL (client);
 -
@@ -17370,7 +17370,7 @@ index 6c018d792577da7f347c81a353ba97bc917e59bc..286f559c872c17856a0e2ac20ed0641d
 -    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
 -                                                &spot_ready_probe_t::pub_first_ready,
 -                                                5000));
-+    void *node = zlink_spot_node_new (ctx);
++    void *node = zlink_spot_node_new (ctx, NULL);
 +    TEST_ASSERT_NOT_NULL (node);
  
      void *poller = zlink_poller_new ();

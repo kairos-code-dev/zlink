@@ -57,14 +57,9 @@ public static class ServiceCollectionExtensions
 
         foreach (var streamNode in registration.StreamNodes.Values)
         {
-            if (streamNode.PacketSessionType is not null)
+            if (streamNode.HeaderSessionType is not null)
             {
-                services.AddScoped(streamNode.PacketSessionType);
-            }
-
-            if (streamNode.RawSessionType is not null)
-            {
-                services.AddScoped(streamNode.RawSessionType);
+                services.AddScoped(streamNode.HeaderSessionType);
             }
         }
 

@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Spots;
 
 public abstract class ZLinkSpot
 {
@@ -71,11 +71,16 @@ public abstract class ZLinkSpot
         return _runtimeContext.AddTimerAsync<THandler>(name, period, cancellationToken);
     }
 
-    protected void AddActorJoin<THandler, TRequest, TReply>()
+    protected void AddActorJoin<THandler, TActor, TRequest, TReply>()
         where THandler : class
+        where TActor : IZLinkActor
         where TRequest : IZLinkRequest<TReply>
     {
-        _actorJoins.Add(new ZLinkSpotActorJoinRegistration(typeof(THandler), typeof(TRequest), typeof(TReply)));
+        _actorJoins.Add(new ZLinkSpotActorJoinRegistration(
+            typeof(THandler),
+            typeof(TActor),
+            typeof(TRequest),
+            typeof(TReply)));
     }
 
     public virtual ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -88,7 +93,11 @@ internal sealed record ZLinkSpotPacketRegistration(Type HandlerType);
 
 internal sealed record ZLinkSpotSubscriptionRegistration(string Topic, Type HandlerType);
 
-internal sealed record ZLinkSpotActorJoinRegistration(Type HandlerType, Type RequestType, Type ReplyType);
+internal sealed record ZLinkSpotActorJoinRegistration(
+    Type HandlerType,
+    Type ActorType,
+    Type RequestType,
+    Type ReplyType);
 
 internal interface ZLinkSpotRuntimeContext
 {

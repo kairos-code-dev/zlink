@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Requests;
 
 public interface IZLinkRequest<TReply>
 {

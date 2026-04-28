@@ -1,6 +1,6 @@
 using Zlink.Framework.Backend;
 
-namespace Zlink.Framework;
+namespace Zlink.Framework.Runtime;
 
 internal sealed class ZLinkFrameworkRuntime
 {
@@ -11,8 +11,7 @@ internal sealed class ZLinkFrameworkRuntime
     private readonly ZLinkHandlerRegistry _handlerRegistry;
     private readonly ZLinkHandlerDispatcher _dispatcher;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly object _actorStateGate = new();
-    private readonly Dictionary<string, ZLinkActorRuntimeState> _actorStates = new(StringComparer.Ordinal);
+    private readonly ZLinkActorSessionRegistry _actorSessions = new();
     private ZLinkFrameworkRuntimeState? _state;
 
     public ZLinkFrameworkRuntime(
@@ -198,32 +197,19 @@ internal sealed class ZLinkFrameworkRuntime
 
         foreach (var node in state.SpotNodes.Values)
         {
-            if (node.PublisherBundles.TryGetValue(channelName, out var bundle)
-                || node.SpotFactories.Count >= 0 && nodeTryCreatePublisher(node, channelName, out bundle))
+            if (node.PublisherBundles.TryGetValue(channelName, out var bundle))
             {
                 return bundle;
+            }
+
+            if (node.HasPublisherClient(channelName))
+            {
+                return node.GetOrCreatePublisherBundle(channelName);
             }
         }
 
         throw new InvalidOperationException(
             $"SPOT publisher client '{channelName}' is not registered.");
-
-        static bool nodeTryCreatePublisher(
-            ZLinkSpotNodeRuntime node,
-            string channelName,
-            out ZLinkSpotPublisherBundle bundle)
-        {
-            try
-            {
-                bundle = node.GetOrCreatePublisherBundle(channelName);
-                return true;
-            }
-            catch (InvalidOperationException)
-            {
-                bundle = null!;
-                return false;
-            }
-        }
     }
 
     internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync(
@@ -299,7 +285,7 @@ internal sealed class ZLinkFrameworkRuntime
 
         var reply = await activation.JoinActorAsync<TRequest, TReply>(actor, request, cancellationToken);
 
-        var state = GetActorState(actor.ActorKey);
+        var state = _actorSessions.GetOrCreate(actor.ActorKey);
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -318,18 +304,17 @@ internal sealed class ZLinkFrameworkRuntime
         IZLinkStream stream,
         CancellationToken cancellationToken)
     {
-        var state = GetActorState(actor.ActorKey);
+        var state = _actorSessions.GetOrCreate(actor.ActorKey);
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
             state.SessionId = stream.SessionId;
+            state.Stream = stream;
         }
         finally
         {
             state.Gate.Release();
         }
-
-        await actor.AttachAsync(stream, cancellationToken);
     }
 
     internal async ValueTask DisconnectActorAsync(
@@ -338,7 +323,7 @@ internal sealed class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var actorKey = actor.ActorKey;
-        var state = GetActorState(actor.ActorKey);
+        var state = _actorSessions.GetOrCreate(actor.ActorKey);
         ZLinkSpotActivation? activation = null;
 
         await state.Gate.WaitAsync(cancellationToken);
@@ -350,10 +335,11 @@ internal sealed class ZLinkFrameworkRuntime
             }
 
             state.SessionId = null;
+            state.Stream = null;
             activation = state.Activation;
             state.Activation = null;
 
-            if (activation is not null && (activation.IsDisposed || actor.Spot is null))
+            if (activation is not null && activation.IsDisposed)
             {
                 activation = null;
             }
@@ -372,35 +358,31 @@ internal sealed class ZLinkFrameworkRuntime
             await actor.OnDisconnectedAsync(cancellationToken);
         }
 
-        TryRemoveActorState(actorKey, state);
+        _actorSessions.TryRemove(actorKey, state);
     }
 
     internal async ValueTask SubmitActorAsync(
         IZLinkActor actor,
-        global::Zlink.Message header,
+        ZlinkStreamHeader header,
         global::Zlink.Message body,
         CancellationToken cancellationToken)
     {
         var actorKey = actor.ActorKey;
-        var state = GetActorState(actor.ActorKey);
-        ZLinkSpotActivation activation;
+        var state = _actorSessions.GetOrCreate(actor.ActorKey);
+        ZLinkSpotActivation? activation;
         var shouldPrune = false;
+        var context = new ZLinkActorContext(this, actor, state);
 
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
-            activation = state.Activation
-                ?? throw new InvalidOperationException(
-                    $"Actor '{actor.ActorKey}' is not joined to a SPOT.");
+            activation = state.Activation;
 
-            if (activation.IsDisposed
-                || actor.Spot is null
-                || actor.Spot.SpotRid != activation.SpotRid)
+            if (activation is not null && activation.IsDisposed)
             {
                 state.Activation = null;
+                activation = null;
                 shouldPrune = state.SessionId is null;
-                throw new InvalidOperationException(
-                    $"Actor '{actor.ActorKey}' is not attached to an active SPOT.");
             }
         }
         finally
@@ -410,13 +392,29 @@ internal sealed class ZLinkFrameworkRuntime
 
         try
         {
-            await activation.SubmitActorAsync(actor, header, body, cancellationToken);
+            if (activation is null)
+            {
+                var previousDispatch = state.CurrentDispatch;
+                state.CurrentDispatch = new ZLinkActorDispatchState(header);
+                try
+                {
+                    await actor.OnDispatchAsync(context, header, body, cancellationToken);
+                }
+                finally
+                {
+                    state.CurrentDispatch = previousDispatch;
+                }
+
+                return;
+            }
+
+            await activation.SubmitActorAsync(actor, context, state, header, body, cancellationToken);
         }
         finally
         {
             if (shouldPrune)
             {
-                TryRemoveActorState(actorKey, state);
+                _actorSessions.TryRemove(actorKey, state);
             }
         }
     }
@@ -592,49 +590,6 @@ internal sealed class ZLinkFrameworkRuntime
         };
     }
 
-    internal IZLinkBackendDiscovery GetMonitoringDiscovery(string sourceName)
-    {
-        if (_state is null)
-        {
-            StartAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
-        }
-
-        if (sourceName.EndsWith(".discovery", StringComparison.Ordinal))
-        {
-            var logicalName = sourceName[..^".discovery".Length];
-
-            if (_state!.SpotDiscoveries.TryGetValue(sourceName, out var spotDiscovery))
-            {
-                return spotDiscovery;
-            }
-
-            var socket = GetMonitoringSocket(logicalName);
-            var capability = logicalName[(logicalName.LastIndexOf('.') + 1)..];
-            var channelName = logicalName[..logicalName.LastIndexOf('.')];
-            var state = GetOrStartState();
-            var bundle = capability switch
-            {
-                "server" => state.ServerBundles.TryGetValue(channelName, out var serverBundle)
-                    ? serverBundle
-                    : null,
-                "subscriber" => state.SubscriberBundles.TryGetValue(channelName, out var subscriberBundle)
-                    ? subscriberBundle
-                    : null,
-                "publisher" => GetOrCreatePublisherBundle(channelName),
-                "client" => GetOrCreateClientBundle(channelName),
-                _ => null,
-            };
-
-            if (bundle?.Discovery is not null)
-            {
-                return bundle.Discovery;
-            }
-        }
-
-        throw new InvalidOperationException(
-            $"Discovery monitoring source '{sourceName}' is not registered.");
-    }
-
     internal ZLinkSpotMonitoringSnapshot GetSpotMonitoringSnapshot(string spotNodeName)
     {
         return GetSpotNode(spotNodeName).GetMonitoringSnapshot();
@@ -782,8 +737,7 @@ internal sealed class ZLinkFrameworkRuntime
                 _services,
                 socket,
                 monitor,
-                streamNodeRegistration.PacketSessionType,
-                streamNodeRegistration.RawSessionType);
+                streamNodeRegistration.HeaderSessionType);
             runtime.Start();
             state.StreamNodes.Add(streamNodeRegistration.StreamNodeName, runtime);
         }
@@ -942,35 +896,6 @@ internal sealed class ZLinkFrameworkRuntime
         }
 
         return null;
-    }
-
-    private ZLinkActorRuntimeState GetActorState(string actorKey)
-    {
-        lock (_actorStateGate)
-        {
-            if (_actorStates.TryGetValue(actorKey, out var existing))
-            {
-                return existing;
-            }
-
-            var created = new ZLinkActorRuntimeState();
-            _actorStates.Add(actorKey, created);
-            return created;
-        }
-    }
-
-    private void TryRemoveActorState(string actorKey, ZLinkActorRuntimeState state)
-    {
-        lock (_actorStateGate)
-        {
-            if (_actorStates.TryGetValue(actorKey, out var existing)
-                && ReferenceEquals(existing, state)
-                && state.SessionId is null
-                && state.Activation is null)
-            {
-                _actorStates.Remove(actorKey);
-            }
-        }
     }
 
     private async Task RunServerLoopAsync(
@@ -1165,111 +1090,5 @@ internal sealed class ZLinkFrameworkRuntime
                 cancellationToken);
             await _dispatcher.DispatchAsync(endpoint, message, context, cancellationToken);
         }
-    }
-}
-
-internal sealed class ZLinkActorRuntimeState
-{
-    public SemaphoreSlim Gate { get; } = new(1, 1);
-
-    public string? SessionId { get; set; }
-
-    public ZLinkSpotActivation? Activation { get; set; }
-}
-
-internal sealed class ZLinkFrameworkRuntimeState(
-    IZLinkBackendContext context,
-    ZLinkFrameworkRegistration registration) : IAsyncDisposable
-{
-    public IZLinkBackendContext Context { get; } = context;
-
-    public ZLinkFrameworkRegistration Registration { get; } = registration;
-
-    public object SyncRoot { get; } = new();
-
-    public CancellationTokenSource StopTokenSource { get; } = new();
-
-    public Dictionary<string, ZLinkChannelRuntimeBundle> ServerBundles { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkChannelRuntimeBundle> SubscriberBundles { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkChannelRuntimeBundle> PublisherBundles { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkChannelRuntimeBundle> ClientBundles { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkSpotNodeRuntime> SpotNodes { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, IZLinkBackendDiscovery> SpotDiscoveries { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkStreamNodeRuntime> StreamNodes { get; } = new(StringComparer.Ordinal);
-
-    public List<Task> ListenerTasks { get; } = [];
-
-    public async ValueTask DisposeAsync()
-    {
-        StopTokenSource.Cancel();
-
-        foreach (var bundle in ClientBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
-
-        foreach (var bundle in PublisherBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
-
-        foreach (var bundle in SubscriberBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
-
-        foreach (var bundle in ServerBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
-
-        foreach (var node in SpotNodes.Values)
-        {
-            await DisposeSafelyAsync(node);
-        }
-
-        foreach (var stream in StreamNodes.Values)
-        {
-            await DisposeSafelyAsync(stream);
-        }
-
-        foreach (var discovery in SpotDiscoveries.Values)
-        {
-            await DisposeSafelyAsync(discovery);
-        }
-
-        StopTokenSource.Dispose();
-        await DisposeSafelyAsync(Context);
-    }
-
-    private static async ValueTask DisposeSafelyAsync(IAsyncDisposable disposable)
-    {
-        try
-        {
-            await disposable.DisposeAsync();
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-        catch (global::Zlink.ZlinkCloseException)
-        {
-        }
-    }
-}
-
-internal sealed class EmptyServiceProvider : IServiceProvider
-{
-    public static readonly EmptyServiceProvider Instance = new();
-
-    public object? GetService(Type serviceType)
-    {
-        _ = serviceType;
-        return null;
     }
 }

@@ -26,18 +26,6 @@ internal readonly record struct ZLinkBackendSocketMonitorEvent(
     string RemoteAddr,
     uint Value);
 
-internal readonly record struct ZLinkBackendDiscoveryMonitorEvent(
-    ZLinkDiscoveryNativeEventType NativeEvent,
-    string ServiceName,
-    string Endpoint,
-    global::Zlink.RoutingId? RoutingId,
-    string Subject,
-    ZLinkSubjectKind SubjectKind,
-    uint Status,
-    uint ErrorCode,
-    ulong Value,
-    uint DetailFlags);
-
 internal interface IZLinkBackendObject
 {
     object NativeInstance { get; }
@@ -231,9 +219,4 @@ internal interface IZLinkBackendSocketMonitor : IZLinkBackendObject, IAsyncDispo
     void OnEvent(Action<ZLinkBackendSocketMonitorEvent> handler);
 
     ZLinkBackendSocketMonitorEvent Recv();
-}
-
-internal interface IZLinkBackendServiceMonitor : IZLinkBackendObject, IAsyncDisposable
-{
-    void OnEvent(Action<ZLinkBackendDiscoveryMonitorEvent> handler);
 }

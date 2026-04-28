@@ -199,78 +199,6 @@ public sealed class MonitoringIntegrationTests
         await StopHostsAsync(secondHost, firstHost, registryHost);
     }
 
-    [Fact]
-    public async Task DiscoveryMonitoring_Emits_ProvidersChanged_When_RemoteServiceAppears()
-    {
-        var registryPubEndpoint = GetFreeTcpEndpoint();
-        var registryRouterEndpoint = GetFreeTcpEndpoint();
-        var apiEndpoint = GetFreeTcpEndpoint();
-
-        var registryBuilder = Host.CreateApplicationBuilder();
-        registryBuilder.Services.AddZLinkRegistry(options =>
-        {
-            options.PubEndpoint = registryPubEndpoint;
-            options.RouterEndpoint = registryRouterEndpoint;
-        });
-
-        var clientBuilder = Host.CreateApplicationBuilder();
-        clientBuilder.Services.AddSingleton<DiscoveryProbe>();
-        clientBuilder.Services.AddSingleton<IZLinkRuntimeEventHandler<ZLinkDiscoveryEvent>>(static provider =>
-            provider.GetRequiredService<DiscoveryProbe>());
-        clientBuilder.Services.AddZLinkFramework(options =>
-        {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
-
-            options.AddChannel("profile", channel =>
-            {
-                channel.EnableClient();
-            });
-        });
-        clientBuilder.Services.AddZLinkMonitoring(monitor =>
-        {
-            monitor.AddDiscoveryEvents(
-                "profile.client.discovery",
-                ZLinkDiscoveryEventKind.ServiceUp,
-                ZLinkDiscoveryEventKind.ProvidersChanged);
-        });
-
-        var serverBuilder = Host.CreateApplicationBuilder();
-        serverBuilder.Services.AddZLinkFramework(options =>
-        {
-            options.UseDiscovery(discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
-
-            options.AddChannel("profile", channel =>
-            {
-                channel.EnableServer(server => server.Bind(apiEndpoint));
-            });
-        });
-
-        using var registryHost = registryBuilder.Build();
-        using var clientHost = clientBuilder.Build();
-        using var serverHost = serverBuilder.Build();
-
-        await registryHost.StartAsync();
-        await clientHost.StartAsync();
-        await serverHost.StartAsync();
-
-        var @event = await clientHost.Services.GetRequiredService<DiscoveryProbe>()
-            .WaitAsync(TimeSpan.FromSeconds(10));
-
-        Assert.Equal("profile.client.discovery", @event.SourceName);
-        Assert.Equal("profile", @event.ServiceName);
-        Assert.True(
-            @event.Event is ZLinkDiscoveryEventKind.ServiceUp or ZLinkDiscoveryEventKind.ProvidersChanged,
-            $"Unexpected discovery event '{@event.Event}'.");
-
-        await StopHostsAsync(serverHost, clientHost, registryHost);
-    }
-
     private static string GetFreeTcpEndpoint()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -325,31 +253,6 @@ public sealed class MonitoringIntegrationTests
         }
 
         public async Task<ZLinkSpotEvent> WaitAsync(TimeSpan timeout)
-        {
-            using var timeoutSource = new CancellationTokenSource(timeout);
-            return await _completion.Task.WaitAsync(timeoutSource.Token);
-        }
-    }
-
-    public sealed class DiscoveryProbe : IZLinkRuntimeEventHandler<ZLinkDiscoveryEvent>
-    {
-        private readonly TaskCompletionSource<ZLinkDiscoveryEvent> _completion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask HandleAsync(
-            ZLinkDiscoveryEvent @event,
-            CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            if (@event.Event is ZLinkDiscoveryEventKind.ServiceUp or ZLinkDiscoveryEventKind.ProvidersChanged)
-            {
-                _completion.TrySetResult(@event);
-            }
-
-            return ValueTask.CompletedTask;
-        }
-
-        public async Task<ZLinkDiscoveryEvent> WaitAsync(TimeSpan timeout)
         {
             using var timeoutSource = new CancellationTokenSource(timeout);
             return await _completion.Task.WaitAsync(timeoutSource.Token);

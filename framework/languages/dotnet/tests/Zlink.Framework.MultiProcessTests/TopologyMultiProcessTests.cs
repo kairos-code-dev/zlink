@@ -3,6 +3,9 @@ using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Systems.Zlink.Stream.Connector.Abstractions;
+using Systems.Zlink.Stream.Connector.Headers;
+using Systems.Zlink.Stream.Connector.Metadata;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Tests.Common;
 
@@ -265,8 +268,19 @@ public sealed class TopologyMultiProcessTests
         using var client = ConnectRawClient(streamEndpoint);
         var clientLocalPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
         var network = client.GetStream();
-        SendAll(network, "ping"u8);
-        Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
+        SendAll(network, BuildStreamPacketFrame(
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Request,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.HasRid,
+                new ZlinkStreamRequestId(1),
+                "ping",
+                ZlinkStreamMetadata.Empty),
+            "\"ping\""u8));
+        var reply = ReceiveFrame(network);
+        Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
+        Assert.Equal("ping", reply.Header.Name);
+        Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Body));
 
         var connectedLine = await WaitForFileLineAsync(
             eventFilePath,
@@ -304,8 +318,16 @@ public sealed class TopologyMultiProcessTests
 
         var client = ConnectRawClient(streamEndpoint);
         var network = client.GetStream();
-        SendAll(network, "ping"u8);
-        Assert.Equal("pong", Encoding.UTF8.GetString(ReceiveExact(network, 4)));
+        SendAll(network, BuildStreamPacketFrame(
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Request,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.HasRid,
+                new ZlinkStreamRequestId(1),
+                "ping",
+                ZlinkStreamMetadata.Empty),
+            "\"ping\""u8));
+        _ = ReceiveFrame(network);
         client.Dispose();
 
         var errorLine = await WaitForFileLineAsync(
@@ -357,6 +379,34 @@ public sealed class TopologyMultiProcessTests
         }
 
         return buffer;
+    }
+
+    private static byte[] BuildStreamPacketFrame(
+        ZlinkStreamHeader header,
+        ReadOnlySpan<byte> body)
+    {
+        var headerBytes = new ZlinkStreamHeaderCodec().Encode(header).ToArray();
+        var frame = new byte[6 + headerBytes.Length + body.Length];
+        frame[0] = (byte)(headerBytes.Length >> 8);
+        frame[1] = (byte)headerBytes.Length;
+        frame[2] = (byte)(body.Length >> 24);
+        frame[3] = (byte)(body.Length >> 16);
+        frame[4] = (byte)(body.Length >> 8);
+        frame[5] = (byte)body.Length;
+        headerBytes.CopyTo(frame.AsSpan(6, headerBytes.Length));
+        body.CopyTo(frame.AsSpan(6 + headerBytes.Length, body.Length));
+        return frame;
+    }
+
+    private static (ZlinkStreamHeader Header, byte[] Body) ReceiveFrame(NetworkStream stream)
+    {
+        var lengths = ReceiveExact(stream, 6);
+        var headerLength = (lengths[0] << 8) | lengths[1];
+        var bodyLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
+        var headerBytes = ReceiveExact(stream, headerLength);
+        var bodyBytes = ReceiveExact(stream, bodyLength);
+        var header = new ZlinkStreamHeaderCodec().Decode(headerBytes);
+        return (header, bodyBytes);
     }
 
     private static async Task<T> RetryAsync<T>(

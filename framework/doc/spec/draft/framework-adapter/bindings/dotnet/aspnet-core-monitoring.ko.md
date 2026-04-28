@@ -21,12 +21,14 @@
 하지만 하부 `.NET zlink` 표면은 source마다 다르다.
 
 - socket: `SocketMonitor`
-- discovery: `ServiceMonitor`
+- discovery: runtime event로 노출하지 않는다. 운영 조회는 registry snapshot/query로 한다.
 - registry: snapshot/query만 있음
 - spot: status/peer/subject snapshot만 있음
 
-그래서 framework는 이 네 축을 같은 raw monitor API로 보이게 하기보다,
-**typed runtime event**로 다시 올리는 편이 더 자연스럽다.
+그래서 framework는 socket은 raw monitor 기반 event로 올리고, registry/spot은
+snapshot diff 기반 event로 올린다. discovery 자체는 별도 runtime event로 만들지
+않고, registry의 topology/service/member snapshot을 조회해서 현재 provider 상태를
+확인한다.
 
 ## 2. 기본 방향
 
@@ -34,8 +36,9 @@
 
 - event kind는 enum으로 둔다.
 - 실제 callback payload는 record struct로 둔다.
-- socket/discovery는 하부 monitor를 감싼다.
+- socket은 하부 monitor를 감싼다.
 - registry/spot는 polling + snapshot diff로 event를 만든다.
+- discovery 상태는 registry snapshot/query 결과로 조회한다.
 - application은 `IZLinkRuntimeEventHandler<TEvent>`를 구현해서 이벤트를 받는다.
 
 enum만으로는 충분하지 않다.
@@ -82,14 +85,6 @@ builder.Services.AddZLinkMonitoring(monitor =>
         ZLinkSocketEventKind.ConnectionReady,
         ZLinkSocketEventKind.Disconnected);
 
-    monitor.AddDiscoveryEvents(
-        "profile.client.discovery",
-        ZLinkDiscoveryEventKind.ServiceUp,
-        ZLinkDiscoveryEventKind.ServiceDown,
-        ZLinkDiscoveryEventKind.ProvidersChanged,
-        ZLinkDiscoveryEventKind.Error,
-        ZLinkDiscoveryEventKind.Closed);
-
     monitor.AddRegistryEvents(
         "registry",
         TimeSpan.FromSeconds(1));
@@ -100,7 +95,7 @@ builder.Services.AddZLinkMonitoring(monitor =>
 });
 ```
 
-`AddZLinkMonitoring(...)`은 source 등록만 맡는다. 실제 socket, discovery, registry,
+`AddZLinkMonitoring(...)`은 source 등록만 맡는다. 실제 socket, registry,
 spot source는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
 `AddZLinkRegistry(...)`로 먼저 올라와 있어야 한다.
 
@@ -115,7 +110,9 @@ source 이름은 아래처럼 잡는 편이 자연스럽다.
   - `channel + capability`
   - 예: `profile.server`, `profile.client`
 - discovery
-  - logical discovery registration 이름
+  - 별도 monitoring source 이름을 두지 않는다.
+  - 현재 provider 상태는 `IZLinkRegistryQuery.TopologySnapshotAsync(...)`,
+    `ServiceSummarySnapshotAsync(...)`, `MemberPeersAsync(...)`로 조회한다.
   - 예: `profile.client.discovery`, `game.stage.discovery`
 - registry
   - infrastructure source 이름
@@ -135,10 +132,6 @@ public interface IZLinkMonitoringOptions
     void AddSocketEvents(
         string sourceName,
         params ZLinkSocketEventKind[] events);
-
-    void AddDiscoveryEvents(
-        string sourceName,
-        params ZLinkDiscoveryEventKind[] events);
 
     void AddRegistryEvents(
         string sourceName,
@@ -165,7 +158,7 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
 }
 ```
 
-socket/discovery/registry/spot은 각각 framework 소유 event kind enum과 record
+socket/registry/spot은 각각 framework 소유 event kind enum과 record
 payload를 가진다. backend raw monitor enum과 status 값이 필요하면 event 안의
 optional diagnostic detail로만 노출한다.
 
@@ -174,8 +167,8 @@ optional diagnostic detail로만 노출한다.
 `SubjectKind`, `RegistryStatus`, `SpotNodeStatus` 같은 타입을 framework public
 surface에 직접 노출하지 않는다.
 
-`AddSocketEvents(...)`, `AddDiscoveryEvents(...)`에 event kind를 따로 넘기지 않으면,
-그 source에서 지원하는 모든 logical event를 받는 뜻으로 읽는다.
+`AddSocketEvents(...)`에 event kind를 따로 넘기지 않으면, 그 source에서 지원하는
+모든 logical event를 받는 뜻으로 읽는다.
 
 ## 5. 샘플 코드
 
@@ -220,50 +213,7 @@ public sealed class ProfileServerSocketMonitor
 }
 ```
 
-### 5.2 discovery 이벤트
-
-```csharp
-public sealed class ProfileDiscoveryMonitor
-    : IZLinkRuntimeEventHandler<ZLinkDiscoveryEvent>
-{
-    private readonly ILogger<ProfileDiscoveryMonitor> _logger;
-
-    public ProfileDiscoveryMonitor(
-        ILogger<ProfileDiscoveryMonitor> logger)
-    {
-        _logger = logger;
-    }
-
-    public ValueTask HandleAsync(
-        ZLinkDiscoveryEvent @event,
-        CancellationToken cancellationToken)
-    {
-        switch (@event.Event)
-        {
-            case ZLinkDiscoveryEventKind.ServiceUp:
-            case ZLinkDiscoveryEventKind.ServiceDown:
-            case ZLinkDiscoveryEventKind.ProvidersChanged:
-                _logger.LogInformation(
-                    "discovery changed: {Source} {Event} service={ServiceName}",
-                    @event.SourceName,
-                    @event.Event,
-                    @event.ServiceName);
-                break;
-
-            case ZLinkDiscoveryEventKind.Error:
-                _logger.LogError(
-                    "discovery error: {Source} error={ErrorCode}",
-                    @event.SourceName,
-                    @event.Diagnostic?.ErrorCode);
-                break;
-        }
-
-        return ValueTask.CompletedTask;
-    }
-}
-```
-
-### 5.3 registry 이벤트
+### 5.2 registry 이벤트
 
 ```csharp
 public sealed class RegistryMonitor
@@ -303,7 +253,7 @@ public sealed class RegistryMonitor
 registry는 하부 raw monitor가 없으므로, framework가 주기적으로 snapshot을 읽고
 직전 값과 비교해서 event를 만든다.
 
-### 5.4 spot 이벤트
+### 5.3 spot 이벤트
 
 ```csharp
 public sealed class StageNodeMonitor
@@ -353,10 +303,12 @@ spot도 registry와 같은 이유로 raw monitor보다 snapshot diff 표면이 �
 
 따라서 현재 초안은 아래처럼 나누는 편을 기본으로 본다.
 
-- socket/discovery
+- socket
   - raw monitor 기반
 - registry/spot
   - snapshot diff 기반
+- discovery
+  - registry snapshot/query 기반 조회
 - application
   - typed runtime event handler 기반
 
@@ -372,6 +324,7 @@ spot도 registry와 같은 이유로 raw monitor보다 snapshot diff 표면이 �
   `ServiceSummaryChanged` 세 가지로 고정한다.
 - spot event 종류는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`
   세 가지로 고정한다.
-- socket/discovery event payload는 raw native enum과 상태 코드를 함께 노출한다.
+- socket event payload는 raw native enum과 상태 코드를 함께 노출한다.
   반면 registry/spot event는 snapshot diff 기반 synthetic event이므로 별도 native
-  enum 필드를 두지 않는다.
+  enum 필드를 두지 않는다. discovery는 runtime event가 아니므로 별도 event payload를
+  두지 않는다.

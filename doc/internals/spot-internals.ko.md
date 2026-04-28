@@ -120,6 +120,89 @@ flowchart LR
 socket만 보고한다. 이 API는 lazy socket을 할당하지 않는다. perf는 이 snapshot을
 사용해 Auto-HWM 출력 row를 결정한다.
 
+### 2.2.1 왜 내부 소켓이 이렇게 많은가
+
+처음 보면 "SpotNode 하나에 왜 socket이 이렇게 많이 들어가나?" 라는 의문이
+생기기 쉽다. 이유는 SpotNode가 한 가지 일만 하는 단순 wrapper가 아니라,
+아래 네 종류의 일을 동시에 맡는 작은 내부 런타임이기 때문이다.
+
+1. 로컬 publish를 받아 로컬 subscriber에 바로 분배해야 한다.
+2. 같은 publish를 원격 peer에도 mesh 형태로 전파해야 한다.
+3. routed 메시지는 topic 메시지와 다른 규칙으로 받아서 전달해야 한다.
+4. peer 연결 상태, bootstrap 정보, ready 신호 같은 제어 메시지는 데이터 메시지와
+   분리해서 다뤄야 한다.
+
+이 네 가지를 한 소켓에 모두 섞으면 다음 문제가 바로 생긴다.
+
+- topic fanout과 routed delivery는 필요한 socket 타입이 다르다.
+- 로컬 inproc 배선과 원격 transport 배선은 방향과 수명 주기가 다르다.
+- 제어 메시지는 payload가 작고 우선순위도 다르므로 HWM 정책을 따로 잡아야 한다.
+- 수신 polling loop에서 "무슨 종류의 메시지가 들어왔는지"를 빠르게 구분하기가
+  어려워진다.
+
+그래서 SpotNode는 역할별로 socket을 분리한다. 큰 묶음으로 보면 다음과 같다.
+
+| 묶음 | 대표 소켓 | 왜 분리하는가 |
+|------|-----------|---------------|
+| 로컬 topic 입력/분배 | `ingress`, `fanout` | 같은 process 안의 pub/sub 흐름을 빠르게 처리하기 위해 |
+| 원격 topic mesh | `mesh_pub`, `mesh_xsub` | peer 전파 경로를 로컬 fanout과 분리하기 위해 |
+| routed 데이터 경로 | `route_ingress`, `node_router`, `peer_route_ingress` | routing id 기반 전달을 topic 경로와 섞지 않기 위해 |
+| peer 제어 경로 | `peer_ctrl_pub`, `peer_ctrl_sub` | ready/bootstrap/control 신호를 데이터와 분리하기 위해 |
+| 보조 송신 cache | `route_ingress_tx`, `node_router_tx`, `peer_route_tx` | data plane이 반복 connect 없이 내부 경로로 밀어 넣기 위해 |
+
+즉 "socket이 많다"기보다, publish/subscribe, routed, peer control을 한 runtime 안에서
+분리해 둔 결과라고 보는 편이 맞다.
+
+### 2.2.2 perf snapshot 이름과 문서 용어 대응
+
+perf의 `Auto-HWM spotnode` 표는 내부 구현 이름을 그대로 보여 주기 때문에, 위 표의
+설명과 바로 1:1로 읽히지 않을 수 있다. 아래 표는 snapshot 이름을 문서 용어와
+맞춰 읽는 방법을 정리한 것이다.
+
+| perf snapshot 이름 | 문서에서 보는 축 | 역할 |
+|--------------------|------------------|------|
+| `default_pub` | node 기본 publish handle | node가 기본으로 쓰는 publish 출구 |
+| `local_pub_ingress` | `ingress` | 로컬 publish가 data plane으로 들어오는 입력 |
+| `local_fanout` | `fanout` | 로컬 subscriber로 분배하는 출력 |
+| `mesh_pub` | `mesh_pub` | 원격 peer로 topic을 보내는 출력 |
+| `mesh_xsub` | `mesh_xsub` | 원격 peer에서 topic을 받는 입력 |
+| `route_ingress` | `route_ingress` | routed 메시지가 data plane으로 들어오는 입력 |
+| `peer_route_ingress` | `peer_route_ingress` | 원격 peer가 직접 보내는 routed 입력 |
+| `node_router` | `node_router` | app/spot 쪽 routed delivery의 중심 router |
+| `peer_ctrl_pub` | `peer_ctrl_pub` | peer control 송신 |
+| `peer_ctrl_sub` | `peer_ctrl_sub` | peer control 수신 |
+| `internal_receiver` | 내부 기본 receiver helper | 기본 recv 경로를 유지하는 보조 socket snapshot |
+| `route_ingress_tx` | sender cache | data plane이 `route_ingress`로 밀어 넣을 때 쓰는 on-demand 송신 socket |
+| `node_router_tx` | sender cache | data plane이 `node_router`로 밀어 넣을 때 쓰는 on-demand 송신 socket |
+| `peer_route_tx` | sender cache | 원격 peer route endpoint로 직접 보내는 on-demand 송신 socket |
+
+핵심은 이름 앞의 접두어를 보면 된다.
+
+- `local_*`: 같은 process 안의 inproc 배선
+- `mesh_*`: peer 간 topic 전파
+- `route_*`: routed 데이터 경로
+- `peer_ctrl_*`: peer 제어 경로
+- `*_tx`: 필요할 때만 만드는 송신 cache
+
+### 2.2.3 왜 `MsgUnit(B)`가 같은 size 안에서도 다를 수 있는가
+
+perf 표에서 `Size(B)=64`인데 어떤 row는 `MsgUnit(B)=64`, 어떤 row는
+`MsgUnit(B)=4096`으로 보일 수 있다. 이것은 snapshot이 잘못된 것이 아니라,
+그 socket이 속한 평면이 다르기 때문이다.
+
+- data plane 소켓
+  - 현재 벤치 payload 크기를 기준으로 계산한다.
+  - 예: `default_pub`, `local_fanout`, `mesh_pub`, `mesh_xsub`,
+    `route_ingress`, `node_router`
+- control plane 소켓
+  - 벤치 payload가 아니라 내부 제어 메시지 기준으로 계산한다.
+  - 예: `peer_ctrl_pub`, `peer_ctrl_sub`, `peer_route_ingress`
+
+그래서 같은 `Size(B)=64` 블록 안에서도 control plane row는
+`MsgUnit(B)=4096`으로 따로 보일 수 있다. 이 값은 "지금 벤치 payload가 4096B"
+라는 뜻이 아니라, "이 control socket이 HWM 계산에 쓰는 기준 메시지 단위가
+4096B"라는 뜻이다.
+
 ### 2.3 Sender Cache 소켓 (on-demand)
 
 아래 소켓 3개는 처음 필요할 때 생성된다.
@@ -279,7 +362,8 @@ sequenceDiagram
     participant Sender as spot_send_router()
     participant RouteIn as route_ingress (ROUTER)
     participant DP1 as Data Plane (Node 1)
-    participant Net as ROUTER-ROUTER Transport
+    participant PeerTx as peer_route_tx (DEALER)
+    participant PeerIn as peer_route_ingress (ROUTER)
     participant DP2 as Data Plane (Node 2)
     participant NodeRouter2 as node_router (Node 2)
     participant SpotRouter2 as target Spot ROUTER
@@ -287,13 +371,19 @@ sequenceDiagram
 
     Sender->>RouteIn: [SPOT envelope] + [payload]
     DP1->>DP1: envelope 파싱 → dest_node = Node 2
-    DP1->>Net: peer ROUTER 연결로 포워딩
-    Net->>DP2: Node 2 data plane에 전달
+    DP1->>PeerTx: 원격 route endpoint로 포워딩
+    PeerTx->>PeerIn: tcp/tls/ipc route transport
+    PeerIn->>DP2: Node 2 data plane에 전달
     DP2->>DP2: envelope 파싱 → 로컬 spot 대상
     DP2->>NodeRouter2: 로컬 node_router로 포워딩
     NodeRouter2->>SpotRouter2: local inproc routed delivery
     SpotRouter2->>Receiver: target Spot owned ingress에서 recv
 ```
+
+여기서 `node_router`는 외부 네트워크 송신 소켓이 아니다. `node_router`는 같은
+`SpotNode` 안에서 target `Spot`의 own routed ingress로 넘기는 로컬 전달 허브다.
+노드 간 송신은 별도 sender cache 소켓인 `peer_route_tx`가 맡고, 상대 노드에서는
+`peer_route_ingress`가 그 메시지를 받는다.
 
 ### 5.3 spot → router / router → spot (one-way send)
 
@@ -302,11 +392,13 @@ sequenceDiagram
     participant Spot as spot_send_router()
     participant RouteIn as route_ingress (ROUTER)
     participant DP as Data Plane
-    participant Peer as ROUTER peer (transport)
+    participant PeerTx as peer_route_tx (DEALER)
+    participant PeerIn as peer_route_ingress (ROUTER)
 
     Spot->>RouteIn: [SPOT envelope: dest_class=router] + [payload]
     DP->>DP: 파싱 → destination이 ROUTER peer
-    DP->>Peer: transport routing_id로 포워딩
+    DP->>PeerTx: 원격 route endpoint로 포워딩
+    PeerTx->>PeerIn: transport routing_id 포함 routed 전달
 ```
 
 ### 5.4 Spot routed request-reply

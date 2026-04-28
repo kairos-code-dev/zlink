@@ -225,8 +225,14 @@ zlink::auto_hwm_socket_plan_t zlink::socket_base_t::prepare_auto_hwm_socket_plan
     uint64_t pending_messages = 0;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
-        managed_connections = endpoint_runtime ().attached_pipe_count ();
-        for (size_t i = 0; i != managed_connections; ++i) {
+        const size_t attached_pipe_count =
+          endpoint_runtime ().attached_pipe_count ();
+        managed_connections = attached_pipe_count;
+        const size_t ready_connections =
+          static_cast<size_t> (monitor_runtime ().ready_count ());
+        if (ready_connections > managed_connections)
+            managed_connections = ready_connections;
+        for (size_t i = 0; i != attached_pipe_count; ++i) {
             pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
             if (!pipe)
                 continue;

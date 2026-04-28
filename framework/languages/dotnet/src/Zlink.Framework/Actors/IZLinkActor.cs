@@ -1,16 +1,8 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Actors;
 
 public interface IZLinkActor
 {
     string ActorKey { get; }
-
-    IZLinkStream? Stream { get; }
-
-    ZLinkSpot? Spot { get; }
-
-    ValueTask AttachAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
 
     ValueTask OnAttachedAsync(
         ZLinkSpot spot,
@@ -24,7 +16,8 @@ public interface IZLinkActor
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        global::Zlink.Message header,
+        IZLinkActorContext context,
+        ZlinkStreamHeader header,
         global::Zlink.Message body,
         CancellationToken cancellationToken);
 }

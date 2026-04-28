@@ -191,7 +191,8 @@ inline void print_server_metrics (
     (void) sizes;
 }
 
-inline bool run_server_loop (void *server,
+inline bool run_server_loop (void *ctx,
+                             void *server,
                              const multi_bench_settings_t &settings,
                              const std::vector<size_t> &msg_sizes,
                              std::vector<char> *payload,
@@ -270,13 +271,21 @@ inline bool run_server_loop (void *server,
                     apply_benchmark_auto_hwm_msg_unit (
                       server, k_server_socket_type, current_phase_msg_size);
                     apply_benchmark_hwm (server, settings.hwm);
+                    if (zlink_ctx_auto_hwm_recalculate (ctx)
+                        != ZLINK_CONFIG_OK
+                        && bench_debug_enabled ()) {
+                        std::cerr
+                          << "[multi-pubsub-server] ctx auto-hwm recalc failed err="
+                          << zlink_errno () << std::endl;
+                    }
                     perf_print_auto_hwm_snapshot (
                       server,
                       false,
                       "server",
                       transport,
                       true,
-                      current_phase_msg_size);
+                      current_phase_msg_size,
+                      k_server_socket_type);
                 }
                 phase_deadline =
                   std::chrono::steady_clock::now ()
@@ -423,6 +432,7 @@ inline int run_server_benchmark (const std::string &lib_name,
     std::cout << "READY," << endpoint << std::endl;
 
     const bool loop_ok = run_server_loop (
+      ctx.get (),
       server,
       settings,
       sizes,

@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Registry;
 
 public enum ZLinkServiceType
 {
@@ -110,4 +110,4 @@ public sealed record ZLinkMemberPeerEntry(
     string Endpoint,
     global::Zlink.RoutingId? RoutingId,
     long Value,
-    ZLinkAdmissionState AdmissionState);
+    uint Weight);

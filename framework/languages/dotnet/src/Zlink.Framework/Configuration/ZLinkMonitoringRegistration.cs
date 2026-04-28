@@ -1,10 +1,8 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Configuration;
 
 internal sealed class ZLinkMonitoringRegistration
 {
     public Dictionary<string, ZLinkSocketMonitoringRegistration> SocketSources { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkDiscoveryMonitoringRegistration> DiscoverySources { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkPollingMonitoringRegistration> RegistrySources { get; } = new(StringComparer.Ordinal);
 
@@ -16,13 +14,6 @@ internal sealed class ZLinkSocketMonitoringRegistration
     public required string SourceName { get; init; }
 
     public HashSet<ZLinkSocketEventKind> Events { get; } = [];
-}
-
-internal sealed class ZLinkDiscoveryMonitoringRegistration
-{
-    public required string SourceName { get; init; }
-
-    public HashSet<ZLinkDiscoveryEventKind> Events { get; } = [];
 }
 
 internal sealed class ZLinkPollingMonitoringRegistration
@@ -50,25 +41,6 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
         {
             throw new ZLinkConfigurationException(
                 $"Duplicate monitoring socket source '{entry.SourceName}'.");
-        }
-    }
-
-    public void AddDiscoveryEvents(string sourceName, params ZLinkDiscoveryEventKind[] events)
-    {
-        var entry = new ZLinkDiscoveryMonitoringRegistration
-        {
-            SourceName = ValidateSourceName(sourceName),
-        };
-
-        foreach (var @event in events)
-        {
-            entry.Events.Add(@event);
-        }
-
-        if (!registration.DiscoverySources.TryAdd(entry.SourceName, entry))
-        {
-            throw new ZLinkConfigurationException(
-                $"Duplicate monitoring discovery source '{entry.SourceName}'.");
         }
     }
 

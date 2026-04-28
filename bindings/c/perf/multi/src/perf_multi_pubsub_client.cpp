@@ -18,11 +18,15 @@ static const char *k_pattern = "MULTI_PUBSUB";
 static const zlink_socket_type_t k_client_socket_type = ZLINK_SOCKET_SUB;
 static const char *k_pubsub_topic = "bench";
 
+using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
+using perf_multi_client::create_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
+using perf_multi_client::refresh_connected_client_auto_hwm;
 using perf_multi_client::resolve_case_msg_sizes;
+using perf_multi_client::wait_all_client_connect_ready;
 
 int recv_one_pubsub_message (void *socket,
                              size_t expected_msg_size,
@@ -246,60 +250,6 @@ bool run_recv_duration (const std::vector<void *> &sockets,
     return true;
 }
 
-inline bool create_client_sockets (
-  ctx_guard_t &ctx,
-  const std::string &transport,
-  const std::string &endpoint,
-  const multi_bench_settings_t &settings,
-  size_t msg_size,
-  std::vector<void *> *sockets_out)
-{
-    if (!sockets_out)
-        return false;
-
-    sockets_out->assign (settings.clients, NULL);
-
-    for (size_t i = 0; i < sockets_out->size (); ++i) {
-        void *sock = zlink_socket (
-          ctx.get (), static_cast<zlink_socket_type_t> (k_client_socket_type));
-        if (!sock) {
-            if (bench_debug_enabled ()) {
-                std::cerr << "[multi-pubsub-client] socket create failed slot="
-                          << i << " errno=" << zlink_errno () << std::endl;
-            }
-            return false;
-        }
-
-        apply_benchmark_socket_options (
-          sock, settings.hwm, transport, k_client_socket_type, msg_size);
-        static const char k_subscribe_all[] = "";
-        if (zlink_set_subscription (sock, k_subscribe_all)
-              != ZLINK_CONFIG_OK
-            || !setup_tls_client (sock, transport)) {
-            if (bench_debug_enabled ()) {
-                std::cerr << "[multi-pubsub-client] subscribe/tls failed slot="
-                          << i << " errno=" << zlink_errno () << std::endl;
-            }
-            zlink_close (sock);
-            return false;
-        }
-
-        if (zlink_connect (sock, endpoint.c_str ()) != ZLINK_CONNECT_OK) {
-            if (bench_debug_enabled ()) {
-                std::cerr << "[multi-pubsub-client] connect failed slot=" << i
-                          << " endpoint=" << endpoint
-                          << " errno=" << zlink_errno () << std::endl;
-            }
-            zlink_close (sock);
-            return false;
-        }
-
-        (*sockets_out)[i] = sock;
-    }
-
-    return true;
-}
-
 inline bool run_single_size_case (const std::vector<void *> &sockets,
                                   void *poller,
                                   const multi_bench_settings_t &base_settings,
@@ -369,17 +319,30 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
 
     std::vector<void *> sockets;
+    std::vector<ready_monitor_t> monitors;
     void *poller = NULL;
     if (!create_client_sockets (
           ctx,
           transport,
           endpoint,
           base_settings,
+          k_client_socket_type,
           max_msg_size,
-          &sockets)) {
+          &sockets,
+          &monitors,
+          false)) {
+        close_client_monitors (&monitors);
         close_client_sockets (&sockets);
         return 1;
     }
+    if (!wait_all_client_connect_ready (
+          monitors,
+          base_settings.connect_ready_timeout_ms)) {
+        close_client_monitors (&monitors);
+        close_client_sockets (&sockets);
+        return 1;
+    }
+    close_client_monitors (&monitors);
 
     if (!create_pubsub_poller (sockets, &poller)) {
         if (bench_debug_enabled ()) {
@@ -395,6 +358,12 @@ inline int run_client_benchmark (const std::string &lib_name,
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
+        refresh_connected_client_auto_hwm (
+          sockets,
+          k_client_socket_type,
+          base_settings.hwm,
+          transport,
+          msg_size);
         std::cout << "CLIENT_READY," << msg_size << std::endl;
         if (!run_single_size_case (
               sockets,

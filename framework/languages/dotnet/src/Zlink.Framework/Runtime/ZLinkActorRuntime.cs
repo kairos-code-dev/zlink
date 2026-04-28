@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Runtime;
 
 internal sealed class ZLinkActorRuntime(ZLinkFrameworkRuntime runtime) : IZLinkActorRuntime
 {
@@ -10,6 +10,18 @@ internal sealed class ZLinkActorRuntime(ZLinkFrameworkRuntime runtime) : IZLinkA
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(stream);
         return runtime.AttachActorAsync(actor, stream, cancellationToken);
+    }
+
+    public ValueTask<TReply> JoinAsync<TRequest, TReply>(
+        global::Zlink.RoutingId spotRid,
+        IZLinkActor actor,
+        TRequest request,
+        CancellationToken cancellationToken = default)
+        where TRequest : IZLinkRequest<TReply>
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(request);
+        return runtime.JoinActorAsync<TRequest, TReply>(spotRid, actor, request, cancellationToken);
     }
 
     public ValueTask DisconnectAsync(
@@ -24,12 +36,11 @@ internal sealed class ZLinkActorRuntime(ZLinkFrameworkRuntime runtime) : IZLinkA
 
     public ValueTask SubmitAsync(
         IZLinkActor actor,
-        global::Zlink.Message header,
+        ZlinkStreamHeader header,
         global::Zlink.Message body,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(header);
         ArgumentNullException.ThrowIfNull(body);
         return runtime.SubmitActorAsync(actor, header, body, cancellationToken);
     }

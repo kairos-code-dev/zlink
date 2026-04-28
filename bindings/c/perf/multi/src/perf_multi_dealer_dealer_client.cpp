@@ -35,6 +35,7 @@ using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
+using perf_multi_client::refresh_connected_client_auto_hwm;
 using perf_multi_client::resolve_case_msg_sizes;
 using perf_multi_client::wait_all_client_connect_ready;
 
@@ -68,7 +69,8 @@ inline bool create_client_sockets (
       k_client_socket_type,
       msg_size,
       sockets_out,
-      monitors_out);
+      monitors_out,
+      false);
 }
 
 inline send_status_t send_one_message (void *socket,
@@ -336,6 +338,13 @@ inline int run_client_benchmark (const std::string &lib_name,
             close_client_sockets (&sockets);
             return 1;
         }
+
+        refresh_connected_client_auto_hwm (
+          sockets,
+          static_cast<zlink_socket_type_t> (k_client_socket_type),
+          settings.hwm,
+          transport,
+          msg_sizes[si]);
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
         std::cout << "CLIENT_READY," << msg_sizes[si] << std::endl;

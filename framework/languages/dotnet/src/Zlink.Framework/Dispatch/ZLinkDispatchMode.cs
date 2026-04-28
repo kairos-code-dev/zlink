@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Dispatch;
 
 public enum ZLinkDispatchMode
 {

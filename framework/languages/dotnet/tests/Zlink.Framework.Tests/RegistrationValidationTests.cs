@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Systems.Zlink.Stream.Connector.Abstractions;
+using Systems.Zlink.Stream.Connector.Headers;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
@@ -64,7 +66,7 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenStreamNodeRegistersPacketAndRawSessionsTogether()
+    public void AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleHeaderSessions()
     {
         var services = new ServiceCollection();
 
@@ -74,12 +76,12 @@ public sealed class RegistrationValidationTests
                 options.AddStreamNode("client.stream", stream =>
                 {
                     stream.Bind("tcp://127.0.0.1:9100");
-                    stream.AddPacketSession<TestPacketSession>();
-                    stream.AddRawSession<TestRawSession>();
+                    stream.AddHeaderSession<TestHeaderSession>();
+                    stream.AddHeaderSession<TestHeaderSession>();
                 });
             }));
 
-        Assert.Contains("cannot register packet and raw sessions together", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("already has a stream session", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -196,7 +198,7 @@ public sealed class RegistrationValidationTests
             options.AddStreamNode("stream.node", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:9100");
-                stream.AddPacketSession<TestPacketSession>();
+                stream.AddHeaderSession<TestHeaderSession>();
             });
 
             options.AddSpotNode("stage-node", spot =>
@@ -302,7 +304,7 @@ public sealed class RegistrationValidationTests
         }
     }
 
-    private sealed class TestPacketSession : IZLinkPacketStreamSession
+    private sealed class TestHeaderSession : IZLinkStreamHeaderSession
     {
         public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
@@ -310,24 +312,10 @@ public sealed class RegistrationValidationTests
 
         public ValueTask OnErrorAsync(IZLinkStream stream, ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
-        public ValueTask OnPacketAsync(
+        public ValueTask OnDispatchAsync(
             IZLinkStream stream,
-            global::Zlink.Message header,
+            ZlinkStreamHeader header,
             global::Zlink.Message body,
-            CancellationToken cancellationToken) => ValueTask.CompletedTask;
-    }
-
-    private sealed class TestRawSession : IZLinkRawStreamSession
-    {
-        public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken) => ValueTask.CompletedTask;
-
-        public ValueTask OnDisconnectedAsync(IZLinkStream stream, CancellationToken cancellationToken) => ValueTask.CompletedTask;
-
-        public ValueTask OnErrorAsync(IZLinkStream stream, ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
-
-        public ValueTask OnRawAsync(
-            IZLinkStream stream,
-            global::Zlink.Message payload,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 

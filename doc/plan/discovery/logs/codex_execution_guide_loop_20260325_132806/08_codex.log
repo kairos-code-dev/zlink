@@ -473,7 +473,7 @@ core/include/zlink.h:829:  int *subscribed_out_,
 core/include/zlink.h:1004: * changed. All subscribe/get/count queries operate within that one logical
 core/include/zlink.h:1104: * The returned handle uses generic publish/subscribe APIs and lazily creates
 core/include/zlink.h:1117: * SpotNode handles start in recv model. Install `zlink_subscribe_handler()`
-core/include/zlink.h:1126:ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+core/include/zlink.h:1126:ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
 core/include/zlink.h:1129:ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
 core/include/zlink.h:1132:ZLINK_EXPORT int zlink_spot_node_bind (void *node, const char *endpoint);
 core/include/zlink.h:1139:ZLINK_EXPORT int zlink_spot_node_connect_peer (void *node,
@@ -699,7 +699,7 @@ exec
 /bin/bash -lc "sed -n '318,370p' core/tests/e2e/spot/test_spot_service_introspection.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
 static void *create_node (void *ctx_, const char *service_name_)
 {
-    void *node = zlink_spot_node_new (ctx_);
+    void *node = zlink_spot_node_new (ctx_, NULL);
     TEST_ASSERT_NOT_NULL (node);
     set_linger_zero (node);
     return node;
@@ -810,7 +810,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..77829266810679ec08de50d5bc063e35
 -static void *create_node (void *ctx_, const char *service_name_)
 +static void *create_node (void *ctx_)
  {
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
 @@ -836,8 +836,8 @@
      void *ctx = zlink_ctx_new ();
@@ -845,7 +845,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..77829266810679ec08de50d5bc063e35
 -static void *create_node (void *ctx_, const char *service_name_)
 +static void *create_node (void *ctx_)
  {
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
 @@ -836,8 +836,8 @@
      void *ctx = zlink_ctx_new ();
@@ -882,7 +882,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..77829266810679ec08de50d5bc063e35
 -static void *create_node (void *ctx_, const char *service_name_)
 +static void *create_node (void *ctx_)
  {
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
 @@ -836,8 +836,8 @@
      void *ctx = zlink_ctx_new ();
@@ -938,7 +938,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..77829266810679ec08de50d5bc063e35
 -static void *create_node (void *ctx_, const char *service_name_)
 +static void *create_node (void *ctx_)
  {
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
 @@ -836,8 +836,8 @@
      void *ctx = zlink_ctx_new ();
@@ -971,7 +971,7 @@ M /home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspe
 +static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
 @@ -838,4 +839,4 @@
  
 -    void *pub_node = create_node (ctx);
@@ -992,7 +992,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1015,7 +1015,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1040,7 +1040,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1070,7 +1070,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1093,7 +1093,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1116,7 +1116,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1139,7 +1139,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1162,7 +1162,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1185,7 +1185,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1229,7 +1229,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1252,7 +1252,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1296,7 +1296,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1336,7 +1336,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1363,7 +1363,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1396,7 +1396,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1419,7 +1419,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1442,7 +1442,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1465,7 +1465,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1488,7 +1488,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1511,7 +1511,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1534,7 +1534,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1557,7 +1557,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1596,7 +1596,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1623,7 +1623,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1646,7 +1646,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1669,7 +1669,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1692,7 +1692,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1715,7 +1715,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1738,7 +1738,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1761,7 +1761,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1784,7 +1784,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1807,7 +1807,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1830,7 +1830,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1853,7 +1853,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1918,7 +1918,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1941,7 +1941,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -1981,13 +1981,13 @@ doc/plan/discovery/raw-socket-service-discovery-spec.ko.md:195:discovery = 특�
 exec
 /bin/bash -lc "rg -n \"zlink_gateway_new \\(|zlink_spot_new \\(|zlink_spot_node_new \\(\" core core/tests doc/plan/discovery | head -n 300" in /home/hep7/project/kairos/zlink succeeded in 0ms:
 core/tests/unittest/unittest_service_mode_policy.cpp:171:    void *gateway = zlink_gateway_new (ctx);
-core/tests/unittest/unittest_service_mode_policy.cpp:210:    void *node = zlink_spot_node_new (ctx);
-core/tests/unittest/unittest_service_mode_policy.cpp:329:    void *server = zlink_spot_node_new (ctx);
-core/tests/unittest/unittest_service_mode_policy.cpp:330:    void *client = zlink_spot_node_new (ctx);
+core/tests/unittest/unittest_service_mode_policy.cpp:210:    void *node = zlink_spot_node_new (ctx, NULL);
+core/tests/unittest/unittest_service_mode_policy.cpp:329:    void *server = zlink_spot_node_new (ctx, NULL);
+core/tests/unittest/unittest_service_mode_policy.cpp:330:    void *client = zlink_spot_node_new (ctx, NULL);
 core/tests/unittest/unittest_service_mode_policy.cpp:171:    void *gateway = zlink_gateway_new (ctx);
-core/tests/unittest/unittest_service_mode_policy.cpp:210:    void *node = zlink_spot_node_new (ctx);
-core/tests/unittest/unittest_service_mode_policy.cpp:329:    void *server = zlink_spot_node_new (ctx);
-core/tests/unittest/unittest_service_mode_policy.cpp:330:    void *client = zlink_spot_node_new (ctx);
+core/tests/unittest/unittest_service_mode_policy.cpp:210:    void *node = zlink_spot_node_new (ctx, NULL);
+core/tests/unittest/unittest_service_mode_policy.cpp:329:    void *server = zlink_spot_node_new (ctx, NULL);
+core/tests/unittest/unittest_service_mode_policy.cpp:330:    void *client = zlink_spot_node_new (ctx, NULL);
 doc/plan/discovery/logs/codex_execution_guide_loop_20260325_132806/04_codex.log:152:core/include/zlink.h:1084:ZLINK_EXPORT void *zlink_spot_new (void *ctx, const char *service_name);
 doc/plan/discovery/logs/codex_execution_guide_loop_20260325_132806/04_codex.log:165:core/src/api/service_spot_node_api.cpp:46:void *zlink_spot_new (void *ctx_, const char *service_name_)
 doc/plan/discovery/logs/codex_execution_guide_loop_20260325_132806/04_codex.log:1253:+    void *gateway = zlink_gateway_new (ctx, "svc-owned-gateway");
@@ -2039,7 +2039,7 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
 진행 메모:
 
 - 2026-03-25: `zlink_gateway_new(ctx)`, `zlink_spot_new(ctx)`,
-  `zlink_spot_node_new(ctx)` surface로 constructor 인자를 제거하는 전환을
+  `zlink_spot_node_new(ctx, NULL)` surface로 constructor 인자를 제거하는 전환을
   시작했다.
   `gateway`와 `spot_node`는 생성 시 무서비스 local-only mode로 시작하고,
   discovery attach가 service ownership source가 되도록
@@ -2054,7 +2054,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2083,7 +2083,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2128,7 +2128,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2160,7 +2160,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2205,7 +2205,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2250,7 +2250,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2318,7 +2318,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2368,7 +2368,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -2403,7 +2403,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2453,7 +2453,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -2504,7 +2504,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2554,7 +2554,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -2608,7 +2608,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2658,7 +2658,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -2734,7 +2734,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2784,7 +2784,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -2860,7 +2860,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -2910,7 +2910,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -3032,7 +3032,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -3082,7 +3082,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -3176,7 +3176,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -3226,7 +3226,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..9cee05149d8f102bf6f546b4d5c9d1d9
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -3306,7 +3306,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -3356,7 +3356,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..a649ac7a6883168683986b63de5fec9e
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -3439,7 +3439,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -3489,7 +3489,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..a649ac7a6883168683986b63de5fec9e
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -3588,7 +3588,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -3638,7 +3638,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..a649ac7a6883168683986b63de5fec9e
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -3736,7 +3736,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -3786,7 +3786,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..a649ac7a6883168683986b63de5fec9e
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -3913,7 +3913,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -3963,7 +3963,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..a649ac7a6883168683986b63de5fec9e
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬
@@ -4063,7 +4063,7 @@ index 318932ffdba45b45c41406a0f1d378bf7f606afb..d2959c57586e42d3468c21d4e1326f3e
  static void *create_node (void *ctx_, const char *service_name_)
  {
 +    LIBZLINK_UNUSED (service_name_);
-     void *node = zlink_spot_node_new (ctx_);
+     void *node = zlink_spot_node_new (ctx_, NULL);
      TEST_ASSERT_NOT_NULL (node);
      set_linger_zero (node);
 @@ -852,7 +853,7 @@
@@ -4113,7 +4113,7 @@ index b0c2160795e226d3b31544d963114ae51aef3914..a649ac7a6883168683986b63de5fec9e
  작업:
  
 @@ -366,7 +374,6 @@
- - `zlink_spot_node_new(ctx)`로 전환
+ - `zlink_spot_node_new(ctx, NULL)`로 전환
  - `gateway`, `spot_node`의 service selection이 constructor가 아니라 discovery attach에서 결정되도록 정렬
  - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 -- 사용자-facing callback / publish / subscribe facade는 `spot`으로만 설명되도록 정렬

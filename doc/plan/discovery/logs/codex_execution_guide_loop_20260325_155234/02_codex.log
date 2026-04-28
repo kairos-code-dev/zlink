@@ -229,7 +229,7 @@ core/include/zlink.h:998:} zlink_service_role_t;
 core/include/zlink.h:1019: * Discovery learns the Registry broadcast and topology-uplink endpoints from
 core/include/zlink.h:1049:ZLINK_EXPORT int zlink_gateway_attach_discovery (void *gateway,
 core/include/zlink.h:1115: * @brief Create a SPOT node runtime for topology, discovery, and lifecycle.
-core/include/zlink.h:1121:ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
+core/include/zlink.h:1121:ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, NULL);
 core/include/zlink.h:1124:ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
 core/include/zlink.h:1127:ZLINK_EXPORT int zlink_spot_node_bind (void *node, const char *endpoint);
 exec
@@ -550,7 +550,7 @@ void test_spot_node_direct_sub_option_inheritance_and_handler_conflict ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
     const int rcvhwm = 32;

@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
     <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
   </ItemGroup>
 </Project>

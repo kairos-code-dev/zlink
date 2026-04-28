@@ -183,7 +183,7 @@ static void on_room_message(const zlink_routing_id_t *source_node_rid,
     }
 }
 
-void *room_node = zlink_spot_node_new(ctx);
+void *room_node = zlink_spot_node_new(ctx, NULL);
 void *room_spot = zlink_spot_new(room_node);
 room_batch_t room_batch = {
   .spot = room_spot,
@@ -202,7 +202,7 @@ zlink_spot_handler(room_spot, on_room_message, &room_batch);
 ### 2. session spot 준비
 
 ```c
-void *session_node = zlink_spot_node_new(ctx);
+void *session_node = zlink_spot_node_new(ctx, NULL);
 void *session_spot = zlink_spot_new(session_node);
 
 zlink_set_routing_id(session_spot, "session:user-A:mobile",

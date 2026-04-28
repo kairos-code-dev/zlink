@@ -58,8 +58,9 @@
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddPacketSession<T>()` 하나 등록 | 허용 | packet session node를 만든다 |
+| `AddHeaderSession<T>()` 하나 등록 | 허용 | zlink stream header session node를 만든다 |
 | `AddRawSession<T>()` 하나 등록 | 허용 | raw session node를 만든다 |
-| 같은 node에 `AddPacketSession<T>()`와 `AddRawSession<T>()` 함께 등록 | 비허용 | startup validation 오류 |
+| 같은 node에 stream session을 둘 이상 등록 | 비허용 | startup validation 오류 |
 | 같은 node에 packet session 둘 이상 등록 | 비허용 | startup validation 오류 |
 | 같은 node에 raw session 둘 이상 등록 | 비허용 | startup validation 오류 |
 | bind endpoint 없음 | 비허용 | startup validation 오류 |
@@ -68,9 +69,10 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddZLinkMonitoring(...)` + 등록된 socket/discovery source 이름 | 허용 | 해당 source에 event handler를 붙인다 |
+| `AddZLinkMonitoring(...)` + 등록된 socket source 이름 | 허용 | 해당 source에 event handler를 붙인다 |
 | `AddZLinkMonitoring(...)` + 등록된 registry source 이름 | 허용 | snapshot diff polling을 시작한다 |
 | `AddZLinkMonitoring(...)` + 등록된 spot source 이름 | 허용 | snapshot diff polling을 시작한다 |
+| `AddZLinkMonitoring(...)` + discovery source 이름 | 비허용 | discovery 상태는 registry snapshot/query로 조회한다 |
 | 존재하지 않는 source 이름 등록 | 비허용 | startup validation 오류 |
 | polling source인데 interval이 0 이하 | 비허용 | startup validation 오류 |
 

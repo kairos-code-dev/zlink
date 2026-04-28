@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Configuration;
 
 internal sealed class ZLinkFrameworkRegistration
 {
@@ -84,9 +84,7 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public string? BindEndpoint { get; set; }
 
-    public Type? PacketSessionType { get; set; }
-
-    public Type? RawSessionType { get; set; }
+    public Type? HeaderSessionType { get; set; }
 }
 
 internal sealed class ZLinkSpotNodeRegistration

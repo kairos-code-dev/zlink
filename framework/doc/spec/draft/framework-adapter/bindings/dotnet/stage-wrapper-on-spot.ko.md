@@ -228,8 +228,9 @@ public interface IZLinkTimer : IAsyncDisposable
 
 public abstract class ZLinkSpot
 {
-    protected void AddActorJoin<THandler, TRequest, TReply>()
+    protected void AddActorJoin<THandler, TActor, TRequest, TReply>()
         where THandler : class
+        where TActor : IZLinkActor
         where TRequest : IZLinkRequest<TReply>;
 
     protected ValueTask<IZLinkTimer> AddTimer<THandler>(

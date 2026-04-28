@@ -122,7 +122,7 @@ bool Write(
 추가 구현 기준은 아래처럼 고정한다.
 
 - session callback은 같은 session 안에서는 직렬로 실행한다.
-  같은 연결에 대해 `OnPacketAsync(...)`, `OnRawAsync(...)`, lifecycle callback이
+  같은 연결에 대해 `OnDispatchAsync(...)`, `OnDispatchAsync(...)`, lifecycle callback이
   서로 병렬로 겹치지 않게 하는 편을 기본으로 본다.
 - send queue와 backpressure는 하부 socket 동작을 따르되, application이 보는 계약은
   `WithDontWait()` 또는 `Write(...)`의 `false` 반환으로만 읽히게 한다.

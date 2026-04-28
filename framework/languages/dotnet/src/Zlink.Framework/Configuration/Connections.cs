@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Configuration;
 
 public interface IChannelClientConnections
 {

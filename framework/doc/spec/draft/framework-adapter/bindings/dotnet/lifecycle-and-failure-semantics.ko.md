@@ -76,8 +76,9 @@ validation, reconnect, shutdown 순서가 문서로 닫혀 있어야 회귀 테�
 - discovery 기반 capability는 provider 집합 변화를 runtime이 따라간다.
 - manual capability는 framework가 자동 reconnect policy를 숨겨서 넣지 않는다.
   reconnect가 필요하면 explicit `Connect(...)` 또는 상위 retry policy가 맡는다.
-- socket/discovery는 하부 monitor event를 직접 감싼다.
+- socket은 하부 monitor event를 직접 감싼다.
 - registry/spot는 polling + snapshot diff 기반 synthetic event로 다시 만든다.
+- discovery 상태는 별도 event가 아니라 registry snapshot/query로 조회한다.
 
 ## 7. Stream Session Error 의미
 

@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Registry;
 
 public interface IZLinkRegistryOptions
 {

@@ -1001,25 +1001,43 @@ def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
     if not display_rows:
         return False
     emit(f"    {title}:")
-    _auto_hwm_emit_markdown_table(
-        emit,
-        "      ",
-        (
-            ("Transport", "transport"),
-            ("Size(B)", "msg_size"),
-            ("MsgUnit(B)", "effective_message_bytes"),
-            ("Socket", "socket"),
-            ("Type", "type"),
-            ("Role", "role"),
-            ("Managed", "managed"),
-            ("Active", "active"),
-            ("SNDHWM", "sndhwm"),
-            ("RCVHWM", "rcvhwm"),
-            ("SNDBUF", "effective_sndbuf"),
-            ("RCVBUF", "effective_rcvbuf"),
-        ),
-        display_rows,
-    )
+    grouped_rows = {}
+    group_order = []
+    for row in display_rows:
+        group_key = (
+            row.get("transport", ""),
+            row.get("msg_size", ""),
+            row.get("effective_message_bytes", ""),
+        )
+        if group_key not in grouped_rows:
+            grouped_rows[group_key] = []
+            group_order.append(group_key)
+        grouped_rows[group_key].append(row)
+
+    for index, group_key in enumerate(group_order):
+        transport, msg_size, msg_unit = group_key
+        emit(
+            "      "
+            f"- Transport={transport}, Size(B)={msg_size}, MsgUnit(B)={msg_unit}"
+        )
+        _auto_hwm_emit_markdown_table(
+            emit,
+            "      ",
+            (
+                ("Socket", "socket"),
+                ("Type", "type"),
+                ("Role", "role"),
+                ("Managed", "managed"),
+                ("Active", "active"),
+                ("SNDHWM", "sndhwm"),
+                ("RCVHWM", "rcvhwm"),
+                ("SNDBUF", "effective_sndbuf"),
+                ("RCVBUF", "effective_rcvbuf"),
+            ),
+            grouped_rows[group_key],
+        )
+        if index + 1 < len(group_order):
+            emit("      ")
     return True
 
 
@@ -2801,12 +2819,6 @@ def run_sizes_test(
             }
 
         def run_one_size_case(case_size):
-            callback = result_line_callback
-            if (
-                normalize_multi_pattern_name(pattern_name) == "SPOT"
-                and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
-            ):
-                callback = None
             return run_sizes_test_split(
                 names["server"],
                 names["client"],
@@ -2814,7 +2826,7 @@ def run_sizes_test(
                 transport,
                 [case_size],
                 pattern_name,
-                result_line_callback=callback,
+                result_line_callback=result_line_callback,
             )
 
         def run_one_size_case_with_env(case_size, extra_env):

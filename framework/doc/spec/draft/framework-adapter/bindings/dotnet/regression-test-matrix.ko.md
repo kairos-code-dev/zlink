@@ -79,8 +79,8 @@ use case validation은 설계 설명 범위를 보는 문서다. 반면 이 문�
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | 같은 node에 raw/packet 동시 등록 | `unit` | startup validation 예외 |
-| packet session node | `integration-single-process` | `OnPacketAsync(...)` 호출 |
-| raw session node | `integration-single-process` | `OnRawAsync(...)` 호출 |
+| packet session node | `integration-single-process` | `OnDispatchAsync(...)` 호출 |
+| raw session node | `integration-single-process` | `OnDispatchAsync(...)` 호출 |
 | `OnConnectedAsync(...)` | `integration-multi-process` | `ConnectionReady` 이후 1회 호출 |
 | `OnErrorAsync(...)` 범위 | `integration-multi-process` | transport error만 session callback으로 전달 |
 | peer metadata 표면 | `integration-single-process` | `SessionId`, `RoutingId`, `LocalAddr`, `RemoteAddr` 값 확인 |

@@ -1,4 +1,4 @@
-namespace Zlink.Framework;
+namespace Zlink.Framework.Configuration;
 
 public interface IZLinkDiscoveryBuilder
 {
@@ -75,11 +75,8 @@ public interface IZLinkStreamNodeBuilder
 {
     void Bind(string endpoint);
 
-    void AddPacketSession<TSession>()
-        where TSession : class, IZLinkPacketStreamSession;
-
-    void AddRawSession<TSession>()
-        where TSession : class, IZLinkRawStreamSession;
+    void AddHeaderSession<TSession>()
+        where TSession : class, IZLinkStreamHeaderSession;
 }
 
 public interface IZLinkChannelBuilder

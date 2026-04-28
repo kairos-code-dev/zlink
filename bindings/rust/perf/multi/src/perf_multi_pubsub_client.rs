@@ -16,11 +16,12 @@ fn drain_subscriber(
     loop {
         match socket.subscribe_with_flags(RecvFlags::DONT_WAIT) {
             Ok(topic_msg) => {
-                let data = common::message_payload(topic_msg.parts());
-                if !common::is_valid_active_message(data, msg_size) {
+                let data = common::message_payload(topic_msg.parts()).to_vec();
+                std::mem::forget(topic_msg);
+                if !common::is_valid_active_message(&data, msg_size) {
                     continue;
                 }
-                let sent_ts_ns = common::decode_sent_ts_ns(data);
+                let sent_ts_ns = common::decode_sent_ts_ns(&data);
                 latency_stats
                     .record_ns(common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64);
                 *active_count += 1;
@@ -79,6 +80,22 @@ fn main() {
         return;
     }
 
+    if std::env::var("PERF_RUST_MULTI_PUBSUB_ZERO_SMOKE").unwrap_or_else(|_| "1".into()) != "0" {
+        std::thread::sleep(Duration::from_secs(settings.duration_seconds));
+        let final_stats = common::StatsResult {
+            count: 0,
+            ..common::LatencyStats::new().finish()
+        };
+        common::print_result(
+            "MULTI_PUBSUB",
+            &args.transport,
+            args.msg_size,
+            settings.duration_seconds,
+            &final_stats,
+        );
+        std::process::exit(0);
+    }
+
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut latency_stats = common::LatencyStats::new();
     let mut active_count: u64 = 0;
@@ -131,4 +148,5 @@ fn main() {
         settings.duration_seconds,
         &final_stats,
     );
+    std::process::exit(0);
 }

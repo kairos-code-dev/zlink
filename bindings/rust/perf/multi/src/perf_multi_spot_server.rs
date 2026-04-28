@@ -118,13 +118,18 @@ fn main() {
             .expect("spot tls");
     }
     let spot = node.create_spot().expect("spot");
-    if let Err(err) = node.bind(&args.endpoint) {
+    let Some(bind_endpoint) = common::resolve_server_bind_endpoint("MULTI_SPOT", &args.transport)
+    else {
+        return;
+    };
+    if let Err(err) = node.bind(&bind_endpoint) {
         if common::handle_transport_setup_error("MULTI_SPOT", &args.transport, "bind", err) {
             return;
         }
         panic!("bind: {err}");
     }
-    common::print_ready(&args.endpoint);
+    let endpoint = node.last_endpoint().expect("endpoint");
+    common::print_ready(&endpoint);
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();
 

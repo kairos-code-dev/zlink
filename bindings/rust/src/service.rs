@@ -1769,14 +1769,32 @@ fn spot_received_from_raw(
     request_seq: u64,
     parts: Vec<Message>,
 ) -> Received {
-    let node_rid = unsafe { RoutingId::from_raw(*source_node_rid) };
-    let spot_rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
-    if request_seq == 0 {
-        let mut received = Received::new(Some(node_rid), parts);
-        received.spot_rid = Some(spot_rid);
-        received
+    let node_rid = if source_node_rid.is_null() {
+        RoutingId::from_raw(ffi::zlink_routing_id_t {
+            size: 0,
+            data: [0; 255],
+        })
     } else {
-        Received::with_spot_reply_context(handle, node_rid, spot_rid, request_seq, parts)
+        unsafe { RoutingId::from_raw(*source_node_rid) }
+    };
+    let spot_rid = if source_spot_rid.is_null() {
+        None
+    } else {
+        let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
+        if rid.is_empty() { None } else { Some(rid) }
+    };
+    if let Some(spot_rid) = spot_rid {
+        if request_seq == 0 {
+            let mut received = Received::new(Some(node_rid), parts);
+            received.spot_rid = Some(spot_rid);
+            received
+        } else {
+            Received::with_spot_reply_context(handle, node_rid, spot_rid, request_seq, parts)
+        }
+    } else if request_seq == 0 {
+        Received::new(Some(node_rid), parts)
+    } else {
+        Received::with_spot_router_reply_context(handle, node_rid, request_seq, parts)
     }
 }
 
@@ -1884,9 +1902,25 @@ unsafe extern "C" fn spot_handler_trampoline<
     userdata: *mut c_void,
 ) {
     let handler = unsafe { &*(userdata as *const F) };
+    let source = if source_rid.is_null() {
+        RoutingId::from_raw(ffi::zlink_routing_id_t {
+            size: 0,
+            data: [0; 255],
+        })
+    } else {
+        unsafe { RoutingId::from_raw(*source_rid) }
+    };
+    let spot = if spot_rid.is_null() {
+        RoutingId::from_raw(ffi::zlink_routing_id_t {
+            size: 0,
+            data: [0; 255],
+        })
+    } else {
+        unsafe { RoutingId::from_raw(*spot_rid) }
+    };
     handler(
-        unsafe { RoutingId::from_raw(*source_rid) },
-        unsafe { RoutingId::from_raw(*spot_rid) },
+        source,
+        spot,
         request_seq,
         take_parts(parts, part_count),
     );

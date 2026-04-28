@@ -3,6 +3,7 @@
 mod common;
 
 use std::sync::{
+    mpsc,
     Arc,
     atomic::{AtomicBool, Ordering},
 };
@@ -11,49 +12,81 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
-fn send_spot_request(
+const NODE_RID: &[u8] = b"perf-spot-reqrep-node";
+const SPOT_RID: &[u8] = b"perf-spot-reqrep-spot";
+const REQUESTER_RID: &[u8] = b"perf-spot-reqrep-requester";
+
+fn request_spot_reply(
     requester: &RouterSocket,
     node_rid: RoutingId,
     spot_rid: RoutingId,
     msg: Message,
-) {
+    timeout: Duration,
+) -> Result<Vec<Message>, String> {
+    let (tx, rx) = mpsc::channel();
     requester
-        .send_to_spot(&node_rid, &spot_rid, vec![msg])
-        .expect("spot request send");
+        .request_to_spot_callback(
+            node_rid,
+            spot_rid,
+            vec![msg],
+            move |result| {
+                let _ = tx.send(result);
+            },
+            SendFlags::NONE,
+            timeout,
+        )
+        .map_err(|err| format!("spot request submit: {err}"))?;
+    rx.recv_timeout(timeout + Duration::from_millis(100))
+        .map_err(|err| format!("spot request callback: {err}"))?
+        .map_err(|err| format!("spot request reply: {err}"))
 }
 
-fn recv_spot_reply(
+fn wait_for_probe_reply(
     requester: &RouterSocket,
-    poller: &Poller,
+    node_rid: RoutingId,
+    spot_rid: RoutingId,
+    msg: Message,
     msg_size: usize,
-    deadline: Instant,
-) -> Option<Vec<Message>> {
+) -> Vec<Message> {
+    let deadline = Instant::now() + common::resolve_single_ready_timeout();
+    let mut payload = Some(msg);
     loop {
-        let now = Instant::now();
-        if now >= deadline {
-            return None;
-        }
-
-        let timeout_ms = deadline
-            .saturating_duration_since(now)
-            .as_millis()
-            .clamp(1, i64::MAX as u128) as i64;
-        match poller.wait(timeout_ms) {
-            Ok(Some(event)) if event.is_readable() => loop {
-                match requester.recv_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(received) => {
-                        let data = common::message_payload(received.parts());
-                        if common::is_valid_message(data, msg_size) {
-                            return Some(received.into_parts());
-                        }
-                    }
-                    Err(err) if err.code() == RecvResult::NoData => break,
-                    Err(err) => panic!("spot reqrep requester recv failed: {err}"),
+        let Some(current_msg) = payload.take() else {
+            panic!("probe payload missing");
+        };
+        let reply = match request_spot_reply(
+            requester,
+            node_rid.clone(),
+            spot_rid.clone(),
+            current_msg,
+            Duration::from_millis(500),
+        ) {
+            Ok(reply) => reply,
+            Err(err) => {
+                if Instant::now() >= deadline {
+                    panic!("{err}");
                 }
-            },
-            Ok(Some(_)) | Ok(None) => {}
-            Err(err) => panic!("spot reqrep requester poller wait failed: {err}"),
+                let mut next_probe = vec![0u8; msg_size.max(common::HEADER_SIZE)];
+                common::encode_header(&mut next_probe, common::PHASE_WARMUP, msg_size as u32, 0);
+                payload = Some(Message::copy_from(&next_probe).expect("probe retry"));
+                thread::sleep(Duration::from_millis(1));
+                continue;
+            }
+        };
+        let data = reply
+            .first()
+            .map(|message| message.as_bytes())
+            .unwrap_or(&[]);
+        if common::is_valid_message(data, msg_size) {
+            return reply;
         }
+        if Instant::now() >= deadline {
+            panic!("spot reqrep probe-ready timeout");
+        }
+        let mut next_probe = vec![0u8; msg_size.max(common::HEADER_SIZE)];
+        common::encode_header(&mut next_probe, common::PHASE_WARMUP, msg_size as u32, 0);
+        payload = Some(Message::copy_from(&next_probe).expect("probe retry"));
+        thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -70,6 +103,12 @@ fn main() {
     let ctx = common::perf_context();
     let requester = ctx.router_socket().expect("requester");
     let replier_node = SpotNode::new(&ctx).expect("replier node");
+    requester
+        .set_routing_id(&RoutingId::from_bytes(REQUESTER_RID))
+        .expect("requester routing id");
+    replier_node
+        .set_routing_id(&RoutingId::from_bytes(NODE_RID))
+        .expect("replier node routing id");
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         let pem = common::load_tls_pem(&tls);
@@ -88,6 +127,9 @@ fn main() {
         .expect("requester rcvhwm");
 
     let mut replier = replier_node.create_spot().expect("replier spot");
+    replier
+        .set_routing_id(&RoutingId::from_bytes(SPOT_RID))
+        .expect("replier spot routing id");
     if let Err(err) = replier_node.bind(&bind_endpoint) {
         if common::handle_transport_setup_error("SPOT_REQREP", &config.transport, "bind", err) {
             return;
@@ -101,8 +143,7 @@ fn main() {
         }
         panic!("connect: {err}");
     }
-    let poller = Poller::new().expect("poller");
-    poller.add_socket(&requester, POLLIN).expect("requester poller add");
+    thread::sleep(common::resolve_single_spot_ready_settle());
     let replier_node_rid = replier_node.routing_id().expect("replier node rid");
     let replier_spot_rid = replier.routing_id().expect("replier spot rid");
 
@@ -135,22 +176,15 @@ fn main() {
         })
         .expect("on dispatch event");
 
-    let probe_timeout = common::resolve_single_ready_timeout();
     let mut probe = vec![0u8; config.size.max(common::HEADER_SIZE)];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
-    send_spot_request(
+    let ready_reply = wait_for_probe_reply(
         &requester,
         replier_node_rid.clone(),
         replier_spot_rid.clone(),
         Message::copy_from(&probe).expect("probe"),
-    );
-    let ready_reply = recv_spot_reply(
-        &requester,
-        &poller,
         config.size,
-        Instant::now() + probe_timeout,
-    )
-    .expect("ready probe");
+    );
     let ready_data = ready_reply
         .first()
         .map(|message| message.as_bytes())
@@ -167,20 +201,14 @@ fn main() {
     let mut payload = vec![0u8; config.size.max(common::HEADER_SIZE)];
     while Instant::now() < active_end {
         common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
-        send_spot_request(
+        let reply = request_spot_reply(
             &requester,
             replier_node_rid.clone(),
             replier_spot_rid.clone(),
             Message::copy_from(&payload).expect("request"),
-        );
-        let Some(reply) = recv_spot_reply(
-            &requester,
-            &poller,
-            config.size,
-            Instant::now() + probe_timeout,
-        ) else {
-            panic!("spot reqrep active request timed out after {:?}", probe_timeout);
-        };
+            common::resolve_single_ready_timeout(),
+        )
+        .expect("spot request reply");
         let data = reply
             .first()
             .map(|message| message.as_bytes())

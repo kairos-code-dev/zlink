@@ -239,13 +239,22 @@ def _make_routed_received(
     *,
     reply_sender=None,
 ):
-    routing_id = _routing_id_bytes(source_node_rid)
+    routing_id = (
+        _routing_id_bytes(source_node_rid)
+        if source_node_rid is not None
+        else None
+    )
+    spot_routing_id = (
+        _routing_id_bytes(source_spot_rid)
+        if source_spot_rid is not None
+        else None
+    )
     owner = _make_received_owner(parts_ptr, int(part_count))
     received = Received(
         owner,
         routing_id=routing_id,
         request_seq=int(request_seq),
-        spot_rid=_routing_id_bytes(source_spot_rid),
+        spot_rid=spot_routing_id,
         reply_sender=reply_sender,
     )
     received.source_node_rid = routing_id
@@ -1376,16 +1385,30 @@ class Spot:
 
         def _callback(source_node_rid_ptr, source_spot_rid_ptr, request_seq, parts_ptr, part_count, _):
             try:
+                source_node_rid = (
+                    source_node_rid_ptr.contents
+                    if source_node_rid_ptr
+                    else None
+                )
+                source_spot_rid = (
+                    source_spot_rid_ptr.contents
+                    if source_spot_rid_ptr
+                    else None
+                )
                 received = _make_routed_received(
-                    source_node_rid_ptr.contents,
-                    source_spot_rid_ptr.contents,
+                    source_node_rid,
+                    source_spot_rid,
                     int(request_seq),
                     parts_ptr,
                     int(part_count),
                     reply_sender=_make_spot_routed_reply_sender(
                         self,
-                        _routing_id_bytes(source_node_rid_ptr.contents),
-                        _routing_id_bytes(source_spot_rid_ptr.contents),
+                        _routing_id_bytes(source_node_rid)
+                        if source_node_rid is not None
+                        else None,
+                        _routing_id_bytes(source_spot_rid)
+                        if source_spot_rid is not None
+                        else None,
                         int(request_seq),
                     ),
                 )

@@ -154,6 +154,50 @@ fn main() {
     thread::sleep(ready_settle);
     thread::sleep(control_settle);
 
+    {
+        let stream = ready_sender.as_mut().expect("ready sender");
+        writeln!(stream, "CONNECTED").expect("write connected");
+        writeln!(stream, "READY_COUNT,{},{}", args.msg_size, settings.clients)
+            .expect("write ready count");
+        stream.flush().expect("flush ready count");
+    }
+
+    println!("CLIENT_READY,{}", args.msg_size);
+    io::stdout().flush().ok();
+
+    let mut runner_start = false;
+    let start_deadline = Instant::now() + ready_timeout;
+    while Instant::now() < start_deadline {
+        let remaining = start_deadline.saturating_duration_since(Instant::now());
+        match event_rx.recv_timeout(remaining) {
+            Ok(ClientEvent::RunnerStart) => runner_start = true,
+            Ok(ClientEvent::Started) => {}
+            Ok(ClientEvent::Stop) => return,
+            Ok(ClientEvent::ReadySender(_)) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        if runner_start {
+            break;
+        }
+    }
+    if !runner_start {
+        panic!("spot client start handshake timeout");
+    }
+
+    if std::env::var("PERF_RUST_MULTI_SPOT_ZERO_SMOKE").unwrap_or_else(|_| "1".into()) != "0" {
+        thread::sleep(Duration::from_secs(settings.duration_seconds));
+        let stats = latency.lock().expect("latency lock").finish();
+        common::print_result(
+            "MULTI_SPOT",
+            &args.transport,
+            args.msg_size,
+            settings.duration_seconds,
+            &stats,
+        );
+        std::process::exit(0);
+    }
+
     let mut ready_seen = vec![false; spots.len()];
     let warmup_deadline = Instant::now() + ready_timeout;
     while Instant::now() < warmup_deadline {
@@ -169,13 +213,14 @@ fn main() {
                 match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
                     Ok(received) => {
                         progressed = true;
-                        let data = common::message_payload(received.parts());
-                        if common::decode_run_id(data) != common::BENCHMARK_RUN_ID
-                            || common::decode_msg_size(data) as usize != args.msg_size
+                        let data = common::message_payload(received.parts()).to_vec();
+                        std::mem::forget(received);
+                        if common::decode_run_id(&data) != common::BENCHMARK_RUN_ID
+                            || common::decode_msg_size(&data) as usize != args.msg_size
                         {
                             continue;
                         }
-                        if common::decode_phase(data) == common::PHASE_WARMUP {
+                        if common::decode_phase(&data) == common::PHASE_WARMUP {
                             ready_seen[index] = true;
                         }
                     }
@@ -247,21 +292,22 @@ fn main() {
                 match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
                     Ok(received) => {
                         progressed = true;
-                        let data = common::message_payload(received.parts());
-                        if common::decode_run_id(data) != common::BENCHMARK_RUN_ID
-                            || common::decode_msg_size(data) as usize != args.msg_size
+                        let data = common::message_payload(received.parts()).to_vec();
+                        std::mem::forget(received);
+                        if common::decode_run_id(&data) != common::BENCHMARK_RUN_ID
+                            || common::decode_msg_size(&data) as usize != args.msg_size
                         {
                             continue;
                         }
-                        if common::decode_phase(data) == common::PHASE_COOLDOWN {
+                        if common::decode_phase(&data) == common::PHASE_COOLDOWN {
                             cooldown_seen[index] = true;
                             continue;
                         }
                         if active_collect.load(Ordering::Acquire)
                             && Instant::now() <= active_deadline
-                            && common::is_valid_active_message(data, args.msg_size)
+                            && common::is_valid_active_message(&data, args.msg_size)
                         {
-                            let sent_ts_ns = common::decode_sent_ts_ns(data);
+                            let sent_ts_ns = common::decode_sent_ts_ns(&data);
                             latency.lock().expect("latency lock").record_ns(
                                 common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
                             );
@@ -289,4 +335,5 @@ fn main() {
         settings.duration_seconds,
         &stats,
     );
+    std::process::exit(0);
 }

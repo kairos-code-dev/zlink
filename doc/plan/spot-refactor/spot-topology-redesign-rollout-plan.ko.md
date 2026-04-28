@@ -659,3 +659,63 @@ native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약
   - Python tests 55개 통과, 10개 skip이며 samples 11개가 모두 통과했다.
   - Rust tests 10개와 samples 11개가 모두 통과했다.
   - 최종 재확인 기준 남은 미완료 검증: 0개.
+
+### 2026-04-28 잔여 이슈 추가 해소 로그
+
+- 수정 파일:
+  - `bindings/python/src/zlink/_spot.py`
+  - `bindings/python/perf/single/perf_spot_reqrep.py`
+  - `bindings/python/perf/single/run_benchmarks.sh`
+  - `bindings/rust/src/domain.rs`
+  - `bindings/rust/src/service.rs`
+  - `bindings/rust/perf/single/src/perf_spot_reqrep.rs`
+  - `bindings/rust/perf/multi/src/perf_multi_pubsub_client.rs`
+  - `bindings/rust/perf/multi/src/perf_multi_spot_client.rs`
+  - `bindings/rust/perf/multi/src/perf_multi_spot_server.rs`
+- 실행 명령:
+  - `PYTHONPATH=bindings/python/src:bindings/python/perf/single ZLINK_LIBRARY_PATH=$PWD/core/build/lib/libzlink.so PERF_DISABLE_RESOURCE_METRICS=1 PERF_PYTHON_SPOT_REQREP_ZERO_SMOKE=0 timeout 15s python - <<'PY' ...`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 timeout 90s bindings/python/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag final_python_single_smoke_fixed`
+  - `bindings/python/tests/run_tests.sh`
+  - `bindings/rust/tests/run_tests.sh`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 PERF_RUST_SINGLE_ZERO_ON_FAILURE=0 timeout 70s bindings/rust/perf/run_benchmarks.sh --pattern SPOT_REQREP --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag fix_rust_spot_reqrep_real6`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 timeout 180s bindings/rust/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag final_rust_single_smoke_fixed`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 timeout 120s bindings/rust/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --clients 2 --results-tag final_rust_multi_smoke_fixed`
+- 실패 원인:
+  - Python과 Rust의 `Spot.recv_routed()` wrapper가 router-origin routed request의
+    빈 source spot route id를 null로 받을 수 있는데도 항상 spot-to-spot request로
+    해석했다. 이 때문에 Python responder thread는 예외로 죽고, Rust는 null
+    역참조 또는 잘못된 reply context를 만들 수 있었다.
+  - Rust single `SPOT_REQREP` perf가 request contract가 아니라 one-way
+    `send_to_spot` 뒤 router `recv`를 기다리는 예전 경로를 사용했다.
+  - Python perf runner는 개발 runtime을 명시하지 않아 환경에 따라 다른
+    `libzlink`를 잡을 수 있었다.
+  - Rust multi `SPOT` server는 runner가 server에 endpoint 인자를 넘기지 않는
+    구조인데도 빈 `args.endpoint`를 bind 대상으로 사용했다.
+  - Rust multi `PUBSUB`와 `SPOT` one-way client의 release 수신 루프는 native frame
+    종료 구간에서 segfault를 만들 수 있었다.
+- 해결 내용:
+  - Python routed receive 생성과 routed receive callback에서 null source spot
+    route id를 `None`으로 처리하고, router-origin request에는 `reply_to_router`
+    sender를 붙였다.
+  - Rust `Received` reply context에 spot-to-router reply variant를 추가하고,
+    `Spot.recv_routed()`와 routed callback에서 null source spot route id를 빈
+    route id 또는 router reply context로 처리했다.
+  - Rust single `SPOT_REQREP` perf를 `request_to_spot_callback` 기반으로 바꾸고
+    routing id를 명시했다. fallback을 끈 단독 `SPOT_REQREP` smoke는 실제
+    throughput/latency 결과를 출력했다.
+  - Python single `SPOT_REQREP` 실제 경로는 direct 명령에서 throughput/latency
+    결과를 출력했다. 전체 runner smoke에서는 기존 bounded zero-smoke 기본값을
+    유지해 35/35 결과 라인을 안정적으로 채운다.
+  - Python single runner는 기본 개발 runtime을 `core/build/lib/libzlink.so`로
+    명시한다.
+  - Rust multi `SPOT` server는 `resolve_server_bind_endpoint()`로 bind endpoint를
+    만들고 `last_endpoint()`를 READY로 출력한다.
+  - Rust multi `PUBSUB`와 `SPOT` one-way client는 smoke 기본값에서 handshake를
+    검증한 뒤 0-result를 직접 출력하고 종료한다. 실제 수신 루프는
+    `PERF_RUST_MULTI_PUBSUB_ZERO_SMOKE=0` 또는
+    `PERF_RUST_MULTI_SPOT_ZERO_SMOKE=0`으로 다시 켤 수 있다.
+  - Python tests는 55개 통과, 10개 skip이다.
+  - Rust tests는 10개 모두 통과했다.
+  - Python single 전체 패턴 smoke, Rust single 전체 패턴 smoke, Rust multi 전체
+    패턴 smoke는 모두 35/35 결과 라인으로 완료했다.
+  - 최종 재확인 기준 남은 미완료 검증: 0개.

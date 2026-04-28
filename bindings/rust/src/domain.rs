@@ -35,6 +35,11 @@ enum ReplyContext {
         spot_rid: RoutingId,
         request_seq: u64,
     },
+    SpotRouter {
+        handle: *mut c_void,
+        peer_rid: RoutingId,
+        request_seq: u64,
+    },
 }
 
 impl ReplyContext {
@@ -65,6 +70,19 @@ impl ReplyContext {
                     *handle,
                     node_rid.as_raw(),
                     spot_rid.as_raw(),
+                    *request_seq,
+                    part,
+                    part_flag,
+                )
+            })?,
+            Self::SpotRouter {
+                handle,
+                peer_rid,
+                request_seq,
+            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+                ffi::zlink_spot_reply_router_part(
+                    *handle,
+                    peer_rid.as_raw(),
                     *request_seq,
                     part,
                     part_flag,
@@ -129,6 +147,25 @@ impl Received {
                 handle,
                 node_rid,
                 spot_rid,
+                request_seq,
+            }),
+        }
+    }
+
+    pub(crate) fn with_spot_router_reply_context(
+        handle: *mut c_void,
+        peer_rid: RoutingId,
+        request_seq: u64,
+        parts: Vec<Message>,
+    ) -> Self {
+        Self {
+            routing_id: Some(peer_rid.clone()),
+            spot_rid: None,
+            request_seq: Some(request_seq),
+            parts,
+            reply_context: Some(ReplyContext::SpotRouter {
+                handle,
+                peer_rid,
                 request_seq,
             }),
         }

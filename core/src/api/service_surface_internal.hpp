@@ -66,11 +66,10 @@ extern "C" void zlink_spot_notify_dispatch_info (
   zlink_spot_dispatch_event_t event_,
   zlink_spot_dispatch_subject_kind_t subject_kind_,
   void *subject_);
-extern "C" int zlink_spot_install_peer_route_dispatch (void *node_,
+extern "C" int zlink_spot_install_external_router_dispatch (void *node_,
                                                         void *socket_);
-extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_);
-extern "C" int zlink_spot_process_peer_route_ingress (void *node_, void *socket_);
-extern "C" int zlink_spot_process_node_router (void *node_, void *socket_);
+extern "C" int zlink_spot_process_internal_router (void *node_, void *socket_);
+extern "C" int zlink_spot_process_external_router (void *node_, void *socket_);
 
 int zlink_spot_subject_set_common_option_internal (void *handle_,
                                                    zlink_option_t option_,
@@ -192,7 +191,7 @@ int zlink_service_spot_set_routing_id_internal (void *handle_,
                                                 size_t size_);
 int zlink_service_spot_get_routing_id_internal (void *handle_,
                                                 zlink_routing_id_t *out_);
-int zlink_service_spot_node_refresh_routed_mesh_subscription (void *node_handle_);
+int zlink_service_spot_node_refresh_external_router_identity (void *node_handle_);
 int zlink_service_spot_set_tls_server_internal (
   void *handle_,
   const char *cert_,

@@ -295,12 +295,12 @@ flowchart TB
     end
 
     subgraph InprocSockets["Inproc Socket Network"]
-        pub_ingress["pub_ingress (SUB)"]
-        sub_fanout["sub_fanout (XPUB)"]
+        ingress-sub["ingress-sub (SUB)"]
+        local-pub["local-pub (XPUB)"]
         mesh_pub["mesh_pub (PUB)"]
         mesh_xsub["mesh_xsub (XSUB)"]
-        route_ingress["route_ingress (ROUTER)"]
-        node_router["node_router (ROUTER)"]
+        internal-router["internal-router (ROUTER)"]
+        internal-router["internal-router (ROUTER)"]
         ctrl_pair["ctrl (PAIR)"]
     end
 
@@ -313,12 +313,12 @@ flowchart TB
     spot_runtime --> dp_loop
     dp_loop --> dp_forwarding
     dp_loop --> dp_protocol
-    dp_loop --> pub_ingress
-    dp_loop --> sub_fanout
+    dp_loop --> ingress-sub
+    dp_loop --> local-pub
     dp_loop --> mesh_pub
     dp_loop --> mesh_xsub
-    dp_loop --> route_ingress
-    dp_loop --> node_router
+    dp_loop --> internal-router
+    dp_loop --> internal-router
     dp_loop --> ctrl_pair
 ```
 
@@ -330,8 +330,8 @@ flowchart TB
 |----------|----------|------|------|
 | `.pub-in` | SUB | local pub → data plane | 토픽 publish 수신 |
 | `.sub-out` | XPUB | data plane → local sub | 토픽 subscribe 배포 |
-| `.route-in` | ROUTER | local sender → data plane | Routed 메시지 수신 |
-| `.node-router` | ROUTER | data plane → local receiver | Routed 메시지 전달 |
+| `.internal-router` | ROUTER | local sender → data plane | Routed 메시지 수신 |
+| `.internal-router` | ROUTER | data plane → local receiver | Routed 메시지 전달 |
 | `.ctrl` | PAIR | control plane ↔ data plane | 내부 명령 |
 
 ### 6.3 토픽 메시지 내부 흐름
@@ -339,10 +339,10 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant Pub as spot_pub_t
-    participant Ingress as pub_ingress (SUB)
+    participant Ingress as ingress-sub (SUB)
     participant DP as Data Plane Loop
     participant MeshPub as mesh_pub (PUB)
-    participant Fanout as sub_fanout (XPUB)
+    participant Fanout as local-pub (XPUB)
     participant Sub as spot_sub_t
 
     Pub->>Ingress: publish(topic, parts) via inproc
@@ -358,9 +358,9 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Sender as spot_send_router()
-    participant RouteIn as route_ingress (ROUTER)
+    participant RouteIn as internal-router (ROUTER)
     participant DP as Data Plane Loop
-    participant NodeRouter as node_router (ROUTER)
+    participant NodeRouter as internal-router (ROUTER)
     participant Receiver as spot_recv / spot_handler
 
     Sender->>RouteIn: SPOT routed envelope (8 parts) 전송

@@ -430,6 +430,18 @@ C is intentionally different from higher-level bindings here.
 This difference is acceptable because the policy goal is shared meaning, not
 identical surface syntax across languages.
 
+## SPOT Option and Status Alignment
+
+The C binding follows `core/include/zlink.h` and `core/include/zlink_enum.h`
+directly. SPOT node HWM options use `ZLINK_SPOT_NODE_OPT_PUB_HWM` and
+`ZLINK_SPOT_NODE_OPT_SUB_HWM`; the old topic send/recv option names are not
+part of the current contract.
+
+`zlink_spot_node_status_t` includes
+`disconnected_sub_target_count` and
+`disconnected_routed_target_count` for delivery targets disconnected by queue
+hard limits or equivalent delivery guards.
+
 ## Peer Disconnect by Routing ID
 
 C exposes `zlink_disconnect_rid(void *s, const zlink_routing_id_t *peer_rid)`

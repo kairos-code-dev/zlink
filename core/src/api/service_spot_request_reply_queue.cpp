@@ -11,7 +11,9 @@
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 namespace
 {
@@ -97,6 +99,76 @@ int copy_routing_id_frame_local (const zlink_msg_t &frame_,
     }
     return 0;
 }
+
+size_t routed_queue_hard_limit_local (zlink::spot_runtime_t *runtime_)
+{
+    if (!runtime_)
+        return ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT;
+
+    const zlink::spot_node_hwm_config_t config = runtime_->hwm_config_snapshot ();
+    if (config.routed_queue_hard_limit_enabled)
+        return static_cast<size_t> (config.routed_queue_hard_limit);
+    return ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT;
+}
+
+void close_routed_recv_plane_local (
+  const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> &state_,
+  zlink::spot_node_t *node_,
+  bool mark_disconnected_)
+{
+    zlink::internal_pair_queue::queue_t signal;
+    zlink::spot_reqrep_internal::close_spot_routed_recv_state (state_, &signal);
+    if (state_ && mark_disconnected_) {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        state_->recv.routed_recv_queue.disconnected = true;
+    }
+    if (signal.rx)
+        zlink::spot_node_access_t::untrack_owned_socket (node_, signal.rx);
+    if (signal.tx)
+        zlink::spot_node_access_t::untrack_owned_socket (node_, signal.tx);
+    zlink::internal_pair_queue::close (&signal);
+}
+
+bool reserve_routed_queue_slot_local (
+  const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> &state_,
+  size_t hard_limit_,
+  zlink::socket_base_t **queue_tx_out_)
+{
+    if (!state_ || !queue_tx_out_) {
+        errno = EFAULT;
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->recv.routed_recv_queue.disconnected) {
+        errno = ENOTCONN;
+        return false;
+    }
+    if (!state_->recv.routed_recv_queue.signal.tx
+        || !state_->recv.routed_recv_socket) {
+        errno = ETERM;
+        return false;
+    }
+    if (state_->recv.routed_recv_queue.pending_count >= hard_limit_) {
+        errno = EAGAIN;
+        return false;
+    }
+
+    ++state_->recv.routed_recv_queue.pending_count;
+    *queue_tx_out_ = state_->recv.routed_recv_queue.signal.tx;
+    return true;
+}
+
+void release_routed_queue_slot_local (
+  const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->recv.routed_recv_queue.pending_count > 0)
+        --state_->recv.routed_recv_queue.pending_count;
+}
 }
 
 void zlink::spot_reqrep_internal::close_spot_dispatch_parts (
@@ -135,20 +207,14 @@ int zlink::spot_reqrep_internal::queue_spot_message (
         return -1;
     }
 
+    spot_handle_t *spot = as_spot_handle (state_->owner);
+    const size_t hard_limit = routed_queue_hard_limit_local (runtime);
     zlink::socket_base_t *queue_tx = NULL;
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (!state->recv.routed_recv_queue.signal.tx
-            || !state->recv.routed_recv_socket) {
-            errno = ETERM;
-            zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
-            return -1;
-        }
-        queue_tx = state->recv.routed_recv_queue.signal.tx;
-    }
-
-    if (!queue_tx) {
-        errno = ETERM;
+    if (!reserve_routed_queue_slot_local (state, hard_limit, &queue_tx)) {
+        const int saved_errno = errno;
+        if (saved_errno == EAGAIN)
+            close_routed_recv_plane_local (state, spot ? spot->node : NULL, true);
+        errno = saved_errno;
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
         return -1;
     }
@@ -200,8 +266,15 @@ int zlink::spot_reqrep_internal::queue_spot_message (
     }
 
     if (zlink::logical_multipart_send (queue_tx, serialized_parts.data (),
-                                       serialized_parts.size (), 0)
+                                       serialized_parts.size (), ZLINK_DONTWAIT)
         != 0) {
+        const int saved_errno = errno;
+        close_routed_serialized_parts_local (serialized_parts.data (),
+                                             serialized_parts.size ());
+        release_routed_queue_slot_local (state);
+        if (saved_errno == EAGAIN)
+            close_routed_recv_plane_local (state, spot ? spot->node : NULL, true);
+        errno = saved_errno;
         return -1;
     }
 
@@ -377,6 +450,8 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
 
     *request_seq_out_ = zlink::request_reply::decode_u64_be (
       static_cast<const unsigned char *> (zlink_msg_data (&request_seq_msg)));
+    release_routed_queue_slot_local (
+      zlink::spot_reqrep_internal::try_find_spot_state (state_->owner));
     zlink_msg_close (&source_rid_msg);
     zlink_msg_close (&spot_rid_msg);
     zlink_msg_close (&request_seq_msg);

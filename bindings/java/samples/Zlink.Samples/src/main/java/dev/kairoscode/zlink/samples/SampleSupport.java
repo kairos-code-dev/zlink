@@ -60,7 +60,12 @@ final class SampleSupport {
             if (condition.check()) {
                 return;
             }
-            Thread.onSpinWait();
+            try {
+                TimeUnit.MILLISECONDS.sleep(10);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(label + " interrupted", ex);
+            }
         }
         throw new IllegalStateException(label + " timed out");
     }

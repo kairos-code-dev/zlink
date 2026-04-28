@@ -225,7 +225,9 @@ queued_routed_message_t &queued_routed_message_t::operator= (
     return *this;
 }
 
-routed_message_queue_t::routed_message_queue_t ()
+routed_message_queue_t::routed_message_queue_t () :
+    pending_count (0),
+    disconnected (false)
 {
 }
 

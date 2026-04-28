@@ -268,6 +268,8 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("connected_peer_count"),
                     ValueLayout.JAVA_INT.withName("subject_count"),
                     ValueLayout.JAVA_INT.withName("ready_subject_count"),
+                    ValueLayout.JAVA_INT.withName("disconnected_sub_target_count"),
+                    ValueLayout.JAVA_INT.withName("disconnected_routed_target_count"),
                     ValueLayout.JAVA_INT.withName("last_error"),
                     MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));

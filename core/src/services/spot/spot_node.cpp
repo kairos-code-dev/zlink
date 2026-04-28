@@ -14,7 +14,7 @@
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/err.hpp"
-#include "utils/random.hpp"
+#include "utils/routing_id.hpp"
 #include "utils/sleep.hpp"
 
 #include <string.h>
@@ -60,10 +60,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_, zlink_spot_node_mode_t mode_) :
     _send_ready_handler (NULL),
     _send_ready_handler_userdata (NULL)
 {
-    memset (&_node_routing_id, 0, sizeof (_node_routing_id));
-    const uint32_t node_rid_value = generate_random ();
-    _node_routing_id.size = sizeof (node_rid_value);
-    memcpy (_node_routing_id.data, &node_rid_value, sizeof (node_rid_value));
+    generate_random_uuid_routing_id (&_node_routing_id);
 
     _lifecycle.transition_to (service_state_starting);
 

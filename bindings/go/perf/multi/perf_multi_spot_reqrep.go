@@ -14,6 +14,11 @@ type multiSpotReqRepClient struct {
 	socket *zlink.RouterSocket
 }
 
+var (
+	multiSpotReqRepNodeRID = zlink.NewRoutingID([]byte("perf-multi-spot-reqrep-node"))
+	multiSpotReqRepSpotRID = zlink.NewRoutingID([]byte("perf-multi-spot-reqrep-spot"))
+)
+
 func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 	replierCtx, err := zlink.NewContext()
 	perfcommon.Must(err)
@@ -29,13 +34,10 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(perfcommon.ConfigureTLSServer(replierNode, cfg.transport))
 	perfcommon.ApplyMultiHWM(replier, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(replier, cfg.transport)
+	perfcommon.Must(replierNode.SetRoutingID(multiSpotReqRepNodeRID))
+	perfcommon.Must(replier.SetRoutingID(multiSpotReqRepSpotRID))
 	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep")
 	perfcommon.Must(replierNode.Bind(endpoint))
-
-	replierNodeRID, err := replierNode.RoutingID()
-	perfcommon.Must(err)
-	replierSpotRID, err := replier.RoutingID()
-	perfcommon.Must(err)
 
 	perfcommon.Must(replier.OnRoutedReceive(func(sourceRID, spotRID zlink.RoutingID, requestSeq uint64, parts []*zlink.Message) {
 		defer func() {
@@ -49,6 +51,10 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 		reply, err := zlink.NewMessage(parts[0].Data())
 		perfcommon.Must(err)
 		defer reply.Close()
+		if spotRID.Size() == 0 {
+			perfcommon.Must(replier.ReplyToRouter(sourceRID, requestSeq, zlink.SendFlagsNone, reply))
+			return
+		}
 		perfcommon.Must(replier.ReplyToSpot(sourceRID, spotRID, requestSeq, zlink.SendFlagsNone, reply))
 	}))
 
@@ -61,8 +67,10 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(perfcommon.ConfigureTLSClient(requester, cfg.transport))
 		perfcommon.ApplyMultiHWM(requester, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(requester, cfg.transport)
+		requesterRID := zlink.NewRoutingID([]byte(fmt.Sprintf("perf-multi-spot-reqrep-requester-%06d", i)))
+		perfcommon.Must(requester.SetRoutingID(requesterRID))
 		perfcommon.Must(requester.Connect(endpoint))
-		waitMultiSpotReqRepReady(requester, replierNodeRID, replierSpotRID, cfg.msgSize)
+		waitMultiSpotReqRepReady(requester, multiSpotReqRepNodeRID, multiSpotReqRepSpotRID, cfg.msgSize)
 		clients = append(clients, multiSpotReqRepClient{
 			ctx:    clientCtx,
 			socket: requester,
@@ -89,8 +97,8 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 				perfcommon.StampPayload(payload)
 				replyDone := make(chan error, 1)
 				ok, requestErr := socket.TryRequestToSpot(
-					replierNodeRID,
-					replierSpotRID,
+					multiSpotReqRepNodeRID,
+					multiSpotReqRepSpotRID,
 					func(result zlink.RequestResult, parts []*zlink.Message) {
 						defer func() {
 							for _, part := range parts {

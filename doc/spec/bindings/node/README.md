@@ -675,6 +675,11 @@ appears in the public surface.
 class RoutingId {
     /** @throws {ConfigError} */
     static fromBytes(bytes: Buffer | Uint8Array): RoutingId;
+    /** Parses the hex string returned by `toHex()` / `toString()`.
+     * The hex input must be at most 510 chars and decode to 1-255 bytes.
+     * @throws {ConfigError}
+     */
+    static fromString(value: string): RoutingId;
     toBytes(): Buffer;
     readonly size: number;             // byte length (1-255)
     equals(other: RoutingId): boolean;
@@ -687,8 +692,10 @@ class RoutingId {
 
 Rules:
 - `RoutingId` is binary-safe; there is no `RoutingId(string)` constructor.
-  Use `fromBytes` for construction and `toHex()` / `toString()` for
-  display.
+  Use `fromBytes` for raw bytes. `fromString(value)` only parses the
+  even-length hex display form returned by `toHex()` / `toString()`.
+  Hex strings longer than 510 chars, or values that decode above 255 bytes,
+  fail with `ConfigError`.
 - `RoutingId` instances are immutable; `toBytes()` returns a copy or an
   immutable view.
 - Any socket or service method that takes a routing id accepts a
@@ -1493,6 +1500,8 @@ interface SpotNodeStatus {
     readonly connectedPeerCount: number;     // uint32
     readonly subjectCount: number;           // uint32
     readonly readySubjectCount: number;      // uint32
+    readonly disconnectedSubTargetCount: number;     // uint32
+    readonly disconnectedRoutedTargetCount: number;  // uint32
     readonly lastError: number;              // int32
     readonly lastChangedMs: bigint;          // uint64 epoch ms
 }

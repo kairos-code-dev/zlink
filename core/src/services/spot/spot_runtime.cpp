@@ -93,22 +93,13 @@ size_t fill_runtime_socket_slot_refs (spot_runtime_t *runtime_,
     out_[count++] =
       runtime_socket_slot_ref_t{&runtime_->peer_ctrl_sub, NULL, false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->route_ingress,
-                                &runtime_->route_ingress_endpoint, false};
+      runtime_socket_slot_ref_t{&runtime_->external_router, NULL, false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->peer_route_ingress, NULL, false};
+      runtime_socket_slot_ref_t{&runtime_->internal_router,
+                                &runtime_->internal_router_endpoint, false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->node_router,
-                                &runtime_->node_router_endpoint, false};
-    out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->route_ingress_tx,
-                                &runtime_->route_ingress_sender_endpoint, true};
-    out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->node_router_tx,
-                                &runtime_->node_router_sender_endpoint, true};
-    out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->peer_route_tx,
-                                &runtime_->peer_route_sender_endpoint, true};
+      runtime_socket_slot_ref_t{&runtime_->internal_router_tx,
+                                &runtime_->internal_router_sender_endpoint, true};
     out_[count++] =
       runtime_socket_slot_ref_t{&runtime_->local_pub_ingress_sub,
                                 &runtime_->pub_ingress_endpoint, false};
@@ -126,13 +117,9 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     mesh_xsub (NULL),
     peer_ctrl_pub (NULL),
     peer_ctrl_sub (NULL),
-    route_ingress (NULL),
-    peer_route_ingress (NULL),
-    node_router (NULL),
-    route_ingress_tx (NULL),
-    node_router_tx (NULL),
-    peer_route_tx (NULL),
-    peer_route_sender_ready_after_ms (0),
+    external_router (NULL),
+    internal_router (NULL),
+    internal_router_tx (NULL),
     local_pub_ingress_sub (NULL),
     local_fanout_xpub (NULL),
     data_plane_runtime (NULL),
@@ -153,10 +140,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     pub_ingress_endpoint = buf;
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.sub-out", node_id);
     sub_fanout_endpoint = buf;
-    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.route-in", node_id);
-    route_ingress_endpoint = buf;
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.node-router", node_id);
-    node_router_endpoint = buf;
+    internal_router_endpoint = buf;
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.ctrl", node_id);
     data_ctrl_endpoint = buf;
 }
@@ -182,6 +167,57 @@ void spot_runtime_t::set_hwm_config (const spot_node_hwm_config_t &config_)
 {
     scoped_lock_t lock (hwm_config_sync);
     hwm_config = config_;
+}
+
+void spot_runtime_t::set_external_route_id (
+  const std::string &peer_endpoint_,
+  const std::string &route_id_)
+{
+    if (peer_endpoint_.empty ())
+        return;
+
+    scoped_lock_t lock (routed_send_sync);
+    if (route_id_.empty ())
+        external_route_ids_by_endpoint.erase (peer_endpoint_);
+    else
+        external_route_ids_by_endpoint[peer_endpoint_] = route_id_;
+}
+
+void spot_runtime_t::erase_external_route_id (
+  const std::string &peer_endpoint_)
+{
+    scoped_lock_t lock (routed_send_sync);
+    external_route_ids_by_endpoint.erase (peer_endpoint_);
+}
+
+std::vector<std::string> spot_runtime_t::clear_external_route_ids ()
+{
+    std::vector<std::string> peer_endpoints;
+    scoped_lock_t lock (routed_send_sync);
+    for (std::map<std::string, std::string>::const_iterator it =
+           external_route_ids_by_endpoint.begin ();
+         it != external_route_ids_by_endpoint.end (); ++it)
+        peer_endpoints.push_back (it->first);
+    external_route_ids_by_endpoint.clear ();
+    return peer_endpoints;
+}
+
+std::vector<std::string> spot_runtime_t::external_route_ids_for_destination (
+  const std::string &destination_node_rid_) const
+{
+    std::vector<std::string> route_ids;
+    scoped_lock_t lock (const_cast<mutex_t &> (routed_send_sync));
+    for (std::map<std::string, std::string>::const_iterator it =
+           external_route_ids_by_endpoint.begin ();
+         it != external_route_ids_by_endpoint.end (); ++it) {
+        if (it->second == destination_node_rid_) {
+            route_ids.push_back (it->second);
+            return route_ids;
+        }
+    }
+    if (external_route_ids_by_endpoint.size () == 1)
+        route_ids.push_back (external_route_ids_by_endpoint.begin ()->second);
+    return route_ids;
 }
 
 int spot_runtime_t::start ()

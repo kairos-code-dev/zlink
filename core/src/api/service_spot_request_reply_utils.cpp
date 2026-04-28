@@ -4,11 +4,16 @@
 
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_request_reply_utils_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
+#include "core/multipart_send_txn.hpp"
+#include "core/recv_internal.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
 #include "core/ctx.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_pub.hpp"
+#include "sockets/socket_base.hpp"
 
 zlink::ctx_t *zlink::spot_reqrep_internal::resolve_spot_ctx (void *spot_)
 {
@@ -46,6 +51,51 @@ std::string zlink::spot_reqrep_internal::routing_id_key (
 
     return std::string (reinterpret_cast<const char *> (peer_rid_->data),
                         peer_rid_->size);
+}
+
+int zlink::spot_reqrep_internal::send_combined_parts_on_socket (
+  zlink::socket_base_t *socket_,
+  std::vector<zlink_msg_t> *parts_,
+  zlink_send_flags_t flags_)
+{
+    if (!socket_ || !parts_ || parts_->empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket_);
+    socket_->set_all_pipes_nodelay ();
+    return zlink::logical_multipart_send (socket_, &(*parts_)[0],
+                                          parts_->size (), flags_);
+}
+
+int zlink::spot_reqrep_internal::enqueue_runtime_internal_router_once (
+  zlink::spot_runtime_t *runtime_,
+  std::vector<zlink_msg_t> *parts_,
+  zlink_send_flags_t flags_)
+{
+    if (!runtime_ || !parts_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::socket_base_t *socket = NULL;
+    if (runtime_->ensure_sender_socket (
+          zlink::spot_runtime_sender_internal_router, &socket)
+        != 0)
+        return -1;
+
+    zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
+    socket->set_all_pipes_nodelay ();
+    const long wait_timeout_ms = (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : 100;
+    if (zlink::wait_socket_events_internal (socket, ZLINK_POLLOUT,
+                                            wait_timeout_ms)
+        <= 0) {
+        errno = errno != 0 ? errno : EAGAIN;
+        return -1;
+    }
+
+    return send_combined_parts_on_socket (socket, parts_, flags_);
 }
 
 bool zlink::spot_reqrep_internal::resolve_spot_identity (

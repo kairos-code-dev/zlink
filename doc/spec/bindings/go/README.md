@@ -555,6 +555,16 @@ Immutable binary-safe routing id value (1-255 bytes).
 // Binary-safe: the input is copied verbatim and may contain NUL.
 func NewRoutingID(bytes []byte) RoutingID
 
+// NewRoutingIDFromString parses the hex string returned by String / Hex.
+// Hex input must be at most 510 chars and decode to 1-255 bytes.
+// Invalid input or decoded length above 255 bytes returns the empty RoutingID value.
+func NewRoutingIDFromString(value string) RoutingID
+
+// ParseRoutingIDString parses the hex string returned by String / Hex.
+// Hex input must be at most 510 chars and decode to 1-255 bytes.
+// Invalid input or decoded length above 255 bytes returns *ConfigError.
+func ParseRoutingIDString(value string) (RoutingID, error)
+
 // Bytes returns the raw byte view. The returned slice must not be mutated.
 func (r RoutingID) Bytes() []byte
 // Size returns the byte length (1-255; 0 when empty/unset).
@@ -565,8 +575,8 @@ func (r RoutingID) Equal(other RoutingID) bool
 // Hash returns a stable hash suitable for map keys.
 func (r RoutingID) Hash() uint64
 
-// String / Hex are convenience renderings only; they are not
-// constructors. RoutingID must be built from raw bytes.
+// String / Hex are convenience renderings. NewRoutingIDFromString parses
+// this hex form; it does not encode arbitrary text as routing id bytes.
 func (r RoutingID) String() string
 func (r RoutingID) Hex() string
 ```
@@ -1278,6 +1288,8 @@ type SpotNodeStatus struct {
     ConnectedPeerCount   uint32
     SubjectCount         uint32
     ReadySubjectCount    uint32
+    DisconnectedSubTargetCount    uint32
+    DisconnectedRoutedTargetCount uint32
     LastError            int32
     LastChangedMs        uint64
 }

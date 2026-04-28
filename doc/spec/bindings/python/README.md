@@ -579,6 +579,8 @@ class RoutingId:
     def __init__(self, data: bytes | bytearray) -> None: ...      # Raises: ConfigError
     @classmethod
     def from_bytes(cls, data: bytes | bytearray) -> "RoutingId": ...  # Raises: ConfigError
+    @classmethod
+    def from_string(cls, value: str) -> "RoutingId": ...  # Parses to_hex(); max 510 hex chars; invalid or >255 decoded bytes raises ValueError
 
     def to_bytes(self) -> bytes: ...
 
@@ -1278,6 +1280,8 @@ class SpotNodeStatus:
     connected_peer_count: int
     subject_count: int
     ready_subject_count: int
+    disconnected_sub_target_count: int
+    disconnected_routed_target_count: int
     last_error: int
     last_changed_ms: int
 ```

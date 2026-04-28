@@ -17,7 +17,7 @@
 #include "api/config_result_internal.hpp"
 #include "api/connect_result_internal.hpp"
 #include "api/recv_result_internal.hpp"
-#include "utils/random.hpp"
+#include "utils/routing_id.hpp"
 
 #include <new>
 #include <vector>
@@ -26,52 +26,44 @@
 
 namespace
 {
-int ensure_spot_routed_mesh_subscription (zlink::spot_node_t *node)
+int refresh_external_router_identity (zlink::spot_node_t *node)
 {
-    if (!node)
+    if (!node) {
+        errno = EFAULT;
         return -1;
-    if (!node->routed_enabled () || !node->pubsub_enabled ())
-        return 0;
-
+    }
     zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
-    if (!runtime)
-        return -1;
+    if (!runtime || !runtime->external_router)
+        return 0;
 
     zlink_routing_id_t node_rid;
     memset (&node_rid, 0, sizeof (node_rid));
     if (node->node_routing_id (&node_rid) != 0 || node_rid.size == 0)
         return -1;
+    return runtime->external_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID,
+                                                 node_rid.data,
+                                                 node_rid.size);
+}
 
-    const std::string topic =
-      zlink::spot_reqrep_internal::spot_routed_mesh_topic_for_node (
-        std::string (reinterpret_cast<const char *> (node_rid.data),
-                     node_rid.size));
-
-    if (topic == runtime->routed_mesh_subscription_topic)
-        return 0;
-
-    if (!runtime->routed_mesh_subscription_topic.empty ())
-        (void) zlink::spot_node_access_t::send_internal_subscription_update (
-          node, runtime->routed_mesh_subscription_topic, false);
-
-    if (zlink::spot_node_access_t::send_internal_subscription_update (
-          node, topic, true)
-        != 0)
+int ensure_external_router_ready (zlink::spot_node_t *node)
+{
+    if (!node) {
+        errno = EFAULT;
         return -1;
-    runtime->routed_mesh_subscription_topic = topic;
+    }
     return 0;
 }
 
 }
 
-int zlink_service_spot_node_refresh_routed_mesh_subscription (void *node_handle_)
+int zlink_service_spot_node_refresh_external_router_identity (void *node_handle_)
 {
     if (!node_handle_) {
         errno = EFAULT;
         return -1;
     }
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_handle_);
-    return ensure_spot_routed_mesh_subscription (node);
+    return refresh_external_router_identity (node);
 }
 
 namespace
@@ -123,11 +115,7 @@ void *zlink_spot_new (void *node_)
 
     spot->node = node;
     spot->mode = zlink::spot_node_access_t::mode (node);
-    memset (&spot->spot_routing_id, 0, sizeof (spot->spot_routing_id));
-    const uint32_t spot_rid_value = zlink::generate_random ();
-    spot->spot_routing_id.size = sizeof (spot_rid_value);
-    memcpy (spot->spot_routing_id.data, &spot_rid_value,
-            sizeof (spot_rid_value));
+    zlink::generate_random_uuid_routing_id (&spot->spot_routing_id);
     register_spot_mode_state (spot);
     if (zlink::spot_node_access_t::try_register_spot_facade (node, spot) != 0) {
         const int err = errno;
@@ -156,7 +144,7 @@ void *zlink_spot_new (void *node_)
             errno = err;
             return NULL;
         }
-        if (ensure_spot_routed_mesh_subscription (node) != 0) {
+        if (ensure_external_router_ready (node) != 0) {
             const int err = errno;
             zlink_spot_request_reply_cleanup_spot (spot);
             zlink::spot_node_access_t::unregister_spot_facade (node, spot);

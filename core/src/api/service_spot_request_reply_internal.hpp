@@ -156,6 +156,8 @@ struct routed_message_queue_t
     std::mutex mutex;
     std::deque<queued_routed_message_t> pending;
     zlink::internal_pair_queue::queue_t signal;
+    size_t pending_count;
+    bool disconnected;
 };
 
 struct spot_request_reply_request_state_t :
@@ -241,6 +243,7 @@ typedef std::unordered_map<std::string, std::weak_ptr<router_spot_request_reply_
   router_state_identity_index_t;
 std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
   &spot_owner_states ();
+size_t disconnected_routed_recv_queue_count_for_node (spot_node_t *node_);
 
 extern std::mutex g_spot_request_reply_index_mutex;
 extern spot_state_identity_index_t g_spot_state_identity_index;
@@ -306,6 +309,12 @@ void erase_spot_pending_request (
   const pending_spot_key_t &key_);
 int recv_combined_router_message (zlink::socket_base_t *socket_,
                                   std::vector<zlink_msg_t> *out_);
+int send_combined_parts_on_socket (zlink::socket_base_t *socket_,
+                                   std::vector<zlink_msg_t> *parts_,
+                                   zlink_send_flags_t flags_);
+int enqueue_runtime_internal_router_once (zlink::spot_runtime_t *runtime_,
+                                          std::vector<zlink_msg_t> *parts_,
+                                          zlink_send_flags_t flags_);
 int build_spot_request_reply_message (uint8_t source_class_,
                                       const std::string &source_node_rid_,
                                       const std::string &source_endpoint_rid_,
@@ -334,8 +343,6 @@ bool resolve_spot_node_routing_id (spot_node_t *node_,
 bool should_process_spot_routed_locally (
   spot_node_t *node_,
   const parsed_spot_envelope_t &envelope_);
-int publish_spot_routed_to_mesh (spot_node_t *node_,
-                                 std::vector<zlink_msg_t> *combined_);
 int dispatch_spot_routed_delivery (spot_node_t *origin_node_,
                                    routed_spot_delivery_kind_t kind_,
                                    bool local_target_,
@@ -348,25 +355,6 @@ int dispatch_router_spot_delivery (
   router_spot_delivery_kind_t kind_,
   zlink_send_flags_t flags_,
   std::vector<zlink_msg_t> *combined_);
-inline const char *spot_routed_mesh_topic ()
-{
-    return "__zlink.spot.routed";
-}
-inline std::string spot_routed_mesh_topic_for_node (
-  const std::string &destination_node_rid_)
-{
-    return destination_node_rid_.empty ()
-             ? std::string (spot_routed_mesh_topic ())
-             : std::string (spot_routed_mesh_topic ()) + "."
-                 + destination_node_rid_;
-}
-inline bool is_spot_routed_mesh_topic (const char *value_, size_t value_size_)
-{
-    const char *prefix = spot_routed_mesh_topic ();
-    const size_t prefix_size = strlen (prefix);
-    return value_ && value_size_ >= prefix_size
-           && memcmp (value_, prefix, prefix_size) == 0;
-}
 int dispatch_local_reply (std::vector<zlink_msg_t> *combined_);
 int dispatch_local_request (const std::string &router_rid_,
                             std::vector<zlink_msg_t> *combined_);

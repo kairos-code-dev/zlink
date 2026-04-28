@@ -901,6 +901,7 @@ class routing_id_t {
     /// Named factories (equivalent to the primary byte constructor).
     static routing_id_t from_bytes(const uint8_t* bytes, size_t size);
     static routing_id_t from_bytes(const std::vector<uint8_t>& bytes);
+    static routing_id_t from_string(const std::string& value); // parses hex; invalid or >255 decoded bytes throws
 
     // --- binary accessors ---
     const uint8_t* data() const noexcept;
@@ -931,7 +932,9 @@ template<> struct hash<zlink::routing_id_t> {
 Rules:
 - Binary-safe value type. A `routing_id_t(const std::string&)` primary
   constructor is **forbidden**; use `from_bytes(...)` or the byte
-  pointer/size constructor.
+  pointer/size constructor. `from_string(...)` only parses the hex
+  representation returned by `to_hex()`. Hex input longer than 510 chars,
+  or input that decodes above 255 bytes, throws `std::invalid_argument`.
 - Immutable after construction.
 
 ### received_t
@@ -1767,6 +1770,8 @@ struct spot_node_status_t {
     uint32_t connected_peer_count;
     uint32_t subject_count;
     uint32_t ready_subject_count;
+    uint32_t disconnected_sub_target_count;
+    uint32_t disconnected_routed_target_count;
     int32_t last_error;
     uint64_t last_changed_ms;
 };

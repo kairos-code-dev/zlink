@@ -4,12 +4,7 @@
 
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
-#include "core/multipart_send_txn.hpp"
-#include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
-#include "services/spot/spot_node_access.hpp"
-#include "services/spot/spot_pub.hpp"
-#include "services/spot/spot_runtime.hpp"
 
 namespace
 {
@@ -27,21 +22,6 @@ enum : uint8_t
 };
 
 const size_t spot_routed_control_part_count = 8;
-
-bool spot_route_stats_enabled ()
-{
-    return std::getenv ("ZLINK_DEBUG_SPOT_ROUTE_STATS") != NULL;
-}
-
-struct spot_route_stats_t
-{
-    std::atomic<unsigned long long> publish_count;
-    std::atomic<unsigned long long> publish_ns;
-
-    spot_route_stats_t () : publish_count (0), publish_ns (0) {}
-};
-
-spot_route_stats_t g_spot_route_stats;
 
 bool assign_routing_id_value_local (const char *data_,
                                     size_t size_,
@@ -257,55 +237,4 @@ bool zlink::spot_reqrep_internal::should_process_spot_routed_locally (
     std::string local_node_rid;
     return resolve_spot_node_routing_id (node_, &local_node_rid)
            && local_node_rid == envelope_.destination_node_rid;
-}
-
-int zlink::spot_reqrep_internal::publish_spot_routed_to_mesh (
-  spot_node_t *node_,
-  std::vector<zlink_msg_t> *combined_)
-{
-    if (!node_ || !combined_ || combined_->empty ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    spot_runtime_t *runtime = spot_node_access_t::runtime (node_);
-    if (!runtime || !runtime->mesh_pub) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    if (connected_ready_peer_count (&runtime->execution.mesh_peer_state) == 0) {
-        errno = ENOTCONN;
-        return -1;
-    }
-
-    const uint64_t start_ns =
-      spot_route_stats_enabled ()
-        ? static_cast<uint64_t> (
-            std::chrono::duration_cast<std::chrono::nanoseconds> (
-              std::chrono::steady_clock::now ().time_since_epoch ())
-              .count ())
-        : 0;
-    parsed_spot_envelope_t envelope;
-    if (!parse_spot_routed_envelope (&(*combined_)[0], combined_->size (),
-                                     &envelope)) {
-        errno = EPROTO;
-        return -1;
-    }
-    const std::string topic =
-      spot_routed_mesh_topic_for_node (envelope.destination_node_rid);
-
-    const int rc = logical_multipart_publish (
-      runtime->mesh_pub, topic.c_str (), &(*combined_)[0], combined_->size (),
-      0, true);
-    if (spot_route_stats_enabled ()) {
-        const uint64_t end_ns = static_cast<uint64_t> (
-          std::chrono::duration_cast<std::chrono::nanoseconds> (
-            std::chrono::steady_clock::now ().time_since_epoch ())
-            .count ());
-        g_spot_route_stats.publish_count.fetch_add (1, std::memory_order_relaxed);
-        g_spot_route_stats.publish_ns.fetch_add (end_ns - start_ns,
-                                                 std::memory_order_relaxed);
-    }
-    return rc;
 }

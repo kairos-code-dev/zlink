@@ -238,7 +238,7 @@ int spot_subject_set_routing_id (void *handle_,
             if (pub && pub->set_routing_id (data_, size_) != 0)
                 return -1;
         }
-        (void) zlink_service_spot_node_refresh_routed_mesh_subscription (handle_);
+        (void) zlink_service_spot_node_refresh_external_router_identity (handle_);
         return 0;
     }
     errno = EFAULT;

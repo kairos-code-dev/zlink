@@ -218,6 +218,15 @@ public shape를 기준으로 고정한다.
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer plane 의
   canonical readable notification surface 이다.
+- SPOT node option 이름은 core 공개 enum을 그대로 따른다. topic send/recv라는
+  이름은 더 이상 쓰지 않고, publish 축은 `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
+  subscribe 축은 `ZLINK_SPOT_NODE_OPT_SUB_HWM`으로 노출한다.
+- SPOT binding status object는 core의
+  `disconnected_sub_target_count`,
+  `disconnected_routed_target_count`를 언어 관례에 맞는 이름으로 노출해야 한다.
+- SPOT binding이 internal socket snapshot 이름을 노출하거나 문서화할 때는
+  `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`,
+  `external-router` 기준을 사용한다.
   `zlink_spot_handler()` 와 routed 축에서 mutually exclusive 다.
 - `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` 와
   `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` 은 메시지 개수 알림이 아니라
@@ -767,13 +776,20 @@ Routing id value object. Binary-safe (1-255 bytes).
 | `bytes` / `data` | `bytes` / `byte[]` / `Vec<u8>` / `Buffer` | raw bytes (immutable view) |
 | `size` | `int` (1-255) | byte length |
 | `from_bytes(bytes)` | static/ctor | 생성자 |
+| `from_string(value)` | static/ctor | `to_hex()` 로 만든 hex 문자열을 다시 생성 |
 | `to_bytes()` | `bytes` | 원본 바이트 반환 |
 | equality / hash | — | 언어별 관용구 (`equals`/`hashCode`, `__eq__`/`__hash__`, `PartialEq+Eq+Hash`) |
 
 규칙:
 - **binary-safe value type**. `RoutingId(string value)` 같은 string 전용
-  생성자를 기본으로 두지 않는다. string 변환은 편의 메서드 (`to_hex()`,
-  `to_string()`) 로만 제공.
+  생성자를 기본으로 두지 않는다. `from_string(value)` 는 임의 문자열을
+  routing id bytes 로 인코딩하는 API가 아니라, `to_hex()` 가 반환한
+  짝수 길이 hex 문자열을 다시 해석하는 편의 팩토리다. 언어별
+  `to_string()` / `String()` 이 hex 표시값으로 정의된 경우에는 그
+  반환값도 같은 입력으로 사용할 수 있다.
+- `from_string(value)` 입력은 hex 문자만 허용한다. hex 문자열은 최대
+  510자이며, 디코딩된 routing id가 255 bytes를 넘으면 언어별
+  예외나 에러 코드로 실패해야 한다.
 - 불변 (immutable). 한 번 생성하면 내용 변경 불가.
 - Node 에서는 raw `Buffer` 대신 `RoutingId` 래퍼 타입을 그대로 노출한다.
 

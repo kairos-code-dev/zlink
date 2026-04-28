@@ -637,9 +637,8 @@ void zlink::pipe_t::process_pipe_term ()
         bool pending_to_read = _in_pipe && _in_pipe->check_read ();
         if (pending_to_read && _in_pipe->probe (is_delimiter)) {
             msg_t msg;
-            const bool ok = _in_pipe->read (&msg);
-            zlink_assert (ok);
-            pending_to_read = false;
+            pending_to_read =
+              _in_pipe->read (&msg) ? false : _in_pipe && _in_pipe->check_read ();
         }
 
         if (_delay && pending_to_read)

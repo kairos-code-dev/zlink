@@ -38,7 +38,7 @@ public final class Discovery implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             this.handle = Native.discoveryNewFixed(
               InternalAccess.contextHandle(ctx),
-              (short) serviceType.getValue(),
+              serviceType.getValue(),
               NativeHelpers.toCString(arena, serviceName));
         }
         if (handle == null || handle.address() == 0)

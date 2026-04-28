@@ -8,6 +8,7 @@
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
 
+#include "api/service_spot_request_reply_internal.hpp"
 #include "core/internal_defs.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
@@ -390,15 +391,50 @@ void spot_node_t::snapshot_raw_subscription_filters (
     if (!out_)
         return;
 
-    std::vector<spot_sub_t *> subs;
-    {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        subs.reserve (_handle_state.subs.size ());
-        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    for (std::unordered_map<std::string, uint32_t>::const_iterator it =
+           _aggregate_subscriptions.local_exact_topic_refcount.begin ();
+         it != _aggregate_subscriptions.local_exact_topic_refcount.end ();
+         ++it) {
+        if (it->second != 0)
+            out_->insert (it->first);
+    }
+    for (std::unordered_map<std::string, uint32_t>::const_iterator it =
+           _aggregate_subscriptions.local_prefix_topic_refcount.begin ();
+         it != _aggregate_subscriptions.local_prefix_topic_refcount.end ();
+         ++it) {
+        if (it->second != 0)
+            out_->insert (it->first);
+    }
+}
+
+bool spot_node_t::update_aggregate_subscription (
+  const std::string &raw_filter_, bool pattern_, bool subscribe_)
+{
+    if (raw_filter_.empty ())
+        return false;
+
+    scoped_lock_t lock (_sync);
+    std::unordered_map<std::string, uint32_t> &refcounts =
+      pattern_ ? _aggregate_subscriptions.local_prefix_topic_refcount
+               : _aggregate_subscriptions.local_exact_topic_refcount;
+
+    if (subscribe_) {
+        uint32_t &count = refcounts[raw_filter_];
+        const bool first = count == 0;
+        ++count;
+        return first;
     }
 
-    for (size_t i = 0; i < subs.size (); ++i)
-        subs[i]->append_raw_filters (out_);
+    std::unordered_map<std::string, uint32_t>::iterator it =
+      refcounts.find (raw_filter_);
+    if (it == refcounts.end () || it->second == 0)
+        return false;
+    --it->second;
+    if (it->second != 0)
+        return false;
+    refcounts.erase (it);
+    return true;
 }
 
 void spot_node_t::snapshot_subscription_subjects (
@@ -443,6 +479,15 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
         out_->last_error = _summary_state.last_summary_error;
         if (_runtime && _runtime->faulted)
             out_->last_error = _runtime->fault_errno;
+        if (_runtime) {
+            out_->disconnected_sub_target_count =
+              static_cast<uint32_t> (_runtime->execution.data_plane_state
+                                       .local_fanout.disconnected_targets.size ());
+        }
+        out_->disconnected_routed_target_count =
+          static_cast<uint32_t> (
+            spot_reqrep_internal::disconnected_routed_recv_queue_count_for_node (
+              const_cast<spot_node_t *> (this)));
         out_->last_changed_ms = _summary_state.summary_last_changed_ms;
     }
 
@@ -741,11 +786,11 @@ int spot_node_t::snapshot_internal_sockets (
     if (_runtime) {
         if (append_socket_snapshot_row (
               out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0, "spotnode",
-              "mesh_pub", _runtime->mesh_pub)
+              "mesh-pub", _runtime->mesh_pub)
             != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "mesh_xsub", _runtime->mesh_xsub)
+                 "spotnode", "mesh-xsub", _runtime->mesh_xsub)
                  != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
@@ -757,37 +802,21 @@ int spot_node_t::snapshot_internal_sockets (
                  != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "route_ingress", _runtime->route_ingress)
+                 "spotnode", "external-router",
+                 _runtime->external_router)
                  != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "peer_route_ingress",
-                 _runtime->peer_route_ingress)
+                 "spotnode", "internal-router", _runtime->internal_router)
                  != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "node_router", _runtime->node_router)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "route_ingress_tx", _runtime->route_ingress_tx)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "node_router_tx", _runtime->node_router_tx)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "peer_route_tx", _runtime->peer_route_tx)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "local_pub_ingress",
+                 "spotnode", "ingress-sub",
                  _runtime->local_pub_ingress_sub)
                  != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "local_fanout", _runtime->local_fanout_xpub)
+                 "spotnode", "local-pub", _runtime->local_fanout_xpub)
                  != 0)
             return -1;
     }

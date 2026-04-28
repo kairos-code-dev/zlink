@@ -124,6 +124,8 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 5000
 #define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 500
+#define ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT 100
+#define ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT 100
 
 /**
  * @brief Create a new zlink context.
@@ -1189,6 +1191,8 @@ typedef struct zlink_spot_node_status_t
     uint32_t connected_peer_count;
     uint32_t subject_count;
     uint32_t ready_subject_count;
+    uint32_t disconnected_sub_target_count;
+    uint32_t disconnected_routed_target_count;
     int32_t last_error;
     uint64_t last_changed_ms;
 } zlink_spot_node_status_t;

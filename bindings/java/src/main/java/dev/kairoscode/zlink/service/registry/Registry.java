@@ -175,7 +175,7 @@ public final class Registry implements AutoCloseable {
             MemorySegment countOut = arena.allocate(ValueLayout.JAVA_LONG);
             countOut.set(ValueLayout.JAVA_LONG, 0, count);
             int rc = Native.registryMemberPeers(handle,
-              (short) serviceType.getValue(),
+              serviceType.getValue(),
               NativeHelpers.toCString(arena, serviceName), entries, countOut);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_registry_member_peers");
@@ -203,7 +203,7 @@ public final class Registry implements AutoCloseable {
             initMessage(metadata);
             try {
             int rc = Native.registryMemberPeerMetadata(handle,
-              (short) serviceType.getValue(),
+              serviceType.getValue(),
               NativeHelpers.toCString(arena, serviceName),
               (short) serviceRole.getValue(),
               NativeHelpers.toCString(arena, endpoint), metadata);
@@ -285,7 +285,7 @@ public final class Registry implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.registryMemberPeers(handle,
-              (short) serviceType.getValue(),
+              serviceType.getValue(),
               NativeHelpers.toCString(arena, serviceName), MemorySegment.NULL,
               count);
             if (rc != 0)

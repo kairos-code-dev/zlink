@@ -36,7 +36,11 @@ fn main() {
         || {
             discovery
                 .member_peers()
-                .map(|entries| entries.iter().any(|entry| entry.service_name == SERVICE_NAME))
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .any(|entry| entry.service_name == SERVICE_NAME)
+                })
                 .unwrap_or(false)
         },
         Duration::from_secs(5),

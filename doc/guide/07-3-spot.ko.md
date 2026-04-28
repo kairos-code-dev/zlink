@@ -184,6 +184,11 @@ int rc = zlink_spot_subscribe(
 
 성공하면 source routing id, topic 이름, multipart payload를 함께 받는다.
 
+같은 node 안에서 여러 `Spot`이 같은 topic이나 prefix를 구독해도 원격 peer에는
+node 단위 aggregate subscription으로 반영된다. 첫 구독이 생길 때 원격 구독이
+올라가고, 마지막 구독이 사라질 때 내려간다. 애플리케이션은 이 집계를 직접
+관리할 필요가 없다.
+
 ## 5. 다른 channel 호출
 
 `Spot`에서 다른 channel의 서비스 처리자 집합으로 요청을 보내려면
@@ -481,3 +486,7 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 ```
 
 좀 더 자세한 상태 변화가 필요하면 연속된 snapshot/query 결과를 비교한다.
+`status.disconnected_sub_target_count`와
+`status.disconnected_routed_target_count`는 내부 delivery queue 상한 때문에
+끊긴 대상 수를 확인할 때 사용한다. 이 값이 늘어나면 해당 소비자가 메시지를
+충분히 빨리 drain하지 못했는지 먼저 점검한다.

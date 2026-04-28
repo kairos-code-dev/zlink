@@ -11,6 +11,7 @@ static bool should_run_spot_e2e_smoke_test (const char *name_)
       "test_spot_peer_tcp",
       "test_spot_peer_tcp_reverse_publish",
       "test_spot_multi_publisher",
+      "test_spot_aggregate_subscription_refcount",
       "test_spot_node_direct_local_and_child_interop",
       "test_spot_sub_handler_basic",
       "test_spot_recv_callback_isolated_by_handle",
@@ -48,6 +49,7 @@ int main (int, char **)
     RUN_SPOT_TEST (test_spot_peer_tcp);
     RUN_SPOT_TEST (test_spot_peer_tcp_reverse_publish);
     RUN_SPOT_TEST (test_spot_multi_publisher);
+    RUN_SPOT_TEST (test_spot_aggregate_subscription_refcount);
     RUN_SPOT_TEST (test_spot_node_direct_local_and_child_interop);
     RUN_SPOT_TEST (test_spot_node_pub_ingress_local_spot_subscribe_surface);
     RUN_SPOT_TEST (test_spot_sub_handler_basic);

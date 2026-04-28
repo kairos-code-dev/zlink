@@ -11,7 +11,9 @@ public record SpotNodeStatus(String serviceName, String localEndpoint,
                              RoutingId nodeRoutingId, SpotNodeState state,
                              int configuredPeerCount, int activePeerCount,
                              int connectedPeerCount, int subjectCount,
-                             int readySubjectCount, int lastError,
+                             int readySubjectCount,
+                             int disconnectedSubTargetCount,
+                             int disconnectedRoutedTargetCount, int lastError,
                              long lastChangedMs) {
     static SpotNodeStatus fromNative(MemorySegment segment) {
         int routingSize = segment.get(ValueLayout.JAVA_BYTE, 512) & 0xFF;
@@ -31,6 +33,8 @@ public record SpotNodeStatus(String serviceName, String localEndpoint,
           segment.get(ValueLayout.JAVA_INT, 784),
           segment.get(ValueLayout.JAVA_INT, 788),
           segment.get(ValueLayout.JAVA_INT, 792),
-          segment.get(ValueLayout.JAVA_LONG_UNALIGNED, 800));
+          segment.get(ValueLayout.JAVA_INT, 796),
+          segment.get(ValueLayout.JAVA_INT, 800),
+          segment.get(ValueLayout.JAVA_LONG_UNALIGNED, 808));
     }
 }

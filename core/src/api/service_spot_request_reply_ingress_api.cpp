@@ -30,7 +30,7 @@ int process_route_combined_message (void *node_,
 {
     if (spot_direct_route_debug_enabled ()) {
         std::fprintf (stderr,
-                      "[spot-direct] ingress recv parts=%zu socket=%d\n",
+                      "[spot-direct] internal-router recv parts=%zu socket=%d\n",
                       combined.size (),
                       socket->socket_id ());
     }
@@ -120,7 +120,7 @@ int process_route_combined_message (void *node_,
               static_cast<zlink::spot_node_t *> (node_), &local_node_rid);
             std::fprintf (
               stderr,
-              "[spot-direct] drop non-local routed envelope on routed ingress node=%s dest_node=%s dest_endpoint=%s\n",
+              "[spot-direct] drop non-local routed envelope on external router node=%s dest_node=%s dest_endpoint=%s\n",
               local_node_rid.c_str (),
               spot_envelope.destination_node_rid.c_str (),
               spot_envelope.destination_endpoint_rid.c_str ());
@@ -137,7 +137,7 @@ int process_route_combined_message (void *node_,
     return 1;
 }
 
-int recv_combined_peer_route_message (zlink::socket_base_t *socket_,
+int recv_combined_external_router_message (zlink::socket_base_t *socket_,
                                       std::vector<zlink_msg_t> *out_)
 {
     if (!socket_ || !out_) {
@@ -179,7 +179,7 @@ int recv_combined_peer_route_message (zlink::socket_base_t *socket_,
 }
 }
 
-extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
+extern "C" int zlink_spot_process_internal_router (void *node_, void *socket_)
 {
     zlink::socket_base_t *socket =
       static_cast<zlink::socket_base_t *> (socket_);
@@ -203,7 +203,7 @@ extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
                         < 32) {
                         std::fprintf (
                           stderr,
-                          "[spot-direct] ingress recv eagain socket=%d peer=%s\n",
+                          "[spot-direct] internal-router recv eagain socket=%d peer=%s\n",
                           socket->socket_id (),
                           remote_endpoints.front ().c_str ());
                     }
@@ -211,7 +211,7 @@ extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
             }
             if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
                 std::fprintf (stderr,
-                              "[spot-direct] ingress recv failed errno=%d socket=%d\n",
+                              "[spot-direct] internal-router recv failed errno=%d socket=%d\n",
                               errno,
                               socket->socket_id ());
             }
@@ -226,7 +226,7 @@ extern "C" int zlink_spot_process_route_ingress (void *node_, void *socket_)
     }
 }
 
-extern "C" int zlink_spot_process_peer_route_ingress (void *node_, void *socket_)
+extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
 {
     zlink::socket_base_t *socket =
       static_cast<zlink::socket_base_t *> (socket_);
@@ -237,7 +237,7 @@ extern "C" int zlink_spot_process_peer_route_ingress (void *node_, void *socket_
 
     while (true) {
         std::vector<zlink_msg_t> combined;
-        if (recv_combined_peer_route_message (socket, &combined) != 0) {
+        if (recv_combined_external_router_message (socket, &combined) != 0) {
             if (errno == EAGAIN)
                 return 0;
             return -1;
@@ -246,9 +246,4 @@ extern "C" int zlink_spot_process_peer_route_ingress (void *node_, void *socket_
         if (process_route_combined_message (node_, socket, combined) < 0)
             return -1;
     }
-}
-
-extern "C" int zlink_spot_process_node_router (void *node_, void *socket_)
-{
-    return zlink_spot_process_route_ingress (node_, socket_);
 }

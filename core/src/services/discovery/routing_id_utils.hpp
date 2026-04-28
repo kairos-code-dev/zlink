@@ -2,9 +2,8 @@
 #ifndef __ZLINK_DISCOVERY_ROUTING_ID_UTILS_HPP_INCLUDED__
 #define __ZLINK_DISCOVERY_ROUTING_ID_UTILS_HPP_INCLUDED__
 
-#include "protocol/wire.hpp"
 #include "sockets/socket_base.hpp"
-#include "utils/random.hpp"
+#include "utils/routing_id.hpp"
 
 #include <cstring>
 #include <string>
@@ -25,13 +24,11 @@ inline bool set_socket_routing_id (socket_base_t *socket_,
             != 0)
             return false;
     } else {
-        unsigned char buf[5];
-        buf[0] = 0;
-        uint32_t rid = generate_random ();
-        if (rid == 0)
-            rid = 1;
-        put_uint32 (buf + 1, rid);
-        if (socket_->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, buf, sizeof buf) != 0)
+        zlink_routing_id_t rid;
+        generate_random_uuid_routing_id (&rid);
+        if (socket_->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, rid.data,
+                                 rid.size)
+            != 0)
             return false;
     }
     if (out_) {

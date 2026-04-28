@@ -493,6 +493,8 @@ pub struct SpotNodeStatus {
     pub connected_peer_count: u32,
     pub subject_count: u32,
     pub ready_subject_count: u32,
+    pub disconnected_sub_target_count: u32,
+    pub disconnected_routed_target_count: u32,
     pub last_error: i32,
     pub last_changed_ms: u64,
 }
@@ -509,6 +511,8 @@ impl SpotNodeStatus {
             connected_peer_count: raw.connected_peer_count,
             subject_count: raw.subject_count,
             ready_subject_count: raw.ready_subject_count,
+            disconnected_sub_target_count: raw.disconnected_sub_target_count,
+            disconnected_routed_target_count: raw.disconnected_routed_target_count,
             last_error: raw.last_error,
             last_changed_ms: raw.last_changed_ms,
         }

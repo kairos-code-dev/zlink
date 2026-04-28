@@ -173,6 +173,11 @@ zlink_spot_subscribe(
   0);
 ```
 
+When multiple `Spot` facades under the same node subscribe to the same topic or
+prefix, the node maintains one aggregate subscription toward remote peers. The
+first local subscription raises the remote interest; the last local unsubscribe
+removes it. Applications do not need to manage this aggregation.
+
 ## 5. Calling another channel
 
 To send requests from a `Spot` into another channel, attach a `DEALER` to the
@@ -395,3 +400,8 @@ zlink_spot_node_status_snapshot(node, &status);
 size_t peer_count = 0;
 zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 ```
+
+`status.disconnected_sub_target_count` and
+`status.disconnected_routed_target_count` help diagnose consumers that fell
+behind an internal delivery queue hard limit. If either count rises, first
+check whether the target is draining topic or routed messages quickly enough.

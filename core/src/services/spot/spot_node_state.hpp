@@ -12,6 +12,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,12 @@ struct spot_node_summary_state_t
     std::map<std::string, uint64_t> subject_last_changed_ms;
     int last_summary_error;
     uint64_t summary_last_changed_ms;
+};
+
+struct spot_node_aggregate_subscription_state_t
+{
+    std::unordered_map<std::string, uint32_t> local_exact_topic_refcount;
+    std::unordered_map<std::string, uint32_t> local_prefix_topic_refcount;
 };
 
 struct spot_node_discovery_binding_state_t

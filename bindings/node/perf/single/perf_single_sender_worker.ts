@@ -64,9 +64,9 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
   while (process.hrtime.bigint() < activeStopNs) {
     stampPayload(payload, { phase: 1, runId, msgSize, seq });
     if (kind === 'pubsub') {
-      socket.publish(TOPIC, payload);
+      socket.publish(TOPIC, payload, zlink.SendFlags.DontWait);
     } else if (kind === 'router_router') {
-      socket.send(receiverRoutingId, payload);
+      socket.send(receiverRoutingId, payload, zlink.SendFlags.DontWait);
     } else {
       socket.send(payload);
     }
@@ -74,9 +74,9 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
   }
   stampPayload(payload, { phase: 2, runId, msgSize, seq });
   if (kind === 'pubsub') {
-    socket.publish(TOPIC, payload);
+    socket.publish(TOPIC, payload, zlink.SendFlags.DontWait);
   } else if (kind === 'router_router') {
-    socket.send(receiverRoutingId, payload);
+    socket.send(receiverRoutingId, payload, zlink.SendFlags.DontWait);
   } else {
     socket.send(payload);
   }

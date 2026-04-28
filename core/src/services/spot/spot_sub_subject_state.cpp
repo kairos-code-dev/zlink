@@ -39,6 +39,12 @@ static std::string make_subject_key (const std::string &subject_,
 
 std::string spot_sub_t::ready_ack_source_id () const
 {
+    if (_node) {
+        zlink_routing_id_t node_rid;
+        memset (&node_rid, 0, sizeof (node_rid));
+        if (_node->node_routing_id (&node_rid) == 0 && node_rid.size > 0)
+            return routing_id_to_hex (node_rid);
+    }
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     return routing_id_to_hex (_routing_id);
 }
@@ -60,16 +66,20 @@ int spot_sub_t::subscribe (const char *topic_)
 
     bool had_filters = false;
     bool has_filters = false;
+    bool inserted = false;
     {
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
-        if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, topic.data (),
-                                topic.size ())
-            != 0)
-            return -1;
-        _topics.insert (topic);
-        _delivery_ready_raw_filters.erase (topic);
+        inserted = _topics.count (topic) == 0;
+        if (inserted) {
+            if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, topic.data (),
+                                    topic.size ())
+                != 0)
+                return -1;
+            _topics.insert (topic);
+            _delivery_ready_raw_filters.erase (topic);
+        }
         has_filters = !_topics.empty () || !_patterns.empty ();
     }
     {
@@ -82,13 +92,17 @@ int spot_sub_t::subscribe (const char *topic_)
     _node->note_local_sub_filters_changed (had_filters, has_filters);
     emit_filter_applied_event (topic.c_str (),
                                ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
-    if (_node->send_subscription_update (topic, true) != 0)
-        return -1;
-    if (_node->has_active_peers ())
-        _node->notify_subscription_forwarded (topic);
-    _node->schedule_subscription_replay ();
-    if (_node->replay_subscriptions_if_active_peers () != 0)
-        return -1;
+    if (inserted) {
+        const bool aggregate_added =
+          _node->update_aggregate_subscription (topic, false, true);
+        if (aggregate_added && _node->send_subscription_update (topic, true) != 0)
+            return -1;
+        if (_node->has_active_peers ())
+            _node->notify_subscription_forwarded (topic);
+        _node->schedule_subscription_replay ();
+        if (aggregate_added && _node->replay_subscriptions_if_active_peers () != 0)
+            return -1;
+    }
     _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
     return 0;
 }
@@ -110,16 +124,20 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
 
     bool had_filters = false;
     bool has_filters = false;
+    bool inserted = false;
     {
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
-        if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, prefix.data (),
-                                prefix.size ())
-            != 0)
-            return -1;
-        _patterns.insert (prefix);
-        _delivery_ready_raw_filters.erase (prefix);
+        inserted = _patterns.count (prefix) == 0;
+        if (inserted) {
+            if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, prefix.data (),
+                                    prefix.size ())
+                != 0)
+                return -1;
+            _patterns.insert (prefix);
+            _delivery_ready_raw_filters.erase (prefix);
+        }
         has_filters = !_topics.empty () || !_patterns.empty ();
     }
     {
@@ -134,13 +152,18 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
     const std::string subject = prefix + "*";
     emit_filter_applied_event (subject.c_str (),
                                ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
-    if (_node->send_subscription_update (prefix, true) != 0)
-        return -1;
-    if (_node->has_active_peers ())
-        _node->notify_subscription_forwarded (prefix);
-    _node->schedule_subscription_replay ();
-    if (_node->replay_subscriptions_if_active_peers () != 0)
-        return -1;
+    if (inserted) {
+        const bool aggregate_added =
+          _node->update_aggregate_subscription (prefix, true, true);
+        if (aggregate_added
+            && _node->send_subscription_update (prefix, true) != 0)
+            return -1;
+        if (_node->has_active_peers ())
+            _node->notify_subscription_forwarded (prefix);
+        _node->schedule_subscription_replay ();
+        if (aggregate_added && _node->replay_subscriptions_if_active_peers () != 0)
+            return -1;
+    }
     _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
     return 0;
 }
@@ -166,6 +189,8 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
 
     bool had_filters = false;
     bool has_filters_after = false;
+    bool erased = false;
+    bool aggregate_removed = false;
     int first_error = 0;
     std::vector<std::string> ready_ack_endpoints;
     subject_descriptor_t subject;
@@ -177,15 +202,19 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
         lock_routing_id ();
-        if (socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, filter.data (),
-                                filter.size ())
-            != 0)
-            return -1;
-        if (is_pattern)
-            _patterns.erase (prefix);
-        else
-            _topics.erase (topic);
-        _delivery_ready_raw_filters.erase (filter);
+        erased = is_pattern ? _patterns.count (prefix) != 0
+                            : _topics.count (topic) != 0;
+        if (erased) {
+            if (socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE,
+                                    filter.data (), filter.size ())
+                != 0)
+                return -1;
+            if (is_pattern)
+                _patterns.erase (prefix);
+            else
+                _topics.erase (topic);
+            _delivery_ready_raw_filters.erase (filter);
+        }
         has_filters_after = !_topics.empty () || !_patterns.empty ();
     }
     {
@@ -196,13 +225,20 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
     }
 
     _node->note_local_sub_filters_changed (had_filters, has_filters_after);
-    if (_node->send_subscription_update (filter, false) != 0)
-        first_error = errno != 0 ? errno : EIO;
+    if (erased) {
+        aggregate_removed =
+          _node->update_aggregate_subscription (filter, is_pattern, false);
+        if (aggregate_removed
+            && _node->send_subscription_update (filter, false) != 0)
+            first_error = errno != 0 ? errno : EIO;
+    }
     release_ready_ack_endpoints (filter, &ready_ack_endpoints);
     const std::string ack_source_id = ready_ack_source_id ();
-    for (size_t i = 0; i < ready_ack_endpoints.size (); ++i) {
-        (void) _node->send_ready_ack_update (ready_ack_endpoints[i], filter,
-                                             ack_source_id, false);
+    if (aggregate_removed) {
+        for (size_t i = 0; i < ready_ack_endpoints.size (); ++i) {
+            (void) _node->send_ready_ack_update (ready_ack_endpoints[i], filter,
+                                                 ack_source_id, false);
+        }
     }
     _node->submit_sub_summary (this, has_filters_after
                                        ? ZLINK_TOPOLOGY_STATE_READY

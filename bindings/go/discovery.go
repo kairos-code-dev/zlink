@@ -143,17 +143,19 @@ type RegistryQueryClient struct {
 }
 
 type SpotNodeStatus struct {
-	ServiceName         string
-	LocalEndpoint       string
-	NodeRoutingID       RoutingID
-	State               SpotNodeState
-	ConfiguredPeerCount uint32
-	ActivePeerCount     uint32
-	ConnectedPeerCount  uint32
-	SubjectCount        uint32
-	ReadySubjectCount   uint32
-	LastError           int32
-	LastChangedMs       uint64
+	ServiceName                   string
+	LocalEndpoint                 string
+	NodeRoutingID                 RoutingID
+	State                         SpotNodeState
+	ConfiguredPeerCount           uint32
+	ActivePeerCount               uint32
+	ConnectedPeerCount            uint32
+	SubjectCount                  uint32
+	ReadySubjectCount             uint32
+	DisconnectedSubTargetCount    uint32
+	DisconnectedRoutedTargetCount uint32
+	LastError                     int32
+	LastChangedMs                 uint64
 }
 
 type SpotNodePeerEntry struct {
@@ -948,17 +950,19 @@ func mustCopyFixedCString(ptr unsafe.Pointer, size int, value string) {
 
 func spotNodeStatusFromC(raw C.zlink_spot_node_status_t) *SpotNodeStatus {
 	return &SpotNodeStatus{
-		ServiceName:         C.GoString(&raw.service_name[0]),
-		LocalEndpoint:       C.GoString(&raw.local_endpoint[0]),
-		NodeRoutingID:       routingIDFromC(raw.node_routing_id),
-		State:               SpotNodeState(raw.state),
-		ConfiguredPeerCount: uint32(raw.configured_peer_count),
-		ActivePeerCount:     uint32(raw.active_peer_count),
-		ConnectedPeerCount:  uint32(raw.connected_peer_count),
-		SubjectCount:        uint32(raw.subject_count),
-		ReadySubjectCount:   uint32(raw.ready_subject_count),
-		LastError:           int32(raw.last_error),
-		LastChangedMs:       uint64(raw.last_changed_ms),
+		ServiceName:                   C.GoString(&raw.service_name[0]),
+		LocalEndpoint:                 C.GoString(&raw.local_endpoint[0]),
+		NodeRoutingID:                 routingIDFromC(raw.node_routing_id),
+		State:                         SpotNodeState(raw.state),
+		ConfiguredPeerCount:           uint32(raw.configured_peer_count),
+		ActivePeerCount:               uint32(raw.active_peer_count),
+		ConnectedPeerCount:            uint32(raw.connected_peer_count),
+		SubjectCount:                  uint32(raw.subject_count),
+		ReadySubjectCount:             uint32(raw.ready_subject_count),
+		DisconnectedSubTargetCount:    uint32(raw.disconnected_sub_target_count),
+		DisconnectedRoutedTargetCount: uint32(raw.disconnected_routed_target_count),
+		LastError:                     int32(raw.last_error),
+		LastChangedMs:                 uint64(raw.last_changed_ms),
 	}
 }
 

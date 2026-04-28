@@ -111,11 +111,13 @@ class spot_node_t : public discovery_observer_t
     bool has_local_filtered_subs () const;
     int replay_subscriptions_if_active_peers ();
     std::string first_active_peer_endpoint () const;
-    std::string single_peer_route_endpoint () const;
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
     void untrack_owned_socket (const socket_base_t *socket_);
     void snapshot_raw_subscription_filters (std::set<std::string> *out_) const;
+    bool update_aggregate_subscription (const std::string &raw_filter_,
+                                        bool pattern_,
+                                        bool subscribe_);
     void snapshot_subscription_subjects (
       std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
     int snapshot_status (zlink_spot_node_status_t *out_) const;
@@ -131,6 +133,8 @@ class spot_node_t : public discovery_observer_t
                                         const std::string &subject_,
                                         const std::string &ack_source_id_,
                                         bool subscribe_);
+    bool external_route_id_for_peer_endpoint (
+      const std::string &peer_endpoint_, std::string *out_) const;
     bool peer_has_positive_weight (const zlink_routing_id_t *peer_rid_) const;
     socket_base_t *select_service_router (const std::string &service_name_);
     socket_base_t *service_pub_socket (const std::string &service_name_) const;
@@ -157,6 +161,8 @@ class spot_node_t : public discovery_observer_t
     friend struct spot_node_access_t;
 
     typedef spot_node_summary_state_t summary_state_t;
+    typedef spot_node_aggregate_subscription_state_t
+      aggregate_subscription_state_t;
     typedef spot_node_discovery_binding_state_t discovery_binding_state_t;
     typedef spot_node_tls_state_t tls_state_t;
     typedef spot_node_endpoint_state_t endpoint_state_t;
@@ -314,6 +320,7 @@ class spot_node_t : public discovery_observer_t
     service_runtime_base_t _lifecycle;
 
     summary_state_t _summary_state;
+    aggregate_subscription_state_t _aggregate_subscriptions;
     discovery_binding_state_t _discovery_state;
     tls_state_t _tls_state;
     endpoint_state_t _endpoint_state;

@@ -4,6 +4,7 @@
 #define __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 
 #include "services/spot/spot_runtime_execution.hpp"
+#include "zlink.h"
 #include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
@@ -12,6 +13,7 @@
 #include <deque>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace zlink
 {
@@ -28,8 +30,7 @@ enum spot_attachment_kind_t
 
 enum spot_runtime_sender_kind_t
 {
-    spot_runtime_sender_route_ingress = 1,
-    spot_runtime_sender_node_router = 2
+    spot_runtime_sender_internal_router = 1
 };
 
 enum spot_shutdown_phase_t
@@ -71,7 +72,11 @@ struct spot_node_hwm_config_t
         routed_send_enabled (false),
         routed_send_hwm (0),
         routed_recv_enabled (false),
-        routed_recv_hwm (0)
+        routed_recv_hwm (0),
+        sub_queue_hard_limit_enabled (false),
+        sub_queue_hard_limit (ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT),
+        routed_queue_hard_limit_enabled (false),
+        routed_queue_hard_limit (ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT)
     {
     }
 
@@ -83,6 +88,10 @@ struct spot_node_hwm_config_t
     int routed_send_hwm;
     bool routed_recv_enabled;
     int routed_recv_hwm;
+    bool sub_queue_hard_limit_enabled;
+    int sub_queue_hard_limit;
+    bool routed_queue_hard_limit_enabled;
+    int routed_queue_hard_limit;
 };
 
 struct spot_runtime_t
@@ -107,8 +116,6 @@ struct spot_runtime_t
     void mark_fault (int err_);
     int ensure_sender_socket (spot_runtime_sender_kind_t kind_,
                               socket_base_t **out_);
-    int ensure_peer_route_sender_socket (const std::string &target_endpoint_,
-                                         socket_base_t **out_);
     int close_sender_cache (spot_runtime_sender_kind_t kind_, int timeout_ms_);
     int close_sender_caches (int timeout_ms_);
     void begin_shutdown ();
@@ -136,6 +143,12 @@ struct spot_runtime_t
     uint64_t attachment_state_version () const;
     spot_node_hwm_config_t hwm_config_snapshot () const;
     void set_hwm_config (const spot_node_hwm_config_t &config_);
+    void set_external_route_id (const std::string &peer_endpoint_,
+                                const std::string &route_id_);
+    void erase_external_route_id (const std::string &peer_endpoint_);
+    std::vector<std::string> clear_external_route_ids ();
+    std::vector<std::string> external_route_ids_for_destination (
+      const std::string &destination_node_rid_) const;
 
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;
@@ -149,12 +162,9 @@ struct spot_runtime_t
     socket_base_t *mesh_xsub;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
-    socket_base_t *route_ingress;
-    socket_base_t *peer_route_ingress;
-    socket_base_t *node_router;
-    socket_base_t *route_ingress_tx;
-    socket_base_t *node_router_tx;
-    socket_base_t *peer_route_tx;
+    socket_base_t *external_router;
+    socket_base_t *internal_router;
+    socket_base_t *internal_router_tx;
     socket_base_t *local_pub_ingress_sub;
     socket_base_t *local_fanout_xpub;
     thread_t data_plane_thread;
@@ -164,16 +174,12 @@ struct spot_runtime_t
     std::string bound_endpoint;
     std::string pub_ingress_endpoint;
     std::string sub_fanout_endpoint;
-    std::string route_ingress_endpoint;
-    std::string node_router_endpoint;
+    std::string internal_router_endpoint;
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
-    std::string peer_route_bind_endpoint;
-    std::string route_ingress_sender_endpoint;
-    std::string node_router_sender_endpoint;
-    std::string peer_route_sender_endpoint;
-    uint64_t peer_route_sender_ready_after_ms;
-    std::string routed_mesh_subscription_topic;
+    std::string external_router_bind_endpoint;
+    std::string internal_router_sender_endpoint;
+    std::map<std::string, std::string> external_route_ids_by_endpoint;
     bool faulted;
     int fault_errno;
     bool abortive_shutdown;

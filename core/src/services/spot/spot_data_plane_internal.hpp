@@ -14,6 +14,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace zlink
@@ -323,7 +324,9 @@ struct spot_data_plane_runtime_state_t
             pending_bytes (0),
             pending_pause_threshold (0),
             pending_resume_threshold (0),
-            pending_hard_limit (0)
+            pending_hard_limit (0),
+            pending_message_count_hard_limit (
+              ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT)
         {
         }
 
@@ -331,9 +334,11 @@ struct spot_data_plane_runtime_state_t
         size_t pending_pause_threshold;
         size_t pending_resume_threshold;
         size_t pending_hard_limit;
+        size_t pending_message_count_hard_limit;
         pending_message_map_t pending_messages;
         target_map_t targets;
         std::unordered_map<socket_base_t *, uint64_t> target_by_socket;
+        std::unordered_set<uint64_t> disconnected_targets;
     };
 
     struct remote_mesh_state_t
@@ -391,9 +396,8 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *mesh_xsub_monitor;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
-    socket_base_t *route_ingress;
-    socket_base_t *peer_route_ingress;
-    socket_base_t *node_router;
+    socket_base_t *external_router;
+    socket_base_t *internal_router;
     socket_base_t *ingress;
     socket_base_t *fanout;
     uint64_t next_pending_message_id;

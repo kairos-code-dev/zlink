@@ -10,6 +10,7 @@
 #include "api/socket_request_reply_internal.hpp"
 #include "api/socket_request_reply_submit_internal.hpp"
 #include "api/submit_result_internal.hpp"
+#include "core/msg.hpp"
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
@@ -56,11 +57,13 @@ zlink_submit_result_t request_part_common (
 
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
       zlink::part_helper_internal::find_handle_state (handle_);
+    bool helper_state_matches_family = false;
     if (helper_state) {
         std::lock_guard<std::mutex> lock (helper_state->mutex);
         if (helper_state->send.active
             && helper_state->send.spec.family == family_) {
             spec.request_seq = helper_state->send.spec.request_seq;
+            helper_state_matches_family = true;
         }
     }
 
@@ -83,6 +86,16 @@ zlink_submit_result_t request_part_common (
             zlink::part_helper_internal::consume_send_part (part_);
             return zlink::submit_result_internal::from_errno (errno);
         }
+    }
+
+    zlink::msg_t *core_part = reinterpret_cast<zlink::msg_t *> (part_);
+    if (!part_ || !core_part->check ()) {
+        if (helper_state_matches_family)
+            zlink::part_helper_internal::abort_send_step (helper_state);
+        reqrep::erase_socket_pending_request (request_state, pending_key);
+        zlink::part_helper_internal::consume_send_part (part_);
+        errno = EFAULT;
+        return zlink::submit_result_internal::from_errno (errno);
     }
 
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
@@ -109,7 +122,7 @@ zlink_submit_result_t request_part_common (
         return ZLINK_SUBMIT_OK;
     }
 
-    if (first_part) {
+    if (first_part || !state->send.buffered_parts.empty ()) {
         const unsigned char protocol_id = zlink::request_reply::protocol_id;
         const unsigned char version = zlink::request_reply::version;
         const unsigned char type =

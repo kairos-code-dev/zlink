@@ -5,8 +5,8 @@
 # SPOT
 
 This document describes only the current public SPOT contract in
-`core/include/zlink.h`. Pre-implementation design notes belong under
-`doc/spec/draft/`.
+`core/include/zlink.h`. Pre-implementation design notes belong in separate
+draft documents.
 
 ## Overview
 
@@ -67,13 +67,21 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 The default HWM values used by SpotNode and Spot internal raw sockets are
 not fixed constants anymore. They come from the context automatic HWM
-policy. Manual `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM`,
-`ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`,
+policy. Manual `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
+`ZLINK_SPOT_NODE_OPT_SUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`, and
 `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` settings override those automatic
-values. With the default context settings, topic send starts from the
-`fanout` floor `16`, while topic recv and routed send/recv start from floor
-`8`.
+values. With the default context settings, publish fanout starts from the
+`fanout` floor `16`, while subscribe ingress and routed send/recv start from
+floor `8`.
+
+`ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` and
+`ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` configure the maximum number of
+messages allowed in the internal delivery queues. Their defaults are
+`ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT` and
+`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`, both currently `100`. When a
+target exceeds its limit, only that sub or routed delivery target is
+disconnected; the node and peer stay alive.
 
 SpotNode and Spot do not expose a public weight setting. Peer weight can be
 configured only on raw ROUTER and DEALER sockets. Spot peer snapshots may still
@@ -116,6 +124,11 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
   `ZLINK_SOCKET_*` values.
 - `socket_name` filters by the exact internal socket name when non-empty.
 - `auto_hwm_visible == 1` marks a row for default Auto-HWM perf output.
+- The current SPOT topology exposes these main node socket names:
+  `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`, and
+  `external-router`.
+- `PUBSUB` mode does not create routed sockets, and `ROUTED` mode does not
+  create topic sockets. Snapshot calls do not activate disabled planes.
 
 ### Topology and discovery
 
@@ -521,6 +534,12 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
 
 There is no dedicated public SPOT-node monitor recv API. Use the
 snapshot/query functions.
+
+`zlink_spot_node_status_t.disconnected_sub_target_count` reports local
+subscribe delivery targets disconnected by queue hard limits or equivalent
+delivery guards.
+`zlink_spot_node_status_t.disconnected_routed_target_count` reports routed
+delivery targets disconnected by those guards.
 
 ## Relationship to Poller
 

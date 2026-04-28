@@ -5,7 +5,7 @@
 # SPOT
 
 이 문서는 현재 공개 헤더 `core/include/zlink.h`에 들어 있는 SPOT 계약만 정리한다.
-구현 전 설계나 개편 방향은 `doc/spec/draft/` 아래 초안 문서를 본다.
+구현 전 설계나 개편 방향은 별도 draft 문서를 본다.
 
 ## 개요
 
@@ -67,13 +67,21 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 ## SpotNode 계약
 
 SpotNode와 Spot의 내부 raw 소켓 기본 HWM은 고정 숫자가 아니라 context
-auto HWM 정책에서 계산됩니다. 사용자가
-`ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM`,
-`ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`,
+auto HWM 정책에서 계산된다. 사용자가
+`ZLINK_SPOT_NODE_OPT_PUB_HWM`,
+`ZLINK_SPOT_NODE_OPT_SUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`를 직접 설정하면 그 값이 자동값보다
-우선합니다. 기본 context 설정에서는 topic send 경로가 `fanout` floor `16`,
-topic recv와 routed send/recv 경로가 `8`에서 시작합니다.
+우선한다. 기본 context 설정에서는 publish fanout 경로가 `fanout` floor `16`,
+subscribe ingress와 routed send/recv 경로가 `8`에서 시작한다.
+
+`ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT`와
+`ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT`는 내부 delivery queue가 허용하는
+메시지 개수 상한을 설정한다. 기본값은 각각
+`ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT`,
+`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`이며 둘 다 `100`이다. 상한을 넘은
+대상은 해당 sub 또는 routed delivery target만 끊기며, node 전체나 peer 전체를
+닫지 않는다.
 
 SpotNode와 Spot에는 public weight 설정 옵션이 없습니다. peer weight는 raw
 ROUTER와 DEALER 소켓에서만 설정합니다. Spot peer snapshot에 남아 있는
@@ -114,6 +122,10 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 - `socket_type`은 `ZLINK_SOCKET_ANY` 또는 공개 `ZLINK_SOCKET_*` 값만 받는다.
 - `socket_name`이 비어 있지 않으면 정확히 같은 내부 socket 이름만 반환한다.
 - `auto_hwm_visible == 1`인 row는 기본 Auto-HWM perf 출력 대상이다.
+- 현재 SPOT topology의 주요 node socket 이름은 `ingress-sub`, `local-pub`,
+  `mesh-pub`, `mesh-xsub`, `internal-router`, `external-router`다.
+- `PUBSUB` mode에서는 routed socket이 생성되지 않고, `ROUTED` mode에서는 topic
+  socket이 생성되지 않는다. snapshot 호출은 꺼진 plane을 활성화하지 않는다.
 
 ### 토폴로지와 discovery
 
@@ -582,6 +594,10 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
 - snapshot/query API를 사용해 상태를 관찰한다.
 - `zlink_spot_node_status_t`와 peer/subject entry 구조체의 `service_name`
   필드는 현재 공개 이름을 유지한다.
+- `zlink_spot_node_status_t.disconnected_sub_target_count`는 queue hard limit 등으로
+  끊긴 local subscribe delivery target 수를 나타낸다.
+- `zlink_spot_node_status_t.disconnected_routed_target_count`는 queue hard limit 등으로
+  끊긴 routed delivery target 수를 나타낸다.
 
 ## 제약 요약
 

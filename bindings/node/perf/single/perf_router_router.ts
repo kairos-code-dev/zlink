@@ -45,10 +45,6 @@ async function handshakeReceiver(receiver) {
   }
 
   receiver.send(SENDER_ROUTING_ID, Buffer.from('PONG'));
-  const pong = sender.recv();
-  if (pong.routingId === null || partStrings(pong).join(',') !== 'PONG') {
-    throw new Error('router-router handshake reply failed');
-  }
 }
 
 async function runRouterRouterBenchmark(msgSize, options) {

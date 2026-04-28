@@ -685,6 +685,7 @@ public final class RoutingId {
     // --- factories (binary-safe) ---
     static RoutingId fromBytes(byte[] bytes);
     static RoutingId fromBytes(byte[] bytes, int offset, int length);
+    static RoutingId fromString(String value); // parses toHex(); max 510 hex chars; invalid or >255 decoded bytes throws IllegalArgumentException
 
     // --- accessors ---
     byte[] toBytes();                       // defensive copy of raw bytes
@@ -1537,6 +1538,8 @@ public record SpotNodeStatus(String serviceName,
                              int connectedPeerCount,
                              int subjectCount,
                              int readySubjectCount,
+                             int disconnectedSubTargetCount,
+                             int disconnectedRoutedTargetCount,
                              int lastError,
                              long lastChangedMs) {}
 ```

@@ -770,14 +770,10 @@ namespace Zlink.Codecs.Protobuf;
 
 public static class ProtobufMessageExtensions
 {
-    T ParseProto<T>(this Message message)
+    T FromProto<T>(this Message message)
         where T : Google.Protobuf.IMessage<T>, new();
 
-    // compat alias
-    Message ToMessage<T>(this T value)
-        where T : Google.Protobuf.IMessage<T>;
-
-    Message ToProtoMessage<T>(this T value)
+    Message ToProto<T>(this T value)
         where T : Google.Protobuf.IMessage<T>;
 }
 ```
@@ -787,12 +783,13 @@ namespace Zlink.Codecs.Json;
 
 public static class JsonMessageExtensions
 {
-    T ParseJson<T>(this Message message);
+    T FromJson<T>(
+        this Message message,
+        System.Text.Json.JsonSerializerOptions? options = null);
 
-    // compat alias
-    Message ToMessage<T>(this T value);
-
-    Message ToJsonMessage<T>(this T value);
+    Message ToJson<T>(
+        this T value,
+        System.Text.Json.JsonSerializerOptions? options = null);
 }
 ```
 
@@ -801,12 +798,13 @@ namespace Zlink.Codecs.MessagePack;
 
 public static class MessagePackMessageExtensions
 {
-    T ParseMessagePack<T>(this Message message);
+    T FromMsgPack<T>(
+        this Message message,
+        MessagePack.MessagePackSerializerOptions? options = null);
 
-    // compat alias
-    Message ToMessage<T>(this T value);
-
-    Message ToMessagePackMessage<T>(this T value);
+    Message ToMsgPack<T>(
+        this T value,
+        MessagePack.MessagePackSerializerOptions? options = null);
 }
 ```
 
@@ -823,6 +821,9 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     static RoutingId FromBytes(ReadOnlySpan<byte> bytes);
     /// <exception cref="ZlinkConfigException">Length is 0 or exceeds 255 bytes.</exception>
     static RoutingId FromBytes(byte[] bytes);
+    /// <exception cref="ArgumentException">Value is not a non-empty even-length hex string.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Decoded value exceeds 255 bytes.</exception>
+    static RoutingId FromString(string value); // parses ToHex(); hex input is at most 510 chars
 
     // --- accessors ---
     int Size { get; }                        // 1..255
@@ -1869,6 +1870,8 @@ public sealed record SpotNodeStatus(
     uint ConnectedPeerCount,
     uint SubjectCount,
     uint ReadySubjectCount,
+    uint DisconnectedSubTargetCount,
+    uint DisconnectedRoutedTargetCount,
     int LastError,
     ulong LastChangedMs);
 ```

@@ -164,9 +164,10 @@ inline bool derive_peer_ctrl_bind_endpoint (const std::string &data_endpoint_,
     return false;
 }
 
-inline bool derive_peer_route_bind_endpoint (const std::string &data_endpoint_,
-                                             uint32_t node_id_,
-                                             std::string *out_)
+inline bool derive_external_router_bind_endpoint (
+  const std::string &data_endpoint_,
+  uint32_t node_id_,
+  std::string *out_)
 {
     if (!out_ || data_endpoint_.empty ())
         return false;

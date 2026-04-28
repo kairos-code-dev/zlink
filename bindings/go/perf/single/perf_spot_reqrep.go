@@ -28,9 +28,6 @@ func runSpotReqRep(cfg benchmarkConfig) perfcommon.Result {
 	replier, err := replierNode.Spot()
 	perfcommon.Must(err)
 	defer replier.Close()
-	requesterPoller, err := zlink.NewPoller()
-	perfcommon.Must(err)
-	defer requesterPoller.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(replierNode, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(requester, cfg.transport))
@@ -46,7 +43,6 @@ func runSpotReqRep(cfg benchmarkConfig) perfcommon.Result {
 	endpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-reqrep")
 	perfcommon.Must(replierNode.Bind(endpoint))
 	perfcommon.Must(requester.Connect(endpoint))
-	perfcommon.Must(requesterPoller.AddSocket(requester, perfcommon.ZLinkPollIn))
 
 	perfcommon.Must(replier.OnDispatchEvent(func(currentSpot *zlink.Spot, info zlink.SpotDispatchInfo) {
 		if info.Event != zlink.SpotDispatchEventRoutedReadable {
@@ -55,7 +51,7 @@ func runSpotReqRep(cfg benchmarkConfig) perfcommon.Result {
 		drainSingleSpotReqRepRequests(currentSpot)
 	}))
 
-	waitSingleSpotReqRepReady(requester, requesterPoller, cfg.msgSize)
+	waitSingleSpotReqRepReady(requester, cfg.msgSize)
 	perfcommon.PostReadySettle(cfg.pattern)
 
 	stats := perfcommon.NewStats()
@@ -64,17 +60,25 @@ func runSpotReqRep(cfg benchmarkConfig) perfcommon.Result {
 
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		if !sendSingleSpotReqRepRequest(requester, payload, zlink.SendFlagsNone) {
-			continue
-		}
-		reply, ok := awaitSingleSpotReqRepReply(requester, requesterPoller, window.StopAt.Add(2*time.Second))
+		replyDone := make(chan bool, 1)
+		ok := requestSingleSpotReqRepReply(
+			requester,
+			payload,
+			perfcommon.SingleRecvTimeout(),
+			func(result zlink.RequestResult, parts []*zlink.Message) {
+				defer closeMessageParts(parts)
+				if result != zlink.RequestOK || len(parts) != 1 {
+					replyDone <- false
+					return
+				}
+				perfcommon.RecordMessageRTTLatency(stats, window.ActiveAt, cfg.msgSize, parts[0])
+				replyDone <- true
+			},
+		)
 		if !ok {
 			continue
 		}
-		if part, err := reply.SinglePartOrError(); err == nil {
-			perfcommon.RecordMessageRTTLatency(stats, window.ActiveAt, cfg.msgSize, part)
-		}
-		_ = reply.Close()
+		<-replyDone
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -104,15 +108,17 @@ func drainSingleSpotReqRepRequests(replier *zlink.Spot) {
 	}
 }
 
-func sendSingleSpotReqRepRequest(
+func requestSingleSpotReqRepReply(
 	requester *zlink.RouterSocket,
 	payload []byte,
-	flags zlink.SendFlags,
+	timeout time.Duration,
+	callback zlink.RequestReplyCallback,
 ) bool {
-	err := requester.SendToSpot(
+	ok, err := requester.TryRequestToSpot(
 		singleSpotReqRepNodeRID,
 		singleSpotReqRepSpotRID,
-		flags,
+		callback,
+		timeout,
 		perfcommon.NewMessage(payload),
 	)
 	if err != nil {
@@ -121,65 +127,47 @@ func sendSingleSpotReqRepRequest(
 		}
 		perfcommon.Must(err)
 	}
-	return true
-}
-
-func awaitSingleSpotReqRepReply(
-	requester *zlink.RouterSocket,
-	poller *zlink.Poller,
-	deadline time.Time,
-) (*zlink.Received, bool) {
-	for time.Now().Before(deadline) {
-		event, err := poller.Wait(time.Until(deadline))
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
-			}
-			perfcommon.Must(err)
-		}
-		if event == nil {
-			continue
-		}
-		for {
-			received, err := requester.Recv(zlink.RecvFlagsDontWait)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					break
-				}
-				perfcommon.Must(err)
-			}
-			if received == nil {
-				break
-			}
-			return received, true
-		}
-	}
-	return nil, false
+	return ok
 }
 
 func waitSingleSpotReqRepReady(
 	requester *zlink.RouterSocket,
-	poller *zlink.Poller,
 	msgSize int,
 ) {
 	payload := perfcommon.PreparePayload(msgSize)
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
 		perfcommon.StampProbePayload(payload)
-		if sendSingleSpotReqRepRequest(requester, payload, zlink.SendFlagsNone) {
-			reply, ok := awaitSingleSpotReqRepReply(requester, poller, time.Now().Add(200*time.Millisecond))
-			if ok {
-				part, err := reply.SinglePartOrError()
-				if err == nil {
-					if _, matched := perfcommon.SentAtFromMessagePhase(part, msgSize, perfcommon.PhaseWarmup); matched {
-						_ = reply.Close()
-						return
-					}
+		ready := make(chan bool, 1)
+		if requestSingleSpotReqRepReply(
+			requester,
+			payload,
+			200*time.Millisecond,
+			func(result zlink.RequestResult, parts []*zlink.Message) {
+				defer closeMessageParts(parts)
+				if result != zlink.RequestOK || len(parts) != 1 {
+					ready <- false
+					return
 				}
-				_ = reply.Close()
+				_, matched := perfcommon.SentAtFromMessagePhase(parts[0], msgSize, perfcommon.PhaseWarmup)
+				ready <- matched
+			},
+		) {
+			select {
+			case matched := <-ready:
+				if matched {
+					return
+				}
+			case <-time.After(250 * time.Millisecond):
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	perfcommon.Must(fmt.Errorf("spot reqrep ready probe timed out"))
+}
+
+func closeMessageParts(parts []*zlink.Message) {
+	for _, part := range parts {
+		_ = part.Close()
+	}
 }

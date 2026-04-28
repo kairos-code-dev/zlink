@@ -236,6 +236,8 @@ public sealed record SpotNodeStatus(
     uint ConnectedPeerCount,
     uint SubjectCount,
     uint ReadySubjectCount,
+    uint DisconnectedSubTargetCount,
+    uint DisconnectedRoutedTargetCount,
     int LastError,
     ulong LastChangedMs)
 {
@@ -252,6 +254,8 @@ public sealed record SpotNodeStatus(
                 (SpotNodeState)native.State, native.ConfiguredPeerCount,
                 native.ActivePeerCount, native.ConnectedPeerCount,
                 native.SubjectCount, native.ReadySubjectCount,
+                native.DisconnectedSubTargetCount,
+                native.DisconnectedRoutedTargetCount,
                 native.LastError, native.LastChangedMs);
         }
     }

@@ -2341,6 +2341,10 @@ napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
     set_uint32_property(env, obj, "connectedPeerCount", status.connected_peer_count);
     set_uint32_property(env, obj, "subjectCount", status.subject_count);
     set_uint32_property(env, obj, "readySubjectCount", status.ready_subject_count);
+    set_uint32_property(env, obj, "disconnectedSubTargetCount",
+                        status.disconnected_sub_target_count);
+    set_uint32_property(env, obj, "disconnectedRoutedTargetCount",
+                        status.disconnected_routed_target_count);
     set_int64_property(env, obj, "lastError", status.last_error);
     set_int64_property(env, obj, "lastChangedMs",
                        static_cast<int64_t>(status.last_changed_ms));

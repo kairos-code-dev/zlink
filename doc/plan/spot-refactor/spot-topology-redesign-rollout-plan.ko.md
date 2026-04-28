@@ -307,3 +307,285 @@ native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약
    디렉터리가 저장소에 존재하면 perf 스모크 테스트까지 성공한다.
 
 이 조건을 모두 통과하기 전에는 작업을 완료로 보지 않는다.
+
+---
+
+## 9. 진행 로그
+
+### 2026-04-28 1단계 / 2단계 1차
+
+- 수정 파일:
+  - `core/include/zlink.h`
+  - `core/include/zlink_enum.h`
+  - `core/src/services/spot/*`
+  - `core/src/api/service_spot_request_reply_routed_delivery.cpp`
+  - `core/tests/unittest/unittest_spot_subject_access.cpp`
+  - `core/tests/unittest/unittest_spot_data_plane_budget.cpp`
+- 실행 명령:
+  - `git status --short`
+  - `rg ... core/src core/include core/tests bindings doc`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "unittest_spot_subject_access|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_spot_pubsub_scenario|test_spot_service_introspection|test_spot_runtime_activation|test_spot_dispatch_event|test_spot_poller"`
+- 실패 원인:
+  - 1차 core 빌드와 선별 테스트에서는 실패 없음.
+- 해결 내용:
+  - `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM`, `ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`를
+    `ZLINK_SPOT_NODE_OPT_PUB_HWM`, `ZLINK_SPOT_NODE_OPT_SUB_HWM`로 바꿨다.
+  - local subscriber 구독을 exact / prefix refcount로 집계해서 첫 subscribe와
+    마지막 unsubscribe에서만 remote aggregate subscription을 갱신하게 했다.
+  - SPOT internal socket snapshot 이름을 `ingress-sub`, `local-pub`,
+    `mesh-pub`, `mesh-xsub`, `internal-router`, `external-router` 기준으로
+    바꿨다.
+  - pub/sub local delivery queue hard limit 옵션의 기본값과 설정 경로를
+    추가했다.
+  - 선별 core 테스트 22개를 통과했다.
+
+### 2026-04-28 2단계 2차
+
+- 수정 파일:
+  - `core/src/api/service_spot_request_reply_completion.cpp`
+  - `core/src/api/service_spot_request_reply_internal.cpp`
+  - `core/src/api/service_spot_request_reply_internal.hpp`
+  - `core/src/api/service_spot_request_reply_queue.cpp`
+  - `core/src/services/spot/spot_data_plane_runtime.cpp`
+  - `core/src/services/spot/spot_node_handles.cpp`
+  - `core/tests/e2e/spot/spot_pubsub_scenario_*`
+- 실행 명령:
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "unittest_spot_subject_access|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_spot_pubsub_scenario|test_spot_service_introspection|test_spot_runtime_activation|test_spot_dispatch_event|test_spot_poller|test_zmp_request_reply"`
+  - `cmake --build core/build --target test_zmp_request_reply`
+  - `core/build/bin/test_zmp_request_reply`
+- 실패 원인:
+  - aggregate subscription refcount e2e 초안은 같은 cached facade를 두 번 잡아
+    실제 subscriber 2개를 만들지 못했다.
+  - routed queue hard limit 동작 테스트 초안은 기존 direct send local target
+    판정과 맞지 않아 첫 send가 `ZLINK_SUBMIT_NOT_CONNECTED`로 끝났다.
+- 해결 내용:
+  - aggregate subscription refcount 테스트는 `zlink_spot_new()`로 별도 `Spot`
+    두 개를 만들도록 고쳤다.
+  - ready ack source를 node aggregate 기준으로 맞추고, 마지막 aggregate
+    unsubscribe에서만 ready ack unsubscribe를 보내도록 고쳤다.
+  - routed target recv queue에 message count hard limit 상태를 추가하고, 초과
+    시 해당 routed recv plane만 disconnect하도록 했다.
+  - routed 수동 HWM과 auto HWM msg unit 갱신이 `external-router` socket에도
+    적용되게 했다.
+  - 실패한 routed hard limit 테스트 초안은 제거했고, 기존 `test_zmp_request_reply`
+    14개 테스트는 다시 통과했다.
+
+### 2026-04-28 3단계 1차 리뷰 / 수정
+
+- 수정 파일:
+  - `core/src/services/spot/spot_runtime.hpp`
+  - `core/src/services/spot/spot_runtime.cpp`
+  - `core/src/services/spot/spot_runtime_sender.cpp`
+  - `core/src/services/spot/spot_runtime_shutdown.cpp`
+- 실행 명령:
+  - `rg -n "peer_route_tx|peer_route_sender|ensure_peer_route_sender_socket" core/src core/include core/tests`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "unittest_spot_subject_access|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_spot_pubsub_scenario|test_spot_service_introspection|test_spot_runtime_activation|test_spot_dispatch_event|test_spot_poller|test_zmp_request_reply"`
+- 실패 원인:
+  - draft는 single endpoint 기반 remote routed sender cache를 제거 대상으로 보지만,
+    실제 호출자는 없어도 `peer_route_tx` field, 생성 함수, shutdown 경로가 남아
+    있었다.
+- 해결 내용:
+  - `peer_route_tx`와 `ensure_peer_route_sender_socket()` 경로를 제거했다.
+  - runtime socket slot과 shutdown 로그/endpoint detach에서 `peer_route_tx`를
+    제거했다.
+  - 제거 뒤 full core build와 spot 선별 테스트 24개를 통과했다.
+
+### 2026-04-28 3단계 2차 리뷰 / 수정
+
+- 수정 파일:
+  - `core/src/api/service_spot_request_reply_*.cpp`
+  - `core/src/api/service_spot_routed_codec.cpp`
+  - `core/src/services/spot/spot_control_protocol.hpp`
+  - `core/src/services/spot/spot_data_plane_*`
+  - `core/src/services/spot/spot_node_*`
+  - `core/src/services/spot/spot_runtime*`
+- 실행 명령:
+  - `rg -n "route_ingress|peer_route_tx|node_router|peer_route" core/src core/include core/tests`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "unittest_spot_subject_access|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_spot_pubsub_scenario|test_spot_service_introspection|test_spot_runtime_activation|test_spot_dispatch_event|test_spot_poller|test_zmp_request_reply"`
+- 실패 원인:
+  - `route_ingress` 제거 뒤 첫 빌드는 통과했지만, draft 대조에서 routed-over-mesh
+    fallback, 빈 mesh 구독, 오래된 `node_router`/`peer_route_ingress` 내부 이름이
+    남아 있었다.
+  - `test_zmp_request_reply`가 한 번 `ENETUNREACH`로 실패했으나 단독 재실행과
+    전체 선별 재실행에서는 통과했다.
+- 해결 내용:
+  - 별도 `route_ingress` broker를 제거하고 local routed broker를
+    `internal-router`로 수렴시켰다.
+  - remote routed 송신을 `mesh-pub` topic 우회에서 `external-router` ROUTER
+    peer 연결 경로로 옮겼다.
+  - `mesh-xsub`의 빈 구독을 제거해서 remote topic은 aggregate subscription만
+    받도록 했다.
+  - routed-over-mesh topic helper와 subscription 경로를 제거했다.
+  - aggregate subscription refcount 자료구조를 draft 기준인
+    `unordered_map<string, uint32_t>`로 맞췄다.
+  - 내부 runtime 이름을 `internal_router`, `external_router` 기준으로 정리했다.
+  - 수정 뒤 full core build와 spot 선별 테스트 24개를 통과했다.
+
+### 2026-04-28 3단계 3차 리뷰 / 수정
+
+- 수정 파일:
+  - `core/include/zlink.h`
+  - `core/src/api/service_spot_node_api.cpp`
+  - `core/src/api/service_spot_request_reply_internal.hpp`
+  - `core/src/api/service_spot_request_reply_registry.cpp`
+  - `core/src/services/spot/spot_node_summary.cpp`
+  - `core/src/services/spot/spot_subject_query.cpp`
+- 실행 명령:
+  - `rg -n "routed_mesh|route_ingress|peer_route|node_router|TOPIC_SEND_HWM|TOPIC_RECV_HWM" core/src core/include core/tests`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "unittest_spot_subject_access|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_spot_pubsub_scenario|test_spot_service_introspection|test_spot_runtime_activation|test_spot_dispatch_event|test_spot_poller|test_zmp_request_reply"`
+- 실패 원인:
+  - hard limit로 끊긴 local delivery target 수가 status/query surface에 드러나지
+    않았다.
+  - routed mesh subscription refresh 이름이 no-op으로 남아 있어 draft 용어와
+    맞지 않았다.
+- 해결 내용:
+  - `zlink_spot_node_status_t`에
+    `disconnected_sub_target_count`,
+    `disconnected_routed_target_count`를 추가했다.
+  - pub/sub local fanout disconnect 수와 routed recv queue disconnect 수를 status에
+    집계했다.
+  - routed mesh refresh 내부 함수를 external-router identity refresh로 바꿨다.
+  - core build와 spot 선별 테스트 24개를 통과했다.
+
+### 2026-04-28 4단계 POSD 리뷰 / 수정
+
+- 수정 파일:
+  - `core/src/api/service_spot_request_reply_api.cpp`
+  - `core/src/api/service_spot_request_reply_internal.hpp`
+  - `core/src/api/service_spot_request_reply_routed_delivery.cpp`
+  - `core/src/api/service_spot_request_reply_utils.cpp`
+  - `core/src/core/pipe.cpp`
+  - `core/src/services/spot/spot_data_plane_control.cpp`
+  - `core/src/services/spot/spot_data_plane_runtime.cpp`
+  - `core/src/services/spot/spot_runtime.cpp`
+  - `core/src/services/spot/spot_runtime.hpp`
+  - `core/src/services/spot/spot_runtime_sender.cpp`
+  - `core/src/services/spot/spot_runtime_shutdown.cpp`
+- 실행 명령:
+  - `rg -n "static .*\\{\\s*return|return [A-Za-z0-9_:]+\\([^;]*\\);|TODO|route_id_for_peer_endpoint|spot_direct_route_wait_trace_enabled|LIBZLINK_UNUSED \\(kind_\\)|external_route_ids_by_endpoint" core/src`
+  - `rg -n "routed_mesh|route_ingress|peer_route|node_router|TOPIC_SEND_HWM|TOPIC_RECV_HWM|spot_direct_route_wait_trace_enabled|sender_socket_slot_local" core/src core/include core/tests`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "unittest_spot_subject_access|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_spot_pubsub_scenario|test_spot_service_introspection|test_spot_runtime_activation|test_spot_dispatch_event|test_spot_poller|test_zmp_request_reply"`
+  - `ctest --test-dir core/build --output-on-failure -R "^test_spot_pubsub_scenario$" --repeat until-fail:20`
+- 실패 원인:
+  - 단일 sender kind만 남았는데도 sender slot 선택 helper가 남아 있어 얕은
+    모듈과 pass-through 위험 신호가 있었다.
+  - external route id map을 control, delivery, shutdown 경로가 직접 만져
+    routed peer wiring 지식이 여러 곳으로 새고 있었다.
+  - internal-router enqueue 로직이 request/reply API 파일과 routed delivery 파일에
+    중복되어 같은 전송 규칙이 두 곳에 있었다.
+  - 반복 테스트 중 `pipe.cpp`의 peer-induced termination 경로가 `check_read` 뒤
+    `read` 경합으로 assert를 밟았다.
+- 해결 내용:
+  - 대안 A는 기존 helper를 유지하고 이름만 바꾸는 방식, 대안 B는 현재 남은
+    단일 의미를 runtime 메서드와 직접 필드 접근으로 축소하는 방식이었다. B를
+    선택해 sender kind 선택 helper를 제거하고 잘못된 kind는 즉시 `EINVAL`로
+    처리했다.
+  - 대안 A는 external route id map 접근부마다 lock 규칙을 반복하는 방식, 대안 B는
+    `spot_runtime_t`가 등록, 삭제, 전체 삭제, destination 조회를 제공하는
+    방식이었다. B를 선택해 map 지식을 runtime 내부로 모았다.
+  - 대안 A는 internal-router enqueue helper 중복을 유지하는 방식, 대안 B는
+    request/reply 내부 유틸로 공통화하는 방식이었다. B를 선택해
+    `enqueue_runtime_internal_router_once()`와 `send_combined_parts_on_socket()`을
+    내부 유틸 계약으로 옮겼다.
+  - pipe termination에서 delimiter probe 뒤 read 실패를 assert 대신 queue 상태
+    재확인으로 처리해 중복 termination과 teardown 경합이 테스트를 중단하지 않게
+    했다.
+  - 관련 검색에서 예전 routed mesh / route ingress / peer route / node router
+    이름과 sender pass-through 흔적은 더 이상 나오지 않는다.
+  - core build, spot 선별 테스트 24개, `test_spot_pubsub_scenario` 20회 반복을
+    통과했다.
+  - 남은 POSD follow-up: 0개.
+
+### 2026-04-28 5단계 전체 검증 게이트
+
+- 수정 파일:
+  - `doc/plan/spot-refactor/spot-topology-redesign-rollout-plan.ko.md`
+- 실행 명령:
+  - `ctest --test-dir core/build --output-on-failure`
+  - `bindings/c/samples/run_samples.sh`
+  - `ctest --test-dir bindings/c/build --output-on-failure -R "^sample_smoke_sample_c_monitor_recv_sample$" -j1`
+  - `ctest --test-dir bindings/c/build --output-on-failure -R "^sample_smoke_sample_c_discovery_registry_sample$|^sample_smoke_sample_c_registry_query_sample$" -j1`
+  - `ctest --test-dir bindings/c/build --output-on-failure -L sample-smoke -j1`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports inproc --reuse-build --results-tag smoke_20260428`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --reuse-build --results-tag smoke_20260428_tcp_all`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 PERF_MULTI_RUN_COOLDOWN_MS=0 bindings/c/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --connect-concurrency 2 --transport-transition-ms 0 --pattern-transition-ms 0 --server-ready-timeout-ms 10000 --connect-ready-timeout-ms 5000 --server-shutdown-timeout-ms 5000 --reuse-build --results-tag smoke_20260428_tcp_all`
+- 실패 원인:
+  - `bindings/c/samples/run_samples.sh` 실행 중
+    `sample_c_monitor_recv_sample`에서
+    `core/build/lib/libzlink.so.5: file too short`가 한 번 발생했다.
+  - single perf의 `inproc` 스모크는 SPOT 패턴이 지원 transport 매칭 없음으로
+    skip되어 전체 패턴 조건을 충족하지 못했다.
+- 해결 내용:
+  - core runtime symlink와 실제 ELF 파일을 확인했고
+    `core/build/lib/libzlink.so.5.3.4`와 `bindings/c/build/libzlink_c.so.1.0.0`는
+    정상 ELF였다.
+  - 실패한 sample을 단독 재실행한 뒤 남은 sample과 전체 `sample-smoke` 라벨을
+    다시 실행해 C sample 10개가 모두 통과했다.
+  - `ldd bindings/c/build/samples/sample_c_monitor_recv_sample`에서
+    `libzlink.so.5`가 `core/build/lib/libzlink.so.5`를 가리키는 것을 확인했다.
+  - single perf는 `tcp` 기준으로 PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER,
+    ROUTER_ROUTER, SPOT 6개 패턴 모두 완료했고, runner가
+    `core/build/lib/libzlink.so.5.3.4`를 출력했다.
+  - multi perf는 `tcp` 기준으로 MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER,
+    MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_SPOT, MULTI_SPOT_REQREP,
+    MULTI_SPOT_SENDSEND, MULTI_STREAM 8개 패턴 모두 완료했고 skip/fail 0개였다.
+  - core 전체 테스트는 99개 모두 통과했다.
+
+### 2026-04-28 6-9단계 문서 / bindings 진행 로그
+
+- 수정 파일:
+  - `doc/internals/spot-internals.ko.md`, `doc/internals/spot-internals.md`
+  - `doc/spec/core/service/spot.ko.md`, `doc/spec/core/service/spot.md`
+  - `doc/guide/07-3-spot.ko.md`, `doc/guide/07-3-spot.md`
+  - `doc/spec/bindings/*/README.md`
+  - `bindings/{cpp,dotnet,go,java,node,python,rust}/native/...`
+  - `bindings/{cpp,dotnet,go,java,node,python,rust}`의 SPOT status/option binding 파일
+- 실행 명령:
+  - `rg -n "TOPIC_SEND_HWM|TOPIC_RECV_HWM|route_ingress|peer_route|node_router|routed_mesh" doc/internals doc/spec doc/guide doc/site/docs`
+  - 각 binding native 폴더에 `core/build/lib/libzlink.so.5.3.4`와
+    `bindings/c/build/libzlink_c.so.1.0.0` 복사 및 symlink 재생성
+  - `bindings/cpp/tests/run_tests.sh`, `bindings/cpp/samples/run_samples.sh`,
+    C++ single/multi perf smoke
+  - `bindings/dotnet/tests/run_tests.sh`, `bindings/dotnet/samples/run_samples.sh`,
+    .NET single/multi perf smoke
+  - `bindings/go/tests/run_tests.sh`, `bindings/go/samples/run_samples.sh`,
+    Go single/multi perf smoke
+  - `bindings/java/tests/run_tests.sh`, `bindings/java/samples/run_samples.sh`,
+    Java single perf 및 Java multi 패턴별 smoke
+  - `npm --prefix bindings/node run rebuild-native`
+  - `bindings/node/tests/run_tests.sh`, `bindings/node/samples/run_samples.sh`
+- 실패 원인:
+  - C++ discovery sample이 provider discovery만 조회해 registry 전파를 보지 못했다.
+  - Go single `SPOT_REQREP` perf가 `SendToSpot` 뒤 `Recv`를 기다리는 예전 경로를
+    사용했다.
+  - Go multi router echo server가 stop 뒤 pending reply를 모두 비우려 해 종료
+    구간에서 멈출 수 있었다.
+  - Java `SpotNodeStatus` decoder가 padding 오프셋을 필드처럼 읽었다.
+  - Java discovery sample의 바쁜 대기와 Java multi `PUBSUB`/`SPOT` start gate가
+    smoke runner timeout을 만들었다.
+  - Node native addon이 최신 `zlink_spot_node_status_t` 크기로 rebuild되지 않아
+    stack smashing이 발생했다.
+  - Node perf `PUBSUB`, `ROUTER_ROUTER`, multi `SPOT_REQREP`, `STREAM`에는 아직
+    timeout/종료 문제가 남아 있다.
+- 해결 내용:
+  - 정식 문서와 site 문서에서 새 SPOT topology, aggregate subscription,
+    queue hard limit, snapshot name, status field를 반영했다.
+  - C++/.NET/Go/Java/Node/Python/Rust native runtime과 header를 최신 core/C
+    산출물로 동기화했다.
+  - C++/.NET/Go/Java/Node binding surface에 새 status field와 option 이름을
+    반영했다.
+  - C++/.NET/Go/Java tests와 samples는 통과했다.
+  - C++/.NET/Go perf smoke는 single/multi 전체 패턴을 통과했다.
+  - Java single perf는 통과했고, Java multi는 패턴별 단독 smoke에서
+    DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, PUBSUB, SPOT, STREAM을 통과했다.
+  - Node native addon rebuild 뒤 Node tests와 samples는 통과했다.
+  - Node single `SPOT_REQREP`은 `requestToSpot` 기반으로 수정해 단독 smoke를
+    통과했다.
+  - 남은 미완료 검증: Node perf 전체 smoke, Python/Rust binding 검증, 최종 완료
+    조건 재확인.

@@ -547,6 +547,8 @@ pub struct zlink_spot_node_status_t {
     pub connected_peer_count: u32,
     pub subject_count: u32,
     pub ready_subject_count: u32,
+    pub disconnected_sub_target_count: u32,
+    pub disconnected_routed_target_count: u32,
     pub last_error: i32,
     pub last_changed_ms: u64,
 }

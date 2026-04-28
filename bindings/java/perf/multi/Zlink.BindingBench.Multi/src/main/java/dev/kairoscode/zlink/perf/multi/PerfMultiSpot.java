@@ -5,6 +5,7 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfUtil;
@@ -39,19 +40,21 @@ final class PerfMultiSpot {
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
-            PerfControl.awaitStart(config.size(), "spot server");
+            sleepQuietly(2500);
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC, active);
+                    publisher.publish(SERVICE_NAME, TOPIC, active, SendFlags.DONT_WAIT);
                 }
             }
-            for (int i = 0; i < Math.max(32, config.clients() * 8); i++) {
+            long cooldownEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            while (System.nanoTime() < cooldownEnd) {
                 try (Message cooldown = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC, cooldown);
+                    publisher.publish(SERVICE_NAME, TOPIC, cooldown, SendFlags.DONT_WAIT);
                 }
+                sleepQuietly(1);
             }
             return PerfUtil.Result.silent(config);
         }
@@ -97,13 +100,12 @@ final class PerfMultiSpot {
             ready.countDown();
             if (ready.getCount() == 0L) {
                 PerfControl.emitClientReady(config.size());
-                PerfControl.awaitStart(config.size(), "spot client");
                 metrics.startActiveWindow();
                 go.countDown();
             }
             PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
             long finishDeadline = System.nanoTime()
-                + Duration.ofSeconds(duration + 20L).toNanos();
+                + Duration.ofSeconds(duration + 5L).toNanos();
             while (System.nanoTime() < finishDeadline) {
                 try (TopicMessage received = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
                     if (received == null) {
@@ -149,6 +151,10 @@ final class PerfMultiSpot {
     }
 
     private static void sleepQuietly(int millis) {
+        sleepQuietly((long) millis);
+    }
+
+    private static void sleepQuietly(long millis) {
         try {
             Thread.sleep(millis);
         } catch (InterruptedException ex) {

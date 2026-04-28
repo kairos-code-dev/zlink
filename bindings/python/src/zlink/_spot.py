@@ -437,6 +437,8 @@ class SpotNodeStatus:
     connected_peer_count: int
     subject_count: int
     ready_subject_count: int
+    disconnected_sub_target_count: int
+    disconnected_routed_target_count: int
     last_error: int
     last_changed_ms: int
 
@@ -672,6 +674,8 @@ class SpotNode:
             connected_peer_count=int(native.connected_peer_count),
             subject_count=int(native.subject_count),
             ready_subject_count=int(native.ready_subject_count),
+            disconnected_sub_target_count=int(native.disconnected_sub_target_count),
+            disconnected_routed_target_count=int(native.disconnected_routed_target_count),
             last_error=int(native.last_error),
             last_changed_ms=int(native.last_changed_ms),
         )

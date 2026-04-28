@@ -11,7 +11,7 @@
 #include "core/multipart_send_txn.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
-#include "utils/random.hpp"
+#include "utils/routing_id.hpp"
 
 #include <string.h>
 namespace zlink
@@ -87,9 +87,7 @@ int spot_pub_t::initialize_routing_id (zlink_routing_id_t *out_)
         return -1;
     }
 
-    const uint32_t value = generate_random ();
-    out_->size = sizeof (value);
-    memcpy (out_->data, &value, sizeof (value));
+    generate_random_uuid_routing_id (out_);
     return 0;
 }
 

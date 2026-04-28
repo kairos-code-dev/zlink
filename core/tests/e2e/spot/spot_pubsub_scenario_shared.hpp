@@ -110,6 +110,7 @@ void run_spot_peer_reverse_tcp_test ();
 void test_spot_peer_tcp ();
 void test_spot_peer_tcp_reverse_publish ();
 void test_spot_multi_publisher ();
+void test_spot_aggregate_subscription_refcount ();
 void test_spot_sub_handler_basic ();
 void test_spot_recv_callback_isolated_by_handle ();
 void test_spot_node_direct_local_and_child_interop ();

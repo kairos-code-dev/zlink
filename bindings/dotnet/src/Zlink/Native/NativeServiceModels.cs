@@ -62,6 +62,8 @@ internal unsafe struct ZlinkSpotNodeStatus
     public uint ConnectedPeerCount;
     public uint SubjectCount;
     public uint ReadySubjectCount;
+    public uint DisconnectedSubTargetCount;
+    public uint DisconnectedRoutedTargetCount;
     public int LastError;
     public ulong LastChangedMs;
 }

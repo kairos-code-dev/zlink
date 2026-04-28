@@ -273,6 +273,8 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
          it != snapshot.end (); ++it) {
         if (state_->local_fanout.targets.find (it->first) != state_->local_fanout.targets.end ())
             continue;
+        if (state_->local_fanout.disconnected_targets.count (it->first) != 0)
+            continue;
         spot_data_plane_runtime_state_t::local_target_state_t target;
         target.attachment_id = it->first;
         target.relay_socket = it->second;
@@ -334,6 +336,11 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
       static_cast<size_t> (std::max (total_fanout_budget / 2,
                                      static_cast<int> (pending_queue_bytes_floor)));
     state_->local_fanout.pending_hard_limit = half_budget;
+    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+    state_->local_fanout.pending_message_count_hard_limit =
+      hwm.sub_queue_hard_limit_enabled
+        ? static_cast<size_t> (hwm.sub_queue_hard_limit)
+        : static_cast<size_t> (ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT);
     state_->remote_mesh.pending_hard_limit = half_budget;
     state_->local_fanout.pending_pause_threshold = half_budget;
     state_->local_fanout.pending_resume_threshold =
@@ -390,25 +397,40 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
     uint64_t local_pending_message_id = 0;
     for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
            iterator target_it = state_->local_fanout.targets.begin ();
-         target_it != state_->local_fanout.targets.end (); ++target_it) {
+         target_it != state_->local_fanout.targets.end ();) {
         spot_data_plane_runtime_state_t::local_target_state_t &target =
           target_it->second;
-        if (!target.relay_socket)
+        if (!target.relay_socket) {
+            ++target_it;
             continue;
+        }
 
         pump_socket_commands (target.relay_socket);
         if (target.pending_message_ids.empty ()
             && spot_publish_msg_parts (target.relay_socket, topic_, parts_) == 0) {
+            ++target_it;
             continue;
         }
 
         if (errno != EAGAIN && !target.pending_message_ids.empty ())
             errno = EAGAIN;
+        if (errno == EAGAIN
+            && state_->local_fanout.pending_message_count_hard_limit != 0
+            && target.pending_message_ids.size ()
+                 >= state_->local_fanout.pending_message_count_hard_limit) {
+            const uint64_t attachment_id = target_it->first;
+            ++target_it;
+            state_->local_fanout.disconnected_targets.insert (attachment_id);
+            spot_data_plane_pending_t::drop_local_target_state (
+              state_, attachment_id);
+            continue;
+        }
         if (errno != EAGAIN
             || !spot_data_plane_pending_t::enqueue_local_target_message (
               state_, &target, topic_, parts_, &local_pending_message_id)) {
             return -1;
         }
+        ++target_it;
     }
 
     refresh_poller_interest (state_);

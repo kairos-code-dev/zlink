@@ -209,7 +209,7 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, stop <-chan st
 			stopping = true
 		default:
 		}
-		if stopping && len(pending) == 0 {
+		if stopping {
 			return
 		}
 

@@ -38,10 +38,9 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
       state_->mesh_xsub_monitor);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
-    spot_data_plane_forwarder_t::pump_socket_commands (state_->route_ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (
-      state_->peer_route_ingress);
-    spot_data_plane_forwarder_t::pump_socket_commands (state_->node_router);
+      state_->external_router);
+    spot_data_plane_forwarder_t::pump_socket_commands (state_->internal_router);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->fanout);
 
@@ -60,12 +59,10 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
             state_->peer_ctrl_pub->set_all_pipes_nodelay ();
         if (state_->peer_ctrl_sub)
             state_->peer_ctrl_sub->set_all_pipes_nodelay ();
-        if (state_->route_ingress)
-            state_->route_ingress->set_all_pipes_nodelay ();
-        if (state_->peer_route_ingress)
-            state_->peer_route_ingress->set_all_pipes_nodelay ();
-        if (state_->node_router)
-            state_->node_router->set_all_pipes_nodelay ();
+        if (state_->external_router)
+            state_->external_router->set_all_pipes_nodelay ();
+        if (state_->internal_router)
+            state_->internal_router->set_all_pipes_nodelay ();
         if (state_->ingress)
             state_->ingress->set_all_pipes_nodelay ();
         if (state_->fanout)
@@ -97,15 +94,15 @@ int drain_peer_ctrl_messages (spot_node_t *node_,
 int drain_direct_route_messages (spot_node_t *node_,
                                  spot_data_plane_runtime_state_t *state_)
 {
-    if (state_->peer_route_ingress
-        && !state_->peer_route_ingress->socket_msg_dispatch_active ()
-        && zlink_spot_process_peer_route_ingress (
-             node_, state_->peer_route_ingress)
+    if (state_->external_router
+        && !state_->external_router->socket_msg_dispatch_active ()
+        && zlink_spot_process_external_router (
+             node_, state_->external_router)
              != 0)
         return -1;
 
-    if (state_->node_router
-        && zlink_spot_process_node_router (node_, state_->node_router) != 0)
+    if (state_->internal_router
+        && zlink_spot_process_internal_router (node_, state_->internal_router) != 0)
         return -1;
 
     return 0;
@@ -115,9 +112,8 @@ bool is_ctrl_event (socket_base_t *socket_,
                     const spot_data_plane_runtime_state_t &state_)
 {
     return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
-           || socket_ == state_.route_ingress
-           || socket_ == state_.peer_route_ingress
-           || socket_ == state_.node_router
+           || socket_ == state_.external_router
+           || socket_ == state_.internal_router
            || socket_ == state_.mesh_xsub_monitor;
 }
 
@@ -153,25 +149,17 @@ bool handle_ctrl_event (socket_base_t *socket_,
         return true;
     }
 
-    if (socket_ == state_->route_ingress) {
-        if (zlink_spot_process_route_ingress (node_, socket_) != 0) {
-            *fatal_errno_out_ = errno;
-            *running_out_ = false;
-        }
-        return true;
-    }
-
-    if (socket_ == state_->peer_route_ingress) {
+    if (socket_ == state_->external_router) {
         if (!socket_->socket_msg_dispatch_active ()
-            && zlink_spot_process_peer_route_ingress (node_, socket_) != 0) {
+            && zlink_spot_process_external_router (node_, socket_) != 0) {
             *fatal_errno_out_ = errno;
             *running_out_ = false;
         }
         return true;
     }
 
-    if (socket_ == state_->node_router) {
-        if (zlink_spot_process_node_router (node_, socket_) != 0) {
+    if (socket_ == state_->internal_router) {
+        if (zlink_spot_process_internal_router (node_, socket_) != 0) {
             *fatal_errno_out_ = errno;
             *running_out_ = false;
         }

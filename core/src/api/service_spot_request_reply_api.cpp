@@ -22,11 +22,9 @@
 #include "api/submit_result_internal.hpp"
 #include "api/handler_result_internal.hpp"
 #include "api/recv_result_internal.hpp"
-#include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "services/control/service_control_runtime.hpp"
-#include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -88,6 +86,7 @@ using zlink::spot_reqrep_internal::dispatch_local_request;
 using zlink::spot_reqrep_internal::dispatch_local_built_message;
 using zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::process_route_combined_for_local_delivery;
+using zlink::spot_reqrep_internal::enqueue_runtime_internal_router_once;
 using zlink::spot_reqrep_internal::register_router_spot_pending_request;
 using zlink::spot_reqrep_internal::register_spot_pending_request;
 using zlink::spot_reqrep_internal::resolve_runtime_for_spot_destination;
@@ -106,12 +105,6 @@ enum : uint8_t
 
 const size_t spot_routed_control_part_count = 8;
 
-int enqueue_runtime_route_ingress_once (zlink::spot_runtime_t *runtime_,
-                                        std::vector<zlink_msg_t> *parts_,
-                                        zlink_send_flags_t flags_);
-int send_combined_parts_locked (zlink::socket_base_t *socket_,
-                                std::vector<zlink_msg_t> *parts_,
-                                zlink_send_flags_t flags_);
 int recv_combined_plain_message (zlink::socket_base_t *socket_,
                                  std::vector<zlink_msg_t> *out_);
 
@@ -222,21 +215,6 @@ void routing_id_from_string (const std::string &value_, zlink_routing_id_t *out_
     out_->size = static_cast<uint8_t> (size);
 }
 
-int send_combined_parts_locked (zlink::socket_base_t *socket_,
-                                std::vector<zlink_msg_t> *parts_,
-                                zlink_send_flags_t flags_)
-{
-    if (!socket_ || !parts_ || parts_->empty ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket_);
-    socket_->set_all_pipes_nodelay ();
-    return zlink::logical_multipart_send (socket_, &(*parts_)[0], parts_->size (),
-                                          flags_);
-}
-
 int recv_combined_plain_message (zlink::socket_base_t *socket_,
                                  std::vector<zlink_msg_t> *out_)
 {
@@ -273,7 +251,7 @@ int recv_combined_plain_message (zlink::socket_base_t *socket_,
     return 0;
 }
 
-int enqueue_spot_state_route_ingress (
+int enqueue_spot_state_internal_router (
   spot_request_reply_state_t *state_,
   zlink::spot_runtime_t *runtime_,
   std::vector<zlink_msg_t> *parts_,
@@ -283,61 +261,7 @@ int enqueue_spot_state_route_ingress (
         errno = EFAULT;
         return -1;
     }
-    return enqueue_runtime_route_ingress_once (runtime_, parts_, flags_);
-}
-
-int enqueue_runtime_route_ingress_once (zlink::spot_runtime_t *runtime_,
-                                        std::vector<zlink_msg_t> *parts_,
-                                        zlink_send_flags_t flags_)
-{
-    if (!runtime_ || !parts_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::socket_base_t *socket = NULL;
-    if (runtime_->ensure_sender_socket (
-          zlink::spot_runtime_sender_route_ingress, &socket)
-        != 0)
-        return -1;
-
-    zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
-    socket->set_all_pipes_nodelay ();
-    const long wait_timeout_ms = (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : 100;
-    if (zlink::wait_socket_events_internal (socket, ZLINK_POLLOUT, wait_timeout_ms)
-        <= 0) {
-        errno = errno != 0 ? errno : EAGAIN;
-        return -1;
-    }
-
-    return send_combined_parts_locked (socket, parts_, flags_);
-}
-
-int enqueue_runtime_node_router_once (zlink::spot_runtime_t *runtime_,
-                                      std::vector<zlink_msg_t> *parts_,
-                                      zlink_send_flags_t flags_)
-{
-    if (!runtime_ || !parts_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::socket_base_t *socket = NULL;
-    if (runtime_->ensure_sender_socket (
-          zlink::spot_runtime_sender_node_router, &socket)
-        != 0)
-        return -1;
-
-    zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
-    socket->set_all_pipes_nodelay ();
-    const long wait_timeout_ms = (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : 100;
-    if (zlink::wait_socket_events_internal (socket, ZLINK_POLLOUT, wait_timeout_ms)
-        <= 0) {
-        errno = errno != 0 ? errno : EAGAIN;
-        return -1;
-    }
-
-    return send_combined_parts_locked (socket, parts_, flags_);
+    return enqueue_runtime_internal_router_once (runtime_, parts_, flags_);
 }
 
 }

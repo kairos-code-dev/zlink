@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfControl;
@@ -30,19 +31,21 @@ final class PerfMultiPubSub {
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
-            PerfControl.awaitStart(config.size(), "pubsub server");
+            sleepMillis(500);
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    pub.publish(TOPIC, active);
+                    pub.publish(TOPIC, active, SendFlags.DONT_WAIT);
                 }
             }
-            for (int i = 0; i < Math.max(3, config.clients() * 3); i++) {
+            long cooldownEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            while (System.nanoTime() < cooldownEnd) {
                 try (Message cooldown = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    pub.publish(TOPIC, cooldown);
+                    pub.publish(TOPIC, cooldown, SendFlags.DONT_WAIT);
                 }
+                sleepMillis(1);
             }
             return PerfUtil.Result.silent(config);
         }
@@ -63,13 +66,12 @@ final class PerfMultiPubSub {
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     PerfControl.emitClientReady(config.size());
-                    PerfControl.awaitStart(config.size(), "pubsub client");
                     metrics.startActiveWindow();
                     go.countDown();
                 }
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));
                 long finishDeadline = System.nanoTime()
-                    + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
+                    + Duration.ofSeconds(config.durationSeconds() + 3L).toNanos();
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventType.POLLIN.getValue())) {
                     while (System.nanoTime() < finishDeadline) {
@@ -108,5 +110,14 @@ final class PerfMultiPubSub {
             throw new IllegalStateException("pubsub client failed", failure.get());
         }
         return metrics.finishMulti(config);
+    }
+
+    private static void sleepMillis(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("pubsub sleep interrupted", ex);
+        }
     }
 }

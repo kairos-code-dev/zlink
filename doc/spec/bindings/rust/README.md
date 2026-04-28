@@ -715,6 +715,14 @@ pub struct RoutingId { /* ... */ }
 impl RoutingId {
     /// Construct from raw bytes (must be 1-255 bytes).
     pub fn from_bytes(bytes: &[u8]) -> RoutingId;
+    /// Parse the hex string returned by `to_hex()` / `Display`.
+    /// Hex input must be at most 510 chars and decode to 1-255 bytes.
+    /// Panics if the input is not hex or decodes above 255 bytes.
+    pub fn from_string(value: &str) -> RoutingId;
+    /// Parse the hex string returned by `to_hex()` / `Display`.
+    /// Hex input must be at most 510 chars and decode to 1-255 bytes.
+    /// Returns ConfigError if the input is not hex or decodes above 255 bytes.
+    pub fn try_from_string(value: &str) -> Result<RoutingId, ConfigError>;
     /// Borrow the raw byte view (immutable).
     pub fn as_bytes(&self) -> &[u8];
     /// Byte length (1-255).
@@ -1651,6 +1659,8 @@ pub struct SpotNodeStatus {
     pub connected_peer_count: u32,
     pub subject_count: u32,
     pub ready_subject_count: u32,
+    pub disconnected_sub_target_count: u32,
+    pub disconnected_routed_target_count: u32,
     pub last_error: i32,
     pub last_changed_ms: u64,
 }

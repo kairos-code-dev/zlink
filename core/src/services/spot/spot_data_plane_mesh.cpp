@@ -15,8 +15,6 @@
 
 #include "services/common/monitor_decode.hpp"
 
-#include <atomic>
-#include <chrono>
 #include <cstring>
 
 namespace zlink
@@ -27,21 +25,6 @@ namespace spot_io = zlink::spot_data_plane_message_io;
 
 static const unsigned int mesh_xsub_forward_batch_limit = 16384;
 static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
-
-bool spot_route_stats_enabled_local ()
-{
-    return std::getenv ("ZLINK_DEBUG_SPOT_ROUTE_STATS") != NULL;
-}
-
-struct spot_route_recv_stats_t
-{
-    std::atomic<unsigned long long> recv_count;
-    std::atomic<unsigned long long> recv_ns;
-
-    spot_route_recv_stats_t () : recv_count (0), recv_ns (0) {}
-};
-
-spot_route_recv_stats_t g_spot_route_recv_stats;
 
 void spot_ctrl_debugf (const char *fmt_, ...)
 {
@@ -228,64 +211,6 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         }
 
         processed_bytes += topic_msg.size ();
-        const bool routed =
-          zlink::spot_reqrep_internal::is_spot_routed_mesh_topic (
-            static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
-
-        if (routed) {
-            const uint64_t start_ns =
-              spot_route_stats_enabled_local ()
-                ? static_cast<uint64_t> (
-                    std::chrono::duration_cast<std::chrono::nanoseconds> (
-                      std::chrono::steady_clock::now ().time_since_epoch ())
-                      .count ())
-                : 0;
-            std::vector<zlink_msg_t> combined;
-            if (spot_io::recv_remaining_frames_to_vector (
-                  mesh_xsub_, &combined, &processed_bytes)
-                != 0) {
-                topic_msg.close ();
-                return -1;
-            }
-            topic_msg.close ();
-
-            zlink::spot_reqrep_internal::parsed_spot_envelope_t envelope;
-            const bool parsed =
-              !combined.empty ()
-              && zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-                &combined[0], combined.size (), &envelope);
-            if (parsed
-                && zlink::spot_reqrep_internal::should_process_spot_routed_locally (
-                  node_, envelope)) {
-                if (zlink::spot_reqrep_internal::
-                      process_parsed_route_combined_for_local_delivery (
-                        &combined,
-                        envelope)
-                    != 0) {
-                    const int saved_errno = errno;
-                    zlink::request_reply::close_built_parts (&combined);
-                    errno = saved_errno;
-                    return -1;
-                }
-            }
-            zlink::request_reply::close_built_parts (&combined);
-            if (spot_route_stats_enabled_local ()) {
-                const uint64_t end_ns = static_cast<uint64_t> (
-                  std::chrono::duration_cast<std::chrono::nanoseconds> (
-                    std::chrono::steady_clock::now ().time_since_epoch ())
-                    .count ());
-                g_spot_route_recv_stats.recv_count.fetch_add (
-                  1, std::memory_order_relaxed);
-                g_spot_route_recv_stats.recv_ns.fetch_add (end_ns - start_ns,
-                                                           std::memory_order_relaxed);
-            }
-
-            ++processed;
-            if (processed >= mesh_xsub_forward_batch_limit
-                || processed_bytes >= mesh_xsub_forward_batch_bytes_limit)
-                return 0;
-            continue;
-        }
 
         std::string topic (
           static_cast<const char *> (topic_msg.data ()), topic_msg.size ());

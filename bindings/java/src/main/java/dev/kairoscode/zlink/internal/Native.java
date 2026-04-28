@@ -550,12 +550,12 @@ public final class Native {
     private static final MethodHandle MH_REG_MEMBER_PEERS = downcall(
             "zlink_registry_member_peers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_MEMBER_PEER_METADATA = downcall(
             "zlink_registry_member_peer_metadata",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_TOPOLOGY_SNAPSHOT = downcall(
@@ -586,7 +586,7 @@ public final class Native {
     private static final MethodHandle MH_DISC_NEW_FIXED = downcall(
             "zlink_discovery_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS));
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_CONNECT = downcall("zlink_discovery_connect_registry",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_SET_DEALER_PEER_MODE = downcall(
@@ -2509,7 +2509,7 @@ public final class Native {
     }
 
     public static int registryMemberPeers(MemorySegment registry,
-                                          short serviceType,
+                                          int serviceType,
                                           MemorySegment serviceName,
                                           MemorySegment entries,
                                           MemorySegment count) {
@@ -2522,7 +2522,7 @@ public final class Native {
     }
 
     public static int registryMemberPeerMetadata(MemorySegment registry,
-                                                 short serviceType,
+                                                 int serviceType,
                                                  MemorySegment serviceName,
                                                  short serviceRole,
                                                  MemorySegment endpoint,
@@ -2606,7 +2606,7 @@ public final class Native {
     }
 
     public static MemorySegment discoveryNewFixed(MemorySegment ctx,
-                                                  short serviceType,
+                                                  int serviceType,
                                                   MemorySegment serviceName) {
         try {
             return (MemorySegment) MH_DISC_NEW_FIXED.invokeExact(ctx,

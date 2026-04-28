@@ -370,11 +370,13 @@ void test_spot_node_hwm_options_round_trip_public_api ()
     int topic_recv = 222;
     int routed_send = 333;
     int routed_recv = 444;
+    int sub_queue_limit = 55;
+    int routed_queue_limit = 66;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM, &topic_send,
+      node, ZLINK_SPOT_NODE_OPT_PUB_HWM, &topic_send,
       sizeof (topic_send)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM, &topic_recv,
+      node, ZLINK_SPOT_NODE_OPT_SUB_HWM, &topic_recv,
       sizeof (topic_recv)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
       node, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM, &routed_send,
@@ -382,15 +384,21 @@ void test_spot_node_hwm_options_round_trip_public_api ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
       node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, &routed_recv,
       sizeof (routed_recv)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT, &sub_queue_limit,
+      sizeof (sub_queue_limit)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT, &routed_queue_limit,
+      sizeof (routed_queue_limit)));
 
     int value = 0;
     size_t value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM, &value, &value_size));
+      node, ZLINK_SPOT_NODE_OPT_PUB_HWM, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (111, value);
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM, &value, &value_size));
+      node, ZLINK_SPOT_NODE_OPT_SUB_HWM, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (222, value);
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
@@ -400,6 +408,14 @@ void test_spot_node_hwm_options_round_trip_public_api ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
       node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (444, value);
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (55, value);
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (66, value);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
@@ -413,10 +429,12 @@ void test_spot_node_hwm_options_expose_defaults ()
     TEST_ASSERT_NOT_NULL (node);
 
     const zlink_spot_node_option_t options[] = {
-      ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM,
-      ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM,
+      ZLINK_SPOT_NODE_OPT_PUB_HWM,
+      ZLINK_SPOT_NODE_OPT_SUB_HWM,
       ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM,
       ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM,
+      ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT,
+      ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT,
     };
 
     for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); ++i) {
@@ -425,19 +443,24 @@ void test_spot_node_hwm_options_expose_defaults ()
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_get_spot_node_option (node, options[i], &value, &value_size));
         TEST_ASSERT_EQUAL_UINT (sizeof (value), value_size);
-        TEST_ASSERT_EQUAL_INT (
-          options[i] == ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM
-            ? expected_mesh_pub_sndhwm ()
-            : expected_spot_hwm (
-                options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
-                    || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
-                  ? zlink::auto_hwm_role_routed
-                  : zlink::auto_hwm_role_recv_ingress,
-                options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
-                    || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
-                  ? ZLINK_CORE_SOCKET_ROUTER
-                  : ZLINK_CORE_SOCKET_SUB),
-          value);
+        int expected = 0;
+        if (options[i] == ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT)
+            expected = ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT;
+        else if (options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT)
+            expected = ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT;
+        else if (options[i] == ZLINK_SPOT_NODE_OPT_PUB_HWM)
+            expected = expected_mesh_pub_sndhwm ();
+        else
+            expected = expected_spot_hwm (
+              options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
+                  || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
+                ? zlink::auto_hwm_role_routed
+                : zlink::auto_hwm_role_recv_ingress,
+              options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
+                  || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
+                ? ZLINK_CORE_SOCKET_ROUTER
+                : ZLINK_CORE_SOCKET_SUB);
+        TEST_ASSERT_EQUAL_INT (expected, value);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));

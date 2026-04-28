@@ -3,6 +3,7 @@ package zlink
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -16,6 +17,37 @@ func TestRoutingIDCanonicalHelpers(t *testing.T) {
 	}
 	if got := rid.String(); got != "004142" {
 		t.Fatalf("String() = %q, want %q", got, "004142")
+	}
+	if got := NewRoutingIDFromString("004142"); !got.Equal(rid) {
+		t.Fatalf("NewRoutingIDFromString() = %v, want %v", got, rid)
+	}
+	parsed, err := ParseRoutingIDString("004142")
+	if err != nil {
+		t.Fatalf("ParseRoutingIDString() error = %v", err)
+	}
+	if !parsed.Equal(rid) {
+		t.Fatalf("ParseRoutingIDString() = %v, want %v", parsed, rid)
+	}
+	maxParsed, err := ParseRoutingIDString(strings.Repeat("a", 510))
+	if err != nil {
+		t.Fatalf("ParseRoutingIDString(max) error = %v", err)
+	}
+	if maxParsed.Size() != 255 {
+		t.Fatalf("ParseRoutingIDString(max).Size() = %d, want 255", maxParsed.Size())
+	}
+	if got := NewRoutingIDFromString("not-hex"); got.Size() != 0 {
+		t.Fatalf("NewRoutingIDFromString(invalid).Size() = %d, want 0", got.Size())
+	}
+	if got := NewRoutingIDFromString(strings.Repeat("a", 512)); got.Size() != 0 {
+		t.Fatalf("NewRoutingIDFromString(oversize).Size() = %d, want 0", got.Size())
+	}
+	if _, err := ParseRoutingIDString(strings.Repeat("a", 512)); err == nil {
+		t.Fatalf("ParseRoutingIDString(oversize) should fail")
+	} else {
+		var configErr *ConfigError
+		if !errors.As(err, &configErr) {
+			t.Fatalf("ParseRoutingIDString(oversize) error type = %T, want *ConfigError", err)
+		}
 	}
 	if rid.Hash() != NewRoutingID([]byte{0x00, 0x41, 0x42}).Hash() {
 		t.Fatalf("Hash() should be stable for equal routing ids")
@@ -200,6 +232,8 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertNoField("RecvPendingMsg", reflect.TypeOf(MonitorSnapshot{}))
 
 	assertField("LastChangedMs", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint64)
+	assertField("DisconnectedSubTargetCount", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint32)
+	assertField("DisconnectedRoutedTargetCount", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint32)
 	assertField("ConnectedSinceMs", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint64)
 	assertField("LastReportedMs", reflect.TypeOf(RegistryTopologyEntry{}), reflect.Uint64)
 	assertNoField("LastChangedMS", reflect.TypeOf(SpotNodeStatus{}))

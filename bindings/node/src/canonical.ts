@@ -300,6 +300,8 @@ export interface SpotNodeStatus {
   readonly connectedPeerCount: number;
   readonly subjectCount: number;
   readonly readySubjectCount: number;
+  readonly disconnectedSubTargetCount: number;
+  readonly disconnectedRoutedTargetCount: number;
   readonly lastError: number;
   readonly lastChangedMs: bigint;
 }
@@ -674,6 +676,8 @@ function mapSpotNodeStatus(entry: {
   connectedPeerCount: number;
   subjectCount: number;
   readySubjectCount: number;
+  disconnectedSubTargetCount?: number;
+  disconnectedRoutedTargetCount?: number;
   lastError: number;
   lastChangedMs: number | bigint;
 }, fallbackRoutingId: RoutingId): SpotNodeStatus {
@@ -690,6 +694,8 @@ function mapSpotNodeStatus(entry: {
     connectedPeerCount: entry.connectedPeerCount,
     subjectCount: entry.subjectCount,
     readySubjectCount: entry.readySubjectCount,
+    disconnectedSubTargetCount: entry.disconnectedSubTargetCount ?? 0,
+    disconnectedRoutedTargetCount: entry.disconnectedRoutedTargetCount ?? 0,
     lastError: entry.lastError,
     lastChangedMs: BigInt(entry.lastChangedMs)
   };

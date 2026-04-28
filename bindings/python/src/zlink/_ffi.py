@@ -91,6 +91,8 @@ class ZlinkSpotNodeStatus(ctypes.Structure):
         ("connected_peer_count", ctypes.c_uint32),
         ("subject_count", ctypes.c_uint32),
         ("ready_subject_count", ctypes.c_uint32),
+        ("disconnected_sub_target_count", ctypes.c_uint32),
+        ("disconnected_routed_target_count", ctypes.c_uint32),
         ("last_error", ctypes.c_int32),
         ("last_changed_ms", ctypes.c_uint64),
     ]

@@ -357,10 +357,12 @@ internal enum SpotNodeOption
     PubMode = 1,
     PubQueueHwm = 2,
     PubQueueFullPolicy = 3,
-    TopicSendHwm = 0x3608,
-    TopicRecvHwm = 0x3609,
+    PubHwm = 0x3608,
+    SubHwm = 0x3609,
     RoutedSendHwm = 0x360A,
-    RoutedRecvHwm = 0x360B
+    RoutedRecvHwm = 0x360B,
+    SubQueueHardLimit = 0x360C,
+    RoutedQueueHardLimit = 0x360D
 }
 
 internal enum MessageType : byte

@@ -8,7 +8,7 @@
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
 #include "utils/err.hpp"
-#include "utils/random.hpp"
+#include "utils/routing_id.hpp"
 
 #include <string.h>
 
@@ -71,9 +71,7 @@ int spot_sub_t::initialize_routing_id (zlink_routing_id_t *out_)
         return -1;
     }
 
-    const uint32_t value = generate_random ();
-    out_->size = sizeof (value);
-    memcpy (out_->data, &value, sizeof (value));
+    generate_random_uuid_routing_id (out_);
     return 0;
 }
 

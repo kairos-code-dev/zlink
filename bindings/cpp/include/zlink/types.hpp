@@ -604,6 +604,26 @@ class routing_id_t
           bytes_.empty () ? NULL : bytes_.data (), bytes_.size ());
     }
 
+    static routing_id_t from_string (const std::string &value_)
+    {
+        if (value_.empty () || (value_.size () % 2u) != 0u)
+            throw std::invalid_argument ("routing id string must be hex");
+        if (value_.size () > 510u)
+            throw std::invalid_argument (
+              "routing id string must decode to at most 255 bytes");
+
+        std::vector<uint8_t> bytes;
+        bytes.reserve (value_.size () / 2u);
+        for (size_t i = 0; i < value_.size (); i += 2u) {
+            const int high = hex_nibble (value_[i]);
+            const int low = hex_nibble (value_[i + 1u]);
+            if (high < 0 || low < 0)
+                throw std::invalid_argument ("routing id string must be hex");
+            bytes.push_back (static_cast<uint8_t> ((high << 4) | low));
+        }
+        return from_bytes (bytes);
+    }
+
     const uint8_t *data () const noexcept { return _native.data; }
     size_t size () const noexcept { return _native.size; }
     bool empty () const noexcept { return _native.size == 0; }
@@ -668,6 +688,17 @@ class routing_id_t
     }
 
     zlink_routing_id_t _native;
+
+    static int hex_nibble (char value_) noexcept
+    {
+        if (value_ >= '0' && value_ <= '9')
+            return value_ - '0';
+        if (value_ >= 'a' && value_ <= 'f')
+            return value_ - 'a' + 10;
+        if (value_ >= 'A' && value_ <= 'F')
+            return value_ - 'A' + 10;
+        return -1;
+    }
 
     friend inline zlink_routing_id_t *routing_id_native (routing_id_t &) noexcept;
     friend inline const zlink_routing_id_t *
@@ -1329,7 +1360,9 @@ struct spot_node_status_t
         : service_name (), local_endpoint (), node_routing_id (std::nullopt),
           state (spot_node_state::idle), configured_peer_count (0),
           active_peer_count (0), connected_peer_count (0), subject_count (0),
-          ready_subject_count (0), last_error (0), last_changed_ms (0)
+          ready_subject_count (0), disconnected_sub_target_count (0),
+          disconnected_routed_target_count (0), last_error (0),
+          last_changed_ms (0)
     {
     }
 
@@ -1346,6 +1379,9 @@ struct spot_node_status_t
           connected_peer_count (status_.connected_peer_count),
           subject_count (status_.subject_count),
           ready_subject_count (status_.ready_subject_count),
+          disconnected_sub_target_count (status_.disconnected_sub_target_count),
+          disconnected_routed_target_count (
+            status_.disconnected_routed_target_count),
           last_error (status_.last_error),
           last_changed_ms (status_.last_changed_ms)
     {
@@ -1360,6 +1396,8 @@ struct spot_node_status_t
     uint32_t connected_peer_count;
     uint32_t subject_count;
     uint32_t ready_subject_count;
+    uint32_t disconnected_sub_target_count;
+    uint32_t disconnected_routed_target_count;
     int32_t last_error;
     uint64_t last_changed_ms;
 };

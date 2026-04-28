@@ -2,921 +2,250 @@
 
 # SPOT / SpotNode 내부 아키텍처
 
-## 1. 컴포넌트 개요
+이 문서는 core 유지보수자가 SPOT 내부 배선과 데이터 흐름을 빠르게 파악하도록
+돕는 내부 문서다. 공개 API 계약은
+[`doc/spec/core/service/spot.ko.md`](../spec/core/service/spot.ko.md)를 기준으로
+본다.
+
+## 1. 전체 구조
 
 ```mermaid
 flowchart TB
     subgraph UserLayer["User Layer"]
         app["Application"]
-        spot_handle["spot_handle_t<br/>(unified facade)"]
+        spot["Spot facade"]
+        node["SpotNode"]
     end
 
-    subgraph AccessLayer["Service Access Layer"]
-        subject_access["spot_subject_access<br/>publish, subscribe,<br/>recv, handler"]
-        node_access["spot_node_access<br/>bind, connect_peer,<br/>attach_discovery"]
+    subgraph RuntimeLayer["Runtime"]
+        runtime["spot_runtime_t"]
+        agg["aggregate subscription state"]
+        route_ids["external route id map"]
     end
 
-    subgraph NodeLayer["SpotNode (spot_node_t)"]
-        node_core["spot_node_t<br/>lifecycle owner"]
-        peer_state["peer_state<br/>manual/discovery/active endpoints"]
-        handles["handle management<br/>pub/sub 생성"]
-        control_task["control_task (10ms)<br/>구독 replay,<br/>ready refresh"]
+    subgraph DataPlane["Data Plane Thread"]
+        loop["spot_data_plane_loop_t"]
+        topic["topic forwarding"]
+        routed["routed forwarding"]
+        control["peer control"]
     end
 
-    subgraph RuntimeLayer["Runtime (spot_runtime_t)"]
-        runtime["spot_runtime_t<br/>socket container,<br/>batch config, HWM config"]
-        attachments["attachment map<br/>(pub/sub sockets)"]
-    end
-
-    subgraph DataPlaneLayer["Data Plane (별도 스레드)"]
-        dp_loop["spot_data_plane_loop_t<br/>main polling loop<br/>(반복당 최대 7개 ready 이벤트)"]
-        dp_fwd["forwarding<br/>topic batching,<br/>encoding/decoding"]
-        dp_proto["protocol<br/>control msgs,<br/>bootstrap descriptors"]
-    end
-
-    app --> spot_handle
-    spot_handle --> subject_access
-    spot_handle --> node_access
-    subject_access --> node_core
-    node_access --> node_core
-    node_core --> peer_state
-    node_core --> handles
-    node_core --> control_task
-    node_core --> runtime
-    runtime --> attachments
-    runtime --> dp_loop
-    dp_loop --> dp_fwd
-    dp_loop --> dp_proto
+    app --> spot
+    spot --> node
+    node --> runtime
+    runtime --> agg
+    runtime --> route_ids
+    runtime --> loop
+    loop --> topic
+    loop --> routed
+    loop --> control
 ```
+
+`SpotNode`는 lifecycle owner이고, `Spot`은 그 위에서 빌려 쓰는 데이터 평면
+facade다. `Spot`을 닫아도 backing `SpotNode`는 자동으로 닫히지 않는다.
 
 ## 2. 내부 소켓 토폴로지
 
-SpotNode는 생성 mode에 필요한 socket 묶음만 만든다. `ALL` mode는 topic 묶음과
-routed 묶음을 모두 만든다. `PUBSUB` mode는 routed runtime socket을 만들지
-않고, `ROUTED` mode는 topic runtime socket을 만들지 않는다. 꺼진 묶음은
-snapshot, monitor, 꺼진 API의 첫 호출로도 생성되지 않는다. 세 sender-cache
-socket은 소유한 routed 경로가 존재할 때만 필요 시 생성된다.
+SpotNode는 mode에 필요한 socket 묶음만 만든다.
 
-### 2.1 소켓 목록
+| mode | 생성되는 주요 plane |
+|------|---------------------|
+| `PUBSUB` | topic publish/subscribe, peer control |
+| `ROUTED` | routed delivery, peer control |
+| `ALL` | topic, routed, peer control |
+
+꺼진 plane은 snapshot 호출이나 꺼진 API의 첫 호출로도 생성되지 않는다.
+
+### 2.1 주요 소켓
 
 ```mermaid
 flowchart LR
-    subgraph PubSide["Publisher 측"]
-        spot_pub["spot_pub_t<br/>(PUB socket)"]
+    subgraph LocalTopic["Local Topic"]
+        spot_pub["Spot PUB"]
+        ingress_sub["ingress-sub<br/>SUB"]
+        local_pub["local-pub<br/>PUB"]
+        spot_sub["Spot SUB"]
     end
 
-    subgraph Internal["Data Plane 소켓"]
-        ingress["ingress<br/>SUB socket<br/>BIND .pub-in"]
-        fanout["fanout<br/>PUB socket<br/>BIND .sub-out"]
-        mesh_pub["mesh_pub<br/>PUB socket"]
-        mesh_xsub["mesh_xsub<br/>XSUB socket"]
-        route_in["route_ingress<br/>ROUTER socket<br/>BIND .route-in"]
-        peer_route_in["peer_route_ingress<br/>ROUTER socket<br/>BIND derived route endpoint"]
-        node_router["node_router<br/>ROUTER socket<br/>BIND .node-router"]
-        ctrl["ctrl<br/>PAIR socket"]
-        peer_ctrl_pub["peer_ctrl_pub<br/>PUB socket"]
-        peer_ctrl_sub["peer_ctrl_sub<br/>SUB socket"]
+    subgraph RemoteTopic["Remote Topic Mesh"]
+        mesh_pub["mesh-pub<br/>PUB"]
+        mesh_xsub["mesh-xsub<br/>XSUB"]
+        remote_topic["Remote SpotNode"]
     end
 
-    subgraph SubSide["Subscriber 측"]
-        spot_sub["spot_sub_t<br/>(SUB socket)"]
+    subgraph RoutedPlane["Routed Plane"]
+        internal_router["internal-router<br/>ROUTER"]
+        external_router["external-router<br/>ROUTER"]
+        remote_router["Remote external-router"]
     end
 
-    subgraph Remote["원격 Peer"]
-        remote_node["다른 SpotNode"]
+    subgraph ControlPlane["Peer Control"]
+        peer_ctrl_pub["peer_ctrl_pub<br/>PUB"]
+        peer_ctrl_sub["peer_ctrl_sub<br/>SUB"]
     end
 
-    spot_pub -->|connect .pub-in| ingress
-    ingress -->|"topic forward"| fanout
-    ingress -->|"mesh forward"| mesh_pub
-    fanout -->|connect .sub-out| spot_sub
-    mesh_pub -->|"tcp/tls"| remote_node
-    remote_node -->|"tcp/tls"| mesh_xsub
-    mesh_xsub -->|"topic forward"| fanout
-    peer_ctrl_pub -->|control| remote_node
-    remote_node -->|control| peer_ctrl_sub
-    remote_node -->|"direct route"| peer_route_in
+    spot_pub --> ingress_sub
+    ingress_sub --> local_pub
+    local_pub --> spot_sub
+    ingress_sub --> mesh_pub
+    remote_topic --> mesh_xsub
+    mesh_xsub --> local_pub
+
+    internal_router --> external_router
+    external_router <--> remote_router
+
+    peer_ctrl_pub --> remote_topic
+    remote_topic --> peer_ctrl_sub
 ```
 
-### 2.2 소켓 상세
+| 소켓 | 타입 | 역할 | HWM 옵션 축 |
+|------|------|------|-------------|
+| `ingress-sub` | `SUB` | local publish 입력 수신 | `ZLINK_SPOT_NODE_OPT_SUB_HWM` |
+| `local-pub` | `PUB` | 같은 node 안의 subscriber로 fanout | `ZLINK_SPOT_NODE_OPT_PUB_HWM` |
+| `mesh-pub` | `PUB` | remote node로 topic publish 전파 | `ZLINK_SPOT_NODE_OPT_PUB_HWM` |
+| `mesh-xsub` | `XSUB` | remote node에서 topic publish 수신 | `ZLINK_SPOT_NODE_OPT_SUB_HWM` |
+| `internal-router` | `ROUTER` | 같은 node 안의 target `Spot`으로 routed 전달 | routed send/recv HWM |
+| `external-router` | `ROUTER` | peer node와 routed frame 송수신 | routed send/recv HWM |
+| `peer_ctrl_pub` | `PUB` | peer control 송신 | control 기본값 |
+| `peer_ctrl_sub` | `SUB` | peer control 수신 | control 기본값 |
 
-| 소켓 | 타입 | Endpoint | Bind/Connect | HWM | 역할 |
-|------|------|----------|-------------|-----|------|
-| `ingress` | SUB | `.pub-in` | BIND | `node_sub_rcvhwm` | 모든 로컬 publish 수신 |
-| `fanout` | PUB | `.sub-out` | BIND | `node_pub_sndhwm` | 로컬 subscriber에게 분배 |
-| `mesh_pub` | PUB | (bound endpoint) | BIND | `node_pub_sndhwm` | 원격 peer에 토픽 송신 |
-| `mesh_xsub` | XSUB | — | CONNECT to peers | `node_sub_rcvhwm` | 원격 peer에서 토픽 수신 |
-| `route_ingress` | ROUTER | `.route-in` | BIND | `routed_recv_hwm` | app에서 routed 메시지 수신 |
-| `peer_route_ingress` | ROUTER | (파생된 route endpoint) | BIND | `routed_recv_hwm` | 원격 peer의 직접 routed 메시지 수신 (bind 시 활성화) |
-| `node_router` | ROUTER | `.node-router` | BIND | `routed_send/recv_hwm` | app에 routed 메시지 전달 |
-| `ctrl` | PAIR | `.ctrl` | CONNECT | — | control plane ↔ data plane 명령 |
-| `peer_ctrl_pub` | PUB | (derived from bound) | BIND | 1024 | peer에 제어 메시지 송신 |
-| `peer_ctrl_sub` | SUB | — | CONNECT to peers | 1024 | peer에서 제어 메시지 수신 |
-| `mesh_xsub_monitor` | Monitor | — | — | — | CONNECTION_READY/DISCONNECTED 추적 |
+`zlink_spot_node_internal_sockets_snapshot()`은 실제 존재하는 socket만 반환한다.
+perf의 `Auto-HWM spotnode` 표도 이 snapshot 이름을 그대로 사용한다.
 
-모든 inproc endpoint 패턴: `inproc://zlink.spot.{node_id}.{suffix}`
+## 3. Topic plane
 
-`zlink_spot_node_internal_sockets_snapshot()`은 호출 시점에 실제로 존재하는
-socket만 보고한다. 이 API는 lazy socket을 할당하지 않는다. perf는 이 snapshot을
-사용해 Auto-HWM 출력 row를 결정한다.
-
-### 2.2.1 왜 내부 소켓이 이렇게 많은가
-
-처음 보면 "SpotNode 하나에 왜 socket이 이렇게 많이 들어가나?" 라는 의문이
-생기기 쉽다. 이유는 SpotNode가 한 가지 일만 하는 단순 wrapper가 아니라,
-아래 네 종류의 일을 동시에 맡는 작은 내부 런타임이기 때문이다.
-
-1. 로컬 publish를 받아 로컬 subscriber에 바로 분배해야 한다.
-2. 같은 publish를 원격 peer에도 mesh 형태로 전파해야 한다.
-3. routed 메시지는 topic 메시지와 다른 규칙으로 받아서 전달해야 한다.
-4. peer 연결 상태, bootstrap 정보, ready 신호 같은 제어 메시지는 데이터 메시지와
-   분리해서 다뤄야 한다.
-
-이 네 가지를 한 소켓에 모두 섞으면 다음 문제가 바로 생긴다.
-
-- topic fanout과 routed delivery는 필요한 socket 타입이 다르다.
-- 로컬 inproc 배선과 원격 transport 배선은 방향과 수명 주기가 다르다.
-- 제어 메시지는 payload가 작고 우선순위도 다르므로 HWM 정책을 따로 잡아야 한다.
-- 수신 polling loop에서 "무슨 종류의 메시지가 들어왔는지"를 빠르게 구분하기가
-  어려워진다.
-
-그래서 SpotNode는 역할별로 socket을 분리한다. 큰 묶음으로 보면 다음과 같다.
-
-| 묶음 | 대표 소켓 | 왜 분리하는가 |
-|------|-----------|---------------|
-| 로컬 topic 입력/분배 | `ingress`, `fanout` | 같은 process 안의 pub/sub 흐름을 빠르게 처리하기 위해 |
-| 원격 topic mesh | `mesh_pub`, `mesh_xsub` | peer 전파 경로를 로컬 fanout과 분리하기 위해 |
-| routed 데이터 경로 | `route_ingress`, `node_router`, `peer_route_ingress` | routing id 기반 전달을 topic 경로와 섞지 않기 위해 |
-| peer 제어 경로 | `peer_ctrl_pub`, `peer_ctrl_sub` | ready/bootstrap/control 신호를 데이터와 분리하기 위해 |
-| 보조 송신 cache | `route_ingress_tx`, `node_router_tx`, `peer_route_tx` | data plane이 반복 connect 없이 내부 경로로 밀어 넣기 위해 |
-
-즉 "socket이 많다"기보다, publish/subscribe, routed, peer control을 한 runtime 안에서
-분리해 둔 결과라고 보는 편이 맞다.
-
-### 2.2.2 perf snapshot 이름과 문서 용어 대응
-
-perf의 `Auto-HWM spotnode` 표는 내부 구현 이름을 그대로 보여 주기 때문에, 위 표의
-설명과 바로 1:1로 읽히지 않을 수 있다. 아래 표는 snapshot 이름을 문서 용어와
-맞춰 읽는 방법을 정리한 것이다.
-
-| perf snapshot 이름 | 문서에서 보는 축 | 역할 |
-|--------------------|------------------|------|
-| `default_pub` | node 기본 publish handle | node가 기본으로 쓰는 publish 출구 |
-| `local_pub_ingress` | `ingress` | 로컬 publish가 data plane으로 들어오는 입력 |
-| `local_fanout` | `fanout` | 로컬 subscriber로 분배하는 출력 |
-| `mesh_pub` | `mesh_pub` | 원격 peer로 topic을 보내는 출력 |
-| `mesh_xsub` | `mesh_xsub` | 원격 peer에서 topic을 받는 입력 |
-| `route_ingress` | `route_ingress` | routed 메시지가 data plane으로 들어오는 입력 |
-| `peer_route_ingress` | `peer_route_ingress` | 원격 peer가 직접 보내는 routed 입력 |
-| `node_router` | `node_router` | app/spot 쪽 routed delivery의 중심 router |
-| `peer_ctrl_pub` | `peer_ctrl_pub` | peer control 송신 |
-| `peer_ctrl_sub` | `peer_ctrl_sub` | peer control 수신 |
-| `internal_receiver` | 내부 기본 receiver helper | 기본 recv 경로를 유지하는 보조 socket snapshot |
-| `route_ingress_tx` | sender cache | data plane이 `route_ingress`로 밀어 넣을 때 쓰는 on-demand 송신 socket |
-| `node_router_tx` | sender cache | data plane이 `node_router`로 밀어 넣을 때 쓰는 on-demand 송신 socket |
-| `peer_route_tx` | sender cache | 원격 peer route endpoint로 직접 보내는 on-demand 송신 socket |
-
-핵심은 이름 앞의 접두어를 보면 된다.
-
-- `local_*`: 같은 process 안의 inproc 배선
-- `mesh_*`: peer 간 topic 전파
-- `route_*`: routed 데이터 경로
-- `peer_ctrl_*`: peer 제어 경로
-- `*_tx`: 필요할 때만 만드는 송신 cache
-
-### 2.2.3 왜 `MsgUnit(B)`가 같은 size 안에서도 다를 수 있는가
-
-perf 표에서 `Size(B)=64`인데 어떤 row는 `MsgUnit(B)=64`, 어떤 row는
-`MsgUnit(B)=4096`으로 보일 수 있다. 이것은 snapshot이 잘못된 것이 아니라,
-그 socket이 속한 평면이 다르기 때문이다.
-
-- data plane 소켓
-  - 현재 벤치 payload 크기를 기준으로 계산한다.
-  - 예: `default_pub`, `local_fanout`, `mesh_pub`, `mesh_xsub`,
-    `route_ingress`, `node_router`
-- control plane 소켓
-  - 벤치 payload가 아니라 내부 제어 메시지 기준으로 계산한다.
-  - 예: `peer_ctrl_pub`, `peer_ctrl_sub`, `peer_route_ingress`
-
-그래서 같은 `Size(B)=64` 블록 안에서도 control plane row는
-`MsgUnit(B)=4096`으로 따로 보일 수 있다. 이 값은 "지금 벤치 payload가 4096B"
-라는 뜻이 아니라, "이 control socket이 HWM 계산에 쓰는 기준 메시지 단위가
-4096B"라는 뜻이다.
-
-### 2.3 Sender Cache 소켓 (on-demand)
-
-아래 소켓 3개는 처음 필요할 때 생성된다.
-
-| 소켓 | 타입 | 연결 대상 | 역할 |
-|------|------|----------|------|
-| `route_ingress_tx` | DEALER | `.route-in` (inproc) | data plane에서 route_ingress로 송신할 때 사용 |
-| `node_router_tx` | DEALER | `.node-router` (inproc) | data plane에서 node_router로 송신할 때 사용 |
-| `peer_route_tx` | PAIR | 원격 peer의 route endpoint | 원격 peer에 직접 routed 메시지 송신 |
-
-### 2.4 공통 소켓 설정
-
-모든 data plane 소켓 공통:
-- `LINGER = 0`
-- `SNDTIMEO = -1` (blocking)
-- `ingress`: `SUBSCRIBE = ""` (모든 토픽 수신)
-- `fanout`: `XPUB_NODROP = 1` (slow subscriber에 드롭하지 않음; 내부 PUB 소켓에 적용)
-- `peer_ctrl_sub`: `SUBSCRIBE = "__zlink.spot.ctrl."` (제어 접두어만)
-
-## 3. Pub/Sub Attachment
-
-사용자 facing `spot_pub_t`와 `spot_sub_t`는 별도 attachment 소켓으로 data plane에 연결한다.
+topic plane은 local과 remote 모두 socket의 기본 subscription filter를 사용한다.
+runtime은 publish 시점에 target index를 조회하지 않는다.
 
 ```mermaid
 sequenceDiagram
-    participant App as Application
-    participant Pub as spot_pub_t (PUB)
-    participant Ingress as ingress (SUB)
-    participant DP as Data Plane
-    participant Fanout as fanout (XPUB)
-    participant Sub as spot_sub_t (SUB)
+    participant Pub as Spot PUB
+    participant In as ingress-sub
+    participant Local as local-pub
+    participant Mesh as mesh-pub
+    participant Sub as Spot SUB
+    participant Peer as Remote mesh-xsub
 
-    Note over Pub,Ingress: PUB이 .pub-in에 connect (SUB이 bind)
-    Note over Fanout,Sub: XPUB이 .sub-out에 bind (SUB이 connect)
-
-    App->>Pub: zlink_publish(spot, topic, parts)
-    Pub->>Ingress: inproc으로 전송
-    Ingress->>DP: poller 깨어남 → recv
-    DP->>Fanout: 로컬 fanout (즉시)
-    Fanout->>Sub: 매칭되는 subscriber에 전달
-    Sub->>App: zlink_subscribe() 또는 subscribe_handler callback
+    Pub->>In: topic + payload
+    In->>Local: local fanout
+    In->>Mesh: remote mesh publish
+    Local-->>Sub: socket filter match
+    Mesh-->>Peer: aggregate subscription match
 ```
 
-### Attachment 생성
+local subscriber의 실제 topic matching은 각 `Spot SUB`의 `SUBSCRIBE` 상태가 맡는다.
+remote 전달의 matching은 peer node의 `mesh-xsub` aggregate subscription 상태가
+맡는다.
+
+### 3.1 Aggregate subscription 수명
+
+runtime은 remote mesh에 반영할 node 단위 구독 수명을 따로 관리한다.
+
+| 상태 | 자료구조 | 의미 |
+|------|----------|------|
+| exact topic | `topic -> refcount` | 같은 exact topic을 원하는 local subscriber 수 |
+| prefix | `prefix -> refcount` | 같은 prefix를 원하는 local subscriber 수 |
+
+규칙은 단순하다.
+
+1. refcount가 `0 -> 1`이 될 때만 remote aggregate subscribe를 보낸다.
+2. refcount가 `1 -> 0`이 될 때만 remote aggregate unsubscribe를 보낸다.
+3. 중간 증가와 감소는 local 상태만 바꾸며 remote mesh에는 중복 명령을 보내지 않는다.
+
+이 규칙 때문에 같은 node 안의 여러 `Spot`이 같은 topic을 구독해도 remote peer에는
+하나의 node 대표 구독만 보인다.
+
+## 4. Routed plane
+
+routed plane은 두 router 축으로 고정된다.
+
+| router | 범위 | 역할 |
+|--------|------|------|
+| `internal-router` | node 내부 | target `Spot`의 routed recv queue로 전달 |
+| `external-router` | node 간 | peer node의 `external-router`와 ROUTER 링크로 송수신 |
+
+별도 routed ingress broker나 topic mesh 우회 경로는 없다. local routed delivery는
+`internal-router`, remote routed delivery는 `external-router`를 기준으로 추적한다.
+
+### 4.1 Local routed delivery
 
 ```mermaid
 sequenceDiagram
-    participant Node as spot_node_t
-    participant RT as spot_runtime_t
-    participant PUB as New PUB Socket
-    participant SUB as New SUB Socket
+    participant Sender as Origin Spot
+    participant Internal as internal-router
+    participant Target as Target Spot
 
-    Node->>RT: create_attachment(pub, pub_ingress_endpoint)
-    RT->>PUB: PUB 소켓 생성
-    RT->>PUB: connect("inproc://zlink.spot.{id}.pub-in")
-    RT->>RT: attachment_map에 저장
-
-    Node->>RT: create_attachment(sub, sub_fanout_endpoint)
-    RT->>SUB: SUB 소켓 생성
-    RT->>SUB: connect("inproc://zlink.spot.{id}.sub-out")
-    RT->>RT: attachment_map에 저장
+    Sender->>Internal: routed frame
+    Internal->>Target: enqueue target queue
+    Target->>Target: zlink_spot_recv()
 ```
 
-## 4. 토픽 메시지 흐름 (상세)
+target `Spot` queue가 hard limit을 넘으면 해당 routed target만 disconnected 상태가
+된다. node 전체를 닫거나 peer 연결을 끊지 않는다.
 
-### 4.1 로컬 Publish → 로컬 Subscribe
+### 4.2 Remote routed delivery
 
 ```mermaid
 sequenceDiagram
-    participant Pub as spot_pub_t
-    participant Ingress as ingress (SUB)
-    participant DP as data_plane_loop
-    participant Fanout as fanout (XPUB)
-    participant Sub as spot_sub_t
+    participant ASpot as Origin Spot
+    participant AInternal as Node A internal-router
+    participant AExternal as Node A external-router
+    participant BExternal as Node B external-router
+    participant BInternal as Node B internal-router
+    participant BSpot as Target Spot
 
-    Pub->>Ingress: [topic] + [payload parts]
-    Note over DP: poller → ingress readable
-    DP->>DP: recv_and_forward_ingress()
-    DP->>DP: has_local_filtered_subs 확인
-    DP->>Fanout: send [topic] + [payload]
-    Note over Fanout: XPUB이 구독 매칭
-    Fanout->>Sub: 매칭되는 sub에 전달
+    ASpot->>AInternal: routed frame
+    AInternal->>AExternal: destination node is remote
+    AExternal->>BExternal: ROUTER peer link
+    BExternal->>BInternal: local delivery handoff
+    BInternal->>BSpot: enqueue target queue
 ```
 
-### 4.2 로컬 Publish → 원격 Peer
+remote routed delivery는 peer별 external route id map을 사용한다. 이 map은
+`spot_runtime_t` 내부 메서드를 통해서만 갱신한다. 호출자는 map 구조나 lock 규칙을
+알 필요가 없다.
 
-```mermaid
-sequenceDiagram
-    participant Pub as spot_pub_t
-    participant Ingress as ingress (SUB)
-    participant DP as data_plane_loop
-    participant MeshPub as mesh_pub (PUB)
-    participant Remote as 원격 SpotNode
+## 5. Queue hard limit
 
-    Pub->>Ingress: [topic] + [payload parts]
-    Note over DP: poller → ingress readable
-    DP->>DP: recv_and_forward_ingress()
+SPOT은 느린 소비자 때문에 node 전체가 막히지 않도록 delivery target 단위 hard
+limit을 둔다.
 
-    DP->>MeshPub: [topic] + [payload] 전송
+| 옵션 | 기본값 | 적용 대상 |
+|------|--------|-----------|
+| `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` | `100` | local subscribe delivery target |
+| `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` | `100` | routed delivery target |
 
-    MeshPub->>Remote: tcp/tls mesh 경유
-```
+limit 초과 시 해당 target만 disconnected로 표시한다. 상태 집계는
+`zlink_spot_node_status_t`의 아래 필드에 반영된다.
 
-### 4.3 원격 수신 → 로컬 Subscribe
+- `disconnected_sub_target_count`
+- `disconnected_routed_target_count`
 
-```mermaid
-sequenceDiagram
-    participant Remote as 원격 SpotNode
-    participant MeshXSub as mesh_xsub (XSUB)
-    participant DP as data_plane_loop
-    participant Fanout as fanout (XPUB)
-    participant Sub as spot_sub_t
+## 6. Auto-HWM 적용
 
-    Remote->>MeshXSub: tcp mesh 경유 토픽 메시지
-    Note over DP: poller → mesh_xsub readable
-    DP->>DP: recv_and_dispatch_mesh_xsub()
-    DP->>Fanout: 로컬 fanout으로 포워딩
-    Fanout->>Sub: 매칭되는 sub에 전달
-    Note over DP: mesh_pub으로 재발행 금지<br/>(루프 방지)
-```
+SpotNode의 topic socket은 pub/sub 역할에 따라 HWM 축이 갈린다.
 
-## 5. Routed 메시지 흐름 (상세)
+| 옵션 | 적용 socket |
+|------|-------------|
+| `ZLINK_SPOT_NODE_OPT_PUB_HWM` | `local-pub`, `mesh-pub` |
+| `ZLINK_SPOT_NODE_OPT_SUB_HWM` | `ingress-sub`, `mesh-xsub` |
+| `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM` | `internal-router`, `external-router` send 축 |
+| `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` | `internal-router`, `external-router` recv 축 |
 
-Routed 평면에서 중요한 변화는 하나다. target `Spot`은 더 이상 node가 대신 채워 준
-hidden recv queue를 읽지 않는다. 각 `Spot`은 create 시점에 자기 own routed ingress
-`ROUTER`를 준비하고, `zlink_spot_recv()`는 그 ingress를 직접 읽는다.
+수동 옵션이 없으면 context auto HWM 정책이 현재 socket 역할, 연결 수, 메시지 단위를
+기준으로 값을 계산한다. perf runner는 `core/build` runtime을 사용하고, 실행 전에
+해석된 `libzlink` 경로를 출력해야 한다.
 
-즉 routed delivery owner는 항상 target `Spot`이다. `SpotNode`는 routed broker와
-local inproc wiring을 맡지만, 최종 recv owner를 대신하지 않는다.
+## 7. Control plane
 
-### 5.1 로컬 spot → 로컬 spot (같은 노드)
+peer control plane은 data plane과 분리된 작은 메시지 흐름이다. 주요 목적은 아래와
+같다.
 
-```mermaid
-sequenceDiagram
-    participant Sender as spot_send_router()
-    participant RouteIn as route_ingress (ROUTER)
-    participant DP as data_plane_loop
-    participant NodeRouter as node_router (ROUTER)
-    participant SpotRouter as target Spot ROUTER
-    participant Receiver as zlink_spot_recv()
+- peer bootstrap 정보 전달
+- ready 상태 refresh
+- aggregate subscription replay
+- peer 연결 상태 반영
 
-    Sender->>RouteIn: [SPOT envelope 8 parts] + [payload]
-    Note over RouteIn: ROUTER가 sender routing_id 추가
-    Note over DP: poller → route_ingress readable
-    DP->>DP: SPOT envelope 파싱
-    DP->>DP: destination = 로컬 spot
-    DP->>NodeRouter: [SPOT envelope] + [payload] 포워딩
-    Note over NodeRouter: ROUTER가 target Spot ingress rid로 라우팅
-    NodeRouter->>SpotRouter: local inproc routed delivery
-    SpotRouter->>Receiver: target Spot owned ingress에서 recv
-```
-
-### 5.2 로컬 spot → 원격 spot (노드 간)
-
-```mermaid
-sequenceDiagram
-    participant Sender as spot_send_router()
-    participant RouteIn as route_ingress (ROUTER)
-    participant DP1 as Data Plane (Node 1)
-    participant PeerTx as peer_route_tx (DEALER)
-    participant PeerIn as peer_route_ingress (ROUTER)
-    participant DP2 as Data Plane (Node 2)
-    participant NodeRouter2 as node_router (Node 2)
-    participant SpotRouter2 as target Spot ROUTER
-    participant Receiver as zlink_spot_recv() (Node 2)
-
-    Sender->>RouteIn: [SPOT envelope] + [payload]
-    DP1->>DP1: envelope 파싱 → dest_node = Node 2
-    DP1->>PeerTx: 원격 route endpoint로 포워딩
-    PeerTx->>PeerIn: tcp/tls/ipc route transport
-    PeerIn->>DP2: Node 2 data plane에 전달
-    DP2->>DP2: envelope 파싱 → 로컬 spot 대상
-    DP2->>NodeRouter2: 로컬 node_router로 포워딩
-    NodeRouter2->>SpotRouter2: local inproc routed delivery
-    SpotRouter2->>Receiver: target Spot owned ingress에서 recv
-```
-
-여기서 `node_router`는 외부 네트워크 송신 소켓이 아니다. `node_router`는 같은
-`SpotNode` 안에서 target `Spot`의 own routed ingress로 넘기는 로컬 전달 허브다.
-노드 간 송신은 별도 sender cache 소켓인 `peer_route_tx`가 맡고, 상대 노드에서는
-`peer_route_ingress`가 그 메시지를 받는다.
-
-### 5.3 spot → router / router → spot (one-way send)
-
-```mermaid
-sequenceDiagram
-    participant Spot as spot_send_router()
-    participant RouteIn as route_ingress (ROUTER)
-    participant DP as Data Plane
-    participant PeerTx as peer_route_tx (DEALER)
-    participant PeerIn as peer_route_ingress (ROUTER)
-
-    Spot->>RouteIn: [SPOT envelope: dest_class=router] + [payload]
-    DP->>DP: 파싱 → destination이 ROUTER peer
-    DP->>PeerTx: 원격 route endpoint로 포워딩
-    PeerTx->>PeerIn: transport routing_id 포함 routed 전달
-```
-
-### 5.4 Spot routed request-reply
-
-`zlink_spot_request_spot()` / `zlink_spot_request_router()`는 5.1–5.3의
-transport 경로를 그대로 사용하되, request-reply 프로토콜을 추가로 얹는다.
-
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant Spot as zlink_spot_request_spot()
-    participant RR as spot_request_reply_state_t
-    participant RouteIn as route_ingress (ROUTER)
-    participant DP as Data Plane
-    participant Target as 대상 Spot (replier)
-
-    App->>Spot: request_spot(dest_node_rid, dest_spot_rid, parts, handler, timeout)
-    Spot->>RR: request_seq 할당 + handler 등록 + timeout 시작
-    Spot->>RouteIn: [SPOT envelope + request-reply envelope] + [payload]
-    Note over DP: 5.1 / 5.2 경로로 대상에 전달
-    Target->>Target: zlink_spot_recv() → request_seq 확인
-    Target->>DP: zlink_spot_reply_spot(dest_node_rid, dest_spot_rid, request_seq, reply)
-    DP->>RR: request_seq로 pending entry 매칭
-    RR->>App: handler(ZLINK_REQUEST_OK, reply_parts, userdata)
-```
-
-- request-reply envelope은 SPOT routed envelope 안에 중첩된다.
-- request_seq는 per-handle `spot_request_reply_state_t`가 관리한다.
-- timeout 만료 또는 node 종료 시에도 handler가 정확히 한 번 호출된다.
-- `spot → router` 경로도 같은 구조를 따른다 (대상이 `ROUTER` peer, reply는
-  `zlink_router_reply_spot()`).
-
-## 6. Control Plane
-
-### 6.1 Control Task 주기 (10ms)
-
-```mermaid
-flowchart TD
-    start["control_task tick (10ms)"] --> replay["구독 replay<br/>(exponential holdoff)"]
-    replay --> ready["구독 ready<br/>상태 갱신"]
-    ready --> pub_ready["publisher<br/>delivery ready 갱신"]
-    pub_ready --> peer_sync["peer state<br/>동기화"]
-    peer_sync --> bootstrap["bootstrap<br/>descriptor 발행<br/>(필요 시)"]
-    bootstrap --> done["완료"]
-```
-
-### 6.2 Peer 제어 메시지
-
-Peer 제어 endpoint는 바인드된 데이터 endpoint에서 파생된다:
-
-| Transport | Data Endpoint | Control Endpoint | Route Endpoint |
-|-----------|--------------|-----------------|----------------|
-| tcp | `tcp://host:9000` | `tcp://host:10000` (port+1000) | `tcp://host:29000` (port+20000) |
-| tls | `tls://host:9000` | `tls://host:10000` | `tls://host:29000` |
-| ipc | `ipc:///path` | `ipc:///path.zlink-spot-ctrl.{id}` | `ipc:///path.zlink-spot-route.{id}` |
-| inproc | `inproc://name` | `inproc://zlink.spot.peer-ctrl.{id}` | `inproc://zlink.spot.peer-route.{id}` |
-
-Route endpoint에는 `peer_route_ingress` (ROUTER)가 바인드된다. 원격 peer는 `peer_route_tx` (PAIR)로 이 endpoint에 연결해 직접 routed 메시지를 보낸다.
-
-제어 메시지 접두어:
-- `__zlink.spot.ctrl.snapshot` — 상태 스냅샷
-- `__zlink.spot.ctrl.ready_ack` — 구독 준비 확인
-- `__zlink.spot.bootstrap.ctrl_descriptor` — bootstrap 정보
-
-## 7. Data Plane Polling Loop
-
-Data plane은 별도 스레드에서 실행되며 7개 소켓을 poll한다:
-
-```mermaid
-flowchart LR
-    subgraph Poller["spot_data_plane_loop (7개 소켓)"]
-        ctrl_poll["ctrl (PAIR)"]
-        ingress_poll["ingress (SUB)"]
-        mesh_poll["mesh_xsub (XSUB)"]
-        peer_poll["peer_ctrl_sub (SUB)"]
-        route_poll["route_ingress (ROUTER)"]
-        node_poll["node_router (ROUTER)"]
-        mon_poll["mesh_xsub_monitor"]
-    end
-
-    ctrl_poll -->|"명령 처리"| process_ctrl
-    ingress_poll -->|"로컬 토픽"| forward_to_fanout_and_mesh
-    mesh_poll -->|"원격 토픽"| forward_to_fanout
-    peer_poll -->|"제어 메시지"| process_ctrl_messages
-    route_poll -->|"routed 수신"| process_route_ingress
-    node_poll -->|"routed 전달"| process_node_router
-    mon_poll -->|"연결 이벤트"| update_peer_state
-```
-
-## 8. Unified Handle (spot_handle_t)
-
-```cpp
-struct spot_handle_t {
-    uint32_t tag;                                // 검증 태그
-    spot_node_t *node;                           // 부모 SpotNode
-    spot_pub_t *pub;                             // Publisher (inproc PUB → ingress)
-    spot_sub_t *sub;                             // Subscriber (inproc SUB ← fanout)
-    zlink_subscribe_handler_fn handler;          // internal-only: SPOT subscribe adapter
-    void *handler_userdata;
-    spot_node_t::pub_defaults_t pending_pub_defaults;
-    spot_node_t::sub_defaults_t pending_sub_defaults;
-    service_mode_state_t mode_state;             // recv/callback 모드 추적
-    std::shared_ptr<void> request_reply_state;   // handle별 RR state
-};
-```
-
-Unified handle은 SpotNode를 빌린다. 여러 handle이 하나의 node를 공유할 수 있다.
-각 handle은 자신만의 pub/sub 쌍, mode state, request-reply state를 갖는다.
-request-reply state 안에는 per-spot routed ingress `ROUTER`, completion signal,
-identity lookup 정보가 함께 묶여 있다. 이 routed ingress는 `zlink_spot_new()`
-성공 시점에 준비되며, 첫 `zlink_spot_recv()`가 뒤늦게 만들지 않는다.
-
-## 9. HWM 경계
-
-```text
-+------------------------------------------------------------------+
-|  Spot Handle HWM                                                 |
-|  (public facade pub/sub sockets)                                 |
-|  +------------------------------------------------------------+  |
-|  |  SpotNode Data-Plane HWM                                  |  |
-|  |  +----------------------+------------------------------+  |  |
-|  |  |  SNDHWM targets      |  RCVHWM targets              |  |  |
-|  |  |  fanout, mesh_pub    |  ingress, mesh_xsub          |  |  |
-|  |  |  node_router send    |  route_ingress, router recv  |  |  |
-|  |  +----------------------+------------------------------+  |  |
-|  |  peer_ctrl uses control-plane HWM separately              |  |
-|  +------------------------------------------------------------+  |
-+------------------------------------------------------------------+
-```
-
-기본 내부 data-plane HWM은 고정 `1000`이 아니다. SpotNode runtime은
-context auto HWM 정책에서 나온 역할별 값을 쓰며, 예산 scope를 두 가지로
-나눈다.
-
-- shared scope: SpotNode 공유 소켓은 역할 예산 전체를 기준으로 슬롯을 계산한
-  뒤 shared 대상 수로 나눈다.
-- per-spot scope: spot endpoint와 attachment 소켓은 역할 예산을 먼저 spot 수로
-  나눈다.
-
-역할 floor는 예산을 초과하면서까지 강제하지 않는다. scope 예산으로 계산한 슬롯이
-floor보다 작으면 예산에서 나온 값을 그대로 사용한다.
-
-- `fanout`, `mesh_pub`: fanout 역할 floor `16`
-- `ingress`, `mesh_xsub`: recv-ingress 역할 floor `8`
-- `node_router`, `route_ingress`: routed 역할 floor `8`
-- `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub`: control 역할로 분리되며 floor `4`
-
-Topic과 routed HWM은 `zlink_set_spot_node_option()`으로 독립 설정 가능:
-- `ZLINK_SPOT_NODE_OPT_TOPIC_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_TOPIC_RECV_HWM`
-- `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM` / `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`
-
-## 10. Dispatch Event 스레딩 모델
-
-공개 API 의 `zlink_spot_dispatch_event_handler()` 표면은 **네 개의
-독립된 내부 이벤트 producer** 를 단일 핸들러로 fan-in 하는 알림 전용
-콜백이다. 이 절에서는 각 이벤트를 어떤 내부 스레드가 발생시키는지,
-등록이 어떻게 강제되는지, 그리고 콜백이 지켜야 하는 스레드 안전성
-경계를 정리한다.
-
-### 10.1 이벤트 producer 와 스레드
-
-```mermaid
-flowchart LR
-    subgraph DataPlane["SpotNode data-plane thread"]
-        ingress["sub plane<br/>spot_sub readable"]
-        routed["routed dispatch<br/>(node_router -> spot router)"]
-        bridge["channel reply bridge<br/>(attached dealer completion)"]
-    end
-
-    subgraph Scheduler["SpotNode-local timer scheduler thread"]
-        tick["scheduler_fire_timer()"]
-    end
-
-    subgraph UserHandler["zlink_spot_dispatch_event_handler (Spot 당 1개)"]
-        handler["zlink_spot_dispatch_event_handler_fn<br/>(spot, dispatch_info, userdata)"]
-    end
-
-    ingress -->|"SUBSCRIBE_READABLE<br/>subject=spot"| handler
-    routed  -->|"ROUTED_READABLE<br/>subject=spot"| handler
-    bridge  -->|"CHANNEL_REPLY_READABLE<br/>subject=dealer"| handler
-    tick    -->|"TIMER_READABLE<br/>subject=timer"| handler
-```
-
-| 이벤트 | 발원 producer | `subject_kind` | 콜백을 호출하는 스레드 |
-|-------|---------------|---------------|----------------------|
-| `SUBSCRIBE_READABLE` | `spot_sub_handler_adapter` — `spot_sub_t` 의 direct handler | `SUBJECT_SPOT` | SpotNode data-plane polling 스레드 |
-| `ROUTED_READABLE` | `queue_spot_message()` — routed 전달을 target Spot owned `ROUTER`로 보낸 뒤 호출 | `SUBJECT_SPOT` | SpotNode data-plane polling 스레드 |
-| `CHANNEL_REPLY_READABLE` | attached dealer completion bridge — dealer completion을 spot dealer source queue에 적재한 뒤 호출 | `SUBJECT_CHANNEL_DEALER` | dealer completion을 처리하는 스레드 (data-plane 또는 별도 completion 스레드) |
-| `TIMER_READABLE` | `scheduler_fire_timer()` — fire count 를 deque 에 넣고 signaler 를 raise 한 뒤, direct timer handler 가 없을 때만 호출 | `SUBJECT_TIMER` | SpotNode-local 타이머 스케줄러 스레드 |
-
-dispatch 우선순위: `SUBSCRIBE_READABLE` → `ROUTED_READABLE` → `CHANNEL_REPLY_READABLE` → `TIMER_READABLE`
-
-네 producer 는 모두 하나의 공통 진입점,
-`zlink_spot_notify_dispatch_info()` → `maybe_dispatch_spot_info()`,
-를 통해 콜백에 닿는다. 이 함수는 per-Spot mutex 아래에서 handler
-포인터와 dispatch_info 를 스냅샷으로 읽은 다음, 내부 락을 해제한 상태에서
-콜백을 호출한다:
-
-```cpp
-void maybe_dispatch_spot_info (spot_request_reply_state_t *state_,
-                               const zlink_spot_dispatch_info_t &info_)
-{
-    zlink_spot_dispatch_event_handler_fn handler = NULL;
-    void *userdata = NULL;
-    void *owner = NULL;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        handler = state_->dispatch_event_handler;
-        userdata = state_->dispatch_event_handler_userdata;
-        owner = state_->owner;
-    }
-    if (handler)
-        handler (owner, &info_, userdata);
-}
-```
-
-이 "snapshot 후 invoke" 패턴은 의도적인 것이다. handler 는 zlink 내부
-락이 걸려있지 않은 상태에서 실행되므로, 애플리케이션이 콜백 안에서
-`zlink_timer_recv()`, `zlink_spot_recv()`, `zlink_subscribe()`,
-`zlink_spot_channel_reply_progress_from()` 같은 zlink API 를 자유롭게
-호출할 수 있다. 다만 §10.4 에서 설명하듯, 애플리케이션 워커로 작업을
-넘기는 쪽이 여전히 권장된다.
-
-### 10.2 등록 규칙과 상호 배제
-
-per-Spot `spot_request_reply_state_t` 는 routed/dispatch 축 위에 두 개의
-handler 슬롯을 가진다:
-
-```cpp
-struct spot_request_reply_state_t {
-    // ...
-    zlink_spot_handler_fn                  request_handler;            // direct routed
-    void                                  *request_handler_userdata;
-    zlink_spot_dispatch_event_handler_fn   dispatch_event_handler;     // 통합 알림
-    void                                  *dispatch_event_handler_userdata;
-};
-```
-
-`zlink_spot_handler()` 와 `zlink_spot_dispatch_event_handler()` 는 값을
-쓰기 전에 `state->mutex` 를 잡고
-`state->request_handler || state->dispatch_event_handler` 를 검사한다.
-둘 중 하나라도 NULL 이 아니면 `ZLINK_HANDLER_BUSY` 를 반환한다. 이것이
-사용자 가이드에서 이야기하는 "상호 배타" 규칙의 출처다.
-
-direct subscribe callback 을 설치하는 공개 함수는 없다.
-`zlink_subscribe_handler_fn` typedef 는 내부 SPOT adapter 만 사용한다.
-
-### 10.3 이벤트별 발생 조건
-
-**`SUBSCRIBE_READABLE`** — data-plane 스레드에서 `spot_sub_t` 의 direct
-handler (즉 `spot_sub_handler_adapter`) 가 호출될 때 발행된다. 중요한 점은
-node-wide service attachment readable을 모든 facade spot에 fan-out하지 않는다는
-것이다. 이제 `SUBSCRIBE_READABLE`은 해당 `Spot`이 실제로 subscribe recv를 할 수
-있을 때만 올라와야 한다.
-
-**`ROUTED_READABLE`** — `queue_spot_message()` 가 routed payload (node
-rid, spot rid, request_seq, parts) 를 target `Spot`의 owned ingress
-`ROUTER`로 local 전달한 뒤 발행된다. 즉 routed dispatch는 "어딘가에 routed
-work가 생겼다"가 아니라 "이 Spot의 routed ingress에서 실제 recv가 가능하다"는
-의미를 가져야 한다.
-
-두 readable 이벤트는 모두 edge가 아니라 level-like readiness로 취급한다.
-
-- callback 1회가 메시지 1개를 뜻하지 않는다.
-- 이미 readable인 동안 메시지가 더 들어오더라도 callback 개수와 메시지 개수는
-  1:1이 아닐 수 있다.
-- callback consumer는 `zlink_spot_subscribe()` 또는 `zlink_spot_recv()`를
-  `EAGAIN`이 나올 때까지 반복해서 drain해야 한다.
-
-**`CHANNEL_REPLY_READABLE`** — attached dealer completion bridge가 해당 `Spot`
-소유 dealer source completion queue를 채운 뒤 발행한다. 이 이벤트는 raw dealer recv
-신호가 아니라 `zlink_spot_channel_reply_progress_from()`로 progress할 completion이
-있다는 뜻이다.
-
-**`TIMER_READABLE`** — `scheduler_fire_timer()` 에서, 타이머가 소유하는
-Spot (`zlink_spot_timer_new(spot)` 로 만든 경우) 이고 **direct timer
-handler 가 없을 때만** 발행된다. 이 분기에서 scheduler 는 먼저 fire
-count 를 `timer->fired_counts` 에 push, 이어서 `timer->signaler`
-(eventfd) 를 raise, 마지막으로
-`zlink_spot_notify_dispatch_event(owner_spot, TIMER_READABLE, timer)` 을
-호출한다. `subject_kind` 는 `SUBJECT_TIMER` 이고 `subject` 는 타이머
-handle 이다. 같은 타이머에 `zlink_timer_handler()` 가 붙어 있으면
-scheduler 가 그 handler 를 inline 으로 실행하며 dispatch event 는
-발행되지 않는다 — 이것이 사용자 가이드의 per-timer 우선순위 규칙이다.
-
-### 10.4 애플리케이션 워커와의 전체 흐름
-
-```mermaid
-sequenceDiagram
-    participant DP as Data-plane / completion thread
-    participant Sched as Timer scheduler thread
-    participant Notify as notify_dispatch_event
-    participant UH as User event handler
-    participant App as App worker thread
-    participant Q as owned receive surface<br/>(sub buffer / spot router /<br/>dealer source queue / timer deque)
-
-    alt topic 메시지 도착
-        DP->>Q: sub buffer 에 push
-        DP->>Notify: SUBSCRIBE_READABLE (subject=spot)
-    else routed 메시지 도착
-        DP->>Q: target Spot router 로 전달
-        DP->>Notify: ROUTED_READABLE (subject=spot)
-    else channel reply completion
-        DP->>Q: dealer source queue 에 completion 적재
-        DP->>Notify: CHANNEL_REPLY_READABLE (subject=dealer)
-    else spot 소유 timer fire
-        Sched->>Q: fire_count push + eventfd signal
-        Sched->>Notify: TIMER_READABLE (subject=timer)
-    end
-    Notify->>UH: handler(spot, &dispatch_info, userdata)
-    UH->>App: 워커 wake (cv / eventfd / channel) + dispatch_info 전달
-    alt SUBSCRIBE_READABLE
-        App->>Q: zlink_subscribe()
-    else ROUTED_READABLE
-        App->>Q: zlink_spot_recv()
-    else CHANNEL_REPLY_READABLE
-        App->>Q: zlink_spot_channel_reply_progress_from(spot, subject)
-    else TIMER_READABLE
-        App->>Q: zlink_timer_recv(subject)
-    end
-    Q-->>App: payload / completion / fire_count
-```
-
-producer 들은 `notify_dispatch_event` 이후 애플리케이션 로직에 더 이상
-들어가지 않는다. 메시지 디코딩, 토픽 매칭, 타이머 재스케줄링, dealer
-completion decode 는 모두 내부 스레드에서 처리되고, 워커 스레드는 이미
-ready 상태가 확정된 owned receive surface만 접근한다.
-
-### 10.5 Channel Reply Delivery Bridge
-
-attached dealer completion 이 Spot dispatch stream 으로 올라오는 경로는
-아래와 같다.
-
-```text
-network reply
-    → attached DEALER (transport owner, pending request matching)
-    → dealer completion (decode, timeout/error 판정)
-    → bridge callback (originating Spot dealer source queue 에 적재)
-    → CHANNEL_REPLY_READABLE dispatch event (subject = dealer handle)
-    → 애플리케이션 워커: zlink_spot_channel_reply_progress_from(spot, dealer)
-    → request completion callback 실행
-```
-
-bridge 의 핵심 규칙은 아래와 같다.
-
-- dealer completion 이 발생해도 bridge 는 user callback 을 직접 호출하지
-  않는다. completion 을 originating `Spot` 의 dealer source queue 에 적재하고
-  dispatch event 를 세운다.
-- originating `Spot` state 가 이미 종료 중이면 completion 을 조용히 폐기하거나
-  `ETERM` 규칙에 맞게 정리한다. dead `Spot` 을 다시 깨우지 않는다.
-- `Spot` progress — `zlink_spot_request_progress_internal()` — 가 attached
-  dealer completion signal 을 함께 감시하고 bridge 단계까지 진전시킨다.
-  binding 이 attached dealer 별로 별도 progress pump 를 돌리지 않아도 된다.
-
-dealer source queue 는 attached dealer 별로 별도 queue 다. 여러 dealer 가
-동시에 ready 여도 서로 다른 `CHANNEL_REPLY_READABLE` dispatch pending item 으로
-각각 callback 된다.
-
-### 10.6 스레드 안전성 불변식
-
-| 불변식 | 강제 수단 |
-|---|---|
-| Handler 포인터 읽기는 race-free | `maybe_dispatch_spot_info` 에서 `state->mutex` 아래 스냅샷 |
-| Handler 는 내부 락을 들지 않은 상태에서 실행 | snapshot 후 락 해제 후 호출 |
-| 알림 전에 payload 가 반드시 큐에 존재 | producer 가 큐 push (sub buffer / PAIR queue / dealer source queue / fired_counts + signaler) *뒤에* notifier 호출 |
-| wake-up 누락 없음 | Level-triggered — 워커가 각 큐를 pull API 가 `ZLINK_RECV_NO_DATA` 를 반환할 때까지 drain 한다. drain 도중 발생한 중복 알림은 무해 |
-| Direct handler vs dispatch event | 컴파일 시점에 경로가 분리 — subscribe 는 `spot_sub_handler_adapter`, routed 는 `request_handler` 슬롯, timer 는 각 타이머의 자체 handler 슬롯. routed 축에서는 등록 시점 mutex 로 이중 설치를 거부하고, 타이머는 `scheduler_fire_timer` 내부에서 per-timer 우선순위를 판정 |
-| 콜백에서 zlink API 호출 가능 | producer 가 notifier 호출 전에 내부 락을 해제 |
-| Channel reply 와 routed / subscribe 동시 실행 없음 (애플리케이션 책임) | library 는 callback 이 동시 호출되지 않도록 막지 않는다. 직렬화는 애플리케이션이 **단일 worker thread** 패턴을 지켜야 성립한다. callback 은 "워커를 깨우는 신호"일 뿐이고, 실제 drain 은 그 worker thread 하나에서 일어나므로 Spot state 에 별도 lock 이 필요 없는 것이다 |
-| Late reply double completion 없음 | dealer completion 이 bridge 에 도달하기 전에 pending state 에서 먼저 확정됨. 이미 완료된 request 의 late reply 는 bridge 에서 폐기 |
-
-### 10.7 애플리케이션 관점에서 단일 dispatch stream 설계인 이유
-
-내부 producer 는 넷이지만 handler 는 하나이므로, 애플리케이션은
-알림을 condition variable wake 로 받아 네 큐 모두를 하나의 애플리케이션
-스레드에서 소비할 수 있다.
-
-- sub / routed / channel reply / timer 소비자 사이에 사용자 락이 필요 없다.
-  네 소비자는 서로 다른 내부 큐를 읽으며, 공유되는 것은 결국 애플리케이션
-  bookkeeping 뿐이고 그 bookkeeping 은 단일 워커 스레드가 배타적으로 소유한다.
-- handler 자체는 `lock_guard + cv.notify + (dispatch_info 저장)` 수준으로
-  충분하며 zlink API 를 건드릴 필요가 없다.
-- producer 스레드는 raw 함수 호출 이상의 대기를 하지 않고 즉시 자기
-  polling loop 로 돌아간다.
-- channel reply 도 같은 dispatch stream 에 포함되므로, binding 이 attached
-  dealer 별 별도 progress pump 를 유지하지 않아도 된다.
-
-이것이 사용자 가이드에서 timer, routed recv, subscribe, channel reply 가
-하나의 Spot handle 위에 공존할 때 `zlink_spot_dispatch_event_handler` 를
-통합 소비 패턴으로 권장하는 근본 이유다.
-
-## 11. Channel Topology 내부 구조
-
-channel-aware SPOT은 기존 SpotNode data plane 위에 올라간다. 핵심 추가 구조는
-SPOT mesh용 Discovery view 하나, channel 호출용 `DEALER` map, 외부 publish
-ingress 경로다.
-
-```text
-+------------------------------------------------------------------+
-|                          SpotNode Runtime                        |
-|------------------------------------------------------------------|
-| SPOT discovery view (active view 1개)                            |
-|  channel_name, channel_type = SPOT                               |
-|  -> peer mesh auto-connect 범위 결정                              |
-|------------------------------------------------------------------|
-| channel dealer map                                               |
-|  channel_name -> { DEALER, source: auto | manual }               |
-|  같은 channel_name에 auto/manual 합쳐 DEALER 1개                  |
-|------------------------------------------------------------------|
-| pub ingress (node당 1개)                                          |
-|  external PUB -> hidden ingress receiver -> topic path            |
-|------------------------------------------------------------------|
-| routed data plane                                                |
-|  peer ROUTER mesh (같은 channel SpotNode 사이)                    |
-|  channel DEALER -> ROUTER(server) 경로 (channel 호출)             |
-|------------------------------------------------------------------|
-| snapshot and query plane                                         |
-|  peer state, weight, topology change inspection                  |
-+------------------------------------------------------------------+
-```
-
-### 11.1 SPOT Discovery view
-
-- `SpotNode`에는 `ZLINK_CHANNEL_TYPE_SPOT` view를 가진 Discovery를 하나만
-  attach할 수 있다. 이 view가 node의 mesh auto-connect 범위를 결정한다.
-- view가 공급하는 peer set은 같은 `channel_name`의 다른 `SpotNode`뿐이다.
-  같은 `channel_name`의 일반 `ROUTER`, `PUB`, `SUB` provider는 mesh peer
-  자동 연결 대상이 아니다.
-- 두 번째 SPOT channel Discovery attach는 `EBUSY`로 거부된다.
-- attach된 Discovery를 destroy하면 그 view가 공급하던 automatic peer set도
-  함께 빠진다.
-- Discovery가 없는 `SpotNode`는 수동 `connect_peer()` / `disconnect_peer()`로만
-  mesh를 구성할 수 있다. discovery attach와 수동 peer connect는 같은 node에서
-  동시에 사용할 수 없다.
-
-### 11.2 Channel dealer map
-
-- channel 호출(`zlink_spot_send_channel()` / `zlink_spot_request_channel()`)은
-  이 map에서 `channel_name`으로 attach된 `DEALER`를 찾아 전송한다.
-- 자동 경로(`attach_channel_dealer`)는 `ZLINK_CHANNEL_TYPE_SOCKET` view를 가진
-  Discovery와 함께 `DEALER`를 등록한다. Discovery가 peer set을 관리한다.
-- 수동 경로(`attach_channel_dealer_manual`)는 호출자가 직접 connect를 끝낸
-  `DEALER`를 `channel_name` 아래에 등록한다.
-- 같은 `channel_name`에 자동 attach와 수동 attach를 합쳐서 `DEALER` 하나만
-  등록할 수 있다. 중복은 `EBUSY`로 거부된다.
-- attach된 `DEALER`는 `SpotNode` 전용 자원으로 취급한다. 소유권은 호출자가
-  유지하지만, 다른 owner가 같은 socket을 일반 용도로 함께 써서는 안 된다.
-- `channel_name`에 대응하는 `DEALER`가 없을 때 channel 호출은 `ENOENT`로
-  실패한다.
-
-### 11.3 Pub ingress
-
-- `zlink_spot_node_attach_pub_ingress()`로 외부 일반 `PUB`를 `SpotNode` 입력
-  경로에 연결한다.
-- attach 시 라이브러리는 node 전용 hidden ingress receiver를 내부 생성한다.
-  이 hidden receiver는 공개 API에 노출되지 않는다.
-- 외부 `PUB`에서 publish한 topic은 hidden receiver를 거쳐 local `SpotNode`의
-  topic path로 올라간다. 이 경로는 mesh peer pub/sub 연결과 같은 의미가 아니라,
-  외부 publisher가 local runtime으로 topic을 주입하는 단방향 입력 경로다.
-- ingress로 들어온 topic은 local `Spot` 수신 경로로 올라가며, mesh peer가
-  있으면 같은 channel peer로도 forward될 수 있다.
-- ingress `PUB`는 node당 하나만 등록할 수 있다. 두 번째 등록은 `EBUSY`다.
-- attach는 socket 소유권을 가져오지 않는다. destroy 책임은 호출자에게 남는다.
-
-### 11.4 Channel 호출 라우팅
-
-- channel 호출은 항상 attach된 `DEALER` 경로로만 나간다. `SpotNode.router`
-  경로를 channel 호출에 재사용하지 않는다.
-- `DEALER(client) -> ROUTER(server)` 모델이다. channel 처리자 집합 중 하나에
-  보내는 의미이지, 특정 server를 직접 지목하는 의미가 아니다.
-- channel request의 reply는 요청을 보낸 같은 `DEALER` 경로로만 돌아온다.
-  reply를 다시 `channel_name`으로 재탐색하지 않는다.
-- `DEALER`가 있으나 현재 전송 가능한 peer가 없으면 `ENOTCONN`으로 정규화된다.
-
-### 11.5 Snapshot과 query 관찰
-
-- `SpotNode` 상태 관찰은 snapshot/query API를 사용한다.
-- peer state, 가중치 변경, topology 변화가 필요하면 이 결과를 시간에 따라
-  비교해서 판단한다.
-- 이 조회는 Spot dispatch readable plane에 섞이지 않는다.
-
-### 11.6 Active set 유지
-
-- Discovery churn으로 mesh peer가 끊기면 해당 peer는 즉시 active 집합에서
-  제외된다.
-- peer가 복구되면 현재 subscription filter 집합을 replay한 뒤 active 집합에
-  재진입시킨다.
-- channel dealer의 경우, Discovery가 관리하는 peer set이 변경되면 `DEALER`의
-  유효 후보가 자동으로 갱신된다.
-- 수동 attachment는 socket 상태가 정상인 동안 active로 유지된다.
-
-### 11.7 가중치 cache
-
-SpotNode와 Spot에는 로컬 weight 설정 옵션이 없다. SpotNode peer cache는
-discovery provider entry나 peer 상태에서 배운 remote `weight` 값을 보관하고,
-service-aware routing이 `0`을 advertise한 peer를 후보에서 제외할 수 있게 한다.
-
-- 각 peer는 자신의 SpotNode peer cache(§2.2 참조)에서 해당 항목의
-  가중치를 갱신한다. 이 cache는 `zlink_spot_node_peers_snapshot()`과
-  `zlink_spot_node_peers_query()`가 돌려주는
-  `zlink_spot_node_peer_entry_t.weight` 필드의 source이기도 하다.
-- 같은 cache는 service-aware ROUTER 후보 선택에도 쓰인다. 따라서 peer의
-  가중치가 `0`으로 보이면 service-aware send/request는 그 peer를 후보에서
-  제외하고, 후보가 모두 `0`이면 submit은
-  `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화되어 반환된다. 직접 SPOT request도
-  대상 peer의 remote weight cache가 `0`으로 보이면 같은 결과를 낸다.
-- discovery에서 배운 weight 변경은 peer cache를 갱신하고,
-  `zlink_spot_node_peers_snapshot()` / `zlink_spot_node_peers_query()` 결과에
-  반영된다. raw socket의 로컬 weight 변경은 별도로 socket monitor의
-  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 surface된다.
-- provider가 discovery를 통해 재연결되면 registry의 provider weight는
-  provider registration으로 다시 구성된다. SpotNode registration은 기본
-  provider weight `100`을 쓰고, raw socket attachment는 자기 local peer
-  weight를 advertise한다.
-
-## 12. Peer rid disconnect
-
-SpotNode는 discovery provider에서 얻은 `node_rid -> endpoint set` 인덱스를
-유지한다. `zlink_spot_node_disconnect_peer_rid()`는 target node rid로 endpoint
-set을 찾은 뒤 endpoint 기준 disconnect와 같은 control path를 endpoint별로
-실행한다.
+control socket은 데이터 payload HWM 계산과 별도 메시지 단위를 사용할 수 있다. perf
+표에서 같은 payload 크기 블록 안에 다른 `MsgUnit(B)` 값이 보이면 control plane과
+data plane 기준이 다르기 때문이다.

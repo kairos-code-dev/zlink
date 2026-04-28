@@ -81,20 +81,16 @@ void spot_node_t::emit_pending_subscription_replays ()
         return;
     }
 
-    std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
         if (!_peer_state.subscription_replay_pending)
             return;
         if (_peer_state.active_endpoints.empty ())
             return;
-        subs.reserve (_handle_state.subs.size ());
-        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
     }
 
     std::set<std::string> replay_filters;
-    spot_node_control_policy::collect_replay_raw_filters (subs,
-                                                          &replay_filters);
+    snapshot_raw_subscription_filters (&replay_filters);
 
     bool should_replay = false;
     {
@@ -144,23 +140,6 @@ std::string spot_node_t::first_connected_peer_endpoint () const
     if (_peer_state.connected_endpoints.empty ())
         return std::string ();
     return *_peer_state.connected_endpoints.begin ();
-}
-
-std::string spot_node_t::single_peer_route_endpoint () const
-{
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-
-    if (_peer_state.active_endpoints.size () != 1 || !_runtime) {
-        return std::string ();
-    }
-
-    std::string route_endpoint;
-    if (!spot_control_protocol::derive_peer_route_bind_endpoint (
-          *_peer_state.active_endpoints.begin (),
-          _runtime->node_id,
-          &route_endpoint))
-        return std::string ();
-    return route_endpoint;
 }
 
 int spot_node_t::send_subscription_update (const std::string &raw_filter_,

@@ -9,6 +9,24 @@
 
 namespace zlink
 {
+bool spot_node_t::external_route_id_for_peer_endpoint (
+  const std::string &peer_endpoint_, std::string *out_) const
+{
+    if (peer_endpoint_.empty () || !out_)
+        return false;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+           _peer_state.peer_endpoints_by_rid.begin ();
+         it != _peer_state.peer_endpoints_by_rid.end (); ++it) {
+        if (it->second.count (peer_endpoint_) != 0) {
+            *out_ = it->first;
+            return !out_->empty ();
+        }
+    }
+    return false;
+}
+
 void spot_node_t::refresh_discovery_peers ()
 {
     discovery_t *discovery = NULL;

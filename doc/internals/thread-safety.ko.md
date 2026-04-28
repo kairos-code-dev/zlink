@@ -143,9 +143,9 @@ send queue에 발행합니다 — 단일 스레드 send에 사용되는 것과 �
 
 ### 3.2 SPOT / SPOT Node
 
-- **공개 계약:** `spot_publish` / `spot_node_publish`는 hot-path
-  계층을 따릅니다. 구독 변경, peer mutation, `attach_discovery`는
-  control path를 따릅니다.
+- **공개 계약:** `spot_publish`는 hot-path 계층을 따릅니다. `SpotNode`는
+  topology와 설정을 소유하며 직접 publish hot path를 제공하지 않습니다.
+  구독 변경, peer mutation, `attach_discovery`는 control path를 따릅니다.
 - **Internal child:** `spot_pub` / `spot_sub`는 내부 구현 단위입니다.
   공개 thread-safety 계약의 직접 대상이 아닙니다 — parent/facade
   계약이 이들을 포함합니다. Child ordering과 open/destroy

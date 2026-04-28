@@ -20,6 +20,16 @@ TOPIC = b"room:lobby"
 
 
 class CoreApiAlignmentTests(unittest.TestCase):
+    def test_routing_id_from_string_parses_hex(self):
+        rid = zlink.RoutingId.from_bytes(bytes([0x00, 0x41, 0x42]))
+        self.assertEqual(zlink.RoutingId.from_string("004142"), rid)
+        self.assertEqual(str(rid), "004142")
+        self.assertEqual(zlink.RoutingId.from_string("a" * 510).size, 255)
+        with self.assertRaises(ValueError):
+            zlink.RoutingId.from_string("not-hex")
+        with self.assertRaises(ValueError):
+            zlink.RoutingId.from_string("a" * 512)
+
     def test_public_surface_uses_canonical_names_only(self):
         self.assertFalse(hasattr(zlink, "SendResult"))
         self.assertFalse(hasattr(zlink, "SendFlag"))
@@ -224,7 +234,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     spot.set_routing_id(b"spot-1")
                     self.assertEqual(spot.routing_id, zlink.RoutingId.from_bytes(b"spot-1"))
                     self.assertTrue(hasattr(spot, "send_to_spot"))
-                    self.assertFalse(hasattr(spot, "request_to_spot"))
+                    self.assertTrue(hasattr(spot, "request_to_spot"))
                     self.assertTrue(hasattr(spot, "reply_to_spot"))
                     self.assertTrue(hasattr(spot, "reply_to_router"))
                     self.assertTrue(hasattr(spot, "recv_routed"))

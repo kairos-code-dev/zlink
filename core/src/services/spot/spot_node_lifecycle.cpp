@@ -865,17 +865,8 @@ int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
         return -1;
     }
 
-    spot_pub_t *pub = ensure_default_pub ();
-    if (!pub)
-        return -1;
-
-    const int rc = pub->set_send_ready_handler (handler_, this, userdata_);
-    if (rc == 0) {
-        _send_ready_handler_userdata.store (userdata_,
-                                            std::memory_order_release);
-        _send_ready_handler.store (handler_, std::memory_order_release);
-    }
-    return rc;
+    errno = ENOTSUP;
+    return -1;
 }
 
 void spot_node_t::queue_service_discovery_refresh_locked (

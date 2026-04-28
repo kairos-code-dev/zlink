@@ -28,11 +28,11 @@ namespace {
 
 static std::atomic<int> g_port_seed (22618);
 static std::mutex g_default_handle_mutex;
-static std::map<void *, spot_handle_t *> g_default_spot_handles;
+static std::map<void *, spot_handle_t *> g_node_spot_handles;
 static const int bind_retry_limit = 256;
 
-static void *default_pub_handle (void *node_);
-static void *default_sub_handle (void *node_);
+static void *node_spot_handle (void *node_);
+static void *node_sub_spot_handle (void *node_);
 
 static int next_port_seed ()
 {
@@ -82,7 +82,7 @@ static bool wait_for_subscription_ready (void *sub_node_,
                                          const char *topic_)
 {
     LIBZLINK_UNUSED (endpoint_);
-    void *sub_handle = default_sub_handle (sub_node_);
+    void *sub_handle = node_sub_spot_handle (sub_node_);
     if (!resolve_spot_sub_subject_poller_socket (sub_handle))
         return false;
     if (zlink_set_subscription (sub_handle, topic_) != ZLINK_CONFIG_OK)
@@ -97,7 +97,7 @@ static void set_linger_zero (void *handle_)
       zlink_set_option (handle_, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
 }
 
-static void *default_pub_handle (void *node_)
+static void *node_spot_handle (void *node_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node)
@@ -105,8 +105,8 @@ static void *default_pub_handle (void *node_)
 
     std::lock_guard<std::mutex> lock (g_default_handle_mutex);
     std::map<void *, spot_handle_t *>::iterator it =
-      g_default_spot_handles.find (node_);
-    if (it != g_default_spot_handles.end ())
+      g_node_spot_handles.find (node_);
+    if (it != g_node_spot_handles.end ())
         return it->second;
 
     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
@@ -116,34 +116,34 @@ static void *default_pub_handle (void *node_)
     }
     spot->node = node;
     register_spot_mode_state (spot);
-    g_default_spot_handles[node_] = spot;
+    g_node_spot_handles[node_] = spot;
     return spot;
 }
 
-static void *default_sub_handle (void *node_)
+static void *node_sub_spot_handle (void *node_)
 {
-    return default_pub_handle (node_);
+    return node_spot_handle (node_);
 }
 
-static void destroy_default_handle (void *node_)
+static void destroy_node_spot_handle (void *node_)
 {
     std::lock_guard<std::mutex> lock (g_default_handle_mutex);
     std::map<void *, spot_handle_t *>::iterator it =
-      g_default_spot_handles.find (node_);
-    if (it == g_default_spot_handles.end ())
+      g_node_spot_handles.find (node_);
+    if (it == g_node_spot_handles.end ())
         return;
 
     zlink::destroy_spot_handle_for_testing (it->second);
     erase_spot_mode_state (it->second);
-    g_default_spot_handles.erase (it);
+    g_node_spot_handles.erase (it);
 }
 
-static void destroy_node_and_default_handle (void **node_p_)
+static void destroy_node_and_spot_handle (void **node_p_)
 {
     if (!node_p_ || !*node_p_)
         return;
 
-    destroy_default_handle (*node_p_);
+    destroy_node_spot_handle (*node_p_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (node_p_));
 }
 
@@ -175,7 +175,7 @@ static int publish_text (void *subject_,
                          const char *payload_)
 {
     if (!as_spot_handle (subject_))
-        subject_ = default_pub_handle (subject_);
+        subject_ = node_spot_handle (subject_);
     zlink_msg_t part;
     const size_t size = payload_ ? strlen (payload_) : 0;
     if (zlink_msg_init_size (&part, size) != 0)
@@ -202,12 +202,12 @@ void tearDown ()
 {
     std::lock_guard<std::mutex> lock (g_default_handle_mutex);
     for (std::map<void *, spot_handle_t *>::iterator it =
-           g_default_spot_handles.begin ();
-         it != g_default_spot_handles.end (); ++it) {
+           g_node_spot_handles.begin ();
+         it != g_node_spot_handles.end (); ++it) {
         zlink::destroy_spot_handle_for_testing (it->second);
         erase_spot_mode_state (it->second);
     }
-    g_default_spot_handles.clear ();
+    g_node_spot_handles.clear ();
 }
 
 static void test_spot_pub_sub_options_and_routing_ids ()
@@ -252,8 +252,8 @@ static void test_spot_pub_sub_options_and_routing_ids ()
     TEST_ASSERT_EQUAL_INT (0, is_pattern);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
-    destroy_node_and_default_handle (&sub_node);
-    destroy_node_and_default_handle (&pub_node);
+    destroy_node_and_spot_handle (&sub_node);
+    destroy_node_and_spot_handle (&pub_node);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -298,8 +298,8 @@ static void test_spot_callback_model_receive_regression ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
-    destroy_node_and_default_handle (&sub_node);
-    destroy_node_and_default_handle (&pub_node);
+    destroy_node_and_spot_handle (&sub_node);
+    destroy_node_and_spot_handle (&pub_node);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -338,8 +338,8 @@ static void test_spot_recv_model_receive_regression ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
-    destroy_node_and_default_handle (&sub_node);
-    destroy_node_and_default_handle (&pub_node);
+    destroy_node_and_spot_handle (&sub_node);
+    destroy_node_and_spot_handle (&pub_node);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -447,8 +447,8 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
-    destroy_node_and_default_handle (&sub_node);
-    destroy_node_and_default_handle (&pub_node);
+    destroy_node_and_spot_handle (&sub_node);
+    destroy_node_and_spot_handle (&pub_node);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -466,9 +466,8 @@ static void test_spot_node_default_handle_owner_keeps_defaults_private ()
     TEST_ASSERT_SUCCESS_ERRNO (node->set_pub_option (
       ZLINK_SPOT_PUB_OPT_SNDHWM, &pub_sndhwm, sizeof (pub_sndhwm)));
 
-    zlink::spot_pub_t *default_pub = node->ensure_default_pub ();
-    TEST_ASSERT_NOT_NULL (default_pub);
-    TEST_ASSERT_EQUAL_PTR (default_pub, node->ensure_default_pub ());
+    zlink::spot_pub_t *pub = node->create_spot_pub ();
+    TEST_ASSERT_NOT_NULL (pub);
 
     const int sub_rcvhwm = 678;
     TEST_ASSERT_SUCCESS_ERRNO (node->set_sub_option (
@@ -486,7 +485,9 @@ static void test_spot_node_default_handle_owner_keeps_defaults_private ()
     TEST_ASSERT_TRUE (receiver->impl () != default_sub);
     TEST_ASSERT_EQUAL_PTR (default_sub, node->default_sub ());
 
-    destroy_node_and_default_handle (&node_handle);
+    TEST_ASSERT_SUCCESS_ERRNO (pub->destroy_from_node ());
+    delete pub;
+    destroy_node_and_spot_handle (&node_handle);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 

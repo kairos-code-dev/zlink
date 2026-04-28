@@ -152,7 +152,7 @@ Every handle type follows the same three-category model:
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option | `zlink_spot_destroy` |
-| SPOT Node | `zlink_publish` | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe | `zlink_spot_node_destroy` |
+| SPOT Node | *(no sending; data plane uses `Spot`)* | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe | `zlink_spot_node_destroy` |
 | Discovery | *(no sending — config only)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
 | Registry | *(no sending — config only)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology_query | `zlink_registry_destroy` |
 

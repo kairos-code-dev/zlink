@@ -88,6 +88,10 @@ ROUTER와 DEALER 소켓에서만 설정합니다. Spot peer snapshot에 남아 �
 `weight` 필드는 discovery나 peer 신호에서 배운 remote peer 상태이며,
 Spot/SpotNode의 로컬 옵션이 아닙니다.
 
+SpotNode는 topology와 설정 handle이며 topic publisher가 아니다. SpotNode에
+`zlink_publish*()`를 호출하거나 send-ready handler를 설치하면 `ENOTSUP`으로
+실패한다. topic publish는 `Spot` facade를 만들어 그 handle에서 수행한다.
+
 ### 내부 socket snapshot
 
 ```c

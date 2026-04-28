@@ -241,6 +241,8 @@ int zlink::router_t::xgetsockopt (int option_,
 
 void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
 {
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      socket_msg_dispatch_mutex ());
     if (router_debug_enabled ()) {
         char rid_text[160];
         format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,
@@ -316,6 +318,8 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
 void zlink::router_t::xarm_socket_msg_dispatch ()
 {
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      socket_msg_dispatch_mutex ());
     _fq.arm_dispatch ();
 }
 

@@ -823,19 +823,12 @@ int spot_node_t::snapshot_internal_sockets (
 
     if (append_socket_snapshot_row (
           out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0, "spotnode",
-          "default_pub",
-          _handle_state.handle_defaults.default_pub ()
-            ? _handle_state.handle_defaults.default_pub ()->snapshot_socket ()
+          "internal_receiver",
+          _handle_state.handle_defaults.internal_receiver ()
+            ? _handle_state.handle_defaults.internal_receiver ()
+                ->snapshot_socket ()
             : NULL)
-        != 0
-        || append_socket_snapshot_row (
-             out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0, "spotnode",
-             "internal_receiver",
-             _handle_state.handle_defaults.internal_receiver ()
-               ? _handle_state.handle_defaults.internal_receiver ()
-                   ->snapshot_socket ()
-               : NULL)
-             != 0)
+        != 0)
         return -1;
 
     uint64_t owner_id = 1;

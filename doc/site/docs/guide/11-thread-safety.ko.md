@@ -150,7 +150,7 @@ void *setup_thread(void *arg)
 |---|---|---|---|
 | Socket | `send` | bind, connect, set_option 등 | `close` |
 | SPOT | `publish` | subscribe, unsubscribe 등 | `destroy` |
-| SPOT Node | `publish` | bind, connect_peer 등 | `destroy` |
+| SPOT Node | *(송신 없음; 데이터 평면은 `Spot` 사용)* | bind, connect_peer 등 | `destroy` |
 | Discovery | *(없음)* | connect_registry 등 | `destroy` |
 | Registry | *(없음)* | bind, add_peer 등 | `destroy` |
 

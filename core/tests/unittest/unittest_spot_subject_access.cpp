@@ -7,6 +7,7 @@
 
 #include <unity.h>
 
+#include <cerrno>
 #include <cstring>
 #include <vector>
 
@@ -370,7 +371,8 @@ void test_spot_subject_access_resolves_composite_and_node_poller_sockets ()
 
     zlink::socket_base_t *node_pub_socket =
       resolve_spot_pub_subject_poller_socket (handle->node);
-    TEST_ASSERT_NOT_NULL (node_pub_socket);
+    TEST_ASSERT_NULL (node_pub_socket);
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     zlink::socket_base_t *node_sub_socket =
       resolve_spot_sub_subject_poller_socket (handle->node);

@@ -102,6 +102,7 @@ int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
 spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
   const pub_defaults_t &defaults_, bool node_owned_default_)
 {
+    LIBZLINK_UNUSED (node_owned_default_);
     if (!pubsub_enabled ()) {
         errno = ENOTSUP;
         return NULL;
@@ -125,7 +126,7 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     }
 
     spot_pub_t *pub = new (std::nothrow)
-      spot_pub_t (this, attachment_socket, attachment_id, node_owned_default_);
+      spot_pub_t (this, attachment_socket, attachment_id, false);
     if (!pub) {
         (void) _runtime->destroy_attachment (attachment_id);
         errno = ENOMEM;
@@ -141,40 +142,13 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     }
 
     bool bound = false;
-    spot_pub_t *published_default_pub = pub;
     {
         scoped_lock_t lock (_sync);
         _handle_state.pubs.insert (pub);
         bound = !_endpoint_state.bound_endpoint.empty ();
     }
-    if (node_owned_default_)
-        _handle_state.handle_defaults.publish_default_pub (pub, &published_default_pub);
-
-    if (node_owned_default_ && published_default_pub != pub) {
-        remove_spot_pub (pub);
-        pub->abort_create ();
-        delete pub;
-        return published_default_pub;
-    }
 
     pub->emit_ready_event ();
-    if (node_owned_default_) {
-        zlink_send_ready_handler_fn handler =
-          _send_ready_handler.load (std::memory_order_acquire);
-        if (handler
-            && pub->set_send_ready_handler (
-                 handler, this,
-                 _send_ready_handler_userdata.load (
-                   std::memory_order_acquire))
-                 != 0) {
-            const int err = errno;
-            remove_spot_pub (pub);
-            pub->abort_create ();
-            delete pub;
-            errno = err;
-            return NULL;
-        }
-    }
     if (bound)
         submit_pub_summary (pub, ZLINK_TOPOLOGY_STATE_READY, 0);
     return pub;
@@ -230,24 +204,6 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
     sub->emit_ready_event ();
     submit_sub_summary (sub, ZLINK_TOPOLOGY_STATE_CONNECTING, 0);
     return sub;
-}
-
-spot_pub_t *spot_node_t::ensure_default_pub ()
-{
-    spot_pub_t *pub = _handle_state.handle_defaults.fast_default_pub ();
-    if (pub)
-        return pub;
-
-    scoped_lock_t init_lock (_handle_state.handle_defaults.default_pub_init_lock ());
-    pub = _handle_state.handle_defaults.default_pub ();
-    if (pub)
-        return pub;
-
-    pub_defaults_t defaults = _handle_state.handle_defaults.load_pub_defaults ();
-    pub = _handle_state.handle_defaults.default_pub ();
-    if (pub)
-        return pub;
-    return create_spot_pub_with_defaults (defaults, true);
 }
 
 spot_sub_t *spot_node_t::ensure_default_sub ()

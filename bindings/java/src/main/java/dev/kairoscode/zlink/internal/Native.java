@@ -741,16 +741,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_TLS_CLI = downcall("zlink_spot_node_set_tls_client",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_NODE_SET_PUB_OPTION = downcall("zlink_spot_node_set_pub_option",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_SPOT_NODE_SET_SUB_OPTION = downcall("zlink_spot_node_set_sub_option",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_SPOT_NODE_DEFAULT_PUB = downcall("zlink_spot_node_default_pub",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_DEFAULT_SUB = downcall("zlink_spot_node_default_sub",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_STATUS_SNAPSHOT = downcall(
             "zlink_spot_node_status_snapshot",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -2991,46 +2981,6 @@ public final class Native {
               trust);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_set_tls_client failed",
-              t);
-        }
-    }
-
-    public static int spotNodeSetPubOption(MemorySegment node, int option,
-                                           MemorySegment value, long len) {
-        try {
-            return (int) MH_SPOT_NODE_SET_PUB_OPTION.invokeExact(node, option,
-              value, len);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_pub_option failed",
-              t);
-        }
-    }
-
-    public static int spotNodeSetSubOption(MemorySegment node, int option,
-                                           MemorySegment value, long len) {
-        try {
-            return (int) MH_SPOT_NODE_SET_SUB_OPTION.invokeExact(node, option,
-              value, len);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_sub_option failed",
-              t);
-        }
-    }
-
-    public static MemorySegment spotNodeDefaultPub(MemorySegment node) {
-        try {
-            return (MemorySegment) MH_SPOT_NODE_DEFAULT_PUB.invokeExact(node);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_default_pub failed",
-              t);
-        }
-    }
-
-    public static MemorySegment spotNodeDefaultSub(MemorySegment node) {
-        try {
-            return (MemorySegment) MH_SPOT_NODE_DEFAULT_SUB.invokeExact(node);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_default_sub failed",
               t);
         }
     }

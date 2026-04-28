@@ -92,9 +92,7 @@ class spot_node_t : public discovery_observer_t
 
     spot_pub_t *create_spot_pub ();
     spot_sub_t *create_spot_sub ();
-    spot_pub_t *ensure_default_pub ();
     spot_sub_t *ensure_default_sub ();
-    spot_pub_t *default_pub () const;
     spot_sub_t *default_sub () const;
     void remove_spot_pub (spot_pub_t *pub_);
     void remove_spot_sub (spot_sub_t *sub_);

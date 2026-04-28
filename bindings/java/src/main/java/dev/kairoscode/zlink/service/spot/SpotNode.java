@@ -470,24 +470,29 @@ public final class SpotNode implements AutoCloseable {
 
     private final class SpotNodeSocketOptions {
         void setPubIntOption(int optionId, int value) {
-            setIntOption(Native.spotNodeDefaultPub(handle), optionId, value);
+            setIntOption(optionId, value, true);
         }
 
         void setSubIntOption(int optionId, int value) {
-            setIntOption(Native.spotNodeDefaultSub(handle), optionId, value);
+            setIntOption(optionId, value, false);
         }
 
-        private void setIntOption(MemorySegment socketHandle,
-                                  int optionId,
-                                  int value) {
+        private void setIntOption(int optionId,
+                                  int value,
+                                  boolean publishOption)
+        {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
                 nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-                int rc = Native.setSockOpt(socketHandle, optionId,
-                    nativeValue,
-                    Integer.BYTES);
+                int rc = publishOption
+                  ? Native.setPubOption(handle, optionId, nativeValue,
+                      Integer.BYTES)
+                  : Native.setSubOption(handle, optionId, nativeValue,
+                      Integer.BYTES);
                 if (rc != 0) {
-                    throw ZlinkException.fromLastError("zlink_set_option");
+                    throw ZlinkException.fromLastError(publishOption
+                      ? "zlink_set_pub_option"
+                      : "zlink_set_sub_option");
                 }
             }
         }

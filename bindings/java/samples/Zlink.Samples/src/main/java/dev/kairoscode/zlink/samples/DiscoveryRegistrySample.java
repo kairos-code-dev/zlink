@@ -1,5 +1,6 @@
 package dev.kairoscode.zlink.samples;
 
+import dev.kairoscode.zlink.ConfigException;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
@@ -48,8 +49,15 @@ public final class DiscoveryRegistrySample {
             Thread clientThread = new Thread(() -> {
                 try {
                     SampleSupport.waitUntil("discovery registry sample",
-                        () -> queryView.snapshot().stream().anyMatch(
-                            entry -> serviceName.equals(entry.serviceName())));
+                        () -> {
+                            try {
+                                return queryView.snapshot().stream().anyMatch(
+                                    entry -> serviceName.equals(
+                                        entry.serviceName()));
+                            } catch (ConfigException transientNotReady) {
+                                return false;
+                            }
+                        });
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                 } finally {

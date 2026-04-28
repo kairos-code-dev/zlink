@@ -593,7 +593,19 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+function exitAfterFlush(code) {
+  process.stdout.write('', () => {
+    process.stderr.write('', () => {
+      process.exit(code);
+    });
+  });
+}
+
+main()
+  .then(() => {
+    exitAfterFlush(process.exitCode || 0);
+  })
+  .catch((error) => {
+    console.error(error);
+    exitAfterFlush(1);
+  });

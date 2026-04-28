@@ -202,7 +202,7 @@ writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`�
 2. `EAGAIN` 시 전송 중단.
 3. send-ready 콜백이 호출되면 전송 재개.
 
-이 API는 모든 send-capable handle(raw 소켓, SPOT, SPOT Node)에서
+이 API는 모든 send-capable handle(raw 소켓, SPOT)에서
 동일하게 동작한다. 기본적으로 송신 백프레셔는 poller `ZLINK_POLLOUT`으로
 감지하며, `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
 콜백 등록 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.

@@ -204,8 +204,8 @@ when the socket transitions from non-writable to writable. Combined with
 2. On `ZLINK_SUBMIT_BACKPRESSURED`, pause sending.
 3. When the send-ready callback fires, resume sending.
 
-This API works identically on all send-capable handles (raw sockets,
-SPOT, SPOT Node). By default, send backpressure is detected via
+This API works identically on all send-capable handles (raw sockets and
+SPOT). By default, send backpressure is detected via
 poller `ZLINK_POLLOUT`. Once `zlink_send_ready_handler()` is registered,
 readiness transitions are delivered through the callback instead, and
 data-plane `ZLINK_POLLOUT` returns `ZLINK_HANDLER_BUSY`.

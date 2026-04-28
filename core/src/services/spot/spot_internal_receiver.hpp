@@ -95,18 +95,13 @@ class spot_node_default_handles_t
     pub_defaults_t load_pub_defaults () const;
     sub_defaults_t load_sub_defaults () const;
 
-    spot_pub_t *default_pub () const;
     spot_sub_t *default_sub () const;
     spot_internal_receiver_t *internal_receiver () const;
 
-    spot_pub_t *fast_default_pub () const;
     spot_sub_t *fast_default_sub () const;
     spot_internal_receiver_t *fast_internal_receiver () const;
-    mutex_t &default_pub_init_lock () { return _default_pub_sync; }
     mutex_t &default_sub_init_lock () { return _default_sub_sync; }
 
-    void publish_default_pub (spot_pub_t *pub_,
-                              spot_pub_t **published_default_pub_out_);
     void publish_default_sub (spot_sub_t *sub_);
     spot_internal_receiver_t *publish_internal_receiver (
       spot_internal_receiver_t *receiver_,
@@ -127,12 +122,9 @@ class spot_node_default_handles_t
     void store_sub_option (int option_, const void *optval_, size_t optvallen_);
 
     mutable mutex_t _sync;
-    mutable mutex_t _default_pub_sync;
     mutable mutex_t _default_sub_sync;
-    spot_pub_t *_default_pub;
     spot_sub_t *_default_sub;
     spot_internal_receiver_t *_internal_receiver;
-    std::atomic<spot_pub_t *> _default_pub_fast;
     std::atomic<spot_sub_t *> _default_sub_fast;
     std::atomic<spot_internal_receiver_t *> _internal_receiver_fast;
     pub_defaults_t _pub_defaults;

@@ -374,8 +374,10 @@ void test_spot_node_topic_surface_and_callback_modes ()
       zlink_set_subscription (node, "bench"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_unset_subscription (node, "bench"));
-    TEST_ASSERT_SUCCESS_ERRNO (
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_NOT_SUPPORTED,
       zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_SUPPORTED, zlink_send (node, &part, 1, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_NOT_EQUAL (

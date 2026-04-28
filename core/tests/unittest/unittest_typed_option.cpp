@@ -238,9 +238,10 @@ void test_typed_spot_node_unified_options ()
 
     int got = 0;
     size = sizeof (got);
-    TEST_ASSERT_SUCCESS_ERRNO (
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_NOT_SUPPORTED,
       zlink_get_option (node, ZLINK_OPT_SNDHWM, &got, &size));
-    TEST_ASSERT_EQUAL_INT (77, got);
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     size = sizeof (got);
     TEST_ASSERT_SUCCESS_ERRNO (

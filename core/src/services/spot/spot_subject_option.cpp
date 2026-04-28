@@ -356,14 +356,9 @@ int spot_subject_get_common_option (void *handle_,
         zlink::service_public_api_scope_t admission (node->public_api_guard ());
         if (!admission.acquired ())
             return -1;
-        if (pub_option >= 0) {
-            zlink::spot_pub_t *pub = node->ensure_default_pub ();
-            if (!pub || !pub->poller_socket ()) {
-                errno = EFAULT;
-                return -1;
-            }
-            return pub->poller_socket ()->getsockopt (socket_option, optval_,
-                                                      optvallen_);
+        if (pub_option >= 0 && sub_option < 0) {
+            errno = ENOTSUP;
+            return -1;
         }
         zlink::spot_sub_t *sub = node->ensure_default_sub ();
         if (!sub || !sub->poller_socket ()) {
@@ -457,25 +452,8 @@ int spot_subject_get_pub_option (void *handle_,
     }
 
     if (is_registered_spot_node_handle (handle_)) {
-        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (handle_);
-        zlink::service_public_api_scope_t admission (node->public_api_guard ());
-        if (!admission.acquired ())
-            return -1;
-        if (option_ == ZLINK_PUB_OPT_NODROP) {
-            const zlink::spot_node_t::pub_defaults_t defaults =
-              node->load_pub_defaults ();
-            if (defaults.nodrop.enabled) {
-                return copy_option_setting_value (defaults.nodrop, optval_,
-                                                  optvallen_);
-            }
-        }
-        zlink::spot_pub_t *pub = node->ensure_default_pub ();
-        if (!pub || !pub->poller_socket ()) {
-            errno = EFAULT;
-            return -1;
-        }
-        return pub->poller_socket ()->getsockopt (socket_option, optval_,
-                                                  optvallen_);
+        errno = ENOTSUP;
+        return -1;
     }
 
     errno = EFAULT;

@@ -297,10 +297,8 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
 }
 
 spot_node_default_handles_t::spot_node_default_handles_t () :
-    _default_pub (NULL),
     _default_sub (NULL),
     _internal_receiver (NULL),
-    _default_pub_fast (NULL),
     _default_sub_fast (NULL),
     _internal_receiver_fast (NULL)
 {
@@ -434,20 +432,8 @@ int spot_node_default_handles_t::set_pub_option (int option_,
     if (validate_pub_option (option_, optval_, optvallen_) != 0)
         return -1;
 
-    scoped_lock_t init_lock (_default_pub_sync);
-    spot_pub_t *default_pub = NULL;
-    {
-        scoped_lock_t lock (_sync);
-        default_pub = _default_pub;
-    }
-
-    if (default_pub && default_pub->set_option (option_, optval_, optvallen_) != 0)
-        return -1;
-
-    {
-        scoped_lock_t lock (_sync);
-        store_pub_option (option_, optval_, optvallen_);
-    }
+    scoped_lock_t lock (_sync);
+    store_pub_option (option_, optval_, optvallen_);
     return 0;
 }
 
@@ -495,12 +481,6 @@ spot_node_default_handles_t::load_sub_defaults () const
     return _sub_defaults;
 }
 
-spot_pub_t *spot_node_default_handles_t::default_pub () const
-{
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return _default_pub;
-}
-
 spot_sub_t *spot_node_default_handles_t::default_sub () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
@@ -513,11 +493,6 @@ spot_internal_receiver_t *spot_node_default_handles_t::internal_receiver () cons
     return _internal_receiver;
 }
 
-spot_pub_t *spot_node_default_handles_t::fast_default_pub () const
-{
-    return _default_pub_fast.load (std::memory_order_acquire);
-}
-
 spot_sub_t *spot_node_default_handles_t::fast_default_sub () const
 {
     return _default_sub_fast.load (std::memory_order_acquire);
@@ -527,24 +502,6 @@ spot_internal_receiver_t *
 spot_node_default_handles_t::fast_internal_receiver () const
 {
     return _internal_receiver_fast.load (std::memory_order_acquire);
-}
-
-void spot_node_default_handles_t::publish_default_pub (
-  spot_pub_t *pub_,
-  spot_pub_t **published_default_pub_out_)
-{
-    if (published_default_pub_out_)
-        *published_default_pub_out_ = pub_;
-
-    scoped_lock_t lock (_sync);
-    if (_default_pub && _default_pub != pub_) {
-        if (published_default_pub_out_)
-            *published_default_pub_out_ = _default_pub;
-        return;
-    }
-
-    _default_pub = pub_;
-    _default_pub_fast.store (pub_, std::memory_order_release);
 }
 
 void spot_node_default_handles_t::publish_default_sub (spot_sub_t *sub_)
@@ -582,11 +539,7 @@ spot_internal_receiver_t *spot_node_default_handles_t::publish_internal_receiver
 
 void spot_node_default_handles_t::remove_spot_pub (spot_pub_t *pub_)
 {
-    scoped_lock_t lock (_sync);
-    if (_default_pub == pub_) {
-        _default_pub = NULL;
-        _default_pub_fast.store (NULL, std::memory_order_release);
-    }
+    LIBZLINK_UNUSED (pub_);
 }
 
 bool spot_node_default_handles_t::remove_spot_sub (spot_sub_t *sub_)
@@ -626,9 +579,7 @@ void spot_node_default_handles_t::snapshot_destroy_handles (
         subs_out_->push_back (*it);
     }
 
-    _default_pub = NULL;
     _default_sub = NULL;
-    _default_pub_fast.store (NULL, std::memory_order_release);
     _default_sub_fast.store (NULL, std::memory_order_release);
     _internal_receiver_fast.store (NULL, std::memory_order_release);
 }
@@ -827,11 +778,6 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
     }
 
     return receiver;
-}
-
-spot_pub_t *spot_node_t::default_pub () const
-{
-    return _handle_state.handle_defaults.default_pub ();
 }
 
 spot_internal_receiver_t *spot_node_t::internal_receiver () const

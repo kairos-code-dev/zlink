@@ -151,9 +151,10 @@ concurrent entry.
 
 ### 3.2 SPOT / SPOT Node
 
-- **Public contract:** `spot_publish` / `spot_node_publish` follow the
-  hot-path tier. Subscription changes, peer mutations, and
-  `attach_discovery` follow the control path.
+- **Public contract:** `spot_publish` follows the hot-path tier. `SpotNode`
+  owns topology and configuration; it does not provide a direct publish hot
+  path. Subscription changes, peer mutations, and `attach_discovery` follow
+  the control path.
 - **Internal children:** `spot_pub` / `spot_sub` are internal
   implementation units. They are not direct subjects of the public
   thread-safety contract — the parent/facade contract covers them.

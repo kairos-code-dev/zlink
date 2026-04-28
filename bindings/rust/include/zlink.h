@@ -816,6 +816,9 @@ ZLINK_EXPORT zlink_recv_result_t zlink_recv_part (
   zlink_recv_flags_t flags_);
 
 /* ========== Helper substrate layer (*_part) ========== */
+
+/* SpotNode is topology/configuration only. Direct publish on SpotNode returns
+ * ZLINK_SUBMIT_NOT_SUPPORTED with errno ENOTSUP; use Spot for topic publish. */
 ZLINK_EXPORT zlink_submit_result_t zlink_publish_part (
   void *subject_,
   const char *topic_id_,

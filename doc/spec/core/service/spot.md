@@ -88,6 +88,10 @@ configured only on raw ROUTER and DEALER sockets. Spot peer snapshots may still
 show a `weight` field; it is a remote peer state value learned from discovery
 or peer signaling, not a Spot/SpotNode local option.
 
+SpotNode is a topology and configuration handle, not a topic publisher. Calling
+`zlink_publish*()` or installing a send-ready handler on a SpotNode fails with
+`ENOTSUP`; create a `Spot` facade and publish through that handle instead.
+
 ### Internal socket snapshot
 
 ```c

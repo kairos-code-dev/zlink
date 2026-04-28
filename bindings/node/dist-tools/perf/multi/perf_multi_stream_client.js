@@ -7,25 +7,24 @@ const { once } = require('node:events');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs, resolveMultiConnectConcurrency } = require('./perf_multi_common');
 const { resolveMultiLatencySampleCap } = require('./perf_multi_runtime');
-function buildPacketFrame(body) {
-    const frame = Buffer.allocUnsafe(6 + body.length);
-    frame.writeUInt16BE(0, 0);
-    frame.writeUInt32BE(body.length, 2);
-    body.copy(frame, 6);
+function buildLengthPrefixedFrame(body) {
+    const frame = Buffer.allocUnsafe(4 + body.length);
+    frame.writeUInt32BE(body.length, 0);
+    body.copy(frame, 4);
     return frame;
 }
-function parseFrames(state, chunk) {
+function buildStreamPacketFrames(body) {
+    return Buffer.concat([
+        buildLengthPrefixedFrame(Buffer.alloc(0)),
+        buildLengthPrefixedFrame(body)
+    ]);
+}
+function parseFixedPayloads(state, chunk, payloadSize) {
     state.buffer = Buffer.concat([state.buffer, chunk]);
     const payloads = [];
-    while (state.buffer.length >= 6) {
-        const headerSize = state.buffer.readUInt16BE(0);
-        const bodySize = state.buffer.readUInt32BE(2);
-        const frameLength = 6 + headerSize + bodySize;
-        if (state.buffer.length < frameLength) {
-            break;
-        }
-        payloads.push(state.buffer.subarray(6 + headerSize, frameLength));
-        state.buffer = state.buffer.subarray(frameLength);
+    while (state.buffer.length >= payloadSize) {
+        payloads.push(state.buffer.subarray(0, payloadSize));
+        state.buffer = state.buffer.subarray(payloadSize);
     }
     return payloads;
 }
@@ -44,7 +43,7 @@ function normalizeBinaryChunk(data) {
     }
     throw new Error(`unsupported stream payload type: ${typeof data}`);
 }
-function createFrameReader(transport) {
+function createFrameReader(transport, payloadSize) {
     const state = {
         buffer: Buffer.alloc(0),
         pending: [],
@@ -56,7 +55,7 @@ function createFrameReader(transport) {
         }
     };
     const onData = (chunk) => {
-        const payloads = parseFrames(state, normalizeBinaryChunk(chunk));
+        const payloads = parseFixedPayloads(state, normalizeBinaryChunk(chunk), payloadSize);
         if (payloads.length > 0) {
             state.pending.push(...payloads);
             flushWaiters();
@@ -284,7 +283,7 @@ async function main() {
         const connected = await connectAllStreamTransports(options.endpoint, options.transport, options.clients);
         for (const transport of connected) {
             transports.push(transport);
-            readers.push(createFrameReader(transport));
+            readers.push(createFrameReader(transport, options.msgSize));
             payloads.push(createPayload(options.msgSize));
         }
         if (transports.length !== options.clients) {
@@ -304,7 +303,7 @@ async function main() {
         while (currentEpochNs() < activeStopNs) {
             for (let i = 0; i < transports.length; i += 1) {
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                await transports[i].writeFrame(buildPacketFrame(payloads[i]));
+                await transports[i].writeFrame(buildStreamPacketFrames(payloads[i]));
                 const echoed = await nextFrameWithTimeout(readers[i], Number(process.env.PERF_MULTI_STREAM_FRAME_TIMEOUT_MS ?? 1000));
                 if (!echoed) {
                     break;

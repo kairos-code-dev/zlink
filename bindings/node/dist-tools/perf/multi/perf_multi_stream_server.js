@@ -5,16 +5,6 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { applyContextPolicy, applySocketPolicy } = require('./perf_multi_runtime');
-function buildPacketFrame(header, body) {
-    const headerBytes = header.data();
-    const bodyBytes = body.data();
-    const frame = Buffer.allocUnsafe(6 + headerBytes.length + bodyBytes.length);
-    frame.writeUInt16BE(headerBytes.length, 0);
-    frame.writeUInt32BE(bodyBytes.length, 2);
-    headerBytes.copy(frame, 6);
-    bodyBytes.copy(frame, 6 + headerBytes.length);
-    return frame;
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();

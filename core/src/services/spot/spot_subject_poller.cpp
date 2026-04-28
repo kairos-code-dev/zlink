@@ -44,12 +44,8 @@ zlink::socket_base_t *resolve_spot_pub_subject_poller_socket (
         return pub ? pub->poller_socket () : NULL;
     }
     if (is_registered_spot_node_handle (spot_or_node_)) {
-        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (spot_or_node_);
-        zlink::service_public_api_scope_t admission (node->public_api_guard ());
-        if (!admission.acquired ())
-            return NULL;
-        zlink::spot_pub_t *pub = node->ensure_default_pub ();
-        return pub ? pub->poller_socket () : NULL;
+        errno = ENOTSUP;
+        return NULL;
     }
     errno = EFAULT;
     return NULL;

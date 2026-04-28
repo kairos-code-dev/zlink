@@ -432,6 +432,10 @@ class socket_base_t : public own_t,
       zlink_msg_t *parts_,
       size_t part_count_,
       void *userdata_);
+    std::recursive_mutex &socket_msg_dispatch_mutex ()
+    {
+        return dispatch_runtime ().socket_msg_dispatch_sync;
+    }
     void arm_send_ready_notification ();
     void notify_send_ready_if_armed ();
     void emit_socket_monitor_value_event (

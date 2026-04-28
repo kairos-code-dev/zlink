@@ -233,11 +233,6 @@ int spot_subject_set_routing_id (void *handle_,
             return -1;
         if (node->set_node_routing_id (data_, size_) != 0)
             return -1;
-        if (node->pubsub_enabled ()) {
-            zlink::spot_pub_t *pub = node->ensure_default_pub ();
-            if (pub && pub->set_routing_id (data_, size_) != 0)
-                return -1;
-        }
         (void) zlink_service_spot_node_refresh_external_router_identity (handle_);
         return 0;
     }

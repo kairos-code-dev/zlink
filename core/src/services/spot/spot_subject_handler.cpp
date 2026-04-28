@@ -153,8 +153,8 @@ bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
     if (!dispatch_socket)
         return false;
 
-    zlink::spot_pub_t *pub = node_->default_pub ();
-    return pub && pub->owns_socket (dispatch_socket);
+    LIBZLINK_UNUSED (dispatch_socket);
+    return false;
 }
 
 void clear_spot_node_handler_registration (zlink::spot_node_t *node_)

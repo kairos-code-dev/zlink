@@ -783,3 +783,101 @@ native 동기화가 끝난 뒤에는 각 바인딩 라이브러리를 새 계약
     완료했다.
   - 최종 재확인 기준 남은 0-result smoke 경로: 0개.
   - 최종 재확인 기준 남은 Python/Rust perf 미완료 검증: 0개.
+
+### 2026-04-29 SpotNode default_pub 제거 및 전체 bindings 검증 로그
+
+- 수정 파일:
+  - `core/include/zlink.h`
+  - `core/src/services/spot/*`
+  - `core/src/api/service_handler_spot_api.cpp`
+  - `core/src/sockets/dealer.cpp`
+  - `core/src/sockets/router.cpp`
+  - `core/src/sockets/router_recv_path.cpp`
+  - `core/src/sockets/socket_base.hpp`
+  - `core/tests/e2e/spot/test_spot_service_introspection.cpp`
+  - `core/tests/unittest/unittest_service_mode_policy.cpp`
+  - `core/tests/unittest/unittest_spot_subject_access.cpp`
+  - `core/tests/unittest/unittest_typed_option.cpp`
+  - `bindings/*/native/**/libzlink.so.5.3.4`
+  - `bindings/cpp/include/zlink.h`
+  - `bindings/go/include/zlink.h`
+  - `bindings/rust/include/zlink.h`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/internal/Native.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/SpotNode.java`
+  - `bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DiscoveryRegistrySample.java`
+  - `bindings/node/perf/multi/perf_multi_stream_client.ts`
+  - `bindings/node/perf/multi/perf_multi_stream_server.ts`
+  - `bindings/node/perf/multi/run_benchmarks.ts`
+  - `bindings/python/tests/test_core_api_alignment.py`
+  - `doc/internals/thread-safety.md`, `doc/internals/thread-safety.ko.md`
+  - `doc/spec/core/service/spot.md`, `doc/spec/core/service/spot.ko.md`
+  - `doc/guide/10-performance.md`, `doc/guide/10-performance.ko.md`
+  - `doc/guide/11-thread-safety.md`, `doc/guide/11-thread-safety.ko.md`
+  - `doc/site/docs/**` mirror 문서
+- 실행 명령:
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -j1`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_zmp_request_reply$' --repeat until-fail:10 -j1`
+  - `bindings/c/samples/run_samples.sh`
+  - `PERF_SKIP_NOFILE_CHECK=1 PERF_SKIP_MEMORY_CHECK=1 PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --reuse-build`
+  - `PERF_SKIP_NOFILE_CHECK=1 PERF_SKIP_MEMORY_CHECK=1 PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks_multi.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --reuse-build --transport-transition-ms 0 --pattern-transition-ms 0`
+  - `bindings/cpp/tests/run_tests.sh`, `bindings/cpp/samples/run_samples.sh`
+  - `bindings/java/tests/run_tests.sh`, `bindings/java/samples/run_samples.sh`
+  - `bindings/python/tests/run_tests.sh`, `bindings/python/samples/run_samples.sh`
+  - `bindings/rust/tests/run_tests.sh`, `bindings/rust/samples/run_samples.sh`
+  - `bindings/go/tests/run_tests.sh`, `bindings/go/samples/run_samples.sh`
+  - `bindings/node/tests/run_tests.sh`, `bindings/node/samples/run_samples.sh`
+  - `bindings/dotnet/tests/run_tests.sh`, `bindings/dotnet/samples/run_samples.sh`
+  - `bindings/cpp/perf/run_benchmarks.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --reuse-build`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --reuse-build --transport-transition-ms 0 --pattern-transition-ms 0`
+  - `bash bindings/go/perf/run_benchmarks.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1`
+  - `bash bindings/go/perf/run_benchmarks_multi.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --transport-transition-ms 0 --pattern-transition-ms 0`
+  - `bindings/java/perf/run_benchmarks.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1`
+  - `bindings/java/perf/run_benchmarks_multi.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --transport-transition-ms 0 --pattern-transition-ms 0`
+  - `bindings/node/perf/run_benchmarks.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1`
+  - `bindings/node/perf/run_benchmarks_multi.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --transport-transition-ms 0 --pattern-transition-ms 0`
+  - `bindings/dotnet/perf/run_benchmarks.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --pattern ALL --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
+- 실패 원인:
+  - SpotNode introspection에 `default_pub`이 남아 있어 문서화한 topology와 실제
+    Auto-HWM snapshot이 달랐다. SpotNode가 직접 publish를 지원하지 않는 계약과도
+    맞지 않았다.
+  - `test_zmp_request_reply`가 IO thread dispatch와 caller thread의 dispatcher
+    install/drain 사이 race로 `fq_t::recvpipe`에서 간헐적으로 segmentation fault가
+    났다.
+  - Python sample은 native 동기화 전 번들 library를 잡으면 이전 SpotNode bind
+    경로에서 실패할 수 있었다.
+  - Go single perf의 첫 실행은 다른 perf 프로세스와 병렬로 돌리는 중 PAIR가
+    일시적 `EAGAIN`을 만났다.
+  - Node multi `MULTI_STREAM`은 raw STREAM 클라이언트가 보낸 length-prefixed
+    packet을 서버가 callback body로 받아야 하는데, client/server framing이 맞지
+    않아 0 throughput을 실제 결과처럼 출력했다. 또한 Node multi runner가 결과
+    출력 후 남은 event-loop handle 때문에 종료되지 않을 수 있었다.
+- 해결 내용:
+  - SpotNode의 `default_pub` 생성, snapshot, send-ready, publish/poller 경로를
+    제거하고 직접 publish는 `ENOTSUP` 계약으로 고정했다. Spot data plane publish는
+    `SpotNode.create_spot()`으로 만든 Spot handle만 사용한다.
+  - request/reply dispatch 경로에 dispatcher/fair-queue mutex 경계를 추가해 IO
+    thread와 caller thread의 동시 접근을 막았다.
+  - 각 bindings native header/library를 최신 `core/build` runtime 기준으로
+    동기화했다.
+  - Java SpotNode option setter는 숨은 default pub/sub downcall을 쓰지 않고
+    canonical `set_option` 경로를 사용한다.
+  - Node multi STREAM client는 canonical stream callback frame 형식으로 요청을
+    보내고 fixed payload echo를 실제 metric으로 수집한다. runner는 결과 출력 후
+    명시적으로 종료한다.
+  - core 전체 테스트는 99/99 통과했다. `test_zmp_request_reply` 반복 테스트는
+    10/10 통과했다.
+  - C single은 30/30, C multi는 40/40 결과 라인으로 완료했고, `MULTI_SPOT`
+    Auto-HWM snapshot에서 `default_pub`은 0건이었다.
+  - C++ single/multi는 각각 35/35, Go single/multi는 각각 35/35, Java single은
+    30/30, Java multi는 45/45, Node single/multi는 각각 35/35, .NET single/multi는
+    각각 35/35 결과 라인으로 완료했다.
+  - Python single/multi는 각각 35/35, Rust single/multi는 각각 35/35 결과 라인으로
+    완료했다.
+  - 최종 공개 헤더 주석 정리 뒤 `cmake --build core/build`를 다시 실행했고,
+    핵심 회귀 `ctest -R 'unittest_service_mode_policy|unittest_spot_subject_access|unittest_typed_option|test_spot_service_introspection|test_zmp_request_reply'`
+    는 13/13 통과했다.
+  - 전체 확인 기준 남은 미적용 항목: 0개.
+  - 전체 확인 기준 남은 POSD follow-up: 0개.
+  - 전체 확인 기준 남은 bindings 검증 미완료 항목: 0개.

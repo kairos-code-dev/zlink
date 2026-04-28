@@ -47,10 +47,14 @@ void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
         errno_assert (rc == 0);
     }
 
-    _fq.attach (pipe_);
-    if (socket_msg_dispatch_active ()) {
-        pipe_->check_read ();
-        _fq.deactivate (pipe_);
+    {
+        std::lock_guard<std::recursive_mutex> dispatch_lock (
+          socket_msg_dispatch_mutex ());
+        _fq.attach (pipe_);
+        if (socket_msg_dispatch_active ()) {
+            pipe_->check_read ();
+            _fq.deactivate (pipe_);
+        }
     }
     _lb.attach (pipe_);
     if (local_peer_weight () != 100)
@@ -105,6 +109,8 @@ bool zlink::dealer_t::xhas_out ()
 
 void zlink::dealer_t::xread_activated (pipe_t *pipe_)
 {
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      socket_msg_dispatch_mutex ());
     _fq.activated (pipe_);
     if (!socket_msg_dispatch_active ())
         return;
@@ -179,11 +185,15 @@ void zlink::dealer_t::xlocal_peer_weight_changed ()
 
 void zlink::dealer_t::xarm_socket_msg_dispatch ()
 {
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      socket_msg_dispatch_mutex ());
     _fq.arm_dispatch ();
 }
 
 void zlink::dealer_t::xdispatch_io ()
 {
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      socket_msg_dispatch_mutex ());
     if (!socket_msg_dispatch_active ())
         return;
     zlink::drain_socket_dispatch_loop (

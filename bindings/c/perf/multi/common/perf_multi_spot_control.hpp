@@ -366,7 +366,10 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
                                       const char *topic,
                                       const multi_bench_settings_t &settings,
                                       bool (*apply_server_options)(
-                                        void *, const multi_bench_settings_t &),
+                                        void *,
+                                        const multi_bench_settings_t &,
+                                        const std::string &,
+                                        size_t),
                                       server_session_t *session)
 {
     if (!session || !topic || !*topic || !apply_server_options) {
@@ -402,7 +405,8 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
     session->control_sub =
       perf_create_default_spot_handle(session->control_node);
     if (!session->pub || !session->control_pub || !session->control_sub
-        || !apply_server_options(session->pub, settings)
+        || !apply_server_options(
+             session->pub, settings, transport, max_msg_size)
         || !apply_control_options(
              session->control_pub, session->control_sub, settings)
         || zlink_set_subscription(session->control_sub, topic)

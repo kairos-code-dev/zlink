@@ -357,6 +357,35 @@ void test_auto_hwm_v2_policy_class_mapping_and_spot_fanout_limit ()
     TEST_ASSERT_EQUAL_UINT32 (64u, socket_plan.size_cap);
 }
 
+void test_auto_hwm_v2_planning_uses_observed_count_before_bootstrap ()
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_context_plan_from_budget_mb (
+      true, 128, &context_plan, ZLINK_AUTO_HWM_PROFILE_BALANCED);
+
+    zlink::auto_hwm_socket_plan_t socket_plan;
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_SUB,
+      1, 1, &socket_plan, 131072, -1, -1, false, false,
+      zlink::auto_hwm_scope_per_spot, 1, true,
+      ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
+
+    TEST_ASSERT_EQUAL_UINT32 (1u, socket_plan.observed_count);
+    TEST_ASSERT_EQUAL_UINT32 (1u, socket_plan.planning_count);
+    TEST_ASSERT_EQUAL_INT (2, socket_plan.rcvhwm);
+
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_SUB,
+      0, 0, &socket_plan, 131072, -1, -1, false, false,
+      zlink::auto_hwm_scope_per_spot, 1, true,
+      ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
+
+    TEST_ASSERT_EQUAL_UINT32 (0u, socket_plan.observed_count);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT,
+                              socket_plan.planning_count);
+    TEST_ASSERT_EQUAL_INT (1, socket_plan.rcvhwm);
+}
+
 void test_mesh_pub_budget_hint_updates_private_runtime_owner ()
 {
     zlink::spot_runtime_t runtime (NULL);
@@ -544,6 +573,7 @@ int main (int argc, char **argv)
     RUN_TEST (test_ready_peer_count_is_clamped_to_connected_peers);
     RUN_TEST (test_auto_hwm_v2_profile_caps_and_unit_budgets);
     RUN_TEST (test_auto_hwm_v2_policy_class_mapping_and_spot_fanout_limit);
+    RUN_TEST (test_auto_hwm_v2_planning_uses_observed_count_before_bootstrap);
     RUN_TEST (test_mesh_pub_budget_hint_updates_private_runtime_owner);
     RUN_TEST (test_mesh_pub_budget_runtime_owner_uses_bound_endpoint);
     RUN_TEST (

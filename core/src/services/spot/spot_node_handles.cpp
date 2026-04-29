@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -106,6 +107,9 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
     if (!runtime_ || !optval_ || optvallen_ == 0)
         return;
 
+    int msg_unit = 0;
+    copy_int_option_value (optval_, optvallen_, &msg_unit);
+
     socket_base_t *sockets[] = {
       runtime_->mesh_pub,
       runtime_->local_fanout_xpub,
@@ -120,10 +124,83 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
             continue;
         (void) socket->setsockopt (ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES,
                                    optval_, optvallen_);
-        socket->clear_auto_hwm_manual_overrides (true, true, true, true);
-        socket->refresh_auto_hwm_policy (true);
     }
 
+    ctx_t *ctx = runtime_->ctx ();
+    if (!ctx)
+        return;
+
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                                        &connected_peer_count,
+                                        &active_peer_count);
+    const size_t routed_local_count =
+      std::max<size_t> (std::max<size_t> (local_pub_count, local_sub_count),
+                        1u);
+    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->mesh_pub,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
+                                      ZLINK_CORE_SOCKET_PUB,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0,
+                                      !hwm.topic_send_enabled, false,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->local_fanout_xpub,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
+                                      ZLINK_CORE_SOCKET_PUB,
+                                      local_sub_count, local_sub_count,
+                                      0, 0,
+                                      !hwm.topic_send_enabled, false,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->local_pub_ingress_sub,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
+                                      ZLINK_CORE_SOCKET_SUB,
+                                      local_pub_count, local_pub_count,
+                                      0, 0, false,
+                                      !hwm.topic_recv_enabled,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->mesh_xsub,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
+                                      ZLINK_CORE_SOCKET_XSUB,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0, false,
+                                      !hwm.topic_recv_enabled,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->internal_router,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_ROUTER,
+                                      routed_local_count, routed_local_count,
+                                      0, 0,
+                                      !hwm.routed_send_enabled,
+                                      !hwm.routed_recv_enabled,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->external_router,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_ROUTER,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0,
+                                      !hwm.routed_send_enabled,
+                                      !hwm.routed_recv_enabled,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
 }
 
 static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,

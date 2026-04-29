@@ -16,6 +16,7 @@ const uint64_t auto_hwm_stream_message_bytes = 1024ull;
 const uint64_t auto_hwm_message_bytes = 4096ull;
 const int auto_hwm_default_sndbuf = 262144;
 const int auto_hwm_default_rcvbuf = 262144;
+const uint64_t auto_hwm_max_buffer_bytes = 16ull * mib;
 
 struct profile_budget_t
 {
@@ -180,6 +181,14 @@ uint32_t transport_bootstrap_connections (int socket_type_,
     return socket_type_ == ZLINK_CORE_SOCKET_STREAM ? 5000u : 1u;
 }
 
+uint32_t planning_count_from_observed (uint32_t observed_count_,
+                                       uint32_t bootstrap_connections_)
+{
+    if (observed_count_ > 0)
+        return observed_count_;
+    return std::max<uint32_t> (bootstrap_connections_, 1u);
+}
+
 uint64_t effective_message_bytes (int socket_type_, int override_)
 {
     if (override_ > 0)
@@ -206,6 +215,22 @@ uint64_t clamp_hwm_to_cap (uint64_t slots_, uint32_t size_cap_)
     if (hwm == 0)
         return 1;
     return hwm;
+}
+
+int auto_buffer_bytes_for_message (uint64_t message_bytes_,
+                                   int default_buffer_bytes_)
+{
+    if (message_bytes_ == 0)
+        return default_buffer_bytes_;
+
+    uint64_t target = message_bytes_ * 4ull;
+    if (target < static_cast<uint64_t> (default_buffer_bytes_))
+        target = static_cast<uint64_t> (default_buffer_bytes_);
+    if (target > auto_hwm_max_buffer_bytes)
+        target = auto_hwm_max_buffer_bytes;
+    if (target > static_cast<uint64_t> (INT_MAX))
+        return INT_MAX;
+    return static_cast<int> (target);
 }
 }
 
@@ -380,8 +405,9 @@ void zlink::auto_hwm_socket_plan_prepare (
       transport_bootstrap_connections (socket_type_, planning_bootstrap_);
     out_->observed_count = std::max (out_->managed_connections,
                                      out_->active_hwm_connections);
-    out_->planning_count = std::max (out_->observed_count,
-                                     bootstrap_connections);
+    out_->planning_count =
+      planning_count_from_observed (out_->observed_count,
+                                    bootstrap_connections);
     out_->effective_publish_fanout =
       out_->policy_class == auto_hwm_policy_spot_data
         ? std::max<uint32_t> (
@@ -395,15 +421,20 @@ void zlink::auto_hwm_socket_plan_prepare (
     out_->buffer_connections = out_->observed_count > 0 ? out_->observed_count
                                                          : 1u;
 
-    out_->requested_sndbuf = manual_sndbuf_ ? sndbuf_ : auto_hwm_default_sndbuf;
-    out_->requested_rcvbuf = manual_rcvbuf_ ? rcvbuf_ : auto_hwm_default_rcvbuf;
+    const int auto_sndbuf_value = auto_buffer_bytes_for_message (
+      out_->effective_message_bytes, auto_hwm_default_sndbuf);
+    const int auto_rcvbuf_value = auto_buffer_bytes_for_message (
+      out_->effective_message_bytes, auto_hwm_default_rcvbuf);
+
+    out_->requested_sndbuf = manual_sndbuf_ ? sndbuf_ : auto_sndbuf_value;
+    out_->requested_rcvbuf = manual_rcvbuf_ ? rcvbuf_ : auto_rcvbuf_value;
     out_->effective_sndbuf = out_->requested_sndbuf;
     out_->effective_rcvbuf = out_->requested_rcvbuf;
 
     const uint64_t auto_sndbuf =
-      (!manual_sndbuf_ && buffer_cost_enabled_) ? auto_hwm_default_sndbuf : 0;
+      (!manual_sndbuf_ && buffer_cost_enabled_) ? auto_sndbuf_value : 0;
     const uint64_t auto_rcvbuf =
-      (!manual_rcvbuf_ && buffer_cost_enabled_) ? auto_hwm_default_rcvbuf : 0;
+      (!manual_rcvbuf_ && buffer_cost_enabled_) ? auto_rcvbuf_value : 0;
     const uint64_t manual_sndbuf =
       manual_sndbuf_ && sndbuf_ > 0 ? static_cast<uint64_t> (sndbuf_) : 0;
     const uint64_t manual_rcvbuf =

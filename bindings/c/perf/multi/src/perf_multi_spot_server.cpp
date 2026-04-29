@@ -105,15 +105,16 @@ void fast_exit_process(int exit_code)
 }
 
 bool apply_spot_server_options(void *pub,
-                               const multi_bench_settings_t &settings)
+                               const multi_bench_settings_t &settings,
+                               const std::string &transport,
+                               size_t max_msg_size)
 {
     const int sndtimeo_ms =
       bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
     const int nodrop =
       resolve_multi_int_env("PERF_MULTI_SPOT_XPUB_NODROP", 1, 0);
     apply_benchmark_socket_options(
-      pub, settings.hwm, "tcp", ZLINK_SOCKET_DEALER,
-      perf_current_benchmark_max_msg_size(64));
+      pub, settings.hwm, transport, ZLINK_SOCKET_DEALER, max_msg_size);
 
     if (zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &sndtimeo_ms,
                                 sizeof(sndtimeo_ms))

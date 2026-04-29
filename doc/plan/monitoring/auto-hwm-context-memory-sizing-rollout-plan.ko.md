@@ -875,3 +875,38 @@ rg -n "core/build|libzlink|LD_LIBRARY_PATH|native/linux-x86_64" bindings/*/perf 
   - helper 계열 test timeout 덮어쓰기를 정리하고 discovery 전파 대기를 늘렸다.
   - SPOT one-way backpressure matrix는 tcp 경로만 남기고 non-tcp coverage는 별도 SPOT/transport 테스트로 분리했다.
   - 최종 `ctest --test-dir core/build --output-on-failure`는 100/100 성공했다.
+
+### 2026-04-30 SPOT multi one-way TLS 대용량 수신 0건 수정
+
+- 수정 파일:
+  - `core/src/core/auto_hwm_policy.cpp`
+  - `core/src/services/spot/spot_node_handles.cpp`
+  - `core/tests/unittest/unittest_spot_data_plane_budget.cpp`
+  - `bindings/c/perf/multi/common/perf_multi_spot_control.hpp`
+  - `bindings/c/perf/multi/src/perf_multi_spot_server.cpp`
+  - `bindings/c/perf/multi/src/perf_multi_spot_client.cpp`
+- 실행 명령:
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build -R '^unittest_spot_data_plane_budget$' --output-on-failure`
+  - `ctest --test-dir core/build --output-on-failure`
+  - `ctest --test-dir core/build -R '^test_xpub_nodrop$' --output-on-failure --repeat until-pass:3`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT --runs 1 --duration 1 --clients 100 --msg-sizes 131072 --transports tls --connect-concurrency 100 --results-tag verify_spot_tls_100c_131072_internal_counts`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT --runs 1 --duration 1 --clients 100 --msg-sizes 262144 --transports tls --connect-concurrency 100 --results-tag verify_spot_tls_100c_262144_internal_counts`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT --runs 1 --duration 1 --clients 100 --msg-sizes 64,256,1024,65536,131072,262144 --transports tcp --connect-concurrency 100 --results-tag verify_spot_tcp_all_sizes_retry`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_REQREP,SPOT_SENDSEND --runs 1 --duration 1 --clients 100 --msg-sizes 64,256,1024,65536,131072,262144 --transports tcp,tls --connect-concurrency 100 --results-tag verify_spot_reqrep_sendsend_tcp_tls_all_sizes_after_spot_fix`
+- 실패 원인:
+  - `MULTI_SPOT` one-way TLS 128 KiB 이상에서 서버는 active publish를 수행했지만 client 수신이 0건이었다.
+  - 실제 연결이 이미 관찰된 scoped SPOT socket도 `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` 500개로 planning되어 context fair share가 과도하게 쪼개졌다.
+  - SpotNode 내부 socket의 `AUTO_HWM_MSG_UNIT_BYTES` refresh가 generic socket refresh로 돌아가면서 runtime의 logical pub/sub/peer count를 잃고 `Managed=0` 계획으로 덮였다.
+  - C perf SPOT one-way server/client socket option 적용이 실제 transport와 최대 payload가 아니라 일부 경로에서 tcp/기본 size 기준으로 남아 있었다.
+  - core full ctest 1차 실행에서 `test_xpub_nodrop`가 timeout성으로 1회 실패했다.
+- 해결 내용:
+  - auto-HWM planner는 observed count가 1개 이상이면 bootstrap 대신 observed count로 planning한다. bootstrap은 실제 연결 관찰 전 초기값으로만 쓴다.
+  - 큰 `MsgUnit(B)`에서는 자동 `SNDBUF`/`RCVBUF`를 payload 기준으로 키우되 16 MiB 상한을 둔다.
+  - SpotNode 내부 socket의 msg-unit refresh는 runtime의 logical local pub/sub와 peer count로 다시 auto-HWM을 적용한다.
+  - C perf SPOT one-way server/client는 실제 transport와 max message size로 auto-HWM msg unit과 socket option을 적용한다.
+  - client는 subject readiness가 모든 slot에 전파된 뒤 ready count를 publish해 0-result start 경로를 줄인다.
+  - `MULTI_SPOT` TLS 131072B와 262144B는 각각 실제 5/5 result를 출력했다.
+  - `MULTI_SPOT` TCP 전 크기 smoke는 30/30 result로 complete였다.
+  - `MULTI_SPOT_REQREP`/`MULTI_SPOT_SENDSEND` tcp/tls 전 크기 smoke는 120/120 result로 complete였다.
+  - `test_xpub_nodrop` 단독 재실행은 pass했다.

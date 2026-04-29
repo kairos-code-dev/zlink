@@ -89,6 +89,7 @@ struct spot_client_state_t
         control_start_recv_ns(0),
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
+        subject_ready_settled(false),
         start_gate(),
         recv_workers_stop(false),
         metrics_epoch(1)
@@ -122,6 +123,7 @@ struct spot_client_state_t
     std::atomic<uint64_t> control_start_recv_ns;
     std::atomic<size_t> seen_msg_size;
     std::atomic<int> seen_phase;
+    std::atomic<bool> subject_ready_settled;
     perf_multi_handshake::start_signal_state_t start_gate;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
@@ -391,14 +393,117 @@ bool wait_for_control_activity(
     return perf_socket_poll(NULL, 0, wait_ms) == 0;
 }
 
-bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
+bool apply_spot_sub_options(void *sub,
+                            const multi_bench_settings_t &settings,
+                            const std::string &transport,
+                            size_t max_msg_size)
 {
     const int rcvtimeo_ms =
       bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
-    apply_benchmark_socket_options(sub, settings.hwm, "tcp");
+    apply_benchmark_socket_options(
+      sub, settings.hwm, transport, ZLINK_SOCKET_DEALER, max_msg_size);
     return zlink_set_option(
              sub, ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms, sizeof(rcvtimeo_ms))
            == 0;
+}
+
+int resolve_spot_subject_ready_timeout_ms(
+  const multi_bench_settings_t &settings)
+{
+    const int default_ms = std::max(3000, settings.connect_ready_timeout_ms);
+    return resolve_multi_int_env(
+      "PERF_MULTI_SPOT_SUBJECT_READY_TIMEOUT_MS", default_ms, 0);
+}
+
+bool spot_slot_subject_ready(const spot_client_slot_t *slot)
+{
+    if (!slot || !slot->node)
+        return false;
+
+    zlink_spot_node_subject_filter_t filter;
+    std::memset(&filter, 0, sizeof(filter));
+    filter.role = ZLINK_SPOT_ROLE_SUB;
+    filter.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+    std::snprintf(filter.subject, sizeof(filter.subject), "%s", k_topic);
+
+    zlink_spot_node_subject_entry_t entries[4];
+    std::memset(entries, 0, sizeof(entries));
+    size_t count = sizeof(entries) / sizeof(entries[0]);
+    if (zlink_spot_node_subjects_snapshot(
+          slot->node, &filter, entries, &count)
+        != ZLINK_CONFIG_OK) {
+        return false;
+    }
+
+    for (size_t i = 0; i < count; ++i) {
+        if (entries[i].role == ZLINK_SPOT_ROLE_SUB
+            && entries[i].subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_TOPIC
+            && std::strcmp(entries[i].subject, k_topic) == 0
+            && entries[i].ready_peer_count > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool wait_for_spot_subject_ready(spot_client_state_t *state,
+                                 const multi_bench_settings_t &settings)
+{
+    if (!state)
+        return false;
+    if (state->subject_ready_settled.load(std::memory_order_acquire))
+        return true;
+    if (state->slots.empty())
+        return false;
+
+    const int timeout_ms = resolve_spot_subject_ready_timeout_ms(settings);
+    if (timeout_ms <= 0) {
+        state->subject_ready_settled.store(true, std::memory_order_release);
+        return true;
+    }
+
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(timeout_ms);
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        size_t ready_count = 0;
+        for (size_t i = 0; i < state->slots.size(); ++i) {
+            if (spot_slot_subject_ready(state->slots[i]))
+                ++ready_count;
+        }
+
+        if (ready_count >= state->slots.size()) {
+            state->subject_ready_settled.store(
+              true, std::memory_order_release);
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-client] subject ready settled ts_ns="
+                          << perf_multi_metric::now_ns()
+                          << " ready_slots=" << ready_count
+                          << "/" << state->slots.size() << std::endl;
+            }
+            return true;
+        }
+
+        if (bench_transition_debug_enabled()) {
+            static thread_local uint64_t last_log_ns = 0;
+            const uint64_t now_ns = perf_multi_metric::now_ns();
+            if (last_log_ns == 0 || now_ns - last_log_ns >= 1000000000ULL) {
+                std::cerr << "[multi-spot-client] subject ready wait ts_ns="
+                          << now_ns
+                          << " ready_slots=" << ready_count
+                          << "/" << state->slots.size() << std::endl;
+                last_log_ns = now_ns;
+            }
+        }
+
+        if (!idle_until(
+              std::chrono::steady_clock::now() + std::chrono::milliseconds(10)))
+            return false;
+    }
+
+    errno = ETIMEDOUT;
+    return false;
 }
 
 bool wait_for_spot_ready_settle(spot_client_state_t *state)
@@ -1220,7 +1325,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
         }
 
         const bool sub_options_ok =
-          apply_spot_sub_options(slot->handle, settings);
+          apply_spot_sub_options(
+            slot->handle, settings, transport, max_msg_size);
         const zlink_connect_result_t connect_rc =
           zlink_spot_node_connect_peer(slot->node, endpoint.c_str());
         const zlink_config_result_t sub_rc =
@@ -1579,6 +1685,15 @@ bool run_single_size_case(spot_client_state_t *state,
     if (!ensure_control_connected(state)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] ensure control connect failed"
+                      << " size=" << msg_size
+                      << " err=" << zlink_errno() << std::endl;
+        }
+        return false;
+    }
+
+    if (!wait_for_spot_subject_ready(state, settings)) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] subject ready timeout"
                       << " size=" << msg_size
                       << " err=" << zlink_errno() << std::endl;
         }

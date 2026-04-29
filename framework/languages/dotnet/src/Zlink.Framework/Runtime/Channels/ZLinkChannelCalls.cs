@@ -12,7 +12,6 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
     private readonly string _channelName;
     private readonly object? _message;
     private string? _messageName;
-    private SendFlags _flags;
 
     public ZLinkSendCall(
         ZLinkFrameworkRuntime runtime,
@@ -27,20 +26,15 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         _ = registration;
     }
 
-    public IZLinkSendCall WithMessageName(string messageName)
+    public IZLinkSendCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkSendCall WithDontWait()
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        _flags |= SendFlags.DontWait;
-        return this;
-    }
-
-    public bool Sync()
-    {
+        cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var header = new ZLinkEnvelopeHeader(
@@ -55,7 +49,12 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
             null);
 
         using var message = ZLinkEnvelopeCodec.Encode(header, _message, _message?.GetType());
-        return dealer.Send(message, _flags);
+        if (!dealer.Send(message, SendFlags.None))
+        {
+            throw new InvalidOperationException("ZLink send submit failed.");
+        }
+
+        return ValueTask.CompletedTask;
     }
 }
 
@@ -81,7 +80,7 @@ internal sealed class ZLinkRequestCall<TMessage> : IZLinkRequestCall
         _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     }
 
-    public IZLinkRequestCall WithMessageName(string messageName)
+    public IZLinkRequestCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         return this;
@@ -145,7 +144,6 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
     private readonly string _topic;
     private readonly object? _message;
     private string? _messageName;
-    private SendFlags _flags;
 
     public ZLinkPublishCall(
         ZLinkFrameworkRuntime runtime,
@@ -160,20 +158,15 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
         _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     }
 
-    public IZLinkPublishCall WithMessageName(string messageName)
+    public IZLinkPublishCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkPublishCall WithDontWait()
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        _flags |= SendFlags.DontWait;
-        return this;
-    }
-
-    public bool Sync()
-    {
+        cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreatePublisherBundle(_channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
         var header = new ZLinkEnvelopeHeader(
@@ -187,6 +180,11 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
             null,
             null);
         using var message = ZLinkEnvelopeCodec.Encode(header, _message, _message?.GetType());
-        return publisher.Publish(_topic, message, _flags);
+        if (!publisher.Publish(_topic, message, SendFlags.None))
+        {
+            throw new InvalidOperationException("ZLink publish submit failed.");
+        }
+
+        return ValueTask.CompletedTask;
     }
 }

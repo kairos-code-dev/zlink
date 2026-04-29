@@ -180,7 +180,8 @@ static int compute_default_node_hwm (ctx_t *ctx_,
     auto_hwm_context_plan_t context_plan;
     auto_hwm_context_plan_from_budget_mb (
       ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0,
-      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB), &context_plan);
+      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB), &context_plan,
+      ctx_->auto_hwm_profile ());
 
     auto_hwm_role_t role = auto_hwm_role_none;
     int socket_type = ZLINK_CORE_SOCKET_PAIR;
@@ -197,7 +198,7 @@ static int compute_default_node_hwm (ctx_t *ctx_,
     }
     switch (option_) {
         case ZLINK_SPOT_NODE_OPT_PUB_HWM:
-            role = auto_hwm_role_fanout;
+            role = auto_hwm_role_spot_data;
             socket_type = ZLINK_CORE_SOCKET_PUB;
             managed_connections =
               std::max<size_t> (local_sub_count, connected_peer_count);

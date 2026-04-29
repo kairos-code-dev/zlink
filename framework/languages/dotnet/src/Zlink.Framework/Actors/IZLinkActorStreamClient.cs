@@ -11,7 +11,7 @@ public interface IZLinkActorSendCall
 {
     IZLinkActorSendCall WithMetadata(string key, string value);
 
-    IZLinkActorSendCall WithMessageName(string messageName);
+    IZLinkActorSendCall WithPacketName(string messageName);
 
     IZLinkActorSendCall Compress();
 

@@ -71,10 +71,10 @@ class WarmupService:
 ## 4. 일반 event publish
 
 ```python
-submitted = await event_publisher.publish(
+await event_publisher.publish(
     "profile",
     "profile.cache-refreshed",
     ProfileCacheRefreshed(account_id),
-    ZLinkSendOptions(dont_wait=True),
+    ZLinkSendOptions(packet_name="profile.cache-refreshed"),
 )
 ```

@@ -47,6 +47,21 @@ pub enum zlink_ctx_option_t {
     ZLINK_THREAD_AFFINITY_CPU_REMOVE = 8,
     ZLINK_THREAD_NAME_PREFIX = 9,
     ZLINK_CTX_OPT_BLOCKY = 10,
+    ZLINK_SPOT_WORKER_THREADS = 11,
+    ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
+    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13,
+    ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
+    ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP = 15,
+    ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP = 16,
+    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_auto_hwm_profile_t {
+    ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
+    ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
+    ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3,
 }
 
 // ---------------------------------------------------------------------------
@@ -312,13 +327,18 @@ pub struct zlink_monitor_snapshot_t {
     pub snd_pending_msgs: u64,
     pub rcv_pending_msgs: u64,
     pub auto_hwm_enabled: u32,
+    pub auto_hwm_profile: u32,
     pub auto_hwm_role: u32,
+    pub auto_hwm_policy_class: u32,
     pub auto_hwm_managed_connections: u32,
     pub auto_hwm_active_hwm_connections: u32,
     pub auto_hwm_observed_count: u32,
     pub auto_hwm_planning_count: u32,
     pub auto_hwm_context_total_planning_count: u32,
     pub auto_hwm_base_floor_per_connection: u32,
+    pub auto_hwm_unit_budget_bytes: u64,
+    pub auto_hwm_size_cap: u32,
+    pub auto_hwm_effective_publish_fanout: u32,
     pub auto_hwm_applied_sndhwm: i32,
     pub auto_hwm_applied_rcvhwm: i32,
     pub auto_hwm_requested_sndbuf: i32,
@@ -760,7 +780,11 @@ unsafe extern "C" {
     pub fn zlink_ctx_term(ctx: *mut c_void) -> c_int;
     pub fn zlink_ctx_shutdown(ctx: *mut c_void) -> c_int;
     pub fn zlink_ctx_set(ctx: *mut c_void, option: zlink_ctx_option_t, optval: c_int) -> c_int;
-    pub fn zlink_ctx_get(ctx: *mut c_void, option: zlink_ctx_option_t) -> c_int;
+    pub fn zlink_ctx_get(
+        ctx: *mut c_void,
+        option: zlink_ctx_option_t,
+        error_out: *mut zlink_config_result_t,
+    ) -> c_int;
 
     // -- Message -----------------------------------------------------------
     pub fn zlink_msg_init(msg: *mut zlink_msg_t) -> c_int;

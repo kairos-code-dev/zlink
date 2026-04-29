@@ -264,7 +264,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .ExecAsync<GetAccountReply>(cancellationToken);
+            .Async<GetAccountReply>(cancellationToken);
 
         return new UserReply
         {
@@ -454,7 +454,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetProfileRequest { AccountId = request.AccountId })
-        .ExecAsync<GetProfileReply>(cancellationToken);
+        .Async<GetProfileReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -473,12 +473,12 @@ app.MapPost("/profiles/get", async (
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync<GetProfileReply>(cancellationToken);
+    .Async<GetProfileReply>(cancellationToken);
 
-client
+await client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .WithPacketName("profile.refresh-cache")
-    .Exec();
+    .Async(cancellationToken);
 ```
 
 ## 6. ASP.NET Core middleware, 서비스 AOP, handler pipeline

@@ -35,13 +35,19 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("snd_pending_msgs"),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("rcv_pending_msgs"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_enabled"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_profile"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_role"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_policy_class"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_managed_connections"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_active_hwm_connections"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_observed_count"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_planning_count"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_context_total_planning_count"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_base_floor_per_connection"),
+                    MemoryLayout.paddingLayout(4),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("auto_hwm_unit_budget_bytes"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_size_cap"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_effective_publish_fanout"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_applied_sndhwm"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_applied_rcvhwm"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_requested_sndbuf"),
@@ -85,9 +91,15 @@ public final class NativeLayouts {
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_ENABLED_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_enabled"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_PROFILE_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_profile"));
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_ROLE_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_role"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_POLICY_CLASS_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_policy_class"));
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_MANAGED_CONNECTIONS_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_managed_connections"));
@@ -106,6 +118,15 @@ public final class NativeLayouts {
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_BASE_FLOOR_PER_CONNECTION_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_base_floor_per_connection"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_UNIT_BUDGET_BYTES_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_unit_budget_bytes"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_SIZE_CAP_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_size_cap"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_EFFECTIVE_PUBLISH_FANOUT_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_effective_publish_fanout"));
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_APPLIED_SNDHWM_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_applied_sndhwm"));

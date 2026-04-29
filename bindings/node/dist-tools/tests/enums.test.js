@@ -11,10 +11,14 @@ test('public flag and result enums stay frozen', () => {
     assert.equal(zlink.SubmitResult.NotSupported, 7);
     assert.equal(zlink.RequestResult.ProtocolError, 104);
     assert.equal(zlink.RecvResult.NoData, 201);
+    assert.equal(zlink.AutoHwmProfile.LowLatency, 1);
+    assert.equal(zlink.AutoHwmProfile.Balanced, 2);
+    assert.equal(zlink.AutoHwmProfile.Throughput, 3);
     assert.ok(Object.isFrozen(zlink.SendFlags));
     assert.ok(Object.isFrozen(zlink.RecvFlags));
     assert.ok(Object.isFrozen(zlink.SubmitResult));
     assert.ok(Object.isFrozen(zlink.RequestResult));
+    assert.ok(Object.isFrozen(zlink.AutoHwmProfile));
 });
 test('compat enums and errno helper are not public', () => {
     assert.ok(Object.isFrozen(zlink.MonitorEvent));

@@ -122,6 +122,9 @@ template<typename T> class has_context_options_facade_t
                     std::declval<U &> ().threadSchedulingPolicy (1),
                     std::declval<U &> ().blocky (),
                     std::declval<U &> ().blocky (true),
+                    std::declval<U &> ().autoHwmProfile (),
+                    std::declval<U &> ().autoHwmProfile (
+                      zlink::auto_hwm_profile::balanced),
                     std::declval<U &> ().socketLimit (),
                     std::declval<U &> ().msgTSize (),
                     std::declval<U &> ().addThreadAffinity (0),
@@ -179,6 +182,8 @@ void test_context_options ()
     zlink::context_options_t options = ctx.options ();
     options.blocky (false);
     assert (!options.blocky ());
+    options.autoHwmProfile (zlink::auto_hwm_profile::throughput);
+    assert (options.autoHwmProfile () == zlink::auto_hwm_profile::throughput);
 
     options.ioThreads (2);
     assert (options.ioThreads () == 2);

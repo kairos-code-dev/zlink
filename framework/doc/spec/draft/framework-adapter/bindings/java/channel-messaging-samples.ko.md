@@ -136,10 +136,10 @@ var reply = client.requestAsync(
 ## 6. 일반 event publish
 
 ```java
-boolean submitted = eventPublisher.publishAsync(
+eventPublisher.publishAsync(
     "profile",
     "profile.cache-refreshed",
     new ProfileCacheRefreshed(accountId),
-    new ZLinkSendOptions().setDontWait(true)
+    new ZLinkSendOptions().setPacketName("profile.cache-refreshed")
 ).toCompletableFuture().join();
 ```

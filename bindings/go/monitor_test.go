@@ -48,6 +48,11 @@ func TestMonitorRecv(t *testing.T) {
 	if snapshot == nil {
 		t.Fatalf("Snapshot() returned nil")
 	}
+	_ = snapshot.AutoHwmProfile
+	_ = snapshot.AutoHwmPolicyClass
+	_ = snapshot.AutoHwmUnitBudgetBytes
+	_ = snapshot.AutoHwmSizeCap
+	_ = snapshot.AutoHwmEffectivePublishFanout
 }
 
 func TestMonitorOnEventReceivesStateChange(t *testing.T) {

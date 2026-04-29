@@ -85,11 +85,22 @@ class ContextOptions {
     blocky: boolean;            // get / set — @throws {ConfigError}
     autoHwmEnabled: boolean;    // get / set — @throws {ConfigError}
     autoHwmTotalMemoryBudgetMb: number; // get / set — @throws {ConfigError}
+    autoHwmProfile: AutoHwmProfileValue; // get / set — @throws {ConfigError}
     /** @throws {ConfigError} */
     addThreadAffinity(cpu: number): void;
     /** @throws {ConfigError} */
     removeThreadAffinity(cpu: number): void;
 }
+```
+
+```typescript
+const AutoHwmProfile = Object.freeze({
+    LowLatency: 1,
+    Balanced: 2,
+    Throughput: 3
+});
+type AutoHwmProfileValue =
+    typeof AutoHwmProfile[keyof typeof AutoHwmProfile];
 ```
 
 ### Module-Level
@@ -1117,19 +1128,24 @@ interface MonitorSnapshot {
     readonly sndPendingMsgs: bigint;         // uint64 send-queue depth
     readonly rcvPendingMsgs: bigint;         // uint64 recv-queue depth
     readonly autoHwmEnabled: boolean;
+    readonly autoHwmProfile: number;
     readonly autoHwmRole: number;
+    readonly autoHwmPolicyClass: number;
     readonly autoHwmManagedConnections: number;
     readonly autoHwmActiveHwmConnections: number;
     readonly autoHwmObservedCount: number;
     readonly autoHwmPlanningCount: number;
     readonly autoHwmContextTotalPlanningCount: number;
     readonly autoHwmBaseFloorPerConnection: number;
-    readonly autoHwmAppliedSndhwm: number;
-    readonly autoHwmAppliedRcvhwm: number;
-    readonly autoHwmRequestedSndbuf: number;
-    readonly autoHwmRequestedRcvbuf: number;
-    readonly autoHwmEffectiveSndbuf: number;
-    readonly autoHwmEffectiveRcvbuf: number;
+    readonly autoHwmUnitBudgetBytes: bigint;
+    readonly autoHwmSizeCap: number;
+    readonly autoHwmEffectivePublishFanout: number;
+    readonly autoHwmAppliedSndHwm: number;
+    readonly autoHwmAppliedRcvHwm: number;
+    readonly autoHwmRequestedSndBuf: number;
+    readonly autoHwmRequestedRcvBuf: number;
+    readonly autoHwmEffectiveSndBuf: number;
+    readonly autoHwmEffectiveRcvBuf: number;
     readonly autoHwmTotalMemoryBudgetBytes: bigint;
     readonly autoHwmQueueBudgetBytes: bigint;
     readonly autoHwmTransportBudgetBytes: bigint;
@@ -1146,8 +1162,8 @@ interface MonitorSnapshot {
     readonly autoHwmAutoBufferBytes: bigint;
     readonly autoHwmManualBufferBytes: bigint;
     readonly autoHwmBufferConnections: number;
-    readonly autoHwmDeferredSndhwm: number;
-    readonly autoHwmDeferredRcvhwm: number;
+    readonly autoHwmDeferredSndHwm: number;
+    readonly autoHwmDeferredRcvHwm: number;
     /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
     isReady(): boolean;
 }

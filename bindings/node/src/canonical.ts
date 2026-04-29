@@ -80,8 +80,19 @@ const ContextOption = Object.freeze({
   BLOCKY: 10,
   SPOT_WORKER_THREADS: 11,
   AUTO_HWM_ENABLE: 12,
-  AUTO_HWM_TOTAL_MEMORY_BUDGET_MB: 13
+  AUTO_HWM_TOTAL_MEMORY_BUDGET_MB: 13,
+  AUTO_HWM_RECALC_DEBOUNCE_MS: 14,
+  AUTO_HWM_STREAM_BOOTSTRAP: 15,
+  AUTO_HWM_SPOT_BOOTSTRAP: 16,
+  AUTO_HWM_PROFILE: 17
 } as const);
+
+export const AutoHwmProfile = Object.freeze({
+  LowLatency: 1,
+  Balanced: 2,
+  Throughput: 3
+} as const);
+export type AutoHwmProfileValue = typeof AutoHwmProfile[keyof typeof AutoHwmProfile];
 
 const MonitorSourceKind = Object.freeze({ SOCKET: 1, SPOT_PUB: 3, SPOT_SUB: 4 } as const);
 const MonitorState = Object.freeze({
@@ -100,13 +111,18 @@ export interface MonitorSnapshot {
   readonly sndPendingMsgs: bigint;
   readonly rcvPendingMsgs: bigint;
   readonly autoHwmEnabled: boolean;
+  readonly autoHwmProfile: number;
   readonly autoHwmRole: number;
+  readonly autoHwmPolicyClass: number;
   readonly autoHwmManagedConnections: number;
   readonly autoHwmActiveHwmConnections: number;
   readonly autoHwmObservedCount: number;
   readonly autoHwmPlanningCount: number;
   readonly autoHwmContextTotalPlanningCount: number;
   readonly autoHwmBaseFloorPerConnection: number;
+  readonly autoHwmUnitBudgetBytes: bigint;
+  readonly autoHwmSizeCap: number;
+  readonly autoHwmEffectivePublishFanout: number;
   readonly autoHwmAppliedSndHwm: number;
   readonly autoHwmAppliedRcvHwm: number;
   readonly autoHwmRequestedSndBuf: number;
@@ -141,13 +157,18 @@ interface MonitorSnapshotRaw {
   sndPendingMsgs: number | bigint;
   rcvPendingMsgs: number | bigint;
   autoHwmEnabled: boolean;
+  autoHwmProfile: number;
   autoHwmRole: number;
+  autoHwmPolicyClass: number;
   autoHwmManagedConnections: number;
   autoHwmActiveHwmConnections: number;
   autoHwmObservedCount: number;
   autoHwmPlanningCount: number;
   autoHwmContextTotalPlanningCount: number;
   autoHwmBaseFloorPerConnection: number;
+  autoHwmUnitBudgetBytes: number | bigint;
+  autoHwmSizeCap: number;
+  autoHwmEffectivePublishFanout: number;
   autoHwmAppliedSndHwm: number;
   autoHwmAppliedRcvHwm: number;
   autoHwmRequestedSndBuf: number;
@@ -533,13 +554,18 @@ function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
     sndPendingMsgs: BigInt(raw.sndPendingMsgs),
     rcvPendingMsgs: BigInt(raw.rcvPendingMsgs),
     autoHwmEnabled: raw.autoHwmEnabled,
+    autoHwmProfile: raw.autoHwmProfile,
     autoHwmRole: raw.autoHwmRole,
+    autoHwmPolicyClass: raw.autoHwmPolicyClass,
     autoHwmManagedConnections: raw.autoHwmManagedConnections,
     autoHwmActiveHwmConnections: raw.autoHwmActiveHwmConnections,
     autoHwmObservedCount: raw.autoHwmObservedCount,
     autoHwmPlanningCount: raw.autoHwmPlanningCount,
     autoHwmContextTotalPlanningCount: raw.autoHwmContextTotalPlanningCount,
     autoHwmBaseFloorPerConnection: raw.autoHwmBaseFloorPerConnection,
+    autoHwmUnitBudgetBytes: BigInt(raw.autoHwmUnitBudgetBytes),
+    autoHwmSizeCap: raw.autoHwmSizeCap,
+    autoHwmEffectivePublishFanout: raw.autoHwmEffectivePublishFanout,
     autoHwmAppliedSndHwm: raw.autoHwmAppliedSndHwm,
     autoHwmAppliedRcvHwm: raw.autoHwmAppliedRcvHwm,
     autoHwmRequestedSndBuf: raw.autoHwmRequestedSndBuf,
@@ -1033,6 +1059,8 @@ export class ContextOptions {
   set threadSchedulingPolicy(value: number) { this._context.setOptionRawInternal(ContextOption.THREAD_SCHED_POLICY, value | 0); }
   get blocky(): boolean { return this._context.getOptionRawInternal(ContextOption.BLOCKY) !== 0; }
   set blocky(value: boolean) { this._context.setOptionRawInternal(ContextOption.BLOCKY, value ? 1 : 0); }
+  get autoHwmProfile(): AutoHwmProfileValue { return this._context.getOptionRawInternal(ContextOption.AUTO_HWM_PROFILE) as AutoHwmProfileValue; }
+  set autoHwmProfile(value: AutoHwmProfileValue) { this._context.setOptionRawInternal(ContextOption.AUTO_HWM_PROFILE, value | 0); }
   addThreadAffinity(cpu: number): void { this._context.setOptionRawInternal(ContextOption.THREAD_AFFINITY_CPU_ADD, cpu | 0); }
   removeThreadAffinity(cpu: number): void { this._context.setOptionRawInternal(ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu | 0); }
 }

@@ -51,8 +51,9 @@
 - codec, timeout, target channel을 설정할 수 있다.
 - gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
-- send/publish는 기본적으로 blocking submit으로 두고, 필요하면 별도 non-blocking
-  옵션을 붙이는 편이 자연스럽다.
+- send는 기본적으로 async submit으로 둔다. backpressure 처리는 호출자가
+  `DontWait` 같은 옵션으로 고르지 않고 framework 내부의 nonblocking send와 ready
+  notification이 맡는다.
 - framework runtime은 등록한 outbound channel마다 별도 outbound runtime을 관리할
   수 있어야 한다.
 - 단순 unary request 외에 event publish와 필요하면 aggregate helper를 분리할 수
@@ -165,11 +166,21 @@ public sealed class ProfileHandlers
 자연스럽다. 하부 `DEALER(client)`가 connect된 peer 집합으로 요청을 보내는
 모델이므로, startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
 
-또한 send/publish는 기본 blocking submit으로 두고, 필요하면 `DontWait` 같은
-non-blocking 변형을 builder 옵션으로 여는 편이 맞다. 이 경우 temporary
-backpressure에서는 예외보다 `bool false`를 돌려주고, route-not-ready 같은 다른
-실패는 예외로 보는 쪽이 더 자연스럽다. 반면 request는 여전히 reply를 기다리는
-async 호출로 설명하는 편이 맞다.
+또한 send는 기본 async submit으로 둔다. 구현은 blocking send를 task로 감싸지
+않고, 먼저 nonblocking send를 시도한 뒤 temporary backpressure가 발생하면 pending
+send queue와 ready notification으로 이어서 처리한다. send 대기 한계는 call
+builder가 아니라 channel 또는 socket의 `SendTimeout` 옵션을 따른다.
+publish도 send와 같은 submit 규칙을 따른다. subscriber 처리 완료를 기다리지 않고,
+local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다.
+
+request도 reply를 기다리는 async 호출로 설명한다. 다만 request packet을 보내는
+단계는 send와 같은 async submit 경로를 사용해야 한다. `WithTimeout(...)`은 reply
+대기 시간만 정하고, 전송 backpressure는 `SendTimeout` 정책이 처리한다.
+
+고성능 구현에서는 immediate send/publish 성공 path가 allocation 없이 완료되어야
+한다. backpressure path는 bounded pending queue를 사용하고, ready notification마다
+정해진 batch budget 안에서 queue를 drain한다. 이렇게 해야 thread blocking 없이도
+높은 처리량을 유지할 수 있다.
 
 보다 자세한 `.NET` 초안은 [../bindings/dotnet/README.ko.md](../bindings/dotnet/README.ko.md)를 참고한다.
 

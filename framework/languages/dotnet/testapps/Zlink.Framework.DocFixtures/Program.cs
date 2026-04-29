@@ -206,11 +206,10 @@ internal sealed class FixtureStageSpot(IZLinkSpotContext context) : IZLinkSpot
 internal sealed class FixtureSpotTimerHandler(IZLinkSpotClient spotClient)
     : IZLinkSpotTimerHandler<FixtureStageSpot>
 {
-    public ValueTask HandleAsync(FixtureStageSpot spot, CancellationToken cancellationToken)
+    public async ValueTask HandleAsync(FixtureStageSpot spot, CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
-        _ = spotClient.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex())).Sync();
-        return ValueTask.CompletedTask;
+        await spotClient.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
+            .Async(cancellationToken);
     }
 }
 

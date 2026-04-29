@@ -51,7 +51,15 @@ enum class context_option : int
     spot_worker_threads = ZLINK_SPOT_WORKER_THREADS,
     auto_hwm_enable = ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
     auto_hwm_total_memory_budget_mb =
-      ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB
+      ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
+    auto_hwm_profile = ZLINK_CTX_OPT_AUTO_HWM_PROFILE
+};
+
+enum class auto_hwm_profile : int
+{
+    low_latency = ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY,
+    balanced = ZLINK_AUTO_HWM_PROFILE_BALANCED,
+    throughput = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT
 };
 
 enum class socket_option : int
@@ -1040,12 +1048,15 @@ struct monitor_snapshot_t
     monitor_snapshot_t ()
         : source_kind (monitor_source_kind::socket), state_flags (0),
           detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0),
-          auto_hwm_enabled (false), auto_hwm_role (0),
+          auto_hwm_enabled (false), auto_hwm_profile_value (0),
+          auto_hwm_role (0), auto_hwm_policy_class (0),
           auto_hwm_managed_connections (0),
           auto_hwm_active_hwm_connections (0),
           auto_hwm_observed_count (0), auto_hwm_planning_count (0),
           auto_hwm_context_total_planning_count (0),
           auto_hwm_base_floor_per_connection (0),
+          auto_hwm_unit_budget_bytes (0), auto_hwm_size_cap (0),
+          auto_hwm_effective_publish_fanout (0),
           auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
           auto_hwm_requested_sndbuf (0), auto_hwm_requested_rcvbuf (0),
           auto_hwm_effective_sndbuf (0), auto_hwm_effective_rcvbuf (0),
@@ -1075,7 +1086,9 @@ struct monitor_snapshot_t
           snd_pending_msgs (native_.snd_pending_msgs),
           rcv_pending_msgs (native_.rcv_pending_msgs),
           auto_hwm_enabled (native_.auto_hwm_enabled != 0),
+          auto_hwm_profile_value (native_.auto_hwm_profile),
           auto_hwm_role (native_.auto_hwm_role),
+          auto_hwm_policy_class (native_.auto_hwm_policy_class),
           auto_hwm_managed_connections (native_.auto_hwm_managed_connections),
           auto_hwm_active_hwm_connections (
             native_.auto_hwm_active_hwm_connections),
@@ -1085,6 +1098,10 @@ struct monitor_snapshot_t
             native_.auto_hwm_context_total_planning_count),
           auto_hwm_base_floor_per_connection (
             native_.auto_hwm_base_floor_per_connection),
+          auto_hwm_unit_budget_bytes (native_.auto_hwm_unit_budget_bytes),
+          auto_hwm_size_cap (native_.auto_hwm_size_cap),
+          auto_hwm_effective_publish_fanout (
+            native_.auto_hwm_effective_publish_fanout),
           auto_hwm_applied_sndhwm (native_.auto_hwm_applied_sndhwm),
           auto_hwm_applied_rcvhwm (native_.auto_hwm_applied_rcvhwm),
           auto_hwm_requested_sndbuf (native_.auto_hwm_requested_sndbuf),
@@ -1131,13 +1148,18 @@ struct monitor_snapshot_t
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
     bool auto_hwm_enabled;
+    uint32_t auto_hwm_profile_value;
     uint32_t auto_hwm_role;
+    uint32_t auto_hwm_policy_class;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
     uint32_t auto_hwm_observed_count;
     uint32_t auto_hwm_planning_count;
     uint32_t auto_hwm_context_total_planning_count;
     uint32_t auto_hwm_base_floor_per_connection;
+    uint64_t auto_hwm_unit_budget_bytes;
+    uint32_t auto_hwm_size_cap;
+    uint32_t auto_hwm_effective_publish_fanout;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
     int32_t auto_hwm_requested_sndbuf;

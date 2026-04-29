@@ -17,13 +17,18 @@ internal struct ZlinkMonitorSnapshot
     public ulong SndPendingMsgs;
     public ulong RcvPendingMsgs;
     public uint AutoHwmEnabled;
+    public uint AutoHwmProfile;
     public uint AutoHwmRole;
+    public uint AutoHwmPolicyClass;
     public uint AutoHwmManagedConnections;
     public uint AutoHwmActiveHwmConnections;
     public uint AutoHwmObservedCount;
     public uint AutoHwmPlanningCount;
     public uint AutoHwmContextTotalPlanningCount;
     public uint AutoHwmBaseFloorPerConnection;
+    public ulong AutoHwmUnitBudgetBytes;
+    public uint AutoHwmSizeCap;
+    public uint AutoHwmEffectivePublishFanout;
     public int AutoHwmAppliedSndHwm;
     public int AutoHwmAppliedRcvHwm;
     public int AutoHwmRequestedSndBuf;

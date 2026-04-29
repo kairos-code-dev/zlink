@@ -26,6 +26,8 @@ class context_options_t
     void threadSchedulingPolicy (int value_);
     bool blocky () const;
     void blocky (bool enabled_);
+    auto_hwm_profile autoHwmProfile () const;
+    void autoHwmProfile (auto_hwm_profile profile_);
     int socketLimit () const;
     int msgTSize () const;
     void addThreadAffinity (int cpu_);
@@ -203,6 +205,23 @@ inline void context_options_t::blocky (bool enabled_)
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         _ctx.set_option_raw (ZLINK_CTX_OPT_BLOCKY, enabled_ ? 1 : 0)));
+}
+
+inline auto_hwm_profile context_options_t::autoHwmProfile () const
+{
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value =
+      _ctx.get_option_raw (ZLINK_CTX_OPT_AUTO_HWM_PROFILE, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return static_cast<auto_hwm_profile> (value);
+}
+
+inline void context_options_t::autoHwmProfile (auto_hwm_profile profile_)
+{
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (_ctx.set_option_raw (
+        ZLINK_CTX_OPT_AUTO_HWM_PROFILE, static_cast<int> (profile_))));
 }
 
 inline int context_options_t::socketLimit () const

@@ -175,14 +175,14 @@ public sealed class ClientHeaderSession
             {
                 ClientInput input = body.Parse<ClientInput>();
 
-                Context
+                await Context
                     .SendChannel(
                         "play",
                         new ForwardInputCommand
                         {
                             Input = input
                         })
-                    .Exec();
+                    .Async(cancellationToken);
 
                 break;
             }
@@ -191,14 +191,14 @@ public sealed class ClientHeaderSession
             {
                 Ping ping = body.Parse<Ping>();
 
-                Context
+                await Context
                     .SendChannel(
                         "api",
                         new ReportPingCommand
                         {
                             Sequence = ping.Sequence
                         })
-                    .Exec();
+                    .Async(cancellationToken);
 
                 await Context
                     .Reply(new Pong

@@ -329,7 +329,8 @@ void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
     const int total_memory_budget_mb =
       ctx->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB);
     auto_hwm_context_plan_from_budget_mb (enabled, total_memory_budget_mb,
-                                          &_auto_hwm_context_plan);
+                                          &_auto_hwm_context_plan,
+                                          ctx->auto_hwm_profile ());
     _auto_hwm_socket_plan = prepare_auto_hwm_socket_plan (_auto_hwm_context_plan);
     auto_hwm_context_finalize (&_auto_hwm_context_plan, &_auto_hwm_socket_plan,
                                1);

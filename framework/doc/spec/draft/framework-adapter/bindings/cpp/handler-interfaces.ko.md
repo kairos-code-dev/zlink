@@ -18,7 +18,9 @@
 - 개념 이름은 공통 정책과 맞춘다. 예를 들어 `send`, `request`, `publish`,
   `send_to`, `request_to`, `send_channel`, `request_channel` 같은 action 이름을
   유지한다.
-- blocking과 non-blocking을 `send_no_wait` 같은 별도 동사 이름으로 나누지 않는다.
+- send/publish는 기본 async submit으로 설명한다. backpressure는 별도 public
+  no-wait 옵션이 아니라 framework 내부의 nonblocking send, pending queue,
+  ready notification으로 처리한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
 
@@ -29,7 +31,6 @@ namespace zlink::framework {
 
 struct send_options_t {
     std::optional<std::string> packet_name;
-    bool dont_wait{false};
 };
 
 struct request_options_t {
@@ -139,10 +140,10 @@ public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
     virtual std::optional<routing_id_t> routing_id() const = 0;
-    virtual bool write(
+    virtual std::future<void> write(
       const message_t &payload,
       send_flags_t flags = send_flags_t::none) = 0;
-    virtual bool write_packet(
+    virtual std::future<void> write_packet(
       const message_t &header,
       const message_t &body,
       send_flags_t flags = send_flags_t::none) = 0;
@@ -256,12 +257,12 @@ class client_t {
 public:
     virtual ~client_t() = default;
 
-    virtual bool send(
+    virtual std::future<void> send(
       std::string_view channel_name,
       const message_t &message,
       const send_options_t &options = {}) = 0;
 
-    virtual message_t request(
+    virtual std::future<message_t> request(
       std::string_view channel_name,
       const message_t &request,
       const request_options_t &options = {}) = 0;
@@ -271,29 +272,29 @@ class spot_client_t {
 public:
     virtual ~spot_client_t() = default;
 
-    virtual bool send_channel(
+    virtual std::future<void> send_channel(
       std::string_view channel_name,
       const message_t &message,
       const send_options_t &options = {}) = 0;
 
-    virtual message_t request_channel(
+    virtual std::future<message_t> request_channel(
       std::string_view channel_name,
       const message_t &request,
       const request_options_t &options = {}) = 0;
 
-    virtual bool send_to(
+    virtual std::future<void> send_to(
       routing_id_t target_rid,
       routing_id_t spot_rid,
       const message_t &message,
       const send_options_t &options = {}) = 0;
 
-    virtual message_t request_to(
+    virtual std::future<message_t> request_to(
       routing_id_t target_rid,
       routing_id_t spot_rid,
       const message_t &request,
       const request_options_t &options = {}) = 0;
 
-    virtual bool publish(
+    virtual std::future<void> publish(
       std::string_view topic,
       const message_t &message,
       const send_options_t &options = {}) = 0;
@@ -303,7 +304,7 @@ class spot_publisher_client_t {
 public:
     virtual ~spot_publisher_client_t() = default;
 
-    virtual bool publish(
+    virtual std::future<void> publish(
       std::string_view channel_name,
       std::string_view topic,
       const message_t &message,
@@ -314,7 +315,7 @@ class event_publisher_t {
 public:
     virtual ~event_publisher_t() = default;
 
-    virtual bool publish(
+    virtual std::future<void> publish(
       std::string_view channel_name,
       std::string_view topic,
       const message_t &message,

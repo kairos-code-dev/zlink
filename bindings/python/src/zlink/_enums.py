@@ -30,6 +30,16 @@ class ContextOption(IntEnum):
     SPOT_WORKER_THREADS = 11
     AUTO_HWM_ENABLE = 12
     AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13
+    AUTO_HWM_RECALC_DEBOUNCE_MS = 14
+    AUTO_HWM_STREAM_BOOTSTRAP = 15
+    AUTO_HWM_SPOT_BOOTSTRAP = 16
+    AUTO_HWM_PROFILE = 17
+
+
+class AutoHwmProfile(IntEnum):
+    LOW_LATENCY = 1
+    BALANCED = 2
+    THROUGHPUT = 3
 
 
 class SocketOption(IntEnum):

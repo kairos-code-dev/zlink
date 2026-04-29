@@ -137,11 +137,14 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   assert.equal(typeof ctx.options.msgTSize, 'number');
   assert.equal(typeof ctx.options.threadPriority, 'number');
   assert.equal(typeof ctx.options.blocky, 'boolean');
+  assert.equal(typeof ctx.options.autoHwmProfile, 'number');
 
   ctx.options.ioThreads = ctx.options.ioThreads;
   ctx.options.maxSockets = ctx.options.maxSockets;
   ctx.options.maxMsgSize = ctx.options.maxMsgSize;
   ctx.options.blocky = ctx.options.blocky;
+  ctx.options.autoHwmProfile = zlink.AutoHwmProfile.Throughput;
+  assert.equal(ctx.options.autoHwmProfile, zlink.AutoHwmProfile.Throughput);
   try {
     assert.equal(typeof ctx.options.threadSchedulingPolicy, 'number');
     ctx.options.threadSchedulingPolicy = ctx.options.threadSchedulingPolicy;

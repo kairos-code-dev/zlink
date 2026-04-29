@@ -55,9 +55,9 @@ public sealed partial class StreamConnectorTests
 
         var reply = await connector
             .Request(new Ping("hello"))
-            .WithMessageName("ping")
+            .WithPacketName("ping")
             .WithTimeout(TimeSpan.FromSeconds(1))
-            .ExecAsync<Pong>();
+            .Async<Pong>();
 
         Assert.Equal("pong", reply.Text);
         await server;
@@ -96,8 +96,8 @@ public sealed partial class StreamConnectorTests
 
         var completed = new TaskCompletionSource<ZlinkStreamResult<Pong>>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.Request(new Ping("hello"))
-            .WithMessageName("ping")
-            .Exec<Pong>(completed.SetResult);
+            .WithPacketName("ping")
+            .Async<Pong>(completed.SetResult);
 
         var result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(1));
         Assert.True(result.IsSuccess);
@@ -126,7 +126,7 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
 
-        connector.Send(new NamedPacket("name")).Exec();
+        await connector.Send(new NamedPacket("name")).Async();
         await server;
     }
 
@@ -148,11 +148,11 @@ public sealed partial class StreamConnectorTests
             MaxSendMetadataSize = 4
         });
 
-        var exception = Assert.Throws<ZlinkStreamException>(() =>
-            connector.Send(new Ping("hello"))
-                .WithMessageName("ping")
+        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
+            await connector.Send(new Ping("hello"))
+                .WithPacketName("ping")
                 .Metadata("traceId", "abcdef")
-                .Exec());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
         await server;
@@ -188,13 +188,13 @@ public sealed partial class StreamConnectorTests
             Compression = ZlinkStreamCompression.Lz4
         });
 
-        connector.Send(new Ping("plain"))
-            .WithMessageName("plain")
-            .Exec();
-        connector.Send(new Ping("compressed"))
-            .WithMessageName("compressed")
+        await connector.Send(new Ping("plain"))
+            .WithPacketName("plain")
+            .Async();
+        await connector.Send(new Ping("compressed"))
+            .WithPacketName("compressed")
             .Compress()
-            .Exec();
+            .Async();
         await server;
     }
 

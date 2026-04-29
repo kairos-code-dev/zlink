@@ -246,7 +246,7 @@ spot_node_t::plan_service_discovery_sockets_locked (
           _runtime, &connected_peer_count, &active_peer_count);
         apply_spot_internal_auto_hwm (
           _ctx, plan.pub_socket,
-          spot_internal_auto_hwm_policy_t{auto_hwm_role_fanout,
+          spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
                                           ZLINK_CORE_SOCKET_PUB,
                                           connected_peer_count,
                                           active_peer_count,

@@ -308,7 +308,10 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 |------|------|
 | `snd_pending_msgs` | 송신 큐에 대기 중인 메시지 수 (SNDHWM에 의해 상한 제한) |
 | `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, approximate) |
+| `auto_hwm_profile` / `auto_hwm_policy_class` | 활성 auto-HWM profile과 planner policy class |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | 현재 적용된 자동 HWM 값 |
+| `auto_hwm_unit_budget_bytes` / `auto_hwm_size_cap` | planner가 사용한 profile 단위 예산과 메시지 수 cap |
+| `auto_hwm_effective_publish_fanout` | 사용할 수 있으면 SPOT publish 계획에 쓴 fanout |
 | `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 transport buffer 값 |
 | `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | 자동 관리 buffer 비용과 사용자가 직접 설정한 buffer 진단값 |
 | `auto_hwm_effective_message_bytes` | queue share를 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |

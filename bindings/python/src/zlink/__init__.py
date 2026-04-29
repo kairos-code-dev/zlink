@@ -85,6 +85,7 @@ from ._utils import (
 from ._enums import (
     SocketType,
     ContextOption,
+    AutoHwmProfile,
     SocketOption,
     RouterOption,
     SendFlags,
@@ -198,6 +199,7 @@ __all__ = [
     "ConfigError",
     "SocketType",
     "ContextOption",
+    "AutoHwmProfile",
     "SocketOption",
     "RouterOption",
     "SendFlags",

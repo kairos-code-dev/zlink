@@ -50,6 +50,11 @@ public sealed class test_monitor_contract
         MonitorSnapshot snapshot = monitor.Snapshot();
         Assert.Equal<SourceKind>(SourceKind.Socket, snapshot.SourceKind);
         Assert.True(snapshot.SndPendingMsgs >= 0);
+        Assert.True(snapshot.AutoHwmProfile >= 0);
+        Assert.True(snapshot.AutoHwmPolicyClass >= 0);
+        Assert.True(snapshot.AutoHwmUnitBudgetBytes >= 0);
+        Assert.True(snapshot.AutoHwmSizeCap >= 0);
+        Assert.True(snapshot.AutoHwmEffectivePublishFanout >= 0);
 
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());

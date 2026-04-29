@@ -17,6 +17,17 @@ const uint64_t auto_hwm_message_bytes = 4096ull;
 const int auto_hwm_default_sndbuf = 262144;
 const int auto_hwm_default_rcvbuf = 262144;
 
+struct profile_budget_t
+{
+    uint64_t fanout;
+    uint64_t spot_data;
+    uint64_t routed;
+    uint64_t peer_queue;
+    uint64_t stream;
+    uint64_t recv_ingress;
+    uint64_t control;
+};
+
 uint32_t clamp_size_to_u32 (size_t value_)
 {
     return value_ > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t> (value_);
@@ -28,37 +39,139 @@ int clamp_u64_to_int (uint64_t value_)
                                                     : static_cast<int> (value_);
 }
 
-uint32_t base_floor_per_connection (zlink::auto_hwm_role_t role_,
-                                    uint32_t managed_connections_)
+zlink_auto_hwm_profile_t normalize_profile (zlink_auto_hwm_profile_t profile_)
 {
-    switch (role_) {
-        case zlink::auto_hwm_role_control:
-            return 4;
-        case zlink::auto_hwm_role_routed:
-            if (managed_connections_ <= 1000)
-                return 8;
-            if (managed_connections_ <= 5000)
-                return 4;
-            return 2;
-        case zlink::auto_hwm_role_fanout:
-            if (managed_connections_ <= 100)
-                return 16;
-            if (managed_connections_ <= 1000)
-                return 8;
-            if (managed_connections_ <= 5000)
-                return 4;
-            return 1;
-        case zlink::auto_hwm_role_recv_ingress:
-            if (managed_connections_ <= 1000)
-                return 8;
-            if (managed_connections_ <= 5000)
-                return 4;
-            return 2;
+    switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+            return profile_;
+        default:
+            return ZLINK_AUTO_HWM_PROFILE_BALANCED;
+    }
+}
+
+profile_budget_t profile_budget (zlink_auto_hwm_profile_t profile_)
+{
+    const uint64_t kib = 1024ull;
+    switch (normalize_profile (profile_)) {
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+            return profile_budget_t{512 * kib, 512 * kib, 256 * kib,
+                                    256 * kib, 128 * kib, 128 * kib, 64 * kib};
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+            return profile_budget_t{4 * mib, 4 * mib, 1 * mib, 1 * mib,
+                                    512 * kib, 512 * kib, 128 * kib};
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        default:
+            return profile_budget_t{2 * mib, 2 * mib, 512 * kib, 512 * kib,
+                                    256 * kib, 256 * kib, 64 * kib};
+    }
+}
+
+uint64_t unit_budget_for_class (zlink_auto_hwm_profile_t profile_,
+                                zlink::auto_hwm_policy_class_t policy_class_)
+{
+    const profile_budget_t budget = profile_budget (profile_);
+    switch (policy_class_) {
+        case zlink::auto_hwm_policy_fanout:
+            return budget.fanout;
+        case zlink::auto_hwm_policy_spot_data:
+            return budget.spot_data;
+        case zlink::auto_hwm_policy_routed:
+            return budget.routed;
+        case zlink::auto_hwm_policy_peer_queue:
+            return budget.peer_queue;
+        case zlink::auto_hwm_policy_stream:
+            return budget.stream;
+        case zlink::auto_hwm_policy_recv_ingress:
+            return budget.recv_ingress;
+        case zlink::auto_hwm_policy_control:
+            return budget.control;
         default:
             return 0;
     }
 }
 
+uint64_t weight_units_for_class (zlink::auto_hwm_policy_class_t policy_class_)
+{
+    switch (policy_class_) {
+        case zlink::auto_hwm_policy_fanout:
+        case zlink::auto_hwm_policy_spot_data:
+        case zlink::auto_hwm_policy_routed:
+            return 8;
+        case zlink::auto_hwm_policy_recv_ingress:
+        case zlink::auto_hwm_policy_peer_queue:
+        case zlink::auto_hwm_policy_stream:
+            return 4;
+        case zlink::auto_hwm_policy_control:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+uint32_t balanced_size_cap (zlink::auto_hwm_policy_class_t policy_class_,
+                            uint64_t message_bytes_)
+{
+    if (policy_class_ == zlink::auto_hwm_policy_control)
+        return 64;
+
+    const bool fanout_like =
+      policy_class_ == zlink::auto_hwm_policy_fanout
+      || policy_class_ == zlink::auto_hwm_policy_spot_data;
+    const bool peer_queue =
+      policy_class_ == zlink::auto_hwm_policy_peer_queue;
+    const bool routed_or_stream =
+      policy_class_ == zlink::auto_hwm_policy_routed
+      || policy_class_ == zlink::auto_hwm_policy_stream
+      || policy_class_ == zlink::auto_hwm_policy_recv_ingress;
+
+    if (message_bytes_ <= 16ull * 1024ull)
+        return 64;
+    if (message_bytes_ <= 64ull * 1024ull) {
+        if (fanout_like)
+            return 32;
+        if (peer_queue)
+            return 16;
+        return routed_or_stream ? 64 : 32;
+    }
+    if (message_bytes_ <= 256ull * 1024ull) {
+        if (fanout_like || peer_queue)
+            return 8;
+        return routed_or_stream ? 64 : 8;
+    }
+    if (fanout_like || peer_queue)
+        return 4;
+    return routed_or_stream ? 32 : 4;
+}
+
+uint32_t size_cap_for_class (zlink_auto_hwm_profile_t profile_,
+                             zlink::auto_hwm_policy_class_t policy_class_,
+                             uint64_t message_bytes_)
+{
+    if (policy_class_ == zlink::auto_hwm_policy_none)
+        return 0;
+    if (policy_class_ == zlink::auto_hwm_policy_control) {
+        return normalize_profile (profile_) == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT
+                 ? 128
+                 : 64;
+    }
+
+    const uint32_t balanced = balanced_size_cap (policy_class_, message_bytes_);
+    switch (normalize_profile (profile_)) {
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+            return std::max<uint32_t> (1, balanced / 2);
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT: {
+            uint32_t cap = balanced * 2;
+            if (message_bytes_ > 256ull * 1024ull)
+                cap = std::min<uint32_t> (cap, 8);
+            return std::max<uint32_t> (1, cap);
+        }
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        default:
+            return balanced;
+    }
+}
 uint32_t transport_bootstrap_connections (int socket_type_,
                                           uint32_t planning_bootstrap_)
 {
@@ -85,18 +198,20 @@ uint64_t slots_from_budget (uint64_t budget_, uint64_t message_bytes_)
     return slots;
 }
 
-uint64_t clamp_floor_to_budget (uint32_t floor_, uint64_t slots_)
+uint64_t clamp_hwm_to_cap (uint64_t slots_, uint32_t size_cap_)
 {
-    if (slots_ == 0)
+    if (size_cap_ == 0)
+        return 0;
+    uint64_t hwm = std::min<uint64_t> (slots_, size_cap_);
+    if (hwm == 0)
         return 1;
-    if (slots_ < floor_)
-        return slots_;
-    return floor_ > slots_ ? floor_ : slots_;
+    return hwm;
 }
 }
 
 zlink::auto_hwm_context_plan_t::auto_hwm_context_plan_t () :
     enabled (false),
+    profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
     total_memory_budget_mb (
       ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT),
     total_memory_budget_bytes (
@@ -112,6 +227,7 @@ zlink::auto_hwm_context_plan_t::auto_hwm_context_plan_t () :
 
 zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     role (auto_hwm_role_none),
+    policy_class (auto_hwm_policy_none),
     scope (auto_hwm_scope_none),
     scope_count (1),
     observed_count (0),
@@ -125,7 +241,10 @@ zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     effective_message_bytes (auto_hwm_message_bytes),
     managed_connections (0),
     active_hwm_connections (0),
-    base_floor_per_connection (0),
+    base_floor_per_connection (1),
+    unit_budget_bytes (0),
+    size_cap (0),
+    effective_publish_fanout (1),
     pending_messages (0),
     sndhwm (0),
     rcvhwm (0),
@@ -141,11 +260,13 @@ zlink::auto_hwm_role_t zlink::auto_hwm_default_role_for_socket_type (
 {
     switch (socket_type_) {
         case ZLINK_CORE_SOCKET_PAIR:
-            return auto_hwm_role_control;
+            return auto_hwm_role_peer_queue;
         case ZLINK_CORE_SOCKET_DEALER:
+            return auto_hwm_role_peer_queue;
         case ZLINK_CORE_SOCKET_ROUTER:
-        case ZLINK_CORE_SOCKET_STREAM:
             return auto_hwm_role_routed;
+        case ZLINK_CORE_SOCKET_STREAM:
+            return auto_hwm_role_stream;
         case ZLINK_CORE_SOCKET_PUB:
         case ZLINK_CORE_SOCKET_XPUB:
             return auto_hwm_role_fanout;
@@ -157,15 +278,60 @@ zlink::auto_hwm_role_t zlink::auto_hwm_default_role_for_socket_type (
     }
 }
 
+zlink::auto_hwm_policy_class_t zlink::auto_hwm_policy_class_for_role (
+  auto_hwm_role_t role_,
+  int socket_type_)
+{
+    switch (role_) {
+        case auto_hwm_role_control:
+            return auto_hwm_policy_control;
+        case auto_hwm_role_routed:
+            return auto_hwm_policy_routed;
+        case auto_hwm_role_fanout:
+            return auto_hwm_policy_fanout;
+        case auto_hwm_role_spot_data:
+            return auto_hwm_policy_spot_data;
+        case auto_hwm_role_recv_ingress:
+            return auto_hwm_policy_recv_ingress;
+        case auto_hwm_role_peer_queue:
+            return auto_hwm_policy_peer_queue;
+        case auto_hwm_role_stream:
+            return auto_hwm_policy_stream;
+        case auto_hwm_role_none:
+        default:
+            break;
+    }
+
+    switch (socket_type_) {
+        case ZLINK_CORE_SOCKET_PUB:
+        case ZLINK_CORE_SOCKET_XPUB:
+            return auto_hwm_policy_fanout;
+        case ZLINK_CORE_SOCKET_SUB:
+        case ZLINK_CORE_SOCKET_XSUB:
+            return auto_hwm_policy_recv_ingress;
+        case ZLINK_CORE_SOCKET_ROUTER:
+            return auto_hwm_policy_routed;
+        case ZLINK_CORE_SOCKET_DEALER:
+        case ZLINK_CORE_SOCKET_PAIR:
+            return auto_hwm_policy_peer_queue;
+        case ZLINK_CORE_SOCKET_STREAM:
+            return auto_hwm_policy_stream;
+        default:
+            return auto_hwm_policy_none;
+    }
+}
+
 void zlink::auto_hwm_context_plan_from_budget_mb (bool enabled_,
                                                   int total_memory_budget_mb_,
-                                                  auto_hwm_context_plan_t *out_)
+                                                  auto_hwm_context_plan_t *out_,
+                                                  zlink_auto_hwm_profile_t profile_)
 {
     if (!out_)
         return;
 
     *out_ = auto_hwm_context_plan_t ();
     out_->enabled = enabled_;
+    out_->profile = normalize_profile (profile_);
     out_->total_memory_budget_mb =
       total_memory_budget_mb_ > 0
         ? total_memory_budget_mb_
@@ -203,6 +369,7 @@ void zlink::auto_hwm_socket_plan_prepare (
 
     *out_ = auto_hwm_socket_plan_t ();
     out_->role = role_;
+    out_->policy_class = auto_hwm_policy_class_for_role (role_, socket_type_);
     out_->scope = scope_;
     out_->managed_connections = clamp_size_to_u32 (managed_connections_);
     out_->active_hwm_connections = clamp_size_to_u32 (active_hwm_connections_);
@@ -215,6 +382,15 @@ void zlink::auto_hwm_socket_plan_prepare (
                                      out_->active_hwm_connections);
     out_->planning_count = std::max (out_->observed_count,
                                      bootstrap_connections);
+    out_->effective_publish_fanout =
+      out_->policy_class == auto_hwm_policy_spot_data
+        ? std::max<uint32_t> (
+            1u, std::min<uint32_t> (
+                  std::max<uint32_t> (out_->observed_count, out_->scope_count),
+                  bootstrap_connections > 0 ? bootstrap_connections : 1u))
+        : out_->planning_count;
+    if (out_->policy_class == auto_hwm_policy_spot_data)
+        out_->planning_count = out_->effective_publish_fanout;
     out_->context_total_planning_count = out_->planning_count;
     out_->buffer_connections = out_->observed_count > 0 ? out_->observed_count
                                                          : 1u;
@@ -237,8 +413,13 @@ void zlink::auto_hwm_socket_plan_prepare (
     out_->manual_buffer_bytes =
       (manual_sndbuf + manual_rcvbuf) * out_->buffer_connections;
     out_->scope_count = clamp_size_to_u32 (scope_count_ > 0 ? scope_count_ : 1);
-    out_->base_floor_per_connection =
-      base_floor_per_connection (role_, out_->managed_connections);
+    out_->base_floor_per_connection = 1;
+    out_->unit_budget_bytes =
+      unit_budget_for_class (ZLINK_AUTO_HWM_PROFILE_BALANCED,
+                             out_->policy_class);
+    out_->size_cap =
+      size_cap_for_class (ZLINK_AUTO_HWM_PROFILE_BALANCED,
+                          out_->policy_class, out_->effective_message_bytes);
 }
 
 void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
@@ -252,16 +433,21 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
     uint64_t total_weight = 0;
     for (size_t i = 0; i != plan_count_; ++i) {
         total_auto_buffer_bytes += plans_[i].auto_buffer_bytes;
-        total_weight += plans_[i].planning_count;
+        plans_[i].unit_budget_bytes =
+          unit_budget_for_class (context_->profile, plans_[i].policy_class);
+        plans_[i].size_cap =
+          size_cap_for_class (context_->profile, plans_[i].policy_class,
+                              plans_[i].effective_message_bytes);
+        const uint64_t class_weight =
+          weight_units_for_class (plans_[i].policy_class);
+        total_weight += class_weight * plans_[i].planning_count;
     }
 
     context_->total_auto_buffer_bytes = total_auto_buffer_bytes;
     context_->transport_budget_bytes = total_auto_buffer_bytes;
     context_->queue_budget_bytes =
-      context_->total_memory_budget_bytes
-          > context_->runtime_reserve_bytes + total_auto_buffer_bytes
+      context_->total_memory_budget_bytes > context_->runtime_reserve_bytes
         ? context_->total_memory_budget_bytes - context_->runtime_reserve_bytes
-            - total_auto_buffer_bytes
         : 0;
     context_->total_planning_count = clamp_size_to_u32 (total_weight);
 
@@ -270,25 +456,24 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
 
     for (size_t i = 0; i != plan_count_; ++i) {
         auto_hwm_socket_plan_t &plan = plans_[i];
+        const uint64_t class_weight = weight_units_for_class (plan.policy_class);
+        const uint64_t socket_weight = class_weight * plan.planning_count;
         plan.context_total_planning_count = clamp_size_to_u32 (total_weight);
         plan.socket_queue_share_bytes =
-          (context_->queue_budget_bytes * plan.planning_count) / total_weight;
-        plan.socket_message_slots = slots_from_budget (
-          plan.socket_queue_share_bytes, plan.effective_message_bytes);
+          (context_->queue_budget_bytes * socket_weight) / total_weight;
 
-        uint32_t hwm_divisor = 1;
-        if (plan.scope == auto_hwm_scope_shared)
-            hwm_divisor = plan.scope_count > 0 ? plan.scope_count : 1;
-        else if (plan.scope == auto_hwm_scope_none)
-            hwm_divisor = plan.active_hwm_connections > 0
-                            ? plan.active_hwm_connections
-                            : 1;
+        const uint32_t socket_count =
+          plan.planning_count > 0 ? plan.planning_count : 1;
+        const uint64_t socket_budget_cap =
+          plan.unit_budget_bytes * socket_count;
+        const uint64_t socket_budget =
+          std::min (socket_budget_cap, plan.socket_queue_share_bytes);
+        const uint64_t per_connection_budget = socket_budget / socket_count;
+        plan.socket_message_slots =
+          slots_from_budget (per_connection_budget, plan.effective_message_bytes);
 
-        const uint64_t target_slots =
-          hwm_divisor > 0 ? plan.socket_message_slots / hwm_divisor
-                          : plan.socket_message_slots;
         const uint64_t final_hwm =
-          clamp_floor_to_budget (plan.base_floor_per_connection, target_slots);
+          clamp_hwm_to_cap (plan.socket_message_slots, plan.size_cap);
         plan.sndhwm = clamp_u64_to_int (final_hwm);
         plan.rcvhwm = clamp_u64_to_int (final_hwm);
     }

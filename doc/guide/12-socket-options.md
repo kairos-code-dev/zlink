@@ -60,18 +60,29 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 With HWM=100, LWM=50. Queue blocks at 100 and resumes only when drained to 50 or below.
 This gap is the hysteresis that prevents writable/non-writable oscillation.
 
-**Per-socket-type:** The meaning stays the same, but the default role bucket changes:
-`PAIR=control`, `DEALER/ROUTER/STREAM=routed`, `PUB/XPUB=fanout`,
-`SUB/XSUB=recv_ingress`. SPOT internal sockets use the same role buckets.
+**Per-socket-type:** The meaning stays the same, but the automatic policy class
+changes: `PAIR=control`, `DEALER=peer_queue`, `ROUTER=routed`,
+`STREAM=stream`, `PUB/XPUB=fanout`, and `SUB/XSUB=recv_ingress`. SPOT
+internal topic publishers use `spot_data`, peer/control sockets use `control`,
+and SPOT routers use `routed`.
 
-With the default context settings, the floors start from:
+The context option `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects one of three
+profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`.
 
-| Role | Default floor |
-|------|---------------|
-| `control` | `4` |
-| `routed` | `8` |
-| `fanout` | `16` |
-| `recv_ingress` | `8` |
+| Policy class | `low_latency` | `balanced` | `throughput` |
+|---|---:|---:|---:|
+| `fanout` | 512 KiB | 2 MiB | 4 MiB |
+| `spot_data` | 512 KiB | 2 MiB | 4 MiB |
+| `routed` | 256 KiB | 512 KiB | 1 MiB |
+| `peer_queue` | 256 KiB | 512 KiB | 1 MiB |
+| `stream` | 128 KiB | 256 KiB | 512 KiB |
+| `recv_ingress` | 128 KiB | 256 KiB | 512 KiB |
+| `control` | 64 KiB | 64 KiB | 128 KiB |
+
+The planner divides the context queue budget across active automatic-HWM
+sockets, then clamps the result with a profile/message-size cap. This keeps
+large one-way fanout queues short by default. The minimum automatic HWM floor
+is `1`.
 
 Manual `SNDHWM` / `RCVHWM` settings always override the automatic values.
 

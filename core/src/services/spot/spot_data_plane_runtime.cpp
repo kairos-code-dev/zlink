@@ -226,7 +226,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
       node_pub_sndhwm > 0
         ? node_pub_sndhwm
         : spot_internal_auto_hwm_default_hwm (
-            ctx, auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, false,
+            ctx, auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, false,
             spot_data_plane_hwm_default, connected_peer_count,
             active_peer_count);
     int peer_ctrl_rcvhwm = spot_internal_auto_hwm_default_hwm (
@@ -260,7 +260,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
       node_pub_sndhwm > 0
         ? node_pub_sndhwm
         : spot_internal_auto_hwm_default_hwm (
-            ctx, auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, false,
+            ctx, auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, false,
             spot_data_plane_hwm_default, local_sub_count, local_sub_count);
 
     (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM",
@@ -303,7 +303,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                       ZLINK_CORE_SOCKET_PAIR,
                                       connected_peer_count, active_peer_count);
     apply_internal_transport_buffers (ctx, state_->mesh_pub,
-                                      auto_hwm_role_fanout,
+                                      auto_hwm_role_spot_data,
                                       ZLINK_CORE_SOCKET_PUB,
                                       connected_peer_count, active_peer_count);
     apply_internal_transport_buffers (ctx, state_->mesh_xsub,
@@ -338,78 +338,77 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                       ZLINK_CORE_SOCKET_SUB, local_pub_count,
                                       local_pub_count);
     apply_internal_transport_buffers (ctx, state_->fanout,
-                                      auto_hwm_role_fanout,
+                                      auto_hwm_role_spot_data,
                                       ZLINK_CORE_SOCKET_PUB, local_sub_count,
                                       local_sub_count);
 
     state_->ctrl->connect (runtime_->data_ctrl_endpoint.c_str ());
     if (state_->ingress) {
-    state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &ingress_rcvhwm,
-                                 sizeof (ingress_rcvhwm));
-    state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
-                                 sizeof (neg_one));
-    state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "", 0);
+        state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                      &ingress_rcvhwm,
+                                      sizeof (ingress_rcvhwm));
+        state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
+                                      sizeof (neg_one));
+        state_->ingress->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "", 0);
     }
     if (state_->fanout) {
-    state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &fanout_sndhwm,
-                                sizeof (fanout_sndhwm));
-    state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
-                                sizeof (neg_one));
-    state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero,
-                                sizeof (zero));
-    state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_XPUB_NODROP, &one,
-                                sizeof (one));
+        state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &fanout_sndhwm,
+                                     sizeof (fanout_sndhwm));
+        state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
+                                     sizeof (neg_one));
+        state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero,
+                                     sizeof (zero));
+        state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_XPUB_NODROP, &one,
+                                     sizeof (one));
     }
     if (state_->mesh_pub) {
-    state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &mesh_pub_sndhwm,
-                                  sizeof (mesh_pub_sndhwm));
-    state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
-                                  sizeof (neg_one));
+        state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                       &mesh_pub_sndhwm,
+                                       sizeof (mesh_pub_sndhwm));
+        state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
+                                       sizeof (neg_one));
     }
     if (state_->mesh_xsub) {
-    state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                   &mesh_xsub_rcvhwm,
-                                   sizeof (mesh_xsub_rcvhwm));
-    state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
-                                   sizeof (neg_one));
+        state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                        &mesh_xsub_rcvhwm,
+                                        sizeof (mesh_xsub_rcvhwm));
+        state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
+                                        sizeof (neg_one));
     }
     if (state_->peer_ctrl_pub)
-    state_->peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
-                                       sizeof (neg_one));
+        state_->peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
+                                            &neg_one, sizeof (neg_one));
     if (state_->peer_ctrl_sub) {
-    state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                       &peer_ctrl_rcvhwm,
-                                       sizeof (peer_ctrl_rcvhwm));
-    state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE,
-                                       spot_control_protocol::ctrl_prefix,
-                                       strlen (
-                                         spot_control_protocol::ctrl_prefix));
+        state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                            &peer_ctrl_rcvhwm,
+                                            sizeof (peer_ctrl_rcvhwm));
+        state_->peer_ctrl_sub->setsockopt (
+          ZLINK_INTERNAL_OPT_SUBSCRIBE, spot_control_protocol::ctrl_prefix,
+          strlen (spot_control_protocol::ctrl_prefix));
     }
     if (state_->external_router) {
-    state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                            &internal_router_rcvhwm,
-                                            sizeof (internal_router_rcvhwm));
-    state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                            &external_router_sndhwm,
-                                            sizeof (external_router_sndhwm));
-    state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO,
-                                            &neg_one,
-                                            sizeof (neg_one));
-    state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
-                                            &neg_one,
-                                            sizeof (neg_one));
+        state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                              &internal_router_rcvhwm,
+                                              sizeof (internal_router_rcvhwm));
+        state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                              &external_router_sndhwm,
+                                              sizeof (external_router_sndhwm));
+        state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO,
+                                              &neg_one, sizeof (neg_one));
+        state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
+                                              &neg_one, sizeof (neg_one));
     }
     if (state_->internal_router) {
-    state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                     &internal_router_rcvhwm,
-                                     sizeof (internal_router_rcvhwm));
-    state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                     &internal_router_sndhwm,
-                                     sizeof (internal_router_sndhwm));
-    state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
-                                     sizeof (neg_one));
-    state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
-                                     sizeof (neg_one));
+        state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                              &internal_router_rcvhwm,
+                                              sizeof (internal_router_rcvhwm));
+        state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                              &internal_router_sndhwm,
+                                              sizeof (internal_router_sndhwm));
+        state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO,
+                                              &neg_one, sizeof (neg_one));
+        state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
+                                              &neg_one, sizeof (neg_one));
     }
     state_->mesh_pub_budget.current_sndhwm =
       state_->mesh_pub

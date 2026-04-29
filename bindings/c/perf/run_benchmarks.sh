@@ -90,6 +90,7 @@ SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-}"
 CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB="${PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:-}"
+CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
@@ -130,6 +131,7 @@ Options:
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
+  --auto-hwm-profile NAME     Set auto-HWM profile: low_latency, balanced, throughput.
 
 Notes:
   - result is saved under results/single/report/ as
@@ -331,6 +333,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --transports)
       PERF_TRANSPORTS="${2:-}"
+      shift
+      ;;
+    --auto-hwm-profile)
+      CTX_AUTO_HWM_PROFILE="${2:-}"
       shift
       ;;
     -h|--help)
@@ -645,6 +651,15 @@ if [[ -n "${RESULTS_DIR}" ]]; then
   cleanup_old_results_dirs "${RESULTS_DIR}"
 fi
 
+case "${CTX_AUTO_HWM_PROFILE}" in
+  ""|low_latency|low-latency|balanced|throughput)
+    ;;
+  *)
+    echo "Error: --auto-hwm-profile must be low_latency, balanced, or throughput." >&2
+    exit 1
+    ;;
+esac
+
 print_core_runtime_binding "${BUILD_DIR}"
 ensure_core_runtime_not_stale "${BUILD_DIR}"
 
@@ -684,6 +699,9 @@ if [[ -n "${CTX_AUTO_HWM_ENABLE}" ]]; then
 fi
 if [[ -n "${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}" ]]; then
   RUN_ENV+=(PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB="${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}")
+fi
+if [[ -n "${CTX_AUTO_HWM_PROFILE}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
 fi
 if [[ -n "${SINGLE_HWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
@@ -780,6 +798,7 @@ print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"
 print_effective_option "ctx_auto_hwm_enable" "$(value_or_default "${CTX_AUTO_HWM_ENABLE}" "core-default")"
 print_effective_option "ctx_auto_hwm_total_memory_budget_mb" "$(value_or_default "${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}" "core-default")"
+print_effective_option "ctx_auto_hwm_profile" "$(value_or_default "${CTX_AUTO_HWM_PROFILE}" "core-default")"
 print_effective_option "pin_cpu" "${PIN_CPU}"
 print_effective_option "io_threads" "${EFFECTIVE_IO_THREADS}"
 print_effective_option "msg_sizes" "$(value_or_default "${PERF_MSG_SIZES}" "default(benchmark)")"

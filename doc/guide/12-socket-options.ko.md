@@ -58,19 +58,28 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 재개된다.
 이 간격이 writable/non-writable 진동을 방지하는 히스테리시스다.
 
-**소켓 타입별 차이:** 역할 묶음은 다르지만 의미는 같다. 기본 역할은
-`PAIR=control`, `DEALER/ROUTER/STREAM=routed`, `PUB/XPUB=fanout`,
-`SUB/XSUB=recv_ingress`다. 서비스(SPOT) 내부 소켓도 같은 역할 묶음으로
-자동 계산한다.
+**소켓 타입별 차이:** 의미는 같지만 자동 정책 class가 다르다.
+`PAIR=control`, `DEALER=peer_queue`, `ROUTER=routed`, `STREAM=stream`,
+`PUB/XPUB=fanout`, `SUB/XSUB=recv_ingress`다. SPOT 내부 topic publisher는
+`spot_data`, peer/control 소켓은 `control`, SPOT router는 `routed`로 계산한다.
 
-기본 context 설정에서는 아래 floor에서 시작한다.
+Context 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 세 profile 중 하나를 고른다.
+기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`다.
 
-| 역할 | 기본 floor |
-|------|------------|
-| `control` | `4` |
-| `routed` | `8` |
-| `fanout` | `16` |
-| `recv_ingress` | `8` |
+| Policy class | `low_latency` | `balanced` | `throughput` |
+|---|---:|---:|---:|
+| `fanout` | 512 KiB | 2 MiB | 4 MiB |
+| `spot_data` | 512 KiB | 2 MiB | 4 MiB |
+| `routed` | 256 KiB | 512 KiB | 1 MiB |
+| `peer_queue` | 256 KiB | 512 KiB | 1 MiB |
+| `stream` | 128 KiB | 256 KiB | 512 KiB |
+| `recv_ingress` | 128 KiB | 256 KiB | 512 KiB |
+| `control` | 64 KiB | 64 KiB | 128 KiB |
+
+Planner는 context queue 예산을 자동 HWM 대상 socket 전체에 나눈 뒤,
+profile과 메시지 크기에서 정한 cap으로 결과를 제한한다. 그래서 큰 메시지
+one-way fanout 큐가 기본 정책에서 과하게 깊어지지 않는다. 자동 HWM의 최소
+floor는 `1`이다.
 
 사용자가 `SNDHWM` / `RCVHWM`을 직접 설정하면 자동 HWM보다 그 값이 항상 우선한다.
 

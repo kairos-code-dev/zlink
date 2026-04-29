@@ -20,7 +20,7 @@
 class stream_t {
 public:
     virtual ~stream_t() = default;
-    virtual bool write(const message_t &payload) = 0;
+    virtual std::future<void> write(const message_t &payload) = 0;
 };
 
 class packet_stream_session_t {

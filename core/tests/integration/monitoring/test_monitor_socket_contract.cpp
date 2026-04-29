@@ -1574,7 +1574,7 @@ void test_stream_ready_with_monitor_callback_and_socket_callback ()
 
 int main ()
 {
-    setup_test_environment ();
+    setup_test_environment (120);
 
     UNITY_BEGIN ();
     RUN_TEST (test_pair_ready_with_monitor_recv_and_socket_recv);

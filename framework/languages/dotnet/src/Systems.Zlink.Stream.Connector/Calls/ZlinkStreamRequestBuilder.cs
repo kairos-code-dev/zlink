@@ -28,7 +28,7 @@ public sealed class ZlinkStreamRequestBuilder
         _state = new ZlinkStreamCallBuilderState(name);
     }
 
-    public ZlinkStreamRequestBuilder WithMessageName(string name)
+    public ZlinkStreamRequestBuilder WithPacketName(string name)
     {
         _state.SetMessageName(name);
         return this;
@@ -58,7 +58,7 @@ public sealed class ZlinkStreamRequestBuilder
         return this;
     }
 
-    public async ValueTask<ZlinkStreamEncodedBody> ExecAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<ZlinkStreamEncodedBody> Async(CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();
         return await _connector.RequestEncodedAsync(
@@ -70,7 +70,7 @@ public sealed class ZlinkStreamRequestBuilder
             cancellationToken).ConfigureAwait(false);
     }
 
-    public void Exec(Action<ZlinkStreamResult> callback)
+    public void Async(Action<ZlinkStreamResult> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
         _state.EnsureNotExecuted();
@@ -83,7 +83,7 @@ public sealed class ZlinkStreamRequestBuilder
             callback);
     }
 
-    public void Exec(Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
+    public void Async(Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
         _state.EnsureNotExecuted();

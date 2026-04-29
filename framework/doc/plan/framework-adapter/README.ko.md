@@ -18,6 +18,7 @@ framework 자체 구현은 이 plan 문서 기준으로 `framework/languages/dot
 | 문서 | 역할 |
 |------|------|
 | [dotnet-execution-plan.ko.md](./dotnet-execution-plan.ko.md) | `.NET` framework adapter를 `framework/languages/dotnet` 아래에 실제로 구현하고, 테스트와 CI gate까지 닫는 실행 계획 |
+| [full-implementation-and-sample-plan.ko.md](./full-implementation-and-sample-plan.ko.md) | framework, Stream Connector, Session Gateway, TicTacToe sample을 문서 기준으로 끝까지 구현하고 반복 리뷰, POSD 리팩토링, 전체 테스트까지 닫는 실행 계획 |
 | [framework-dotnet-release-gate.ko.md](./framework-dotnet-release-gate.ko.md) | framework `.NET` release gate 구성과 실패 triage 기준 |
 
 이 문서는 공개 API 계약 문서가 아니다. 실제 계약은 반드시

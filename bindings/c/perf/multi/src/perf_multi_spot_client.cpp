@@ -592,8 +592,7 @@ void handle_spot_client_parts(const char *topic,
     if (perf_multi_spot_handshake::parse_start_command(zlink_msg_data(&parts[0]),
                                                        zlink_msg_size(&parts[0]),
                                                        &started_size)) {
-        const uint64_t start_recv_ns =
-          bench_transition_debug_enabled() ? perf_multi_metric::now_ns() : 0;
+        const uint64_t start_recv_ns = perf_multi_metric::now_ns();
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->control_started_msg_size.store(started_size,
@@ -667,8 +666,7 @@ void handle_spot_client_parts(const char *topic,
     const bool collect_probe =
       state->collect_probe.load(std::memory_order_acquire);
     const bool trace_phases = bench_transition_debug_enabled();
-    const uint64_t recv_ts_ns =
-      trace_phases ? perf_multi_metric::now_ns() : 0;
+    const uint64_t recv_ts_ns = perf_multi_metric::now_ns();
 
     if (trace_phases && slot
         && header.msg_size
@@ -1033,8 +1031,7 @@ bool recv_one_control_message(spot_client_state_t *state, bool *received)
     if (perf_multi_spot_handshake::parse_start_command(payload.data(),
                                                        payload.size(),
                                                        &started_size)) {
-        const uint64_t start_recv_ns =
-          bench_transition_debug_enabled() ? perf_multi_metric::now_ns() : 0;
+        const uint64_t start_recv_ns = perf_multi_metric::now_ns();
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->control_started_msg_size.store(started_size,
@@ -1355,12 +1352,45 @@ void print_phase_spread_summary(spot_client_state_t *state, size_t msg_size)
               << std::endl;
 }
 
-bool wait_msg_size_start(spot_client_state_t *state,
-                         size_t msg_size,
-                         int timeout_ms)
+bool publish_client_ready_count(spot_client_state_t *state,
+                                size_t msg_size);
+
+bool wait_msg_size_start_with_ready_republish(spot_client_state_t *state,
+                                              size_t msg_size,
+                                              int timeout_ms)
 {
-    return perf_multi_spot_control::wait_for_started_size(
-      state, msg_size, timeout_ms, recv_one_control_message);
+    if (!state || msg_size == 0)
+        return false;
+
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(1, timeout_ms));
+    auto next_ready_at = std::chrono::steady_clock::now();
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (state->fatal.load(std::memory_order_acquire)
+            || state->control_started_msg_size.load(std::memory_order_acquire)
+                 == msg_size) {
+            return true;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= next_ready_at) {
+            if (!publish_client_ready_count(state, msg_size))
+                return false;
+            next_ready_at = now + std::chrono::milliseconds(250);
+        }
+
+        bool received = false;
+        if (!recv_one_control_message(state, &received))
+            return false;
+        if (!received)
+            (void) perf_socket_poll(
+              NULL, 0, std::min<long>(remaining_wait_ms(deadline), 25));
+    }
+
+    errno = ETIMEDOUT;
+    return false;
 }
 
 bool wait_runner_start(spot_client_state_t *state,
@@ -1567,14 +1597,6 @@ bool run_single_size_case(spot_client_state_t *state,
 
     std::cout << "CLIENT_READY," << msg_size << std::endl;
 
-    if (!wait_runner_start(state, msg_size, phase_timeout_ms)) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] runner start timeout size="
-                      << msg_size << std::endl;
-        }
-        return false;
-    }
-
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-client] size wait start ts_ns="
                   << perf_multi_metric::now_ns()
@@ -1588,7 +1610,8 @@ bool run_single_size_case(spot_client_state_t *state,
     // does not drop the whole active window on fast paths.
     state->collect_active.store(true, std::memory_order_release);
 
-    if (!wait_msg_size_start(state, msg_size, phase_timeout_ms)) {
+    if (!wait_msg_size_start_with_ready_republish(
+          state, msg_size, phase_timeout_ms)) {
         if (bench_debug_enabled()) {
             std::cerr << "[multi-spot-client] size start timeout size="
                       << msg_size << std::endl;
@@ -1762,6 +1785,19 @@ int run_client_benchmark(const std::string &lib_name,
     perf_multi_spot_control::start_client_stdin_watcher(
       &state,
       [](spot_client_state_t *client_state, size_t start_size) {
+          {
+              std::lock_guard<std::mutex> lock(client_state->mutex);
+              client_state->control_started_msg_size.store(
+                start_size, std::memory_order_relaxed);
+              client_state->control_start_recv_ns.store(
+                perf_multi_metric::now_ns(), std::memory_order_relaxed);
+              client_state->seen_msg_size.store(start_size,
+                                                std::memory_order_relaxed);
+              client_state->seen_phase.store(
+                static_cast<int>(perf_multi_metric::phase_active),
+                std::memory_order_relaxed);
+          }
+          client_state->cv.notify_all();
           perf_multi_handshake::signal_start(
             &client_state->start_gate, start_size);
       });

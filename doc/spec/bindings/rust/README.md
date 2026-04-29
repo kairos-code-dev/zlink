@@ -127,9 +127,21 @@ impl<'a> ContextOptions<'a> {
     /// # Errors: ConfigError
     pub fn set_auto_hwm_total_memory_budget_mb(&self, value: i32) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
+    pub fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
+}
+```
+
+```rust
+pub enum AutoHwmProfile {
+    LowLatency,
+    Balanced,
+    Throughput,
 }
 ```
 
@@ -1235,13 +1247,18 @@ pub struct MonitorSnapshot {
     pub snd_pending_msgs: u64,            // pending send-queue message count
     pub rcv_pending_msgs: u64,            // pending recv-queue message count
     pub auto_hwm_enabled: bool,
+    pub auto_hwm_profile: u32,
     pub auto_hwm_role: u32,
+    pub auto_hwm_policy_class: u32,
     pub auto_hwm_managed_connections: u32,
     pub auto_hwm_active_hwm_connections: u32,
     pub auto_hwm_observed_count: u32,
     pub auto_hwm_planning_count: u32,
     pub auto_hwm_context_total_planning_count: u32,
     pub auto_hwm_base_floor_per_connection: u32,
+    pub auto_hwm_unit_budget_bytes: u64,
+    pub auto_hwm_size_cap: u32,
+    pub auto_hwm_effective_publish_fanout: u32,
     pub auto_hwm_applied_sndhwm: i32,
     pub auto_hwm_applied_rcvhwm: i32,
     pub auto_hwm_requested_sndbuf: i32,

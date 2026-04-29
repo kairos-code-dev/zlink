@@ -11,6 +11,7 @@ from ._enums import (
     ConfigResult,
     ConnectResult,
     ContextOption,
+    AutoHwmProfile,
     HandlerResult,
     RecvResult,
     RequestResult,
@@ -675,6 +676,16 @@ class ContextOptions:
     @blocky.setter
     def blocky(self, value):
         self._context._set_option(ContextOption.CTX_OPT_BLOCKY, int(bool(value)))
+
+    @property
+    def auto_hwm_profile(self):
+        return AutoHwmProfile(
+            self._context._get_option(ContextOption.AUTO_HWM_PROFILE)
+        )
+
+    @auto_hwm_profile.setter
+    def auto_hwm_profile(self, value):
+        self._context._set_option(ContextOption.AUTO_HWM_PROFILE, int(value))
 
     @property
     def socket_limit(self):

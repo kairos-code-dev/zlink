@@ -71,9 +71,11 @@ policy. Manual `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_SUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`, and
 `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` settings override those automatic
-values. With the default context settings, publish fanout starts from the
-`fanout` floor `16`, while subscribe ingress and routed send/recv start from
-floor `8`.
+values. With the default context settings, SPOT uses the `balanced` automatic
+HWM profile. Topic publish sockets are planned as `spot_data`, topic ingress
+sockets as `recv_ingress`, routed sockets as `routed`, and control sockets as
+`control`. SPOT publish planning uses the effective publish fanout capped by
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`, not the total number of Spot handles.
 
 `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` and
 `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` configure the maximum number of
@@ -128,6 +130,10 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
   `ZLINK_SOCKET_*` values.
 - `socket_name` filters by the exact internal socket name when non-empty.
 - `auto_hwm_visible == 1` marks a row for default Auto-HWM perf output.
+- `snapshot.auto_hwm_profile`, `snapshot.auto_hwm_policy_class`,
+  `snapshot.auto_hwm_unit_budget_bytes`, `snapshot.auto_hwm_size_cap`, and
+  `snapshot.auto_hwm_effective_publish_fanout` expose the active automatic HWM
+  planner result for diagnostics.
 - The current SPOT topology exposes these main node socket names:
   `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`, and
   `external-router`.

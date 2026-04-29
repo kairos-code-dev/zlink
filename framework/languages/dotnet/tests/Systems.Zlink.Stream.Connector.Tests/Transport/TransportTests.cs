@@ -41,9 +41,9 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
 
-        connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
-            .WithMessageName("h")
-            .Exec();
+        await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+            .WithPacketName("h")
+            .Async();
 
         await server;
     }
@@ -135,9 +135,9 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/")
         });
 
-        connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "wb"u8.ToArray()))
-            .WithMessageName("wh")
-            .Exec();
+        await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "wb"u8.ToArray()))
+            .WithPacketName("wh")
+            .Async();
 
         await server;
     }
@@ -168,9 +168,9 @@ public sealed partial class StreamConnectorTests
             SkipServerCertificateValidation = true
         });
 
-        connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
-            .WithMessageName("th")
-            .Exec();
+        await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
+            .WithPacketName("th")
+            .Async();
 
         await server;
     }

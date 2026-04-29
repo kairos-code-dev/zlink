@@ -102,22 +102,15 @@ internal sealed class ZLinkActorChannelSendCall<TMessage>(
 {
     private string? _messageName;
     private bool _hasMessageName;
-    private SendFlags _flags;
 
-    public IZLinkSendCall WithMessageName(string messageName)
+    public IZLinkSendCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         _hasMessageName = true;
         return this;
     }
 
-    public IZLinkSendCall WithDontWait()
-    {
-        _flags |= SendFlags.DontWait;
-        return this;
-    }
-
-    public bool Sync()
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
         IZLinkSendCall inner = state.Activation is { IsDisposed: false } activation
             ? new ZLinkCurrentSpotSendCall<TMessage>(activation, channelName, message)
@@ -125,15 +118,10 @@ internal sealed class ZLinkActorChannelSendCall<TMessage>(
 
         if (_hasMessageName)
         {
-            inner.WithMessageName(_messageName ?? string.Empty);
+            inner.WithPacketName(_messageName ?? string.Empty);
         }
 
-        if ((_flags & SendFlags.DontWait) != 0)
-        {
-            inner.WithDontWait();
-        }
-
-        return inner.Sync();
+        return inner.Async(cancellationToken);
     }
 }
 
@@ -147,7 +135,7 @@ internal sealed class ZLinkActorChannelRequestCall<TRequest>(
     private bool _hasMessageName;
     private TimeSpan? _timeout;
 
-    public IZLinkRequestCall WithMessageName(string messageName)
+    public IZLinkRequestCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         _hasMessageName = true;
@@ -168,7 +156,7 @@ internal sealed class ZLinkActorChannelRequestCall<TRequest>(
 
         if (_hasMessageName)
         {
-            inner.WithMessageName(_messageName ?? string.Empty);
+            inner.WithPacketName(_messageName ?? string.Empty);
         }
 
         if (_timeout is { } timeout)

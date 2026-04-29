@@ -217,12 +217,15 @@ public sealed class MonitorSnapshot
 {
     public MonitorSnapshot(SourceKind sourceKind, uint stateFlags,
         uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs,
-        uint autoHwmEnabled, uint autoHwmRole,
+        uint autoHwmEnabled, uint autoHwmProfile, uint autoHwmRole,
+        uint autoHwmPolicyClass,
         uint autoHwmManagedConnections, uint autoHwmActiveHwmConnections,
         uint autoHwmObservedCount,
         uint autoHwmPlanningCount,
         uint autoHwmContextTotalPlanningCount,
-        uint autoHwmBaseFloorPerConnection, int autoHwmAppliedSndHwm,
+        uint autoHwmBaseFloorPerConnection, ulong autoHwmUnitBudgetBytes,
+        uint autoHwmSizeCap, uint autoHwmEffectivePublishFanout,
+        int autoHwmAppliedSndHwm,
         int autoHwmAppliedRcvHwm, int autoHwmRequestedSndBuf,
         int autoHwmRequestedRcvBuf, int autoHwmEffectiveSndBuf,
         int autoHwmEffectiveRcvBuf, ulong autoHwmTotalMemoryBudgetBytes,
@@ -242,13 +245,18 @@ public sealed class MonitorSnapshot
         SndPendingMsgs = sndPendingMsgs;
         RcvPendingMsgs = rcvPendingMsgs;
         AutoHwmEnabled = autoHwmEnabled != 0;
+        AutoHwmProfile = autoHwmProfile;
         AutoHwmRole = autoHwmRole;
+        AutoHwmPolicyClass = autoHwmPolicyClass;
         AutoHwmManagedConnections = autoHwmManagedConnections;
         AutoHwmActiveHwmConnections = autoHwmActiveHwmConnections;
         AutoHwmObservedCount = autoHwmObservedCount;
         AutoHwmPlanningCount = autoHwmPlanningCount;
         AutoHwmContextTotalPlanningCount = autoHwmContextTotalPlanningCount;
         AutoHwmBaseFloorPerConnection = autoHwmBaseFloorPerConnection;
+        AutoHwmUnitBudgetBytes = autoHwmUnitBudgetBytes;
+        AutoHwmSizeCap = autoHwmSizeCap;
+        AutoHwmEffectivePublishFanout = autoHwmEffectivePublishFanout;
         AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
         AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;
         AutoHwmRequestedSndBuf = autoHwmRequestedSndBuf;
@@ -281,13 +289,18 @@ public sealed class MonitorSnapshot
     public ulong SndPendingMsgs { get; }
     public ulong RcvPendingMsgs { get; }
     public bool AutoHwmEnabled { get; }
+    public uint AutoHwmProfile { get; }
     public uint AutoHwmRole { get; }
+    public uint AutoHwmPolicyClass { get; }
     public uint AutoHwmManagedConnections { get; }
     public uint AutoHwmActiveHwmConnections { get; }
     public uint AutoHwmObservedCount { get; }
     public uint AutoHwmPlanningCount { get; }
     public uint AutoHwmContextTotalPlanningCount { get; }
     public uint AutoHwmBaseFloorPerConnection { get; }
+    public ulong AutoHwmUnitBudgetBytes { get; }
+    public uint AutoHwmSizeCap { get; }
+    public uint AutoHwmEffectivePublishFanout { get; }
     public int AutoHwmAppliedSndHwm { get; }
     public int AutoHwmAppliedRcvHwm { get; }
     public int AutoHwmRequestedSndBuf { get; }
@@ -319,13 +332,18 @@ public sealed class MonitorSnapshot
     {
         return new MonitorSnapshot((SourceKind)native.SourceKind,
             native.StateFlags, native.DetailFlags, native.SndPendingMsgs,
-            native.RcvPendingMsgs, native.AutoHwmEnabled, native.AutoHwmRole,
+            native.RcvPendingMsgs, native.AutoHwmEnabled,
+            native.AutoHwmProfile, native.AutoHwmRole,
+            native.AutoHwmPolicyClass,
             native.AutoHwmManagedConnections,
             native.AutoHwmActiveHwmConnections,
             native.AutoHwmObservedCount,
             native.AutoHwmPlanningCount,
             native.AutoHwmContextTotalPlanningCount,
             native.AutoHwmBaseFloorPerConnection,
+            native.AutoHwmUnitBudgetBytes,
+            native.AutoHwmSizeCap,
+            native.AutoHwmEffectivePublishFanout,
             native.AutoHwmAppliedSndHwm, native.AutoHwmAppliedRcvHwm,
             native.AutoHwmRequestedSndBuf, native.AutoHwmRequestedRcvBuf,
             native.AutoHwmEffectiveSndBuf, native.AutoHwmEffectiveRcvBuf,

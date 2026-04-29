@@ -60,6 +60,11 @@ use case validation은 설계 설명 범위를 보는 문서다. 반면 이 문�
 | publisher-only channel | `integration-single-process` | publish submit 성공 |
 | subscriber discovery attach | `integration-multi-process` | remote publish 수신 |
 | HTTP handler에서 `IZLinkClient` 사용 | `integration-single-process` | route handler와 same DI container에서 정상 동작 |
+| send async submit backpressure | `integration-single-process` | HWM 도달 시 caller thread를 block하지 않고 ready 이후 완료 |
+| publish async submit backpressure | `integration-single-process` | `NoDrop` 또는 HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책으로 완료 또는 실패 |
+| request submit/reply timeout 분리 | `integration-single-process` | request packet submit 지연은 `SendTimeout`, reply 대기는 `WithTimeout(...)`으로 판정 |
+| pending request cleanup | `unit` | submit 실패, timeout, cancellation, runtime stop 때 request sequence가 pending map에서 제거 |
+| ready callback batch drain | `integration-single-process` | socket ready 이후 pending send/publish를 batch로 처리하고 frame 중복 전송 없음 |
 
 ## 5. Spot Regression 항목
 

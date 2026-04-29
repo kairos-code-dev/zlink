@@ -287,11 +287,14 @@ void zlink::socket_base_t::finalize_destroy ()
 {
     lifecycle_coordinator ().clear_destroy_pending ();
 
+    //  Notify the reaper before removing the last socket from the context.
+    //  destroy_socket() may ask the reaper to stop when the registry becomes
+    //  empty; queuing the reaped notification first keeps the reaper's internal
+    //  socket count ahead of that stop command.
+    send_reaped ();
+
     //  Remove the socket from the context.
     destroy_socket (this);
-
-    //  Notify the reaper about the fact.
-    send_reaped ();
 
     //  Deallocate.
     own_t::process_destroy ();

@@ -331,7 +331,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .ExecAsync<GetUserReply>(cancellationToken);
+        .Async<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -409,7 +409,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .ExecAsync<GetUserReply>(cancellationToken);
+        .Async<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -419,11 +419,11 @@ app.MapPost("/profiles/refresh-cache", async (
     IZLinkClient client,
     CancellationToken cancellationToken) =>
 {
-    client
+    await client
         .Send(
             "profile",
             new RefreshUserCacheCommand { AccountId = request.AccountId })
-        .Exec();
+        .Async(cancellationToken);
 
     return Results.Accepted();
 });
@@ -453,7 +453,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .ExecAsync<GetAccountReply>(cancellationToken);
+            .Async<GetAccountReply>(cancellationToken);
 
         return new GetUserReply
         {
@@ -468,7 +468,7 @@ public sealed class UserHandlers
         ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
-        _publisher
+        await _publisher
             .Publish(
                 "api",
                 "user.cache-refreshed",
@@ -476,7 +476,7 @@ public sealed class UserHandlers
                 {
                     AccountId = command.AccountId
                 })
-            .Exec();
+            .Async(cancellationToken);
     }
 }
 
@@ -586,7 +586,7 @@ channel별 outbound 경로가 분리되어 관리된다.
 
 위 예시가 전제하는 `IZLinkClient`, `IZLinkEventPublisher` 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5를 참고한다.
-request의 reply 타입은 메시지 타입에 붙이지 않고 `ExecAsync<TReply>(...)`에서
+request의 reply 타입은 메시지 타입에 붙이지 않고 `Async<TReply>(...)`에서
 명시한다.
 
 이 샘플은 기본 packet key를 payload 타입 이름으로 해석하는 규칙을 전제로 한다.
@@ -599,11 +599,11 @@ request의 reply 타입은 메시지 타입에 붙이지 않고 `ExecAsync<TRepl
 위 인터페이스는 실제 코드에서 아래처럼 호출된다.
 
 ```csharp
-client
+await client
     .Send(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
-    .Exec();
+    .Async(cancellationToken);
 ```
 
 ```csharp
@@ -611,7 +611,7 @@ var reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .ExecAsync<GetUserReply>(cancellationToken);
+    .Async<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -620,16 +620,16 @@ var fastReply = await client
         "profile",
         new GetUserRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync<GetUserReply>(cancellationToken);
+    .Async<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
-client
+await client
     .Send(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
     .WithPacketName("profile.refresh-cache")
-    .Exec();
+    .Async(cancellationToken);
 ```
 
 ### 6.1 framework client의 reply 처리 기준
@@ -647,16 +647,16 @@ GetUserReply reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .ExecAsync<GetUserReply>(cancellationToken);
+    .Async<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
-publisher
+await publisher
     .Publish(
         "profile",
         "user.cache-refreshed",
         new UserCacheRefreshedEvent { AccountId = accountId })
-    .Exec();
+    .Async(cancellationToken);
 ```
 
 이 예시에서 첫 번째 문자열 `profile`은 publish 대상 `channelName`이고, 두 번째
@@ -745,7 +745,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .ExecAsync<GetUserReply>(cancellationToken);
+        .Async<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });

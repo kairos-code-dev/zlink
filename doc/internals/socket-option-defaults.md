@@ -105,6 +105,9 @@ The helper call itself supplies policy values such as
 - The default `ZLINK_OPT_LINGER` value comes from the context's blocky mode.
 - The default `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` values come from the
   context automatic HWM policy. Manual settings override them.
+- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects the planner's profile. The public
+  values are `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT`; the default is
+  `BALANCED`.
 - Automatic HWM subtracts only auto-managed buffer cost from the queue budget.
   User-managed `SNDBUF` / `RCVBUF` values are reported separately in
   `auto_hwm_manual_buffer_bytes` and are not subtracted from the automatic
@@ -112,6 +115,12 @@ The helper call itself supplies policy values such as
 - `auto_hwm_effective_message_bytes` is socket-specific. It uses
   `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` when positive, otherwise the STREAM
   default `1024` or non-STREAM default `4096`.
+- The planner chooses a policy class (`fanout`, `spot_data`, `routed`,
+  `peer_queue`, `stream`, `recv_ingress`, or `control`), a profile-specific
+  unit budget, and a message-size cap. The final HWM is clamped to at least `1`
+  and at most that size cap.
+- SPOT publish planning uses effective publish fanout, not total spot count.
+  The fanout is capped by `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`.
 - `ZLINK_OPT_CONFLATE` is only effective for `ZLINK_SOCKET_DEALER`,
   `ZLINK_SOCKET_PUB`, and `ZLINK_SOCKET_SUB`.
 - STREAM has additional runtime tuning knobs documented in

@@ -26,7 +26,7 @@ int expected_mesh_pub_sndhwm (size_t managed_connections_ = 0,
       ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT, &context_plan);
     zlink::auto_hwm_socket_plan_t socket_plan;
     zlink::auto_hwm_socket_plan_for_role (
-      context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
+      context_plan, zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
       managed_connections_, active_connections_, &socket_plan, 0, -1, -1,
       false, false, zlink::auto_hwm_scope_none, 1, true,
       ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
@@ -292,6 +292,71 @@ void test_ready_peer_count_is_clamped_to_connected_peers ()
       0, zlink::clamp_ready_peer_count (7, 0));
 }
 
+void test_auto_hwm_v2_profile_caps_and_unit_budgets ()
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_socket_plan_t socket_plan;
+
+    zlink::auto_hwm_context_plan_from_budget_mb (
+      true, 1024, &context_plan, ZLINK_AUTO_HWM_PROFILE_BALANCED);
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 100,
+      100, &socket_plan, 262144, -1, -1, false, false,
+      zlink::auto_hwm_scope_none, 1, true, 1);
+    TEST_ASSERT_EQUAL_UINT32 (zlink::auto_hwm_policy_fanout,
+                              socket_plan.policy_class);
+    TEST_ASSERT_EQUAL_UINT64 (2u * 1024u * 1024u,
+                              socket_plan.unit_budget_bytes);
+    TEST_ASSERT_EQUAL_UINT32 (8u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (8, socket_plan.sndhwm);
+
+    zlink::auto_hwm_context_plan_from_budget_mb (
+      true, 1024, &context_plan, ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY);
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 100,
+      100, &socket_plan, 262144, -1, -1, false, false,
+      zlink::auto_hwm_scope_none, 1, true, 1);
+    TEST_ASSERT_EQUAL_UINT64 (512u * 1024u, socket_plan.unit_budget_bytes);
+    TEST_ASSERT_EQUAL_UINT32 (4u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (2, socket_plan.sndhwm);
+
+    zlink::auto_hwm_context_plan_from_budget_mb (
+      true, 1024, &context_plan, ZLINK_AUTO_HWM_PROFILE_THROUGHPUT);
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 100,
+      100, &socket_plan, 262144, -1, -1, false, false,
+      zlink::auto_hwm_scope_none, 1, true, 1);
+    TEST_ASSERT_EQUAL_UINT64 (4u * 1024u * 1024u,
+                              socket_plan.unit_budget_bytes);
+    TEST_ASSERT_EQUAL_UINT32 (16u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (16, socket_plan.sndhwm);
+}
+
+void test_auto_hwm_v2_policy_class_mapping_and_spot_fanout_limit ()
+{
+    TEST_ASSERT_EQUAL_UINT32 (
+      zlink::auto_hwm_policy_peer_queue,
+      zlink::auto_hwm_policy_class_for_role (
+        zlink::auto_hwm_role_peer_queue, ZLINK_CORE_SOCKET_DEALER));
+    TEST_ASSERT_EQUAL_UINT32 (
+      zlink::auto_hwm_policy_stream,
+      zlink::auto_hwm_policy_class_for_role (
+        zlink::auto_hwm_role_stream, ZLINK_CORE_SOCKET_STREAM));
+
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_context_plan_from_budget_mb (
+      true, 1024, &context_plan, ZLINK_AUTO_HWM_PROFILE_BALANCED);
+    zlink::auto_hwm_socket_plan_t socket_plan;
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+      10000, 10000, &socket_plan, 64, -1, -1, false, false,
+      zlink::auto_hwm_scope_shared, 10000, true, 500);
+    TEST_ASSERT_EQUAL_UINT32 (zlink::auto_hwm_policy_spot_data,
+                              socket_plan.policy_class);
+    TEST_ASSERT_EQUAL_UINT32 (500u, socket_plan.effective_publish_fanout);
+    TEST_ASSERT_EQUAL_UINT32 (64u, socket_plan.size_cap);
+}
+
 void test_mesh_pub_budget_hint_updates_private_runtime_owner ()
 {
     zlink::spot_runtime_t runtime (NULL);
@@ -477,6 +542,8 @@ int main (int argc, char **argv)
     RUN_TEST (
       test_mesh_pub_budget_refresh_follows_ready_peer_count_changes);
     RUN_TEST (test_ready_peer_count_is_clamped_to_connected_peers);
+    RUN_TEST (test_auto_hwm_v2_profile_caps_and_unit_budgets);
+    RUN_TEST (test_auto_hwm_v2_policy_class_mapping_and_spot_fanout_limit);
     RUN_TEST (test_mesh_pub_budget_hint_updates_private_runtime_owner);
     RUN_TEST (test_mesh_pub_budget_runtime_owner_uses_bound_endpoint);
     RUN_TEST (

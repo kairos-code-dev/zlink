@@ -49,6 +49,9 @@ class reaper_t ZLINK_FINAL : public object_t, public i_poll_events
     //  If true, we were already asked to terminate.
     bool _terminating;
 
+    //  If true, the context was already notified that reaping is complete.
+    bool _done_sent;
+
 #ifdef HAVE_FORK
     // the process that created this context. Used to detect forking.
     pid_t _pid;

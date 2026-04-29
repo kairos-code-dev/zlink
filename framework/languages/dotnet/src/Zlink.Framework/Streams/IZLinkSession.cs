@@ -62,7 +62,7 @@ public interface IZLinkSessionSendCall
 {
     IZLinkSessionSendCall WithMetadata(string key, string value);
 
-    IZLinkSessionSendCall WithMessageName(string messageName);
+    IZLinkSessionSendCall WithPacketName(string messageName);
 
     IZLinkSessionSendCall Compress();
 

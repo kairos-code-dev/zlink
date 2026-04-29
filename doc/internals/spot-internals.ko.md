@@ -232,9 +232,24 @@ SpotNode의 topic socket은 pub/sub 역할에 따라 HWM 축이 갈린다.
 | `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM` | `internal-router`, `external-router` send 축 |
 | `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` | `internal-router`, `external-router` recv 축 |
 
-수동 옵션이 없으면 context auto HWM 정책이 현재 socket 역할, 연결 수, 메시지 단위를
-기준으로 값을 계산한다. perf runner는 `core/build` runtime을 사용하고, 실행 전에
-해석된 `libzlink` 경로를 출력해야 한다.
+수동 옵션이 없으면 context auto HWM 정책이 현재 socket policy class, 연결 수,
+메시지 단위, profile을 기준으로 값을 계산한다. `local-pub`과 `mesh-pub`은
+`spot_data`, `ingress-sub`과 `mesh-xsub`는 `recv_ingress`,
+`internal-router`와 `external-router`는 `routed`, `peer_ctrl_pub/sub`는
+`control`로 계산한다.
+
+SPOT publish 큐 계획은 effective publish fanout을 쓴다.
+
+```text
+publish_fanout_limit = max(1, ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP)
+candidate_publish_targets =
+  max(local_sub_spot_count, active_peer_count, observed_scope_count)
+effective_publish_fanout =
+  max(1, min(candidate_publish_targets, publish_fanout_limit))
+```
+
+전체 spot 수는 metadata 부담이지 fanout queue count가 아니다. perf runner는
+`core/build` runtime을 사용하고, 실행 전에 해석된 `libzlink` 경로를 출력해야 한다.
 
 ## 7. Control plane
 

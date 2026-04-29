@@ -37,6 +37,14 @@ type ContextOptions struct {
 	ctx *Context
 }
 
+type AutoHwmProfile int
+
+const (
+	AutoHwmProfileLowLatency AutoHwmProfile = AutoHwmProfile(C.ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY)
+	AutoHwmProfileBalanced   AutoHwmProfile = AutoHwmProfile(C.ZLINK_AUTO_HWM_PROFILE_BALANCED)
+	AutoHwmProfileThroughput AutoHwmProfile = AutoHwmProfile(C.ZLINK_AUTO_HWM_PROFILE_THROUGHPUT)
+)
+
 func NewContext() (*Context, error) {
 	handle := C.zlink_ctx_new()
 	if handle == nil {
@@ -144,6 +152,15 @@ func (o *ContextOptions) SetBlocky(value bool) error {
 func (o *ContextOptions) Blocky() (bool, error) {
 	value, err := o.ctx.getIntOption(C.ZLINK_CTX_OPT_BLOCKY)
 	return value != 0, err
+}
+
+func (o *ContextOptions) SetAutoHwmProfile(value AutoHwmProfile) error {
+	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_PROFILE, int(value))
+}
+
+func (o *ContextOptions) AutoHwmProfile() (AutoHwmProfile, error) {
+	value, err := o.ctx.getIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_PROFILE)
+	return AutoHwmProfile(value), err
 }
 
 func (c *Context) setIntOption(option C.zlink_ctx_option_t, value int) error {

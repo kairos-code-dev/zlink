@@ -1603,7 +1603,10 @@ static napi_value create_monitor_snapshot_value(
     napi_value auto_hwm_enabled;
     napi_get_boolean(env, snapshot.auto_hwm_enabled != 0, &auto_hwm_enabled);
     napi_set_named_property(env, obj, "autoHwmEnabled", auto_hwm_enabled);
+    set_uint32_property(env, obj, "autoHwmProfile", snapshot.auto_hwm_profile);
     set_uint32_property(env, obj, "autoHwmRole", snapshot.auto_hwm_role);
+    set_uint32_property(env, obj, "autoHwmPolicyClass",
+                        snapshot.auto_hwm_policy_class);
     set_uint32_property(env, obj, "autoHwmManagedConnections",
                         snapshot.auto_hwm_managed_connections);
     set_uint32_property(env, obj, "autoHwmActiveHwmConnections",
@@ -1616,6 +1619,12 @@ static napi_value create_monitor_snapshot_value(
                         snapshot.auto_hwm_context_total_planning_count);
     set_uint32_property(env, obj, "autoHwmBaseFloorPerConnection",
                         snapshot.auto_hwm_base_floor_per_connection);
+    set_int64_property(env, obj, "autoHwmUnitBudgetBytes",
+                       static_cast<int64_t>(snapshot.auto_hwm_unit_budget_bytes));
+    set_uint32_property(env, obj, "autoHwmSizeCap",
+                        snapshot.auto_hwm_size_cap);
+    set_uint32_property(env, obj, "autoHwmEffectivePublishFanout",
+                        snapshot.auto_hwm_effective_publish_fanout);
     set_int64_property(env, obj, "autoHwmAppliedSndHwm",
                        snapshot.auto_hwm_applied_sndhwm);
     set_int64_property(env, obj, "autoHwmAppliedRcvHwm",

@@ -4058,12 +4058,15 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_create_object(env, &obj);
     napi_value source_kind, state_flags, detail_flags;
     napi_value snd_pending, rcv_pending;
-    napi_value auto_hwm_enabled, auto_hwm_role;
+    napi_value auto_hwm_enabled, auto_hwm_profile, auto_hwm_role;
+    napi_value auto_hwm_policy_class;
     napi_value auto_hwm_managed_connections, auto_hwm_active_hwm_connections;
     napi_value auto_hwm_observed_count;
     napi_value auto_hwm_planning_count;
     napi_value auto_hwm_context_total_planning_count;
     napi_value auto_hwm_base_floor_per_connection;
+    napi_value auto_hwm_unit_budget_bytes;
+    napi_value auto_hwm_size_cap, auto_hwm_effective_publish_fanout;
     napi_value auto_hwm_applied_sndhwm, auto_hwm_applied_rcvhwm;
     napi_value auto_hwm_requested_sndbuf, auto_hwm_requested_rcvbuf;
     napi_value auto_hwm_effective_sndbuf, auto_hwm_effective_rcvbuf;
@@ -4092,7 +4095,10 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_create_int64(env, static_cast<int64_t>(snapshot.rcv_pending_msgs),
                       &rcv_pending);
     napi_get_boolean(env, snapshot.auto_hwm_enabled != 0, &auto_hwm_enabled);
+    napi_create_uint32(env, snapshot.auto_hwm_profile, &auto_hwm_profile);
     napi_create_uint32(env, snapshot.auto_hwm_role, &auto_hwm_role);
+    napi_create_uint32(env, snapshot.auto_hwm_policy_class,
+                       &auto_hwm_policy_class);
     napi_create_uint32(env, snapshot.auto_hwm_managed_connections,
                        &auto_hwm_managed_connections);
     napi_create_uint32(env, snapshot.auto_hwm_active_hwm_connections,
@@ -4105,6 +4111,13 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                        &auto_hwm_context_total_planning_count);
     napi_create_uint32(env, snapshot.auto_hwm_base_floor_per_connection,
                        &auto_hwm_base_floor_per_connection);
+    napi_create_int64(env,
+                      static_cast<int64_t> (
+                        snapshot.auto_hwm_unit_budget_bytes),
+                      &auto_hwm_unit_budget_bytes);
+    napi_create_uint32(env, snapshot.auto_hwm_size_cap, &auto_hwm_size_cap);
+    napi_create_uint32(env, snapshot.auto_hwm_effective_publish_fanout,
+                       &auto_hwm_effective_publish_fanout);
     napi_create_int32(env, snapshot.auto_hwm_applied_sndhwm,
                       &auto_hwm_applied_sndhwm);
     napi_create_int32(env, snapshot.auto_hwm_applied_rcvhwm,
@@ -4178,7 +4191,10 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_set_named_property(env, obj, "sndPendingMsgs", snd_pending);
     napi_set_named_property(env, obj, "rcvPendingMsgs", rcv_pending);
     napi_set_named_property(env, obj, "autoHwmEnabled", auto_hwm_enabled);
+    napi_set_named_property(env, obj, "autoHwmProfile", auto_hwm_profile);
     napi_set_named_property(env, obj, "autoHwmRole", auto_hwm_role);
+    napi_set_named_property(env, obj, "autoHwmPolicyClass",
+                            auto_hwm_policy_class);
     napi_set_named_property(env, obj, "autoHwmManagedConnections",
                             auto_hwm_managed_connections);
     napi_set_named_property(env, obj, "autoHwmActiveHwmConnections",
@@ -4191,6 +4207,11 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                             auto_hwm_context_total_planning_count);
     napi_set_named_property(env, obj, "autoHwmBaseFloorPerConnection",
                             auto_hwm_base_floor_per_connection);
+    napi_set_named_property(env, obj, "autoHwmUnitBudgetBytes",
+                            auto_hwm_unit_budget_bytes);
+    napi_set_named_property(env, obj, "autoHwmSizeCap", auto_hwm_size_cap);
+    napi_set_named_property(env, obj, "autoHwmEffectivePublishFanout",
+                            auto_hwm_effective_publish_fanout);
     napi_set_named_property(env, obj, "autoHwmAppliedSndHwm",
                             auto_hwm_applied_sndhwm);
     napi_set_named_property(env, obj, "autoHwmAppliedRcvHwm",

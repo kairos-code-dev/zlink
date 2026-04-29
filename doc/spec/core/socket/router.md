@@ -93,11 +93,10 @@ already-received request and is allowed regardless of peer weight.
 
 ## Automatic HWM defaults
 
-ROUTER is classified as the `routed` role by the context automatic HWM
-policy. With the default context settings, `SNDHWM` / `RCVHWM` start from
-floor `8` and are recalculated within the same context budget as connection
-counts grow. Manual `SNDHWM`, `RCVHWM`, `SNDBUF`, and `RCVBUF` settings
-override the automatic values.
+ROUTER is classified as the `routed` policy class by the context automatic HWM
+policy. The active auto-HWM profile selects the unit budget and message-size
+cap; the default profile is `balanced`. Manual `SNDHWM`, `RCVHWM`, `SNDBUF`,
+and `RCVBUF` settings override the automatic values.
 
 ## Functions
 

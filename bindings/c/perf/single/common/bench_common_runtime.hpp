@@ -28,6 +28,23 @@ inline int resolve_single_ctx_nonnegative_env(const char *name_, int default_val
     return static_cast<int>(parsed);
 }
 
+inline int resolve_single_ctx_auto_hwm_profile()
+{
+    const char *value = std::getenv("PERF_CTX_AUTO_HWM_PROFILE");
+    if (!value || !*value)
+        return ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
+
+    if (std::strcmp(value, "low_latency") == 0
+        || std::strcmp(value, "low-latency") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY;
+    if (std::strcmp(value, "balanced") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_BALANCED;
+    if (std::strcmp(value, "throughput") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
+
+    return ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
+}
+
 inline void apply_ctx_options(void *ctx_)
 {
     const bool debug = std::getenv("PERF_DEBUG") != NULL;
@@ -71,6 +88,10 @@ inline void apply_ctx_options(void *ctx_)
                     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
                     auto_hwm_budget_mb,
                     "ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB");
+    set_ctx_opt_int(ctx_,
+                    ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                    resolve_single_ctx_auto_hwm_profile(),
+                    "ZLINK_CTX_OPT_AUTO_HWM_PROFILE");
 }
 
 class ctx_guard_t {

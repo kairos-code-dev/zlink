@@ -78,6 +78,14 @@ void *open_socket_monitor_with_handler_internal (
         handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
         return NULL;
     }
+    monitor_socket_base->set_auto_hwm_policy_enabled (false);
+    const int monitor_hwm = 4096;
+    (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                            &monitor_hwm,
+                                            sizeof (monitor_hwm));
+    (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                            &monitor_hwm,
+                                            sizeof (monitor_hwm));
 
     if (zlink_connect (monitor_socket, endpoint) != 0) {
         zlink_close (monitor_socket);

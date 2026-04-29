@@ -95,13 +95,18 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
     uint32_t auto_hwm_enabled;
+    uint32_t auto_hwm_profile;
     uint32_t auto_hwm_role;
+    uint32_t auto_hwm_policy_class;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
     uint32_t auto_hwm_observed_count;
     uint32_t auto_hwm_planning_count;
     uint32_t auto_hwm_context_total_planning_count;
     uint32_t auto_hwm_base_floor_per_connection;
+    uint64_t auto_hwm_unit_budget_bytes;
+    uint32_t auto_hwm_size_cap;
+    uint32_t auto_hwm_effective_publish_fanout;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
     int32_t auto_hwm_requested_sndbuf;
@@ -137,13 +142,18 @@ typedef struct zlink_monitor_snapshot_t
 | `snd_pending_msgs` | 지원되는 경우 aggregate 로컬 송신 backlog |
 | `rcv_pending_msgs` | 지원되는 경우 aggregate 로컬 수신 backlog snapshot |
 | `auto_hwm_enabled` | 이 source가 자동 HWM 정책을 기준으로 계산 중이면 `1`, 아니면 `0` |
-| `auto_hwm_role` | 자동 HWM 진단용 역할 묶음 번호. 현재 `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`이며 새 값이 추가될 수 있음 |
+| `auto_hwm_profile` | 현재 자동 HWM profile. 값은 `zlink_auto_hwm_profile_t`와 같다 |
+| `auto_hwm_role` | 자동 HWM 진단용 역할 번호. 현재 `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`, `5=spot_data`, `6=peer_queue`, `7=stream`이며 새 값이 추가될 수 있음 |
+| `auto_hwm_policy_class` | 단위 예산과 size cap 선택에 사용한 planner policy class. 진단용 값이며 새 값이 추가될 수 있음 |
 | `auto_hwm_managed_connections` | 현재 정책이 계산에 사용한 연결 수 |
 | `auto_hwm_active_hwm_connections` | HWM 분배에 실제로 나눈 연결 수 |
 | `auto_hwm_observed_count` | 이 소스에서 현재 관찰한 실제 연결 수 |
 | `auto_hwm_planning_count` | 현재 이 소스에 적용한 계획 연결 수. bootstrap이나 debounce 구간에서는 관찰 수보다 크게 유지될 수 있음 |
 | `auto_hwm_context_total_planning_count` | 같은 context 안의 자동 관리 소켓 전체에 대해 합산한 계획 수 |
 | `auto_hwm_base_floor_per_connection` | 역할별 최소 floor 값 |
+| `auto_hwm_unit_budget_bytes` | 현재 profile과 policy class에서 고른 연결당 단위 예산 |
+| `auto_hwm_size_cap` | 현재 profile, policy class, 실효 메시지 크기에서 고른 메시지 수 상한 |
+| `auto_hwm_effective_publish_fanout` | SPOT publish 계획에 사용한 fanout 값. `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`으로 상한을 둔다. SPOT이 아닌 row는 `0`일 수 있음 |
 | `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
 | `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |
 | `auto_hwm_requested_sndbuf` | 자동 정책이 요청한 `SNDBUF` 값 |
@@ -168,7 +178,6 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_buffer_connections` | buffer 예산 계산에 곱한 계획 connection 수 |
 | `auto_hwm_deferred_sndhwm` | 지연 중인 송신 HWM 축소값. 없으면 `-1` |
 | `auto_hwm_deferred_rcvhwm` | 지연 중인 수신 HWM 축소값. 없으면 `-1` |
-| `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure 로 막힌 비율(ppm) |
 
 ## 상수
 

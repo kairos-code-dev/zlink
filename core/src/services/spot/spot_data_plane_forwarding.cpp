@@ -95,7 +95,7 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
                                         &active_peer_count);
     apply_spot_internal_auto_hwm (
       ctx, socket,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_fanout,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
                                       ZLINK_CORE_SOCKET_DEALER,
                                       connected_peer_count,
                                       active_peer_count,

@@ -66,10 +66,24 @@ validation, reconnect, shutdown 순서가 문서로 닫혀 있어야 회귀 테�
 
 | 동작 | 실패 의미 |
 |------|-----------|
-| `Request(...).ExecAsync(...)` | route-not-ready, timeout, serialization 실패, runtime stop을 예외로 본다 |
-| `Send(...).Exec()` | 기본 blocking submit 실패를 예외로 본다 |
-| `Publish(...).Exec()` | 기본 blocking submit 실패를 예외로 본다 |
-| `WithDontWait()` 또는 non-blocking submit | temporary backpressure만 `false`로 돌려주고, 그 밖의 실패는 예외로 본다 |
+| `Request(...).Async(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop을 예외로 본다 |
+| `Send(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop을 예외로 본다 |
+| `Publish(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop을 예외로 본다 |
+
+`Send(...).Async(...)`와 `Publish(...).Async(...)`는 remote peer의 handler 처리를
+기다리지 않는다. framework가 메시지를 transport에 맡길 수 있을 때까지 기다리는
+비동기 submit이다. temporary backpressure는 `false` 반환값으로 노출하지 않고,
+nonblocking send, pending queue, ready notification으로 처리한다.
+
+이 대기는 thread blocking이 아니다. 즉 caller가 `await`하면 application 흐름은
+submit 완료까지 기다리지만, runtime은 thread pool worker를 backpressure 대기용으로
+점유하지 않는다. pending queue는 high water mark와 timeout 정책으로 제한해야 하며,
+runtime stop이나 cancellation이 들어오면 대기 중인 submit을 완료 또는 실패시켜야
+한다.
+
+`Request(...).Async(...)`는 두 단계로 나누어 본다. request packet submit은
+`Send(...).Async(...)`와 같은 전송 경로를 사용하고 `SendTimeout` 정책을 따른다.
+reply 대기는 `WithTimeout(...)`으로 정한 request timeout을 따른다.
 
 ## 6. Reconnect 와 Monitoring 의미
 

@@ -124,7 +124,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         return this;
     }
 
-    public ZLinkSessionStreamCallBase<TMessage> WithMessageName(string messageName)
+    public ZLinkSessionStreamCallBase<TMessage> WithPacketName(string messageName)
     {
         if (string.IsNullOrWhiteSpace(messageName))
         {
@@ -197,8 +197,8 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
     IZLinkSessionSendCall IZLinkSessionSendCall.WithMetadata(string key, string value)
         => (IZLinkSessionSendCall)WithMetadata(key, value);
 
-    IZLinkSessionSendCall IZLinkSessionSendCall.WithMessageName(string messageName)
-        => (IZLinkSessionSendCall)WithMessageName(messageName);
+    IZLinkSessionSendCall IZLinkSessionSendCall.WithPacketName(string messageName)
+        => (IZLinkSessionSendCall)WithPacketName(messageName);
 
     IZLinkSessionSendCall IZLinkSessionSendCall.Compress()
         => (IZLinkSessionSendCall)Compress();

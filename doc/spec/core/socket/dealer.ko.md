@@ -40,11 +40,10 @@ DEALER는 연결된 peer 중 광고된 가중치가 `0`인 대상을 후보 집�
 
 ## 자동 HWM 기본값
 
-DEALER는 context auto HWM 정책에서 `routed` 역할로 분류됩니다.
-기본 context 설정에서는 `SNDHWM` / `RCVHWM`이 floor `8`에서 시작하고,
-연결 수가 늘면 같은 context 예산 안에서 다시 계산됩니다. 사용자가
-`SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`를 직접 설정하면 자동값보다 그 값이
-우선합니다.
+DEALER는 context auto HWM 정책에서 `peer_queue` policy class로 분류됩니다.
+활성 auto-HWM profile이 단위 예산과 메시지 크기 cap을 고르며, 기본 profile은
+`balanced`입니다. 사용자가 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`를 직접
+설정하면 자동값보다 그 값이 우선합니다.
 
 ## 함수
 

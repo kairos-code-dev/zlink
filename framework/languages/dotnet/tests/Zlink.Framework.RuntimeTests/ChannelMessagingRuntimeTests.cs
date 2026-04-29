@@ -62,7 +62,7 @@ public sealed class ChannelMessagingRuntimeTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                client.Send("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Sync();
+                await client.Send("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Async();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },

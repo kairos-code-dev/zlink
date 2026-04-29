@@ -234,8 +234,24 @@ SPOT topic sockets split the HWM axis by pub/sub role.
 | `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` | recv side of `internal-router`, `external-router` |
 
 Without manual options, the context auto-HWM policy calculates values from the
-socket role, connection count, and message unit. The perf runner uses the
-`core/build` runtime and must print the resolved `libzlink` path before running.
+socket policy class, connection count, message unit, and active profile.
+`local-pub` and `mesh-pub` use `spot_data`; `ingress-sub` and `mesh-xsub` use
+`recv_ingress`; `internal-router` and `external-router` use `routed`; and
+`peer_ctrl_pub/sub` use `control`.
+
+SPOT publish queue planning uses effective publish fanout:
+
+```text
+publish_fanout_limit = max(1, ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP)
+candidate_publish_targets =
+  max(local_sub_spot_count, active_peer_count, observed_scope_count)
+effective_publish_fanout =
+  max(1, min(candidate_publish_targets, publish_fanout_limit))
+```
+
+The total spot count is metadata pressure, not the fanout queue count. The perf
+runner uses the `core/build` runtime and must print the resolved `libzlink`
+path before running.
 
 ## 7. Control Plane
 

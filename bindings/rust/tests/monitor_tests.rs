@@ -78,6 +78,11 @@ fn socket_monitor_snapshot() {
     // Verify snapshot fields are accessible
     let _ = snap.is_ready();
     let _ = snap.is_closed();
+    let _ = snap.auto_hwm_profile;
+    let _ = snap.auto_hwm_policy_class;
+    let _ = snap.auto_hwm_unit_budget_bytes;
+    let _ = snap.auto_hwm_size_cap;
+    let _ = snap.auto_hwm_effective_publish_fanout;
 }
 
 #[test]

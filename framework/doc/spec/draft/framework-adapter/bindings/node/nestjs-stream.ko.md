@@ -17,8 +17,8 @@ recv loop를 application 표면에 직접 올리지 않는 편을 기본으로 �
 ```ts
 export interface ZLinkStream {
   sessionId: string;
-  write(payload: Message, flags?: SendFlags): boolean;
-  writePacket(header: Message, body: Message, flags?: SendFlags): boolean;
+  write(payload: Message, flags?: SendFlags): Promise<void>;
+  writePacket(header: Message, body: Message, flags?: SendFlags): Promise<void>;
 }
 
 export interface ZLinkPacketStreamSession {

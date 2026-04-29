@@ -201,7 +201,7 @@ client stream과 player id를 소유하고, STREAM request를 room state 변경�
 - STREAM 접속 후 첫 request는 `Authenticate`이며, Play 서버는 API 서버에
   `ValidatePlayerSession` request를 보내 검증한다.
 - 인증 전 `JoinGame`과 `PlaceMark`는 실패해야 한다.
-- client는 `ZlinkStreamConnector.Request(...).ExecAsync<TReply>()`만 사용한다.
+- client는 `ZlinkStreamConnector.Request(...).Async<TReply>()`만 사용한다.
 - Play stream node는 `AddHeaderSession<T>()`를 사용한다.
 - sample code에서 packet name attribute를 쓰지 않는다.
 - smoke 실행 시 두 client가 같은 room에 join하고, 최소 한 판의 틱택토가 끝난다.

@@ -114,8 +114,18 @@ public final class ContextOptions {
     void autoHwmEnabled(boolean enabled);                            // @throws ConfigException
     int autoHwmTotalMemoryBudgetMb();                                // @throws ConfigException
     void autoHwmTotalMemoryBudgetMb(int value);                      // @throws ConfigException
+    AutoHwmProfile autoHwmProfile();                                  // @throws ConfigException
+    void autoHwmProfile(AutoHwmProfile profile);                      // @throws ConfigException
     void addThreadAffinity(int cpu);                                 // @throws ConfigException
     void removeThreadAffinity(int cpu);                              // @throws ConfigException
+}
+```
+
+```java
+public enum AutoHwmProfile {
+    LOW_LATENCY,
+    BALANCED,
+    THROUGHPUT
 }
 ```
 
@@ -1139,19 +1149,24 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               long sndPendingMsgs,
                               long rcvPendingMsgs,
                               boolean autoHwmEnabled,
+                              int autoHwmProfile,
                               int autoHwmRole,
+                              int autoHwmPolicyClass,
                               int autoHwmManagedConnections,
                               int autoHwmActiveHwmConnections,
                               int autoHwmObservedCount,
                               int autoHwmPlanningCount,
                               int autoHwmContextTotalPlanningCount,
                               int autoHwmBaseFloorPerConnection,
-                              int autoHwmAppliedSndhwm,
-                              int autoHwmAppliedRcvhwm,
-                              int autoHwmRequestedSndbuf,
-                              int autoHwmRequestedRcvbuf,
-                              int autoHwmEffectiveSndbuf,
-                              int autoHwmEffectiveRcvbuf,
+                              long autoHwmUnitBudgetBytes,
+                              int autoHwmSizeCap,
+                              int autoHwmEffectivePublishFanout,
+                              int autoHwmAppliedSndHwm,
+                              int autoHwmAppliedRcvHwm,
+                              int autoHwmRequestedSndBuf,
+                              int autoHwmRequestedRcvBuf,
+                              int autoHwmEffectiveSndBuf,
+                              int autoHwmEffectiveRcvBuf,
                               long autoHwmTotalMemoryBudgetBytes,
                               long autoHwmQueueBudgetBytes,
                               long autoHwmTransportBudgetBytes,
@@ -1168,9 +1183,8 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               long autoHwmAutoBufferBytes,
                               long autoHwmManualBufferBytes,
                               int autoHwmBufferConnections,
-                              int autoHwmDeferredSndhwm,
-                              int autoHwmDeferredRcvhwm,
-                              int autoHwmSendBlockedRatioPpm) {
+                              int autoHwmDeferredSndHwm,
+                              int autoHwmDeferredRcvHwm) {
     // Raw socket monitor source에서만 ready 의미를 사용한다.
     boolean isReady();
 }

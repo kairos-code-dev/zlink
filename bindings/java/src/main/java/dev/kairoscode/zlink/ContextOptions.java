@@ -68,6 +68,15 @@ public final class ContextOptions {
         context.setOption(ContextOption.BLOCKY, enabled ? 1 : 0);
     }
 
+    public AutoHwmProfile autoHwmProfile() {
+        return AutoHwmProfile.fromValue(
+          context.getOption(ContextOption.AUTO_HWM_PROFILE));
+    }
+
+    public void autoHwmProfile(AutoHwmProfile profile) {
+        context.setOption(ContextOption.AUTO_HWM_PROFILE, profile.value());
+    }
+
     public void addThreadAffinity(int cpu) {
         context.setOption(ContextOption.THREAD_AFFINITY_CPU_ADD, cpu);
     }

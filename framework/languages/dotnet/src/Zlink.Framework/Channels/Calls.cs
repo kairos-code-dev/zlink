@@ -2,16 +2,14 @@ namespace Zlink.Framework.Channels;
 
 public interface IZLinkSendCall
 {
-    IZLinkSendCall WithMessageName(string messageName);
+    IZLinkSendCall WithPacketName(string messageName);
 
-    IZLinkSendCall WithDontWait();
-
-    bool Sync();
+    ValueTask Async(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRequestCall
 {
-    IZLinkRequestCall WithMessageName(string messageName);
+    IZLinkRequestCall WithPacketName(string messageName);
 
     IZLinkRequestCall WithTimeout(TimeSpan timeout);
 
@@ -20,9 +18,7 @@ public interface IZLinkRequestCall
 
 public interface IZLinkPublishCall
 {
-    IZLinkPublishCall WithMessageName(string messageName);
+    IZLinkPublishCall WithPacketName(string messageName);
 
-    IZLinkPublishCall WithDontWait();
-
-    bool Sync();
+    ValueTask Async(CancellationToken cancellationToken = default);
 }

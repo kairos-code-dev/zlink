@@ -92,10 +92,10 @@ await client.send(
 ## 4. 일반 event publish
 
 ```ts
-const submitted = await eventPublisher.publish(
+await eventPublisher.publish(
   'profile',
   'profile.cache-refreshed',
   new ProfileCacheRefreshed(accountId),
-  { dontWait: true },
+  { packetName: 'profile.cache-refreshed' },
 );
 ```

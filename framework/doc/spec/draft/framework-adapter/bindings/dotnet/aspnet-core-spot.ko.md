@@ -424,14 +424,14 @@ managed `.NET` timer tick을 같은 spot 문맥으로 enqueue해서 처리한다
 ```csharp
 var stage = await spotManager.CreateAsync("stage", cancellationToken);
 
-spotClient
+await spotClient
     .Publish(
         "stage.state.updated",
         new StageStateUpdatedEvent
         {
             StageRid = stage.Context.SpotRid.ToString()
         })
-    .Exec();
+    .Async(cancellationToken);
 
 var spotInfo = await spotManager.GetAsync(stage.SpotRid, cancellationToken);
 ```
@@ -476,18 +476,18 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 예를 들면 아래처럼 쓸 수 있다.
 
 ```csharp
-client
+await client
     .SendChannel(
         "orders",
         new RoomNoticeMessage())
-    .Exec();
+    .Async(cancellationToken);
 
 var reply = await client
     .RequestChannel(
         "orders",
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync<GetStageStateReply>(cancellationToken);
+    .Async<GetStageStateReply>(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer도 같이 필요하다.
@@ -538,13 +538,13 @@ var reply = await spotClient
         "orders",
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync<GetStageStateReply>(cancellationToken);
+    .Async<GetStageStateReply>(cancellationToken);
 
-spotClient
+await spotClient
     .Publish(
         "stage.state.updated",
         new StageStateUpdatedEvent())
-    .Exec();
+    .Async(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 계층이 별도 directory나 lookup을 얹는 것은 가능하지만,
@@ -558,12 +558,12 @@ local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel로 publis
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.3 참고).
 
 ```csharp
-spotPublisherClient
+await spotPublisherClient
     .Publish(
         "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent())
-    .Exec();
+    .Async(cancellationToken);
 ```
 
 이 인터페이스는 local spot 문맥이 없는 외부 노드에서도 target SPOT channel 이름을

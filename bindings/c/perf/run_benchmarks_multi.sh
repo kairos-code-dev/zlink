@@ -361,6 +361,8 @@ Options:
                          Override PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
   --server-bind-port N
                          Override PERF_MULTI_SERVER_BIND_PORT (default: 0=auto).
+  --auto-hwm-profile NAME
+                         Set auto-HWM profile: low_latency, balanced, throughput.
 
 Environment:
   PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
@@ -522,6 +524,7 @@ CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_
 MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-1000}}"
 SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
 SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
+CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
@@ -802,6 +805,14 @@ while [[ $# -gt 0 ]]; do
       SERVER_BIND_PORT="${2}"
       shift 2
       ;;
+    --auto-hwm-profile)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      CTX_AUTO_HWM_PROFILE="${2}"
+      shift 2
+      ;;
     --*)
       echo "Error: unknown option: $1" >&2
       usage >&2
@@ -887,6 +898,14 @@ if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
   echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
   exit 1
 fi
+case "${CTX_AUTO_HWM_PROFILE}" in
+  ""|low_latency|low-latency|balanced|throughput)
+    ;;
+  *)
+    echo "Error: --auto-hwm-profile must be low_latency, balanced, or throughput." >&2
+    exit 1
+    ;;
+esac
 for (( idx=0; idx<${#SCRIPT_ARGS[@]}; ++idx )); do
   if [[ "${SCRIPT_ARGS[idx]}" != "--build-dir" ]]; then
     continue
@@ -1016,6 +1035,9 @@ if [[ -n "${SNDTIMEO_MS}" ]]; then
 fi
 if [[ -n "${RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_RCVTIMEO_MS="${RCVTIMEO_MS}")
+fi
+if [[ -n "${CTX_AUTO_HWM_PROFILE}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
 fi
 if [[ "${HAS_EXPLICIT_RESULTS_DIR}" -eq 0 && -n "${PERF_RESULTS_DIR:-}" ]]; then
   RUN_ENV+=(PERF_RESULTS_DIR="${PERF_RESULTS_DIR:-}")

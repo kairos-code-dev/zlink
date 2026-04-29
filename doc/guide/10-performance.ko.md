@@ -112,16 +112,33 @@ sequenceDiagram
 
 ### 실전 HWM 권장값
 
-| 시나리오 | 기본 출발점 | 근거 |
-|----------|-------------|------|
-| control (`PAIR`, 내부 제어 소켓) | floor `4` | 작은 관리 메시지를 짧게 버퍼링 |
-| routed (`DEALER`, `ROUTER`, `STREAM`) | floor `8` | 요청/응답 경로의 기본 버스트 흡수 |
-| fanout (`PUB`, `XPUB`) | floor `16` | publish 분배 경로의 짧은 fan-out 버스트 흡수 |
-| recv_ingress (`SUB`, `XSUB`) | floor `8` | 수신 경로 backlog를 보수적으로 제한 |
+기본 context 설정은 auto HWM 활성, 총 메모리 예산 `128MB`, `balanced` profile이다.
+이 context 예산은 각 소켓 큐를 무조건 깊게 만들라는 값이 아니라 전체 큐 메모리
+상한으로 본다.
 
-기본 context 설정은 auto HWM 활성 + 총 메모리 예산 `128MB`다. 실제 적용값은
-연결 수가 늘수록 같은 예산 안에서 다시 계산된다. benchmark나 운영 튜닝에서
-고정값이 필요하면 소켓별 `SNDHWM` / `RCVHWM`을 수동으로 주면 된다.
+기본 정책을 바꾸고 싶을 때는 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`을 설정한다.
+
+| Profile | 용도 |
+|---|---|
+| `ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY` | 큐를 짧게 두고 backpressure를 빨리 건다 |
+| `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 기본 운영 튜닝 |
+| `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | 처리량 중심 테스트나 명시적 튜닝 |
+
+`balanced` 기준 context 메모리 시작점은 아래처럼 잡을 수 있다.
+
+```text
+64 MiB
++ pub_fanout_clients * 2 MiB
++ spot_publish_fanout * 2 MiB
++ spot_peers * 2 MiB
++ routed_clients * 512 KiB
++ stream_clients * 256 KiB
+```
+
+계산 결과는 64 MiB 단위로 올리고 최소 128 MiB를 둔다. SPOT은 실제 fanout을
+아직 모를 때 `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`을 publish fanout cap으로
+쓴다. benchmark나 운영 튜닝에서 고정값이 필요하면 소켓별 `SNDHWM` /
+`RCVHWM`을 수동으로 주면 된다.
 
 ### HWM 동작 패턴
 
@@ -134,7 +151,8 @@ sequenceDiagram
 
 ### 메모리 계산
 
-HWM은 연결별(per-connection)이므로, 총 메모리는 HWM × 메시지 크기 × 연결 수이다.
+HWM은 연결별(per-connection)이므로, 수동 설정의 총 메모리는 HWM × 메시지 크기 ×
+연결 수로 추정할 수 있다. 자동 HWM은 반대로 context 예산에서 출발해 HWM을 고른다.
 
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count
@@ -145,6 +163,10 @@ Example 1: Regular service — HWM=100, message=1KB, connections=1000
 Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
            = 10 × 1KB × 10000 = ~100MB
 ```
+
+One-way `PUB/SUB`와 SPOT fanout에서는 큰 메시지가 큐에 오래 머물면 측정 latency가
+대부분 큐 체류 시간이 된다. 그래서 `balanced` profile은 큰 메시지 fanout 큐를
+작은 메시지 큐보다 더 강하게 cap한다.
 
 ## 4. Send/Recv 흐름 제어
 

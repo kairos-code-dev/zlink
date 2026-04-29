@@ -28,7 +28,7 @@ public sealed class ZlinkStreamSendBuilder
         _state = new ZlinkStreamCallBuilderState(name);
     }
 
-    public ZlinkStreamSendBuilder WithMessageName(string name)
+    public ZlinkStreamSendBuilder WithPacketName(string name)
     {
         _state.SetMessageName(name);
         return this;
@@ -58,20 +58,7 @@ public sealed class ZlinkStreamSendBuilder
         return this;
     }
 
-    public void Exec(CancellationToken cancellationToken = default)
-    {
-        _state.EnsureNotExecuted();
-        _connector.SendEncoded(
-            ZlinkStreamMessageKind.Send,
-            _state.ResolveMessageName(),
-            _body,
-            _state.Metadata,
-            _state.Compress,
-            _state.Timeout ?? _connector.Options.SendTimeout,
-            cancellationToken);
-    }
-
-    public async ValueTask ExecAsync(CancellationToken cancellationToken = default)
+    public async ValueTask Async(CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();
         await _connector.SendEncodedAsync(

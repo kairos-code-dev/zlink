@@ -23,7 +23,7 @@ int default_mesh_pub_sndhwm (size_t managed_connections_,
       ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0,
       ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT, &context_plan);
     auto_hwm_socket_plan_t socket_plan;
-    auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_fanout,
+    auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_spot_data,
                                    ZLINK_CORE_SOCKET_PUB, managed_connections_,
                                    active_connections_, &socket_plan, 0, -1,
                                    -1, false, false, auto_hwm_scope_none, 1,
@@ -118,7 +118,7 @@ int spot_mesh_pub_budget_t::resolve_runtime_default (
                                         &connected_peer_count,
                                         &active_peer_count);
     return spot_internal_auto_hwm_default_hwm (
-      runtime_->ctx (), auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, false, 0,
+      runtime_->ctx (), auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, false, 0,
       connected_peer_count, active_peer_count);
 }
 

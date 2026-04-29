@@ -72,10 +72,11 @@ int spot_data_plane_pending_t::resolve_fanout_budget_bytes (
     auto_hwm_context_plan_from_budget_mb (
       ctx && ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0,
       ctx ? ctx->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB)
-          : ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT,
-      &context_plan);
+           : ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT,
+      &context_plan,
+      ctx ? ctx->auto_hwm_profile () : ZLINK_CTX_AUTO_HWM_PROFILE_DFLT);
     auto_hwm_socket_plan_t socket_plan;
-    auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_fanout,
+    auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_spot_data,
                                    ZLINK_CORE_SOCKET_PUB, 0, 0, &socket_plan);
     return socket_plan.socket_queue_share_bytes > static_cast<uint64_t> (INT_MAX)
              ? INT_MAX

@@ -108,11 +108,22 @@ class ContextOptions:
     @auto_hwm_total_memory_budget_mb.setter
     def auto_hwm_total_memory_budget_mb(self, value: int) -> None: ...
     @property
+    def auto_hwm_profile(self) -> AutoHwmProfile: ...
+    @auto_hwm_profile.setter
+    def auto_hwm_profile(self, value: AutoHwmProfile) -> None: ...
+    @property
     def socket_limit(self) -> int: ...       # read-only
     @property
     def msg_t_size(self) -> int: ...          # read-only
     def add_thread_affinity(self, cpu: int) -> None: ...
     def remove_thread_affinity(self, cpu: int) -> None: ...
+```
+
+```python
+class AutoHwmProfile(IntEnum):
+    LOW_LATENCY = 1
+    BALANCED = 2
+    THROUGHPUT = 3
 ```
 
 ---
@@ -951,13 +962,18 @@ class MonitorSnapshot:
     snd_pending_msgs: int            # pending send-queue messages
     rcv_pending_msgs: int            # pending receive-queue messages
     auto_hwm_enabled: bool
+    auto_hwm_profile: int
     auto_hwm_role: int
+    auto_hwm_policy_class: int
     auto_hwm_managed_connections: int
     auto_hwm_active_hwm_connections: int
     auto_hwm_observed_count: int
     auto_hwm_planning_count: int
     auto_hwm_context_total_planning_count: int
     auto_hwm_base_floor_per_connection: int
+    auto_hwm_unit_budget_bytes: int
+    auto_hwm_size_cap: int
+    auto_hwm_effective_publish_fanout: int
     auto_hwm_applied_sndhwm: int
     auto_hwm_applied_rcvhwm: int
     auto_hwm_requested_sndbuf: int

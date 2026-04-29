@@ -62,6 +62,29 @@ Instead:
 In other words, the C binding keeps the native C contract directly rather than
 wrapping it in separate `try_*` convenience APIs.
 
+## Auto-HWM Profile
+
+The C binding exposes the native auto-HWM context profile contract directly.
+
+```c
+typedef enum zlink_auto_hwm_profile_t {
+  ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
+  ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
+  ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3
+} zlink_auto_hwm_profile_t;
+
+#define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
+```
+
+`zlink_ctx_set(ctx, ZLINK_CTX_OPT_AUTO_HWM_PROFILE, value, &error)` selects
+the profile for sockets created after the option is set. `zlink_ctx_get()`
+returns the active profile. Invalid profile values return
+`ZLINK_CONFIG_INVALID_ARGUMENT`.
+
+`zlink_monitor_snapshot_t` includes the auto-HWM v2 fields
+`auto_hwm_profile`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`,
+`auto_hwm_size_cap`, and `auto_hwm_effective_publish_fanout`.
+
 ## Send Surface
 
 ```c

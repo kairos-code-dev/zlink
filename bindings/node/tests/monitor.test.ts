@@ -37,6 +37,12 @@ test('socket monitor exposes recv and snapshot surface', () => {
 
   assert.equal(typeof monitor.recv, 'function');
   assert.equal(typeof monitor.snapshot, 'function');
+  const snapshot = monitor.snapshot();
+  assert.equal(typeof snapshot.autoHwmProfile, 'number');
+  assert.equal(typeof snapshot.autoHwmPolicyClass, 'number');
+  assert.equal(typeof snapshot.autoHwmUnitBudgetBytes, 'bigint');
+  assert.equal(typeof snapshot.autoHwmSizeCap, 'number');
+  assert.equal(typeof snapshot.autoHwmEffectivePublishFanout, 'number');
 
   monitor.close();
   socket.close();

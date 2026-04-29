@@ -840,9 +840,8 @@ public interface IZLinkSendCall
 {
     IZLinkSendCall WithPacketName(string packetName);
 
-    IZLinkSendCall WithDontWait();
-
-    bool Exec();
+    ValueTask Async(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRequestCall
@@ -851,7 +850,7 @@ public interface IZLinkRequestCall
 
     IZLinkRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> ExecAsync<TReply>(
+    ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
 }
 
@@ -888,14 +887,44 @@ packet key 해석 규칙은 아래 순서를 기본으로 본다.
 즉 simple case에서는 타입 이름만으로 충분하고, 모호하거나 충돌하는 경우에만
 explicit `PacketName`을 쓰게 한다.
 
-timeout과 non-blocking 구분은 request/send에서 다르게 다룬다.
+timeout은 request/send에서 다르게 다룬다.
 
 - `Request(...)`는 reply를 기다리므로 `WithTimeout(...)`을 둘 수 있다.
 - `Send(...)`는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)`도 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
-- `Send(...)`는 기본적으로 blocking submit이다.
-- 필요하면 send/publish builder에서 `WithDontWait()`를 붙여 temporary backpressure
-  상황에서 즉시 `false`를 돌려받을 수 있다.
+- `Send(...).Async(...)`는 handler 완료를 기다리는 호출이 아니다. framework가
+  메시지를 transport에 맡길 수 있을 때까지 기다리는 비동기 submit이다.
+- `Publish(...).Async(...)`도 같은 의미다. subscriber의 handler 완료나 subscriber
+  수신을 기다리지 않고, local publish transport에 submit될 때까지 기다린다.
+- send backpressure 대기 한계는 builder가 아니라 channel 또는 socket의
+  `SendTimeout` 옵션을 따른다.
+- `Request(...).Async<TReply>(...)`도 request packet을 보내는 단계에서는
+  `Send(...).Async(...)`와 같은 nonblocking submit 경로를 사용한다.
+- `Request(...).WithTimeout(...)`은 reply 대기 시간만 정한다.
+- 이 초안은 별도 public no-wait 옵션을 제공하지 않는다. temporary backpressure는
+  public `false` 반환값이 아니라 framework 내부 queue와 ready notification으로
+  처리한다.
+
+호출자가 `await`하면 호출 흐름은 submit 완료까지 멈춘다. 다만 구현은 thread를
+막으면 안 된다. 즉 backpressure가 있는 동안에는 현재 thread나 thread pool worker를
+점유하지 않고, socket ready callback 또는 poller wakeup이 오면 pending submit을
+다시 진행해야 한다.
+
+고성능 구현을 위해 아래 조건을 기본 계약으로 둔다.
+
+- 즉시 전송 가능한 fast path는 completed `ValueTask`를 돌려주고 heap allocation을
+  만들지 않는다.
+- pending send queue는 무한 queue가 아니다. channel/socket의 high water mark와
+  `SendTimeout`, cancellation, runtime stop으로 반드시 빠져나갈 수 있어야 한다.
+- socket ready callback은 pending item을 하나만 처리하고 끝내지 않고, 정해진 batch
+  budget 안에서 queue를 drain한다. 그래야 ready event 폭주와 context switch를 줄일
+  수 있다.
+- pending request 등록은 request packet submit 전에 끝나야 한다. submit 실패,
+  timeout, cancellation, runtime stop이 발생하면 pending request를 즉시 제거한다.
+- request reply timeout은 submit 완료 뒤부터 계산한다. submit 단계 지연은
+  `SendTimeout`이 담당한다.
+- payload encoding과 native `Message` 소유권은 submit 완료 또는 실패 시점에 한
+  곳에서 정리한다. retry 중 같은 frame을 중복 전송하거나 중복 dispose하면 안 된다.
 
 즉 public 호출 감각은 아래처럼 보는 편이 맞다.
 
@@ -903,17 +932,12 @@ timeout과 non-blocking 구분은 request/send에서 다르게 다룬다.
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync<GetProfileReply>(cancellationToken);
+    .Async<GetProfileReply>(cancellationToken);
 
-client
+await client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .WithPacketName("profile.refresh-cache")
-    .Exec();
-
-bool submitted = client
-    .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
-    .WithDontWait()
-    .Exec();
+    .Async(cancellationToken);
 ```
 
 ### 5.2 IZLinkSpotClient
@@ -1009,9 +1033,8 @@ public interface IZLinkPublishCall
 {
     IZLinkPublishCall WithPacketName(string packetName);
 
-    IZLinkPublishCall WithDontWait();
-
-    bool Exec();
+    ValueTask Async(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkEventPublisher
@@ -1034,12 +1057,18 @@ public interface IZLinkEventPublisher
 `profile.cache-refreshed` topic으로 fan-out 한다는 뜻이다.
 
 일반 `PUB/SUB` publish도 `Send(...)`와 비슷하게 timeout은 두지 않는다. 대신
-필요하면 packet 이름 override와 `WithDontWait()`를 둘 수 있다.
+필요하면 packet 이름 override만 둘 수 있다.
 
-여기서 `Exec()`은 remote peer 처리 완료를 기다리는 뜻이 아니다. framework local
-runtime에 send/publish를 맡기는 종결 동작으로 본다. 기본 blocking submit에서는
-성공 시 `true`를 돌려주고, `WithDontWait()`를 쓴 경우 temporary backpressure면
-`false`를 돌려준다. route-not-ready 같은 다른 submit 실패는 예외로 본다.
+여기서 `Async(...)`는 remote peer 처리 완료를 기다리는 뜻이 아니다. framework
+local runtime에 send/publish를 맡길 수 있을 때까지 기다리는 비동기 submit이다.
+temporary backpressure는 framework 내부 queue와 ready notification으로 처리하고,
+route-not-ready 같은 다른 submit 실패는 예외로 본다.
+
+publish도 send와 같은 성능 규칙을 따른다. subscriber마다 별도 task를 만들거나
+subscriber 수만큼 payload를 다시 직렬화하지 않는다. 가능한 경우 topic frame과
+payload frame을 한 번 만들고, 하부 publish socket submit 경로가 backpressure를
+처리하게 한다. `NoDrop` 같은 publish socket 정책이 켜져 있으면 drop 대신
+`SendTimeout`까지 backpressure를 기다리고, timeout이 지나면 예외로 실패한다.
 
 ## 6. 등록과 관리 인터페이스
 
@@ -1664,17 +1693,17 @@ ZLink handler에 자동으로 적용되지 않는다. 공통 처리가 필요하
 
 request 메시지 타입에는 framework 전용 marker interface를 붙이지 않는다.
 메시지는 codec이 직렬화할 payload 계약만 표현해야 하며, reply 타입은 호출부에서
-`ExecAsync<TReply>(...)`로 지정한다.
+`Async<TReply>(...)`로 지정한다.
 
 ```csharp
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
-    .ExecAsync<GetProfileReply>(cancellationToken);
+    .Async<GetProfileReply>(cancellationToken);
 ```
 
 handler는 메서드 시그니처만으로 request/reply 타입을 읽는다. client 호출부는
 request 메시지를 보낼 때 packet 이름과 payload 타입만 제공하고, 기다릴 reply
-타입은 `ExecAsync<TReply>(...)`에서 명시한다.
+타입은 `Async<TReply>(...)`에서 명시한다.
 
 기본 packet key는 `Type.Name`을 쓴다. 예: `GetProfileRequest`.
 이 기본 이름이 맞지 않을 때는 payload 타입에 explicit metadata를 둘 수 있다.

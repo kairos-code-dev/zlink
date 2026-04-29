@@ -51,6 +51,12 @@ public sealed class ContextOptions
         set => _context.SetOption(ContextOption.Blocky, value ? 1 : 0);
     }
 
+    public AutoHwmProfile AutoHwmProfile
+    {
+        get => (AutoHwmProfile)_context.GetOption(ContextOption.AutoHwmProfile);
+        set => _context.SetOption(ContextOption.AutoHwmProfile, (int)value);
+    }
+
     public void AddThreadAffinityCpu(int cpu)
     {
         _context.SetOption(ContextOption.ThreadAffinityCpuAdd, cpu);

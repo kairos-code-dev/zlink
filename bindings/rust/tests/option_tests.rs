@@ -6,6 +6,18 @@ use std::time::Duration;
 use zlink::*;
 
 #[test]
+fn context_option_auto_hwm_profile() {
+    let ctx = Context::new().unwrap();
+    ctx.options()
+        .set_auto_hwm_profile(AutoHwmProfile::Throughput)
+        .unwrap();
+    assert_eq!(
+        ctx.options().auto_hwm_profile().unwrap(),
+        AutoHwmProfile::Throughput
+    );
+}
+
+#[test]
 fn common_option_send_hwm() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();

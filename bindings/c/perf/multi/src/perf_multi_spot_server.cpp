@@ -134,21 +134,6 @@ bool ensure_control_peers_connected(spot_server_state_t *state)
              state->control_node, state->control_peers);
 }
 
-bool wait_for_ready_slots(spot_server_state_t *state,
-                          size_t msg_size,
-                          int timeout_ms)
-{
-    return state
-           && perf_multi_spot_control::wait_for_ready_units(
-             state->control_sub,
-             k_topic,
-             &state->ready_state,
-             msg_size,
-             state->expected_ready_count,
-             timeout_ms,
-             &state->fatal_errno);
-}
-
 bool publish_control_start(spot_server_state_t *state, size_t msg_size)
 {
     return state
@@ -452,18 +437,6 @@ bool run_server_loop(spot_server_state_t *state,
             if (bench_debug_enabled()) {
                 std::cerr << "[multi-spot-server] ensure control peers failed"
                           << " size=" << msg_sizes[i]
-                          << " err=" << zlink_errno() << std::endl;
-            }
-            return false;
-        }
-        if (!wait_for_ready_slots(state, msg_sizes[i], start_timeout_ms)) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-server] ready count timeout"
-                          << " size=" << msg_sizes[i]
-                          << " expected=" << state->expected_ready_count
-                          << " got="
-                          << perf_multi_spot_handshake::ready_units(
-                               &state->ready_state, msg_sizes[i])
                           << " err=" << zlink_errno() << std::endl;
             }
             return false;

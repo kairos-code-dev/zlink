@@ -405,3 +405,10 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 `status.disconnected_routed_target_count` help diagnose consumers that fell
 behind an internal delivery queue hard limit. If either count rises, first
 check whether the target is draining topic or routed messages quickly enough.
+
+For HWM diagnostics, use the internal socket snapshot and monitor snapshot
+fields. SPOT topic publish sockets use the `spot_data` auto-HWM policy class,
+topic ingress sockets use `recv_ingress`, routers use `routed`, and control
+sockets use `control`. Large-message publish latency is often queue residency;
+the default `balanced` profile caps SPOT fanout queues by effective publish
+fanout rather than by total Spot count.

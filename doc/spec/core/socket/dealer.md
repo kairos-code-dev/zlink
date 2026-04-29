@@ -41,11 +41,10 @@ positive weights change the send ratio.
 
 ## Automatic HWM defaults
 
-DEALER is classified as the `routed` role by the context automatic HWM
-policy. With the default context settings, `SNDHWM` / `RCVHWM` start from
-floor `8` and are recalculated within the same context budget as connection
-counts grow. Manual `SNDHWM`, `RCVHWM`, `SNDBUF`, and `RCVBUF` settings
-override the automatic values.
+DEALER is classified as the `peer_queue` policy class by the context automatic
+HWM policy. The active auto-HWM profile selects the unit budget and
+message-size cap; the default profile is `balanced`. Manual `SNDHWM`,
+`RCVHWM`, `SNDBUF`, and `RCVBUF` settings override the automatic values.
 
 ## Functions
 

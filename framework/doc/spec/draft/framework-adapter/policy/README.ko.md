@@ -131,9 +131,10 @@ framework adapter 초안의 public 이름 규칙은
   언어에서의 최소 접미사뿐이다.
 - 단어 교체, 단어 생략, 의미가 같은 별도 이름 추가는 허용하지 않는다.
 - 파라미터 조합이 다르다는 이유만으로 이름을 늘리지 않는다.
-- blocking과 non-blocking을 별도 동사 이름으로 나누지 않는다.
-  같은 동작 이름 아래에서 overload, optional parameter, builder option,
-  flags 같은 기존 구분 수단으로 설명한다.
+- send의 blocking/nonblocking 선택을 public 동사 이름이나 builder 옵션으로
+  나누지 않는다. send 계열 public 호출은 기본 async submit으로 설명하고,
+  backpressure는 framework 내부의 nonblocking send, pending queue, ready
+  notification으로 처리한다.
 
 문서에서 우선 따라야 할 언어별 케이싱은 아래와 같다.
 
@@ -208,8 +209,8 @@ runtime으로 설명하는 편이 맞다.
 - 자동 연결과 수동 연결을 어떻게 설정하는가
 - request/send/event 호출 시 기본 packet key를 어떻게 해석하는가
 - timeout, packet override 같은 변형을 어떤 `options` 또는 동등한 구조로 두는가
-- send/publish의 기본 blocking submit과 optional non-blocking 변형을 어떻게
-  설명하는가
+- send/publish의 기본 async submit과 `SendTimeout` 기반 backpressure 대기를
+  어떻게 설명하는가
 - handler dispatch가 어떤 ingress를 기준으로 설명되는가
 - outbound reply 수신은 어떤 경로로 처리되는가
 - outbound-only 앱이 가능한가

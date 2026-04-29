@@ -12,6 +12,10 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ContextOption.IO_THREADS), 1)
         self.assertEqual(int(zlink.ContextOption.MAX_SOCKETS), 2)
         self.assertEqual(int(zlink.ContextOption.CTX_OPT_BLOCKY), 10)
+        self.assertEqual(int(zlink.ContextOption.AUTO_HWM_PROFILE), 17)
+        self.assertEqual(int(zlink.AutoHwmProfile.LOW_LATENCY), 1)
+        self.assertEqual(int(zlink.AutoHwmProfile.BALANCED), 2)
+        self.assertEqual(int(zlink.AutoHwmProfile.THROUGHPUT), 3)
 
     def test_send_and_recv_flag_values(self):
         self.assertEqual(int(zlink.SendFlags.NONE), 0)

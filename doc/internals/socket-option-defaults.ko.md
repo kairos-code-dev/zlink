@@ -104,12 +104,19 @@ helper API를 호출하기 전까지는 인증서 경로와 CA 경로가 비어 
 - 기본 `ZLINK_OPT_LINGER` 값은 컨텍스트의 blocky 모드에서 온다.
 - 기본 `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`은 context auto HWM 정책이
   계산한다. 수동 설정이 있으면 자동값을 덮어쓴다.
+- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 planner profile을 고른다. 공개 값은
+  `LOW_LATENCY`, `BALANCED`, `THROUGHPUT`이고 기본값은 `BALANCED`다.
 - 자동 HWM은 자동 관리 buffer 비용만 queue 예산에서 차감한다. 사용자가 직접
   설정한 `SNDBUF` / `RCVBUF` 값은 `auto_hwm_manual_buffer_bytes`로 별도
   표시하며 자동 queue 예산에서는 차감하지 않는다.
 - `auto_hwm_effective_message_bytes`는 소켓별 값이다.
   `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`가 양수이면 그 값을 쓰고, 아니면
   STREAM 기본 `1024` 또는 non-STREAM 기본 `4096`을 쓴다.
+- planner는 policy class(`fanout`, `spot_data`, `routed`, `peer_queue`,
+  `stream`, `recv_ingress`, `control`), profile별 단위 예산, 메시지 크기별
+  cap을 고른다. 최종 HWM은 최소 `1`, 최대 해당 size cap으로 제한된다.
+- SPOT publish 계획은 전체 spot 수가 아니라 effective publish fanout을 쓴다.
+  이 fanout은 `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`으로 상한을 둔다.
 - `ZLINK_OPT_CONFLATE`는 `ZLINK_SOCKET_DEALER`,
   `ZLINK_SOCKET_PUB`, `ZLINK_SOCKET_SUB`에서만 실질적으로 동작한다.
 - STREAM의 추가 런타임 튜닝 항목은 `stream-socket.ko.md`를 참고한다.

@@ -490,3 +490,10 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 `status.disconnected_routed_target_count`는 내부 delivery queue 상한 때문에
 끊긴 대상 수를 확인할 때 사용한다. 이 값이 늘어나면 해당 소비자가 메시지를
 충분히 빨리 drain하지 못했는지 먼저 점검한다.
+
+HWM 진단은 내부 socket snapshot과 monitor snapshot 필드를 함께 본다. SPOT topic
+publish socket은 `spot_data` auto-HWM policy class, topic ingress socket은
+`recv_ingress`, router는 `routed`, control socket은 `control`로 계산된다. 큰
+메시지 publish latency는 큐 체류 시간이 대부분일 수 있으므로, 기본 `balanced`
+profile은 전체 Spot 수가 아니라 effective publish fanout 기준으로 SPOT fanout
+큐를 제한한다.

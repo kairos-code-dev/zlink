@@ -7,10 +7,10 @@ subscription management is the control plane.
 
 ## Automatic HWM defaults
 
-SUB is classified as the `recv_ingress` role by the context automatic HWM
-policy. With the default context settings, recv HWM starts from floor `8`
-and is recalculated within the same context budget as connection counts
-grow. Manual `RCVHWM` or `RCVBUF` settings override the automatic values.
+SUB is classified as the `recv_ingress` policy class by the context automatic
+HWM policy. The active auto-HWM profile selects the unit budget and
+message-size cap; the default profile is `balanced`. Manual `RCVHWM` or
+`RCVBUF` settings override the automatic values.
 
 ## Sub Options (`zlink_sub_option_t`)
 

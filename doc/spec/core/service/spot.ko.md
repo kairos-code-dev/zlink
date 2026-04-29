@@ -72,8 +72,12 @@ auto HWM 정책에서 계산된다. 사용자가
 `ZLINK_SPOT_NODE_OPT_SUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`를 직접 설정하면 그 값이 자동값보다
-우선한다. 기본 context 설정에서는 publish fanout 경로가 `fanout` floor `16`,
-subscribe ingress와 routed send/recv 경로가 `8`에서 시작한다.
+우선한다. 기본 context 설정은 `balanced` 자동 HWM profile을 사용한다.
+Topic publish socket은 `spot_data`, topic ingress socket은 `recv_ingress`,
+routed socket은 `routed`, control socket은 `control`로 계획한다. SPOT publish
+계획은 전체 Spot handle 수가 아니라
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`으로 상한을 둔 effective publish fanout을
+사용한다.
 
 `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT`와
 `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT`는 내부 delivery queue가 허용하는
@@ -126,6 +130,9 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 - `socket_type`은 `ZLINK_SOCKET_ANY` 또는 공개 `ZLINK_SOCKET_*` 값만 받는다.
 - `socket_name`이 비어 있지 않으면 정확히 같은 내부 socket 이름만 반환한다.
 - `auto_hwm_visible == 1`인 row는 기본 Auto-HWM perf 출력 대상이다.
+- `snapshot.auto_hwm_profile`, `snapshot.auto_hwm_policy_class`,
+  `snapshot.auto_hwm_unit_budget_bytes`, `snapshot.auto_hwm_size_cap`,
+  `snapshot.auto_hwm_effective_publish_fanout`은 진단용 자동 HWM planner 결과다.
 - 현재 SPOT topology의 주요 node socket 이름은 `ingress-sub`, `local-pub`,
   `mesh-pub`, `mesh-xsub`, `internal-router`, `external-router`다.
 - `PUBSUB` mode에서는 routed socket이 생성되지 않고, `ROUTED` mode에서는 topic

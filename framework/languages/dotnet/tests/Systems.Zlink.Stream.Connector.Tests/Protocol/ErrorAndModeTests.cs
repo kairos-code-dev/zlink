@@ -41,8 +41,8 @@ public sealed partial class StreamConnectorTests
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Request(new Ping("hello"))
-                .WithMessageName("ping")
-                .ExecAsync<Pong>());
+                .WithPacketName("ping")
+                .Async<Pong>());
 
         Assert.Equal(ZlinkStreamErrorCode.RequestTimeout, exception.Error.Code);
         await server;
@@ -56,10 +56,10 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri("tcp://127.0.0.1:1")
         });
 
-        var exception = Assert.Throws<ZlinkStreamException>(() =>
-            connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
-                .WithMessageName("h")
-                .Exec());
+        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
+            await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+                .WithPacketName("h")
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.Disconnected, exception.Error.Code);
     }
@@ -73,10 +73,10 @@ public sealed partial class StreamConnectorTests
             MaxSendFrameSize = 6
         });
 
-        var exception = Assert.Throws<ZlinkStreamException>(() =>
-            connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
-                .WithMessageName("h")
-                .Exec());
+        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
+            await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+                .WithPacketName("h")
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
     }

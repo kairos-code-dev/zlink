@@ -107,17 +107,33 @@ sequenceDiagram
 
 ### Practical HWM Recommendations
 
-| Scenario | Recommended HWM | Rationale |
-|----------|-----------------|-----------|
-| control (`PAIR`, internal control sockets) | floor `4` | Buffers short management bursts conservatively |
-| routed (`DEALER`, `ROUTER`, `STREAM`) | floor `8` | Baseline burst absorption for request/reply paths |
-| fanout (`PUB`, `XPUB`) | floor `16` | Allows short publish fan-out bursts |
-| recv_ingress (`SUB`, `XSUB`) | floor `8` | Keeps inbound backlog conservative |
+The default context settings are auto HWM enabled, a total memory budget of
+`128MB`, and the `balanced` profile. Treat that context budget as a queue
+memory envelope, not as a request to make every socket queue deeper.
 
-The default context settings are auto HWM enabled with a total memory budget
-of `128MB`. Actual applied values are recalculated within that budget as the
-connection count grows. If benchmarking or production tuning needs fixed
-queue depths, set `SNDHWM` / `RCVHWM` manually on the socket.
+Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
+
+| Profile | Use case |
+|---|---|
+| `ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY` | Short queues and faster backpressure |
+| `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default production tuning |
+| `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | Larger queues for throughput-oriented tests or explicit tuning |
+
+For balanced planning, a useful starting point for context memory is:
+
+```text
+64 MiB
++ pub_fanout_clients * 2 MiB
++ spot_publish_fanout * 2 MiB
++ spot_peers * 2 MiB
++ routed_clients * 512 KiB
++ stream_clients * 256 KiB
+```
+
+Round the result up to a 64 MiB boundary and keep at least 128 MiB. SPOT uses
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` as the publish-fanout cap when the
+actual fanout is not yet known. If benchmarking or production tuning needs
+fixed queue depths, set `SNDHWM` / `RCVHWM` manually on the socket.
 
 ### HWM Behavior by Socket Type
 
@@ -130,7 +146,9 @@ queue depths, set `SNDHWM` / `RCVHWM` manually on the socket.
 
 ### Memory Calculation
 
-Since HWM is per-connection, total memory is HWM × message size × connection count.
+Since HWM is per-connection, the manual memory estimate is HWM × message size ×
+connection count. Automatic HWM starts from the context budget and works
+backward to choose the HWM.
 
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count
@@ -141,6 +159,10 @@ Example 1: Regular service — HWM=100, message=1KB, connections=1000
 Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
            = 10 × 1KB × 10000 = ~100MB
 ```
+
+For one-way `PUB/SUB` and SPOT fanout, large messages can make queue residency
+dominate measured latency. The balanced profile therefore caps large-message
+fanout queues more aggressively than small-message queues.
 
 ## 4. Send and Receive Flow Control
 

@@ -35,22 +35,16 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
     TMessage message) : IZLinkSendCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-    private SendFlags _flags;
 
-    public IZLinkSendCall WithMessageName(string messageName)
+    public IZLinkSendCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkSendCall WithDontWait()
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        _flags |= SendFlags.DontWait;
-        return this;
-    }
-
-    public bool Sync()
-    {
+        cancellationToken.ThrowIfCancellationRequested();
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Command,
             channelName,
@@ -62,7 +56,12 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             null,
             null);
         using var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TMessage));
-        return activation.SendChannel(channelName, envelope, _flags);
+        if (!activation.SendChannel(channelName, envelope, SendFlags.None))
+        {
+            throw new InvalidOperationException("SPOT channel send submit failed.");
+        }
+
+        return ValueTask.CompletedTask;
     }
 }
 
@@ -74,7 +73,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRequestCall WithMessageName(string messageName)
+    public IZLinkRequestCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         return this;

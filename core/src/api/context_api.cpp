@@ -33,6 +33,7 @@ static bool is_public_ctx_set_option (int option_)
         case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
         case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
         case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
+        case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
             return true;
         default:
             return false;
@@ -54,7 +55,8 @@ static bool is_public_ctx_get_option (int option_)
            || option_ == ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB
            || option_ == ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS
            || option_ == ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP;
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP
+           || option_ == ZLINK_CTX_OPT_AUTO_HWM_PROFILE;
 }
 }
 

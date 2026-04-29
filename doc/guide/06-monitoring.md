@@ -305,7 +305,10 @@ Query the current aggregate state from a monitor handle at any time.
 |-------|-------------|
 | `snd_pending_msgs` | Messages pending in send queue (capped by SNDHWM) |
 | `rcv_pending_msgs` | Messages pending in receive queue (capped by RCVHWM, approximate) |
+| `auto_hwm_profile` / `auto_hwm_policy_class` | Active auto-HWM profile and planner policy class |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | Automatically applied HWM values on the socket |
+| `auto_hwm_unit_budget_bytes` / `auto_hwm_size_cap` | Profile unit budget and message-count cap used by the planner |
+| `auto_hwm_effective_publish_fanout` | SPOT publish fanout used for planning when available |
 | `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | Transport-buffer values requested by the automatic policy |
 | `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | Planned auto-managed buffer cost and user-managed buffer diagnostic cost |
 | `auto_hwm_effective_message_bytes` | Message unit used to convert the queue share into HWM slots |

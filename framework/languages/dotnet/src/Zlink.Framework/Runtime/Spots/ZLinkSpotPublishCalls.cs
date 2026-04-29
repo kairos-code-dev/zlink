@@ -9,22 +9,16 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
     TEvent message) : IZLinkPublishCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-    private SendFlags _flags;
 
-    public IZLinkPublishCall WithMessageName(string messageName)
+    public IZLinkPublishCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkPublishCall WithDontWait()
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        _flags |= SendFlags.DontWait;
-        return this;
-    }
-
-    public bool Sync()
-    {
+        cancellationToken.ThrowIfCancellationRequested();
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Event,
             activation.ChannelName,
@@ -36,7 +30,12 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             null,
             null);
         using var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TEvent));
-        return activation.PublishCurrent(topic, envelope, _flags);
+        if (!activation.PublishCurrent(topic, envelope, SendFlags.None))
+        {
+            throw new InvalidOperationException("SPOT publish submit failed.");
+        }
+
+        return ValueTask.CompletedTask;
     }
 }
 
@@ -55,22 +54,16 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     TEvent message) : IZLinkPublishCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-    private SendFlags _flags;
 
-    public IZLinkPublishCall WithMessageName(string messageName)
+    public IZLinkPublishCall WithPacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkPublishCall WithDontWait()
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        _flags |= SendFlags.DontWait;
-        return this;
-    }
-
-    public bool Sync()
-    {
+        cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Event,
@@ -83,6 +76,11 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             null,
             null);
         using var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TEvent));
-        return bundle.Spot.Publish(channelName, topic, envelope, _flags);
+        if (!bundle.Spot.Publish(channelName, topic, envelope, SendFlags.None))
+        {
+            throw new InvalidOperationException("External SPOT publish submit failed.");
+        }
+
+        return ValueTask.CompletedTask;
     }
 }

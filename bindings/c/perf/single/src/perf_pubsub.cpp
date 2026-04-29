@@ -204,14 +204,15 @@ void run_pubsub (const std::string &transport,
                     k_pubsub_topic,
                     &part,
                     1,
-                    static_cast<zlink_send_flags_t> (0))
+                    ZLINK_DONTWAIT)
                   == 0) {
                   return perf_single_one_way::send_step_sent;
               }
 
               const int err = zlink_errno ();
               zlink_msg_close (&part);
-              if (err == EINTR)
+              if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+                  || err == ETIMEDOUT)
                   return perf_single_one_way::send_step_retry;
               if (bench_debug_enabled ()) {
                   std::cerr << "[perf-pubsub] publish failed err=" << err

@@ -113,8 +113,8 @@ public:
 ## 5. 외부 노드에서 `SPOT` publish
 
 ```cpp
-bool submitted = spot_publisher_client.publish(
+spot_publisher_client.publish(
   "game.stage",
   "stage.state.updated",
-  build_stage_state_updated());
+  build_stage_state_updated()).get();
 ```

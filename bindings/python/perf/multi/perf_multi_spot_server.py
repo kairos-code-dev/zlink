@@ -170,9 +170,15 @@ def main(argv=None):
 
         start_sender[0].sendall(f"START,{args.msg_size}\n".encode("utf-8"))
         active_deadline = time.perf_counter() + active_duration_s
+        idle_deadline = active_deadline + float(
+            os.environ.get("PERF_MULTI_SPOT_SERVER_IDLE_S", "2.0")
+        )
         cooldown_sent = False
         while not stop.is_set():
-            if time.perf_counter() >= active_deadline and cooldown_sent:
+            now = time.perf_counter()
+            if now >= idle_deadline and cooldown_sent:
+                break
+            if now >= active_deadline and cooldown_sent:
                 stop.wait(0.01)
                 continue
             while not stop.is_set():

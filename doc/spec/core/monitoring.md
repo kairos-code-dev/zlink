@@ -91,13 +91,18 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
     uint32_t auto_hwm_enabled;
+    uint32_t auto_hwm_profile;
     uint32_t auto_hwm_role;
+    uint32_t auto_hwm_policy_class;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
     uint32_t auto_hwm_observed_count;
     uint32_t auto_hwm_planning_count;
     uint32_t auto_hwm_context_total_planning_count;
     uint32_t auto_hwm_base_floor_per_connection;
+    uint64_t auto_hwm_unit_budget_bytes;
+    uint32_t auto_hwm_size_cap;
+    uint32_t auto_hwm_effective_publish_fanout;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
     int32_t auto_hwm_requested_sndbuf;
@@ -133,13 +138,18 @@ typedef struct zlink_monitor_snapshot_t
 | `snd_pending_msgs` | Aggregate local outbound backlog in messages when supported. |
 | `rcv_pending_msgs` | Aggregate local inbound backlog snapshot when supported. |
 | `auto_hwm_enabled` | `1` when this source is currently using automatic HWM policy, otherwise `0`. |
-| `auto_hwm_role` | Diagnostic role-bucket id. Current values are `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`; callers must tolerate future values. |
+| `auto_hwm_profile` | Current automatic HWM profile. Values match `zlink_auto_hwm_profile_t`. |
+| `auto_hwm_role` | Diagnostic role id. Current values are `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`, `5=spot_data`, `6=peer_queue`, `7=stream`; callers must tolerate future values. |
+| `auto_hwm_policy_class` | Planner policy class used for unit-budget and size-cap selection. This is diagnostic and may grow. |
 | `auto_hwm_managed_connections` | Connection count used by the current policy calculation. |
 | `auto_hwm_active_hwm_connections` | Connection count actually used to divide HWM slots. |
 | `auto_hwm_observed_count` | Current observed connection count for this socket source. |
 | `auto_hwm_planning_count` | Planning count currently used for this socket source. This may stay above the observed count during bootstrap or debounce windows. |
 | `auto_hwm_context_total_planning_count` | Sum of planning counts across all auto-managed sockets in the same context. |
 | `auto_hwm_base_floor_per_connection` | Role-specific minimum HWM floor per connection. |
+| `auto_hwm_unit_budget_bytes` | Per-connection unit budget selected from the active profile and policy class. |
+| `auto_hwm_size_cap` | Message-count cap selected from the active profile, policy class, and effective message size. |
+| `auto_hwm_effective_publish_fanout` | SPOT publish fanout used by planning, capped by `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`. Non-SPOT rows may report `0`. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |
 | `auto_hwm_requested_sndbuf` | `SNDBUF` value requested by automatic policy. |
@@ -164,7 +174,6 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_buffer_connections` | Planned connection count multiplied into buffer-budget accounting. |
 | `auto_hwm_deferred_sndhwm` | Pending deferred send-HWM shrink, or `-1` when no shrink is deferred. |
 | `auto_hwm_deferred_rcvhwm` | Pending deferred recv-HWM shrink, or `-1` when no shrink is deferred. |
-| `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
 
 ## Constants
 

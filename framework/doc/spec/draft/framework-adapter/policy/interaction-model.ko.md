@@ -67,12 +67,15 @@
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
-  `SendChannel(...).Exec()` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
+  `SendChannel(...).Async(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 - 그렇더라도 caller가 `targetRid`와 `spotRid`를 이미 알고 있는 경우에는,
   advanced direct routed `SendTo(...)` 표면을 둘 수 있다.
-- command send는 기본 blocking submit을 뜻하게 두고, 필요하면 temporary
-  backpressure에서 즉시 `false`를 돌려주는 non-blocking 변형을 별도 옵션으로
-  붙이는 편이 맞다.
+- command send는 기본 async submit을 뜻한다. framework는 blocking send를 task로
+  감싸지 않고 nonblocking send와 ready notification을 이용해서 backpressure를
+  내부에서 처리한다.
+- send backpressure 대기 한계는 call builder가 아니라 channel 또는 socket의
+  `SendTimeout` 옵션을 따른다. request의 `WithTimeout(...)`은 reply 대기 시간만
+  정한다.
 
 ### 3.3 publish-subscribe
 

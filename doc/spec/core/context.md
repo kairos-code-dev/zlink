@@ -32,8 +32,18 @@ typedef enum zlink_ctx_option_t
     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13,
     ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
     ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP = 15,
-    ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP = 16
+    ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP = 16,
+    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17
 } zlink_ctx_option_t;
+```
+
+```c
+typedef enum zlink_auto_hwm_profile_t
+{
+    ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
+    ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
+    ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3
+} zlink_auto_hwm_profile_t;
 ```
 
 | Constant | Value | Description |
@@ -55,6 +65,7 @@ typedef enum zlink_ctx_option_t
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP` | 15 | Bootstrap planning count used when a managed STREAM socket has not observed any live connection yet (`>= 1`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 16 | Bootstrap planning count used when a managed SPOT publisher/subscriber socket has not observed any live connection yet (`>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | Automatic HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). Invalid values fail with `EINVAL`. |
 
 ## Default Values
 
@@ -66,6 +77,10 @@ typedef enum zlink_ctx_option_t
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
+#define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
+#define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 5000
+#define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 500
+#define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
 ```
 
 | Constant | Value | Description |
@@ -77,6 +92,10 @@ typedef enum zlink_ctx_option_t
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | Default Spot worker count (`0` = auto) |
 | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | Automatic HWM policy enabled by default |
 | `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 128 | Default total context memory budget used by automatic HWM policy (MB) |
+| `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | Default debounce window for automatic HWM recalculation (ms) |
+| `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 5000 | Default STREAM planning count before live connections are observed |
+| `ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT` | 500 | Default SPOT bootstrap count and publish-fanout limit |
+| `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default automatic HWM profile |
 
 ## Functions
 
@@ -175,8 +194,11 @@ sockets immediately, but only for sockets that still use automatic
 `SNDHWM` / `RCVHWM` / `SNDBUF` / `RCVBUF` values rather than manual
 overrides. `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS`,
 `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP`, and
-`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` update the planning policy used by
-the next recalculation and are safe to change while the context is live.
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`, and
+`ZLINK_CTX_OPT_AUTO_HWM_PROFILE` update the planning policy used by the next
+recalculation and are safe to change while the context is live. The profile
+selects the per-connection unit budget and size cap used by the automatic HWM
+planner; it does not add a separate publish-fanout public option.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

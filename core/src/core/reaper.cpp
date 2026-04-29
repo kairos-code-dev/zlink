@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
+
 #include "core/reaper.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
@@ -10,7 +11,8 @@ zlink::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
     object_t (ctx_, tid_),
     _poller (NULL),
     _sockets (0),
-    _terminating (false)
+    _terminating (false),
+    _done_sent (false)
 {
     if (!_mailbox.valid ())
         return;
@@ -71,7 +73,8 @@ void zlink::reaper_t::process_stop ()
     _terminating = true;
 
     //  If there are no sockets being reaped finish immediately.
-    if (!_sockets) {
+    if (!_sockets && !_done_sent) {
+        _done_sent = true;
         send_done ();
         _poller->stop ();
     }
@@ -91,7 +94,8 @@ void zlink::reaper_t::process_reaped ()
 
     //  If reaped was already asked to terminate and there are no more sockets,
     //  finish immediately.
-    if (!_sockets && _terminating) {
+    if (!_sockets && _terminating && !_done_sent) {
+        _done_sent = true;
         send_done ();
         _poller->stop ();
     }

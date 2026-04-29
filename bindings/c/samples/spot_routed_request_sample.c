@@ -176,10 +176,9 @@ int main (void)
     assert (strcmp (capture.reply, "spot-pong") == 0);
 
     printf ("[spot/routed/request] spot->spot: \"%s\"\n", "spot-pong");
-
-    zlink_spot_destroy (&responder);
-    zlink_spot_destroy (&requester);
-    zlink_spot_node_destroy (&requester_node);
-    zlink_ctx_term (ctx);
+    assert (zlink_spot_destroy (&responder) == ZLINK_CLOSE_OK);
+    assert (zlink_spot_destroy (&requester) == ZLINK_CLOSE_OK);
+    assert (zlink_spot_node_destroy (&requester_node) == ZLINK_CLOSE_OK);
+    assert (zlink_ctx_term (ctx) == ZLINK_CLOSE_OK);
     return 0;
 }

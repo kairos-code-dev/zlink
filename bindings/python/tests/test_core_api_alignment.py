@@ -85,6 +85,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertEqual(ctx.options.io_threads, 1)
             ctx.options.max_sockets = 1024
             self.assertEqual(ctx.options.max_sockets, 1024)
+            ctx.options.auto_hwm_profile = zlink.AutoHwmProfile.THROUGHPUT
+            self.assertEqual(
+                ctx.options.auto_hwm_profile, zlink.AutoHwmProfile.THROUGHPUT
+            )
             self.assertFalse(hasattr(ctx.options, "ioThreads"))
             self.assertFalse(hasattr(ctx.options, "maxSockets"))
 
@@ -180,6 +184,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertIsInstance(snapshot, zlink.MonitorSnapshot)
                     self.assertTrue(hasattr(snapshot, "is_ready"))
                     self.assertIsInstance(snapshot.is_ready(), bool)
+                    self.assertTrue(hasattr(snapshot, "auto_hwm_profile"))
+                    self.assertTrue(hasattr(snapshot, "auto_hwm_policy_class"))
+                    self.assertTrue(hasattr(snapshot, "auto_hwm_unit_budget_bytes"))
+                    self.assertTrue(hasattr(snapshot, "auto_hwm_size_cap"))
+                    self.assertTrue(
+                        hasattr(snapshot, "auto_hwm_effective_publish_fanout")
+                    )
 
     def test_request_reply_canonical_roundtrip(self):
         try:

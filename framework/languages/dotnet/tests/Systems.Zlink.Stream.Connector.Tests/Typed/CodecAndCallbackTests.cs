@@ -52,9 +52,9 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
 
-        connector.Send(new PackedPing { Text = "hello" })
-            .WithMessageName("packed")
-            .Exec();
+        await connector.Send(new PackedPing { Text = "hello" })
+            .WithPacketName("packed")
+            .Async();
         await server;
     }
 

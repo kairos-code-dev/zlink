@@ -245,10 +245,8 @@ public interface ZLinkFrameworkOptions {
 
 public final class ZLinkSendOptions {
     @Nullable private String packetName;
-    private boolean dontWait;
 
     public ZLinkSendOptions setPacketName(String packetName);
-    public ZLinkSendOptions setDontWait(boolean dontWait);
 }
 
 public final class ZLinkRequestOptions {
@@ -260,7 +258,7 @@ public final class ZLinkRequestOptions {
 }
 
 public interface ZLinkClient {
-    <TMessage> CompletionStage<Boolean> sendAsync(
+    <TMessage> CompletionStage<Void> sendAsync(
         String channelName,
         TMessage message,
         @Nullable ZLinkSendOptions options);
@@ -272,7 +270,7 @@ public interface ZLinkClient {
 }
 
 public interface ZLinkSpotClient {
-    <TMessage> CompletionStage<Boolean> sendChannelAsync(
+    <TMessage> CompletionStage<Void> sendChannelAsync(
         String channelName,
         TMessage message,
         @Nullable ZLinkSendOptions options);
@@ -282,7 +280,7 @@ public interface ZLinkSpotClient {
         ZLinkRequest<TReply> request,
         @Nullable ZLinkRequestOptions options);
 
-    <TMessage> CompletionStage<Boolean> sendToAsync(
+    <TMessage> CompletionStage<Void> sendToAsync(
         RoutingId targetRid,
         RoutingId spotRid,
         TMessage message,
@@ -294,14 +292,14 @@ public interface ZLinkSpotClient {
         ZLinkRequest<TReply> request,
         @Nullable ZLinkRequestOptions options);
 
-    <TEvent> CompletionStage<Boolean> publishAsync(
+    <TEvent> CompletionStage<Void> publishAsync(
         String topic,
         TEvent message,
         @Nullable ZLinkSendOptions options);
 }
 
 public interface ZLinkSpotPublisherClient {
-    <TEvent> CompletionStage<Boolean> publishAsync(
+    <TEvent> CompletionStage<Void> publishAsync(
         String channelName,
         String topic,
         TEvent message,
@@ -309,7 +307,7 @@ public interface ZLinkSpotPublisherClient {
 }
 
 public interface ZLinkEventPublisher {
-    <TEvent> CompletionStage<Boolean> publishAsync(
+    <TEvent> CompletionStage<Void> publishAsync(
         String channelName,
         String topic,
         TEvent message,
@@ -524,9 +522,10 @@ public record ZLinkSpotEvent(
 안에서 이미 등록된 `spotName`을 다시 등록하면 조용히 덮어쓰지 않고 예외를
 던지는 편을 기본으로 본다.
 
-send/publish는 기본 blocking submit이고, `dontWait`를 켜면 temporary
-backpressure에서 `false`를 돌려줄 수 있다. request는 reply를 기다리는 async
-호출로 설명한다.
+send/publish는 기본 async submit이다. blocking send를 async 호출로 감싸는 것이
+아니라, nonblocking send와 ready notification을 이용해 backpressure 동안 호출
+thread가 막히지 않게 해야 한다. request도 request packet을 보내는 단계에서는
+같은 async submit 경로를 사용하고, reply 대기는 request timeout이 따로 정한다.
 
 packet key 해석 규칙은 아래 순서를 기본으로 본다.
 

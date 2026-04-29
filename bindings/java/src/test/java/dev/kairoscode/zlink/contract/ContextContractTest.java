@@ -2,6 +2,7 @@ package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ContextOptions;
+import dev.kairoscode.zlink.AutoHwmProfile;
 import dev.kairoscode.zlink.TestSupport;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,9 @@ public class ContextContractTest {
             assertTrue(options.blocky());
             assertDoesNotThrow(() -> options.blocky(false));
             assertFalse(options.blocky());
+            assertDoesNotThrow(
+                () -> options.autoHwmProfile(AutoHwmProfile.THROUGHPUT));
+            assertEquals(AutoHwmProfile.THROUGHPUT, options.autoHwmProfile());
             assertTrue(options.msgTSize() > 0);
         }
     }

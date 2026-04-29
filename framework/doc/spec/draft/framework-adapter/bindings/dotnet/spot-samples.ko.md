@@ -605,7 +605,7 @@ app.MapPost("/stage/query", async (
         .Request(
             "orders",
             new SampleGetStateRequest { SpotRid = request.StageRid })
-        .ExecAsync<SampleGetStateReply>(cancellationToken);
+        .Async<SampleGetStateReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -617,8 +617,10 @@ app.Run();
 그래서 이 샘플도 `channelName` 기반 request/send와 `IZLinkSpotPublisherClient`
 기반 publish까지만 현재 계약으로 본다.
 
-send/publish builder는 기본 blocking submit이고, 필요하면 `WithDontWait()`를
-붙여 temporary backpressure 시 `false`를 받을 수 있다.
+send/publish builder는 기본 async submit이다. temporary backpressure는
+별도 public no-wait 옵션으로 호출자에게 맡기지 않고, framework 내부의
+nonblocking send, pending queue, ready notification으로 처리한다. send 대기 한계는
+channel 또는 socket의 `SendTimeout` 옵션을 따른다.
 
 ### 3.1.4 외부 노드에서 SPOT channel publish
 
@@ -652,11 +654,12 @@ builder.Services.AddZLinkFramework(options =>
 
 var app = builder.Build();
 
-app.MapPost("/stage/publish", (
+app.MapPost("/stage/publish", async (
     PublishStageStateHttpRequest request,
-    IZLinkSpotPublisherClient spotPublisherClient) =>
+    IZLinkSpotPublisherClient spotPublisherClient,
+    CancellationToken cancellationToken) =>
 {
-    spotPublisherClient
+    await spotPublisherClient
         .Publish(
             "game.stage",
             "sample.state.updated",
@@ -666,7 +669,7 @@ app.MapPost("/stage/publish", (
                 ActorCount = request.UserCount,
                 ConnectedSessionCount = request.UserCount
             })
-        .Exec();
+        .Async(cancellationToken);
 
     return Results.Accepted();
 });
@@ -963,9 +966,10 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
         return ValueTask.CompletedTask;
     }
 
-    public void PublishSampleState()
+    public ValueTask PublishSampleStateAsync(
+        CancellationToken cancellationToken = default)
     {
-        Publish(
+        return Publish(
             "sample.state.updated",
             new SampleStateUpdatedEvent
             {
@@ -973,7 +977,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
                 ActorCount = ActorCount,
                 ConnectedSessionCount = ConnectedSessionCount
             })
-        .Exec();
+        .Async(cancellationToken);
     }
 
     public async ValueTask SweepInactiveActorsAsync(
@@ -1220,7 +1224,7 @@ public sealed class SampleSession
 
             SampleJoinRoomReply joinReply = await Actor.Context
                 .JoinSpot(room.SpotRid, join)
-                .ExecAsync<SampleJoinRoomReply>(cancellationToken);
+                .Async<SampleJoinRoomReply>(cancellationToken);
 
             await Context
                 .Reply(joinReply)
@@ -1362,14 +1366,14 @@ framework 내부 dispatch 경로로 같은 `Spot` 문맥에 올린 뒤, 최종 a
         SampleGetStateRequest request,
         CancellationToken cancellationToken)
     {
-        _spotClient
+        await _spotClient
             .SendChannel(
                 "orders",
                 new SampleReportStateQueryCommand
                 {
                     SpotRid = spot.Context.SpotRid.ToString()
                 })
-            .Exec();
+            .Async(cancellationToken);
 
         return new SampleGetStateReply
         {
@@ -1397,14 +1401,14 @@ public sealed class SampleReportStateHandler
     {
         spot.ApplyReportedState(message);
 
-        _spotClient
+        await _spotClient
             .SendChannel(
                 "orders",
                 new SampleReportStateQueryCommand
                 {
                     SpotRid = spot.Context.SpotRid.ToString()
                 })
-            .Exec();
+            .Async(cancellationToken);
     }
 }
 
@@ -1433,7 +1437,7 @@ public sealed class SampleStateUpdatedHandler
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
             .WithTimeout(TimeSpan.FromMilliseconds(200))
-            .ExecAsync<SampleSyncStateReply>(cancellationToken);
+            .Async<SampleSyncStateReply>(cancellationToken);
     }
 }
 
@@ -1498,7 +1502,7 @@ public sealed class SampleSessionTimeoutSweepHandler
 - `Context.AddSubscribe<THandler>(...)`는 topic subscription consumer를 등록한다.
 - `Context.AddTimer<THandler>(...)`는 spot lifecycle 안에서 timer를 등록한다.
 - 다른 channel 호출은 attach된 channel client를 통해 보낸다.
-- **`RequestChannel(...).ExecAsync(...)`는 같은 spot execution context 안에서 완료된다.**
+- **`RequestChannel(...).Async(...)`는 같은 spot execution context 안에서 완료된다.**
   arbitrary thread 에서 promise 를 직접 resolve 하지 않으므로, continuation 도
   spot state 에 대해 별도 lock 없이 접근할 수 있다.
 
@@ -1588,9 +1592,9 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 - 새 spot 인스턴스를 만들고 싶다
   - `IZLinkSpotManager.CreateAsync("stage", ...)`
 - attach된 다른 channel에 send packet을 보내고 싶다
-  - `SendChannel(...).Exec()`
+  - `SendChannel(...).Async(...)`
 - attach된 다른 channel에 request packet을 보내고 싶다
-  - `RequestChannel(...).WithTimeout(...).ExecAsync(...)`
+  - `RequestChannel(...).WithTimeout(...).Async(...)`
 - 다른 SPOT peer와 직접 RID routed 호출을 하고 싶다
   - 현재 framework core 기본 표면에는 없다. 필요하면 stage wrapper나 별도 확장
     패키지에서 다룬다.
@@ -1599,9 +1603,9 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 보고 싶다
   - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
-  - `Publish(topic, ...).Exec()`
+  - `Publish(topic, ...).Async(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다
-  - `IZLinkSpotPublisherClient.Publish(channelName, topic, ...).Exec()`
+  - `IZLinkSpotPublisherClient.Publish(channelName, topic, ...).Async(...)`
 - stage 안에서 heartbeat timeout sweep 같은 주기 작업을 돌리고 싶다
   - `SampleSpot.OnInitializeAsync()`에서 `Context.AddTimer<THandler>(...)` 등록
 

@@ -188,9 +188,8 @@ public interface IZLinkRoutedSendCall
 {
     IZLinkRoutedSendCall WithMessageName(string messageName);
 
-    IZLinkRoutedSendCall WithDontWait();
-
-    bool Exec();
+    ValueTask Async(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRoutedRequestCall
@@ -199,18 +198,57 @@ public interface IZLinkRoutedRequestCall
 
     IZLinkRoutedRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> ExecAsync<TReply>(
+    ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
 }
 ```
 
+`SendTo(...).Async(...)`는 peer handler 완료를 기다리는 호출이 아니다. framework가
+메시지를 transport에 맡길 수 있을 때까지 기다리는 비동기 submit이다. 구현은
+blocking send를 task로 감싸면 안 된다. 먼저 nonblocking send를 시도하고,
+temporary backpressure가 발생하면 channel의 pending send queue에 넣은 뒤
+socket ready callback 또는 poller wakeup에서 다시 전송해야 한다. 그래서 호출
+thread는 backpressure 동안 막히지 않는다.
+
+send backpressure 대기 한계는 call builder가 아니라 channel 또는 socket의
+`SendTimeout` 옵션을 따른다. `SendTo(...).Async(...)`의
+`CancellationToken`은 호출자가 이 submit 대기를 취소할 때만 사용한다. 이 초안은
+별도 public no-wait 옵션을 제공하지 않는다. temporary backpressure는 public API의
+분기값이 아니라 framework 내부 queue와 ready notification으로 처리한다.
+
+`RequestTo(...).Async<TReply>(...)`도 request packet을 보내는 단계에서는 같은
+nonblocking submit 경로를 사용한다. `WithTimeout(...)`은 reply 대기 시간만
+정한다. request packet을 transport에 맡기는 동안 발생하는 backpressure는
+`SendTimeout` 정책이 처리하고, send 실패나 취소가 발생하면 pending request를
+제거한 뒤 호출을 실패시켜야 한다. reply timeout은 request packet submit이
+끝난 뒤부터 계산하는 편을 기본으로 본다.
+
+호출자가 `await SendTo(...).Async(...)` 또는
+`await RequestTo(...).Async<TReply>(...)`를 사용하면 application 흐름은 submit
+완료나 reply 도착까지 기다린다. 그러나 backpressure 동안 thread를 점유하면 안
+된다. 구현은 pending item을 등록하고 즉시 제어를 반환한 뒤, socket ready callback
+또는 poller wakeup에서 이어서 처리해야 한다.
+
+router-to-router 경로는 서버 간 통신에 쓰이므로 고성능 구현 조건을 별도로 둔다.
+
+- immediate send가 성공하면 completed `ValueTask`를 사용한다.
+- pending routed send queue는 bounded여야 한다. 한계는 channel/socket high water
+  mark, `SendTimeout`, cancellation, runtime stop으로 제어한다.
+- ready callback은 pending queue를 batch로 drain한다. batch budget은 다른 socket과
+  timer가 굶지 않을 정도로 제한한다.
+- request는 sequence를 먼저 할당하고 pending request table에 등록한 뒤 전송한다.
+  send 실패, send timeout, cancellation이 발생하면 pending request table에서 같은
+  sequence를 제거한다.
+- 같은 request frame은 retry 과정에서 한 번만 실제 전송되어야 한다.
+- serialization 결과와 native message buffer는 retry 동안 재사용할 수 있게
+  소유권을 명확히 두고, 완료나 실패 시 한 번만 해제한다.
+
 사용자는 같은 routed channel 안에서 target node를 명시해서 메시지를 보낸다.
 
 ```csharp
-routedClient.SendTo(
-    "backend",
-    targetNodeRid,
-    new NodePingMsg("session-1"));
+await routedClient
+    .SendTo("backend", targetNodeRid, new NodePingMsg("session-1"))
+    .Async(cancellationToken);
 ```
 
 이 routed client는 내부적으로 routed socket 기능을 사용해야 한다. 구현체는
@@ -362,9 +400,8 @@ public interface IZLinkActorRelaySendCall
 {
     IZLinkActorRelaySendCall WithMessageName(string messageName);
 
-    IZLinkActorRelaySendCall WithDontWait();
-
-    bool Exec();
+    ValueTask Async(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorRelayRequestCall
@@ -373,7 +410,7 @@ public interface IZLinkActorRelayRequestCall
 
     IZLinkActorRelayRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<Message> ExecAsync(
+    ValueTask<Message> Async(
         CancellationToken cancellationToken = default);
 }
 ```
@@ -485,9 +522,8 @@ public interface IZLinkSessionGatewaySendCall
 {
     IZLinkSessionGatewaySendCall WithMessageName(string messageName);
 
-    IZLinkSessionGatewaySendCall WithDontWait();
-
-    bool Exec();
+    ValueTask Async(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionGatewayRequestCall
@@ -496,7 +532,7 @@ public interface IZLinkSessionGatewayRequestCall
 
     IZLinkSessionGatewayRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> ExecAsync<TReply>(
+    ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
 }
 ```
@@ -551,12 +587,12 @@ public interface IZLinkSessionRequestCall
 
     IZLinkSessionRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> ExecAsync<TReply>(
+    ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
 }
 ```
 
-`Request<TRequest>(...).ExecAsync<TReply>(...)`는 현재 client stream에 새 request
+`Request<TRequest>(...).Async<TReply>(...)`는 현재 client stream에 새 request
 sequence를 할당한다. reply는 message name이 아니라 그 sequence로만 맞춘다.
 
 ## 10. Request/Reply 규칙
@@ -664,6 +700,17 @@ SendToActor(string routerChannelId, RoutingId targetSessionNodeRid, string actor
   unbind가 새 binding을 지우지 않는다.
 - one-way `SendToActor(...)`에서 binding이 없으면 caller에게 성공 reply를 꾸며 내지
   않고 runtime event와 log만 남긴다.
+- routed `SendTo(...).Async(...)`가 temporary backpressure를 만나도 caller thread를
+  block하지 않고, socket ready 이후 pending send를 완료한다.
+- routed `RequestTo(...).Async<TReply>(...)`는 request packet submit 단계에서
+  `SendTo(...).Async(...)`와 같은 backpressure 경로를 사용하고, send 실패나 취소 시
+  pending request를 제거한다.
+- `RequestTo(...).WithTimeout(...)`은 reply 대기 시간만 제한한다. send 단계의
+  backpressure timeout은 channel 또는 socket의 `SendTimeout` 옵션으로 검증한다.
+- pending routed send queue가 high water mark에 도달하면 caller thread를 block하지
+  않고 async 대기, send timeout, cancellation 중 하나로 완료된다.
+- socket ready callback이 들어오면 pending routed send를 batch로 drain하고, 같은
+  frame을 중복 전송하지 않는다.
 
 ## 14. 구현 순서
 

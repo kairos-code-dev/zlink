@@ -28,10 +28,10 @@ option explicitly to `0`.
 
 ## Automatic HWM defaults
 
-PUB is classified as the `fanout` role by the context automatic HWM
-policy. With the default context settings, send HWM starts from floor `16`
-and is recalculated within the same context budget as connection counts
-grow. Manual `SNDHWM` or `SNDBUF` settings override the automatic values.
+PUB is classified as the `fanout` policy class by the context automatic HWM
+policy. The active auto-HWM profile selects the unit budget and message-size
+cap; the default profile is `balanced`. Manual `SNDHWM` or `SNDBUF` settings
+override the automatic values.
 
 ## Functions
 

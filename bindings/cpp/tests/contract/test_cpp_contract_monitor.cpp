@@ -148,7 +148,12 @@ void test_socket_monitor_open_recv_snapshot ()
 
     (void) monitor.recv (zlink::non_blocking_t {});
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
-    (void) monitor.snapshot ();
+    const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
+    (void) snapshot.auto_hwm_profile_value;
+    (void) snapshot.auto_hwm_policy_class;
+    (void) snapshot.auto_hwm_unit_budget_bytes;
+    (void) snapshot.auto_hwm_size_cap;
+    (void) snapshot.auto_hwm_effective_publish_fanout;
 }
 
 void test_socket_monitor_ignore_handler_and_poller_size ()

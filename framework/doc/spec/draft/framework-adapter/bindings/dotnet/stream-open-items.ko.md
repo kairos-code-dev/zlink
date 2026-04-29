@@ -69,21 +69,23 @@ registration surface와 테스트 기준이 바뀌지 않게 만드는 데 목�
 ### 3.3 정리
 
 - raw write와 framed write는 이름이 아니라 파라미터 overload로 구분한다.
-- 현재 `.NET zlink` binding이 가진 sync send/write 표면에 맞춰 아래처럼 두는 편이
-  자연스럽다.
+- 현재 framework session의 send/write 표면은 async submit으로 둔다. blocking
+  write를 task로 감싸지 않고, nonblocking write와 ready notification으로
+  backpressure를 처리해야 한다.
 
 ```csharp
-bool Write(
+ValueTask WriteAsync(
     Message payload,
-    SendFlags flags = SendFlags.None);
+    CancellationToken cancellationToken = default);
 
-bool Write(
+ValueTask WriteAsync(
     Message header,
     Message body,
-    SendFlags flags = SendFlags.None);
+    CancellationToken cancellationToken = default);
 ```
 
-- temporary backpressure일 때만 `false`를 돌려주고, 그 밖의 submit 실패는 예외로
+- temporary backpressure는 `false` 반환값으로 노출하지 않는다. write 대기 한계는
+  stream 또는 socket의 send timeout 정책을 따르고, 그 밖의 submit 실패는 예외로
   보는 쪽이 기본이다.
 
 ## 4. Monitor Event -> Session Lifecycle
@@ -129,7 +131,7 @@ bool Write(
   transport callback이 application 처리 시간이나 예외에 직접 묶이지 않게 하기 위한
   계약이다.
 - send queue와 backpressure는 하부 socket 동작을 따르되, application이 보는 계약은
-  `WithDontWait()` 또는 `Write(...)`의 `false` 반환으로만 읽히게 한다.
+  `WriteAsync(...)`의 비동기 완료, timeout, cancellation으로만 읽히게 한다.
 - `STREAM` session 등록은 attribute 기반으로 열지 않고 명시 등록만 지원한다.
 - serializer helper는 `Message.AsReadOnlySpan()` 기반으로 구현해서 불필요한 복사를
   줄이는 편을 기본으로 본다.

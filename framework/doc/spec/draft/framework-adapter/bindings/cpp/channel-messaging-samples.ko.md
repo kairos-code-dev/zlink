@@ -70,11 +70,11 @@ profile_client.connect("tcp://10.0.10.17:7101");
 ## 4. 일반 event publish
 
 ```cpp
-bool submitted = event_publisher.publish(
+event_publisher.publish(
   "profile",
   "profile.cache-refreshed",
   build_profile_cache_refreshed(account_id),
   send_options_t{
-    .dont_wait = true,
-  });
+    .packet_name = "profile.cache-refreshed",
+  }).get();
 ```

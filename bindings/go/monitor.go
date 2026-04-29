@@ -75,13 +75,18 @@ type MonitorSnapshot struct {
 	SndPendingMsgs                   uint64
 	RcvPendingMsgs                   uint64
 	AutoHwmEnabled                   bool
+	AutoHwmProfile                   uint32
 	AutoHwmRole                      uint32
+	AutoHwmPolicyClass               uint32
 	AutoHwmManagedConnections        uint32
 	AutoHwmActiveHwmConnections      uint32
 	AutoHwmObservedCount             uint32
 	AutoHwmPlanningCount             uint32
 	AutoHwmContextTotalPlanningCount uint32
 	AutoHwmBaseFloorPerConnection    uint32
+	AutoHwmUnitBudgetBytes           uint64
+	AutoHwmSizeCap                   uint32
+	AutoHwmEffectivePublishFanout    uint32
 	AutoHwmAppliedSndHwm             int32
 	AutoHwmAppliedRcvHwm             int32
 	AutoHwmRequestedSndBuf           int32
@@ -120,13 +125,18 @@ func monitorSnapshotFromC(raw C.zlink_monitor_snapshot_t) MonitorSnapshot {
 		SndPendingMsgs:                   uint64(raw.snd_pending_msgs),
 		RcvPendingMsgs:                   uint64(raw.rcv_pending_msgs),
 		AutoHwmEnabled:                   uint32(raw.auto_hwm_enabled) != 0,
+		AutoHwmProfile:                   uint32(raw.auto_hwm_profile),
 		AutoHwmRole:                      uint32(raw.auto_hwm_role),
+		AutoHwmPolicyClass:               uint32(raw.auto_hwm_policy_class),
 		AutoHwmManagedConnections:        uint32(raw.auto_hwm_managed_connections),
 		AutoHwmActiveHwmConnections:      uint32(raw.auto_hwm_active_hwm_connections),
 		AutoHwmObservedCount:             uint32(raw.auto_hwm_observed_count),
 		AutoHwmPlanningCount:             uint32(raw.auto_hwm_planning_count),
 		AutoHwmContextTotalPlanningCount: uint32(raw.auto_hwm_context_total_planning_count),
 		AutoHwmBaseFloorPerConnection:    uint32(raw.auto_hwm_base_floor_per_connection),
+		AutoHwmUnitBudgetBytes:           uint64(raw.auto_hwm_unit_budget_bytes),
+		AutoHwmSizeCap:                   uint32(raw.auto_hwm_size_cap),
+		AutoHwmEffectivePublishFanout:    uint32(raw.auto_hwm_effective_publish_fanout),
 		AutoHwmAppliedSndHwm:             int32(raw.auto_hwm_applied_sndhwm),
 		AutoHwmAppliedRcvHwm:             int32(raw.auto_hwm_applied_rcvhwm),
 		AutoHwmRequestedSndBuf:           int32(raw.auto_hwm_requested_sndbuf),

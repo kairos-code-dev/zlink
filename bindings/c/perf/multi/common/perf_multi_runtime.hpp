@@ -131,6 +131,23 @@ inline int bench_ctx_auto_hwm_total_memory_budget_mb()
     return static_cast<int>(parsed);
 }
 
+inline int bench_ctx_auto_hwm_profile()
+{
+    const char *value = std::getenv("PERF_CTX_AUTO_HWM_PROFILE");
+    if (!value || !*value)
+        return ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
+
+    if (std::strcmp(value, "low_latency") == 0
+        || std::strcmp(value, "low-latency") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY;
+    if (std::strcmp(value, "balanced") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_BALANCED;
+    if (std::strcmp(value, "throughput") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
+
+    return ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
+}
+
 inline bool perf_auto_hwm_detail_enabled()
 {
     const char *value =
@@ -152,6 +169,48 @@ inline const char *perf_auto_hwm_role_name(uint32_t role_)
             return "fanout";
         case 4:
             return "recv_ingress";
+        case 5:
+            return "spot_data";
+        case 6:
+            return "peer_queue";
+        case 7:
+            return "stream";
+        default:
+            return "none";
+    }
+}
+
+inline const char *perf_auto_hwm_profile_name(uint32_t profile_)
+{
+    switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+            return "low_latency";
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+            return "balanced";
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+            return "throughput";
+        default:
+            return "unknown";
+    }
+}
+
+inline const char *perf_auto_hwm_policy_class_name(uint32_t policy_class_)
+{
+    switch (policy_class_) {
+        case 1:
+            return "fanout";
+        case 2:
+            return "spot_data";
+        case 3:
+            return "recv_ingress";
+        case 4:
+            return "routed";
+        case 5:
+            return "peer_queue";
+        case 6:
+            return "stream";
+        case 7:
+            return "control";
         default:
             return "none";
     }
@@ -261,10 +320,10 @@ inline void perf_print_auto_hwm_snapshot_table(
 
     std::cout << title_ << ":" << std::endl;
     std::cout
-      << "  | Transport | Size(B) | MsgUnit(B) | Socket | Type | Role | Managed | Active | SNDHWM | RCVHWM | SNDBUF | RCVBUF |"
+      << "  | Transport | Size(B) | MsgUnit(B) | Socket | Type | Profile | Class | Role | Cap | Fanout | Managed | Active | SNDHWM | RCVHWM | SNDBUF | RCVBUF |"
       << std::endl;
     std::cout
-      << "  |-----------|---------|------------|--------|------|------|---------|--------|--------|--------|--------|--------|"
+      << "  |-----------|---------|------------|--------|------|---------|-------|------|-----|--------|---------|--------|--------|--------|--------|--------|"
       << std::endl;
     for (size_t i = 0; i < rows_.size(); ++i) {
         const zlink_monitor_snapshot_t &snapshot = rows_[i].snapshot;
@@ -273,7 +332,14 @@ inline void perf_print_auto_hwm_snapshot_table(
                   << " | " << snapshot.auto_hwm_effective_message_bytes
                   << " | " << rows_[i].socket_name
                   << " | " << perf_socket_type_name(rows_[i].socket_type)
+                  << " | "
+                  << perf_auto_hwm_profile_name(snapshot.auto_hwm_profile)
+                  << " | "
+                  << perf_auto_hwm_policy_class_name(
+                       snapshot.auto_hwm_policy_class)
                   << " | " << perf_auto_hwm_role_name(snapshot.auto_hwm_role)
+                  << " | " << snapshot.auto_hwm_size_cap
+                  << " | " << snapshot.auto_hwm_effective_publish_fanout
                   << " | " << snapshot.auto_hwm_managed_connections
                   << " | " << snapshot.auto_hwm_active_hwm_connections
                   << " | " << snapshot.auto_hwm_applied_sndhwm
@@ -314,6 +380,18 @@ inline void perf_emit_spot_node_auto_hwm_detail(
               << ",enabled=" << snapshot.auto_hwm_enabled
               << ",role=" << perf_auto_hwm_role_name(snapshot.auto_hwm_role)
               << ",role_id=" << snapshot.auto_hwm_role
+              << ",profile="
+              << perf_auto_hwm_profile_name(snapshot.auto_hwm_profile)
+              << ",profile_id=" << snapshot.auto_hwm_profile
+              << ",policy_class="
+              << perf_auto_hwm_policy_class_name(
+                   snapshot.auto_hwm_policy_class)
+              << ",policy_class_id=" << snapshot.auto_hwm_policy_class
+              << ",unit_budget_bytes="
+              << snapshot.auto_hwm_unit_budget_bytes
+              << ",size_cap=" << snapshot.auto_hwm_size_cap
+              << ",effective_publish_fanout="
+              << snapshot.auto_hwm_effective_publish_fanout
               << ",managed_connections="
               << snapshot.auto_hwm_managed_connections
               << ",active_connections="
@@ -507,6 +585,11 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
       + std::to_string(snapshot.auto_hwm_effective_rcvbuf) + "|"
       + std::to_string(snapshot.auto_hwm_scope) + "|"
       + std::to_string(snapshot.auto_hwm_scope_count) + "|"
+      + std::to_string(snapshot.auto_hwm_profile) + "|"
+      + std::to_string(snapshot.auto_hwm_policy_class) + "|"
+      + std::to_string(snapshot.auto_hwm_unit_budget_bytes) + "|"
+      + std::to_string(snapshot.auto_hwm_size_cap) + "|"
+      + std::to_string(snapshot.auto_hwm_effective_publish_fanout) + "|"
       + std::to_string(snapshot.auto_hwm_effective_message_bytes);
 
     {
@@ -529,6 +612,18 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << ",enabled=" << snapshot.auto_hwm_enabled
               << ",role=" << perf_auto_hwm_role_name(snapshot.auto_hwm_role)
               << ",role_id=" << snapshot.auto_hwm_role
+              << ",profile="
+              << perf_auto_hwm_profile_name(snapshot.auto_hwm_profile)
+              << ",profile_id=" << snapshot.auto_hwm_profile
+              << ",policy_class="
+              << perf_auto_hwm_policy_class_name(
+                   snapshot.auto_hwm_policy_class)
+              << ",policy_class_id=" << snapshot.auto_hwm_policy_class
+              << ",unit_budget_bytes="
+              << snapshot.auto_hwm_unit_budget_bytes
+              << ",size_cap=" << snapshot.auto_hwm_size_cap
+              << ",effective_publish_fanout="
+              << snapshot.auto_hwm_effective_publish_fanout
               << ",managed_connections="
               << snapshot.auto_hwm_managed_connections
               << ",active_connections="
@@ -620,6 +715,10 @@ inline void apply_ctx_options(void *ctx_)
                     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
                     bench_ctx_auto_hwm_total_memory_budget_mb(),
                     "ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB");
+    set_ctx_opt_int(ctx_,
+                    ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                    bench_ctx_auto_hwm_profile(),
+                    "ZLINK_CTX_OPT_AUTO_HWM_PROFILE");
 }
 
 class ctx_guard_t {

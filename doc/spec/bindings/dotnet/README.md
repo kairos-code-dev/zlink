@@ -146,11 +146,22 @@ public sealed class ContextOptions
     bool AutoHwmEnabled { get; set; }
     /// <exception cref="ZlinkConfigException"/>
     int AutoHwmTotalMemoryBudgetMb { get; set; }
+    /// <exception cref="ZlinkConfigException"/>
+    AutoHwmProfile AutoHwmProfile { get; set; }
 
     /// <exception cref="ZlinkConfigException"/>
     void AddThreadAffinityCpu(int cpu);
     /// <exception cref="ZlinkConfigException"/>
     void RemoveThreadAffinityCpu(int cpu);
+}
+```
+
+```csharp
+public enum AutoHwmProfile
+{
+    LowLatency = 1,
+    Balanced = 2,
+    Throughput = 3
 }
 ```
 
@@ -1411,13 +1422,18 @@ public sealed class MonitorSnapshot
     ulong SndPendingMsgs { get; }            // send-queue pending messages
     ulong RcvPendingMsgs { get; }            // recv-queue pending messages
     bool AutoHwmEnabled { get; }
+    uint AutoHwmProfile { get; }
     uint AutoHwmRole { get; }
+    uint AutoHwmPolicyClass { get; }
     uint AutoHwmManagedConnections { get; }
     uint AutoHwmActiveHwmConnections { get; }
     uint AutoHwmObservedCount { get; }
     uint AutoHwmPlanningCount { get; }
     uint AutoHwmContextTotalPlanningCount { get; }
     uint AutoHwmBaseFloorPerConnection { get; }
+    ulong AutoHwmUnitBudgetBytes { get; }
+    uint AutoHwmSizeCap { get; }
+    uint AutoHwmEffectivePublishFanout { get; }
     int AutoHwmAppliedSndHwm { get; }
     int AutoHwmAppliedRcvHwm { get; }
     int AutoHwmRequestedSndBuf { get; }

@@ -18,7 +18,9 @@
 - 개념 이름은 공통 정책과 맞춘다. 예를 들어 `send`, `request`, `publish`,
   `sendTo`, `requestTo`, `sendChannel`, `requestChannel` 같은 action 이름을
   유지한다.
-- blocking과 non-blocking을 `sendNoWait` 같은 별도 동사 이름으로 나누지 않는다.
+- send/publish는 기본 async submit으로 설명한다. backpressure는 별도 public
+  no-wait 옵션이 아니라 framework 내부의 nonblocking send, pending queue,
+  ready notification으로 처리한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
 
@@ -39,8 +41,8 @@ export interface ZLinkStream {
   localAddr?: string;
   remoteAddr?: string;
 
-  write(payload: Message, flags?: SendFlags): boolean;
-  writePacket(header: Message, body: Message, flags?: SendFlags): boolean;
+  write(payload: Message, flags?: SendFlags): Promise<void>;
+  writePacket(header: Message, body: Message, flags?: SendFlags): Promise<void>;
 }
 
 export enum ZLinkStreamSessionError {
@@ -72,7 +74,6 @@ export interface ZLinkRawStreamSession {
 
 export interface ZLinkSendOptions {
   packetName?: string;
-  dontWait?: boolean;
 }
 
 export interface ZLinkRequestOptions {

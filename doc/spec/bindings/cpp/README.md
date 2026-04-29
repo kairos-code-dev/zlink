@@ -155,6 +155,10 @@ class context_options_t {
     /// @throws config_error_t
     void autoHwmTotalMemoryBudgetMb(int value);
     /// @throws config_error_t
+    auto_hwm_profile autoHwmProfile() const;
+    /// @throws config_error_t
+    void autoHwmProfile(auto_hwm_profile profile);
+    /// @throws config_error_t
     int socketLimit() const;
     /// @throws config_error_t
     int msgTSize() const;
@@ -162,6 +166,14 @@ class context_options_t {
     void addThreadAffinity(int cpu);
     /// @throws config_error_t
     void removeThreadAffinity(int cpu);
+};
+```
+
+```cpp
+enum class auto_hwm_profile : int {
+    low_latency = ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY,
+    balanced = ZLINK_AUTO_HWM_PROFILE_BALANCED,
+    throughput = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT
 };
 ```
 
@@ -1055,13 +1067,18 @@ struct monitor_snapshot_t {
     uint64_t snd_pending_msgs;                // send-queue pending message count
     uint64_t rcv_pending_msgs;                // recv-queue pending message count
     bool auto_hwm_enabled;                    // automatic HWM currently active
+    uint32_t auto_hwm_profile_value;          // selected auto-HWM profile
     uint32_t auto_hwm_role;                   // diagnostic role bucket
+    uint32_t auto_hwm_policy_class;           // planner policy class
     uint32_t auto_hwm_managed_connections;    // connection count used for HWM planning
     uint32_t auto_hwm_active_hwm_connections; // connection count used to divide HWM slots
     uint32_t auto_hwm_observed_count;         // observed connection count
     uint32_t auto_hwm_planning_count;         // planning count used by the policy
     uint32_t auto_hwm_context_total_planning_count; // total planning count across the context
     uint32_t auto_hwm_base_floor_per_connection;      // role floor
+    uint64_t auto_hwm_unit_budget_bytes;
+    uint32_t auto_hwm_size_cap;
+    uint32_t auto_hwm_effective_publish_fanout;
     int32_t auto_hwm_applied_sndhwm;          // applied send HWM
     int32_t auto_hwm_applied_rcvhwm;          // applied recv HWM
     int32_t auto_hwm_requested_sndbuf;        // requested send buffer
@@ -1118,7 +1135,8 @@ enum class context_option : int {
     thread_name_prefix,
     blocky,
     auto_hwm_enable,
-    auto_hwm_total_memory_budget_mb
+    auto_hwm_total_memory_budget_mb,
+    auto_hwm_profile
 };
 
 enum class send_result_t : int {

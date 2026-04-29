@@ -77,8 +77,9 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
   `systems.zlink.stream.connector.unity`를 사용한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다. 같은 capability 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
-- send/publish는 기본 blocking submit으로 설명하고, optional non-blocking
-  변형이 필요해도 별도 동사 이름을 만들지 않는다.
+- send는 기본 async submit으로 설명한다. backpressure는 별도 public no-wait 옵션이
+  아니라 nonblocking send, pending queue, ready notification으로 framework 내부에서
+  처리한다.
 - `SPOT`을 지원하는 문서는 named spot factory 등록, `spotName` 기준 생성,
   `spotRid -> spotName` 조회, lifecycle timer, 외부 spot publish 표면을
   공통 정책과 맞춰 설명해야 한다.

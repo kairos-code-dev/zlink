@@ -84,7 +84,7 @@ int spot_runtime_t::create_attachment (int kind_,
     apply_spot_internal_auto_hwm (
       owner->_ctx, socket,
       kind_ == spot_attachment_pub
-        ? spot_internal_auto_hwm_policy_t{auto_hwm_role_fanout,
+        ? spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
                                           ZLINK_CORE_SOCKET_PUB,
                                           std::max<size_t> (
                                             next_local_sub_count
@@ -120,7 +120,7 @@ int spot_runtime_t::create_attachment (int kind_,
         relay_socket->set_auto_hwm_policy_enabled (false);
         apply_spot_internal_auto_hwm (
           owner->_ctx, relay_socket,
-          spot_internal_auto_hwm_policy_t{auto_hwm_role_fanout,
+          spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
                                           ZLINK_CORE_SOCKET_PUB,
                                           std::max<size_t> (
                                             next_local_sub_count, 1u),

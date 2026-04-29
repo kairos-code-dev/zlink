@@ -216,15 +216,15 @@ public sealed class SpotIntegrationTests
         {
             await RetryAsync(
                 async () =>
-                {
-                    publisher.Publish(
-                            "game.stage",
-                            "stage.external",
-                            new ExternalStageEvent("external"))
-                        .Sync();
-                    await Task.Yield();
-                    return recorder.ExternalEvents.Count;
-                },
+	                {
+	                    await publisher.Publish(
+	                            "game.stage",
+	                            "stage.external",
+	                            new ExternalStageEvent("external"))
+	                        .Async();
+	                    await Task.Yield();
+	                    return recorder.ExternalEvents.Count;
+	                },
                 count => count > 0,
                 TimeSpan.FromSeconds(10));
         }
@@ -362,13 +362,13 @@ public sealed class SpotIntegrationTests
         {
             await RetryAsync(
                 async () =>
-                {
-                    publisher.Publish(
-                            "game.stage",
-                            "stage.external",
-                            new ExternalStageEvent("raw"))
-                        .Sync();
-                    await Task.Yield();
+	                {
+	                    await publisher.Publish(
+	                            "game.stage",
+	                            "stage.external",
+	                            new ExternalStageEvent("raw"))
+	                        .Async();
+	                    await Task.Yield();
 
                     try
                     {
@@ -764,8 +764,7 @@ public sealed class SpotIntegrationTests
         {
             _events.RecordInitialized(Context.SpotRid, _scopeMarker.Id);
 
-            Assert.True(_spotClient.SendChannel("orders", new StageBootCommand(_scopeMarker.Id)).Sync());
-            await ValueTask.CompletedTask;
+            await _spotClient.SendChannel("orders", new StageBootCommand(_scopeMarker.Id)).Async(cancellationToken);
         }
 
         public ValueTask OnClosingAsync(CancellationToken cancellationToken)
@@ -1169,15 +1168,13 @@ public sealed class SpotIntegrationTests
         IZLinkSpotClient spotClient)
         : IZLinkSpotTimerHandler<PublishingStageSpot>
     {
-        public ValueTask HandleAsync(
+        public async ValueTask HandleAsync(
             PublishingStageSpot spot,
             CancellationToken cancellationToken)
         {
-            _ = cancellationToken;
             recorder.RecordTick();
-            Assert.True(
-                spotClient.Publish("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString())).Sync());
-            return ValueTask.CompletedTask;
+            await spotClient.Publish("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
+                .Async(cancellationToken);
         }
     }
 

@@ -89,6 +89,7 @@ zlink::ctx_t::ctx_t () :
     _auto_hwm_recalc_debounce_ms (ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT),
     _auto_hwm_stream_bootstrap (ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT),
     _auto_hwm_spot_bootstrap (ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT),
+    _auto_hwm_profile (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT),
     _auto_hwm_recalc_pending (false),
     _auto_hwm_last_change_ms (0),
     _auto_hwm_recalc_deadline_ms (0),
@@ -228,10 +229,12 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
 {
     bool enabled = false;
     int total_memory_budget_mb = ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT;
+    zlink_auto_hwm_profile_t profile = ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
     {
         scoped_lock_t locker (_opt_sync);
         enabled = _auto_hwm_enabled;
         total_memory_budget_mb = _auto_hwm_total_memory_budget_mb;
+        profile = _auto_hwm_profile;
     }
 
     scoped_lock_t runtime_lock (_slot_sync);
@@ -249,7 +252,7 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
 
     auto_hwm_context_plan_t context_plan;
     auto_hwm_context_plan_from_budget_mb (
-      enabled, total_memory_budget_mb, &context_plan);
+      enabled, total_memory_budget_mb, &context_plan, profile);
 
     std::vector<auto_hwm_socket_plan_t> plans;
     plans.reserve (sockets.size ());
@@ -312,6 +315,12 @@ int zlink::ctx_t::auto_hwm_spot_bootstrap () const
     return _auto_hwm_spot_bootstrap;
 }
 
+zlink_auto_hwm_profile_t zlink::ctx_t::auto_hwm_profile () const
+{
+    scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
+    return _auto_hwm_profile;
+}
+
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
 {
     if (!std::getenv ("ZLINK_CTX_DEBUG_SOCKETS"))
@@ -348,6 +357,11 @@ int zlink::ctx_t::terminate ()
         zlink_assert (_socket_registry.empty ());
     }
     _slot_sync.unlock ();
+
+    if (std::getenv ("ZLINK_CTX_DEBUG_SOCKETS")) {
+        std::fprintf (stderr, "[ctx] before-delete\n");
+        std::fflush (stderr);
+    }
 
     //  Context is API-created on heap; shutdown path owns final deletion once
     //  reaper confirms all sockets are gone.
@@ -442,6 +456,19 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             if (is_int && value >= 1) {
                 scoped_lock_t locker (_opt_sync);
                 _auto_hwm_spot_bootstrap = value;
+                refresh_auto_hwm = true;
+                break;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
+            if (is_int
+                && (value == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
+                    || value == ZLINK_AUTO_HWM_PROFILE_BALANCED
+                    || value == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT)) {
+                scoped_lock_t locker (_opt_sync);
+                _auto_hwm_profile =
+                  static_cast<zlink_auto_hwm_profile_t> (value);
                 refresh_auto_hwm = true;
                 break;
             }
@@ -559,6 +586,14 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _auto_hwm_spot_bootstrap;
+                return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _auto_hwm_profile;
                 return 0;
             }
             break;
@@ -842,6 +877,8 @@ int zlink::thread_ctx_t::get (int option_,
 void zlink::ctx_t::send_command (uint32_t tid_, const command_t &command_)
 {
     _socket_registry.mailbox (tid_)->send (command_);
+    if (tid_ == term_tid)
+        _term_mailbox.signal ();
 }
 
 zlink::io_thread_t *zlink::ctx_t::choose_io_thread (uint64_t affinity_)

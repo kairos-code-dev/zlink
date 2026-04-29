@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "zlink_enum.h"
+
 namespace zlink
 {
 enum auto_hwm_role_t
@@ -14,7 +16,22 @@ enum auto_hwm_role_t
     auto_hwm_role_control = 1,
     auto_hwm_role_routed = 2,
     auto_hwm_role_fanout = 3,
-    auto_hwm_role_recv_ingress = 4
+    auto_hwm_role_recv_ingress = 4,
+    auto_hwm_role_spot_data = 5,
+    auto_hwm_role_peer_queue = 6,
+    auto_hwm_role_stream = 7
+};
+
+enum auto_hwm_policy_class_t
+{
+    auto_hwm_policy_none = 0,
+    auto_hwm_policy_fanout = 1,
+    auto_hwm_policy_spot_data = 2,
+    auto_hwm_policy_recv_ingress = 3,
+    auto_hwm_policy_routed = 4,
+    auto_hwm_policy_peer_queue = 5,
+    auto_hwm_policy_stream = 6,
+    auto_hwm_policy_control = 7
 };
 
 enum auto_hwm_scope_t
@@ -29,6 +46,7 @@ struct auto_hwm_context_plan_t
     auto_hwm_context_plan_t ();
 
     bool enabled;
+    zlink_auto_hwm_profile_t profile;
     int total_memory_budget_mb;
     uint64_t total_memory_budget_bytes;
     uint64_t queue_budget_bytes;
@@ -43,6 +61,7 @@ struct auto_hwm_socket_plan_t
     auto_hwm_socket_plan_t ();
 
     auto_hwm_role_t role;
+    auto_hwm_policy_class_t policy_class;
     auto_hwm_scope_t scope;
     uint32_t scope_count;
     uint32_t observed_count;
@@ -57,6 +76,9 @@ struct auto_hwm_socket_plan_t
     uint32_t managed_connections;
     uint32_t active_hwm_connections;
     uint32_t base_floor_per_connection;
+    uint64_t unit_budget_bytes;
+    uint32_t size_cap;
+    uint32_t effective_publish_fanout;
     uint64_t pending_messages;
     int sndhwm;
     int rcvhwm;
@@ -67,9 +89,14 @@ struct auto_hwm_socket_plan_t
 };
 
 auto_hwm_role_t auto_hwm_default_role_for_socket_type (int socket_type_);
+auto_hwm_policy_class_t auto_hwm_policy_class_for_role (
+  auto_hwm_role_t role_,
+  int socket_type_);
 void auto_hwm_context_plan_from_budget_mb (bool enabled_,
                                            int total_memory_budget_mb_,
-                                           auto_hwm_context_plan_t *out_);
+                                           auto_hwm_context_plan_t *out_,
+                                           zlink_auto_hwm_profile_t profile_ =
+                                             ZLINK_AUTO_HWM_PROFILE_BALANCED);
 void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    int socket_type_,
                                    size_t managed_connections_,

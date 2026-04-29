@@ -18,7 +18,9 @@
 - 개념 이름은 공통 정책과 맞춘다. 예를 들어 `send`, `request`, `publish`,
   `send_to`, `request_to`, `send_channel`, `request_channel` 같은 action 이름을
   유지한다.
-- blocking과 non-blocking을 `send_no_wait` 같은 별도 동사 이름으로 나누지 않는다.
+- send/publish는 기본 async submit으로 설명한다. backpressure는 별도 public
+  no-wait 옵션이 아니라 framework 내부의 nonblocking send, pending queue,
+  ready notification으로 처리한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
 
@@ -28,7 +30,6 @@
 @dataclass(slots=True)
 class ZLinkSendOptions:
     packet_name: str | None = None
-    dont_wait: bool = False
 
 
 @dataclass(slots=True)
@@ -141,18 +142,18 @@ class ZLinkStream:
     local_addr: str | None = None
     remote_addr: str | None = None
 
-    def write(
+    async def write(
         self,
         payload: Message,
         flags: SendFlags = SendFlags.NONE,
-    ) -> bool: ...
+    ) -> None: ...
 
-    def write_packet(
+    async def write_packet(
         self,
         header: Message,
         body: Message,
         flags: SendFlags = SendFlags.NONE,
-    ) -> bool: ...
+    ) -> None: ...
 
 
 class ZLinkStreamSessionError(StrEnum):
@@ -312,7 +313,7 @@ class ZLinkClient(Protocol):
         channel_name: str,
         message: object,
         options: ZLinkSendOptions | None = None,
-    ) -> bool: ...
+    ) -> None: ...
 
     async def request(
         self,
@@ -328,7 +329,7 @@ class ZLinkSpotClient(Protocol):
         channel_name: str,
         message: object,
         options: ZLinkSendOptions | None = None,
-    ) -> bool: ...
+    ) -> None: ...
 
     async def request_channel(
         self,
@@ -343,7 +344,7 @@ class ZLinkSpotClient(Protocol):
         spot_rid: str,
         message: object,
         options: ZLinkSendOptions | None = None,
-    ) -> bool: ...
+    ) -> None: ...
 
     async def request_to(
         self,
@@ -358,7 +359,7 @@ class ZLinkSpotClient(Protocol):
         topic: str,
         message: object,
         options: ZLinkSendOptions | None = None,
-    ) -> bool: ...
+    ) -> None: ...
 
 
 class ZLinkSpotPublisherClient(Protocol):
@@ -368,7 +369,7 @@ class ZLinkSpotPublisherClient(Protocol):
         topic: str,
         message: object,
         options: ZLinkSendOptions | None = None,
-    ) -> bool: ...
+    ) -> None: ...
 
 
 class ZLinkEventPublisher(Protocol):
@@ -378,7 +379,7 @@ class ZLinkEventPublisher(Protocol):
         topic: str,
         message: object,
         options: ZLinkSendOptions | None = None,
-    ) -> bool: ...
+    ) -> None: ...
 
 
 @dataclass(slots=True)

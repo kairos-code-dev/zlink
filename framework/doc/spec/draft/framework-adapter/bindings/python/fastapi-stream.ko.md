@@ -16,11 +16,11 @@ recv loop를 application 표면에 직접 올리지 않는 편을 기본으로 �
 
 ```python
 class ZLinkStream(Protocol):
-    def write(
+    async def write(
         self,
         payload: Message,
         flags: SendFlags = SendFlags.NONE,
-    ) -> bool: ...
+    ) -> None: ...
 
 
 class ZLinkPacketStreamSession(Protocol):

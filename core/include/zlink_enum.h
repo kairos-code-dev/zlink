@@ -23,8 +23,16 @@ typedef enum zlink_ctx_option_t
     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13,
     ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
     ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP = 15,
-    ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP = 16
+    ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP = 16,
+    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17
 } zlink_ctx_option_t;
+
+typedef enum zlink_auto_hwm_profile_t
+{
+    ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
+    ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
+    ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3
+} zlink_auto_hwm_profile_t;
 
 typedef enum zlink_socket_type_t
 {

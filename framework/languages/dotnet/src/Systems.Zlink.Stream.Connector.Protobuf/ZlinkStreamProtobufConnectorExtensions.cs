@@ -61,9 +61,9 @@ public sealed class ZlinkStreamProtobufSendBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamProtobufSendBuilder WithMessageName(string name)
+    public ZlinkStreamProtobufSendBuilder WithPacketName(string name)
     {
-        _inner.WithMessageName(name);
+        _inner.WithPacketName(name);
         return this;
     }
 
@@ -91,8 +91,8 @@ public sealed class ZlinkStreamProtobufSendBuilder
         return this;
     }
 
-    public void Exec(CancellationToken cancellationToken = default)
-        => _inner.Exec(cancellationToken);
+    public ValueTask Async(CancellationToken cancellationToken = default)
+        => _inner.Async(cancellationToken);
 }
 
 public sealed class ZlinkStreamProtobufRequestBuilder
@@ -104,9 +104,9 @@ public sealed class ZlinkStreamProtobufRequestBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamProtobufRequestBuilder WithMessageName(string name)
+    public ZlinkStreamProtobufRequestBuilder WithPacketName(string name)
     {
-        _inner.WithMessageName(name);
+        _inner.WithPacketName(name);
         return this;
     }
 
@@ -134,21 +134,21 @@ public sealed class ZlinkStreamProtobufRequestBuilder
         return this;
     }
 
-    public async ValueTask<TReply> ExecAsync<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         where TReply : IMessage<TReply>, new()
     {
-        var reply = await _inner.ExecAsync(cancellationToken).ConfigureAwait(false);
+        var reply = await _inner.Async(cancellationToken).ConfigureAwait(false);
         return reply.FromProto<TReply>();
     }
 
-    public void Exec(Action<ZlinkStreamResult> callback)
-        => _inner.Exec(callback);
+    public void Async(Action<ZlinkStreamResult> callback)
+        => _inner.Async(callback);
 
-    public void Exec<TReply>(Action<ZlinkStreamResult<TReply>> callback)
+    public void Async<TReply>(Action<ZlinkStreamResult<TReply>> callback)
         where TReply : IMessage<TReply>, new()
     {
         ArgumentNullException.ThrowIfNull(callback);
-        _inner.Exec(result =>
+        _inner.Async(result =>
         {
             if (!result.IsSuccess)
             {

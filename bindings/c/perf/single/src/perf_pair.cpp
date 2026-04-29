@@ -76,7 +76,7 @@ void run_pair (const std::string &transport,
                   return perf_single_one_way::send_step_fatal;
               }
               return perf_single_one_way::send_socket_active_message (
-                sender, &part, ZLINK_SEND_FLAGS_NONE, false);
+                sender, &part, ZLINK_DONTWAIT, true);
           },
           [] (void *socket,
               size_t expected_size,

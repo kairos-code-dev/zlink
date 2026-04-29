@@ -146,6 +146,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     int auto_hwm_recalculate_now ();
     int auto_hwm_stream_bootstrap () const;
     int auto_hwm_spot_bootstrap () const;
+    zlink_auto_hwm_profile_t auto_hwm_profile () const;
 
   private:
     friend class ctx_bootstrap_t;
@@ -201,6 +202,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     int _auto_hwm_recalc_debounce_ms;
     int _auto_hwm_stream_bootstrap;
     int _auto_hwm_spot_bootstrap;
+    zlink_auto_hwm_profile_t _auto_hwm_profile;
     bool _auto_hwm_recalc_pending;
     uint64_t _auto_hwm_last_change_ms;
     uint64_t _auto_hwm_recalc_deadline_ms;

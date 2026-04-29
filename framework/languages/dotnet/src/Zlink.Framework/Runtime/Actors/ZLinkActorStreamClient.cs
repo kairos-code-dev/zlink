@@ -40,7 +40,7 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
         return this;
     }
 
-    public ZLinkActorStreamCallBase<TMessage> WithMessageName(string messageName)
+    public ZLinkActorStreamCallBase<TMessage> WithPacketName(string messageName)
     {
         if (string.IsNullOrWhiteSpace(messageName))
         {
@@ -115,8 +115,8 @@ internal sealed class ZLinkActorSendCall<TMessage>(
     IZLinkActorSendCall IZLinkActorSendCall.WithMetadata(string key, string value)
         => (IZLinkActorSendCall)WithMetadata(key, value);
 
-    IZLinkActorSendCall IZLinkActorSendCall.WithMessageName(string messageName)
-        => (IZLinkActorSendCall)WithMessageName(messageName);
+    IZLinkActorSendCall IZLinkActorSendCall.WithPacketName(string messageName)
+        => (IZLinkActorSendCall)WithPacketName(messageName);
 
     IZLinkActorSendCall IZLinkActorSendCall.Compress()
         => (IZLinkActorSendCall)Compress();

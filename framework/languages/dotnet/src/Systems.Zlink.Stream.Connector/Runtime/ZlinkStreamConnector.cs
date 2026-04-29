@@ -200,19 +200,6 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         return _typedHandlers.Add(name, handler);
     }
 
-    internal void SendEncoded(
-        ZlinkStreamMessageKind kind,
-        string name,
-        ZlinkStreamEncodedBody body,
-        ZlinkStreamMetadata metadata,
-        bool compress,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var frame = BuildOutboundFrame(kind, name, body, metadata, compress, null);
-        QueueSend(frame.HeaderBytes, frame.BodyBytes, timeout, cancellationToken);
-    }
-
     internal async ValueTask SendEncodedAsync(
         ZlinkStreamMessageKind kind,
         string name,
@@ -430,31 +417,6 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
                     ex), cancellationToken).ConfigureAwait(false);
             }
         }
-    }
-
-    private void QueueSend(
-        ReadOnlyMemory<byte> header,
-        ReadOnlyMemory<byte> body,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        ValidateSendReady(header, body);
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeoutCts.CancelAfter(timeout);
-                await SendPacketAsync(header, body, timeoutCts.Token).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                var error = ex is ZlinkStreamException streamException
-                    ? streamException.Error
-                    : new ZlinkStreamError(ZlinkStreamErrorCode.SendFailed, "Send failed.", ex);
-                await PublishErrorAsync(error, CancellationToken.None).ConfigureAwait(false);
-            }
-        });
     }
 
     private void ValidateSendReady(ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> body)

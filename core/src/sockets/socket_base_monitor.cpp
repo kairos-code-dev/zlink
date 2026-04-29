@@ -50,7 +50,11 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
         }
     }
     out_->auto_hwm_enabled = _auto_hwm_context_plan.enabled ? 1u : 0u;
+    out_->auto_hwm_profile =
+      static_cast<uint32_t> (_auto_hwm_context_plan.profile);
     out_->auto_hwm_role = static_cast<uint32_t> (_auto_hwm_socket_plan.role);
+    out_->auto_hwm_policy_class =
+      static_cast<uint32_t> (_auto_hwm_socket_plan.policy_class);
     out_->auto_hwm_managed_connections =
       _auto_hwm_socket_plan.managed_connections;
     out_->auto_hwm_active_hwm_connections =
@@ -61,6 +65,11 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
       _auto_hwm_socket_plan.context_total_planning_count;
     out_->auto_hwm_base_floor_per_connection =
       _auto_hwm_socket_plan.base_floor_per_connection;
+    out_->auto_hwm_unit_budget_bytes =
+      _auto_hwm_socket_plan.unit_budget_bytes;
+    out_->auto_hwm_size_cap = _auto_hwm_socket_plan.size_cap;
+    out_->auto_hwm_effective_publish_fanout =
+      _auto_hwm_socket_plan.effective_publish_fanout;
     out_->auto_hwm_applied_sndhwm = options.sndhwm;
     out_->auto_hwm_applied_rcvhwm = options.rcvhwm;
     out_->auto_hwm_requested_sndbuf =

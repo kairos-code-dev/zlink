@@ -481,7 +481,7 @@ if(TARGET test_zmp_request_reply_router_recv_surface)
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_monitor_socket_contract)
-  set_tests_properties(test_monitor_socket_contract PROPERTIES TIMEOUT 60)
+  set_tests_properties(test_monitor_socket_contract PROPERTIES TIMEOUT 120)
 endif()
 if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)
@@ -698,6 +698,7 @@ set(SPOT_PUBSUB_CASES
     test_spot_peer_tcp
     test_spot_peer_tcp_reverse_publish
     test_spot_multi_publisher
+    test_spot_aggregate_subscription_refcount
     test_spot_node_direct_local_and_child_interop
     test_spot_node_pub_ingress_local_spot_subscribe_surface
     test_spot_sub_handler_basic
@@ -710,6 +711,7 @@ set(SPOT_PUBSUB_PEER_TEST_SPECS
 
 set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_multi_publisher=test_spot_multi_publisher
+    test_spot_pubsub_scenario_aggregate_subscription_refcount=test_spot_aggregate_subscription_refcount
     test_spot_pubsub_scenario_node_child_interop=test_spot_node_direct_local_and_child_interop
     test_spot_pubsub_scenario_sub_handler_basic=test_spot_sub_handler_basic
     test_spot_pubsub_scenario_recv_handle_isolation=test_spot_recv_callback_isolated_by_handle

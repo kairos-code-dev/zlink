@@ -2,13 +2,54 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use crate::error::{
-    CloseError, ConfigError, check_close_rc, check_config_rc, config_validation_error,
+    CloseError, ConfigError, ConfigResult, check_close_rc, check_config_rc,
+    config_validation_error,
 };
 use crate::ffi;
 use crate::socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
     XSubSocket,
 };
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum AutoHwmProfile {
+    LowLatency,
+    Balanced,
+    Throughput,
+}
+
+impl AutoHwmProfile {
+    fn to_raw(self) -> i32 {
+        match self {
+            AutoHwmProfile::LowLatency => {
+                ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY as i32
+            }
+            AutoHwmProfile::Balanced => {
+                ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_BALANCED as i32
+            }
+            AutoHwmProfile::Throughput => {
+                ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_THROUGHPUT as i32
+            }
+        }
+    }
+
+    fn from_raw(raw: i32) -> Result<Self, ConfigError> {
+        match raw {
+            x if x
+                == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY as i32 =>
+            {
+                Ok(AutoHwmProfile::LowLatency)
+            }
+            x if x == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_BALANCED as i32 => {
+                Ok(AutoHwmProfile::Balanced)
+            }
+            x if x == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_THROUGHPUT as i32 => {
+                Ok(AutoHwmProfile::Throughput)
+            }
+            _ => Err(config_validation_error()),
+        }
+    }
+}
 
 /// The zlink context – foundation for creating sockets.
 ///
@@ -56,12 +97,19 @@ impl Context {
     }
 
     pub(crate) fn get_int_option(&self, option: i32) -> Result<i32, ConfigError> {
-        let value = unsafe { ffi::zlink_ctx_get(self.handle, raw_option(option)) };
-        if value == -1 {
-            Err(ConfigError::new(
-                crate::error::ConfigResult::InvalidHandle,
-                crate::error::last_errno(),
-            ))
+        let mut result = ffi::zlink_config_result_t::ZLINK_CONFIG_OK;
+        let value = unsafe { ffi::zlink_ctx_get(self.handle, raw_option(option), &mut result) };
+        if result != ffi::zlink_config_result_t::ZLINK_CONFIG_OK {
+            let code = match result {
+                ffi::zlink_config_result_t::ZLINK_CONFIG_INVALID_HANDLE => {
+                    ConfigResult::InvalidHandle
+                }
+                ffi::zlink_config_result_t::ZLINK_CONFIG_NOT_SUPPORTED => {
+                    ConfigResult::NotSupported
+                }
+                _ => ConfigResult::InvalidArgument,
+            };
+            Err(ConfigError::new(code, crate::error::last_errno()))
         } else {
             Ok(value)
         }
@@ -186,6 +234,20 @@ impl ContextOptions<'_> {
         self.context.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_BLOCKY as i32,
             if blocky { 1 } else { 0 },
+        )
+    }
+
+    pub fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError> {
+        AutoHwmProfile::from_raw(
+            self.context
+                .get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_PROFILE as i32)?,
+        )
+    }
+
+    pub fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError> {
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_PROFILE as i32,
+            profile.to_raw(),
         )
     }
 

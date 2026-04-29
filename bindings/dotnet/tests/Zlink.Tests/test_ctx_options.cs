@@ -16,6 +16,9 @@ public sealed class test_ctx_options
 
         int maxSockets = ctx.Options.MaxSockets;
         Assert.True(maxSockets > 0);
+
+        ctx.Options.AutoHwmProfile = AutoHwmProfile.Throughput;
+        Assert.Equal(AutoHwmProfile.Throughput, ctx.Options.AutoHwmProfile);
     }
 
     [Fact]

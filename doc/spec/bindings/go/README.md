@@ -105,8 +105,20 @@ func (o *ContextOptions) SetAutoHwmEnabled(value bool) error
 func (o *ContextOptions) AutoHwmEnabled() (bool, error)
 func (o *ContextOptions) SetAutoHwmTotalMemoryBudgetMb(value int) error
 func (o *ContextOptions) AutoHwmTotalMemoryBudgetMb() (int, error)
+func (o *ContextOptions) SetAutoHwmProfile(value AutoHwmProfile) error
+func (o *ContextOptions) AutoHwmProfile() (AutoHwmProfile, error)
 func (o *ContextOptions) AddThreadAffinity(cpu int) error
 func (o *ContextOptions) RemoveThreadAffinity(cpu int) error
+```
+
+```go
+type AutoHwmProfile int
+
+const (
+    AutoHwmProfileLowLatency AutoHwmProfile = 1
+    AutoHwmProfileBalanced   AutoHwmProfile = 2
+    AutoHwmProfileThroughput AutoHwmProfile = 3
+)
 ```
 
 ### Version
@@ -976,13 +988,18 @@ type MonitorSnapshot struct {
     SndPendingMsgs                      uint64
     RcvPendingMsgs                      uint64
     AutoHwmEnabled                      bool
+    AutoHwmProfile                      uint32
     AutoHwmRole                         uint32
+    AutoHwmPolicyClass                  uint32
     AutoHwmManagedConnections           uint32
     AutoHwmActiveHwmConnections         uint32
     AutoHwmObservedCount                uint32
     AutoHwmPlanningCount                uint32
     AutoHwmContextTotalPlanningCount    uint32
     AutoHwmBaseFloorPerConnection       uint32
+    AutoHwmUnitBudgetBytes              uint64
+    AutoHwmSizeCap                      uint32
+    AutoHwmEffectivePublishFanout       uint32
     AutoHwmAppliedSndHwm                int32
     AutoHwmAppliedRcvHwm                int32
     AutoHwmRequestedSndBuf              int32

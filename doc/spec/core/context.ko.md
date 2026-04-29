@@ -30,6 +30,16 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS 14
 #define ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP 15
 #define ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP 16
+#define ZLINK_CTX_OPT_AUTO_HWM_PROFILE 17
+```
+
+```c
+typedef enum zlink_auto_hwm_profile_t
+{
+    ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
+    ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
+    ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3
+} zlink_auto_hwm_profile_t;
 ```
 
 | 상수 | 값 | 설명 |
@@ -51,6 +61,7 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 디바운스 시간 (ms, `>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP` | 15 | 관리 대상 STREAM 소켓이 아직 실제 연결을 보지 못했을 때 계획 수로 쓰는 bootstrap 값 (`>= 1`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 16 | 관리 대상 SPOT pub/sub 소켓이 아직 실제 연결을 보지 못했을 때 계획 수로 쓰는 bootstrap 값 (`>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | 자동 HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). 알 수 없는 값은 `EINVAL`로 실패 |
 
 ## 기본값
 
@@ -62,6 +73,10 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
+#define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
+#define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 5000
+#define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 500
+#define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
 ```
 
 | 상수 | 값 | 설명 |
@@ -73,6 +88,10 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | 기본 Spot worker 수 (`0` = 자동) |
 | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책 기본 활성 |
 | `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 128 | 자동 HWM 정책의 기본 context 총 메모리 예산 (MB) |
+| `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | 자동 HWM 재계산 기본 디바운스 시간 (ms) |
+| `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 5000 | STREAM 실제 연결 관찰 전 기본 계획 수 |
+| `ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT` | 500 | SPOT bootstrap 기본값이며 publish fanout limit으로도 재사용 |
+| `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 기본 profile |
 
 ## 함수
 
@@ -171,8 +190,11 @@ runtime이 시작된 뒤 이 값을 바꾸려 하면 `ZLINK_CONFIG_INVALID_ARGUM
 주지 않은 소켓만 자동 정책으로 다시 계산합니다.
 `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS`,
 `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP`,
-`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`는 다음 재계산부터 쓰는 계획 정책을
-바꾸며, runtime 중에도 안전하게 조정할 수 있습니다.
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`,
+`ZLINK_CTX_OPT_AUTO_HWM_PROFILE`는 다음 재계산부터 쓰는 계획 정책을
+바꾸며, runtime 중에도 안전하게 조정할 수 있습니다. profile은 자동 HWM
+planner가 쓰는 연결당 단위 예산과 size cap을 고르며, 별도 공개
+publish-fanout 옵션은 추가하지 않습니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 

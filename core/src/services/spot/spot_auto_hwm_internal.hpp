@@ -38,7 +38,8 @@ inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
       ctx_ && ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0,
       ctx_ ? ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB)
            : ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT,
-      &context_plan);
+      &context_plan,
+      ctx_ ? ctx_->auto_hwm_profile () : ZLINK_CTX_AUTO_HWM_PROFILE_DFLT);
 
     auto_hwm_socket_plan_t socket_plan;
     const auto_hwm_scope_t scope =

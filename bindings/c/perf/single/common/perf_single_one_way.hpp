@@ -143,7 +143,9 @@ inline send_step_t send_socket_active_message (void *sender_,
 
     const int err = zlink_errno ();
     zlink_msg_close (part_);
-    if (err == EINTR || (retry_on_eagain_ && err == EAGAIN))
+    if (err == EINTR
+        || (retry_on_eagain_
+            && (err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT)))
         return send_step_retry;
     return send_step_fatal;
 }

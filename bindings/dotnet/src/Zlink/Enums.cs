@@ -28,7 +28,15 @@ internal enum ContextOption
     ThreadAffinityCpuAdd = 7,
     ThreadAffinityCpuRemove = 8,
     ThreadNamePrefix = 9,
-    Blocky = 10
+    Blocky = 10,
+    AutoHwmProfile = 17
+}
+
+public enum AutoHwmProfile
+{
+    LowLatency = 1,
+    Balanced = 2,
+    Throughput = 3
 }
 
 internal enum SocketOption

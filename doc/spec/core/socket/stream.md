@@ -22,12 +22,12 @@ mutually exclusive.
 
 ## Automatic HWM defaults
 
-STREAM is classified as the `routed` role by the context automatic HWM
-policy. With the default context settings, `SNDHWM` / `RCVHWM` start from
-floor `8`. `SNDBUF` / `RCVBUF` are calculated from the same context budget
-using STREAM transport planning connections. If automatic HWM is disabled
-and the application still leaves `SNDBUF` / `RCVBUF` unset, STREAM falls
-back to the compatibility default `262144`.
+STREAM is classified as the `stream` policy class by the context automatic HWM
+policy. The active auto-HWM profile selects the unit budget and message-size
+cap; the default profile is `balanced`. `SNDBUF` / `RCVBUF` are calculated
+from the same context budget using STREAM transport planning connections. If
+automatic HWM is disabled and the application still leaves `SNDBUF` / `RCVBUF`
+unset, STREAM falls back to the compatibility default `262144`.
 
 ## Stream Options (`zlink_stream_option_t`)
 

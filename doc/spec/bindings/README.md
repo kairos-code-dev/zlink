@@ -218,6 +218,12 @@ public shape를 기준으로 고정한다.
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer plane 의
   canonical readable notification surface 이다.
+- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 은 모든 바인딩에서 typed context option 으로
+  노출해야 한다. 값은 low latency, balanced, throughput 세 profile 이며 기본값은
+  balanced 이다.
+- `MonitorSnapshot` 은 core `zlink_monitor_snapshot_t` 의 auto-HWM v2 진단 필드를
+  빠뜨리지 않고 노출해야 한다. profile, policy class, unit budget, size cap,
+  effective publish fanout 은 public snapshot 계약에 포함된다.
 - SPOT node option 이름은 core 공개 enum을 그대로 따른다. topic send/recv라는
   이름은 더 이상 쓰지 않고, publish 축은 `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
   subscribe 축은 `ZLINK_SPOT_NODE_OPT_SUB_HWM`으로 노출한다.

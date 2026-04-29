@@ -124,6 +124,7 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 5000
 #define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 500
+#define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
 #define ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT 100
 #define ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT 100
 
@@ -894,13 +895,18 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
     uint32_t auto_hwm_enabled;
+    uint32_t auto_hwm_profile;
     uint32_t auto_hwm_role;
+    uint32_t auto_hwm_policy_class;
     uint32_t auto_hwm_managed_connections;
     uint32_t auto_hwm_active_hwm_connections;
     uint32_t auto_hwm_observed_count;
     uint32_t auto_hwm_planning_count;
     uint32_t auto_hwm_context_total_planning_count;
     uint32_t auto_hwm_base_floor_per_connection;
+    uint64_t auto_hwm_unit_budget_bytes;
+    uint32_t auto_hwm_size_cap;
+    uint32_t auto_hwm_effective_publish_fanout;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
     int32_t auto_hwm_requested_sndbuf;

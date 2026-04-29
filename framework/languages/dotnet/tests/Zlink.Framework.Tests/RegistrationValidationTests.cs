@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Headers;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
@@ -304,27 +304,25 @@ public sealed class RegistrationValidationTests
         }
     }
 
-    private sealed class TestHeaderSession : IZLinkStreamHeaderSession
+    private sealed class TestHeaderSession : IZLinkSession
     {
-        public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public IZLinkSessionContext Context { get; set; } = default!;
 
-        public ValueTask OnDisconnectedAsync(IZLinkStream stream, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
-        public ValueTask OnErrorAsync(IZLinkStream stream, ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
         public ValueTask OnDispatchAsync(
-            IZLinkStream stream,
             ZlinkStreamHeader header,
             global::Zlink.Message body,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
-    private sealed class TestSpot : ZLinkSpot
+    private sealed class TestSpot(IZLinkSpotContext context) : IZLinkSpot
     {
-        public TestSpot()
-            : base(default, default)
-        {
-        }
+        public IZLinkSpotContext Context { get; } = context;
     }
 
     private sealed class TestActorFactory;

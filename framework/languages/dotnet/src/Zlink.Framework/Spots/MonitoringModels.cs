@@ -39,7 +39,7 @@ public enum ZLinkSpotRole
 public sealed record ZLinkSpotNodeStatus(
     string ServiceName,
     string LocalEndpoint,
-    global::Zlink.RoutingId? NodeRoutingId,
+    RoutingId? NodeRoutingId,
     ZLinkSpotNodeState State,
     uint ConfiguredPeerCount,
     uint ActivePeerCount,

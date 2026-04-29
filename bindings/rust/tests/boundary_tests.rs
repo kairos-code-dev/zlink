@@ -32,6 +32,27 @@ fn routing_id_one_byte_accepted() {
 }
 
 #[test]
+fn routing_id_from_string_parses_hex() {
+    let rid = RoutingId::from_bytes(&[0x00, 0x41, 0x42]);
+    assert_eq!(RoutingId::from_string("004142"), rid);
+    assert_eq!(RoutingId::try_from_string("004142").unwrap(), rid);
+    assert_eq!(rid.to_string(), "004142");
+    assert_eq!(
+        RoutingId::try_from_string(&"a".repeat(510)).unwrap().size(),
+        255
+    );
+    let result = std::panic::catch_unwind(|| RoutingId::from_string("not-hex"));
+    assert!(result.is_err(), "invalid hex routing id string must fail");
+    let oversized = "a".repeat(512);
+    let result = std::panic::catch_unwind(|| RoutingId::from_string(&oversized));
+    assert!(result.is_err(), "oversized hex routing id string must fail");
+    assert!(
+        RoutingId::try_from_string(&oversized).is_err(),
+        "oversized hex routing id string must return ConfigError"
+    );
+}
+
+#[test]
 fn duration_overflow_fails() {
     // Duration larger than i32::MAX milliseconds
     let huge = Duration::from_millis(i32::MAX as u64 + 1);

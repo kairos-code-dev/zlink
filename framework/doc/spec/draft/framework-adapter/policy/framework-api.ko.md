@@ -38,6 +38,11 @@
 - `stream` callback은 write와 peer 식별을 함께 가진 stream 객체를 받고,
   session error는 error kind enum과 native detail을 함께 가진 구조화된 값으로
   받는 편이 자연스럽다.
+- `stream` session callback은 transport callback 안에서 직접 호출하지 않는다.
+  framework는 callback을 managed task 또는 해당 언어의 동등한 비동기 실행 단위로
+  넘긴 뒤 application callback을 호출한다.
+- 같은 stream session의 callback은 직렬로 실행한다. packet dispatch와 lifecycle
+  callback이 같은 session 안에서 서로 병렬로 겹치면 안 된다.
 
 ### 2.2 클라이언트 쪽
 
@@ -174,6 +179,19 @@ async 호출로 설명하는 편이 맞다.
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.
 - local spot이 없는 외부 노드용 publish 표면은 별도 client로 분리할 수 있다.
+- actor/session 모델을 지원하는 binding에서는 actor가 `Spot`에 attach된 뒤의
+  actor dispatch를 반드시 해당 `Spot` 실행 문맥에서 처리한다. stream session은
+  ingress 역할을 하고, room/stage 같은 domain 상태를 만지는 코드는 `Spot` 실행
+  문맥으로 들어가야 한다.
+- actor join으로 현재 `Spot`이 바뀌면, join 완료 뒤의 actor dispatch는 새 `Spot`
+  실행 문맥에서 처리되어야 한다. framework는 join 상태 갱신과 packet dispatch
+  선택 사이의 경합을 막아야 한다.
+- actor 코드는 `IZLinkClient`나 `IZLinkSpotClient`를 직접 고르지 않고,
+  actor context를 통해 channel request/send와 client stream reply/send를 수행한다.
+  context는 join 전에는 일반 channel client 경로를, join 후에는 현재 `Spot`에
+  attach된 channel client 경로를 선택한다.
+- actor context는 stream 객체를 직접 노출하지 않고, client로 보내는 `Send(...)`와
+  request에 응답하는 `Reply(...)` 같은 의도 중심 API를 제공한다.
 
 자세한 contract와 샘플은
 [../bindings/dotnet/aspnet-core-spot.ko.md](../bindings/dotnet/aspnet-core-spot.ko.md)

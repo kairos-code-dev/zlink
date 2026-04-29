@@ -5,7 +5,7 @@
 # Draft -- ZLink Framework .NET STREAM Samples
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `.NET`에서 `STREAM` packet session과 raw session을
+> 현재 공개 계약이 아니며, `.NET`에서 `STREAM` header session과 header session을
 > 실제 코드 흐름으로 보기 위한 샘플 문서다.
 
 ## 1. 이 문서의 목적
@@ -14,8 +14,8 @@
 session 표면이 섞이면 읽기 어려워진다. 이 문서는 framework 초안 기준으로 아래 두
 가지만 보여 준다.
 
-1. packet session
-2. raw session
+1. header session
+2. header session
 
 recv 방식은 이 샘플 문서에 넣지 않는다.
 
@@ -55,71 +55,56 @@ public readonly record struct ZLinkStreamDiagnostic(
     int NativeCode,
     string? Message);
 
-public interface IZLinkPacketStreamSession
+public interface IZLinkSession
 {
-    ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    IZLinkSessionContext Context { get; set; }
 
-    ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    ValueTask OnConnectedAsync(CancellationToken cancellationToken);
+
+    ValueTask OnDisconnectedAsync(CancellationToken cancellationToken);
 
     ValueTask OnErrorAsync(
-        IZLinkStream stream,
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        IZLinkStream stream,
-        Message header,
-        Message body,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkStreamHeaderSession
-{
-    ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
-
-    ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
-
-    ValueTask OnErrorAsync(
-        IZLinkStream stream,
-        ZLinkStreamError error,
-        CancellationToken cancellationToken);
-
-    ValueTask OnDispatchAsync(
-        IZLinkStream stream,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkRawStreamSession
+public interface IZLinkSessionContext
 {
-    ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    string SessionId { get; }
+    RoutingId? RoutingId { get; }
+    string? LocalAddr { get; }
+    string? RemoteAddr { get; }
 
-    ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request);
+    IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message);
 
-    ValueTask OnErrorAsync(
-        IZLinkStream stream,
-        ZLinkStreamError error,
-        CancellationToken cancellationToken);
+    IZLinkSessionSendCall Send<TMessage>(TMessage message);
+    IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
 
-    ValueTask OnDispatchAsync(
-        IZLinkStream stream,
-        Message payload,
-        CancellationToken cancellationToken);
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
+
+    ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DispatchToActorAsync(
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DisconnectActorAsync(CancellationToken cancellationToken = default);
 }
 ```
+
+`CloseAsync(...)`는 현재 session의 client stream 연결을 서버 쪽에서 끊을 때
+사용한다. 예를 들어 인증 실패나 protocol 위반을 응답한 뒤 더 이상 packet을
+받지 않으려면 session handler가 이 함수를 호출한다.
 
 이 초안에서는 stream packet 처리에서 불필요한 메모리 복사를 줄이는 것을 중요하게
 본다. 그래서 `Message.ToArray()`를 기본 경로로 두기보다, `Message`가 가진
@@ -127,7 +112,7 @@ public interface IZLinkRawStreamSession
 본다.
 
 또한 객체 직렬화 계층은 `playhouse/extensions`처럼 transport 본체와 분리하는
-방향을 기본으로 본다. 즉 packet session은 `Message`를 받고, protobuf/json 같은
+방향을 기본으로 본다. 즉 header session은 `Message`를 받고, protobuf/json 같은
 객체 변환은 extension helper가 맡는다.
 
 `OnErrorAsync(...)`가 받는 값도 raw monitor event를 그대로 노출하지 않는다.
@@ -135,7 +120,7 @@ public interface IZLinkRawStreamSession
 필요하면 `Diagnostic`을 통해 native errno와 메시지를 함께 보는 방향을 기본으로
 본다.
 
-## 3. packet session 샘플
+## 3. header session 샘플
 
 아래 샘플은 `playhouse`의 `RouteHeader + Payload`처럼, header는 고정 메타데이터로
 읽고 body는 `header.MsgId`를 보고 각 packet 타입으로 다시 parse하는 방향이다.
@@ -151,36 +136,26 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.AddPacketSession<ClientPacketSession>();
+        stream.AddHeaderSession<ClientHeaderSession>();
     });
 });
 
-public sealed class ClientPacketSession
-    : IZLinkPacketStreamSession
+public sealed class ClientHeaderSession
+    : IZLinkSession
 {
-    private readonly IZLinkClient _client;
+    public IZLinkSessionContext Context { get; set; } = default!;
 
-    public ClientPacketSession(IZLinkClient client)
-    {
-        _client = client;
-    }
-
-    public ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken)
+    public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken)
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnErrorAsync(
-        IZLinkStream stream,
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
@@ -190,26 +165,21 @@ public sealed class ClientPacketSession
     }
 
     public async ValueTask OnDispatchAsync(
-        IZLinkStream stream,
-        Message header,
+        ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
     {
-        RouteHeader routeHeader = header.Parse<RouteHeader>();
-
-        switch (routeHeader.MsgId)
+        switch (header.Name)
         {
             case "ClientInput":
             {
                 ClientInput input = body.Parse<ClientInput>();
 
-                _client
-                    .Send(
+                Context
+                    .SendChannel(
                         "play",
                         new ForwardInputCommand
                         {
-                            StageId = routeHeader.StageId,
-                            AccountId = routeHeader.AccountId,
                             Input = input
                         })
                     .Exec();
@@ -221,48 +191,40 @@ public sealed class ClientPacketSession
             {
                 Ping ping = body.Parse<Ping>();
 
-                _client
-                    .Send(
+                Context
+                    .SendChannel(
                         "api",
                         new ReportPingCommand
                         {
-                            From = routeHeader.From,
                             Sequence = ping.Sequence
                         })
                     .Exec();
 
-                using Message pongHeader = new RouteHeader
-                {
-                    MsgId = "Pong",
-                    StageId = routeHeader.StageId,
-                    AccountId = routeHeader.AccountId,
-                    From = "gateway"
-                }.ToProtoMessage();
-
-                using Message pongBody = new Pong
-                {
-                    Sequence = ping.Sequence
-                }.ToProtoMessage();
-
-                stream.Write(pongHeader, pongBody);
+                await Context
+                    .Reply(new Pong
+                    {
+                        Sequence = ping.Sequence
+                    })
+                    .SendAsync(cancellationToken);
                 break;
             }
         }
     }
 }
 
-// RouteHeader, ClientInput, Ping은 .proto에서 생성된 타입이라고 가정한다.
+// ClientInput, Ping은 .proto에서 생성된 타입이라고 가정한다.
 ```
 
 이 샘플을 읽을 때 중요한 점은 아래와 같다.
 
-- application이 raw `Message header`를 `RouteHeader`로 변환한다.
+- application은 `ZlinkStreamHeader.Name`을 dispatch 기준으로 쓴다.
 - body는 고정 타입 하나로 바로 올리지 않는다.
-- packet session이 `header.MsgId`를 보고 `ClientInput`, `Ping` 같은 각 packet
+- header session이 `header.MsgId`를 보고 `ClientInput`, `Ping` 같은 각 packet
   타입으로
   parse한다.
 - application은 recv loop 대신 session callback만 구현한다.
-- 다른 서버로의 outbound 호출은 session이 `IZLinkClient`를 DI로 받아 처리한다.
+- 다른 서버로의 outbound 호출은 session이 `Context.SendChannel(...)` 또는
+  `Context.RequestChannel(...)`로 처리한다.
 - body parse는 `body.Parse<T>()` 같은 extension helper를 통해 처리한다.
 - protobuf generated 타입은 `IMessage<T>` 계열인지 보고 protobuf로 해석한다.
 - 그 밖의 일반 class는 json으로 해석하는 규칙을 샘플 기본값으로 둔다.
@@ -313,7 +275,7 @@ public static class MessageExtensions
 `ParseJson<T>()` 같은 명시형 helper나 context 기반 parse 함수를 따로 두는 편이
 더 안전하다.
 
-## 4. raw session 샘플
+## 4. header session 샘플
 
 아래 샘플은 framing이나 decode 이전 raw payload를 직접 보고 싶은 경우다.
 
@@ -323,28 +285,25 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.raw", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9200");
-        stream.AddRawSession<ClientRawSession>();
+        stream.AddHeaderSession<ClientHeaderSession>();
     });
 });
 
-public sealed class ClientRawSession : IZLinkRawStreamSession
+public sealed class ClientHeaderSession : IZLinkSession
 {
-    public ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken)
+    public IZLinkSessionContext Context { get; set; } = default!;
+
+    public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken)
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnErrorAsync(
-        IZLinkStream stream,
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
@@ -354,37 +313,32 @@ public sealed class ClientRawSession : IZLinkRawStreamSession
     }
 
     public ValueTask OnDispatchAsync(
-        IZLinkStream stream,
+        ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
     {
-        stream.Write(payload);
-        return ValueTask.CompletedTask;
+        return Context
+            .Reply(new Pong())
+            .SendAsync(cancellationToken);
     }
 }
 ```
 
 이 샘플은 아래 상황에 더 가깝다.
 
-- socket에서 들어오는 raw payload chunk를 직접 보고 싶다.
-- packet 재조립이나 framing 판단을 application이 맡아야 한다.
+- framework가 decode한 header/body packet을 그대로 응답하고 싶다.
 - 그래도 recv loop는 직접 만들고 싶지 않다.
-- 필요하면 현재 session으로 그대로 echo 하거나 framed reply를 보낼 수 있어야 한다.
+- 필요하면 현재 session에서 `Context.Reply(...)`로 응답을 보낼 수 있어야 한다.
 
-## 5. packet 과 raw 를 어떻게 구분하면 되는가
+## 5. session 처리 수준
 
-- packet session
+- header session
   - C API가 이미 잘라 준 `header/body` packet 처리
   - session lifecycle과 packet callback을 함께 구현
   - body는 `msgId`를 보고 각 packet 타입으로 parse
-- raw session
-  - socket raw payload chunk 처리
-  - session lifecycle과 raw callback을 함께 구현
-  - 필요하면 application이 직접 packet 재조립
 
-둘 다 framework dispatch 위에 올라간다는 점은 같다.
-차이는 application이 어떤 레벨에서 payload를 받고 싶은가와 어떤 callback을
-구현하는가다.
+현재 구현의 stream session 표면은 header/body packet 처리에 맞춘다.
+raw chunk를 직접 다루는 표면은 별도 초안으로 분리해서 검토한다.
 
 ## 6. recv 방식은 왜 샘플에 없는가
 
@@ -393,14 +347,14 @@ public sealed class ClientRawSession : IZLinkRawStreamSession
 
 - framework가 DI, filter, logging, dispatch를 공통으로 다루기 어렵다.
 - application이 loop, cancel, backpressure를 직접 떠안게 된다.
-- packet session과 raw session보다 사용 경험이 더 low-level이다.
+- header session보다 사용 경험이 더 low-level이다.
 
 즉 recv가 하부 binding에서 불가능하다는 뜻이 아니라, **framework 샘플의 기본
 방향으로는 채택하지 않는다**는 뜻이다.
 
 ## 7. 정리
 
-- `STREAM` 기본 표면은 packet session과 raw session 두 축으로 고정한다.
+- `STREAM` 기본 표면은 `IZLinkSession`과 `IZLinkSessionContext`로 고정한다.
 - `OnConnectedAsync(...)`는 `ConnectionReady` 기준으로 읽는다.
 - `OnErrorAsync(...)`는 session-correlatable transport 오류만 받고, handshake 실패와
   socket/node 단위 오류는 monitoring으로 분리한다.

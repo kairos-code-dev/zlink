@@ -771,6 +771,68 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
     }
 }
 
+inline bool set_spot_node_hwm_option(void *node_,
+                                     zlink_spot_node_option_t option_,
+                                     int value_,
+                                     const char *name_)
+{
+    if (!node_ || value_ <= 0)
+        return true;
+    const int rc =
+      zlink_set_spot_node_option(node_, option_, &value_, sizeof(value_));
+    if (rc != 0 && bench_debug_enabled()) {
+        std::cerr << "set_spot_node_option(" << name_ << ") failed: "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+    }
+    return rc == 0;
+}
+
+inline bool apply_benchmark_spot_node_hwm(void *node_,
+                                          int hwm_value,
+                                          bool pubsub_enabled,
+                                          bool routed_enabled)
+{
+    if (!node_ || !bench_manual_socket_overrides_allowed())
+        return true;
+
+    const char *sndhwm_raw = resolve_multi_named_env_value("PERF_SNDHWM");
+    const char *rcvhwm_raw = resolve_multi_named_env_value("PERF_RCVHWM");
+    const bool explicit_sndhwm = sndhwm_raw && *sndhwm_raw;
+    const bool explicit_rcvhwm = rcvhwm_raw && *rcvhwm_raw;
+    if (hwm_value <= 0 && !explicit_sndhwm && !explicit_rcvhwm)
+        return true;
+
+    const int send_hwm =
+      explicit_sndhwm || hwm_value > 0
+        ? bench_hwm_from_env("PERF_SNDHWM", hwm_value)
+        : 0;
+    const int recv_hwm =
+      explicit_rcvhwm || hwm_value > 0
+        ? bench_hwm_from_env("PERF_RCVHWM", hwm_value)
+        : 0;
+
+    bool ok = true;
+    if (pubsub_enabled) {
+        ok = set_spot_node_hwm_option(node_, ZLINK_SPOT_NODE_OPT_PUB_HWM,
+                                      send_hwm, "ZLINK_SPOT_NODE_OPT_PUB_HWM")
+             && ok;
+        ok = set_spot_node_hwm_option(node_, ZLINK_SPOT_NODE_OPT_SUB_HWM,
+                                      recv_hwm, "ZLINK_SPOT_NODE_OPT_SUB_HWM")
+             && ok;
+    }
+    if (routed_enabled) {
+        ok = set_spot_node_hwm_option(
+               node_, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM, send_hwm,
+               "ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM")
+             && ok;
+        ok = set_spot_node_hwm_option(
+               node_, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, recv_hwm,
+               "ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM")
+             && ok;
+    }
+    return ok;
+}
+
 inline int perf_auto_hwm_msg_unit_for_socket(zlink_socket_type_t socket_type_,
                                              size_t msg_size_)
 {

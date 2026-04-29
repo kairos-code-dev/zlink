@@ -24,11 +24,14 @@ Implementation follow-up:
 
 The framework-level STREAM and actor surface follows these rules.
 
-- STREAM nodes register only `IZLinkStreamHeaderSession`.
+- STREAM nodes register only `IZLinkSession`.
 - The public framework contract does not expose packet-session or raw-session
   variants.
-- `IZLinkActor` is a callback contract. Stream attachment state and SPOT join
-  execution helpers are provided by `IZLinkActorRuntime` and
+- `IZLinkSession` is a callback contract. Session state, channel send/request,
+  stream send, and actor attach/dispatch/disconnect operations are provided by
+  `IZLinkSessionContext`.
+- `IZLinkActor` is a callback contract. Actor-side stream replies, channel
+  send/request, and SPOT join execution helpers are provided by
   `IZLinkActorContext`.
 - `IZLinkSpotClient` is reserved for SPOT-side channel send, request, and
   publish operations. Actor join is not part of the SPOT client contract.
@@ -565,11 +568,11 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     // --- router -> spot routed reply ---
     /// <exception cref="ZlinkSubmitException"/>
     void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSequence, Message message,
+                     ulong requestSeq, Message message,
                      SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
     void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSequence, IReadOnlyList<Message> parts,
+                     ulong requestSeq, IReadOnlyList<Message> parts,
                      SendFlags flags = SendFlags.None);
 
     // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반
@@ -1741,19 +1744,19 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     // --- routed reply (spot -> spot) ---
     /// <exception cref="ZlinkSubmitException"/>
     void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSequence, Message message,
+                     ulong requestSeq, Message message,
                      SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
     void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSequence, IReadOnlyList<Message> parts,
+                     ulong requestSeq, IReadOnlyList<Message> parts,
                      SendFlags flags = SendFlags.None);
 
     // --- routed reply (spot -> router) ---
     /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToRouter(RoutingId peerRid, ulong requestSequence, Message message,
+    void ReplyToRouter(RoutingId peerRid, ulong requestSeq, Message message,
                        SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToRouter(RoutingId peerRid, ulong requestSequence,
+    void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
                        IReadOnlyList<Message> parts,
                        SendFlags flags = SendFlags.None);
 

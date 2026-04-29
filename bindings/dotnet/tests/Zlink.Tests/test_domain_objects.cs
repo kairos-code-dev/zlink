@@ -11,11 +11,18 @@ public sealed class test_domain_objects
     {
         RoutingId plain = RoutingId.FromBytes(Encoding.UTF8.GetBytes("dealer-1"));
         RoutingId binary = RoutingId.FromBytes(new byte[] { 0x01, 0x02, 0xA0, 0xFF });
+        RoutingId parsed = RoutingId.FromString("0102A0ff");
 
         Assert.Equal("dealer-1", plain.ToString());
         Assert.Equal("0102a0ff", binary.ToHex());
+        Assert.Equal(binary, parsed);
+        Assert.Equal(255, RoutingId.FromString(new string('a', 510)).Size);
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             _ = RoutingId.FromBytes(Encoding.UTF8.GetBytes(new string('a', 256))));
+        Assert.Throws<ArgumentException>(() =>
+            _ = RoutingId.FromString("not-hex"));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _ = RoutingId.FromString(new string('a', 512)));
     }
 
     [Fact]

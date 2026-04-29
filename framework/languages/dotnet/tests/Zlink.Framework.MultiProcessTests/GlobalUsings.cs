@@ -5,7 +5,6 @@ global using Zlink.Framework.Configuration;
 global using Zlink.Framework.Handlers;
 global using Zlink.Framework.Monitoring;
 global using Zlink.Framework.Registry;
-global using Zlink.Framework.Requests;
-global using Zlink.Framework.Runtime;
+global using Zlink.Framework.Runtime.Core;
 global using Zlink.Framework.Spots;
 global using Zlink.Framework.Streams;

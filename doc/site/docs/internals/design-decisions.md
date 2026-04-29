@@ -103,7 +103,7 @@ This document records the rationale and alternative analyses for key design deci
 **Deprecation reason**:
 - Gateway API provides the same functionality more completely
 - Maintaining a separate API creates duplicate code/concepts
-- Gateway's request_id-based mapping replaces the REQ/REP pattern
+- Gateway's request_seq-based mapping replaces the REQ/REP pattern
 
 ### 3.3 Metrics API (#07)
 
@@ -138,11 +138,11 @@ This document records the rationale and alternative analyses for key design deci
 - Ensures scalability for multiple Gateways/Receivers
 - Bidirectional socket handles both request sending and response receiving
 
-### 4.3 request_id-Based Mapping
+### 4.3 request_seq-Based Mapping
 
 > **Note:** Gateway service was removed in v4.x. These decisions are retained as historical context.
 
-**Decision**: Use uint64_t request_id for request-response mapping.
+**Decision**: Use uint64_t request_seq for request-response mapping.
 
 **Rationale**:
 - Maps responses regardless of order when sending simultaneous requests to multiple Receivers

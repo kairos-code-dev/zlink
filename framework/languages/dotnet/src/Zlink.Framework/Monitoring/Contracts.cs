@@ -69,7 +69,7 @@ public readonly record struct ZLinkSocketEvent(
     string SourceName,
     DateTimeOffset Timestamp,
     ZLinkSocketEventKind Event,
-    global::Zlink.RoutingId? RoutingId,
+    RoutingId? RoutingId,
     string LocalAddr,
     string RemoteAddr,
     ZLinkSocketDiagnostic? Diagnostic) : IZLinkRuntimeEvent;

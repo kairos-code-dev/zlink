@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="MessagePack" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -16,5 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
+    <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector.Codecs/Systems.Zlink.Stream.Connector.Codecs.csproj" />
+    <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector.Json/Systems.Zlink.Stream.Connector.Json.csproj" />
   </ItemGroup>
 </Project>

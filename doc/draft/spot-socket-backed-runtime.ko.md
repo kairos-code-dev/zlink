@@ -307,7 +307,7 @@ state, queue, completion signal 같은 자원을 열고 등록한다.
 - `zlink_spot_recv(_part)`는 이미 `source_node_rid`, `source_spot_rid`,
   `request_seq`를 함께 돌려준다.
 - `Spot`은 받은 routed 입력을 기준으로 `reply_spot`, `reply_router`를 만들어야 한다.
-- 즉 target `Spot` ingress는 source identity와 request identity를 보존한 채
+- 즉 target `Spot` ingress는 source identity와 `request_seq`를 보존한 채
   입력을 받아야 한다.
 
 이 의미를 `DEALER` 위에 다시 얹으면 결국 위에서 router 의미를 다시 흉내 내야

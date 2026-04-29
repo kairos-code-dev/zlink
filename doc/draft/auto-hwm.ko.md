@@ -13,6 +13,9 @@
 > 재계산 시점과 최신 계산식 방향은
 > [auto-hwm-recalculation-policy.ko.md](./auto-hwm-recalculation-policy.ko.md)
 > 를 우선 기준으로 본다.
+> context 메모리 산정과 소켓 역할, client 수, `MsgUnit(B)` 기반 HWM 계산식은
+> [auto-hwm-context-memory-sizing.ko.md](./auto-hwm-context-memory-sizing.ko.md)
+> 를 기존 계산 정책을 대체하는 개선 초안 기준으로 본다.
 
 ## 1. 목적
 

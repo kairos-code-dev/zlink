@@ -699,6 +699,18 @@ class RoutingId:
     def from_bytes(cls, data):
         return cls(data)
 
+    @classmethod
+    def from_string(cls, value):
+        if not isinstance(value, str):
+            raise TypeError("value must be str")
+        if len(value) == 0 or len(value) % 2 != 0 or any(
+            c not in "0123456789abcdefABCDEF" for c in value
+        ):
+            raise ValueError("routing id string must be a non-empty even-length hex string")
+        if len(value) > 510:
+            raise ValueError("routing id string must decode to at most 255 bytes")
+        return cls(bytes.fromhex(value))
+
     def to_bytes(self):
         return self._raw
 

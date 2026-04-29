@@ -64,7 +64,7 @@ public sealed record ZLinkRegistryTopologyFilter(
     ZLinkServiceKind? ServiceKind = null,
     ZLinkServiceRole? ServiceRole = null,
     string? ServiceName = null,
-    global::Zlink.RoutingId? RoutingId = null,
+    RoutingId? RoutingId = null,
     ZLinkTopologyState? State = null,
     ZLinkTopologySource? Source = null);
 
@@ -91,7 +91,7 @@ public sealed record ZLinkRegistryServiceSummaryEntry(
     ulong LastReportedMs);
 
 public sealed record ZLinkRegistryTopologyEntry(
-    global::Zlink.RoutingId? RoutingId,
+    RoutingId? RoutingId,
     ZLinkServiceKind ServiceKind,
     ZLinkServiceRole ServiceRole,
     string ServiceName,
@@ -108,6 +108,6 @@ public sealed record ZLinkMemberPeerEntry(
     ZLinkServiceRole ServiceRole,
     string ServiceName,
     string Endpoint,
-    global::Zlink.RoutingId? RoutingId,
+    RoutingId? RoutingId,
     long Value,
     uint Weight);

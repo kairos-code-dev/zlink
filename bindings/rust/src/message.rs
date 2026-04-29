@@ -214,6 +214,24 @@ impl RoutingId {
         Self { raw }
     }
 
+    pub fn from_string(value: &str) -> Self {
+        Self::try_from_string(value).expect("invalid routing id string")
+    }
+
+    pub fn try_from_string(value: &str) -> Result<Self, ConfigError> {
+        if value.is_empty() || value.len() % 2 != 0 || value.len() > Self::MAX_LEN * 2 {
+            return Err(config_validation_error());
+        }
+        let mut data = Vec::with_capacity(value.len() / 2);
+        let bytes = value.as_bytes();
+        for pair in bytes.chunks_exact(2) {
+            let high = hex_nibble(pair[0]).ok_or_else(config_validation_error)?;
+            let low = hex_nibble(pair[1]).ok_or_else(config_validation_error)?;
+            data.push((high << 4) | low);
+        }
+        Self::new(&data)
+    }
+
     pub(crate) fn new(data: &[u8]) -> Result<Self, ConfigError> {
         if data.is_empty() || data.len() > Self::MAX_LEN {
             return Err(config_validation_error());
@@ -272,6 +290,15 @@ impl RoutingId {
     }
 }
 
+fn hex_nibble(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
+}
+
 impl std::fmt::Display for RoutingId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.to_hex())
@@ -282,6 +309,13 @@ impl TryFrom<&[u8]> for RoutingId {
     type Error = ConfigError;
     fn try_from(data: &[u8]) -> Result<Self, ConfigError> {
         Self::new(data)
+    }
+}
+
+impl TryFrom<&str> for RoutingId {
+    type Error = ConfigError;
+    fn try_from(value: &str) -> Result<Self, ConfigError> {
+        Self::try_from_string(value)
     }
 }
 

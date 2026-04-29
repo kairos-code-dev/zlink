@@ -7,29 +7,26 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Builders;
-using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Compression;
-using Systems.Zlink.Stream.Connector.Connector;
-using Systems.Zlink.Stream.Connector.Framing;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
-using Systems.Zlink.Stream.Connector.Options;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Calls;
+using Systems.Zlink.Stream.Connector.Protocol;
+using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
 
 
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public void HeaderCodecRoundTripsMetadataAndRequestId()
+    public void HeaderCodecRoundTripsMetadataAndRequestSeq()
     {
         var codec = new ZlinkStreamHeaderCodec();
         var source = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
-            ZlinkStreamHeaderFlags.HasRid,
-            new ZlinkStreamRequestId(42),
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(42),
             "profile.get",
             ZlinkStreamMetadata.Empty.With("traceId", "abc"));
 
@@ -37,7 +34,7 @@ public sealed partial class StreamConnectorTests
 
         Assert.Equal(source.Kind, decoded.Kind);
         Assert.Equal(source.Codec, decoded.Codec);
-        Assert.Equal(source.RequestId, decoded.RequestId);
+        Assert.Equal(source.RequestSeq, decoded.RequestSeq);
         Assert.Equal(source.Name, decoded.Name);
         Assert.Equal("abc", decoded.Metadata.Get("traceId"));
     }
@@ -54,20 +51,20 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public void HeaderCodecRejectsInvalidRidAndErrorCodecCombinations()
+    public void HeaderCodecRejectsInvalidRequestSeqAndErrorCodecCombinations()
     {
         var codec = new ZlinkStreamHeaderCodec();
 
-        var sendWithRid = new byte[12];
-        sendWithRid[0] = (byte)ZlinkStreamMessageKind.Send;
-        sendWithRid[1] = (byte)ZlinkStreamCodec.Json;
-        sendWithRid[2] = (byte)ZlinkStreamHeaderFlags.HasRid;
-        BinaryPrimitives.WriteUInt64BigEndian(sendWithRid.AsSpan(3, 8), 1);
-        sendWithRid[11] = 1;
+        var sendWithRequestSeq = new byte[12];
+        sendWithRequestSeq[0] = (byte)ZlinkStreamMessageKind.Send;
+        sendWithRequestSeq[1] = (byte)ZlinkStreamCodec.Json;
+        sendWithRequestSeq[2] = (byte)ZlinkStreamHeaderFlags.HasRequestSeq;
+        BinaryPrimitives.WriteUInt64BigEndian(sendWithRequestSeq.AsSpan(3, 8), 1);
+        sendWithRequestSeq[11] = 1;
 
-        Assert.Throws<ZlinkStreamException>(() => codec.Decode(sendWithRid));
+        Assert.Throws<ZlinkStreamException>(() => codec.Decode(sendWithRequestSeq));
 
-        var responseWithoutRid = new byte[]
+        var responseWithoutRequestSeq = new byte[]
         {
             (byte)ZlinkStreamMessageKind.Response,
             (byte)ZlinkStreamCodec.Json,
@@ -76,7 +73,7 @@ public sealed partial class StreamConnectorTests
             (byte)'x'
         };
 
-        Assert.Throws<ZlinkStreamException>(() => codec.Decode(responseWithoutRid));
+        Assert.Throws<ZlinkStreamException>(() => codec.Decode(responseWithoutRequestSeq));
 
         var errorWithRawCodec = new byte[]
         {

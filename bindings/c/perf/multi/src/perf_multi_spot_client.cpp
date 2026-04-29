@@ -1083,6 +1083,11 @@ bool create_control_spot(ctx_guard_t &ctx,
     }
     apply_benchmark_auto_hwm_msg_unit(
       state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+    if (!apply_benchmark_spot_node_hwm(
+          state->control_node, settings.hwm, true, true)) {
+        zlink_spot_node_destroy(&state->control_node);
+        return false;
+    }
 
     state->control_pub = perf_create_default_spot_handle(state->control_node);
     state->control_sub = perf_create_default_spot_handle(state->control_node);
@@ -1190,6 +1195,15 @@ bool create_spot_slots(ctx_guard_t &ctx,
         }
         apply_benchmark_auto_hwm_msg_unit(
           slot->node, ZLINK_SOCKET_DEALER, max_msg_size);
+        if (!apply_benchmark_spot_node_hwm(
+              slot->node, settings.hwm, true, true)) {
+            g_last_spot_slot_failure =
+              "slot node hwm failed slot=" + std::to_string(i)
+              + " err=" + std::to_string(zlink_errno());
+            zlink_spot_node_destroy(&slot->node);
+            delete slot;
+            return false;
+        }
 
         slot->handle = perf_create_default_spot_handle(slot->node);
         if (!slot->handle) {

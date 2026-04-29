@@ -2,17 +2,50 @@ namespace Zlink.Framework.Actors;
 
 public interface IZLinkActorContext
 {
-    string ActorKey { get; }
+    string ActorId { get; }
 
-    IZLinkStream? Stream { get; }
+    string? SessionId { get; }
 
-    IZLinkActorStreamClient? Client { get; }
+    RoutingId? SpotRid { get; }
 
-    ZLinkSpot? Spot { get; }
+    bool IsJoined { get; }
+
+    void AddPacket<THandler>()
+        where THandler : class;
+
+    void AddPacket<THandler>(string messageName)
+        where THandler : class;
+
+    IZLinkSpot GetSpot();
+
+    TSpot GetSpot<TSpot>()
+        where TSpot : IZLinkSpot;
+
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
+
+    IZLinkRequestCall RequestChannel<TRequest>(
+        string channelName,
+        TRequest request);
+
+    IZLinkSendCall SendChannel<TMessage>(
+        string channelName,
+        TMessage message);
+
+    IZLinkActorSendCall Send<TMessage>(TMessage message);
+
+    IZLinkActorReplyCall Reply<TMessage>(TMessage message);
 
     ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         TRequest request,
-        CancellationToken cancellationToken = default)
-        where TRequest : IZLinkRequest<TReply>;
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorJoinSpotCall
+{
+    IZLinkActorJoinSpotCall WithTimeout(TimeSpan timeout);
+
+    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
 }

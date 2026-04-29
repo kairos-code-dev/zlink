@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Messaging;
 
@@ -18,7 +18,7 @@ internal enum ZLinkMessageKind
 internal sealed record ZLinkEnvelopeHeader(
     ZLinkMessageKind Kind,
     string ChannelName,
-    string PacketName,
+    string MessageName,
     string ContentType,
     string? CorrelationId,
     DateTimeOffset? Deadline,
@@ -31,7 +31,7 @@ internal static class ZLinkEnvelopeCodec
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string JsonContentType = "application/json";
 
-    public static global::Zlink.Message Encode(
+    public static Message Encode(
         ZLinkEnvelopeHeader header,
         object? body,
         Type? bodyType)
@@ -41,16 +41,16 @@ internal static class ZLinkEnvelopeCodec
             bodyType is not null && body is not null
                 ? JsonSerializer.SerializeToElement(body, bodyType, JsonOptions)
                 : null);
-        return global::Zlink.Message.FromString(
+        return Message.FromString(
             JsonSerializer.Serialize(envelope, JsonOptions));
     }
 
-    public static ZLinkEnvelopeHeader DecodeHeader(global::Zlink.Message message)
+    public static ZLinkEnvelopeHeader DecodeHeader(Message message)
     {
         return DecodeEnvelope(message).Header;
     }
 
-    public static object? DecodeBody(global::Zlink.Message message, Type bodyType)
+    public static object? DecodeBody(Message message, Type bodyType)
     {
         var envelope = DecodeEnvelope(message);
         if (envelope.Body is null)
@@ -63,7 +63,7 @@ internal static class ZLinkEnvelopeCodec
         return envelope.Body.Value.Deserialize(bodyType, JsonOptions);
     }
 
-    private static ZLinkSerializedEnvelope DecodeEnvelope(global::Zlink.Message message)
+    private static ZLinkSerializedEnvelope DecodeEnvelope(Message message)
     {
         var envelope = JsonSerializer.Deserialize<ZLinkSerializedEnvelope>(
             message.AsReadOnlySpan(),

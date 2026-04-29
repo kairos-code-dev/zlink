@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendDiscoveryWrapper(global::Zlink.Discovery nativeDiscovery) : IZLinkBackendDiscovery
+internal sealed class ZLinkBackendDiscoveryWrapper(Discovery nativeDiscovery) : IZLinkBackendDiscovery
 {
     public object NativeInstance => nativeDiscovery;
 

@@ -3,7 +3,7 @@ namespace Zlink.Framework.Backend.DotNet.Mappings;
 
 internal static class ZLinkDotNetBackendMappings
 {
-    public static ZLinkRegistryStatus ToFramework(this global::Zlink.RegistryStatus status)
+    public static ZLinkRegistryStatus ToFramework(this RegistryStatus status)
     {
         return new ZLinkRegistryStatus(
             status.RegistryId,
@@ -17,7 +17,7 @@ internal static class ZLinkDotNetBackendMappings
             status.LastChangedMs);
     }
 
-    public static ZLinkRegistryServiceSummaryEntry ToFramework(this global::Zlink.RegistryServiceSummaryEntry entry)
+    public static ZLinkRegistryServiceSummaryEntry ToFramework(this RegistryServiceSummaryEntry entry)
     {
         return new ZLinkRegistryServiceSummaryEntry(
             (ZLinkServiceKind)entry.ServiceKind,
@@ -31,7 +31,7 @@ internal static class ZLinkDotNetBackendMappings
             entry.LastReportedMs);
     }
 
-    public static ZLinkRegistryTopologyEntry ToFramework(this global::Zlink.RegistryTopologyEntry entry)
+    public static ZLinkRegistryTopologyEntry ToFramework(this RegistryTopologyEntry entry)
     {
         return new ZLinkRegistryTopologyEntry(
             entry.RoutingId,
@@ -47,7 +47,7 @@ internal static class ZLinkDotNetBackendMappings
             entry.LastReportedMs);
     }
 
-    public static ZLinkMemberPeerEntry ToFramework(this global::Zlink.MemberPeerEntry entry)
+    public static ZLinkMemberPeerEntry ToFramework(this MemberPeerEntry entry)
     {
         return new ZLinkMemberPeerEntry(
             (ZLinkServiceType)entry.ServiceType,
@@ -59,7 +59,7 @@ internal static class ZLinkDotNetBackendMappings
             entry.Weight);
     }
 
-    public static ZLinkSpotNodeStatus ToFramework(this global::Zlink.SpotNodeStatus status)
+    public static ZLinkSpotNodeStatus ToFramework(this SpotNodeStatus status)
     {
         return new ZLinkSpotNodeStatus(
             status.ServiceName,
@@ -75,7 +75,7 @@ internal static class ZLinkDotNetBackendMappings
             status.LastChangedMs);
     }
 
-    public static ZLinkSpotNodePeerEntry ToFramework(this global::Zlink.SpotNodePeerEntry entry)
+    public static ZLinkSpotNodePeerEntry ToFramework(this SpotNodePeerEntry entry)
     {
         return new ZLinkSpotNodePeerEntry(
             entry.ServiceName,
@@ -88,7 +88,7 @@ internal static class ZLinkDotNetBackendMappings
             entry.LastChangedMs);
     }
 
-    public static ZLinkSpotNodeSubjectEntry ToFramework(this global::Zlink.SpotNodeSubjectEntry entry)
+    public static ZLinkSpotNodeSubjectEntry ToFramework(this SpotNodeSubjectEntry entry)
     {
         return new ZLinkSpotNodeSubjectEntry(
             (ZLinkSpotRole)entry.Role,
@@ -99,36 +99,36 @@ internal static class ZLinkDotNetBackendMappings
             entry.LastChangedMs);
     }
 
-    public static global::Zlink.RegistryServiceSummaryFilter? ToNative(this ZLinkRegistryServiceSummaryFilter? filter)
+    public static RegistryServiceSummaryFilter? ToNative(this ZLinkRegistryServiceSummaryFilter? filter)
     {
         if (filter is null)
         {
             return null;
         }
 
-        return new global::Zlink.RegistryServiceSummaryFilter(
-            filter.ServiceKind is null ? null : (global::Zlink.ServiceKind?)filter.ServiceKind,
-            filter.ServiceRole is null ? null : (global::Zlink.ServiceRole?)filter.ServiceRole,
+        return new RegistryServiceSummaryFilter(
+            filter.ServiceKind is null ? null : (ServiceKind?)filter.ServiceKind,
+            filter.ServiceRole is null ? null : (ServiceRole?)filter.ServiceRole,
             filter.ServiceName);
     }
 
-    public static global::Zlink.RegistryTopologyFilter? ToNative(this ZLinkRegistryTopologyFilter? filter)
+    public static RegistryTopologyFilter? ToNative(this ZLinkRegistryTopologyFilter? filter)
     {
         if (filter is null)
         {
             return null;
         }
 
-        return new global::Zlink.RegistryTopologyFilter(
-            filter.ServiceKind is null ? null : (global::Zlink.ServiceKind?)filter.ServiceKind,
-            filter.ServiceRole is null ? null : (global::Zlink.ServiceRole?)filter.ServiceRole,
+        return new RegistryTopologyFilter(
+            filter.ServiceKind is null ? null : (ServiceKind?)filter.ServiceKind,
+            filter.ServiceRole is null ? null : (ServiceRole?)filter.ServiceRole,
             filter.ServiceName,
             filter.RoutingId,
-            filter.State is null ? null : (global::Zlink.TopologyState?)filter.State,
-            filter.Source is null ? null : (global::Zlink.TopologySource?)filter.Source);
+            filter.State is null ? null : (TopologyState?)filter.State,
+            filter.Source is null ? null : (TopologySource?)filter.Source);
     }
 
-    public static ZLinkBackendSocketMonitorEvent ToFramework(this global::Zlink.MonitorEvent monitorEvent)
+    public static ZLinkBackendSocketMonitorEvent ToFramework(this MonitorEvent monitorEvent)
     {
         return new ZLinkBackendSocketMonitorEvent(
             (ZLinkSocketNativeEventType)monitorEvent.Event,
@@ -138,13 +138,13 @@ internal static class ZLinkDotNetBackendMappings
             monitorEvent.Value);
     }
 
-    public static ZLinkBackendSpotDispatchInfo ToFramework(this global::Zlink.SpotDispatchInfo info)
+    public static ZLinkBackendSpotDispatchInfo ToFramework(this SpotDispatchInfo info)
     {
         return new ZLinkBackendSpotDispatchInfo(
             info.Event switch
             {
-                global::Zlink.SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RoutedReadable,
-                global::Zlink.SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
+                SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RoutedReadable,
+                SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
                 _ => ZLinkBackendSpotDispatchEvent.Internal,
             },
             info.Subject);

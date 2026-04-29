@@ -68,6 +68,31 @@ public final class RoutingId {
         return new RoutingId(Arrays.copyOfRange(value, offset, offset + length));
     }
 
+    /** Parses the lowercase or uppercase hex string returned by {@link #toHex()}. */
+    public static RoutingId fromString(String value) {
+        Objects.requireNonNull(value, "value");
+        if (value.isEmpty() || (value.length() & 1) != 0) {
+            throw new IllegalArgumentException(
+                "routing id string must be a non-empty even-length hex string");
+        }
+        if (value.length() > MAX_LENGTH * 2) {
+            throw new IllegalArgumentException(
+                "routing id string must decode to at most 255 bytes");
+        }
+        byte[] bytes = new byte[value.length() / 2];
+        for (int i = 0; i < bytes.length; i++) {
+            int high = Character.digit(value.charAt(i * 2), 16);
+            int low = Character.digit(value.charAt(i * 2 + 1), 16);
+            if (high < 0 || low < 0) {
+                throw new IllegalArgumentException(
+                    "routing id string must contain only hex digits");
+            }
+            bytes[i] = (byte) ((high << 4) | low);
+        }
+        validateLength(bytes.length);
+        return new RoutingId(bytes);
+    }
+
     /** Creates a 4-byte big-endian routing id from an unsigned 32-bit value. */
     static RoutingId fromU32(int value) {
         return new RoutingId(new byte[] {

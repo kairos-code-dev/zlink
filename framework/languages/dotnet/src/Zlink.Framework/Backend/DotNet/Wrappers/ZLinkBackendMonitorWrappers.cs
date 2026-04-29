@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
-internal sealed class ZLinkBackendSocketMonitorWrapper(global::Zlink.SocketMonitor nativeMonitor) : IZLinkBackendSocketMonitor
+internal sealed class ZLinkBackendSocketMonitorWrapper(SocketMonitor nativeMonitor) : IZLinkBackendSocketMonitor
 {
     public object NativeInstance => nativeMonitor;
 

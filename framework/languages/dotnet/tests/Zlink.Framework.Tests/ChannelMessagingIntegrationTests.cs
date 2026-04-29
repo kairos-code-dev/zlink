@@ -63,7 +63,7 @@ public sealed class ChannelMessagingIntegrationTests
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "discovery" }).ExecAsync(),
+            async () => await client.Request("api", new GetProfileRequest { UserId = "discovery" }).ExecAsync<ProfileReply>(),
             static result => result.Name == "user:discovery");
 
         Assert.Equal("user:discovery", reply.Name);
@@ -119,7 +119,7 @@ public sealed class ChannelMessagingIntegrationTests
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "alice" }).ExecAsync(),
+            async () => await client.Request("api", new GetProfileRequest { UserId = "alice" }).ExecAsync<ProfileReply>(),
             static result => result.Name == "user:alice");
 
         Assert.Equal("user:alice", reply.Name);
@@ -176,7 +176,7 @@ public sealed class ChannelMessagingIntegrationTests
         Assert.Contains(apiEndpoint, await connections.ListConnectionsAsync());
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "manager" }).ExecAsync(),
+            async () => await client.Request("api", new GetProfileRequest { UserId = "manager" }).ExecAsync<ProfileReply>(),
             static result => result.Name == "user:manager");
 
         Assert.Equal("user:manager", reply.Name);
@@ -279,7 +279,7 @@ public sealed class ChannelMessagingIntegrationTests
         var recorder = serverHost.Services.GetRequiredService<FilterOrderRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetFilterOrderRequest()).ExecAsync(),
+            async () => await client.Request("api", new GetFilterOrderRequest()).ExecAsync<FilterOrderReply>(),
             static result => result.Sequence.Count == 5);
 
         Assert.Equal(
@@ -329,7 +329,7 @@ public sealed class ChannelMessagingIntegrationTests
             {
                 var userId = context.Request.Query["userId"].ToString();
                 var reply = await client.Request("api", new GetProfileRequest { UserId = userId })
-                    .ExecAsync(cancellationToken);
+                    .ExecAsync<ProfileReply>(cancellationToken);
                 return Results.Text(reply.Name);
             }).RequestDelegate;
 

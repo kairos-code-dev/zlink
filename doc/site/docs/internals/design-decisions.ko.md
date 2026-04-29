@@ -103,7 +103,7 @@
 **폐기 사유**:
 - Gateway API가 동일 기능을 더 완전하게 제공
 - 독립 API 유지 시 중복 코드/개념 발생
-- Gateway의 request_id 기반 매핑이 REQ/REP 패턴 대체
+- Gateway의 request_seq 기반 매핑이 REQ/REP 패턴 대체
 
 ### 3.3 Metrics API (07번)
 
@@ -138,11 +138,11 @@
 - 다중 Gateway/Receiver 확장성 보장
 - 양방향 소켓으로 요청 송신 + 응답 수신 처리
 
-### 4.3 request_id 기반 매핑
+### 4.3 request_seq 기반 매핑
 
 > **참고:** Gateway 서비스는 v4.x에서 제거되었습니다. 이 결정들은 역사적 맥락으로 보존합니다.
 
-**결정**: 요청-응답 매핑에 uint64_t request_id 사용.
+**결정**: 요청-응답 매핑에 uint64_t request_seq 사용.
 
 **근거**:
 - 여러 Receiver에 동시 요청 시 응답 순서 무관하게 매핑

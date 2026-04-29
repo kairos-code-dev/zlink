@@ -61,7 +61,7 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     }
 
     public void AddSpotFactory<TSpot>(string spotName)
-        where TSpot : ZLinkSpot
+        where TSpot : IZLinkSpot
     {
         if (string.IsNullOrWhiteSpace(spotName))
         {

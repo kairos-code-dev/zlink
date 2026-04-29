@@ -57,12 +57,8 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddPacketSession<T>()` 하나 등록 | 허용 | packet session node를 만든다 |
 | `AddHeaderSession<T>()` 하나 등록 | 허용 | zlink stream header session node를 만든다 |
-| `AddRawSession<T>()` 하나 등록 | 허용 | raw session node를 만든다 |
 | 같은 node에 stream session을 둘 이상 등록 | 비허용 | startup validation 오류 |
-| 같은 node에 packet session 둘 이상 등록 | 비허용 | startup validation 오류 |
-| 같은 node에 raw session 둘 이상 등록 | 비허용 | startup validation 오류 |
 | bind endpoint 없음 | 비허용 | startup validation 오류 |
 
 ## 6. Monitoring Registration Matrix
@@ -95,7 +91,7 @@
 - outbound capability에 discovery/manual 경로가 모두 없음
 - 같은 capability 안에서 discovery/manual 혼용
 - 존재하지 않는 source를 monitoring에 등록
-- 같은 stream node에 raw/packet session 혼용
+- 같은 stream node에 session 중복 등록
 - bind endpoint가 없는 stream node
 
 이 오류들은 런타임에 늦게 드러내지 않고 startup 단계에서 막는 편을 기본으로 본다.

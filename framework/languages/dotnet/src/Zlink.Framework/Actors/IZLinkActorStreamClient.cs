@@ -15,16 +15,14 @@ public interface IZLinkActorSendCall
 
     IZLinkActorSendCall Compress();
 
-    ValueTask SendAsync(CancellationToken cancellationToken = default);
+    ValueTask Async(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorReplyCall
 {
     IZLinkActorReplyCall WithMetadata(string key, string value);
 
-    IZLinkActorReplyCall WithMessageName(string messageName);
-
     IZLinkActorReplyCall Compress();
 
-    ValueTask SendAsync(CancellationToken cancellationToken = default);
+    ValueTask Async(CancellationToken cancellationToken = default);
 }

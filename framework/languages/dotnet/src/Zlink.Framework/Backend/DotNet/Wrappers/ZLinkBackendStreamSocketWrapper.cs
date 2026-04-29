@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendStreamSocketWrapper(global::Zlink.StreamSocket nativeSocket) : IZLinkBackendStreamSocket
+internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket) : IZLinkBackendStreamSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -15,12 +15,12 @@ internal sealed class ZLinkBackendStreamSocketWrapper(global::Zlink.StreamSocket
         nativeSocket.SetChannelName(channelName);
     }
 
-    public void OnRawPacket(Func<string, global::Zlink.Message, int> handler)
+    public void OnRawPacket(Func<string, Message, int> handler)
     {
         nativeSocket.OnPacket(handler.Invoke);
     }
 
-    public void OnFramedPacket(Action<string, global::Zlink.Message, global::Zlink.Message> handler)
+    public void OnFramedPacket(Action<string, Message, Message> handler)
     {
         nativeSocket.OnFramedPacket((routingIdText, header, body) =>
         {
@@ -29,19 +29,24 @@ internal sealed class ZLinkBackendStreamSocketWrapper(global::Zlink.StreamSocket
     }
 
     public bool Send(
-        global::Zlink.RoutingId routingId,
-        global::Zlink.Message payload,
-        global::Zlink.SendFlags flags)
+        RoutingId routingId,
+        Message payload,
+        SendFlags flags)
     {
         return nativeSocket.Send(routingId, payload, flags);
     }
 
     public bool Send(
-        global::Zlink.RoutingId routingId,
-        IReadOnlyList<global::Zlink.Message> parts,
-        global::Zlink.SendFlags flags)
+        RoutingId routingId,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
     {
         return nativeSocket.Send(routingId, parts, flags);
+    }
+
+    public void DisconnectPeer(RoutingId routingId)
+    {
+        nativeSocket.DisconnectRid(routingId);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

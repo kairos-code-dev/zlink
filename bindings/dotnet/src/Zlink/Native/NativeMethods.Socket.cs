@@ -60,7 +60,7 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_recv_part(IntPtr router,
         out IntPtr sourceNodeRoutingId, out IntPtr sourceSpotRoutingId,
-        out ulong requestSequence, ref ZlinkMsg part, out int hasMore,
+        out ulong requestSeq, ref ZlinkMsg part, out int hasMore,
         int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

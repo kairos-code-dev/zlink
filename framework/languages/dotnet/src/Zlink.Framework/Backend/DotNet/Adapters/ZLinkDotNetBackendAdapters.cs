@@ -1,3 +1,5 @@
+using ZlinkRegistry = Zlink.Registry;
+
 namespace Zlink.Framework.Backend.DotNet.Adapters;
 
 
@@ -5,7 +7,7 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 {
     public IZLinkBackendContext CreateContext()
     {
-        return new ZLinkBackendContextWrapper(new global::Zlink.Context());
+        return new ZLinkBackendContextWrapper(new Context());
     }
 
     public IZLinkBackendDiscovery CreateDiscovery(
@@ -13,40 +15,40 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
         ZLinkBackendServiceType serviceType,
         string serviceName)
     {
-        var nativeContext = context.RequireNative<global::Zlink.Context>();
+        var nativeContext = context.RequireNative<Context>();
         var nativeServiceType = serviceType switch
         {
-            ZLinkBackendServiceType.Socket => global::Zlink.ServiceType.Socket,
-            ZLinkBackendServiceType.Spot => global::Zlink.ServiceType.Spot,
+            ZLinkBackendServiceType.Socket => ServiceType.Socket,
+            ZLinkBackendServiceType.Spot => ServiceType.Spot,
             _ => throw new ArgumentOutOfRangeException(nameof(serviceType)),
         };
 
         return new ZLinkBackendDiscoveryWrapper(
-            new global::Zlink.Discovery(nativeContext, nativeServiceType, serviceName));
+            new Discovery(nativeContext, nativeServiceType, serviceName));
     }
 
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)
     {
         return new ZLinkBackendDealerSocketWrapper(
-            new global::Zlink.DealerSocket(context.RequireNative<global::Zlink.Context>()));
+            new DealerSocket(context.RequireNative<Context>()));
     }
 
     public IZLinkBackendRouterSocket CreateRouterSocket(IZLinkBackendContext context)
     {
         return new ZLinkBackendRouterSocketWrapper(
-            new global::Zlink.RouterSocket(context.RequireNative<global::Zlink.Context>()));
+            new RouterSocket(context.RequireNative<Context>()));
     }
 
     public IZLinkBackendPublisherSocket CreatePublisherSocket(IZLinkBackendContext context)
     {
         return new ZLinkBackendPublisherSocketWrapper(
-            new global::Zlink.PubSocket(context.RequireNative<global::Zlink.Context>()));
+            new PubSocket(context.RequireNative<Context>()));
     }
 
     public IZLinkBackendSubscriberSocket CreateSubscriberSocket(IZLinkBackendContext context)
     {
         return new ZLinkBackendSubscriberSocketWrapper(
-            new global::Zlink.SubSocket(context.RequireNative<global::Zlink.Context>()));
+            new SubSocket(context.RequireNative<Context>()));
     }
 }
 
@@ -55,7 +57,7 @@ internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
     public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context)
     {
         return new ZLinkBackendSpotNodeWrapper(
-            new global::Zlink.SpotNode(context.RequireNative<global::Zlink.Context>()));
+            new SpotNode(context.RequireNative<Context>()));
     }
 }
 
@@ -64,7 +66,7 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
     public IZLinkBackendStreamSocket CreateStreamSocket(IZLinkBackendContext context)
     {
         return new ZLinkBackendStreamSocketWrapper(
-            new global::Zlink.StreamSocket(context.RequireNative<global::Zlink.Context>()));
+            new StreamSocket(context.RequireNative<Context>()));
     }
 }
 
@@ -73,13 +75,13 @@ internal sealed class ZLinkDotNetRegistryBackendAdapter : IZLinkRegistryBackendA
     public IZLinkBackendRegistry CreateRegistry(IZLinkBackendContext context)
     {
         return new ZLinkBackendRegistryWrapper(
-            new global::Zlink.Registry(context.RequireNative<global::Zlink.Context>()));
+            new ZlinkRegistry(context.RequireNative<Context>()));
     }
 
     public IZLinkBackendRegistryQueryClient CreateRegistryQueryClient(IZLinkBackendContext context)
     {
         return new ZLinkBackendRegistryQueryClientWrapper(
-            new global::Zlink.RegistryQueryClient(context.RequireNative<global::Zlink.Context>()));
+            new RegistryQueryClient(context.RequireNative<Context>()));
     }
 }
 

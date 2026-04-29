@@ -124,6 +124,10 @@ bool Write(
 - session callback은 같은 session 안에서는 직렬로 실행한다.
   같은 연결에 대해 `OnDispatchAsync(...)`, `OnDispatchAsync(...)`, lifecycle callback이
   서로 병렬로 겹치지 않게 하는 편을 기본으로 본다.
+- session callback은 native/socket callback 안에서 직접 실행하지 않는다.
+  framework는 callback을 managed task로 넘긴 뒤 application callback을 호출한다.
+  transport callback이 application 처리 시간이나 예외에 직접 묶이지 않게 하기 위한
+  계약이다.
 - send queue와 backpressure는 하부 socket 동작을 따르되, application이 보는 계약은
   `WithDontWait()` 또는 `Write(...)`의 `false` 반환으로만 읽히게 한다.
 - `STREAM` session 등록은 attribute 기반으로 열지 않고 명시 등록만 지원한다.

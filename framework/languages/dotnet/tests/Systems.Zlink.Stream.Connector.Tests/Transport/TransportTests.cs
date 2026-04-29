@@ -7,34 +7,33 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Builders;
-using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Compression;
-using Systems.Zlink.Stream.Connector.Connector;
-using Systems.Zlink.Stream.Connector.Framing;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
-using Systems.Zlink.Stream.Connector.Options;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Calls;
+using Systems.Zlink.Stream.Connector.Protocol;
+using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
 
 
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public async Task TcpRawSendAndReceiveUsesHeaderBodyFrame()
+    public async Task TcpSendUsesHeaderBodyFrame()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var stream = tcp.GetStream();
             var packet = await ReadPacketAsync(stream);
-            Assert.Equal("h", Encoding.UTF8.GetString(packet.Header));
+            var header = headerCodec.Decode(packet.Header);
+            Assert.Equal("h", header.Name);
+            Assert.Equal(ZlinkStreamCodec.Raw, header.Codec);
             Assert.Equal("b", Encoding.UTF8.GetString(packet.Body));
-            await WritePacketAsync(stream, "eh"u8.ToArray(), "eb"u8.ToArray());
         });
 
         await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
@@ -42,50 +41,82 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
 
-        connector.SendRaw("h"u8.ToArray(), "b"u8.ToArray());
-        var reply = await connector.ReceiveRawAsync();
+        connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+            .WithMessageName("h")
+            .Exec();
 
-        Assert.Equal("eh", Encoding.UTF8.GetString(reply.Header.Span));
-        Assert.Equal("eb", Encoding.UTF8.GetString(reply.Body.Span));
         await server;
     }
 
     [Fact]
-    public async Task TcpReceiveHandlesMultiplePacketsInOrder()
+    public async Task TcpReceiveDispatchesMultipleHeaderPacketsInOrder()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var stream = tcp.GetStream();
-            await WritePacketAsync(stream, "h1"u8.ToArray(), "b1"u8.ToArray());
-            await WritePacketAsync(stream, "h2"u8.ToArray(), "b2"u8.ToArray());
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "h1",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                "b1"u8.ToArray());
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "h2",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                "b2"u8.ToArray());
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = new ZlinkStreamConnector(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
+        var received = new List<string>();
+        var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.On("h1", (message, _) =>
+        {
+            received.Add($"{message.Name}:{Encoding.UTF8.GetString(message.Body.Body.Span)}");
+            first.SetResult();
+            return ValueTask.CompletedTask;
+        });
+        connector.On("h2", (message, _) =>
+        {
+            received.Add($"{message.Name}:{Encoding.UTF8.GetString(message.Body.Body.Span)}");
+            second.SetResult();
+            return ValueTask.CompletedTask;
+        });
 
-        var first = await connector.ReceiveRawAsync();
-        var second = await connector.ReceiveRawAsync();
+        await connector.ConnectAsync();
+        await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await second.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal("h1", Encoding.UTF8.GetString(first.Header.Span));
-        Assert.Equal("b1", Encoding.UTF8.GetString(first.Body.Span));
-        Assert.Equal("h2", Encoding.UTF8.GetString(second.Header.Span));
-        Assert.Equal("b2", Encoding.UTF8.GetString(second.Body.Span));
+        Assert.Equal(["h1:b1", "h2:b2"], received);
         await server;
     }
 
     [Fact]
-    public async Task WebSocketRawSendAndReceiveUsesBinaryFrames()
+    public async Task WebSocketSendUsesBinaryFrames()
     {
         using var listener = new HttpListener();
         var port = GetFreeTcpPort();
         listener.Prefixes.Add($"http://127.0.0.1:{port}/ws/");
         listener.Start();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var server = Task.Run(async () =>
         {
             var context = await listener.GetContextAsync();
@@ -93,13 +124,10 @@ public sealed partial class StreamConnectorTests
             using var webSocket = webSocketContext.WebSocket;
             var received = await ReceiveWebSocketMessageAsync(webSocket);
             var packet = DecodePacket(received);
-            Assert.Equal("wh", Encoding.UTF8.GetString(packet.Header));
+            var header = headerCodec.Decode(packet.Header);
+            Assert.Equal("wh", header.Name);
+            Assert.Equal(ZlinkStreamCodec.Raw, header.Codec);
             Assert.Equal("wb", Encoding.UTF8.GetString(packet.Body));
-            await webSocket.SendAsync(
-                EncodePacket("rh"u8.ToArray(), "rb"u8.ToArray()),
-                WebSocketMessageType.Binary,
-                true,
-                CancellationToken.None);
         });
 
         await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
@@ -107,30 +135,31 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/")
         });
 
-        connector.SendRaw("wh"u8.ToArray(), "wb"u8.ToArray());
-        var reply = await connector.ReceiveRawAsync();
+        connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "wb"u8.ToArray()))
+            .WithMessageName("wh")
+            .Exec();
 
-        Assert.Equal("rh", Encoding.UTF8.GetString(reply.Header.Span));
-        Assert.Equal("rb", Encoding.UTF8.GetString(reply.Body.Span));
         await server;
     }
 
     [Fact]
-    public async Task TlsRawSendWorksWithSkippedCertificateValidation()
+    public async Task TlsSendWorksWithSkippedCertificateValidation()
     {
         using var certificate = CreateSelfSignedCertificate();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var ssl = new SslStream(tcp.GetStream(), false);
             await ssl.AuthenticateAsServerAsync(certificate);
             var packet = await ReadPacketAsync(ssl);
-            Assert.Equal("th", Encoding.UTF8.GetString(packet.Header));
+            var header = headerCodec.Decode(packet.Header);
+            Assert.Equal("th", header.Name);
+            Assert.Equal(ZlinkStreamCodec.Raw, header.Codec);
             Assert.Equal("tb", Encoding.UTF8.GetString(packet.Body));
-            await WritePacketAsync(ssl, "trh"u8.ToArray(), "trb"u8.ToArray());
         });
 
         await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
@@ -139,11 +168,10 @@ public sealed partial class StreamConnectorTests
             SkipServerCertificateValidation = true
         });
 
-        connector.SendRaw("th"u8.ToArray(), "tb"u8.ToArray());
-        var reply = await connector.ReceiveRawAsync();
+        connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
+            .WithMessageName("th")
+            .Exec();
 
-        Assert.Equal("trh", Encoding.UTF8.GetString(reply.Header.Span));
-        Assert.Equal("trb", Encoding.UTF8.GetString(reply.Body.Span));
         await server;
     }
 

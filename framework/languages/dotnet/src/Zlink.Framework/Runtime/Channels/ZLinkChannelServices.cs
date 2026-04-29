@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -13,10 +13,8 @@ internal sealed class ZLinkClient(ZLinkFrameworkRuntime runtime, ZLinkFrameworkR
         return new ZLinkSendCall(runtime, registration, channelName, message);
     }
 
-    public IZLinkRequestCall<TReply> Request<TReply>(string channelName, IZLinkRequest<TReply> request)
-    {
-        return new ZLinkRequestCall<TReply>(runtime, registration, channelName, request);
-    }
+    public IZLinkRequestCall Request<TMessage>(string channelName, TMessage request)
+        => new ZLinkRequestCall<TMessage>(runtime, registration, channelName, request);
 }
 
 internal sealed class ZLinkEventPublisher(ZLinkFrameworkRuntime runtime) : IZLinkEventPublisher

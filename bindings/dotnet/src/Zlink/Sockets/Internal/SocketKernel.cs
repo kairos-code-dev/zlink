@@ -1108,7 +1108,7 @@ internal sealed class SocketKernel : IDisposable
     }
 
     private unsafe void SendReplyCore(RoutingId routingId,
-        RoutingId? spotRid, ulong requestSequence, IReadOnlyList<Message> parts,
+        RoutingId? spotRid, ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags)
     {
         _ = flags;
@@ -1129,12 +1129,12 @@ internal sealed class SocketKernel : IDisposable
             {
                 int rc = spotRidBytes == null
                     ? NativeMethods.zlink_router_reply_part(Handle,
-                        ref nativeRoutingId, requestSequence, ref nativeParts[i],
+                        ref nativeRoutingId, requestSeq, ref nativeParts[i],
                         i + 1 < nativeParts.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final)
                     : NativeMethods.zlink_router_reply_spot_part(Handle,
-                        ref nativeRoutingId, ref nativeSpotRid, requestSequence,
+                        ref nativeRoutingId, ref nativeSpotRid, requestSeq,
                         ref nativeParts[i],
                         i + 1 < nativeParts.Length
                             ? NativeMethods.ZlinkPartFlag.More
@@ -1389,19 +1389,19 @@ internal sealed class SocketKernel : IDisposable
     {
         MultipartMessageCollection parts = ReceiveRoutedParts(flags,
             out byte[]? routingIdBytes, out byte[]? spotRidBytes,
-            out ulong requestSequence) ?? throw ZlinkException.CreateRecvException(
+            out ulong requestSeq) ?? throw ZlinkException.CreateRecvException(
                 (int)ErrorCode.EAgain);
         return CreateRoutedReceived(parts, routingIdBytes, spotRidBytes,
-            requestSequence);
+            requestSeq);
     }
 
     private unsafe Received? TryReceiveRoutedCore(int flags)
     {
         MultipartMessageCollection? parts = ReceiveRoutedParts(flags,
             out byte[]? routingIdBytes, out byte[]? spotRidBytes,
-            out ulong requestSequence, allowNoData: true);
+            out ulong requestSeq, allowNoData: true);
         return parts == null ? null : CreateRoutedReceived(parts, routingIdBytes,
-            spotRidBytes, requestSequence);
+            spotRidBytes, requestSeq);
     }
 
     private unsafe byte[][] ReceiveRawFramesCore(int flags)
@@ -1470,9 +1470,9 @@ internal sealed class SocketKernel : IDisposable
     }
 
     private Received CreateRoutedReceived(MultipartMessageCollection parts,
-        byte[]? routingIdBytes, byte[]? spotRidBytes, ulong requestSequence)
+        byte[]? routingIdBytes, byte[]? spotRidBytes, ulong requestSeq)
     {
-        if (requestSequence == 0)
+        if (requestSeq == 0)
         {
             return Received.Create(routingIdBytes, parts,
                 adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
@@ -1484,7 +1484,7 @@ internal sealed class SocketKernel : IDisposable
         RoutingId? replySpotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        return Received.Create(replyRoutingId, parts, requestSequence,
+        return Received.Create(replyRoutingId, parts, requestSeq,
             replySpotRid, replyHandler: (replyParts, sendFlags) =>
             {
                 if (replyRoutingId is null)
@@ -1497,7 +1497,7 @@ internal sealed class SocketKernel : IDisposable
                 Message[] copied = new Message[replyParts.Count];
                 for (int i = 0; i < copied.Length; i++)
                     copied[i] = replyParts[i];
-                SendReplyCore(replyRoutingId.Value, replySpotRid, requestSequence,
+                SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
                     copied, sendFlags);
             });
     }
@@ -1549,14 +1549,14 @@ internal sealed class SocketKernel : IDisposable
 
     private unsafe MultipartMessageCollection? ReceiveRoutedParts(int flags,
         out byte[]? routingIdBytes, out byte[]? spotRidBytes,
-        out ulong requestSequence, bool allowNoData = false)
+        out ulong requestSeq, bool allowNoData = false)
     {
         routingIdBytes = null;
         spotRidBytes = null;
-        requestSequence = 0;
+        requestSeq = 0;
         if (Type == SocketType.Router)
             return ReceiveRouterParts(flags, out routingIdBytes, out spotRidBytes,
-                out requestSequence, allowNoData);
+                out requestSeq, allowNoData);
 
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
@@ -1603,13 +1603,13 @@ internal sealed class SocketKernel : IDisposable
 
     private unsafe MultipartMessageCollection? ReceiveRouterParts(int flags,
         out byte[]? routingIdBytes, out byte[]? spotRidBytes,
-        out ulong requestSequence, bool allowNoData)
+        out ulong requestSeq, bool allowNoData)
     {
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
         routingIdBytes = null;
         spotRidBytes = null;
-        requestSequence = 0;
+        requestSeq = 0;
         try
         {
             while (true)
@@ -1620,7 +1620,7 @@ internal sealed class SocketKernel : IDisposable
                 bool initialized = true;
                 int rc = NativeMethods.zlink_router_recv_part(Handle,
                     out IntPtr sourceNodeRid, out IntPtr sourceSpotRid,
-                    out ulong receivedRequestSequence, ref part, out int hasMore,
+                    out ulong receivedRequestSeq, ref part, out int hasMore,
                     flags);
                 if (rc != 0)
                 {
@@ -1640,7 +1640,7 @@ internal sealed class SocketKernel : IDisposable
                 {
                     routingIdBytes = CopyRoutingIdBytes(sourceNodeRid);
                     spotRidBytes = CopyRoutingIdBytes(sourceSpotRid);
-                    requestSequence = receivedRequestSequence;
+                    requestSeq = receivedRequestSeq;
                 }
                 AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (hasMore == 0)
@@ -1755,12 +1755,12 @@ internal sealed class SocketKernel : IDisposable
 
     private unsafe List<byte[]> ReceiveRawFrameSequence(int flags,
         bool includeRoutingFrames, out byte[]? routingIdBytes,
-        out byte[]? spotRidBytes, out ulong requestSequence)
+        out byte[]? spotRidBytes, out ulong requestSeq)
     {
         List<byte[]> frames = new();
         routingIdBytes = null;
         spotRidBytes = null;
-        requestSequence = 0;
+        requestSeq = 0;
         while (true)
         {
             ZlinkMsg part = default;
@@ -1774,7 +1774,7 @@ internal sealed class SocketKernel : IDisposable
             if (Type == SocketType.Router)
             {
                 rc = NativeMethods.zlink_router_recv_part(Handle,
-                    out sourceNodeRid, out sourceSpotRid, out requestSequence,
+                    out sourceNodeRid, out sourceSpotRid, out requestSeq,
                     ref part, out hasMore, flags);
             }
             else

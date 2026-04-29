@@ -264,7 +264,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .ExecAsync(cancellationToken);
+            .ExecAsync<GetAccountReply>(cancellationToken);
 
         return new UserReply
         {
@@ -454,7 +454,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetProfileRequest { AccountId = request.AccountId })
-        .ExecAsync(cancellationToken);
+        .ExecAsync<GetProfileReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -473,7 +473,7 @@ app.MapPost("/profiles/get", async (
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync(cancellationToken);
+    .ExecAsync<GetProfileReply>(cancellationToken);
 
 client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })

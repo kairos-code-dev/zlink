@@ -30,6 +30,19 @@ public class BoundaryValidationContractTest {
     }
 
     @Test
+    public void routingIdParsesHexString() {
+        RoutingId routingId = RoutingId.fromBytes(new byte[] {0x00, 0x41, 0x42});
+
+        assertEquals(routingId, RoutingId.fromString("004142"));
+        assertEquals("004142", routingId.toHex());
+        assertEquals(RoutingId.MAX_LENGTH, RoutingId.fromString("a".repeat(510)).size());
+        assertThrows(IllegalArgumentException.class,
+            () -> RoutingId.fromString("not-hex"));
+        assertThrows(IllegalArgumentException.class,
+            () -> RoutingId.fromString("a".repeat(512)));
+    }
+
+    @Test
     public void routingIdDoesNotExposeUint32Factory() {
         assertFalse(hasPublicMethod(RoutingId.class, "fromU32", int.class));
     }

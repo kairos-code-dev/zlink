@@ -106,11 +106,11 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         }
     }
 
-    public void Reply(RoutingId peerRid, ulong requestSequence, Message message,
+    public void Reply(RoutingId peerRid, ulong requestSeq, Message message,
         SendFlags flags = SendFlags.None)
-        => Reply(peerRid, requestSequence, new[] { message }, flags);
+        => Reply(peerRid, requestSeq, new[] { message }, flags);
 
-    public unsafe void Reply(RoutingId peerRid, ulong requestSequence,
+    public unsafe void Reply(RoutingId peerRid, ulong requestSeq,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
@@ -128,7 +128,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                 try
                 {
                     int rc = NativeMethods.zlink_router_reply_part(Handle,
-                        ref nativeRoutingId, requestSequence, ref nativePart,
+                        ref nativeRoutingId, requestSeq, ref nativePart,
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final);
@@ -270,12 +270,12 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     }
 
     public void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSequence, Message message, SendFlags flags = SendFlags.None)
-        => ReplyToSpot(destNodeRid, destSpotRid, requestSequence, new[] { message },
+        ulong requestSeq, Message message, SendFlags flags = SendFlags.None)
+        => ReplyToSpot(destNodeRid, destSpotRid, requestSeq, new[] { message },
             flags);
 
     public unsafe void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSequence, IReadOnlyList<Message> parts,
+        ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         _ = flags;
@@ -295,7 +295,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
                 try
                 {
                     int rc = NativeMethods.zlink_router_reply_spot_part(Handle,
-                        ref nodeRid, ref spotRid, requestSequence, ref nativePart,
+                        ref nodeRid, ref spotRid, requestSeq, ref nativePart,
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final);

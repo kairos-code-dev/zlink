@@ -32,6 +32,33 @@ func NewRoutingID(data []byte) RoutingID {
 	return RoutingID{data: cloned}
 }
 
+// NewRoutingIDFromString parses the hex form returned by RoutingID.String or
+// RoutingID.Hex. Invalid input returns the empty RoutingID value.
+func NewRoutingIDFromString(value string) RoutingID {
+	rid, err := ParseRoutingIDString(value)
+	if err != nil {
+		return RoutingID{}
+	}
+	return rid
+}
+
+// ParseRoutingIDString parses the hex form returned by RoutingID.String or
+// RoutingID.Hex. Invalid input returns *ConfigError.
+func ParseRoutingIDString(value string) (RoutingID, error) {
+	if len(value) == 0 || len(value)%2 != 0 || len(value) > maxRoutingIDSize*2 {
+		return RoutingID{}, validationError("routing id string must be non-empty even-length hex and decode to at most %d bytes", maxRoutingIDSize)
+	}
+	data, err := hex.DecodeString(value)
+	if err != nil {
+		return RoutingID{}, validationError("routing id string must contain only hex digits")
+	}
+	rid := NewRoutingID(data)
+	if rid.Size() == 0 {
+		return RoutingID{}, validationError("routing id length must be between 1 and %d bytes", maxRoutingIDSize)
+	}
+	return rid, nil
+}
+
 func (r RoutingID) Bytes() []byte {
 	return append([]byte(nil), r.data...)
 }

@@ -9,8 +9,8 @@ public sealed class test_json_message_extensions
     {
         var expected = new JsonRoundtripValue(7, "codec-json");
 
-        using Message message = JsonMessageExtensions.ToMessage(expected);
-        JsonRoundtripValue actual = message.ParseJson<JsonRoundtripValue>();
+        using Message message = expected.ToJson();
+        JsonRoundtripValue actual = message.FromJson<JsonRoundtripValue>();
 
         Assert.Equal(expected, actual);
     }

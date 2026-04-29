@@ -69,21 +69,32 @@ use case validation은 설계 설명 범위를 보는 문서다. 반면 이 문�
 | `UseSpotDiscovery(...)` 없이 `AddSpotNode(...)` | `unit` | startup validation 예외 |
 | `CreateAsync(spotName)` | `integration-single-process` | `SpotRid`, `SpotName`, `Created` 일관성 확인 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과 일관성 확인 |
+| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등록이 descriptor에 반영 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | per-spot scope DI 정상 동작 |
+| `OnClosingAsync(...)` normal remove callback | `integration-single-process` | `RemoveAsync(...)` 호출 때 spot 실행 문맥에서 한 번 호출 |
 | local spot publish | `integration-single-process` | subscriber 수신 |
 | outbound-only 외부 publish client | `integration-multi-process` | target SPOT channel publish 성공 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback 미발생, dispose 완료 |
+| actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkActorContext.AddPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행 |
+| session context actor bridge | `integration-single-process` | `IZLinkSessionContext.AttachActorAsync(...)`, `DispatchToActorAsync(...)`, `DisconnectActorAsync(...)`가 public session 표면에서 동작 |
+| session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고 disconnect callback으로 이어짐 |
+| actor join 직후 packet dispatch | `integration-single-process` | join 완료 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행 |
+| actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch 되지 않음 |
+| actor context channel request 경로 | `integration-single-process` | join 전 `Context.RequestChannel(...)`은 일반 channel client 경로를, join 후에는 현재 `Spot` channel client 경로를 사용 |
+| actor context stream API | `integration-single-process` | actor는 `Context.Send(...)`, `Context.Reply(...)`로 client stream에 쓰고 `IZLinkStream` 직접 노출에 의존하지 않음 |
 
 ## 6. Stream Regression 항목
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| 같은 node에 raw/packet 동시 등록 | `unit` | startup validation 예외 |
-| packet session node | `integration-single-process` | `OnDispatchAsync(...)` 호출 |
-| raw session node | `integration-single-process` | `OnDispatchAsync(...)` 호출 |
+| 같은 node에 session 중복 등록 | `unit` | startup validation 예외 |
+| header session node | `integration-single-process` | `OnDispatchAsync(...)` 호출 |
 | `OnConnectedAsync(...)` | `integration-multi-process` | `ConnectionReady` 이후 1회 호출 |
 | `OnErrorAsync(...)` 범위 | `integration-multi-process` | transport error만 session callback으로 전달 |
 | peer metadata 표면 | `integration-single-process` | `SessionId`, `RoutingId`, `LocalAddr`, `RemoteAddr` 값 확인 |
+| session callback task dispatch | `integration-single-process` | transport callback에서 user callback을 직접 호출하지 않고 managed task 경로로 호출 |
+| session callback 직렬성 | `integration-single-process` | 같은 session의 lifecycle/packet callback이 서로 병렬 실행되지 않음 |
+| session callback 직접 호출 우회 방지 | `unit` | runtime 내부 transport 진입점은 enqueue API만 사용 |
 
 ## 7. Registry / Monitoring Regression 항목
 

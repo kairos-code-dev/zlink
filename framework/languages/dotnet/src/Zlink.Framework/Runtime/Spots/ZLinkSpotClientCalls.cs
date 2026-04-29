@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -13,11 +13,11 @@ internal sealed class ZLinkSpotClientService : IZLinkSpotClient
             message);
     }
 
-    public IZLinkRequestCall<TReply> RequestChannel<TReply>(
+    public IZLinkRequestCall RequestChannel<TMessage>(
         string channelName,
-        IZLinkRequest<TReply> request)
+        TMessage request)
     {
-        return new ZLinkCurrentSpotRequestCall<TReply>(
+        return new ZLinkCurrentSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
             channelName,
             request);
@@ -34,27 +34,27 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
     string channelName,
     TMessage message) : IZLinkSendCall
 {
-    private string? _packetName = ZLinkPacketNameResolver.ResolveFromMessage(message);
-    private global::Zlink.SendFlags _flags;
+    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
+    private SendFlags _flags;
 
-    public IZLinkSendCall WithPacketName(string packetName)
+    public IZLinkSendCall WithMessageName(string messageName)
     {
-        _packetName = packetName;
+        _messageName = messageName;
         return this;
     }
 
     public IZLinkSendCall WithDontWait()
     {
-        _flags |= global::Zlink.SendFlags.DontWait;
+        _flags |= SendFlags.DontWait;
         return this;
     }
 
-    public bool Exec()
+    public bool Sync()
     {
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Command,
             channelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             Guid.NewGuid().ToString("N"),
             null,
@@ -66,39 +66,39 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
     }
 }
 
-internal sealed class ZLinkCurrentSpotRequestCall<TReply>(
+internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     ZLinkSpotActivation activation,
     string channelName,
-    IZLinkRequest<TReply> request) : IZLinkRequestCall<TReply>
+    TMessage request) : IZLinkRequestCall
 {
-    private string? _packetName = ZLinkPacketNameResolver.ResolveFromMessage(request);
+    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRequestCall<TReply> WithPacketName(string packetName)
+    public IZLinkRequestCall WithMessageName(string messageName)
     {
-        _packetName = packetName;
+        _messageName = messageName;
         return this;
     }
 
-    public IZLinkRequestCall<TReply> WithTimeout(TimeSpan timeout)
+    public IZLinkRequestCall WithTimeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;
     }
 
-    public async ValueTask<TReply> ExecAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Request,
             channelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             Guid.NewGuid().ToString("N"),
             DateTimeOffset.UtcNow.Add(_timeout ?? TimeSpan.FromSeconds(30)),
             null,
             null,
             null);
-        using var envelope = ZLinkEnvelopeCodec.Encode(header, request, request.GetType());
+        using var envelope = ZLinkEnvelopeCodec.Encode(header, request, request?.GetType() ?? typeof(TMessage));
         var reply = await activation.RequestChannelAsync(channelName, envelope, _timeout, cancellationToken);
         try
         {

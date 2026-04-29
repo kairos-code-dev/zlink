@@ -87,77 +87,60 @@ public readonly record struct ZLinkStreamDiagnostic(
     int NativeCode,
     string? Message);
 
-public interface IZLinkPacketStreamSession
+public interface IZLinkSession
 {
-    ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    IZLinkSessionContext Context { get; set; }
 
-    ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    ValueTask OnConnectedAsync(CancellationToken cancellationToken);
+
+    ValueTask OnDisconnectedAsync(CancellationToken cancellationToken);
 
     ValueTask OnErrorAsync(
-        IZLinkStream stream,
         ZLinkStreamError error,
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        IZLinkStream stream,
-        Message header,
-        Message body,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkStreamHeaderSession
-{
-    ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
-
-    ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
-
-    ValueTask OnErrorAsync(
-        IZLinkStream stream,
-        ZLinkStreamError error,
-        CancellationToken cancellationToken);
-
-    ValueTask OnDispatchAsync(
-        IZLinkStream stream,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkRawStreamSession
+public interface IZLinkSessionContext
 {
-    ValueTask OnConnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    string SessionId { get; }
+    RoutingId? RoutingId { get; }
+    string? LocalAddr { get; }
+    string? RemoteAddr { get; }
 
-    ValueTask OnDisconnectedAsync(
-        IZLinkStream stream,
-        CancellationToken cancellationToken);
+    IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request);
+    IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message);
 
-    ValueTask OnErrorAsync(
-        IZLinkStream stream,
-        ZLinkStreamError error,
-        CancellationToken cancellationToken);
+    IZLinkSessionSendCall Send<TMessage>(TMessage message);
+    IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
 
-    ValueTask OnDispatchAsync(
-        IZLinkStream stream,
-        Message payload,
-        CancellationToken cancellationToken);
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
+
+    ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DispatchToActorAsync(
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DisconnectActorAsync(CancellationToken cancellationToken = default);
 }
 ```
 
 여기서 기대하는 점은 아래와 같다.
 
-- raw session은 socket에서 들어오는 payload chunk를 그대로 받는다.
-- raw session은 필요하면 application이 직접 packet 재조립을 맡는다.
-- packet session은 C API가 이미 header/body로 나눈 framed packet을 받는다.
+- session callback은 stream 객체를 직접 인자로 받지 않는다.
+- session 정보, channel request, stream send, actor stream 연결/dispatch/disconnect는
+  `Context`를 통해 호출한다.
+- `CloseAsync(...)`는 현재 stream client 연결을 서버 쪽에서 끊는다.
+- header session은 C API가 이미 header/body로 나눈 framed packet을 받는다.
 - body는 보통 고정 타입 하나로 바로 올리지 않고, header 안의 `msgId` 같은 값을 보고
   각 packet 타입으로 decode한다.
 - 이 decode 과정은 가능하면 `Message.AsReadOnlySpan()`이나 그 위에 얹는 helper를
@@ -166,6 +149,13 @@ public interface IZLinkRawStreamSession
   `RemoteAddr`로 peer와 connection metadata를 읽는다.
 - 둘 다 framework dispatch 경로 위에 올라가고, application은 직접 recv loop를
   만들지 않는다.
+- session callback은 native/socket callback 안에서 직접 호출하지 않는다.
+  framework는 callback을 managed task로 넘긴 뒤 `OnConnectedAsync(...)`,
+  `OnDispatchAsync(...)`, `OnErrorAsync(...)`, `OnDisconnectedAsync(...)`를 호출한다.
+- 같은 session의 callback은 직렬로 실행된다. 같은 연결에서 두 packet dispatch나
+  lifecycle callback이 서로 겹쳐 실행되지 않는다.
+- 서로 다른 session의 callback은 독립적으로 진행될 수 있다. framework가 보장하는
+  순서는 session 단위 순서다.
 - `OnConnectedAsync(...)`와 `OnDisconnectedAsync(...)`는 monitor의 connection 수명
   이벤트에 대응하는 session callback으로 본다.
 - `OnErrorAsync(...)`는 monitor에서 관찰 가능한 session-correlatable transport
@@ -206,8 +196,8 @@ builder.Services.AddZLinkFramework(options =>
 
 즉 framework 기본 표면은 아래 정도로 유지한다.
 
-- `IZLinkPacketStreamSession`
-- `IZLinkRawStreamSession`
+- `IZLinkSession`
+- `IZLinkSessionContext`
 - `IZLinkStream`
 - `Message`
 
@@ -242,9 +232,8 @@ application 표면으로는 올리지 않는다**는 뜻이다.
 
 ## 7. 결정된 기준
 
-- packet session, zlink stream header session, raw session 등록은 attribute 기반으로
-  열지 않는다. `AddStreamNode(...).AddPacketSession<T>()`,
-  `AddHeaderSession<T>()`, `AddRawSession<T>()` 같은 명시 등록만 기본 표면으로 둔다.
+- stream session 등록은 attribute 기반으로 열지 않는다.
+  `AddStreamNode(...).AddHeaderSession<T>()` 같은 명시 등록만 기본 표면으로 둔다.
 - body decode helper와 encode helper는 framework 본체가 아니라 serializer 확장
   패키지가 맡는다.
   framework core는 `Message`, `AsReadOnlySpan()`, session contract까지만 책임진다.
@@ -253,5 +242,5 @@ application 표면으로는 올리지 않는다**는 뜻이다.
 - `OnErrorAsync(...)`는 session-correlatable transport 오류만 받는다.
   handshake 실패와 socket/node 단위 오류는 runtime monitoring에서 다루고, session
   callback에는 올리지 않는다.
-- raw stream과 framed packet stream은 같은 session 계약으로 합치지 않는다.
-  `IZLinkRawStreamSession`과 `IZLinkPacketStreamSession`을 별도 계약으로 유지한다.
+- raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 현 단계의 session은
+  framework가 decode한 `ZlinkStreamHeader`와 `Message body`를 받는 계약으로 둔다.

@@ -1,12 +1,12 @@
 namespace Zlink.Framework.Spots;
 
 public readonly record struct ZLinkSpotCreateResult(
-    global::Zlink.RoutingId SpotRid,
+    RoutingId SpotRid,
     string SpotName,
     bool Created);
 
 public readonly record struct ZLinkSpotInfo(
-    global::Zlink.RoutingId SpotRid,
+    RoutingId SpotRid,
     string SpotName);
 
 public interface IZLinkSpotManager
@@ -17,18 +17,18 @@ public interface IZLinkSpotManager
 
     ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkSpotInfo?> GetAsync(
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken = default);
 
     ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
         CancellationToken cancellationToken = default);
 
     ValueTask<bool> RemoveAsync(
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
 
@@ -38,9 +38,9 @@ public interface IZLinkSpotClient
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall<TReply> RequestChannel<TReply>(
+    IZLinkRequestCall RequestChannel<TMessage>(
         string channelName,
-        IZLinkRequest<TReply> request);
+        TMessage request);
 
     IZLinkPublishCall Publish<TEvent>(
         string topic,
@@ -77,7 +77,7 @@ public interface IZLinkSpotConnectionManager
 }
 
 public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
-    where TSpot : ZLinkSpot
+    where TSpot : IZLinkSpot
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -86,7 +86,7 @@ public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
 }
 
 public interface IZLinkSpotRequestHandler<TSpot, in TRequest, TReply>
-    where TSpot : ZLinkSpot
+    where TSpot : IZLinkSpot
 {
     ValueTask<TReply> HandleAsync(
         TSpot spot,
@@ -95,7 +95,7 @@ public interface IZLinkSpotRequestHandler<TSpot, in TRequest, TReply>
 }
 
 public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
-    where TSpot : ZLinkSpot
+    where TSpot : IZLinkSpot
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -104,7 +104,7 @@ public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
 }
 
 public interface IZLinkSpotTimerHandler<TSpot>
-    where TSpot : ZLinkSpot
+    where TSpot : IZLinkSpot
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -112,13 +112,21 @@ public interface IZLinkSpotTimerHandler<TSpot>
 }
 
 public interface IZLinkSpotActorJoinHandler<TSpot, in TActor, in TRequest, TReply>
-    where TSpot : ZLinkSpot
+    where TSpot : IZLinkSpot
     where TActor : IZLinkActor
-    where TRequest : IZLinkRequest<TReply>
 {
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
         TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorPacketHandler<in TActor, in TMessage>
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TActor actor,
+        TMessage message,
         CancellationToken cancellationToken);
 }

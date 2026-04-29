@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, ZLinkSpot spot)
+internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, IZLinkSpot spot)
 {
     public async ValueTask InvokePacketAsync(
         ZLinkSpotDescriptor descriptor,

@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -8,27 +8,27 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
     string topic,
     TEvent message) : IZLinkPublishCall
 {
-    private string? _packetName = ZLinkPacketNameResolver.ResolveFromMessage(message);
-    private global::Zlink.SendFlags _flags;
+    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
+    private SendFlags _flags;
 
-    public IZLinkPublishCall WithPacketName(string packetName)
+    public IZLinkPublishCall WithMessageName(string messageName)
     {
-        _packetName = packetName;
+        _messageName = messageName;
         return this;
     }
 
     public IZLinkPublishCall WithDontWait()
     {
-        _flags |= global::Zlink.SendFlags.DontWait;
+        _flags |= SendFlags.DontWait;
         return this;
     }
 
-    public bool Exec()
+    public bool Sync()
     {
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Event,
             activation.ChannelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             null,
             null,
@@ -54,28 +54,28 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     string topic,
     TEvent message) : IZLinkPublishCall
 {
-    private string? _packetName = ZLinkPacketNameResolver.ResolveFromMessage(message);
-    private global::Zlink.SendFlags _flags;
+    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
+    private SendFlags _flags;
 
-    public IZLinkPublishCall WithPacketName(string packetName)
+    public IZLinkPublishCall WithMessageName(string messageName)
     {
-        _packetName = packetName;
+        _messageName = messageName;
         return this;
     }
 
     public IZLinkPublishCall WithDontWait()
     {
-        _flags |= global::Zlink.SendFlags.DontWait;
+        _flags |= SendFlags.DontWait;
         return this;
     }
 
-    public bool Exec()
+    public bool Sync()
     {
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Event,
             channelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             null,
             null,

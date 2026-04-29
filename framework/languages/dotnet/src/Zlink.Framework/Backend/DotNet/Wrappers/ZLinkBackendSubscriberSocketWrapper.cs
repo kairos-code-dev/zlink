@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendSubscriberSocketWrapper(global::Zlink.SubSocket nativeSocket) : IZLinkBackendSubscriberSocket
+internal sealed class ZLinkBackendSubscriberSocketWrapper(SubSocket nativeSocket) : IZLinkBackendSubscriberSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -27,7 +27,7 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(global::Zlink.SubSocke
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<global::Zlink.Discovery>());
+        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
     }
 
     public void SetSubscription(string topic)
@@ -35,9 +35,9 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(global::Zlink.SubSocke
         nativeSocket.SetSubscription(topic);
     }
 
-    public global::Zlink.TopicMessage? Subscribe()
+    public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
     {
-        return nativeSocket.Subscribe();
+        return nativeSocket.Subscribe(flags);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

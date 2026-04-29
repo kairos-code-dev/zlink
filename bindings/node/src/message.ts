@@ -70,6 +70,27 @@ function normalizeRoutingIdBytes(bytes: Buffer | Uint8Array, name: string): Buff
   return normalized;
 }
 
+function normalizeRoutingIdString(value: string): Buffer {
+  if (typeof value !== 'string') {
+    throw new TypeError('value must be a string');
+  }
+  if (value.length === 0 || value.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(value)) {
+    throw new ConfigError(
+      ConfigResult.InvalidArgument,
+      0,
+      'value must be a non-empty even-length hex string'
+    );
+  }
+  if (value.length > ROUTING_ID_MAX_LENGTH * 2) {
+    throw new ConfigError(
+      ConfigResult.InvalidArgument,
+      0,
+      `value must decode to at most ${ROUTING_ID_MAX_LENGTH} bytes`
+    );
+  }
+  return normalizeRoutingIdBytes(Buffer.from(value, 'hex'), 'value');
+}
+
 export class Message {
   private _buffer!: Buffer;
   private _refCount!: number;
@@ -173,6 +194,10 @@ export class RoutingId {
 
   static fromBytes(bytes: Buffer | Uint8Array): RoutingId {
     return new RoutingId(normalizeRoutingIdBytes(bytes, 'bytes'));
+  }
+
+  static fromString(value: string): RoutingId {
+    return new RoutingId(normalizeRoutingIdString(value));
   }
 
   toBytes(): Buffer {

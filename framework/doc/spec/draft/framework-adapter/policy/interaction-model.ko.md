@@ -98,6 +98,39 @@
 - 이 session error는 raw monitor event를 그대로 노출하기보다, error kind enum과
   native detail을 함께 가진 구조화된 값으로 다시 올리는 편이 맞다.
 - packet framing 규약을 framework가 얼마나 감출지는 별도 설계가 필요하다.
+- session callback은 transport callback 안에서 직접 실행하지 않는다. framework는
+  수신 이벤트를 비동기 실행 단위로 넘긴 뒤 application callback을 호출한다.
+- 같은 session 안에서는 packet callback과 lifecycle callback이 직렬로 실행된다.
+  이 직렬성은 session 단위 계약이며, 서로 다른 session의 전역 순서를 의미하지
+  않는다.
+
+### 3.4.1 stream-attached actor
+
+stream session 위에 actor/session 모델을 얹을 수 있다. 이 경우 session은 연결과
+packet ingress를 맡고, actor는 계정 또는 플레이어 같은 논리 객체를 표현한다.
+
+actor가 아직 `Spot`에 attach되지 않았다면 actor dispatch는 일반 actor session
+dispatch로 처리할 수 있다. 하지만 actor가 특정 `Spot`에 attach된 뒤에는 actor의
+packet dispatch가 해당 `Spot` 실행 문맥에서 실행되어야 한다. attach 이후 actor
+코드는 room, stage, zone 같은 domain 상태를 읽고 쓸 수 있으므로, stream session
+callback 문맥에서 직접 실행하면 같은 `Spot` 상태에 대한 직렬 실행 계약이 깨진다.
+
+actor join으로 현재 `Spot`이 바뀌는 경우에는 join 완료 뒤 들어오는 actor dispatch가
+새 `Spot` 실행 문맥으로 들어가야 한다. framework는 actor session state 갱신과
+이후 packet dispatch 선택 사이의 경합을 숨겨야 한다.
+
+actor 코드는 framework outbound client를 직접 고르지 않는다. actor는 runtime이
+주입한 actor context만 사용하고, context가 현재 actor 상태에 맞는 channel request
+경로를 선택한다. actor가 아직 `Spot`에 join되지 않았으면 context의 channel
+request는 일반 framework channel client 경로로 나간다. actor가 `Spot`에 join된
+뒤에는 같은 호출이 현재 `Spot`에 attach된 channel client 경로로 나간다. 이 규칙은
+사용자가 join 전후에 `IZLinkClient`와 `IZLinkSpotClient` 중 무엇을 써야 하는지
+판단하지 않게 하려는 것이다.
+
+actor 또는 `Spot` callback 안에서 task 기반 request를 `await`하면 현재 callback은
+응답 또는 timeout 전까지 끝나지 않는다. thread를 점유한다는 뜻은 아니지만, 같은
+`Spot`의 다음 dispatch, join, timer, subscription 처리는 현재 callback task가 끝난
+뒤에 실행된다. 명시 timeout이 없으면 framework default timeout을 사용한다.
 
 ### 3.5 worker-dispatch
 

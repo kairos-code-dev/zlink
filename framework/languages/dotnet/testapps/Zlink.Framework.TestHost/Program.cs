@@ -1,12 +1,10 @@
 using System.Text;
 using System.Text.Json;
-using System.Buffers.Binary;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 
@@ -505,7 +503,7 @@ internal sealed class ChannelStartupPublishHostedService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            publisher.Publish(channelName, topic, new TestHostPublishedEvent(value)).Exec();
+            publisher.Publish(channelName, topic, new TestHostPublishedEvent(value)).Sync();
 
             try
             {
@@ -529,7 +527,7 @@ internal sealed class SpotStartupPublishHostedService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            publisher.Publish(channelName, topic, new StartupStageEvent(value)).Exec();
+            publisher.Publish(channelName, topic, new StartupStageEvent(value)).Sync();
 
             try
             {
@@ -567,14 +565,13 @@ internal sealed class TestHostEventSink(string? path)
     }
 }
 
-internal sealed class StartupStageSpot : ZLinkSpot
+internal sealed class StartupStageSpot(IZLinkSpotContext context) : IZLinkSpot
 {
-    public StartupStageSpot(
-        global::Zlink.RoutingId spotRid,
-        global::Zlink.RoutingId nodeRid)
-        : base(spotRid, nodeRid)
+    public IZLinkSpotContext Context { get; } = context;
+
+    public void Configure()
     {
-        AddSubscribe<StartupStageSubscriptionHandler>("stage.monitor");
+        Context.AddSubscribe<StartupStageSubscriptionHandler>("stage.monitor");
     }
 }
 
@@ -612,10 +609,10 @@ internal sealed class ChannelSubscriptionEventHandler(TestHostEventSink sink)
 
 internal sealed class TestHostRawStreamRecorder(TestHostEventSink sink)
 {
-    public void RecordConnected(IZLinkStream stream)
+    public void RecordConnected(IZLinkSessionContext context)
     {
         sink.Append(
-            $"connected|{stream.SessionId}|{stream.RoutingId?.ToHex() ?? "<null>"}|{stream.LocalAddr ?? "<null>"}|{stream.RemoteAddr ?? "<null>"}");
+            $"connected|{context.SessionId}|{context.RoutingId?.ToHex() ?? "<null>"}|{context.LocalAddr ?? "<null>"}|{context.RemoteAddr ?? "<null>"}");
     }
 
     public void RecordPayload(string payload)
@@ -628,43 +625,40 @@ internal sealed class TestHostRawStreamRecorder(TestHostEventSink sink)
         sink.Append($"error|{error.Error}");
     }
 
-    public void RecordDisconnected(IZLinkStream stream)
+    public void RecordDisconnected(IZLinkSessionContext context)
     {
-        sink.Append($"disconnected|{stream.SessionId}");
+        sink.Append($"disconnected|{context.SessionId}");
     }
 }
 
-internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorder) : IZLinkStreamHeaderSession
+internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorder) : IZLinkSession
 {
-    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
+    public IZLinkSessionContext Context { get; set; } = default!;
 
-    public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
+    public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        recorder.RecordConnected(stream);
+        recorder.RecordConnected(Context);
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDisconnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        recorder.RecordDisconnected(stream);
+        recorder.RecordDisconnected(Context);
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnErrorAsync(
-        IZLinkStream stream,
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        _ = stream;
         _ = cancellationToken;
         recorder.RecordError(error);
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnDispatchAsync(
-        IZLinkStream stream,
         ZlinkStreamHeader header,
         global::Zlink.Message payload,
         CancellationToken cancellationToken)
@@ -672,26 +666,7 @@ internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorde
         _ = cancellationToken;
         _ = header;
         recorder.RecordPayload(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
-        var replyHeader = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Response,
-            ZlinkStreamCodec.Json,
-            ZlinkStreamHeaderFlags.HasRid,
-            header.RequestId,
-            header.Name,
-            ZlinkStreamMetadata.Empty);
-        var frame = EncodeFrame(HeaderCodec.Encode(replyHeader).Span, "\"pong\""u8);
-        using var reply = global::Zlink.Message.FromBytes(frame);
-        stream.Write(reply);
-        return ValueTask.CompletedTask;
-    }
-
-    private static byte[] EncodeFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body)
-    {
-        var frame = new byte[6 + header.Length + body.Length];
-        BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
-        header.CopyTo(frame.AsSpan(6, header.Length));
-        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
-        return frame;
+        return Context.Reply("pong")
+            .Async(cancellationToken);
     }
 }

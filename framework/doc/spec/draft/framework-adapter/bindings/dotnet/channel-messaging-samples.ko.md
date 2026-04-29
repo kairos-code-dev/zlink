@@ -331,7 +331,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .ExecAsync(cancellationToken);
+        .ExecAsync<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -409,7 +409,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .ExecAsync(cancellationToken);
+        .ExecAsync<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -453,7 +453,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .ExecAsync(cancellationToken);
+            .ExecAsync<GetAccountReply>(cancellationToken);
 
         return new GetUserReply
         {
@@ -514,7 +514,7 @@ public sealed class RefreshUserCacheHttpRequest
     public long AccountId { get; set; }
 }
 
-public sealed class GetUserRequest : IZLinkRequest<GetUserReply>
+public sealed class GetUserRequest
 {
     public long AccountId { get; set; }
 }
@@ -525,7 +525,7 @@ public sealed class GetUserReply
     public string Nickname { get; set; } = "";
 }
 
-public sealed class GetAccountRequest : IZLinkRequest<GetAccountReply>
+public sealed class GetAccountRequest
 {
     public long AccountId { get; set; }
 }
@@ -584,9 +584,10 @@ channel별 outbound 경로가 분리되어 관리된다.
 
 ## 5. client와 publisher 인터페이스
 
-위 예시가 전제하는 `IZLinkClient`, `IZLinkEventPublisher`, `IZLinkRequest<TReply>`
-전체 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5와
-section 9를 참고한다.
+위 예시가 전제하는 `IZLinkClient`, `IZLinkEventPublisher` 전체 정의는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5를 참고한다.
+request의 reply 타입은 메시지 타입에 붙이지 않고 `ExecAsync<TReply>(...)`에서
+명시한다.
 
 이 샘플은 기본 packet key를 payload 타입 이름으로 해석하는 규칙을 전제로 한다.
 즉 `GetUserRequest`는 기본적으로 `GetUserRequest`, `RefreshUserCacheCommand`는
@@ -610,7 +611,7 @@ var reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .ExecAsync(cancellationToken);
+    .ExecAsync<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -619,7 +620,7 @@ var fastReply = await client
         "profile",
         new GetUserRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync(cancellationToken);
+    .ExecAsync<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -646,7 +647,7 @@ GetUserReply reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .ExecAsync(cancellationToken);
+    .ExecAsync<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -744,7 +745,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .ExecAsync(cancellationToken);
+        .ExecAsync<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });

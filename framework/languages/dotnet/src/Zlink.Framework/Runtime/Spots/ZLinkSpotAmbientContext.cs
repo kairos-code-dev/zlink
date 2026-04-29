@@ -1,11 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotAmbientContext
 {
     private static readonly AsyncLocal<ZLinkSpotActivation?> Current = new();
+
+    public static ZLinkSpotActivation? CurrentOrDefault => Current.Value;
 
     public static ZLinkSpotActivation RequireCurrent()
     {

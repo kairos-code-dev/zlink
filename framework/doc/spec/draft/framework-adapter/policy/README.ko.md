@@ -212,6 +212,15 @@ runtime으로 설명하는 편이 맞다.
 - handler dispatch가 어떤 ingress를 기준으로 설명되는가
 - outbound reply 수신은 어떤 경로로 처리되는가
 - outbound-only 앱이 가능한가
+- `STREAM`을 지원하면 session callback이 transport callback에서 직접 실행되지
+  않고 비동기 실행 단위로 넘어가는지, 같은 session callback 직렬성이 보장되는지
+  설명하는가
+- actor/session 모델을 지원하면 actor가 `Spot`에 attach된 뒤
+  `OnDispatch` 계열 callback이 해당 `Spot` 실행 문맥에서 실행되는지 설명하는가
+- actor/session 모델의 회귀 테스트는 join 직후 packet, spot 이동 직후 packet,
+  stale session packet을 구분해서 검증하는가
+- stream session 회귀 테스트는 callback task dispatch, 같은 session callback
+  직렬성, enqueue 진입점만 허용되는지 검증하는가
 - `SPOT`을 지원하면 spot factory 등록, `spotName` 기준 생성, lifecycle timer,
   외부 spot publish, `spotRid -> spotName` 조회를 어떻게 설명하는가
 - monitoring을 지원하면 socket/discovery/registry/spot runtime event를 어떤

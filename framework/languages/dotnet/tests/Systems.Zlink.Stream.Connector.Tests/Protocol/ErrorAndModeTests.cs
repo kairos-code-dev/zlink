@@ -7,15 +7,13 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Builders;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Compression;
-using Systems.Zlink.Stream.Connector.Connector;
-using Systems.Zlink.Stream.Connector.Framing;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
-using Systems.Zlink.Stream.Connector.Options;
+using Systems.Zlink.Stream.Connector.Calls;
+using Systems.Zlink.Stream.Connector.Protocol;
+using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
 
 
@@ -42,7 +40,9 @@ public sealed partial class StreamConnectorTests
         });
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
-            await connector.Request("ping", new Ping("hello")).ExecAsync<Pong>());
+            await connector.Request(new Ping("hello"))
+                .WithMessageName("ping")
+                .ExecAsync<Pong>());
 
         Assert.Equal(ZlinkStreamErrorCode.RequestTimeout, exception.Error.Code);
         await server;
@@ -57,7 +57,9 @@ public sealed partial class StreamConnectorTests
         });
 
         var exception = Assert.Throws<ZlinkStreamException>(() =>
-            connector.SendRaw("h"u8.ToArray(), "b"u8.ToArray()));
+            connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+                .WithMessageName("h")
+                .Exec());
 
         Assert.Equal(ZlinkStreamErrorCode.Disconnected, exception.Error.Code);
     }
@@ -72,24 +74,42 @@ public sealed partial class StreamConnectorTests
         });
 
         var exception = Assert.Throws<ZlinkStreamException>(() =>
-            connector.SendRaw("h"u8.ToArray(), "b"u8.ToArray()));
+            connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+                .WithMessageName("h")
+                .Exec());
 
         Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
     }
 
     [Fact]
-    public async Task ReceiveRawCannotBeMixedWithCallbackReceive()
+    public async Task InvalidHeaderFramePublishesDecodeError()
     {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            await WritePacketAsync(stream, "invalid-header"u8.ToArray(), "body"u8.ToArray());
+        });
+
         await using var connector = new ZlinkStreamConnector(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri("tcp://127.0.0.1:1")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
-        connector.PacketReceived += (_, _) => ValueTask.CompletedTask;
+        var errorReceived = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.ErrorReceived += (error, _) =>
+        {
+            errorReceived.TrySetResult(error);
+            return ValueTask.CompletedTask;
+        };
 
-        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
-            await connector.ReceiveRawAsync());
+        await connector.ConnectAsync();
+        var error = await errorReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal(ZlinkStreamErrorCode.ConfigurationError, exception.Error.Code);
+        Assert.Equal(ZlinkStreamErrorCode.FrameDecodeFailed, error.Code);
+        await server;
     }
 
 }

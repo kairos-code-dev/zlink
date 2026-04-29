@@ -185,6 +185,10 @@ inline bool initialize_client_session(void *node,
     session->local_endpoint.clear();
     apply_benchmark_auto_hwm_msg_unit(
       node, ZLINK_SOCKET_DEALER, perf_current_benchmark_max_msg_size(64));
+    if (!apply_benchmark_spot_node_hwm(node, settings.hwm, true, true)) {
+        destroy_client_session(session);
+        return false;
+    }
     session->pub = perf_create_default_spot_handle(node);
     session->sub = perf_create_default_spot_handle(node);
     if (!session->pub || !session->sub
@@ -279,6 +283,11 @@ inline bool initialize_client_slot(ctx_guard_t &ctx,
     apply_benchmark_auto_hwm_msg_unit(
       slot->node, ZLINK_SOCKET_DEALER,
       perf_current_benchmark_max_msg_size(64));
+    if (!apply_benchmark_spot_node_hwm(slot->node, settings.hwm, true, true)) {
+        zlink_spot_node_destroy(&slot->node);
+        slot->node = NULL;
+        return false;
+    }
 
     slot->handle = perf_create_default_spot_handle(slot->node);
     if (!slot->handle) {
@@ -380,6 +389,12 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
       session->node, ZLINK_SOCKET_DEALER, max_msg_size);
     apply_benchmark_auto_hwm_msg_unit(
       session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+    if (!apply_benchmark_spot_node_hwm(session->node, settings.hwm, true, true)
+        || !apply_benchmark_spot_node_hwm(
+          session->control_node, settings.hwm, true, true)) {
+        destroy_server_session(session);
+        return false;
+    }
 
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =

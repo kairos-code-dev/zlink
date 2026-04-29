@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -11,8 +11,8 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly string _channelName;
     private readonly object? _message;
-    private string? _packetName;
-    private global::Zlink.SendFlags _flags;
+    private string? _messageName;
+    private SendFlags _flags;
 
     public ZLinkSendCall(
         ZLinkFrameworkRuntime runtime,
@@ -23,30 +23,30 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         _runtime = runtime;
         _channelName = channelName;
         _message = message;
-        _packetName = ZLinkPacketNameResolver.ResolveFromMessage(message);
+        _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
         _ = registration;
     }
 
-    public IZLinkSendCall WithPacketName(string packetName)
+    public IZLinkSendCall WithMessageName(string messageName)
     {
-        _packetName = packetName;
+        _messageName = messageName;
         return this;
     }
 
     public IZLinkSendCall WithDontWait()
     {
-        _flags |= global::Zlink.SendFlags.DontWait;
+        _flags |= SendFlags.DontWait;
         return this;
     }
 
-    public bool Exec()
+    public bool Sync()
     {
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Command,
             _channelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             Guid.NewGuid().ToString("N"),
             null,
@@ -59,41 +59,41 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
     }
 }
 
-internal sealed class ZLinkRequestCall<TReply> : IZLinkRequestCall<TReply>
+internal sealed class ZLinkRequestCall<TMessage> : IZLinkRequestCall
 {
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly ZLinkFrameworkRegistration _registration;
     private readonly string _channelName;
-    private readonly IZLinkRequest<TReply> _request;
-    private string? _packetName;
+    private readonly TMessage _request;
+    private string? _messageName;
     private TimeSpan? _timeout;
 
     public ZLinkRequestCall(
         ZLinkFrameworkRuntime runtime,
         ZLinkFrameworkRegistration registration,
         string channelName,
-        IZLinkRequest<TReply> request)
+        TMessage request)
     {
         _runtime = runtime;
         _registration = registration;
         _channelName = channelName;
         _request = request;
-        _packetName = ZLinkPacketNameResolver.ResolveFromMessage(request);
+        _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     }
 
-    public IZLinkRequestCall<TReply> WithPacketName(string packetName)
+    public IZLinkRequestCall WithMessageName(string messageName)
     {
-        _packetName = packetName;
+        _messageName = messageName;
         return this;
     }
 
-    public IZLinkRequestCall<TReply> WithTimeout(TimeSpan timeout)
+    public IZLinkRequestCall WithTimeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;
     }
 
-    public async ValueTask<TReply> ExecAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
@@ -103,14 +103,14 @@ internal sealed class ZLinkRequestCall<TReply> : IZLinkRequestCall<TReply>
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Request,
             _channelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             correlationId,
             deadline,
             null,
             null,
             null);
-        using var message = ZLinkEnvelopeCodec.Encode(header, _request, _request.GetType());
+        using var message = ZLinkEnvelopeCodec.Encode(header, _request, _request?.GetType() ?? typeof(TMessage));
         var reply = await dealer.RequestAsync(message, timeout, cancellationToken).ConfigureAwait(false);
         try
         {
@@ -144,8 +144,8 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
     private readonly string _channelName;
     private readonly string _topic;
     private readonly object? _message;
-    private string? _packetName;
-    private global::Zlink.SendFlags _flags;
+    private string? _messageName;
+    private SendFlags _flags;
 
     public ZLinkPublishCall(
         ZLinkFrameworkRuntime runtime,
@@ -157,29 +157,29 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
         _channelName = channelName;
         _topic = topic;
         _message = message;
-        _packetName = ZLinkPacketNameResolver.ResolveFromMessage(message);
+        _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     }
 
-    public IZLinkPublishCall WithPacketName(string packetName)
+    public IZLinkPublishCall WithMessageName(string messageName)
     {
-        _packetName = packetName;
+        _messageName = messageName;
         return this;
     }
 
     public IZLinkPublishCall WithDontWait()
     {
-        _flags |= global::Zlink.SendFlags.DontWait;
+        _flags |= SendFlags.DontWait;
         return this;
     }
 
-    public bool Exec()
+    public bool Sync()
     {
         var bundle = _runtime.GetOrCreatePublisherBundle(_channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Event,
             _channelName,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             Guid.NewGuid().ToString("N"),
             null,

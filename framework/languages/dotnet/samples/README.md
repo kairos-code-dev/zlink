@@ -2,7 +2,7 @@
 
 | Sample | Purpose |
 |--------|---------|
-| [PlayHouseRoomEcho](./PlayHouseRoomEcho/) | PlayHouse-style API server, play server, standalone client, room creation, STREAM join, and actor echo flow. |
+| [TicTacToe](./TicTacToe/) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. |
 
 Run all samples:
 

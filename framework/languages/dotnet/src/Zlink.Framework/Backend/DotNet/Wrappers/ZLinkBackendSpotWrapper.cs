@@ -1,13 +1,13 @@
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendSpotWrapper(global::Zlink.Spot nativeSpot) : IZLinkBackendSpot
+internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSpot
 {
     public object NativeInstance => nativeSpot;
 
-    public global::Zlink.RoutingId RoutingId => nativeSpot.RoutingId;
+    public RoutingId RoutingId => nativeSpot.RoutingId;
 
-    public void SetRoutingId(global::Zlink.RoutingId routingId)
+    public void SetRoutingId(RoutingId routingId)
     {
         nativeSpot.SetRoutingId(routingId);
     }
@@ -17,12 +17,12 @@ internal sealed class ZLinkBackendSpotWrapper(global::Zlink.Spot nativeSpot) : I
         nativeSpot.SetSubscription(topic);
     }
 
-    public global::Zlink.TopicMessage? Subscribe(global::Zlink.RecvFlags flags)
+    public TopicMessage? Subscribe(RecvFlags flags)
     {
         return nativeSpot.Subscribe(flags);
     }
 
-    public global::Zlink.Received RecvRouted(global::Zlink.RecvFlags flags)
+    public Received RecvRouted(RecvFlags flags)
     {
         return nativeSpot.RecvRouted(flags);
     }
@@ -37,9 +37,9 @@ internal sealed class ZLinkBackendSpotWrapper(global::Zlink.Spot nativeSpot) : I
         nativeSpot.DrainChannelReplyFrom(dealerSubject);
     }
 
-    public async ValueTask<IReadOnlyList<global::Zlink.Message>> RequestChannelAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
         string channelName,
-        global::Zlink.Message message,
+        Message message,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
@@ -52,8 +52,8 @@ internal sealed class ZLinkBackendSpotWrapper(global::Zlink.Spot nativeSpot) : I
 
     public bool SendChannel(
         string channelName,
-        global::Zlink.Message message,
-        global::Zlink.SendFlags flags)
+        Message message,
+        SendFlags flags)
     {
         return nativeSpot.SendChannel(channelName, message, flags);
     }
@@ -61,17 +61,17 @@ internal sealed class ZLinkBackendSpotWrapper(global::Zlink.Spot nativeSpot) : I
     public bool Publish(
         string serviceName,
         string topic,
-        global::Zlink.Message message,
-        global::Zlink.SendFlags flags)
+        Message message,
+        SendFlags flags)
     {
         return nativeSpot.Publish(serviceName, topic, message, flags);
     }
 
     public bool SendToSpot(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        global::Zlink.Message message,
-        global::Zlink.SendFlags flags)
+        RoutingId targetRid,
+        RoutingId spotRid,
+        Message message,
+        SendFlags flags)
     {
         return nativeSpot.SendToSpot(targetRid, spotRid, message, flags);
     }

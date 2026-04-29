@@ -9,6 +9,8 @@ namespace Zlink;
 
 public readonly struct RoutingId : IEquatable<RoutingId>
 {
+    private const int MaxSize = 255;
+    private const int MaxHexStringLength = MaxSize * 2;
     private const int ThreadCacheMaxEntries = 256;
     [ThreadStatic]
     private static Dictionary<RouteCacheKey, List<RouteCacheEntry>>? t_ownedCache;
@@ -33,6 +35,38 @@ public readonly struct RoutingId : IEquatable<RoutingId>
             throw new ArgumentNullException(nameof(bytes));
         Validate(bytes, nameof(bytes));
         return new RoutingId(bytes, takeOwnership: false);
+    }
+
+    public static RoutingId FromString(string value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        if (value.Length == 0 || (value.Length & 1) != 0)
+        {
+            throw new ArgumentException(
+                "routingId string must be a non-empty even-length hex string.",
+                nameof(value));
+        }
+        if (value.Length > MaxHexStringLength)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value),
+                "routingId string must decode to at most 255 bytes.");
+        }
+
+        byte[] bytes;
+        try
+        {
+            bytes = Convert.FromHexString(value);
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgumentException(
+                "routingId string must contain only hex digits.",
+                nameof(value), ex);
+        }
+
+        Validate(bytes, nameof(value));
+        return new RoutingId(bytes, takeOwnership: true);
     }
 
     public int Size => _bytes?.Length ?? 0;
@@ -126,7 +160,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
     private static void Validate(ReadOnlySpan<byte> bytes, string paramName)
     {
-        if (bytes.Length <= 0 || bytes.Length > 255)
+        if (bytes.Length <= 0 || bytes.Length > MaxSize)
         {
             throw new ArgumentOutOfRangeException(paramName,
                 "routingId length must be between 1 and 255 bytes.");

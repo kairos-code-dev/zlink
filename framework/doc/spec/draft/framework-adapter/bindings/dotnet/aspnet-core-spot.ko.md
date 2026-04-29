@@ -80,7 +80,7 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 그 인스턴스에 대한 메시징, publish/subscribe, timer, lifecycle까지다.
 반면 room broadcast 정책과 도메인별 권한 모델은 여전히 응용 계층 책임으로 둔다.
 현재 draft 구현에서는 actor join, actor factory 등록, stream callback에서
-`IZLinkActorRuntime`으로 actor packet/disconnect를 같은 `SPOT` 실행 문맥에 올리는
+`IZLinkSessionContext`으로 actor packet/disconnect를 같은 `SPOT` 실행 문맥에 올리는
 브리지는 framework core 범위에 포함한다.
 
 ## 4. ASP.NET Core 등록 모델 초안
@@ -361,6 +361,13 @@ channel reply completion 과 timer callback 이 같은 spot 실행 계약 안에
   도 spot state 에 대해 별도 lock 없이 접근할 수 있다.
 - binding 이 attached dealer 별 별도 progress pump 를 돌리지 않아도 된다.
   `Spot` progress loop 하나로 channel reply completion 까지 처리된다.
+- actor가 `Spot`에 join된 뒤에는 `IZLinkActorContext.AddPacket(...)`으로 등록한
+  actor packet handler도 같은 spot execution context에서 실행된다. stream session은
+  packet ingress를 맡고, actor가 room 또는 stage 상태를 다루는 코드는 `Spot` 실행
+  문맥으로 들어간다.
+- actor join으로 현재 `Spot`이 바뀌는 경우, join 완료 뒤 들어오는 actor dispatch는
+  새 `Spot` 실행 문맥에서 실행되어야 한다. framework는 actor session state 갱신과
+  packet dispatch 선택 사이의 경합을 막아야 한다.
 
 dispatch event 종류와 drain 대상은 아래처럼 정리된다.
 
@@ -422,7 +429,7 @@ spotClient
         "stage.state.updated",
         new StageStateUpdatedEvent
         {
-            StageRid = stage.SpotRid.ToString()
+            StageRid = stage.Context.SpotRid.ToString()
         })
     .Exec();
 
@@ -452,7 +459,7 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.2를
 참고한다. 현재 방향에서는 `SendChannel(...)`,
 `RequestChannel(...)`, `Publish(...)`를 함께 제공하고, timer는
-`ZLinkSpot.AddTimer<THandler>(...)`처럼 spot lifecycle registration 표면으로
+`IZLinkSpotContext.AddTimer<THandler>(...)`처럼 spot lifecycle registration 표면으로
 두는 쪽이 더 자연스럽다.
 
 현재 `.NET` 바인딩의 raw `Spot` 표면도 이 구분을 그대로 가진다.
@@ -480,12 +487,12 @@ var reply = await client
         "orders",
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync(cancellationToken);
+    .ExecAsync<GetStageStateReply>(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer도 같이 필요하다.
 다만 현재 초안은 이것을 `IZLinkSpotClient`의 callback scheduler로 두기보다,
-`ZLinkSpot.AddTimer<THandler>(...)`로 등록하는 lifecycle timer 한 가지 모델로
+`IZLinkSpotContext.AddTimer<THandler>(...)`로 등록하는 lifecycle timer 한 가지 모델로
 정리하는 쪽이 더 자연스럽다. 그래야 stage state를 별도 lock 없이 다루는 상위
 모델을 설명하기 쉽다.
 
@@ -495,11 +502,11 @@ var reply = await client
 SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임을 나누는
 편이 더 자연스럽다.
 
-`ZLinkSpot` 기반 클래스의 `protected Publish(topic, message)` 편의 메서드는
+`IZLinkSpot` 기반 클래스의 `protected Publish(topic, message)` 편의 메서드는
 `IZLinkSpotClient.Publish(...)`를 내부적으로 위임한다.
 즉 spot 코드에서 `Publish(...)`를 직접 호출하는 것과, `IZLinkSpotClient`를
 constructor injection해서 호출하는 것은 같은 경로를 사용한다.
-`ZLinkSpot` 외부에서 현재 SPOT channel로 publish할 때는 `IZLinkSpotClient`를
+`IZLinkSpot` 외부에서 현재 SPOT channel로 publish할 때는 `IZLinkSpotClient`를
 명시적으로 주입받아 쓰는 편이 의도를 더 명확히 드러낸다.
 
 ## 6. publish 모델 초안
@@ -531,7 +538,7 @@ var reply = await spotClient
         "orders",
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .ExecAsync(cancellationToken);
+    .ExecAsync<GetStageStateReply>(cancellationToken);
 
 spotClient
     .Publish(
@@ -576,24 +583,29 @@ publish하는 경우와, 외부 노드에서 특정 SPOT channel로 publish하�
 실제 handler 인터페이스 초안은 [handler-interfaces.ko.md](./handler-interfaces.ko.md)를
 기준으로 본다.
 
-현재 `SPOT` 샘플은 attribute 기반보다, spot 객체가 자기 초기화 단계에서 직접
+현재 `SPOT` 샘플은 attribute 기반보다, spot 객체가 `Configure()` 단계에서 직접
 handler를 등록하는 쪽을 기본으로 본다.
 
 ```csharp
-public sealed class StageSpot : ZLinkSpot
+public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 {
     private IZLinkTimer? _heartbeat;
 
-    public override async ValueTask OnInitializeAsync(
+    public IZLinkSpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.AddPacket<GetStageStateHandler>();
+        Context.AddPacket<ReportStageStateHandler>();
+
+        Context.AddSubscribe<StageStateUpdatedHandler>(
+            "stage.state.updated");
+    }
+
+    public async ValueTask OnInitializeAsync(
         CancellationToken cancellationToken)
     {
-        AddPacket<GetStageStateHandler>();
-        AddPacket<ReportStageStateHandler>();
-
-        AddSubscribe<StageStateUpdatedHandler>(
-            "stage.state.updated");
-
-        _heartbeat = await AddTimer<StageHeartbeatHandler>(
+        _heartbeat = await Context.AddTimer<StageHeartbeatHandler>(
             "heartbeat",
             TimeSpan.FromSeconds(1),
             cancellationToken);
@@ -603,12 +615,12 @@ public sealed class StageSpot : ZLinkSpot
 
 여기서 기대하는 점은 아래와 같다.
 
-- `AddPacket<THandler>(...)`는 request와 send packet을 함께 등록한다.
+- `Context.AddPacket<THandler>(...)`는 request와 send packet을 함께 등록한다.
 - packet dispatch key는 packet 타입의 header `msgId`다.
 - `protobuf`를 쓰면 `msgId`는 protobuf message name이다.
 - `json`을 쓰면 `msgId`는 CLR class name이다.
-- `AddSubscribe<THandler>(...)`는 topic consumer 등록이다.
-- `AddTimer<THandler>(...)`는 현재 spot lifecycle 안에 timer를 등록한다.
+- `Context.AddSubscribe<THandler>(...)`는 topic consumer 등록이다.
+- `Context.AddTimer<THandler>(...)`는 현재 spot lifecycle 안에 timer를 등록한다.
 - handler는 별도 class로 두고, `StageSpot` 안에는 코어 로직만 남길 수 있다.
 - handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 하면, `IZLinkClient`
   또는 `IZLinkSpotClient`를 constructor injection으로 받는 쪽이 더 자연스럽다.
@@ -625,9 +637,9 @@ public sealed class StageSpot : ZLinkSpot
 - reflection은 registration 단계까지만 허용한다.
 - per-packet allocation, 과도한 DI 재구성, 불필요한 boxing은 피해야 한다.
 
-즉 `AddPacket<THandler>(...)` 같은 등록 표면은 startup 또는 spot initialize 단계에서만
-비용이 들고, 실제 packet hot path에서는 반복적인 reflection이나 과도한 객체 생성이
-남지 않게 해야 한다.
+즉 `Context.AddPacket<THandler>(...)` 같은 등록 표면은 startup, spot `Configure()`,
+actor `Configure()` 단계에서만 비용이 들고, 실제 packet hot path에서는 반복적인
+reflection이나 과도한 객체 생성이 남지 않게 해야 한다.
 
 실제 room 성능에 더 큰 영향을 주는 것은 보통 registration 문법보다 아래 항목이다.
 

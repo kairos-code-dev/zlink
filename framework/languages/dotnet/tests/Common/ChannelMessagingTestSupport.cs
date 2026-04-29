@@ -60,7 +60,7 @@ internal static class ChannelMessagingTestSupport
     }
 }
 
-public sealed class GetProfileRequest : IZLinkRequest<ProfileReply>
+public sealed class GetProfileRequest
 {
     public string UserId { get; init; } = string.Empty;
 }
@@ -70,7 +70,7 @@ public sealed class ProfileReply
     public string Name { get; init; } = string.Empty;
 }
 
-public sealed class GetFilterOrderRequest : IZLinkRequest<FilterOrderReply>
+public sealed class GetFilterOrderRequest
 {
 }
 

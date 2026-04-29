@@ -7,15 +7,13 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Builders;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Compression;
-using Systems.Zlink.Stream.Connector.Connector;
-using Systems.Zlink.Stream.Connector.Framing;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
-using Systems.Zlink.Stream.Connector.Options;
+using Systems.Zlink.Stream.Connector.Calls;
+using Systems.Zlink.Stream.Connector.Protocol;
+using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
 
 
@@ -36,15 +34,15 @@ public sealed partial class StreamConnectorTests
             var requestHeader = headerCodec.Decode(packet.Header);
 
             Assert.Equal(ZlinkStreamMessageKind.Request, requestHeader.Kind);
-            Assert.NotNull(requestHeader.RequestId);
+            Assert.NotNull(requestHeader.RequestSeq);
             Assert.Equal("ping", requestHeader.Name);
 
             var responseHeader = new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Response,
                 ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.HasRid,
-                requestHeader.RequestId,
-                requestHeader.Name,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                requestHeader.RequestSeq,
+                "pong.res",
                 ZlinkStreamMetadata.Empty);
             var responseBody = JsonSerializer.SerializeToUtf8Bytes(new Pong("pong"));
             await WritePacketAsync(stream, headerCodec.Encode(responseHeader).ToArray(), responseBody);
@@ -56,7 +54,8 @@ public sealed partial class StreamConnectorTests
         });
 
         var reply = await connector
-            .Request("ping", new Ping("hello"))
+            .Request(new Ping("hello"))
+            .WithMessageName("ping")
             .WithTimeout(TimeSpan.FromSeconds(1))
             .ExecAsync<Pong>();
 
@@ -80,9 +79,9 @@ public sealed partial class StreamConnectorTests
             var responseHeader = new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Response,
                 ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.HasRid,
-                requestHeader.RequestId,
-                requestHeader.Name,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                requestHeader.RequestSeq,
+                "callback.res",
                 ZlinkStreamMetadata.Empty);
             await WritePacketAsync(
                 stream,
@@ -96,7 +95,9 @@ public sealed partial class StreamConnectorTests
         });
 
         var completed = new TaskCompletionSource<ZlinkStreamResult<Pong>>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connector.Request("ping", new Ping("hello")).Exec<Pong>(completed.SetResult);
+        connector.Request(new Ping("hello"))
+            .WithMessageName("ping")
+            .Exec<Pong>(completed.SetResult);
 
         var result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(1));
         Assert.True(result.IsSuccess);
@@ -105,7 +106,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task PacketNameAttributeIsUsedByDefault()
+    public async Task MessageNameAttributeIsUsedByDefault()
     {
         var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -148,7 +149,10 @@ public sealed partial class StreamConnectorTests
         });
 
         var exception = Assert.Throws<ZlinkStreamException>(() =>
-            connector.Send("ping", new Ping("hello")).Metadata("traceId", "abcdef").Exec());
+            connector.Send(new Ping("hello"))
+                .WithMessageName("ping")
+                .Metadata("traceId", "abcdef")
+                .Exec());
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
         await server;
@@ -184,8 +188,13 @@ public sealed partial class StreamConnectorTests
             Compression = ZlinkStreamCompression.Lz4
         });
 
-        connector.Send("plain", new Ping("plain")).Exec();
-        connector.Send("compressed", new Ping("compressed")).Compress().Exec();
+        connector.Send(new Ping("plain"))
+            .WithMessageName("plain")
+            .Exec();
+        connector.Send(new Ping("compressed"))
+            .WithMessageName("compressed")
+            .Compress()
+            .Exec();
         await server;
     }
 

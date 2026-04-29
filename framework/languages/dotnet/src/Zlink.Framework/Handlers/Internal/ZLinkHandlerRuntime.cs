@@ -2,13 +2,13 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Handlers.Internal;
 
 internal sealed record ZLinkHandlerEndpointDescriptor(
     ZLinkMessageKind Kind,
-    string PacketName,
+    string MessageName,
     Type DeclaringType,
     MethodInfo Method,
     Type MessageType,
@@ -33,26 +33,26 @@ internal sealed class ZLinkHandlerRegistry
             switch (endpoint.Kind)
             {
                 case ZLinkMessageKind.Request:
-                    if (!requests.TryAdd(endpoint.PacketName, endpoint))
+                    if (!requests.TryAdd(endpoint.MessageName, endpoint))
                     {
                         throw new ZLinkConfigurationException(
-                            $"Duplicate request handler packet '{endpoint.PacketName}'.");
+                            $"Duplicate request handler packet '{endpoint.MessageName}'.");
                     }
 
                     break;
                 case ZLinkMessageKind.Command:
-                    if (!commands.TryAdd(endpoint.PacketName, endpoint))
+                    if (!commands.TryAdd(endpoint.MessageName, endpoint))
                     {
                         throw new ZLinkConfigurationException(
-                            $"Duplicate send handler packet '{endpoint.PacketName}'.");
+                            $"Duplicate send handler packet '{endpoint.MessageName}'.");
                     }
 
                     break;
                 case ZLinkMessageKind.Event:
-                    if (!events.TryGetValue(endpoint.PacketName, out var list))
+                    if (!events.TryGetValue(endpoint.MessageName, out var list))
                     {
                         list = [];
-                        events.Add(endpoint.PacketName, list);
+                        events.Add(endpoint.MessageName, list);
                     }
 
                     list.Add(endpoint);
@@ -68,23 +68,23 @@ internal sealed class ZLinkHandlerRegistry
             StringComparer.Ordinal);
     }
 
-    public ZLinkHandlerEndpointDescriptor GetRequest(string packetName)
+    public ZLinkHandlerEndpointDescriptor GetRequest(string messageName)
     {
-        return _requests.TryGetValue(packetName, out var endpoint)
+        return _requests.TryGetValue(messageName, out var endpoint)
             ? endpoint
-            : throw new InvalidOperationException($"No request handler is registered for '{packetName}'.");
+            : throw new InvalidOperationException($"No request handler is registered for '{messageName}'.");
     }
 
-    public ZLinkHandlerEndpointDescriptor GetCommand(string packetName)
+    public ZLinkHandlerEndpointDescriptor GetCommand(string messageName)
     {
-        return _commands.TryGetValue(packetName, out var endpoint)
+        return _commands.TryGetValue(messageName, out var endpoint)
             ? endpoint
-            : throw new InvalidOperationException($"No send handler is registered for '{packetName}'.");
+            : throw new InvalidOperationException($"No send handler is registered for '{messageName}'.");
     }
 
-    public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetEvents(string packetName)
+    public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetEvents(string messageName)
     {
-        return _events.TryGetValue(packetName, out var endpoints)
+        return _events.TryGetValue(messageName, out var endpoints)
             ? endpoints
             : Array.Empty<ZLinkHandlerEndpointDescriptor>();
     }
@@ -107,7 +107,7 @@ internal sealed class ZLinkHandlerDispatcher(
             message,
             scopedContext,
             scopedContext.ChannelName,
-            scopedContext.PacketName,
+            scopedContext.MessageName,
             scope.ServiceProvider);
 
         async ValueTask<object?> ExecuteHandler(CancellationToken ct)
@@ -171,7 +171,7 @@ internal sealed class ZLinkHandlerDispatcher(
         {
             ZLinkRequestContext request => new ZLinkRequestContext(
                 request.ChannelName,
-                request.PacketName,
+                request.MessageName,
                 request.ContentType,
                 request.CorrelationId,
                 request.Deadline,
@@ -179,7 +179,7 @@ internal sealed class ZLinkHandlerDispatcher(
                 request.ConnectionAborted),
             ZLinkSendContext send => new ZLinkSendContext(
                 send.ChannelName,
-                send.PacketName,
+                send.MessageName,
                 send.ContentType,
                 send.CorrelationId,
                 send.Deadline,
@@ -187,7 +187,7 @@ internal sealed class ZLinkHandlerDispatcher(
                 send.ConnectionAborted),
             ZLinkEventContext @event => new ZLinkEventContext(
                 @event.ChannelName,
-                @event.PacketName,
+                @event.MessageName,
                 @event.ContentType,
                 @event.CorrelationId,
                 @event.Deadline,

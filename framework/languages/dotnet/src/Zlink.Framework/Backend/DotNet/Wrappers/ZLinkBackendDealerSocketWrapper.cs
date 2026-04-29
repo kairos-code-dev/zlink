@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendDealerSocketWrapper(global::Zlink.DealerSocket nativeSocket) : IZLinkBackendDealerSocket
+internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket) : IZLinkBackendDealerSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -27,16 +27,16 @@ internal sealed class ZLinkBackendDealerSocketWrapper(global::Zlink.DealerSocket
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<global::Zlink.Discovery>());
+        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
     }
 
-    public bool Send(global::Zlink.Message message, global::Zlink.SendFlags flags)
+    public bool Send(Message message, SendFlags flags)
     {
         return nativeSocket.Send(message, flags);
     }
 
-    public async ValueTask<IReadOnlyList<global::Zlink.Message>> RequestAsync(
-        global::Zlink.Message message,
+    public async ValueTask<IReadOnlyList<Message>> RequestAsync(
+        Message message,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {

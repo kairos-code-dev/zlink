@@ -389,6 +389,7 @@ void test_spot_node_snapshot_contract ()
     const std::vector<zlink::spot_node_subject_entry_t> subjects =
       node.subjects_snapshot ();
     assert (subjects.size () >= 0);
+    assert (node.routing_id ().size () == 16);
 
     const zlink::routing_id_t node_rid = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> ("spot-node-rid"), 13);
@@ -416,6 +417,7 @@ void test_unified_spot_self_delivery_recv_contract ()
 
     zlink::service::spot_t spot = node.create_spot ();
     assert (spot.valid ());
+    assert (spot.routing_id ().size () == 16);
 
     spot.set_subscription ("topic:service-self");
 

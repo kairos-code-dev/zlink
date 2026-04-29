@@ -13,7 +13,7 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
     }
 
     public void AddHeaderSession<TSession>()
-        where TSession : class, IZLinkStreamHeaderSession
+        where TSession : class, IZLinkSession
     {
         if (registration.HeaderSessionType is not null)
         {

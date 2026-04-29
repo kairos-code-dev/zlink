@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -14,14 +14,14 @@ internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : I
 
     public ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         return runtime.CreateSpotAsync(spotName, spotRid, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         return runtime.GetSpotAsync(spotRid, cancellationToken);
@@ -34,7 +34,7 @@ internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : I
     }
 
     public ValueTask<bool> RemoveAsync(
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         return runtime.RemoveSpotAsync(spotRid, cancellationToken);

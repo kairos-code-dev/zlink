@@ -76,7 +76,7 @@ sealed record CreateGameHttpReply(
 API 서버에서 Play 서버로 보내는 channel request:
 
 ```csharp
-sealed record CreateGameRoom(string RoomName) : IZLinkRequest<CreateGameRoomReply>;
+sealed record CreateGameRoom(string RoomName);
 
 sealed record CreateGameRoomReply(
     string RoomId,
@@ -90,7 +90,7 @@ Play 서버에서 API 서버로 보내는 인증 검증 request:
 sealed record ValidatePlayerSession(
     string RoomId,
     string PlayerId,
-    string PlayerToken) : IZLinkRequest<ValidatePlayerSessionReply>;
+    string PlayerToken);
 
 sealed record ValidatePlayerSessionReply(
     bool Accepted,
@@ -132,7 +132,7 @@ packet 이름은 attribute를 쓰지 않고 CLR 타입 이름을 기본값으로
 
 ## 5. STREAM session
 
-Play 서버의 client stream은 `IZLinkStreamHeaderSession`을 사용한다.
+Play 서버의 client stream은 `IZLinkSession`을 사용한다.
 
 ```csharp
 stream.AddHeaderSession<GameStreamSession>();
@@ -143,15 +143,15 @@ session 구현은 raw `Message header`를 직접 decode하지 않는다.
 
 ```csharp
 public ValueTask OnDispatchAsync(
-    IZLinkStream stream,
     ZlinkStreamHeader header,
     Message body,
     CancellationToken cancellationToken);
 ```
 
 STREAM session은 연결별 인증 상태를 가진다. 첫 request는 `Authenticate`여야 한다.
-`Authenticate`를 받으면 Play 서버는 `Api` channel로 `ValidatePlayerSession` request를
-보낸다. API 서버가 성공을 반환하면 session은 인증된 player id와 room id를 저장하고
+`Authenticate`를 받으면 Play 서버는 `Context.RequestChannel(...)`로 `Api` channel에
+`ValidatePlayerSession` request를 보낸다. API 서버가 성공을 반환하면 session은
+인증된 player id와 room id를 저장하고
 `Authenticated`를 reply한다.
 
 `JoinGame` request는 인증된 session에서만 허용한다. request의 room id와 player id는

@@ -1,46 +1,65 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using System.Threading.Channels;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDisposable
+internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
 {
+    private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;
     private readonly SemaphoreSlim _executionGate = new(1, 1);
-    private readonly object _dispatchQueueGate = new();
+    private readonly Channel<Func<ValueTask>> _dispatchQueue =
+        Channel.CreateUnbounded<Func<ValueTask>>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
     private readonly CancellationTokenSource _stopSource = new();
+    private readonly List<ZLinkSpotPacketRegistration> _packets = [];
+    private readonly List<ZLinkSpotSubscriptionRegistration> _subscriptions = [];
+    private readonly List<ZLinkSpotActorJoinRegistration> _actorJoins = [];
+    private readonly Dictionary<string, IZLinkActor> _actorsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<ZLinkSpotSubscriptionDescriptor>> _subscriptionsByTopic = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSpotDescriptor> _packetsByName = new(StringComparer.Ordinal);
     private readonly Dictionary<Type, ZLinkSpotActorJoinDescriptor> _actorJoinsByRequestType = [];
-    private readonly ZLinkSpotHandlerInvoker _handlerInvoker;
+    private ZLinkSpotHandlerInvoker? _handlerInvoker;
+    private IZLinkSpot? _spot;
     private readonly List<IZLinkTimer> _timers = [];
     private readonly TimeSpan _defaultTimeout;
     private static readonly TimeSpan SubscriptionPollInterval = TimeSpan.FromMilliseconds(20);
     private Task? _subscriptionPump;
+    private readonly Task _dispatchPump;
     private int _disposed;
     private int _subscriptionMessageCount;
     private int _subscriptionDispatchCount;
     private int _subscriptionIgnoreCount;
-    private Task _dispatchQueue = Task.CompletedTask;
+    private bool _configurationOpen = true;
 
     public ZLinkSpotActivation(
+        ZLinkFrameworkRuntime runtime,
         AsyncServiceScope scope,
-        ZLinkSpot spot,
         IZLinkBackendSpot nativeSpot,
+        RoutingId nodeRid,
         string spotName,
         string channelName,
         TimeSpan defaultTimeout)
     {
+        _runtime = runtime;
         _scope = scope;
-        Spot = spot;
         NativeSpot = nativeSpot;
+        NodeRid = nodeRid;
         SpotName = spotName;
         ChannelName = channelName;
         _defaultTimeout = defaultTimeout;
-        _handlerInvoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, spot);
+        _dispatchPump = Task.Run(RunQueuedDispatchAsync);
     }
 
-    public ZLinkSpot Spot { get; }
+    public IZLinkSpot Spot => _spot
+        ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
+
+    private ZLinkSpotHandlerInvoker HandlerInvoker => _handlerInvoker
+        ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
 
     public IZLinkBackendSpot NativeSpot { get; }
 
@@ -48,7 +67,9 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     public string ChannelName { get; }
 
-    public global::Zlink.RoutingId SpotRid => NativeSpot.RoutingId;
+    public RoutingId SpotRid => NativeSpot.RoutingId;
+
+    public RoutingId NodeRid { get; }
 
     public IServiceProvider Services => _scope.ServiceProvider;
 
@@ -60,21 +81,35 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     public string? LastSubscriptionTopic { get; private set; }
 
-    public string? LastSubscriptionPacketName { get; private set; }
+    public string? LastSubscriptionMessageName { get; private set; }
 
     public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
-    public void BindDescriptors()
+    public void AttachSpot(IZLinkSpot spot)
     {
-        foreach (var packet in Spot.Packets)
+        ArgumentNullException.ThrowIfNull(spot);
+        if (_spot is not null)
         {
-            var descriptor = CreatePacketDescriptor(packet.HandlerType, Spot.GetType());
-            _packetsByName.Add(descriptor.PacketName, descriptor);
+            throw new InvalidOperationException("SPOT has already been attached to this context.");
         }
 
-        foreach (var subscription in Spot.Subscriptions)
+        _spot = spot;
+        _handlerInvoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, spot);
+    }
+
+    public void BindDescriptors()
+    {
+        _configurationOpen = false;
+
+        foreach (var packet in _packets)
         {
-            var descriptor = CreateSubscriptionDescriptor(
+            var descriptor = ZLinkSpotDescriptorFactory.CreatePacketDescriptor(packet.HandlerType, Spot.GetType());
+            _packetsByName.Add(descriptor.MessageName, descriptor);
+        }
+
+        foreach (var subscription in _subscriptions)
+        {
+            var descriptor = ZLinkSpotDescriptorFactory.CreateSubscriptionDescriptor(
                 subscription.Topic,
                 subscription.HandlerType,
                 Spot.GetType());
@@ -89,9 +124,9 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
             NativeSpot.SetSubscription(subscription.Topic);
         }
 
-        foreach (var actorJoin in Spot.ActorJoins)
+        foreach (var actorJoin in _actorJoins)
         {
-            var descriptor = CreateActorJoinDescriptor(
+            var descriptor = ZLinkSpotDescriptorFactory.CreateActorJoinDescriptor(
                 actorJoin.HandlerType,
                 Spot.GetType(),
                 actorJoin.ActorType,
@@ -106,9 +141,66 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         }
     }
 
+    public void AddPacket<THandler>()
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        _packets.Add(new ZLinkSpotPacketRegistration(typeof(THandler)));
+    }
+
+    public void AddSubscribe<THandler>(string topic)
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            throw new ZLinkConfigurationException("SPOT subscription topic must not be empty.");
+        }
+
+        _subscriptions.Add(new ZLinkSpotSubscriptionRegistration(topic, typeof(THandler)));
+    }
+
+    public void AddActorJoin<THandler, TActor, TRequest, TReply>()
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        EnsureConfigurationOpen();
+        _actorJoins.Add(new ZLinkSpotActorJoinRegistration(
+            typeof(THandler),
+            typeof(TActor),
+            typeof(TRequest),
+            typeof(TReply)));
+    }
+
+    public ValueTask JoinActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? JoinActorCoreAsync(actor, cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) => activation.JoinActorCoreAsync(state, ct),
+                actor,
+                cancellationToken);
+    }
+
+    public ValueTask LeaveActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? LeaveActorCoreAsync(actor, cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) => activation.LeaveActorCoreAsync(state, ct),
+                actor,
+                cancellationToken);
+    }
+
     public async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
-        if (_packetsByName.Count > 0)
+        if (_packetsByName.Count > 0 || _actorJoinsByRequestType.Count > 0)
         {
             RegisterWithoutSynchronizationContext(() =>
             {
@@ -148,7 +240,17 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         return new ZLinkCurrentSpotPublishCall<TEvent>(this, topic, message);
     }
 
-    public ValueTask<IZLinkTimer> AddTimerAsync<THandler>(
+    public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
+    {
+        return new ZLinkCurrentSpotSendCall<TMessage>(this, channelName, message);
+    }
+
+    public IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request)
+    {
+        return new ZLinkCurrentSpotRequestCall<TRequest>(this, channelName, request);
+    }
+
+    public ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
         CancellationToken cancellationToken)
@@ -166,7 +268,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
             throw new ZLinkConfigurationException("SPOT timer period must be greater than zero.");
         }
 
-        var descriptor = CreateTimerDescriptor(name, typeof(THandler), Spot.GetType());
+        var descriptor = ZLinkSpotDescriptorFactory.CreateTimerDescriptor(name, typeof(THandler), Spot.GetType());
         var timer = new ZLinkTimer(
             period,
             StopToken,
@@ -181,9 +283,9 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         return ValueTask.FromResult<IZLinkTimer>(timer);
     }
 
-    public async ValueTask<IReadOnlyList<global::Zlink.Message>> RequestChannelAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
         string channelName,
-        global::Zlink.Message message,
+        Message message,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
@@ -196,25 +298,25 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     public bool SendChannel(
         string channelName,
-        global::Zlink.Message message,
-        global::Zlink.SendFlags flags)
+        Message message,
+        SendFlags flags)
     {
         return NativeSpot.SendChannel(channelName, message, flags);
     }
 
     public bool PublishCurrent(
         string topic,
-        global::Zlink.Message message,
-        global::Zlink.SendFlags flags)
+        Message message,
+        SendFlags flags)
     {
         return NativeSpot.Publish(ChannelName, topic, message, flags);
     }
 
     public bool SendToSpot(
-        global::Zlink.RoutingId targetRid,
-        global::Zlink.RoutingId spotRid,
-        global::Zlink.Message message,
-        global::Zlink.SendFlags flags)
+        RoutingId targetRid,
+        RoutingId spotRid,
+        Message message,
+        SendFlags flags)
     {
         return NativeSpot.SendToSpot(targetRid, spotRid, message, flags);
     }
@@ -225,8 +327,9 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         IZLinkActor actor,
         TRequest request,
         CancellationToken cancellationToken)
-        where TRequest : IZLinkRequest<TReply>
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         if (!_actorJoinsByRequestType.TryGetValue(typeof(TRequest), out var descriptor))
         {
             throw new InvalidOperationException(
@@ -253,10 +356,9 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     public async ValueTask SubmitActorAsync(
         IZLinkActor actor,
-        IZLinkActorContext context,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        global::Zlink.Message body,
+        Message body,
         CancellationToken cancellationToken)
     {
         var ownedBody = body.Move();
@@ -271,8 +373,9 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
                     state.RuntimeState.CurrentDispatch = new ZLinkActorDispatchState(state.Header);
                     try
                     {
-                        await state.Actor.OnDispatchAsync(
-                            state.Context,
+                        await state.RuntimeState.DispatchAsync(
+                            activation._runtime.Services,
+                            state.Actor,
                             state.Header,
                             currentBody.Move(),
                             ct);
@@ -282,7 +385,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
                         state.RuntimeState.CurrentDispatch = previousDispatch;
                     }
                 },
-                new ActorDispatchState(actor, context, runtimeState, header, ownedBody),
+                new ActorDispatchState(actor, runtimeState, header, ownedBody),
                 cancellationToken);
         }
         catch
@@ -292,14 +395,53 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         }
     }
 
+    public ValueTask CloseAsync(CancellationToken cancellationToken)
+    {
+        return ExecuteSerializedAsync(
+            static (activation, ct) => activation.Spot.OnClosingAsync(ct),
+            cancellationToken);
+    }
+
     public ValueTask DisconnectActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
         return ExecuteSerializedAsync(
-            static (activation, state, ct) => state.OnDisconnectedAsync(ct),
+            async static (activation, state, ct) =>
+            {
+                await activation.LeaveActorCoreAsync(state, ct);
+                await state.OnDisconnectedAsync(ct);
+            },
             actor,
             cancellationToken);
+    }
+
+    private async ValueTask JoinActorCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (_actorsById.TryGetValue(actor.ActorId, out var existing)
+            && !ReferenceEquals(existing, actor))
+        {
+            throw new InvalidOperationException(
+                $"SPOT '{SpotName}' already has an actor with id '{actor.ActorId}'.");
+        }
+
+        _actorsById[actor.ActorId] = actor;
+        await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken);
+    }
+
+    private async ValueTask LeaveActorCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (_actorsById.TryGetValue(actor.ActorId, out var existing)
+            && ReferenceEquals(existing, actor))
+        {
+            _actorsById.Remove(actor.ActorId);
+        }
+
+        await _runtime.LeaveActorFromSpotAsync(this, actor, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -324,15 +466,11 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
             }
         }
 
-        Task pendingDispatch;
-        lock (_dispatchQueueGate)
-        {
-            pendingDispatch = _dispatchQueue;
-        }
+        _dispatchQueue.Writer.TryComplete();
 
         try
         {
-            await pendingDispatch;
+            await _dispatchPump;
         }
         catch (OperationCanceledException)
         {
@@ -378,6 +516,15 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         }
     }
 
+    private void EnsureConfigurationOpen()
+    {
+        if (!_configurationOpen)
+        {
+            throw new InvalidOperationException(
+                "SPOT handler registration is only allowed while IZLinkSpot.Configure is running.");
+        }
+    }
+
     private async ValueTask ExecuteSerializedAsync<TState>(
         Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
         TState state,
@@ -407,34 +554,27 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     private void QueueSerialized(Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation)
     {
-        lock (_dispatchQueueGate)
-        {
-            _dispatchQueue = _dispatchQueue.ContinueWith(
-                static async (_, state) =>
-                {
-                    var activation = ((ZLinkSpotActivation Activation, Func<ZLinkSpotActivation, CancellationToken, ValueTask> Operation))state!;
+        _dispatchQueue.Writer.TryWrite(() => ExecuteSerializedAsync(operation, StopToken));
+    }
 
-                    try
-                    {
-                        await activation.Operation(
-                            activation.Activation,
-                            activation.Activation.StopToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (activation.Activation.StopToken.IsCancellationRequested)
-                    {
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                    }
-                },
-                (this, operation),
-                CancellationToken.None,
-                TaskContinuationOptions.None,
-                TaskScheduler.Default).Unwrap();
+    private async Task RunQueuedDispatchAsync()
+    {
+        await foreach (var operation in _dispatchQueue.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            try
+            {
+                await operation().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (StopToken.IsCancellationRequested)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
 
-    private async ValueTask DispatchRoutedAsync(global::Zlink.Received received, CancellationToken cancellationToken)
+    private async ValueTask DispatchRoutedAsync(Received received, CancellationToken cancellationToken)
     {
         using (received)
         {
@@ -444,7 +584,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
             }
 
             var header = ZLinkEnvelopeCodec.DecodeHeader(received[0]);
-            if (!_packetsByName.TryGetValue(header.PacketName, out var descriptor))
+            if (!_packetsByName.TryGetValue(header.MessageName, out var descriptor))
             {
                 return;
             }
@@ -456,7 +596,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
                 var replyHeader = new ZLinkEnvelopeHeader(
                     ZLinkMessageKind.Response,
                     ChannelName,
-                    descriptor.PacketName,
+                    descriptor.MessageName,
                     ZLinkEnvelopeCodec.DefaultContentType,
                     header.CorrelationId,
                     null,
@@ -476,13 +616,13 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            global::Zlink.Received received;
+            Received received;
             try
             {
-                received = NativeSpot.RecvRouted(global::Zlink.RecvFlags.DontWait);
+                received = NativeSpot.RecvRouted(RecvFlags.DontWait);
             }
-            catch (global::Zlink.ZlinkException ex)
-                when (ex.InternalErrno == (int)global::Zlink.ErrorCode.EAgain)
+            catch (ZlinkException ex)
+                when (ex.InternalErrno == (int)ErrorCode.EAgain)
             {
                 return;
             }
@@ -495,7 +635,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var message = NativeSpot.Subscribe(global::Zlink.RecvFlags.DontWait);
+            using var message = NativeSpot.Subscribe(RecvFlags.DontWait);
             if (message is null)
             {
                 return;
@@ -524,10 +664,10 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
             {
                 return;
             }
-            catch (global::Zlink.ZlinkException ex)
+            catch (ZlinkException ex)
                 when (cancellationToken.IsCancellationRequested
-                      || ex.InternalErrno is (int)global::Zlink.ErrorCode.EFault
-                      or (int)global::Zlink.ErrorCode.EBadf)
+                      || ex.InternalErrno is (int)ErrorCode.EFault
+                      or (int)ErrorCode.EBadf)
             {
                 return;
             }
@@ -535,7 +675,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
     }
 
     private async ValueTask DispatchSubscriptionMessageAsync(
-        global::Zlink.TopicMessage message,
+        TopicMessage message,
         CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _subscriptionMessageCount);
@@ -549,11 +689,11 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts[0]);
-        LastSubscriptionPacketName = header.PacketName;
+        LastSubscriptionMessageName = header.MessageName;
         var dispatched = false;
         foreach (var descriptor in descriptors)
         {
-            if (!string.Equals(descriptor.PacketName, header.PacketName, StringComparison.Ordinal))
+            if (!string.Equals(descriptor.MessageName, header.MessageName, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -575,7 +715,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         object? message,
         CancellationToken cancellationToken)
     {
-        await _handlerInvoker.InvokePacketAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
+        await HandlerInvoker.InvokePacketAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<object?> InvokeRequestAsync(
@@ -583,7 +723,7 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         object? message,
         CancellationToken cancellationToken)
     {
-        return await _handlerInvoker.InvokeRequestAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
+        return await HandlerInvoker.InvokeRequestAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask InvokeSubscriptionAsync(
@@ -591,14 +731,14 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         object? message,
         CancellationToken cancellationToken)
     {
-        await _handlerInvoker.InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
+        await HandlerInvoker.InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask InvokeTimerAsync(
         ZLinkSpotTimerDescriptor descriptor,
         CancellationToken cancellationToken)
     {
-        await _handlerInvoker.InvokeTimerAsync(descriptor, cancellationToken).ConfigureAwait(false);
+        await HandlerInvoker.InvokeTimerAsync(descriptor, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<object?> InvokeActorJoinAsync(
@@ -607,170 +747,8 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
         object request,
         CancellationToken cancellationToken)
     {
-        return await _handlerInvoker.InvokeActorJoinAsync(descriptor, actor, request, cancellationToken)
+        return await HandlerInvoker.InvokeActorJoinAsync(descriptor, actor, request, cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private static ZLinkSpotDescriptor CreatePacketDescriptor(Type handlerType, Type expectedSpotType)
-    {
-        foreach (var implemented in handlerType.GetInterfaces())
-        {
-            if (!implemented.IsGenericType)
-            {
-                continue;
-            }
-
-            var definition = implemented.GetGenericTypeDefinition();
-            if (definition == typeof(IZLinkSpotPacketHandler<,>))
-            {
-                var arguments = implemented.GetGenericArguments();
-                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-                return new ZLinkSpotDescriptor
-                {
-                    HandlerType = handlerType,
-                    SpotType = arguments[0],
-                    MessageType = arguments[1],
-                    HandleMethod = handlerType.GetMethod("HandleAsync")!,
-                    PacketName = ZLinkPacketNameResolver.ResolveFromType(arguments[1]),
-                };
-            }
-
-            if (definition == typeof(IZLinkSpotRequestHandler<,,>))
-            {
-                var arguments = implemented.GetGenericArguments();
-                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-                return new ZLinkSpotDescriptor
-                {
-                    HandlerType = handlerType,
-                    SpotType = arguments[0],
-                    MessageType = arguments[1],
-                    ReplyType = arguments[2],
-                    HandleMethod = handlerType.GetMethod("HandleAsync")!,
-                    PacketName = ZLinkPacketNameResolver.ResolveFromType(arguments[1]),
-                };
-            }
-        }
-
-        throw new InvalidOperationException(
-            $"SPOT packet handler '{handlerType}' must implement IZLinkSpotPacketHandler<,> or IZLinkSpotRequestHandler<,,>.");
-    }
-
-    private static ZLinkSpotSubscriptionDescriptor CreateSubscriptionDescriptor(
-        string topic,
-        Type handlerType,
-        Type expectedSpotType)
-    {
-        foreach (var implemented in handlerType.GetInterfaces())
-        {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkSpotSubscriptionHandler<,>))
-            {
-                continue;
-            }
-
-            var arguments = implemented.GetGenericArguments();
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            return new ZLinkSpotSubscriptionDescriptor
-            {
-                Topic = topic,
-                HandlerType = handlerType,
-                SpotType = arguments[0],
-                MessageType = arguments[1],
-                HandleMethod = handlerType.GetMethod("HandleAsync")!,
-                PacketName = ZLinkPacketNameResolver.ResolveFromType(arguments[1]),
-            };
-        }
-
-        throw new InvalidOperationException(
-            $"SPOT subscription handler '{handlerType}' must implement IZLinkSpotSubscriptionHandler<,>.");
-    }
-
-    private static ZLinkSpotTimerDescriptor CreateTimerDescriptor(
-        string name,
-        Type handlerType,
-        Type expectedSpotType)
-    {
-        foreach (var implemented in handlerType.GetInterfaces())
-        {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkSpotTimerHandler<>))
-            {
-                continue;
-            }
-
-            var arguments = implemented.GetGenericArguments();
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            return new ZLinkSpotTimerDescriptor
-            {
-                Name = name,
-                Period = TimeSpan.Zero,
-                HandlerType = handlerType,
-                SpotType = arguments[0],
-                HandleMethod = handlerType.GetMethod("HandleAsync")!,
-            };
-        }
-
-        throw new InvalidOperationException(
-            $"SPOT timer handler '{handlerType}' must implement IZLinkSpotTimerHandler<>.");
-    }
-
-    private static ZLinkSpotActorJoinDescriptor CreateActorJoinDescriptor(
-        Type handlerType,
-        Type expectedSpotType,
-        Type expectedActorType,
-        Type expectedRequestType,
-        Type expectedReplyType)
-    {
-        foreach (var implemented in handlerType.GetInterfaces())
-        {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkSpotActorJoinHandler<,,,>))
-            {
-                continue;
-            }
-
-            var arguments = implemented.GetGenericArguments();
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-
-            if (arguments[2] != expectedRequestType || arguments[3] != expectedReplyType)
-            {
-                throw new InvalidOperationException(
-                    $"SPOT actor join handler '{handlerType}' targets '{arguments[2]}/{arguments[3]}', but registration expects '{expectedRequestType}/{expectedReplyType}'.");
-            }
-
-            return new ZLinkSpotActorJoinDescriptor
-            {
-                HandlerType = handlerType,
-                SpotType = arguments[0],
-                ActorType = arguments[1],
-                RequestType = arguments[2],
-                ReplyType = arguments[3],
-                HandleMethod = handlerType.GetMethod("HandleAsync")!,
-                PacketName = ZLinkPacketNameResolver.ResolveFromType(arguments[2]),
-            };
-        }
-
-        throw new InvalidOperationException(
-            $"SPOT actor join handler '{handlerType}' must implement IZLinkSpotActorJoinHandler<,,,>.");
-    }
-
-    private static void ValidateSpotType(Type handlerType, Type expectedSpotType, Type actualSpotType)
-    {
-        if (actualSpotType != expectedSpotType)
-        {
-            throw new InvalidOperationException(
-                $"SPOT handler '{handlerType}' targets '{actualSpotType}', but the runtime spot type is '{expectedSpotType}'.");
-        }
-    }
-
-    private static void ValidateActorType(Type handlerType, Type expectedActorType, Type actualActorType)
-    {
-        if (actualActorType != expectedActorType)
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor join handler '{handlerType}' targets actor '{actualActorType}', but registration expects '{expectedActorType}'.");
-        }
     }
 
     private static T RegisterWithoutSynchronizationContext<T>(Func<T> action)
@@ -803,19 +781,16 @@ internal sealed class ZLinkSpotActivation : ZLinkSpotRuntimeContext, IAsyncDispo
 
     private sealed class ActorDispatchState(
         IZLinkActor actor,
-        IZLinkActorContext context,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        global::Zlink.Message body)
+        Message body)
     {
         public IZLinkActor Actor { get; } = actor;
-
-        public IZLinkActorContext Context { get; } = context;
 
         public ZLinkActorRuntimeState RuntimeState { get; } = runtimeState;
 
         public ZlinkStreamHeader Header { get; } = header;
 
-        public global::Zlink.Message Body { get; } = body;
+        public Message Body { get; } = body;
     }
 }

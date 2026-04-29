@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 using System.Threading;
 
 namespace Zlink.Framework.Runtime.Streams;
@@ -77,8 +77,8 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     private void OnFramedPacket(
         string routingIdText,
-        global::Zlink.Message header,
-        global::Zlink.Message body)
+        Message header,
+        Message body)
     {
         var routingId = ParsePublicRoutingId(routingIdText);
         var session = GetOrCreateSession(routingId);
@@ -92,7 +92,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         {
             case ZLinkSocketNativeEventType.ConnectionReady:
             case ZLinkSocketNativeEventType.Accepted:
-                if (monitorEvent.RoutingId is global::Zlink.RoutingId readyRoutingId)
+                if (monitorEvent.RoutingId is RoutingId readyRoutingId)
                 {
                     var session = GetOrCreateSession(readyRoutingId);
                     session.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
@@ -113,7 +113,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                             ZLinkStreamSessionError.TransportError,
                             new ZLinkStreamDiagnostic((int)monitorEvent.Value, monitorEvent.NativeEvent.ToString())));
 
-                    if (monitorEvent.RoutingId is global::Zlink.RoutingId disconnectedRoutingId)
+                    if (monitorEvent.RoutingId is RoutingId disconnectedRoutingId)
                     {
                         RemoveSession(disconnectedRoutingId);
                     }
@@ -143,10 +143,10 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             {
                 return;
             }
-            catch (global::Zlink.ZlinkException ex)
+            catch (ZlinkException ex)
                 when (cancellationToken.IsCancellationRequested
-                      || ex.InternalErrno is (int)global::Zlink.ErrorCode.EFault
-                      or (int)global::Zlink.ErrorCode.EBadf)
+                      || ex.InternalErrno is (int)ErrorCode.EFault
+                      or (int)ErrorCode.EBadf)
             {
                 return;
             }
@@ -155,7 +155,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         }
     }
 
-    private ZLinkStreamSessionRuntime GetOrCreateSession(global::Zlink.RoutingId routingId)
+    private ZLinkStreamSessionRuntime GetOrCreateSession(RoutingId routingId)
     {
         var sessionId = routingId.ToHex();
         lock (_gate)
@@ -169,13 +169,14 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                 _services.CreateAsyncScope(),
                 Socket,
                 routingId,
-                _headerSessionType);
+                _headerSessionType,
+                RemoveSession);
             _sessions.Add(sessionId, created);
             return created;
         }
     }
 
-    private void RemoveSession(global::Zlink.RoutingId routingId)
+    private void RemoveSession(RoutingId routingId)
     {
         RemoveSession(routingId.ToHex());
     }
@@ -209,12 +210,12 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     }
 
     private bool TryResolveSessionForMonitorEvent(
-        global::Zlink.RoutingId? routingId,
+        RoutingId? routingId,
         out ZLinkStreamSessionRuntime session)
     {
         lock (_gate)
         {
-            if (routingId is global::Zlink.RoutingId streamRoutingId)
+            if (routingId is RoutingId streamRoutingId)
             {
                 var sessionId = streamRoutingId.ToHex();
                 if (_sessions.TryGetValue(sessionId, out var existing))
@@ -235,15 +236,15 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         return false;
     }
 
-    private static global::Zlink.RoutingId ParsePublicRoutingId(string routingIdText)
+    private static RoutingId ParsePublicRoutingId(string routingIdText)
     {
         if (routingIdText.StartsWith("hex:", StringComparison.OrdinalIgnoreCase))
         {
-            return global::Zlink.RoutingId.FromBytes(
+            return RoutingId.FromBytes(
                 Convert.FromHexString(routingIdText["hex:".Length..]));
         }
 
-        return global::Zlink.RoutingId.FromBytes(
+        return RoutingId.FromBytes(
             System.Text.Encoding.UTF8.GetBytes(routingIdText));
     }
 

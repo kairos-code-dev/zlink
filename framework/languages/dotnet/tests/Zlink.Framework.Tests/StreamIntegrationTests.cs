@@ -5,10 +5,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
-using System.Buffers.Binary;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
@@ -22,6 +20,22 @@ public sealed class StreamIntegrationTestsCollection
 public sealed class StreamIntegrationTests
 {
     private static readonly TimeSpan PollingInterval = TimeSpan.FromMilliseconds(150);
+
+    [Fact]
+    public void StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints()
+    {
+        var runtimeType = typeof(ZLinkStreamSessionRuntime);
+
+        Assert.Null(runtimeType.GetMethod("MarkConnectedAsync", BindingFlags.Instance | BindingFlags.Public));
+        Assert.Null(runtimeType.GetMethod("DispatchPacketAsync", BindingFlags.Instance | BindingFlags.Public));
+        Assert.Null(runtimeType.GetMethod("MarkDisconnectedAsync", BindingFlags.Instance | BindingFlags.Public));
+        Assert.True(runtimeType.GetMethod("MarkConnectedAsync", BindingFlags.Instance | BindingFlags.NonPublic)?.IsPrivate);
+        Assert.True(runtimeType.GetMethod("DispatchPacketAsync", BindingFlags.Instance | BindingFlags.NonPublic)?.IsPrivate);
+        Assert.True(runtimeType.GetMethod("MarkDisconnectedAsync", BindingFlags.Instance | BindingFlags.NonPublic)?.IsPrivate);
+        Assert.NotNull(runtimeType.GetMethod("EnqueueConnected", BindingFlags.Instance | BindingFlags.Public));
+        Assert.NotNull(runtimeType.GetMethod("EnqueuePacket", BindingFlags.Instance | BindingFlags.Public));
+        Assert.NotNull(runtimeType.GetMethod("EnqueueDisconnected", BindingFlags.Instance | BindingFlags.Public));
+    }
 
     [Fact]
     public async Task HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle()
@@ -56,8 +70,8 @@ public sealed class StreamIntegrationTests
                             new ZlinkStreamHeader(
                                 ZlinkStreamMessageKind.Request,
                                 ZlinkStreamCodec.Json,
-                                ZlinkStreamHeaderFlags.HasRid,
-                                new ZlinkStreamRequestId(1),
+                                ZlinkStreamHeaderFlags.HasRequestSeq,
+                                new ZlinkStreamRequestSeq(1),
                                 "ping",
                                 ZlinkStreamMetadata.Empty),
                             "\"ping\""u8));
@@ -81,10 +95,29 @@ public sealed class StreamIntegrationTests
                     && callbackCapture.IsEmpty,
                 TimeSpan.FromSeconds(5));
             callbackCapture.ThrowIfAny();
-            var reply = ReceiveFrame(network);
+            var reply = ReceiveFrame(network, new ZlinkStreamRequestSeq(1));
             Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
-            Assert.Equal("ping", reply.Header.Name);
+            Assert.Equal(new ZlinkStreamRequestSeq(1), reply.Header.RequestSeq);
             Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Body));
+
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(2),
+                    "ping",
+                    ZlinkStreamMetadata.Empty),
+                "\"ping-2\""u8));
+            await RetryAsync(
+                () => recorder.ReceivedPayloads.Contains("ping-2") && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+            var secondReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(2));
+            Assert.Equal(ZlinkStreamMessageKind.Response, secondReply.Header.Kind);
+            Assert.Equal(new ZlinkStreamRequestSeq(2), secondReply.Header.RequestSeq);
+            Assert.Equal("\"pong\"", Encoding.UTF8.GetString(secondReply.Body));
+
             Assert.NotNull(recorder.LastSessionId);
             Assert.NotNull(recorder.LastRoutingId);
             AssertStreamMetadata(endpoint, clientLocalPort, recorder.LastLocalAddr, recorder.LastRemoteAddr);
@@ -95,6 +128,57 @@ public sealed class StreamIntegrationTests
                 () => recorder.DisconnectedCount > 0 && recorder.ErrorCount > 0,
                 TimeSpan.FromSeconds(5));
             Assert.Equal(ZLinkStreamSessionError.TransportError, recorder.LastError?.Error);
+            Assert.NotNull(recorder.LastSessionId);
+            Assert.Equal(1, recorder.MaxConcurrentCallbacksFor(recorder.LastSessionId));
+        }
+        finally
+        {
+            await host.StopAsync();
+            host.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task HeaderStreamSession_Can_Close_Current_Client_Stream()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var recorder = new HeaderStreamRecorder();
+        using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddZLinkFramework(options =>
+            {
+                options.AddStreamNode("header.node", stream =>
+                {
+                    stream.Bind(endpoint);
+                    stream.AddHeaderSession<HeaderStreamSession>();
+                });
+            });
+        });
+        try
+        {
+            using var client = ConnectRawClient(endpoint);
+            var network = client.GetStream();
+
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(1),
+                    "close",
+                    ZlinkStreamMetadata.Empty),
+                "\"close\""u8));
+
+            await RetryAsync(
+                () => recorder.ReceivedPayloads.Contains("close")
+                    && recorder.DisconnectedCount > 0
+                    && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+            Assert.Equal(0, recorder.ErrorCount);
         }
         finally
         {
@@ -237,6 +321,20 @@ public sealed class StreamIntegrationTests
         return (header, bodyBytes);
     }
 
+    private static (ZlinkStreamHeader Header, byte[] Body) ReceiveFrame(
+        NetworkStream stream,
+        ZlinkStreamRequestSeq requestSeq)
+    {
+        while (true)
+        {
+            var frame = ReceiveFrame(stream);
+            if (frame.Header.RequestSeq == requestSeq)
+            {
+                return frame;
+            }
+        }
+    }
+
     private static void AssertStreamMetadata(
         string endpoint,
         int clientLocalPort,
@@ -272,37 +370,88 @@ public sealed class StreamIntegrationTests
         public int ErrorCount { get; set; }
 
         public ZLinkStreamError? LastError { get; set; }
+
+        private readonly ConcurrentDictionary<string, CallbackConcurrency> _callbackConcurrencyBySession = new();
+
+        public IDisposable EnterCallback(string sessionId)
+        {
+            var concurrency = _callbackConcurrencyBySession.GetOrAdd(sessionId, _ => new CallbackConcurrency());
+            concurrency.Enter();
+            return new CallbackLease(concurrency);
+        }
+
+        public int MaxConcurrentCallbacksFor(string sessionId)
+        {
+            return _callbackConcurrencyBySession.TryGetValue(sessionId, out var concurrency)
+                ? concurrency.MaxActive
+                : 0;
+        }
+
+        private sealed class CallbackConcurrency
+        {
+            private int _active;
+            private int _maxActive;
+
+            public int MaxActive => Volatile.Read(ref _maxActive);
+
+            public void Enter()
+            {
+                var active = Interlocked.Increment(ref _active);
+                while (true)
+                {
+                    var current = Volatile.Read(ref _maxActive);
+                    if (active <= current
+                        || Interlocked.CompareExchange(ref _maxActive, active, current) == current)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            public void Leave()
+            {
+                Interlocked.Decrement(ref _active);
+            }
+        }
+
+        private sealed class CallbackLease(CallbackConcurrency concurrency) : IDisposable
+        {
+            public void Dispose()
+            {
+                concurrency.Leave();
+            }
+        }
     }
 
-    public sealed class HeaderStreamSession(HeaderStreamRecorder recorder) : IZLinkStreamHeaderSession
+    public sealed class HeaderStreamSession(HeaderStreamRecorder recorder) : IZLinkSession
     {
-        private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
+        public IZLinkSessionContext Context { get; set; } = default!;
 
-        public ValueTask OnConnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         {
+            using var lease = recorder.EnterCallback(Context.SessionId);
             _ = cancellationToken;
-            recorder.LastSessionId = stream.SessionId;
-            recorder.LastRoutingId = stream.RoutingId;
-            recorder.LastLocalAddr = stream.LocalAddr;
-            recorder.LastRemoteAddr = stream.RemoteAddr;
+            recorder.LastSessionId = Context.SessionId;
+            recorder.LastRoutingId = Context.RoutingId;
+            recorder.LastLocalAddr = Context.LocalAddr;
+            recorder.LastRemoteAddr = Context.RemoteAddr;
             recorder.ConnectedCount++;
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnDisconnectedAsync(IZLinkStream stream, CancellationToken cancellationToken)
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
-            _ = stream;
+            using var lease = recorder.EnterCallback(Context.SessionId);
             _ = cancellationToken;
             recorder.DisconnectedCount++;
             return ValueTask.CompletedTask;
         }
 
         public ValueTask OnErrorAsync(
-            IZLinkStream stream,
             ZLinkStreamError error,
             CancellationToken cancellationToken)
         {
-            _ = stream;
+            using var lease = recorder.EnterCallback(Context.SessionId);
             _ = cancellationToken;
             recorder.LastError = error;
             recorder.ErrorCount++;
@@ -310,36 +459,21 @@ public sealed class StreamIntegrationTests
         }
 
         public ValueTask OnDispatchAsync(
-            IZLinkStream stream,
             ZlinkStreamHeader header,
             global::Zlink.Message payload,
             CancellationToken cancellationToken)
         {
+            using var lease = recorder.EnterCallback(Context.SessionId);
             _ = cancellationToken;
             _ = header;
             recorder.ReceivedPayloads.Add(Encoding.UTF8.GetString(payload.AsReadOnlySpan()).Trim('"'));
-            var replyHeader = new ZlinkStreamHeader(
-                ZlinkStreamMessageKind.Response,
-                ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.HasRid,
-                header.RequestId,
-                header.Name,
-                ZlinkStreamMetadata.Empty);
-            var bodyBytes = Encoding.UTF8.GetBytes("\"pong\"");
-            var frame = EncodeFrame(HeaderCodec.Encode(replyHeader).Span, bodyBytes);
-            using var reply = global::Zlink.Message.FromBytes(frame);
-            Assert.True(stream.Write(reply));
-            return ValueTask.CompletedTask;
-        }
+            if (recorder.ReceivedPayloads.Contains("close"))
+            {
+                return Context.CloseAsync(cancellationToken);
+            }
 
-        private static byte[] EncodeFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body)
-        {
-            var frame = new byte[6 + header.Length + body.Length];
-            BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
-            BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
-            header.CopyTo(frame.AsSpan(6, header.Length));
-            body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
-            return frame;
+            return Context.Reply("pong")
+                .Async(cancellationToken);
         }
     }
 

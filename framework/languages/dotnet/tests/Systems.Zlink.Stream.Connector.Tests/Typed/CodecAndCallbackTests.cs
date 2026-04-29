@@ -7,34 +7,55 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Builders;
+using MessagePack;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Compression;
-using Systems.Zlink.Stream.Connector.Connector;
-using Systems.Zlink.Stream.Connector.Framing;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
-using Systems.Zlink.Stream.Connector.Options;
+using Systems.Zlink.Stream.Connector.Calls;
+using Systems.Zlink.Stream.Connector.Protocol;
+using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
+using StreamJson = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonExtensions;
 
 
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public void CodecRegistryUsesTypeSpecificCodecBeforeDefaultCodec()
+    public void JsonExtensionBuildsEncodedBody()
     {
-        var registry = new ZlinkStreamCodecRegistry(
-            ZlinkStreamCodec.Json,
-            new IZlinkStreamBodyCodec[]
-            {
-                new ZlinkStreamJsonBodyCodec(),
-                new SpecificPingCodec()
-            });
+        var body = StreamJson.ToJson(new Ping("hello"));
 
-        var codec = registry.ResolveForSend(typeof(Ping));
+        Assert.Equal(ZlinkStreamCodec.Json, body.Codec);
+        Assert.Equal(typeof(Ping), body.MessageType);
+        Assert.Equal("hello", StreamJson.FromJson<Ping>(body).Text);
+    }
 
-        Assert.Equal(ZlinkStreamCodec.Raw, codec.Codec);
+    [Fact]
+    public async Task AutoCodecUsesMessagePackObjectAttribute()
+    {
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var packet = await ReadPacketAsync(stream);
+            var header = headerCodec.Decode(packet.Header);
+            Assert.Equal(ZlinkStreamCodec.MessagePack, header.Codec);
+        });
+
+        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+        });
+
+        connector.Send(new PackedPing { Text = "hello" })
+            .WithMessageName("packed")
+            .Exec();
+        await server;
     }
 
     [Fact]

@@ -4,7 +4,7 @@ public interface IZLinkHandlerContext
 {
     string? ChannelName { get; }
 
-    string? PacketName { get; }
+    string? MessageName { get; }
 
     string? ContentType { get; }
 
@@ -21,7 +21,7 @@ public abstract class ZLinkHandlerContext : IZLinkHandlerContext
 {
     protected ZLinkHandlerContext(
         string? channelName,
-        string? packetName,
+        string? messageName,
         string? contentType,
         string? correlationId,
         DateTimeOffset? deadline,
@@ -29,7 +29,7 @@ public abstract class ZLinkHandlerContext : IZLinkHandlerContext
         CancellationToken connectionAborted)
     {
         ChannelName = channelName;
-        PacketName = packetName;
+        MessageName = messageName;
         ContentType = contentType;
         CorrelationId = correlationId;
         Deadline = deadline;
@@ -39,7 +39,7 @@ public abstract class ZLinkHandlerContext : IZLinkHandlerContext
 
     public string? ChannelName { get; }
 
-    public string? PacketName { get; }
+    public string? MessageName { get; }
 
     public string? ContentType { get; }
 
@@ -56,13 +56,13 @@ public sealed class ZLinkRequestContext : ZLinkHandlerContext
 {
     public ZLinkRequestContext(
         string? channelName,
-        string? packetName,
+        string? messageName,
         string? contentType,
         string? correlationId,
         DateTimeOffset? deadline,
         IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(channelName, messageName, contentType, correlationId, deadline, services, connectionAborted)
     {
     }
 }
@@ -71,13 +71,13 @@ public sealed class ZLinkSendContext : ZLinkHandlerContext
 {
     public ZLinkSendContext(
         string? channelName,
-        string? packetName,
+        string? messageName,
         string? contentType,
         string? correlationId,
         DateTimeOffset? deadline,
         IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(channelName, messageName, contentType, correlationId, deadline, services, connectionAborted)
     {
     }
 }
@@ -86,7 +86,7 @@ public sealed class ZLinkEventContext : ZLinkHandlerContext
 {
     public ZLinkEventContext(
         string? channelName,
-        string? packetName,
+        string? messageName,
         string? contentType,
         string? correlationId,
         DateTimeOffset? deadline,
@@ -94,7 +94,7 @@ public sealed class ZLinkEventContext : ZLinkHandlerContext
         string? source,
         IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(channelName, messageName, contentType, correlationId, deadline, services, connectionAborted)
     {
         Topic = topic;
         Source = source;

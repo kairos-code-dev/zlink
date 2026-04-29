@@ -1,6 +1,5 @@
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Connector;
-using Systems.Zlink.Stream.Connector.Options;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime;
 using System.Collections.Concurrent;
 
 namespace Systems.Zlink.Stream.Connector.Unity;

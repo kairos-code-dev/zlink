@@ -3,9 +3,8 @@ using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Tests.Common;
 
@@ -272,8 +271,8 @@ public sealed class TopologyMultiProcessTests
             new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Request,
                 ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.HasRid,
-                new ZlinkStreamRequestId(1),
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                new ZlinkStreamRequestSeq(1),
                 "ping",
                 ZlinkStreamMetadata.Empty),
             "\"ping\""u8));
@@ -322,8 +321,8 @@ public sealed class TopologyMultiProcessTests
             new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Request,
                 ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.HasRid,
-                new ZlinkStreamRequestId(1),
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                new ZlinkStreamRequestSeq(1),
                 "ping",
                 ZlinkStreamMetadata.Empty),
             "\"ping\""u8));
@@ -550,14 +549,13 @@ public sealed class TopologyMultiProcessTests
         }
     }
 
-    public sealed class LocalMonitoringStageSpot : ZLinkSpot
+    public sealed class LocalMonitoringStageSpot(IZLinkSpotContext context) : IZLinkSpot
     {
-        public LocalMonitoringStageSpot(
-            global::Zlink.RoutingId spotRid,
-            global::Zlink.RoutingId nodeRid)
-            : base(spotRid, nodeRid)
+        public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
         {
-            AddSubscribe<LocalMonitoringStageSubscriptionHandler>("stage.monitor");
+            Context.AddSubscribe<LocalMonitoringStageSubscriptionHandler>("stage.monitor");
         }
     }
 

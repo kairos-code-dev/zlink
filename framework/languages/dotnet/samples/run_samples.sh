@@ -3,4 +3,4 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-dotnet run --project "${SCRIPT_DIR}/PlayHouseRoomEcho/Server/PlayHouseRoomEcho.Server.csproj"
+dotnet run --project "${SCRIPT_DIR}/TicTacToe/Server/TicTacToe.Server.csproj"

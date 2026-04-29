@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendRouterSocketWrapper(global::Zlink.RouterSocket nativeSocket) : IZLinkBackendRouterSocket
+internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket) : IZLinkBackendRouterSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -17,18 +17,18 @@ internal sealed class ZLinkBackendRouterSocketWrapper(global::Zlink.RouterSocket
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<global::Zlink.Discovery>());
+        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
     }
 
-    public global::Zlink.Received? Recv()
+    public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
-        return nativeSocket.Recv();
+        return nativeSocket.Recv(flags);
     }
 
     public void Reply(
-        global::Zlink.RoutingId routingId,
+        RoutingId routingId,
         ulong requestSeq,
-        global::Zlink.Message message)
+        Message message)
     {
         nativeSocket.Reply(routingId, requestSeq, message);
     }

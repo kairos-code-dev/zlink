@@ -11,15 +11,15 @@ internal static class ZLinkBackendNativeAccess
                 $"Expected native instance '{typeof(T).FullName}'.");
     }
 
-    public static global::Zlink.SocketMonitor OpenNativeMonitor(this IZLinkBackendSocket socket)
+    public static SocketMonitor OpenNativeMonitor(this IZLinkBackendSocket socket)
     {
         return socket.NativeInstance switch
         {
-            global::Zlink.DealerSocket native => native.MonitorOpen(),
-            global::Zlink.RouterSocket native => native.MonitorOpen(),
-            global::Zlink.PubSocket native => native.MonitorOpen(),
-            global::Zlink.SubSocket native => native.MonitorOpen(),
-            global::Zlink.StreamSocket native => native.MonitorOpen(),
+            DealerSocket native => native.MonitorOpen(),
+            RouterSocket native => native.MonitorOpen(),
+            PubSocket native => native.MonitorOpen(),
+            SubSocket native => native.MonitorOpen(),
+            StreamSocket native => native.MonitorOpen(),
             _ => throw new InvalidOperationException("Expected a native socket instance."),
         };
     }

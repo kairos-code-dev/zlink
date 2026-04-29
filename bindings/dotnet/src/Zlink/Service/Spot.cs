@@ -1067,8 +1067,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     }
 
     public void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSequence, Message message, SendFlags flags = SendFlags.None)
-        => ReplyToSpot(destNodeRid, destSpotRid, requestSequence, new[] { message },
+        ulong requestSeq, Message message, SendFlags flags = SendFlags.None)
+        => ReplyToSpot(destNodeRid, destSpotRid, requestSeq, new[] { message },
             flags);
 
     public bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -1125,7 +1125,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     }
 
     public unsafe void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSequence, IReadOnlyList<Message> parts,
+        ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         _ = flags;
@@ -1145,7 +1145,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 try
                 {
                     int rc = NativeMethods.zlink_spot_reply_spot_part(_handle,
-                        ref nodeRid, ref spotRid, requestSequence, ref nativePart,
+                        ref nodeRid, ref spotRid, requestSeq, ref nativePart,
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final);
@@ -1168,11 +1168,11 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public void ReplyToRouter(RoutingId peerRid, ulong requestSequence,
+    public void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
         Message message, SendFlags flags = SendFlags.None)
-        => ReplyToRouter(peerRid, requestSequence, new[] { message }, flags);
+        => ReplyToRouter(peerRid, requestSeq, new[] { message }, flags);
 
-    public unsafe void ReplyToRouter(RoutingId peerRid, ulong requestSequence,
+    public unsafe void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
@@ -1190,7 +1190,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 try
                 {
                     int rc = NativeMethods.zlink_spot_reply_router_part(_handle,
-                        ref routingId, requestSequence, ref nativePart,
+                        ref routingId, requestSeq, ref nativePart,
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final);
@@ -1217,7 +1217,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     {
         MultipartMessageCollection parts = ReceiveSpotRoutedParts((int)flags,
             out byte[]? nodeRidBytes, out byte[]? spotRidBytes,
-            out ulong requestSequence) ?? throw ZlinkException.CreateRecvException(
+            out ulong requestSeq) ?? throw ZlinkException.CreateRecvException(
                 (int)ErrorCode.EAgain);
         RoutingId? nodeRid = nodeRidBytes == null
             ? null
@@ -1225,15 +1225,15 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         RoutingId? spotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        if (requestSequence == 0)
+        if (requestSeq == 0)
             return Received.Create(nodeRid, parts, spotRid: spotRid);
-        return Received.Create(nodeRid, parts, requestSequence, spotRid,
+        return Received.Create(nodeRid, parts, requestSeq, spotRid,
             (replyParts, sendFlags) => ReplyToSpot(
                 nodeRid ?? throw new ZlinkSubmitException(
                     SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
                 spotRid ?? throw new ZlinkSubmitException(
                     SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                requestSequence, replyParts, sendFlags));
+                requestSeq, replyParts, sendFlags));
     }
 
     public unsafe void OnRoutedReceive(Action<Received> handler)
@@ -1559,7 +1559,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     }
 
     private unsafe void OnNativeRoutedReceive(ZlinkRoutingId* sourceRoutingId,
-        ZlinkRoutingId* spotRoutingId, ulong requestSequence, IntPtr parts,
+        ZlinkRoutingId* spotRoutingId, ulong requestSeq, IntPtr parts,
         nuint partCount, IntPtr userData)
     {
         Action<Received>? handler = _routedReceiveHandler;
@@ -1579,15 +1579,15 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         RoutingId? spotRid = spotRoutingId == null ? null :
             RoutingIdCodec.ToRoutingId(
                 NativeHelpers.ReadRoutingId(ref *spotRoutingId));
-        Received received = requestSequence == 0
+        Received received = requestSeq == 0
             ? Received.Create(nodeRid, managedParts, spotRid: spotRid)
-            : Received.Create(nodeRid, managedParts, requestSequence, spotRid,
+            : Received.Create(nodeRid, managedParts, requestSeq, spotRid,
                 (replyParts, sendFlags) => ReplyToSpot(
                     nodeRid ?? throw new ZlinkSubmitException(
                         SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
                     spotRid ?? throw new ZlinkSubmitException(
                         SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                    requestSequence, replyParts, sendFlags));
+                    requestSeq, replyParts, sendFlags));
         CallbackDelivery.Post(_routedReceiveHandlerContext, () => handler(received));
     }
 
@@ -2030,13 +2030,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     private unsafe MultipartMessageCollection? ReceiveSpotRoutedParts(int flags,
         out byte[]? nodeRidBytes, out byte[]? spotRidBytes,
-        out ulong requestSequence)
+        out ulong requestSeq)
     {
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
         nodeRidBytes = null;
         spotRidBytes = null;
-        requestSequence = 0;
+        requestSeq = 0;
         try
         {
             while (true)
@@ -2047,7 +2047,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 bool initialized = true;
                 int rc = NativeMethods.zlink_spot_recv_part(_handle,
                     out IntPtr sourceNodeRid, out IntPtr sourceSpotRid,
-                    out requestSequence, ref part, out int hasMore, flags);
+                    out requestSeq, ref part, out int hasMore, flags);
                 if (rc != 0)
                 {
                     if (initialized)

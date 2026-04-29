@@ -8,7 +8,7 @@ namespace Zlink.Codecs.Protobuf;
 
 public static class ProtobufMessageExtensions
 {
-    public static T ParseProto<T>(this Message message)
+    public static T FromProto<T>(this Message message)
         where T : IMessage<T>, new()
     {
         ArgumentNullException.ThrowIfNull(message);
@@ -18,16 +18,10 @@ public static class ProtobufMessageExtensions
         return value;
     }
 
-    public static Message ToMessage<T>(this T value)
+    public static Message ToProto<T>(this T value)
         where T : IMessage<T>
     {
         ArgumentNullException.ThrowIfNull(value);
         return Message.FromOwnedBytes(value.ToByteArray());
-    }
-
-    public static Message ToProtoMessage<T>(this T value)
-        where T : IMessage<T>
-    {
-        return value.ToMessage();
     }
 }

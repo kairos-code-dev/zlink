@@ -1,7 +1,9 @@
+using ZlinkRegistry = Zlink.Registry;
+
 namespace Zlink.Framework.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendRegistryWrapper(global::Zlink.Registry nativeRegistry) : IZLinkBackendRegistry
+internal sealed class ZLinkBackendRegistryWrapper(ZlinkRegistry nativeRegistry) : IZLinkBackendRegistry
 {
     public object NativeInstance => nativeRegistry;
 
@@ -62,7 +64,7 @@ internal sealed class ZLinkBackendRegistryWrapper(global::Zlink.Registry nativeR
         ZLinkServiceType serviceType,
         string serviceName)
     {
-        return nativeRegistry.MemberPeers((global::Zlink.ServiceType)serviceType, serviceName)
+        return nativeRegistry.MemberPeers((ServiceType)serviceType, serviceName)
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }

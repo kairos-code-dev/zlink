@@ -93,8 +93,6 @@ public sealed class ZlinkStreamConnectorBehaviour : MonoBehaviour
 
     public ZlinkStreamConnector? Connector { get; }
 
-    public event Action<ZlinkStreamPacket>? PacketReceived;
-
     public event Action<ZlinkStreamError>? ErrorReceived;
 
     public event Action? Disconnected;
@@ -105,23 +103,10 @@ public sealed class ZlinkStreamConnectorBehaviour : MonoBehaviour
 
     public Task CloseAsync(CancellationToken cancellationToken = default);
 
-    public void SendRaw(
-        ReadOnlyMemory<byte> header,
-        ReadOnlyMemory<byte> body,
-        CancellationToken cancellationToken = default);
-
     public ZlinkStreamSendBuilder<TBody> Send<TBody>(
         TBody body);
 
-    public ZlinkStreamSendBuilder<TBody> Send<TBody>(
-        string name,
-        TBody body);
-
     public ZlinkStreamRequestBuilder<TBody> Request<TBody>(
-        TBody body);
-
-    public ZlinkStreamRequestBuilder<TBody> Request<TBody>(
-        string name,
         TBody body);
 
     public IDisposable On<TBody>(
@@ -134,13 +119,11 @@ public sealed class ZlinkStreamConnectorBehaviour : MonoBehaviour
 ```
 
 Unity wrapper는 `Task`를 노출할 수 있지만, 사용자 callback은 Unity main thread에서
-호출해야 한다. 사용자는 `PacketReceived` 안에서 `GameObject`, `Transform`, `UI` 같은
-Unity 객체를 직접 다룰 수 있어야 한다.
+호출해야 한다. 사용자는 `On<TBody>(...)`로 등록한 typed callback 안에서
+`GameObject`, `Transform`, `UI` 같은 Unity 객체를 직접 다룰 수 있어야 한다.
 
 typed `Send`, `Request`, codec, compression helper는 core connector와 같은 의미를
 유지한다. Unity wrapper가 별도 이름 규칙이나 별도 helper header를 만들면 안 된다.
-`SendRaw`는 raw `header, body`가 필요한 고급 사용자용이다. 일반 Unity 사용자는
-typed `Send`, `Request`, `On` API를 사용한다.
 
 ## 5. Callback Dispatch
 
@@ -149,7 +132,7 @@ worker thread에서 사용자 callback을 직접 호출하지 않는다.
 
 권장 동작:
 
-1. core connector가 packet, error, disconnect event를 받는다.
+1. core connector가 typed packet, error, disconnect event를 받는다.
 2. Unity adapter가 event를 thread-safe queue에 넣는다.
 3. `Update()`에서 queue를 비운다.
 4. 사용자 callback을 Unity main thread에서 호출한다.

@@ -76,7 +76,7 @@ public interface IZLinkStreamNodeBuilder
     void Bind(string endpoint);
 
     void AddHeaderSession<TSession>()
-        where TSession : class, IZLinkStreamHeaderSession;
+        where TSession : class, IZLinkSession;
 }
 
 public interface IZLinkChannelBuilder
@@ -107,7 +107,7 @@ public interface IZLinkSpotNodeBuilder
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
     void AddSpotFactory<TSpot>(string spotName)
-        where TSpot : ZLinkSpot;
+        where TSpot : IZLinkSpot;
 }
 
 public interface IZLinkFrameworkOptions

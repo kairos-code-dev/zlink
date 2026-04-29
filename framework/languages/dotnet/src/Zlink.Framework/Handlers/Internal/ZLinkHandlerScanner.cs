@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Handlers.Internal;
 
@@ -19,19 +19,19 @@ internal static class ZLinkHandlerScanner
                 var request = method.GetCustomAttribute<ZLinkRequestAttribute>();
                 if (request is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, request.PacketName, ZLinkMessageKind.Request));
+                    endpoints.Add(CreateDescriptor(type, method, request.MessageName, ZLinkMessageKind.Request));
                 }
 
                 var send = method.GetCustomAttribute<ZLinkSendAttribute>();
                 if (send is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, send.PacketName, ZLinkMessageKind.Command));
+                    endpoints.Add(CreateDescriptor(type, method, send.MessageName, ZLinkMessageKind.Command));
                 }
 
                 var @event = method.GetCustomAttribute<ZLinkEventAttribute>();
                 if (@event is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, @event.PacketName, ZLinkMessageKind.Event));
+                    endpoints.Add(CreateDescriptor(type, method, @event.MessageName, ZLinkMessageKind.Event));
                 }
             }
         }
@@ -42,7 +42,7 @@ internal static class ZLinkHandlerScanner
     private static ZLinkHandlerEndpointDescriptor CreateDescriptor(
         Type declaringType,
         MethodInfo method,
-        string? packetNameOverride,
+        string? messageNameOverride,
         ZLinkMessageKind kind)
     {
         var parameters = method.GetParameters();
@@ -53,7 +53,7 @@ internal static class ZLinkHandlerScanner
         }
 
         var messageType = parameters[0].ParameterType;
-        var packetName = packetNameOverride ?? ZLinkPacketNameResolver.ResolveFromType(messageType);
+        var messageName = messageNameOverride ?? ZLinkMessageNameResolver.ResolveFromType(messageType);
         Type? contextType = null;
         var hasCancellationToken = false;
 
@@ -77,7 +77,7 @@ internal static class ZLinkHandlerScanner
 
         return new ZLinkHandlerEndpointDescriptor(
             kind,
-            packetName,
+            messageName,
             declaringType,
             method,
             messageType,

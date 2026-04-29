@@ -223,7 +223,7 @@ solution 엔트리도 한 가지로 고정한다.
 
 - duplicate registration
 - discovery/manual 혼용 금지
-- stream raw/packet same-node 금지
+- stream session 중복 등록 금지
 - `UseSpotDiscovery(...)` 없는 `AddSpotNode(...)` 금지
 
 이 단계가 끝나면 코드에서 `AddZLinkFramework(...)`와 registration validation이 먼저

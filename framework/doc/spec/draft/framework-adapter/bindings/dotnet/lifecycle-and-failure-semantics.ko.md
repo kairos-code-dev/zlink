@@ -92,8 +92,15 @@ validation, reconnect, shutdown 순서가 문서로 닫혀 있어야 회귀 테�
 ## 8. Spot Lifecycle 의미
 
 - `OnInitializeAsync(...)`는 spot 실행 문맥에서 한 번만 호출된다.
+- `Configure()`는 `OnInitializeAsync(...)`보다 먼저 한 번 호출되며,
+  `Context.AddPacket<THandler>()`, `Context.AddSubscribe<THandler>()`,
+  `Context.AddActorJoin<THandler, TActor, TRequest, TReply>()`는 이 단계에서만
+  허용된다.
+- `OnClosingAsync(...)`는 `IZLinkSpotManager.RemoveAsync(...)`로 SPOT을 정상
+  제거할 때 spot 실행 문맥에서 호출된다. host shutdown이나 process 종료에서
+  반드시 호출되는 destructor 의미는 아니다.
 - framework는 per-spot scope를 만들고, 등록한 handler 타입을 그 scope에서 resolve한다.
-- `AddPacket<THandler>()`, `AddSubscribe<THandler>()`, `AddTimer<THandler>()`는
+- `Context.AddPacket<THandler>()`, `Context.AddSubscribe<THandler>()`, `Context.AddTimer<THandler>()`는
   service locator가 아니라 "이 타입을 spot scope에서 써 달라"는 등록 의미다.
 - spot 제거 뒤에는 해당 scope도 함께 정리된다.
 

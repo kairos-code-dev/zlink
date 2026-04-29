@@ -31,7 +31,7 @@ public interface IZLinkCommonSocketOptions
 
 public interface IRoutedPeerOptions
 {
-    global::Zlink.RoutingId RoutingId { get; set; }
+    RoutingId RoutingId { get; set; }
 
     bool Mandatory { get; set; }
 
@@ -39,12 +39,12 @@ public interface IRoutedPeerOptions
 
     bool Probe { get; set; }
 
-    global::Zlink.RoutingId ConnectRoutingId { get; set; }
+    RoutingId ConnectRoutingId { get; set; }
 }
 
 public interface IOutboundPeerOptions
 {
-    global::Zlink.RoutingId RoutingId { get; set; }
+    RoutingId RoutingId { get; set; }
 
     bool ProbeRouter { get; set; }
 }
@@ -100,7 +100,7 @@ internal sealed class ZLinkCommonSocketOptions : IZLinkCommonSocketOptions
 
 internal sealed class ZLinkRoutedPeerOptions : IRoutedPeerOptions
 {
-    public global::Zlink.RoutingId RoutingId { get; set; }
+    public RoutingId RoutingId { get; set; }
 
     public bool Mandatory { get; set; }
 
@@ -108,12 +108,12 @@ internal sealed class ZLinkRoutedPeerOptions : IRoutedPeerOptions
 
     public bool Probe { get; set; }
 
-    public global::Zlink.RoutingId ConnectRoutingId { get; set; }
+    public RoutingId ConnectRoutingId { get; set; }
 }
 
 internal sealed class ZLinkOutboundPeerOptions : IOutboundPeerOptions
 {
-    public global::Zlink.RoutingId RoutingId { get; set; }
+    public RoutingId RoutingId { get; set; }
 
     public bool ProbeRouter { get; set; }
 }

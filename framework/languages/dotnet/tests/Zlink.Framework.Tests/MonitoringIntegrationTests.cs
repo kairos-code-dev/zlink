@@ -335,14 +335,13 @@ public sealed class MonitoringIntegrationTests
         }
     }
 
-    public sealed class MonitoringStageSpot : ZLinkSpot
+    public sealed class MonitoringStageSpot(IZLinkSpotContext context) : IZLinkSpot
     {
-        public MonitoringStageSpot(
-            global::Zlink.RoutingId spotRid,
-            global::Zlink.RoutingId nodeRid)
-            : base(spotRid, nodeRid)
+        public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
         {
-            AddSubscribe<StageSubscriptionHandler>("stage.monitor");
+            Context.AddSubscribe<StageSubscriptionHandler>("stage.monitor");
         }
     }
 

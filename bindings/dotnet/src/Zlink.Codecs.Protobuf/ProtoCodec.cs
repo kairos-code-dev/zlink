@@ -5,17 +5,19 @@ using Zlink;
 
 namespace Zlink.Codecs.Protobuf;
 
-public static class ProtoCodec
+public static class ProtobufMessageExtensions
 {
-    public static T Decode<T>(this Message message, MessageParser<T> parser)
-        where T : IMessage<T>
+    public static T FromProto<T>(this Message message)
+        where T : IMessage<T>, new()
     {
         ArgumentNullException.ThrowIfNull(message);
-        ArgumentNullException.ThrowIfNull(parser);
-        return parser.ParseFrom(message.AsReadOnlySpan());
+
+        T value = new();
+        value.MergeFrom(message.AsReadOnlySpan());
+        return value;
     }
 
-    public static Message Encode<T>(this T value)
+    public static Message ToProto<T>(this T value)
         where T : IMessage<T>
     {
         ArgumentNullException.ThrowIfNull(value);

@@ -4,18 +4,21 @@ public interface IZLinkStream
 {
     string SessionId { get; }
 
-    global::Zlink.RoutingId? RoutingId { get; }
+    RoutingId? RoutingId { get; }
 
     string? LocalAddr { get; }
 
     string? RemoteAddr { get; }
 
     bool Write(
-        global::Zlink.Message payload,
-        global::Zlink.SendFlags flags = global::Zlink.SendFlags.None);
+        Message payload,
+        SendFlags flags = SendFlags.None);
 
     bool Write(
-        global::Zlink.Message header,
-        global::Zlink.Message body,
-        global::Zlink.SendFlags flags = global::Zlink.SendFlags.None);
+        Message header,
+        Message body,
+        SendFlags flags = SendFlags.None);
+
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
 }

@@ -4,7 +4,7 @@ public interface IZLinkClient
 {
     IZLinkSendCall Send<TMessage>(string channelName, TMessage message);
 
-    IZLinkRequestCall<TReply> Request<TReply>(
+    IZLinkRequestCall Request<TMessage>(
         string channelName,
-        IZLinkRequest<TReply> request);
+        TMessage request);
 }

@@ -1,11 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 {
     private readonly IServiceProvider _services;
+    private readonly ZLinkFrameworkRuntime _runtime;
     private readonly ZLinkFrameworkRegistration _frameworkRegistration;
     private readonly ZLinkSpotNodeRegistration _registration;
     private readonly string _spotChannelName;
@@ -15,12 +16,13 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly object _connectionsGate = new();
     private readonly Dictionary<string, ZLinkSpotAttachedChannelBundle> _channelBundles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
-    private readonly Dictionary<global::Zlink.RoutingId, ZLinkSpotActivation> _spots = [];
+    private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
     private readonly HashSet<string> _routerManualConnections = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pubSubManualConnections = new(StringComparer.Ordinal);
 
     public ZLinkSpotNodeRuntime(
         IServiceProvider services,
+        ZLinkFrameworkRuntime runtime,
         ZLinkFrameworkRegistration frameworkRegistration,
         ZLinkSpotNodeRegistration registration,
         IZLinkBackendContext context,
@@ -29,6 +31,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         string spotChannelName)
     {
         _services = services;
+        _runtime = runtime;
         _frameworkRegistration = frameworkRegistration;
         _registration = registration;
         _context = context;
@@ -157,7 +160,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
-        global::Zlink.RoutingId? requestedSpotRid,
+        RoutingId? requestedSpotRid,
         CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -174,7 +177,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 GetOrCreateAttachedChannelBundle(channelName);
             }
 
-            if (requestedSpotRid is global::Zlink.RoutingId existingRid
+            if (requestedSpotRid is RoutingId existingRid
                 && _spots.TryGetValue(existingRid, out var existing))
             {
                 if (!string.Equals(existing.SpotName, spotName, StringComparison.Ordinal))
@@ -188,9 +191,10 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
             var nativeSpot = Node.CreateSpot();
             var spotCreated = false;
+            ZLinkSpotActivation? activation = null;
             try
             {
-                if (requestedSpotRid is global::Zlink.RoutingId providedRid)
+                if (requestedSpotRid is RoutingId providedRid)
                 {
                     nativeSpot.SetRoutingId(providedRid);
                 }
@@ -198,21 +202,22 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 var spotScope = _services.CreateAsyncScope();
                 try
                 {
-                    var spot = (ZLinkSpot)ActivatorUtilities.CreateInstance(
-                        spotScope.ServiceProvider,
-                        spotType,
-                        nativeSpot.RoutingId,
-                        Node.RoutingId);
-
-                    var activation = new ZLinkSpotActivation(
+                    activation = new ZLinkSpotActivation(
+                        _runtime,
                         spotScope,
-                        spot,
                         nativeSpot,
+                        Node.RoutingId,
                         spotName,
                         _spotChannelName,
                         _frameworkRegistration.DefaultTimeout);
 
-                    spot.AttachRuntime(activation);
+                    var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
+                        spotScope.ServiceProvider,
+                        spotType,
+                        activation);
+
+                    activation.AttachSpot(spot);
+                    spot.Configure();
                     activation.BindDescriptors();
                     await activation.InitializeAsync(cancellationToken);
                     _spots.Add(activation.SpotRid, activation);
@@ -222,13 +227,21 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 }
                 catch
                 {
-                    await spotScope.DisposeAsync();
+                    if (activation is null)
+                    {
+                        await spotScope.DisposeAsync();
+                    }
+                    else
+                    {
+                        await activation.DisposeAsync();
+                    }
+
                     throw;
                 }
             }
             finally
             {
-                if (!spotCreated)
+                if (!spotCreated && activation is null)
                 {
                     await nativeSpot.DisposeAsync();
                 }
@@ -241,7 +254,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     }
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -266,7 +279,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     }
 
     public async ValueTask<bool> RemoveAsync(
-        global::Zlink.RoutingId spotRid,
+        RoutingId spotRid,
         CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -277,6 +290,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 return false;
             }
 
+            await activation.CloseAsync(cancellationToken);
             await activation.DisposeAsync();
             return true;
         }

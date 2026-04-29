@@ -2,6 +2,7 @@
 
 #include "support.hpp"
 
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -51,6 +52,34 @@ void test_diagnostic_surface_uses_canonical_names ()
     assert (value.empty ());
 }
 
+void test_routing_id_from_string_parses_hex ()
+{
+    const zlink::routing_id_t rid =
+      zlink::routing_id_t::from_bytes (std::vector<uint8_t> {0x00, 0x41, 0x42});
+    const zlink::routing_id_t parsed =
+      zlink::routing_id_t::from_string ("004142");
+
+    assert (parsed == rid);
+    assert (rid.to_hex () == "004142");
+    assert (zlink::routing_id_t::from_string (std::string (510, 'a')).size () == 255);
+
+    bool threw = false;
+    try {
+        (void) zlink::routing_id_t::from_string ("not-hex");
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    assert (threw);
+
+    threw = false;
+    try {
+        (void) zlink::routing_id_t::from_string (std::string (512, 'a'));
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    assert (threw);
+}
+
 } // namespace
 
 int main ()
@@ -59,5 +88,6 @@ int main ()
     test_bytes_roundtrip ();
     test_copy_and_move_preserve_payload ();
     test_diagnostic_surface_uses_canonical_names ();
+    test_routing_id_from_string_parses_hex ();
     return 0;
 }

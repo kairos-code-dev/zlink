@@ -14,8 +14,8 @@ public sealed class test_messagepack_message_extensions
             Name = "codec-messagepack"
         };
 
-        using Message message = MessagePackMessageExtensions.ToMessage(expected);
-        MessagePackRoundtripValue actual = message.ParseMessagePack<MessagePackRoundtripValue>();
+        using Message message = expected.ToMsgPack();
+        MessagePackRoundtripValue actual = message.FromMsgPack<MessagePackRoundtripValue>();
 
         Assert.Equal(expected.Id, actual.Id);
         Assert.Equal(expected.Name, actual.Name);

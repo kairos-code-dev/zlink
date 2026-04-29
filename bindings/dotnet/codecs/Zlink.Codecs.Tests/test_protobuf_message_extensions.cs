@@ -13,8 +13,8 @@ public sealed class test_protobuf_message_extensions
             Value = "codec-protobuf"
         };
 
-        using Message message = ProtobufMessageExtensions.ToMessage(expected);
-        StringValue actual = message.ParseProto<StringValue>();
+        using Message message = expected.ToProto();
+        StringValue actual = message.FromProto<StringValue>();
 
         Assert.Equal(expected.Value, actual.Value);
     }

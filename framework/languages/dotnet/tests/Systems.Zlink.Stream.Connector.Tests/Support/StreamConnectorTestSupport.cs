@@ -7,15 +7,13 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector.Abstractions;
-using Systems.Zlink.Stream.Connector.Builders;
-using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Compression;
-using Systems.Zlink.Stream.Connector.Connector;
-using Systems.Zlink.Stream.Connector.Framing;
-using Systems.Zlink.Stream.Connector.Headers;
-using Systems.Zlink.Stream.Connector.Metadata;
-using Systems.Zlink.Stream.Connector.Options;
+using MessagePack;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Calls;
+using Systems.Zlink.Stream.Connector.Protocol;
+using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
 
 
@@ -107,19 +105,14 @@ public sealed partial class StreamConnectorTests
 
     private sealed record Pong(string Text);
 
-    [ZlinkStreamPacketName("custom.packet")]
+    [MessagePackObject]
+    public sealed class PackedPing
+    {
+        [Key(0)]
+        public string Text { get; set; } = string.Empty;
+    }
+
+    [ZlinkStreamMessageName("custom.packet")]
     private sealed record NamedPacket(string Text);
 
-    private sealed class SpecificPingCodec : IZlinkStreamBodyCodec
-    {
-        public ZlinkStreamCodec Codec => ZlinkStreamCodec.Raw;
-
-        public bool CanSerialize(Type type) => type == typeof(Ping);
-
-        public ReadOnlyMemory<byte> Serialize<T>(T value) => Array.Empty<byte>();
-
-        public object? Deserialize(Type type, ReadOnlyMemory<byte> body) => null;
-
-        public T Deserialize<T>(ReadOnlyMemory<byte> body) => default!;
-    }
 }

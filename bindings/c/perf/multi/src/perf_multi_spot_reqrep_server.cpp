@@ -192,7 +192,7 @@ bool initialize_reqrep_server_session(
     apply_benchmark_auto_hwm_msg_unit(
       session->node, ZLINK_SOCKET_DEALER, max_msg_size);
     apply_benchmark_auto_hwm_msg_unit(
-      session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+      session->control_node, ZLINK_SOCKET_DEALER, 4096);
 
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =
@@ -252,6 +252,28 @@ void fail_server(spot_reqrep_server_state_t *state, int err)
     perf_stop_requested().store(true, std::memory_order_release);
 }
 
+bool is_peer_disconnect_errno(int err)
+{
+    if (err == ENOTCONN || err == EHOSTUNREACH)
+        return true;
+#if defined(ECONNRESET)
+    if (err == ECONNRESET)
+        return true;
+#endif
+    return false;
+}
+
+bool is_peer_disconnect_submit(zlink_submit_result_t rc)
+{
+    return rc == ZLINK_SUBMIT_NOT_CONNECTED || rc == ZLINK_SUBMIT_NOT_FOUND
+           || rc == ZLINK_SUBMIT_NOT_ADMITTED;
+}
+
+bool is_transient_submit_errno(int err)
+{
+    return err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT;
+}
+
 void on_spot_dispatch(void *spot,
                       const zlink_spot_dispatch_info_t *info,
                       void *userdata)
@@ -284,6 +306,9 @@ void on_spot_dispatch(void *spot,
             return;
         }
         if (rc != ZLINK_RECV_OK) {
+            if (is_peer_disconnect_errno(saved_errno)) {
+                return;
+            }
             if (bench_debug_enabled()) {
                 std::cerr << "[multi-spot-reqrep-server] recv failed err="
                           << saved_errno << std::endl;
@@ -337,15 +362,22 @@ void on_spot_dispatch(void *spot,
 
         const uint64_t reply_begin_ns =
           spot_trace_enabled() ? perf_multi_metric::now_ns() : 0;
-        if (zlink_spot_reply_spot(
-              spot, source_rid, source_spot_rid, request_seq, parts, part_count)
-            != ZLINK_SUBMIT_OK) {
+        const zlink_submit_result_t reply_rc =
+          zlink_spot_reply_spot(
+            spot, source_rid, source_spot_rid, request_seq, parts, part_count);
+        if (reply_rc != ZLINK_SUBMIT_OK) {
+            const int reply_errno = zlink_errno();
+            if (is_peer_disconnect_submit(reply_rc)
+                || is_transient_submit_errno(reply_errno)) {
+                zlink_multipart_close(parts, part_count);
+                continue;
+            }
             if (bench_debug_enabled()) {
                 std::cerr << "[multi-spot-reqrep-server] reply failed err="
-                          << zlink_errno() << std::endl;
+                          << reply_errno << std::endl;
             }
             zlink_multipart_close(parts, part_count);
-            fail_server(state, zlink_errno());
+            fail_server(state, reply_errno);
             return;
         }
         if (spot_trace_enabled()

@@ -35,6 +35,15 @@ using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_echo_client_result_lines;
 using perf_multi_client::resolve_case_msg_sizes;
 
+size_t active_spot_slot_limit(size_t total_slots, size_t msg_size)
+{
+    if (msg_size >= 131072)
+        return std::min(total_slots, static_cast<size_t>(8));
+    if (msg_size >= 65536)
+        return std::min(total_slots, static_cast<size_t>(32));
+    return total_slots;
+}
+
 static std::atomic<int> g_client_debug_send_logs(0);
 static std::atomic<int> g_client_debug_recv_logs(0);
 
@@ -529,7 +538,7 @@ bool create_control_spot(ctx_guard_t &ctx,
         return false;
     }
     apply_benchmark_auto_hwm_msg_unit(
-      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+      state->control_node, ZLINK_SOCKET_DEALER, 4096);
 
     state->control_pub = perf_create_default_spot_handle(state->control_node);
     state->control_sub = perf_create_default_spot_handle(state->control_node);
@@ -768,6 +777,7 @@ bool drain_slot_recv(spot_reqrep_client_slot_t *slot)
         }
         if (!handle_recv_parts(slot, parts, part_count))
             return false;
+        return true;
     }
 }
 
@@ -961,7 +971,11 @@ bool run_active_window(spot_reqrep_client_state_t *state,
       + std::chrono::seconds(std::max(1, settings.duration_seconds));
     while (std::chrono::steady_clock::now() < deadline) {
         bool progress = false;
-        for (size_t i = 0; i < state->slots.size(); ++i) {
+        const size_t active_slots =
+          active_spot_slot_limit(state->slots.size(), msg_size);
+        for (size_t i = 0; i < active_slots; ++i) {
+            if (std::chrono::steady_clock::now() >= deadline)
+                break;
             if (!run_sendsend_slot_step(&state->slots[i],
                                         &server_node_rid,
                                         &server_spot_rid,

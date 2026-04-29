@@ -190,7 +190,7 @@ bool initialize_reqrep_server_session(
     apply_benchmark_auto_hwm_msg_unit(
       session->node, ZLINK_SOCKET_DEALER, max_msg_size);
     apply_benchmark_auto_hwm_msg_unit(
-      session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+      session->control_node, ZLINK_SOCKET_DEALER, 4096);
 
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =
@@ -250,6 +250,28 @@ void fail_server(spot_reqrep_server_state_t *state, int err)
     perf_stop_requested().store(true, std::memory_order_release);
 }
 
+bool is_peer_disconnect_errno(int err)
+{
+    if (err == ENOTCONN || err == EHOSTUNREACH)
+        return true;
+#if defined(ECONNRESET)
+    if (err == ECONNRESET)
+        return true;
+#endif
+    return false;
+}
+
+bool is_peer_disconnect_submit(zlink_submit_result_t rc)
+{
+    return rc == ZLINK_SUBMIT_NOT_CONNECTED || rc == ZLINK_SUBMIT_NOT_FOUND
+           || rc == ZLINK_SUBMIT_NOT_ADMITTED;
+}
+
+bool is_transient_submit_errno(int err)
+{
+    return err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT;
+}
+
 bool echo_routed_payload(void *spot,
                          spot_reqrep_server_state_t *state,
                          const zlink_routing_id_t *source_rid,
@@ -278,12 +300,19 @@ bool echo_routed_payload(void *spot,
     if (submit_rc == ZLINK_SUBMIT_OK)
         return true;
 
+    const int submit_errno = zlink_errno();
+    if (is_peer_disconnect_submit(submit_rc)
+        || is_transient_submit_errno(submit_errno)) {
+        zlink_multipart_close(parts, part_count);
+        return true;
+    }
+
     if (bench_debug_enabled()) {
         std::cerr << "[multi-spot-sendsend-server] echo send failed rc="
-                  << submit_rc << " err=" << zlink_errno() << std::endl;
+                  << submit_rc << " err=" << submit_errno << std::endl;
     }
     zlink_multipart_close(parts, part_count);
-    fail_server(state, zlink_errno());
+    fail_server(state, submit_errno);
     return false;
 }
 
@@ -313,6 +342,9 @@ void drain_spot_routed_recv(void *spot, spot_reqrep_server_state_t *state)
             return;
         }
         if (rc != ZLINK_RECV_OK) {
+            if (is_peer_disconnect_errno(saved_errno)) {
+                return;
+            }
             if (bench_debug_enabled()) {
                 std::cerr << "[multi-spot-sendsend-server] recv failed err="
                           << saved_errno << std::endl;

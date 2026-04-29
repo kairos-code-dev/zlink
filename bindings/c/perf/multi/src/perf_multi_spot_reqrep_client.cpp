@@ -49,6 +49,15 @@ bool spot_trace_enabled()
     return enabled;
 }
 
+size_t active_spot_slot_limit(size_t total_slots, size_t msg_size)
+{
+    if (msg_size >= 131072)
+        return std::min(total_slots, static_cast<size_t>(8));
+    if (msg_size >= 65536)
+        return std::min(total_slots, static_cast<size_t>(32));
+    return total_slots;
+}
+
 struct spot_reqrep_client_state_t;
 
 struct spot_reqrep_client_slot_t
@@ -544,7 +553,7 @@ bool create_control_spot(ctx_guard_t &ctx,
         return false;
     }
     apply_benchmark_auto_hwm_msg_unit(
-      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+      state->control_node, ZLINK_SOCKET_DEALER, 4096);
 
     state->control_pub = perf_create_default_spot_handle(state->control_node);
     state->control_sub = perf_create_default_spot_handle(state->control_node);
@@ -945,7 +954,9 @@ bool try_submit_ready_requests(spot_reqrep_client_state_t *client_state,
 
     *send_progress_out = false;
     *has_waiting_reply_out = false;
-    for (size_t i = 0; i < client_state->slots.size(); ++i) {
+    const size_t active_slots =
+      active_spot_slot_limit(client_state->slots.size(), msg_size);
+    for (size_t i = 0; i < active_slots; ++i) {
         spot_reqrep_client_slot_t &slot = client_state->slots[i];
         const bool waiting_reply =
           slot.waiting_reply.load(std::memory_order_acquire);
@@ -972,18 +983,6 @@ bool try_submit_ready_requests(spot_reqrep_client_state_t *client_state,
                      < 8) {
                 std::cerr << "[multi-spot-reqrep-client] send blocked slot="
                           << slot.index << std::endl;
-            }
-            if (zlink_poller_modify(client_state->poller,
-                                    slot.socket,
-                                    ZLINK_POLLIN | ZLINK_POLLOUT)
-                != 0) {
-                if (bench_debug_enabled()) {
-                    std::cerr
-                      << "[multi-spot-reqrep-client] poller arm failed slot="
-                      << slot.index << " err=" << zlink_errno()
-                      << std::endl;
-                }
-                return false;
             }
         } else if (send_rc != send_result_not_connected) {
             if (bench_debug_enabled()) {

@@ -43,5 +43,5 @@ public sealed class ZlinkStreamConnectorOptions
 
     public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
-    public IZlinkStreamMessageNameResolver? NameResolver { get; init; }
+    public IZlinkStreamPacketNameResolver? NameResolver { get; init; }
 }

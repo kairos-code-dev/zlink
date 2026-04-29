@@ -108,7 +108,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     ZLinkSessionContext context,
     TMessage message)
 {
-    private static readonly IZlinkStreamMessageNameResolver MessageNameResolver = new ZlinkStreamMessageNameResolver();
+    private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = new ZlinkStreamPacketNameResolver();
     private static readonly IZlinkStreamCompressionCodec CompressionCodec = new ZlinkStreamLz4CompressionCodec();
     private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -128,7 +128,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     {
         if (string.IsNullOrWhiteSpace(messageName))
         {
-            throw new InvalidOperationException("Stream message name must not be empty.");
+            throw new InvalidOperationException("Stream packet name must not be empty.");
         }
 
         _messageName = messageName;

@@ -24,7 +24,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
     private readonly object _callbackGate = new();
     private readonly IZlinkStreamHeaderCodec _headerCodec;
     private readonly IZlinkStreamCompressionCodec? _compressionCodec;
-    private readonly IZlinkStreamMessageNameResolver _nameResolver;
+    private readonly IZlinkStreamPacketNameResolver _nameResolver;
     private IZlinkStreamConnection? _connection;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
@@ -48,7 +48,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
                 "Configured compression codec does not match the connector compression option.");
         }
 
-        _nameResolver = options.NameResolver ?? new ZlinkStreamMessageNameResolver();
+        _nameResolver = options.NameResolver ?? new ZlinkStreamPacketNameResolver();
         _handlerPump = Task.Run(HandlerPumpAsync);
     }
 

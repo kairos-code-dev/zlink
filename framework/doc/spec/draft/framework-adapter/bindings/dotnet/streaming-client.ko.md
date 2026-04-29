@@ -373,7 +373,7 @@ body를 만들고 `Async<TReply>()`는 JSON으로 reply를 읽는다.
 ```csharp
 public sealed class ZlinkStreamSendBuilder
 {
-    public ZlinkStreamSendBuilder WithMessageName(string messageName);
+    public ZlinkStreamSendBuilder WithPacketName(string packetName);
 
     public ZlinkStreamSendBuilder Metadata(string key, string value);
 
@@ -388,7 +388,7 @@ public sealed class ZlinkStreamSendBuilder
 
 public sealed class ZlinkStreamRequestBuilder
 {
-    public ZlinkStreamRequestBuilder WithMessageName(string messageName);
+    public ZlinkStreamRequestBuilder WithPacketName(string packetName);
 
     public ZlinkStreamRequestBuilder Metadata(string key, string value);
 
@@ -431,7 +431,7 @@ client
 
 client
     .Send(new ChatMessage { Text = "hello" })
-    .WithMessageName("chat.message")
+    .WithPacketName("chat.message")
     .Metadata("traceId", traceId)
     .Async(cancellationToken);
 ```
@@ -647,7 +647,7 @@ client
 
 var reply = await client
     .Request(new ChatRequest("hello"))
-    .WithMessageName("chat.request")
+    .WithPacketName("chat.request")
     .WithTimeout(TimeSpan.FromSeconds(1))
     .Async<ChatReply>(cancellationToken);
 ```

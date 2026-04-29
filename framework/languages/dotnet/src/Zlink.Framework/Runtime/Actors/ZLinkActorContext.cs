@@ -26,7 +26,7 @@ internal sealed class ZLinkActorContext(
     {
         if (string.IsNullOrWhiteSpace(messageName))
         {
-            throw new InvalidOperationException("Actor message name must not be empty.");
+            throw new InvalidOperationException("Actor packet name must not be empty.");
         }
 
         state.AddPacket(actor, typeof(THandler), messageName);

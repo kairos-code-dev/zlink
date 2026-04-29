@@ -109,7 +109,7 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
         var nameLength = span[offset++];
         if (nameLength == 0 || span.Length - offset < nameLength)
         {
-            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header message name is invalid.");
+            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header packet name is invalid.");
         }
 
         var name = Encoding.UTF8.GetString(span.Slice(offset, nameLength));

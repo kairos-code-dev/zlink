@@ -22,7 +22,7 @@ public interface IZlinkStreamHeaderCodec
     ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header);
 }
 
-public interface IZlinkStreamMessageNameResolver
+public interface IZlinkStreamPacketNameResolver
 {
     string Resolve(Type bodyType);
 }

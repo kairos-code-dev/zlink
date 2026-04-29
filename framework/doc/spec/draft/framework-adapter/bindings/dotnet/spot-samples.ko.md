@@ -1056,7 +1056,7 @@ public sealed class SampleActor : IZLinkActor
                 X = X,
                 Y = Y
             })
-            .WithMessageName("SampleActorSnapshot")
+            .WithPacketName("SampleActorSnapshot")
             .SendAsync(cancellationToken);
     }
 
@@ -1578,10 +1578,10 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 예를 들면 아래처럼 읽는다.
 
 - `SampleGetStateRequest`의 `msgId`
-  - `protobuf`면 protobuf message name
+  - `protobuf`면 protobuf packet name
   - `json`이면 `SampleGetStateRequest`
 - `SampleReportStateCommand`의 `msgId`
-  - `protobuf`면 protobuf message name
+  - `protobuf`면 protobuf packet name
   - `json`이면 `SampleReportStateCommand`
 
 즉 `Context.AddPacket<SampleGetStateHandler>()`는 결국

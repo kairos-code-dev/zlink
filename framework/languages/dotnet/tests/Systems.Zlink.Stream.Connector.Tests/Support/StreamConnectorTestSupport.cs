@@ -112,7 +112,7 @@ public sealed partial class StreamConnectorTests
         public string Text { get; set; } = string.Empty;
     }
 
-    [ZlinkStreamMessageName("custom.packet")]
+    [ZlinkStreamPacketName("custom.packet")]
     private sealed record NamedPacket(string Text);
 
 }

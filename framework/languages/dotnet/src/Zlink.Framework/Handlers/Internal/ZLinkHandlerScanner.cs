@@ -19,19 +19,19 @@ internal static class ZLinkHandlerScanner
                 var request = method.GetCustomAttribute<ZLinkRequestAttribute>();
                 if (request is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, request.MessageName, ZLinkMessageKind.Request));
+                    endpoints.Add(CreateDescriptor(type, method, request.PacketName, ZLinkMessageKind.Request));
                 }
 
                 var send = method.GetCustomAttribute<ZLinkSendAttribute>();
                 if (send is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, send.MessageName, ZLinkMessageKind.Command));
+                    endpoints.Add(CreateDescriptor(type, method, send.PacketName, ZLinkMessageKind.Command));
                 }
 
                 var @event = method.GetCustomAttribute<ZLinkEventAttribute>();
                 if (@event is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, @event.MessageName, ZLinkMessageKind.Event));
+                    endpoints.Add(CreateDescriptor(type, method, @event.PacketName, ZLinkMessageKind.Event));
                 }
             }
         }

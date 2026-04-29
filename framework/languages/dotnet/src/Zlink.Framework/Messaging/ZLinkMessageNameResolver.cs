@@ -17,7 +17,7 @@ internal static class ZLinkMessageNameResolver
 
     public static string ResolveFromType(Type type)
     {
-        return type.GetCustomAttribute<ZLinkMessageAttribute>()?.MessageName
+        return type.GetCustomAttribute<ZLinkPacketAttribute>()?.PacketName
             ?? type.Name;
     }
 }

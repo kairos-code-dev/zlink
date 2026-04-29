@@ -106,7 +106,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task MessageNameAttributeIsUsedByDefault()
+    public async Task PacketNameAttributeIsUsedByDefault()
     {
         var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);

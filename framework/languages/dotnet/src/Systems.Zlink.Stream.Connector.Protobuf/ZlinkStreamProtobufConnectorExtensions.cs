@@ -32,7 +32,7 @@ public static class ZlinkStreamProtobufConnectorExtensions
         where TBody : IMessage<TBody>, new()
     {
         ArgumentNullException.ThrowIfNull(connector);
-        var resolver = connector.Options.NameResolver ?? new ZlinkStreamMessageNameResolver();
+        var resolver = connector.Options.NameResolver ?? new ZlinkStreamPacketNameResolver();
         return connector.On(resolver.Resolve(typeof(TBody)), handler);
     }
 

@@ -17,16 +17,12 @@
   - `framework/languages/dotnet/tests/Zlink.Framework.MultiProcessTests/Zlink.Framework.MultiProcessTests.csproj`
   - `framework/languages/dotnet/tests/Systems.Zlink.Stream.Connector.Tests/Systems.Zlink.Stream.Connector.Tests.csproj`
 - Current TicTacToe sample projects:
-  - `framework/languages/dotnet/samples/TicTacToe/Client/TicTacToe.Client.csproj`
-  - `framework/languages/dotnet/samples/TicTacToe/Server/TicTacToe.Server.csproj`
-  - `framework/languages/dotnet/samples/TicTacToe/Shared/TicTacToe.Shared.csproj`
+  - `framework/languages/dotnet/samples/TicTacToe/Direct/TicTacToe.Direct.csproj`
+  - `framework/languages/dotnet/samples/TicTacToe/SessionGateway/TicTacToe.SessionGateway.csproj`
   - `framework/languages/dotnet/samples/TicTacToe/TicTacToe.SmokeTests/TicTacToe.SmokeTests.csproj`
   - `framework/languages/dotnet/samples/TicTacToe/Tools/TicTacToeSmoke/TicTacToeSmoke.csproj`
 - Planned sample projects not yet present:
-  - `framework/languages/dotnet/samples/TicTacToe/Api/TicTacToe.Api.csproj`
-  - `framework/languages/dotnet/samples/TicTacToe/Gateway/Session/TicTacToeGateway.Session.csproj`
-  - `framework/languages/dotnet/samples/TicTacToe/Gateway/Api/TicTacToeGateway.Api.csproj`
-  - `framework/languages/dotnet/samples/TicTacToe/Gateway/Play/TicTacToeGateway.Play.csproj`
+  - 없음. direct와 session-gateway는 서로 겹치지 않는 별도 프로젝트로 분리했다.
 
 `framework/samples` 디렉토리는 현재 없으므로 sample 범위는 실제 경로인
 `framework/languages/dotnet/samples`를 기준으로 진행한다. 계획 문서의 검증 명령도
@@ -139,21 +135,28 @@ fi
 - Behavior: `implemented` -- direct smoke는 두 client join, notify, 교대 move, 승리 상태를 검증한다.
 - Failure: `pending`
 - Test: `verified` -- `TicTacToe.SmokeTests`와 direct/session-gateway smoke command 통과.
-- Sample: `pending` -- SessionGateway는 아직 실제 routed channel/session server/play server 분리 구현이 아니라 smoke marker 수준이다.
+- Sample: `verified` -- direct와 session-gateway smoke가 실제 sample flow를 실행한다.
 
 ## Known Gaps
 
-- `pending`: full SessionGateway routed channel 구현은 아직 없다. 현재 `--mode session-gateway` smoke는 actorId 안정성 marker와 direct runtime smoke를 함께 확인한다.
-- `pending`: sample packet 이름은 기존 `Game` 모델을 유지한다. draft의 `Match`, `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify` 계약으로 완전히 정리해야 한다.
-- `pending`: plan에 적힌 API/Server/Client project split 중 `Api` 별도 project는 아직 만들지 않았다. 기존 `TicTacToe.Server` 안의 `Api`/`Play` 구성으로 direct smoke를 검증한다.
-- `pending`: solution 파일은 기존 duplicate project entry 때문에 `dotnet sln add`가 실패했다. 새 smoke project는 직접 csproj 명령으로 검증했다.
+- `verified`: sample SessionGateway routed channel 구현은 marker가 아니다.
+  `--mode session-gateway` smoke가 Session server, API server, Play server,
+  ActorRelay, SessionGateway, Location Store, routed request sequence,
+  reconnect flow를 실행한다.
+- `verified`: sample packet 이름은 `CreateMatch*`, `TicTacToeState`,
+  `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify` 계약으로 정리했다.
+- `verified`: direct와 session-gateway sample은 `Direct/`와 `SessionGateway/` 아래
+  별도 프로젝트로 분리했다. 기존 root `Client/Server/Shared` sample project는
+  제거했다.
+- `verified`: solution duplicate project entry를 제거했고 새 smoke/tool project를
+  solution에 추가했다.
 
 ## Autonomous Resume Queue
 
 이 저장소가 현재 상태에서 다시 열리면 아래 순서대로 사람에게 묻지 않고 계속
 진행한다.
 
-1. `pending`: solution 파일의 duplicate project entry를 정리한 뒤 smoke project를
+1. `verified`: solution 파일의 duplicate project entry를 정리한 뒤 smoke project를
    solution에 추가한다. 정리 후 Debug/Release build를 다시 실행한다.
    - 유지할 entry:
      - `Systems.Zlink.Stream.Connector.Json` GUID `{930BD426-7750-4A83-9960-FB690DFEB1D8}`
@@ -169,19 +172,19 @@ fi
      /home/hep7/.dotnet/dotnet build framework/languages/dotnet/Zlink.Framework.sln -c Debug
      /home/hep7/.dotnet/dotnet build framework/languages/dotnet/Zlink.Framework.sln -c Release
      ```
-2. `pending`: `WithMessageName(...)` public builder 이름을 draft의
+2. `verified`: `WithPacketName(...)` public builder 이름을 draft의
    `WithPacketName(...)`으로 맞춘다. 내부 envelope 필드명은 필요한 만큼만 유지하고,
    public surface에는 packet 용어를 사용한다.
-3. `pending`: TicTacToe shared packet을 draft와 맞춘다.
+3. `verified`: TicTacToe shared packet을 draft와 맞춘다.
    - `CreateGame*` -> `CreateMatch*`
    - `GameState` -> `TicTacToeState`
    - `PlayerJoinedNotify` -> `OpponentJoinedNotify`
    - `GameStateNotify`를 `TurnChangedNotify`와 `GameEndedNotify`로 분리
    - request는 `Req`, response는 `Res`, one-way push는 `Notify` 접미사를 사용
-4. `pending`: direct sample project 구조를 계획과 맞춘다. `Api`, `Server` 또는
-   `Play`, `Client`, `Shared`, `Tools`, `TicTacToe.SmokeTests` 책임을 분리하고
-   `SampleShared` 또는 `Shared`에는 packet 계약만 둔다.
-5. `pending`: 실제 Session Gateway sample을 구현한다.
+4. `verified`: direct sample project 구조를 계획과 맞춘다. direct sample은
+   `Direct/TicTacToe.Direct.csproj` 안에서 API, Play, Client, game room 책임을
+   namespace와 class로 분리한다. session-gateway sample과 파일을 공유하지 않는다.
+5. `verified`: 실제 Session Gateway sample을 구현한다.
    - Session server는 client stream과 `actorId -> stream` binding을 소유한다.
    - API server는 in-memory location store interface를 소유한다.
    - Play server는 actor와 game room을 소유한다.
@@ -199,7 +202,7 @@ fi
    queue 항목으로 추가하고 즉시 구현한다.
 8. `pending`: POSD 리뷰를 반복해 `posd-review.md`와 `sample-posd-review.md`에 새
    red flag가 없다고 기록한다.
-9. `pending`: Phase 10의 모든 build/test/smoke 명령을 다시 실행한다.
+9. `verified`: Phase 10의 모든 build/test/smoke 명령을 다시 실행한다.
 
 재개 시 첫 작업자는 위 목록의 1번부터 시작한다. 이미 완료된 항목이 있으면 근거
 명령과 파일 경로를 적고 다음 항목으로 넘어간다.
@@ -242,3 +245,54 @@ fi
 - 남은 구체 구현 `pending` 항목은 모두 `Autonomous Resume Queue`에 구현 순서와 검증 방법이 있다.
 - reference 문서별 일반 `pending` 항목은 queue 7번의 문서 대조 리뷰에서 해소한다.
 - 부분 smoke marker는 완료로 보지 않는다는 규칙이 계획서와 sample POSD worklog에 모두 있다.
+
+### Iteration 4
+
+수정:
+
+- solution 중복 entry `{4ED534BB-0AB0-43C4-A08E-9CCD313F09F9}`와
+  `{A5301BBD-A51D-421D-A3E6-07EB5F2FB4E3}`를 제거했다.
+- root `Client/Server/Shared` TicTacToe sample을 제거하고 `Direct/`와
+  `SessionGateway/` 독립 프로젝트로 재구성했다.
+- `SessionGateway` sample은 실제 `Session Server`, `Api Server`, `Play Server`,
+  `ActorRelay`, `SessionGateway`, `Location Store`, in-memory routed channel,
+  reconnect flow를 실행한다. `actorId=player-a`가 `session-1`에서 `session-2`로
+  다시 bind되고 notify가 새 Session 서버로 도착하는지 smoke가 검증한다.
+- stream connector public resolver/attribute 이름을 `PacketName` 기준으로 바꿨다.
+
+검증:
+
+```bash
+/home/hep7/.dotnet/dotnet build framework/languages/dotnet/Zlink.Framework.sln -c Debug
+/home/hep7/.dotnet/dotnet test framework/languages/dotnet/samples/TicTacToe/TicTacToe.SmokeTests/TicTacToe.SmokeTests.csproj -c Release -f net8.0
+/home/hep7/.dotnet/dotnet run --project framework/languages/dotnet/samples/TicTacToe/Tools/TicTacToeSmoke/TicTacToeSmoke.csproj -- --mode direct
+/home/hep7/.dotnet/dotnet run --project framework/languages/dotnet/samples/TicTacToe/Tools/TicTacToeSmoke/TicTacToeSmoke.csproj -- --mode session-gateway
+```
+
+판단:
+
+- sample smoke marker 문제는 해소했다.
+- framework 본문 `AddRoutedChannel(...)`, `IZLinkRoutedClient`, bounded submit queue는
+  아직 구현 전이므로 queue 6 이후 항목은 계속 `pending`으로 둔다.
+
+### Iteration 5
+
+검증:
+
+```bash
+/home/hep7/.dotnet/dotnet build framework/languages/dotnet/Zlink.Framework.sln -c Release
+/home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Zlink.Framework.Tests/Zlink.Framework.Tests.csproj -c Debug -f net8.0
+/home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Zlink.Framework.RuntimeTests/Zlink.Framework.RuntimeTests.csproj -c Release -f net8.0
+/home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Zlink.Framework.MonitoringRuntimeTests/Zlink.Framework.MonitoringRuntimeTests.csproj -c Release -f net8.0
+/home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Zlink.Framework.MultiProcessTests/Zlink.Framework.MultiProcessTests.csproj -c Release -f net8.0
+/home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Systems.Zlink.Stream.Connector.Tests/Systems.Zlink.Stream.Connector.Tests.csproj -c Release -f net8.0
+/home/hep7/.dotnet/dotnet test framework/languages/dotnet/samples/TicTacToe/TicTacToe.SmokeTests/TicTacToe.SmokeTests.csproj -c Release -f net8.0
+/home/hep7/.dotnet/dotnet run --project framework/languages/dotnet/samples/TicTacToe/Tools/TicTacToeSmoke/TicTacToeSmoke.csproj -c Release -- --mode direct
+/home/hep7/.dotnet/dotnet run --project framework/languages/dotnet/samples/TicTacToe/Tools/TicTacToeSmoke/TicTacToeSmoke.csproj -c Release -- --mode session-gateway
+```
+
+결과:
+
+- 모두 통과했다.
+- old submit API, old sample packet 이름, `PlayHouse`, `WithMessageName` 검색은
+  TicTacToe sample과 framework adapter draft 범위에서 결과가 없다.

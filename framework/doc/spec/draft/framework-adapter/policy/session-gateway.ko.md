@@ -87,11 +87,11 @@ peer 집합에 요청을 보내는 모델이고, `targetNodeRid`를 public API�
 ```text
 routerChannelId -> router mesh id
 targetNodeRid   -> destination node in that mesh
-messageName     -> handler selection key in the message envelope
+packetName     -> handler selection key in the message envelope
 ```
 
 `routerChannelId`는 같은 router 연결망에 참여하는 node들을 구분한다.
-`targetNodeRid`는 그 연결망 안의 실제 목적지다. `messageName`은 도착한 node에서
+`targetNodeRid`는 그 연결망 안의 실제 목적지다. `packetName`은 도착한 node에서
 어떤 handler를 호출할지 고르는 값이며, routed channel 설정에 미리 나열하지 않는다.
 
 설정 표면은 기존 `AddChannel`과 분리한다.
@@ -137,11 +137,11 @@ public interface IZLinkRoutedChannelBuilder
         Action<IRoutedChannelConnections> configure);
 
     void AddSendHandler<THandler, TMessage>(
-        string? messageName = null)
+        string? packetName = null)
         where THandler : class, IZLinkRoutedSendHandler<TMessage>;
 
     void AddRequestHandler<THandler, TRequest, TReply>(
-        string? messageName = null)
+        string? packetName = null)
         where THandler : class, IZLinkRoutedRequestHandler<TRequest, TReply>;
 
     void EnableSessionGateway();
@@ -161,7 +161,7 @@ public interface IRoutedChannelConnections
 ```
 
 `AddSendHandler(...)`와 `AddRequestHandler(...)`는 일반 `AddChannel` handler registry와
-다른 routed handler registry에 등록한다. `messageName`을 넘기지 않으면 handler의
+다른 routed handler registry에 등록한다. `packetName`을 넘기지 않으면 handler의
 message 타입 metadata에서 기본 이름을 얻는다.
 
 ```csharp
@@ -186,7 +186,7 @@ public interface IZLinkRoutedClient
 ```csharp
 public interface IZLinkRoutedSendCall
 {
-    IZLinkRoutedSendCall WithMessageName(string messageName);
+    IZLinkRoutedSendCall WithPacketName(string packetName);
 
     ValueTask Async(
         CancellationToken cancellationToken = default);
@@ -194,7 +194,7 @@ public interface IZLinkRoutedSendCall
 
 public interface IZLinkRoutedRequestCall
 {
-    IZLinkRoutedRequestCall WithMessageName(string messageName);
+    IZLinkRoutedRequestCall WithPacketName(string packetName);
 
     IZLinkRoutedRequestCall WithTimeout(TimeSpan timeout);
 
@@ -259,7 +259,7 @@ await routedClient
 
 routed channel은 handler group을 미리 나열하지 않지만, inbound packet을 처리할
 dispatch 규칙은 필요하다. 구현은 routed channel마다 하나의 local router socket을
-열고, 받은 envelope의 `messageName`과 `kind`로 handler를 찾는다.
+열고, 받은 envelope의 `packetName`과 `kind`로 handler를 찾는다.
 
 여기서 handler group을 미리 나열하지 않는다는 말은 `AddChannel("Api", ...)`처럼
 channel 이름 아래에 처리 대상을 묶지 않는다는 뜻이다. routed channel은
@@ -271,11 +271,11 @@ handler key는 아래 세 값을 사용한다.
 |-----|------|
 | `routerChannelId` | routed channel ID |
 | `kind` | send 또는 request |
-| `messageName` | envelope의 message name |
+| `packetName` | envelope의 packet name |
 
-즉 `messageName`만 전역으로 유일할 필요는 없다. 같은 message name이라도
+즉 `packetName`만 전역으로 유일할 필요는 없다. 같은 packet name이라도
 `routerChannelId`나 `kind`가 다르면 별도 handler가 될 수 있다. 반대로 같은
-`routerChannelId + kind + messageName`에 handler가 둘 이상 등록되면 startup에서
+`routerChannelId + kind + packetName`에 handler가 둘 이상 등록되면 startup에서
 실패해야 한다. body type은 handler registry에 저장된 decode 대상이지, incoming
 packet을 찾는 key가 아니다.
 
@@ -314,15 +314,15 @@ public sealed class ZLinkRoutedRequestContext : IZLinkHandlerContext
 ```
 
 구현은 일반 channel attribute scanner와 분리해서 routed handler registry를 만든다.
-그래야 같은 `messageName`을 일반 channel과 routed channel에서 각각 사용할 수 있다.
+그래야 같은 `packetName`을 일반 channel과 routed channel에서 각각 사용할 수 있다.
 
 session gateway와 actor relay는 이 generic routed handler 위에 framework가 올리는
 특수 handler다. 사용자가 직접 handler key를 맞추지 않아도 되도록, session gateway
 기능을 켜면 framework가 필요한 internal handler를 routed channel에 등록한다.
 
-framework가 예약하는 internal message name은 아래 두 개다.
+framework가 예약하는 internal packet name은 아래 두 개다.
 
-| message name | 방향 | 처리 주체 |
+| packet name | 방향 | 처리 주체 |
 |--------------|------|-----------|
 | `ZLink.ActorRelay` | session server -> play server | `AddSessionProxyHandler<THandler>()` |
 | `ZLink.SessionGateway` | play server -> session server | `EnableSessionGateway()` |
@@ -398,7 +398,7 @@ public interface IZLinkActorRelay
 
 public interface IZLinkActorRelaySendCall
 {
-    IZLinkActorRelaySendCall WithMessageName(string messageName);
+    IZLinkActorRelaySendCall WithPacketName(string packetName);
 
     ValueTask Async(
         CancellationToken cancellationToken = default);
@@ -406,7 +406,7 @@ public interface IZLinkActorRelaySendCall
 
 public interface IZLinkActorRelayRequestCall
 {
-    IZLinkActorRelayRequestCall WithMessageName(string messageName);
+    IZLinkActorRelayRequestCall WithPacketName(string packetName);
 
     IZLinkActorRelayRequestCall WithTimeout(TimeSpan timeout);
 
@@ -420,9 +420,9 @@ request이면 play server로 routed request를 보내고, reply가 오면 원래
 request sequence로 session이 reply한다. client packet이 단순 message이면 routed
 send로 전달한다.
 
-`IZLinkActorRelaySendCall.WithMessageName(...)`과
-`IZLinkActorRelayRequestCall.WithMessageName(...)`은 play server handler가 볼
-inner message name을 바꾼다. routed channel의 outer message name은 항상
+`IZLinkActorRelaySendCall.WithPacketName(...)`과
+`IZLinkActorRelayRequestCall.WithPacketName(...)`은 play server handler가 볼
+inner packet name을 바꾼다. routed channel의 outer packet name은 항상
 `ZLink.ActorRelay`로 고정된다.
 
 ## 7. Actor Relay Envelope
@@ -520,7 +520,7 @@ public interface IZLinkSessionGateway
 
 public interface IZLinkSessionGatewaySendCall
 {
-    IZLinkSessionGatewaySendCall WithMessageName(string messageName);
+    IZLinkSessionGatewaySendCall WithPacketName(string packetName);
 
     ValueTask Async(
         CancellationToken cancellationToken = default);
@@ -528,7 +528,7 @@ public interface IZLinkSessionGatewaySendCall
 
 public interface IZLinkSessionGatewayRequestCall
 {
-    IZLinkSessionGatewayRequestCall WithMessageName(string messageName);
+    IZLinkSessionGatewayRequestCall WithPacketName(string packetName);
 
     IZLinkSessionGatewayRequestCall WithTimeout(TimeSpan timeout);
 
@@ -551,7 +551,7 @@ session gateway도 framework internal envelope를 사용한다.
 ```csharp
 public readonly record struct ZLinkSessionGatewayEnvelope(
     string ActorId,
-    string MessageName,
+    string PacketName,
     bool ExpectsReply);
 ```
 
@@ -560,7 +560,7 @@ wire 구성은 구현체가 정하지만, 의미는 아래와 같이 고정한�
 | field | 의미 |
 |-------|------|
 | `ActorId` | client stream을 찾기 위한 actor이자 player ID |
-| `MessageName` | client stream handler가 볼 inner message name |
+| `PacketName` | client stream handler가 볼 inner packet name |
 | `ExpectsReply` | play server가 client reply를 기다리는지 여부 |
 | `Body` | client stream으로 보낼 body `Message` |
 
@@ -573,9 +573,9 @@ binding이 없으면 `ActorSessionNotBound` 오류 reply를 돌려준다. bindin
 session server는 client stream으로 request를 보내고, client reply를 받은 뒤 play
 server의 request에 reply한다.
 
-`IZLinkSessionGatewaySendCall.WithMessageName(...)`과
-`IZLinkSessionGatewayRequestCall.WithMessageName(...)`은 client stream으로 보낼
-inner message name을 바꾼다. routed channel의 outer message name은 항상
+`IZLinkSessionGatewaySendCall.WithPacketName(...)`과
+`IZLinkSessionGatewayRequestCall.WithPacketName(...)`은 client stream으로 보낼
+inner packet name을 바꾼다. routed channel의 outer packet name은 항상
 `ZLink.SessionGateway`로 고정된다.
 
 session context의 `Request<TRequest>(...)`는 아래 call builder를 반환한다.
@@ -583,7 +583,7 @@ session context의 `Request<TRequest>(...)`는 아래 call builder를 반환한�
 ```csharp
 public interface IZLinkSessionRequestCall
 {
-    IZLinkSessionRequestCall WithMessageName(string messageName);
+    IZLinkSessionRequestCall WithPacketName(string packetName);
 
     IZLinkSessionRequestCall WithTimeout(TimeSpan timeout);
 
@@ -593,7 +593,7 @@ public interface IZLinkSessionRequestCall
 ```
 
 `Request<TRequest>(...).Async<TReply>(...)`는 현재 client stream에 새 request
-sequence를 할당한다. reply는 message name이 아니라 그 sequence로만 맞춘다.
+sequence를 할당한다. reply는 packet name이 아니라 그 sequence로만 맞춘다.
 
 ## 10. Request/Reply 규칙
 
@@ -610,7 +610,7 @@ request가 동시에 여러 개 있을 수 있기 때문이다.
 - session server가 session gateway request를 client stream request로 바꿀 때는
   client stream용 새 sequence를 할당하고, client reply를 받은 뒤 원래 gateway
   request에 reply한다.
-- `WithMessageName` 같은 이름 override는 decode/handler 선택을 위한 값이지,
+- `WithPacketName` 같은 이름 override는 decode/handler 선택을 위한 값이지,
   request/reply 상관관계를 나타내는 값이 아니다.
 
 구현 기준은 아래와 같다.
@@ -684,10 +684,10 @@ SendToActor(string routerChannelId, RoutingId targetSessionNodeRid, string actor
 
 구현이 끝나면 최소한 아래 동작은 자동 테스트로 고정해야 한다.
 
-- 같은 `messageName`을 가진 routed request 여러 개가 동시에 진행되어도 reply가
+- 같은 `packetName`을 가진 routed request 여러 개가 동시에 진행되어도 reply가
   request sequence 기준으로 각각의 caller에 돌아간다.
-- 서로 다른 `routerChannelId`에 같은 `messageName` handler를 등록할 수 있다.
-- 같은 `routerChannelId + kind + messageName`에 handler를 두 번 등록하면 startup이
+- 서로 다른 `routerChannelId`에 같은 `packetName` handler를 등록할 수 있다.
+- 같은 `routerChannelId + kind + packetName`에 handler를 두 번 등록하면 startup이
   실패한다.
 - session server가 client request를 actor relay로 전달할 때 원본 client request
   sequence를 보존하고, play server reply를 같은 sequence로 client에게 돌려준다.

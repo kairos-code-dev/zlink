@@ -10,7 +10,7 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorRuntimeState
 {
-    private static readonly ZlinkStreamMessageNameResolver MessageNameResolver = new();
+    private static readonly ZlinkStreamPacketNameResolver MessageNameResolver = new();
     private static readonly ZlinkStreamLz4CompressionCodec CompressionCodec = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly object _packetGate = new();

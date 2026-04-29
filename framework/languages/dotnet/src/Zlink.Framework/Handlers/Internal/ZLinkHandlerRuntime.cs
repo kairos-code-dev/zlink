@@ -107,7 +107,7 @@ internal sealed class ZLinkHandlerDispatcher(
             message,
             scopedContext,
             scopedContext.ChannelName,
-            scopedContext.MessageName,
+            scopedContext.PacketName,
             scope.ServiceProvider);
 
         async ValueTask<object?> ExecuteHandler(CancellationToken ct)
@@ -171,7 +171,7 @@ internal sealed class ZLinkHandlerDispatcher(
         {
             ZLinkRequestContext request => new ZLinkRequestContext(
                 request.ChannelName,
-                request.MessageName,
+                request.PacketName,
                 request.ContentType,
                 request.CorrelationId,
                 request.Deadline,
@@ -179,7 +179,7 @@ internal sealed class ZLinkHandlerDispatcher(
                 request.ConnectionAborted),
             ZLinkSendContext send => new ZLinkSendContext(
                 send.ChannelName,
-                send.MessageName,
+                send.PacketName,
                 send.ContentType,
                 send.CorrelationId,
                 send.Deadline,
@@ -187,7 +187,7 @@ internal sealed class ZLinkHandlerDispatcher(
                 send.ConnectionAborted),
             ZLinkEventContext @event => new ZLinkEventContext(
                 @event.ChannelName,
-                @event.MessageName,
+                @event.PacketName,
                 @event.ContentType,
                 @event.CorrelationId,
                 @event.Deadline,

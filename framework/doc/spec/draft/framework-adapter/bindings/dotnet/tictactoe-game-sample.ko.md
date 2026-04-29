@@ -22,18 +22,18 @@ channel request로 방 생성을 요청한다. Play 서버는 SPOT room을 만�
 ```text
 +--------+      HTTP       +------------+      channel      +-------------+
 | Client | --------------> | Api Server | ----------------> | Play Server |
-+--------+  CreateGame    +------------+  CreateGameRoom   +-------------+
++--------+  CreateMatch    +------------+  CreateMatchMatch   +-------------+
      |                         ^                                  |
      |                         | channel                          |
      |                         +----- ValidatePlayerSession ------+
      |                                                            |
      |                         STREAM                             |
      +----------------------------------------------------------> |
-                     Authenticate / JoinGame / PlaceMark
+                     Authenticate / JoinMatch / PlaceMark
 ```
 
 다이어그램의 `Api Server`는 HTTP endpoint와 `Api` channel server를 연다. API 서버는
-`Play` channel client를 등록해 Play 서버의 router로 `CreateGameRoom` request를
+`Play` channel client를 등록해 Play 서버의 router로 `CreateMatchMatch` request를
 보낸다. Play 서버는 `Play` channel server를 열고, STREAM 인증 검증을 위해 `Api`
 channel client도 등록한다. 이 샘플에서 API 서버가 `Api` channel client를 가질 필요는
 없다.
@@ -63,12 +63,12 @@ bind한다. 이 경로는 STREAM 접속 인증 검증에만 사용한다.
 HTTP 요청/응답:
 
 ```csharp
-sealed record CreateGameHttpRequest(string? RoomName);
+sealed record CreateMatchReq(string? MatchName);
 
-sealed record CreateGameHttpReply(
-    string RoomId,
+sealed record CreateMatchRes(
+    string MatchId,
     string StreamEndpoint,
-    string RoomName,
+    string MatchName,
     string PlayerTokenA,
     string PlayerTokenB);
 ```
@@ -76,19 +76,19 @@ sealed record CreateGameHttpReply(
 API 서버에서 Play 서버로 보내는 channel request:
 
 ```csharp
-sealed record CreateGameRoom(string RoomName);
+sealed record CreateMatchMatch(string MatchName);
 
-sealed record CreateGameRoomReply(
-    string RoomId,
+sealed record CreateMatchMatchReply(
+    string MatchId,
     string StreamEndpoint,
-    string RoomName);
+    string MatchName);
 ```
 
 Play 서버에서 API 서버로 보내는 인증 검증 request:
 
 ```csharp
 sealed record ValidatePlayerSession(
-    string RoomId,
+    string MatchId,
     string PlayerId,
     string PlayerToken);
 
@@ -100,27 +100,27 @@ sealed record ValidatePlayerSessionReply(
 클라이언트에서 Play 서버 STREAM으로 보내는 request:
 
 ```csharp
-sealed record Authenticate(
-    string RoomId,
+sealed record AuthenticateReq(
+    string MatchId,
     string PlayerId,
     string PlayerToken);
 
-sealed record Authenticated(
-    string RoomId,
+sealed record AuthenticateRes(
+    string MatchId,
     string PlayerId);
 
-sealed record JoinGame(string RoomId, string PlayerId);
+sealed record JoinMatch(string MatchId, string PlayerId);
 
-sealed record JoinGameAccepted(
-    string RoomId,
+sealed record JoinMatchRes(
+    string MatchId,
     string PlayerId,
     char Mark,
-    GameState State);
+    TicTacToeState State);
 
-sealed record PlaceMark(int Cell);
+sealed record PlaceMarkReq(int Cell);
 
-sealed record GameState(
-    string RoomId,
+sealed record TicTacToeState(
+    string MatchId,
     string Board,
     char Turn,
     char? Winner,
@@ -128,7 +128,7 @@ sealed record GameState(
 ```
 
 packet 이름은 attribute를 쓰지 않고 CLR 타입 이름을 기본값으로 사용한다. 예를 들어
-`JoinGame` body는 helper header의 packet name도 `JoinGame`이다.
+`JoinMatch` body는 helper header의 packet name도 `JoinMatch`이다.
 
 ## 5. STREAM session
 
@@ -152,9 +152,9 @@ STREAM session은 연결별 인증 상태를 가진다. 첫 request는 `Authenti
 `Authenticate`를 받으면 Play 서버는 `Context.RequestChannel(...)`로 `Api` channel에
 `ValidatePlayerSession` request를 보낸다. API 서버가 성공을 반환하면 session은
 인증된 player id와 room id를 저장하고
-`Authenticated`를 reply한다.
+`AuthenticateRes`를 reply한다.
 
-`JoinGame` request는 인증된 session에서만 허용한다. request의 room id와 player id는
+`JoinMatch` request는 인증된 session에서만 허용한다. request의 room id와 player id는
 인증된 값과 같아야 한다. 검증이 끝나면 actor를 SPOT room에 join한다. `PlaceMark`
 request는 이미 join된 actor가 room state를 갱신하도록 전달한다.
 
@@ -172,24 +172,24 @@ client stream과 player id를 소유하고, STREAM request를 room state 변경�
 | Play channel handler | SPOT room을 생성하고 room id와 stream endpoint를 반환한다 |
 | Game stream session | STREAM 접속별 actor와 인증 상태를 만들고 header session dispatch를 받는다 |
 | Player actor | client stream과 player id를 소유하고 room에 join한다 |
-| GameRoom spot | board, turn, winner, draw 판정을 소유한다 |
+| GameMatch spot | board, turn, winner, draw 판정을 소유한다 |
 
 ## 7. 샘플 smoke 흐름
 
 자동 smoke는 한 프로세스에서 API 서버, Play 서버, 두 client를 띄운다.
 
-1. client A가 HTTP `CreateGame`을 호출한다.
-2. API 서버가 `Play` channel로 `CreateGameRoom` request를 보낸다.
+1. client A가 HTTP `CreateMatch`을 호출한다.
+2. API 서버가 `Play` channel로 `CreateMatchMatch` request를 보낸다.
 3. Play 서버가 SPOT room을 만들고 room id, stream endpoint를 반환한다.
 4. API 서버는 client smoke가 사용할 `PlayerTokenA`, `PlayerTokenB`도 함께 반환한다.
 5. client A와 client B가 STREAM에 접속한다.
-6. A/B는 각각 `Authenticate(roomId, playerId, playerToken)` request를 보낸다.
+6. A/B는 각각 `AuthenticateReq(roomId, playerId, playerToken)` request를 보낸다.
 7. Play 서버는 각 request마다 `Api` channel로 `ValidatePlayerSession` request를 보낸다.
-8. API 서버가 성공을 반환하면 Play 서버는 `Authenticated`를 reply한다.
-9. A는 `JoinGame(roomId, "player-a")`, B는 `JoinGame(roomId, "player-b")` request를 보낸다.
+8. API 서버가 성공을 반환하면 Play 서버는 `AuthenticateRes`를 reply한다.
+9. A는 `JoinMatch(roomId, "player-a")`, B는 `JoinMatch(roomId, "player-b")` request를 보낸다.
    이 request는 stream session이 직접 처리하지 않고 player actor로 dispatch된다.
 10. A/B가 번갈아 `PlaceMark` request를 보낸다.
-11. 서버는 매번 `GameState`를 reply한다.
+11. 서버는 매번 `TicTacToeState`를 reply한다.
 12. 마지막 move에서 winner 또는 draw가 설정되면 smoke가 성공으로 끝난다.
 
 ## 8. 완료 기준
@@ -200,7 +200,7 @@ client stream과 player id를 소유하고, STREAM request를 room state 변경�
 - Play 서버는 `Play` channel server와 `Api` channel client를 등록한다.
 - STREAM 접속 후 첫 request는 `Authenticate`이며, Play 서버는 API 서버에
   `ValidatePlayerSession` request를 보내 검증한다.
-- 인증 전 `JoinGame`과 `PlaceMark`는 실패해야 한다.
+- 인증 전 `JoinMatch`과 `PlaceMark`는 실패해야 한다.
 - client는 `ZlinkStreamConnector.Request(...).Async<TReply>()`만 사용한다.
 - Play stream node는 `AddHeaderSession<T>()`를 사용한다.
 - sample code에서 packet name attribute를 쓰지 않는다.

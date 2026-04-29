@@ -6,8 +6,9 @@
 
 ### Red Flags
 
-- `pending`: 현재 TicTacToe sample은 direct와 session gateway가 분리되어 있지 않다.
-- `pending`: current sample directory가 계획의 Api/Server/Client/SmokeTests/Tools 구분을 아직 완전히 반영하지 않는다.
+- `verified`: TicTacToe sample은 `Direct/`와 `SessionGateway/` 별도 프로젝트로 분리했다.
+- `verified`: current sample directory는 `Direct`, `SessionGateway`,
+  `TicTacToe.SmokeTests`, `Tools/TicTacToeSmoke` 책임으로 분리했다.
 - `implemented`: sample smoke가 독립 test/tool project로 고정되었다.
 
 ### Alternatives
@@ -25,8 +26,9 @@
 
 남은 red flag:
 
-- `pending`: gateway sample은 실제 Session server, ActorRelay, Location Store, Routed Channel 구현으로 분리해야 한다.
-- `pending`: shared packet 계약이 draft의 `Req`/`Res`/`Notify` suffix와 match 용어로 완전히 맞지 않는다.
+- `verified`: gateway sample은 실제 Session server, API server, Play server,
+  ActorRelay, SessionGateway, Location Store, Routed Channel 구현으로 분리했다.
+- `verified`: packet 계약은 `Req`/`Res`/`Notify` suffix와 match 용어를 사용한다.
 
 ## Resume Rule
 
@@ -34,3 +36,39 @@
 실제 Session server, API server, Play server, ActorRelay, SessionGateway,
 Location Store, reconnect flow를 실행할 때까지 이 파일의 gateway red flag는
 `pending`으로 유지한다.
+
+## Iteration 2
+
+상태: `verified`
+
+### Red Flags
+
+- `verified`: direct와 session-gateway sample이 같은 root sample project를 공유하던
+  구조를 제거했다.
+- `verified`: session-gateway smoke marker를 실제 in-memory routed channel flow로
+  대체했다.
+- `verified`: packet 이름은 `CreateMatchReq`, `CreateMatchRes`, `JoinMatchReq`,
+  `TicTacToeState`, `OpponentJoinedNotify`, `TurnChangedNotify`,
+  `GameEndedNotify`로 정리했다.
+
+### Alternatives
+
+- 대안 1: 기존 root `Client/Server/Shared` sample을 유지하고 gateway 파일만 추가한다.
+- 대안 2: 기존 root sample을 제거하고 `Direct/`와 `SessionGateway/` 프로젝트를 완전히
+  분리한다.
+
+선택: 대안 2를 선택했다. 사용자가 기존 버전과 session-gateway 버전이 겹치지 않게
+진행하라고 했고, sample별 책임과 smoke가 섞이지 않는 쪽이 POSD의 정보 은닉에 맞다.
+
+수정 결과:
+
+- `Direct/TicTacToe.Direct.csproj`는 API, Play, Client, game room flow를 독립 실행한다.
+- `SessionGateway/TicTacToe.SessionGateway.csproj`는 Session server, API server,
+  Play server, ActorRelay, SessionGateway, Location Store, Routed Channel,
+  reconnect flow를 독립 실행한다.
+- `TicTacToe.SmokeTests`와 `Tools/TicTacToeSmoke`가 두 mode를 모두 검증한다.
+
+남은 sample red flag:
+
+- 없음. 현재 sample 범위에서 marker, `PlayHouse` 이름, old packet suffix, direct/gateway
+  project overlap은 검색 결과 없다.

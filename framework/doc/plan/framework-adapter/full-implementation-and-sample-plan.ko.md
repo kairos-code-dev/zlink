@@ -425,11 +425,9 @@ fi
 
 구현 대상:
 
-- `samples/TicTacToe/Api`
-- `samples/TicTacToe/Server`
-- `samples/TicTacToe/Client`
-- shared packet project
-- smoke test
+- `samples/TicTacToe/Direct`
+- direct sample 안의 API, Play, Client, game room 책임
+- direct smoke test
 - file log
 
 반영 내용:
@@ -458,13 +456,14 @@ fi
 
 구현 대상:
 
+- `samples/TicTacToe/SessionGateway`
 - session server
 - play server
 - api server
 - session gateway
 - actor relay
 - location store in-memory 구현
-- discovery 자동 연결
+- routed channel
 - reconnect smoke
 
 반영 내용:

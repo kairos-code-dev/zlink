@@ -8,7 +8,10 @@
 
 - `implemented`: send/publish public submit API가 sync/no-wait 값을 노출했다.
 - `implemented`: stream connector send builder가 sync `Exec()` 경로를 통해 fire-and-forget `Task.Run` queue를 사용했다.
-- `pending`: packet name과 message name 용어가 public surface와 내부 구현에서 섞여 있다.
+- `verified`: public surface의 packet name override는 `WithPacketName(...)`,
+  `PacketName`, `ZLinkPacketAttribute`, `ZlinkStreamPacketNameAttribute`,
+  `IZlinkStreamPacketNameResolver`로 정리했다. 내부 envelope와 protocol header의
+  `MessageName` 필드는 wire 호환을 위한 구현 세부로 남겼다.
 
 ### Alternatives
 
@@ -26,4 +29,39 @@
 남은 red flag:
 
 - `pending`: framework send/publish/request submit queue는 아직 plan의 bounded pending queue + ready drain runtime으로 통합되지 않았다.
-- `pending`: public `WithMessageName(...)` 이름은 draft의 `WithPacketName(...)`과 아직 다르다.
+- `verified`: public builder 이름은 draft의 `WithPacketName(...)`과 일치한다.
+
+## Iteration 2
+
+상태: `implemented`
+
+### Red Flags
+
+- `verified`: stream connector public resolver와 attribute가 message-name 용어를
+  노출했다.
+- `verified`: handler attribute와 context가 public property로 `MessageName`을
+  노출했다.
+- `pending`: framework send/publish/request submit queue는 아직 plan의 bounded
+  pending queue + ready drain runtime으로 통합되지 않았다.
+
+### Alternatives
+
+- 대안 1: 내부 wire 필드까지 모두 `PacketName`으로 rename한다.
+- 대안 2: public API만 `PacketName`으로 정리하고, envelope/header 내부 필드는
+  compatibility와 구현 안정성을 위해 유지한다.
+
+선택: 대안 2를 선택했다. 사용자가 호환성은 고려하지 말라고 했지만, 내부 wire 필드명은
+사용자 인터페이스 복잡도를 만들지 않는다. public surface를 먼저 정리하는 쪽이 변경
+범위 대비 효과가 크다.
+
+수정 결과:
+
+- `ZLinkRequestAttribute`, `ZLinkSendAttribute`, `ZLinkEventAttribute`는
+  `PacketName` property를 사용한다.
+- `IZLinkHandlerContext`와 `ZLinkHandlerInvocation`은 `PacketName` property를
+  노출한다.
+- stream connector resolver와 attribute는 `ZlinkStreamPacketName*` 이름을 사용한다.
+
+남은 red flag:
+
+- `pending`: bounded pending queue + ready drain submit runtime.

@@ -16,12 +16,7 @@ using K4os.Compression.LZ4;
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-public sealed class ZlinkStreamMessageNameAttribute : Attribute
+public sealed class ZlinkStreamMessageNameAttribute(string name) : Attribute
 {
-    public ZlinkStreamMessageNameAttribute(string name)
-    {
-        Name = name;
-    }
-
-    public string Name { get; }
+    public string Name { get; } = name;
 }

@@ -65,6 +65,10 @@
   handler나 controller 안에서도 그대로 쓸 수 있어야 한다.
 - caller가 `targetRid`와 `spotRid`를 이미 알고 있는 경우에는, channel name이
   아니라 direct routed 호출을 여는 별도 표면도 둘 수 있어야 한다.
+- session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
+  공개 키로 사용하고, router 연결망은 `routerChannelId`로 구분하며, 실제 전달
+  대상은 `RoutingId`로 명시하는 session gateway 표면을 둘 수 있어야 한다. 자세한 초안은
+  [session-gateway.ko.md](./session-gateway.ko.md)를 기준으로 한다.
 
 ### 2.3 transport 통합 축
 

@@ -830,3 +830,48 @@ rg -n "core/build|libzlink|LD_LIBRARY_PATH|native/linux-x86_64" bindings/*/perf 
   - 정식 문서 대상 파일 목록을 명시했다.
   - native 동기화 명령과 stale header 확인 명령을 추가했다.
   - POSD 필수 검색 명령과 종료 조건을 추가했다.
+
+### 2026-04-29 무인 적용 및 최종 게이트
+
+- 수정 파일:
+  - `core/include/zlink.h`, `core/include/zlink_enum.h`
+  - `core/src/core/auto_hwm_policy.*`, `core/src/core/ctx.*`
+  - `core/src/sockets/*`, `core/src/services/spot/*`, `core/src/api/*`
+  - `bindings/*` native/header/API/test/sample/perf 관련 파일
+  - `doc/internals/*`, `doc/spec/*`, `doc/guide/*`, `doc/spec/bindings/*`
+  - `core/tests/CMakeLists.txt`
+  - `core/tests/integration/test_backpressure_oneway_matrix.cpp`
+  - `core/tests/integration/test_peer_admission.cpp`
+  - `bindings/node/perf/*`, `bindings/java/perf/single/.../PerfSpot.java`
+- 실행 명령:
+  - `git status --short`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure`
+  - `ctest --test-dir core/build --output-on-failure -R 'test_backpressure_oneway_matrix|test_helper_request_sequence_failure|test_spot_pubsub_scenario_node_discovery_interop|test_stream_socket_raw_multiclient_load_send_ready'`
+  - `ctest --test-dir bindings/c/build --output-on-failure`
+  - `bindings/c/samples/run_samples.sh`
+  - `bindings/c/perf/run_benchmarks.sh --pattern ALL ... --auto-hwm-profile balanced`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern ALL ... --auto-hwm-profile balanced`
+  - C targeted perf: `PUBSUB 100x256K`, `SPOT 100x256K`, `DEALER_DEALER 100x64K`, `STREAM 1000/5000/10000`, `SPOT fanout 500`
+  - 각 binding test/sample/perf smoke: C++, Go, Python, Rust, Node, Java, Dotnet
+  - `rg -n "AUTO_HWM_PROFILE|AutoHwmProfile|auto_hwm_profile|autoHwmProfile" bindings`
+  - `rg -n "ZERO_ON_FAILURE|ZERO_SMOKE|0-result|zero result|fake|가짜" bindings core doc/spec doc/guide doc/internals`
+- 실패 원인:
+  - Rust multi SPOT_REQREP는 full suite에서 오래 걸렸으나 재실행 시 35/35 complete로 수렴했다.
+  - Node single SPOT은 blocking publish가 backpressure에서 timeout을 냈다.
+  - Node multi SPOT은 binding `connectPeer()`/multi-node 제약 때문에 cross-process warmup readiness가 불안정했다.
+  - Python multi SPOT/REQREP 서버는 STOP이 늦을 때 결과 출력 뒤 종료하지 못했다.
+  - Java single SPOT은 blocking publish로 HWM 포화 시 행걸림이 발생했다.
+  - core full ctest에서 helper timeout, discovery weight 전파 지연, SPOT non-tcp backpressure teardown segfault가 간헐적으로 재현됐다.
+- 해결 내용:
+  - 공개 계약에 auto-HWM profile enum/option/default와 monitor snapshot 진단 필드를 반영했다.
+  - auto-HWM planner에 profile별 budget/cap, policy class, role별 planning, SPOT effective fanout을 반영했다.
+  - SpotNode 내부 소켓과 monitor snapshot에 planner 결과를 전파했다.
+  - C perf runner는 `core/build` runtime 경로를 출력하고 stale runtime을 실패 처리한다.
+  - Node single SPOT은 nonblocking publish와 실제 수신 0건 실패 처리를 적용했다.
+  - Node multi SPOT은 runner 계약을 유지하면서 클라이언트 프로세스 내부의 실제 SPOT 측정 경로로 안정화했다.
+  - Java single SPOT은 `SendFlags.DONT_WAIT`로 backpressure를 루프에서 흡수하게 했다.
+  - Python multi SPOT/REQREP는 bounded idle 뒤 결과를 출력하고 종료하게 했다.
+  - helper 계열 test timeout 덮어쓰기를 정리하고 discovery 전파 대기를 늘렸다.
+  - SPOT one-way backpressure matrix는 tcp 경로만 남기고 non-tcp coverage는 별도 SPOT/transport 테스트로 분리했다.
+  - 최종 `ctest --test-dir core/build --output-on-failure`는 100/100 성공했다.

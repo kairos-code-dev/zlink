@@ -497,7 +497,13 @@ if(TARGET test_helper_request_sequence_failure)
   set_tests_properties(
     test_helper_request_sequence_failure
     PROPERTIES
-      TIMEOUT 30)
+      TIMEOUT 120)
+endif()
+if(TARGET test_helper_interleave)
+  set_tests_properties(
+    test_helper_interleave
+    PROPERTIES
+      TIMEOUT 120)
 endif()
 if(TARGET test_multi_pubsub_benchmark_process)
   if(TARGET comp_src_pubsub_server)

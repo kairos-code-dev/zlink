@@ -91,12 +91,49 @@ async function waitForPrefix(processRef, prefix, label, timeoutMs) {
   });
 }
 
+async function waitForPrefixCount(processRef, prefix, count, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const seen = processRef.__seenLines.filter((line) => line.startsWith(prefix));
+    if (seen.length >= count) {
+      resolve(seen.slice(0, count));
+      return;
+    }
+    const timeout = setTimeout(() => {
+      if (!done) {
+        done = true;
+        reject(new Error(`${label} timeout waiting for ${count} ${prefix}`));
+      }
+    }, timeoutMs);
+    processRef.once('exit', (code) => {
+      if (!done) {
+        done = true;
+        clearTimeout(timeout);
+        reject(new Error(`${label} exited before ${count} ${prefix}: ${code}`));
+      }
+    });
+    processRef.__waiters.push((line) => {
+      if (done || !line.startsWith(prefix)) {
+        return false;
+      }
+      seen.push(line);
+      if (seen.length >= count) {
+        done = true;
+        clearTimeout(timeout);
+        resolve(seen.slice(0, count));
+      }
+      return false;
+    });
+  });
+}
+
 function isControlLine(line) {
   return line.startsWith('READY,')
     || line.startsWith('CONTROL_READY,')
     || line.startsWith('CLIENT_READY,')
     || line.startsWith('CLIENT_CONTROL_ENDPOINT,')
-    || line.startsWith('CONTROL_CONNECTED,');
+    || line.startsWith('CONTROL_CONNECTED,')
+    || line.startsWith('DATA_ENDPOINT,');
 }
 
 function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
@@ -332,6 +369,20 @@ function resolveMultiTimeoutSeconds(args) {
   return Math.max(45, Math.floor(duration * 3) + 20);
 }
 
+function resolveClientReadyTimeoutMs(args) {
+  const configured = Number.isFinite(args.connectReadyTimeoutMs)
+    ? args.connectReadyTimeoutMs
+    : 20_000;
+  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+    const spotReadyTimeout = Number(process.env.PERF_MULTI_SPOT_READY_TIMEOUT_MS);
+    const minimumSpotReadyTimeout = Number.isFinite(spotReadyTimeout)
+      ? spotReadyTimeout
+      : 20_000;
+    return Math.max(configured, minimumSpotReadyTimeout);
+  }
+  return configured;
+}
+
 async function spawnMultiPair(serverScript, clientScript, args) {
   const serverPath = path.join(__dirname, serverScript);
   const clientPath = path.join(__dirname, clientScript);
@@ -353,10 +404,13 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
     const serverControlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const clientControlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const peerEndpoint = args.pattern === 'MULTI_SPOT'
+      ? await benchmarkEndpoint(args.transport, `${String(args.pattern).toLowerCase()}-data-${args.msgSize}`)
+      : endpoint;
     serverArgs = [
       '--endpoint', endpoint,
       '--transport', args.transport,
-      '--peer-endpoint', endpoint,
+      '--peer-endpoint', peerEndpoint,
       '--control-endpoint', serverControlEndpoint,
       '--msg-size', String(args.msgSize),
       '--duration', String(args.duration),
@@ -365,7 +419,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     clientArgs = [
       '--endpoint', endpoint,
       '--transport', args.transport,
-      '--peer-endpoint', endpoint,
+      '--peer-endpoint', peerEndpoint,
       '--control-endpoint', clientControlEndpoint,
       '--server-control-endpoint', serverControlEndpoint,
       '--msg-size', String(args.msgSize),
@@ -412,7 +466,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
       client,
       clientReadyLine(args.msgSize),
       clientScript,
-      Number.isFinite(args.connectReadyTimeoutMs) ? args.connectReadyTimeoutMs : 20_000
+      resolveClientReadyTimeoutMs(args)
     );
   }
 

@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.perf.single;
 
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.discovery.Discovery;
@@ -61,14 +62,16 @@ final class PerfSpot {
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, topic, active);
+                    publisher.publish(SERVICE_NAME, topic, active,
+                        SendFlags.DONT_WAIT);
                 }
                 drainSubscriber(subscriber, config, metrics, activeEnd, true);
             }
 
             try (Message cooldown = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                publisher.publish(SERVICE_NAME, topic, cooldown);
+                publisher.publish(SERVICE_NAME, topic, cooldown,
+                    SendFlags.DONT_WAIT);
             }
 
             long idleDeadline = System.nanoTime()
@@ -91,7 +94,8 @@ final class PerfSpot {
         while (System.nanoTime() < deadline) {
             try (Message probe = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                publisher.publish(SERVICE_NAME, topic, probe);
+                publisher.publish(SERVICE_NAME, topic, probe,
+                    SendFlags.DONT_WAIT);
             }
             if (drainSubscriber(subscriber, config, metrics, Long.MAX_VALUE,
                     false)) {

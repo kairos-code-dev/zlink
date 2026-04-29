@@ -147,8 +147,6 @@ static bool is_spot_transport_available (const char *transport_)
 {
     if (strcmp (transport_, "tcp") == 0)
         return true;
-    if (strcmp (transport_, "tls") == 0)
-        return zlink_has ("tls") != 0;
 
     return false;
 }

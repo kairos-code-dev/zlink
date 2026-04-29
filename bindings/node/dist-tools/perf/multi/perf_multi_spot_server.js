@@ -25,6 +25,21 @@ function closeQuietly(resource) {
     catch {
     }
 }
+function connectDataEndpoint(node, connectedDataEndpoints, endpoint) {
+    if (!endpoint || connectedDataEndpoints.has(endpoint)) {
+        return;
+    }
+    try {
+        node.connectPeer(endpoint);
+    }
+    catch (error) {
+        const text = String(error && error.message ? error.message : error);
+        if (!/Device or resource busy|resource busy|already/i.test(text)) {
+            throw error;
+        }
+    }
+    connectedDataEndpoints.add(endpoint);
+}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -43,19 +58,21 @@ async function main() {
     let startRequested = false;
     let stopRequested = false;
     let connectedControlEndpoint = '';
+    const connectedDataEndpoints = new Set();
     let rl = null;
     try {
         configureTlsServer(node, options.transport);
         const registryPubEndpoint = await benchmarkEndpoint(options.transport, 'multi-spot-registry-pub');
         const registryRouterEndpoint = options.endpoint;
-        const dataBindEndpoint = await benchmarkEndpoint(options.transport, 'multi-spot-data');
+        const dataBindEndpoint = options.peerEndpoint ||
+            await benchmarkEndpoint(options.transport, 'multi-spot-data');
         registry.bind(registryPubEndpoint, registryRouterEndpoint);
         discovery.connectRegistry(registryRouterEndpoint);
         node.attachDiscovery(discovery);
         node.bind(dataBindEndpoint);
         spot = node.createSpot();
         applySocketPolicy(spot, {
-            noDrop: Number(process.env.PERF_MULTI_SPOT_XPUB_NODROP ?? 0) !== 0
+            noDrop: Number(process.env.PERF_MULTI_SPOT_XPUB_NODROP ?? 1) !== 0
         });
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
@@ -77,12 +94,25 @@ async function main() {
                     await waitForConnectionReady(controlSub, () => controlSub.connect(clientEndpoint));
                     connectedControlEndpoint = clientEndpoint;
                 }
+                else if (line.startsWith('DATA_ENDPOINT,')) {
+                    const endpoint = line.slice('DATA_ENDPOINT,'.length).trim();
+                    connectDataEndpoint(node, connectedDataEndpoints, endpoint);
+                }
                 else if (line === 'STOP' || line === 'QUIT') {
                     stopRequested = true;
                     break;
                 }
             }
         })();
+        if (process.env.PERF_NODE_MULTI_SPOT_LOCAL_RUN !== '0') {
+            while (!stopRequested && !startRequested) {
+                await sleepImmediate();
+            }
+            if (!stopRequested) {
+                await new Promise((resolve) => setTimeout(resolve, Math.max(0, options.duration * 1000 + 500)));
+            }
+            return;
+        }
         const readyDeadlineMs = Date.now() + 20_000;
         while (!stopRequested && readyCount < options.clients && Date.now() < readyDeadlineMs) {
             let drained = false;
@@ -95,6 +125,11 @@ async function main() {
                 const payloadText = received.parts[0].data().toString('utf8');
                 if (payloadText === 'CONNECTED') {
                     connected = true;
+                    continue;
+                }
+                if (payloadText.startsWith('DATA_ENDPOINT,')) {
+                    const endpoint = payloadText.slice('DATA_ENDPOINT,'.length).trim();
+                    connectDataEndpoint(node, connectedDataEndpoints, endpoint);
                     continue;
                 }
                 if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
@@ -121,6 +156,11 @@ async function main() {
                 const payloadText = received.parts[0].data().toString('utf8');
                 if (payloadText === 'CONNECTED') {
                     connected = true;
+                    continue;
+                }
+                if (payloadText.startsWith('DATA_ENDPOINT,')) {
+                    const endpoint = payloadText.slice('DATA_ENDPOINT,'.length).trim();
+                    connectDataEndpoint(node, connectedDataEndpoints, endpoint);
                     continue;
                 }
                 if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {

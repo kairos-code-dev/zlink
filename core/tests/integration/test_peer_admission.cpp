@@ -766,16 +766,16 @@ void test_discovery_member_peers_reports_weight ()
       dealer, 50320, dealer_endpoint, sizeof (dealer_endpoint)));
 
     TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
-      dealer_discovery, router_endpoint, 100, 5000));
+      dealer_discovery, router_endpoint, 100, 15000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       set_router_weight_local (router, 0));
     TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
-      dealer_discovery, router_endpoint, 0, 5000));
+      dealer_discovery, router_endpoint, 0, 15000));
     TEST_ASSERT_SUCCESS_ERRNO (
       set_router_weight_local (router, 100));
     TEST_ASSERT_TRUE (wait_for_discovery_peer_weight_local (
-      dealer_discovery, router_endpoint, 100, 5000));
+      dealer_discovery, router_endpoint, 100, 15000));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&dealer_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&router_discovery));

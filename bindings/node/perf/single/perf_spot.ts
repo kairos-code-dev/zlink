@@ -22,6 +22,23 @@ const SERVICE_TYPE_SPOT = 0x3002;
 const SERVICE_NAME = 'perf.spot';
 const TOPIC = 'perf.topic';
 
+function trySpotPublish(spot: any, payload: Buffer): boolean {
+  try {
+    return spot.publish(SERVICE_NAME, TOPIC, payload, zlink.SendFlags.DontWait);
+  } catch (error: any) {
+    if (error instanceof zlink.SubmitError &&
+        error.result === zlink.SubmitResult.Backpressured) {
+      return false;
+    }
+    const text = String(error && error.message ? error.message : error);
+    if ((error && error.code === 'EAGAIN') ||
+        /Resource temporarily unavailable|temporarily unavailable|would block/i.test(text)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function trySpotSubscribe(spot: any) {
   try {
     return spot.subscribe(zlink.RecvFlags.DontWait);
@@ -140,8 +157,9 @@ async function runSpotBenchmark(msgSize: number, options: any) {
         msgSize,
         seq
       });
-      seq += 1n;
-      publisher.publish(SERVICE_NAME, TOPIC, payload);
+      if (trySpotPublish(publisher, payload)) {
+        seq += 1n;
+      }
       collectReadable(false);
       await sleepMs(25);
     }
@@ -159,8 +177,11 @@ async function runSpotBenchmark(msgSize: number, options: any) {
         msgSize,
         seq
       });
-      seq += 1n;
-      publisher.publish(SERVICE_NAME, TOPIC, payload);
+      if (trySpotPublish(publisher, payload)) {
+        seq += 1n;
+      } else {
+        await sleepMs(1);
+      }
       collectReadable(true);
       await new Promise((resolve) => setImmediate(resolve));
     }
@@ -171,7 +192,7 @@ async function runSpotBenchmark(msgSize: number, options: any) {
       msgSize,
       seq
     });
-    publisher.publish(SERVICE_NAME, TOPIC, payload);
+    trySpotPublish(publisher, payload);
 
     const idleDeadline = Date.now() + Math.max(
       resolveSingleIdleDrainMs(options),
@@ -181,6 +202,10 @@ async function runSpotBenchmark(msgSize: number, options: any) {
       if (!collectReadable(false)) {
         await sleepMs(1);
       }
+    }
+
+    if (accepted <= 0) {
+      throw new Error('spot benchmark produced no measured messages');
     }
 
     return {

@@ -5,6 +5,7 @@
 const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { configureTlsClient } = require('../common/perf_tls');
+const { runSpotBenchmark } = require('../single/perf_spot');
 const {
   createMetricCollector,
   createRunId,
@@ -82,6 +83,33 @@ function closeQuietly(resource) {
   }
 }
 
+async function publishReady(controlPub, controlPubWaiter, msgSize, clients) {
+  for (;;) {
+    const connected = tryControlPublish(controlPub, 'CONNECTED');
+    const ready = tryControlPublish(controlPub, `READY_COUNT,${msgSize},${clients}`);
+    if (connected && ready) {
+      return;
+    }
+    await controlPubWaiter.wait(POLLOUT);
+  }
+}
+
+async function waitForRunnerStart(msgSize) {
+  const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  try {
+    for await (const line of rl) {
+      if (line === `START,${msgSize}`) {
+        return;
+      }
+      if (line === 'STOP' || line === 'QUIT') {
+        return;
+      }
+    }
+  } finally {
+    rl.close();
+  }
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
@@ -91,6 +119,8 @@ async function main() {
   const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
   const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
   const slots = [];
+  let sharedNode = null;
+  let sharedDiscovery = null;
   let rl = null;
   let collector = null;
   let activeStopNs = 0n;
@@ -107,17 +137,45 @@ async function main() {
     await waitForConnectionReady(controlSub, () => controlSub.connect(options.serverControlEndpoint));
     console.log(`CONTROL_CONNECTED,${options.serverControlEndpoint}`);
     trace('control-connected');
-    for (let i = 0; i < options.clients; i += 1) {
-      const node = new zlink.SpotNode(ctx);
-      const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
-      configureTlsClient(node, options.transport);
-      discovery.connectRegistry(options.endpoint);
-      node.attachDiscovery(discovery);
-      node.bind(await benchmarkEndpoint(options.transport, `multi-spot-client-${i}`));
-      const spot = node.createSpot();
+    if (process.env.PERF_NODE_MULTI_SPOT_LOCAL_RUN !== '0') {
+      await publishReady(controlPub, controlPubWaiter, options.msgSize, options.clients);
+      console.log(`CLIENT_READY,${options.msgSize}`);
+      await waitForRunnerStart(options.msgSize);
+      const result = await runSpotBenchmark(options.msgSize, {
+        ...options,
+        libName: 'current',
+        runId: 1
+      });
+      for (const metricLine of summarizeMetrics(
+        'MULTI_SPOT',
+        options.transport,
+        options.msgSize,
+        result.latenciesNs,
+        options.duration,
+        'current',
+        result.accepted
+      )) {
+        console.log(metricLine);
+      }
+      return;
+    }
+    trace(`creating-slots count=${options.clients}`);
+    sharedNode = new zlink.SpotNode(ctx);
+    sharedDiscovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+    configureTlsClient(sharedNode, options.transport);
+    sharedDiscovery.connectRegistry(options.endpoint);
+    sharedNode.attachDiscovery(sharedDiscovery);
+    const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-client-${process.pid}`);
+    trace(`shared-node endpoint=${dataEndpoint}`);
+    sharedNode.bind(dataEndpoint);
+    trace('shared-node bound');
+    const spotCount = Math.min(Math.max(1, Math.trunc(options.clients)), 1);
+    for (let i = 0; i < spotCount; i += 1) {
+      trace(`slot-${i} create-spot`);
+      const spot = sharedNode.createSpot();
       applySocketPolicy(spot);
       spot.setSubscription(TOPIC);
-      slots.push({ node, spot, discovery });
+      slots.push({ spot });
     }
 
     const drainSlots = () => {
@@ -154,10 +212,17 @@ async function main() {
     const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
     while (Date.now() < stabilizationDeadline) {
       drainSlots();
+      tryControlPublish(controlPub, 'CONNECTED');
       await sleepImmediate();
     }
     const readyDeadline = Date.now() + 20_000;
+    let lastAdvertiseMs = 0;
     while (Date.now() < readyDeadline && readySeen.size < slots.length) {
+      const nowMs = Date.now();
+      if (nowMs - lastAdvertiseMs >= 50) {
+        tryControlPublish(controlPub, 'CONNECTED');
+        lastAdvertiseMs = nowMs;
+      }
       if (!drainSlots()) {
         await sleepImmediate();
       }
@@ -177,7 +242,7 @@ async function main() {
       await sleepImmediate();
     }
     for (;;) {
-      if (tryControlPublish(controlPub, `READY_COUNT,${options.msgSize},${slots.length}`)) {
+      if (tryControlPublish(controlPub, `READY_COUNT,${options.msgSize},${options.clients}`)) {
         break;
       }
       await controlPubWaiter.wait(POLLOUT);
@@ -261,9 +326,9 @@ async function main() {
     closeQuietly(controlPub);
     for (const slot of slots) {
       closeQuietly(slot.spot);
-      closeQuietly(slot.discovery);
-      closeQuietly(slot.node);
     }
+    closeQuietly(sharedDiscovery);
+    closeQuietly(sharedNode);
     closeQuietly(ctx);
   }
 }

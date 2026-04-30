@@ -213,7 +213,7 @@ limit을 둔다.
 | 옵션 | 기본값 | 적용 대상 |
 |------|--------|-----------|
 | `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` | `100` | local subscribe delivery target |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` | `100` | routed delivery target |
+| `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` | `500` | routed delivery target |
 
 limit 초과 시 해당 target만 disconnected로 표시한다. 상태 집계는
 `zlink_spot_node_status_t`의 아래 필드에 반영된다.

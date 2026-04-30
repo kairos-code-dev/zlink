@@ -12,6 +12,43 @@
 
 namespace zlink
 {
+namespace spot_auto_hwm_internal
+{
+inline uint32_t spot_routed_small_message_cap (
+  zlink_auto_hwm_profile_t profile_)
+{
+    switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+            return 64;
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+            return 128;
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        default:
+            return 128;
+    }
+}
+
+inline void apply_spot_routed_latency_floor (
+  auto_hwm_socket_plan_t *socket_plan_,
+  zlink_auto_hwm_profile_t profile_)
+{
+    if (!socket_plan_
+        || socket_plan_->policy_class != auto_hwm_policy_routed
+        || socket_plan_->effective_message_bytes > 16ull * 1024ull)
+        return;
+
+    const uint32_t target_cap = spot_routed_small_message_cap (profile_);
+    if (socket_plan_->size_cap < target_cap)
+        socket_plan_->size_cap = target_cap;
+    if (socket_plan_->sndhwm > 0
+        && socket_plan_->sndhwm < static_cast<int> (target_cap))
+        socket_plan_->sndhwm = static_cast<int> (target_cap);
+    if (socket_plan_->rcvhwm > 0
+        && socket_plan_->rcvhwm < static_cast<int> (target_cap))
+        socket_plan_->rcvhwm = static_cast<int> (target_cap);
+}
+}
+
 struct spot_internal_auto_hwm_policy_t
 {
     auto_hwm_role_t role;
@@ -33,13 +70,14 @@ inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
   ctx_t *ctx_,
   const spot_internal_auto_hwm_policy_t &policy_)
 {
+    const zlink_auto_hwm_profile_t profile =
+      ctx_ ? ctx_->auto_hwm_profile () : ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
     auto_hwm_context_plan_t context_plan;
     auto_hwm_context_plan_from_budget_mb (
       ctx_ && ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0,
       ctx_ ? ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB)
            : ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT,
-      &context_plan,
-      ctx_ ? ctx_->auto_hwm_profile () : ZLINK_CTX_AUTO_HWM_PROFILE_DFLT);
+      &context_plan, profile);
 
     auto_hwm_socket_plan_t socket_plan;
     const auto_hwm_scope_t scope =
@@ -60,6 +98,8 @@ inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
       policy_.managed_connections, policy_.active_connections, &socket_plan,
       policy_.message_unit_bytes, -1, -1, false, false, scope, scope_count,
       true, planning_bootstrap);
+    spot_auto_hwm_internal::apply_spot_routed_latency_floor (&socket_plan,
+                                                             profile);
     return socket_plan;
 }
 

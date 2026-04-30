@@ -477,6 +477,12 @@ profile별 cap은 아래 비율로 조정한다.
 `control` class는 payload 크기 기준 cap을 쓰지 않는다. `low_latency`와
 `balanced`에서는 cap 64, `throughput`에서는 cap 128을 사용한다.
 
+SpotNode 내부 routed socket은 요청/응답형 경로의 burst를 흡수해야 하므로
+`MsgUnit(B) <= 16 KiB`에서 별도 보정 cap을 둔다. `balanced`와 `throughput`은
+`128`, `low_latency`는 `64`를 사용한다. 이 보정은 SpotNode의
+`internal-router`와 `external-router` 같은 routed 내부 socket에만 적용하고,
+one-way publish/fanout socket의 `spot_data` cap은 위 표를 그대로 따른다.
+
 이 cap은 "항상 가장 빠른 throughput"을 목표로 하지 않는다. sweep 결과처럼 HWM을
 더 키워도 throughput 이득이 작고 p99 latency만 크게 늘어나는 구간이 있기 때문에,
 기본값은 latency 폭증을 피하는 쪽에 둔다.

@@ -910,3 +910,102 @@ rg -n "core/build|libzlink|LD_LIBRARY_PATH|native/linux-x86_64" bindings/*/perf 
   - `MULTI_SPOT` TCP 전 크기 smoke는 30/30 result로 complete였다.
   - `MULTI_SPOT_REQREP`/`MULTI_SPOT_SENDSEND` tcp/tls 전 크기 smoke는 120/120 result로 complete였다.
   - `test_xpub_nodrop` 단독 재실행은 pass했다.
+
+### 2026-04-30 SPOT multi req/resp와 send/send 회복
+
+- 수정 파일:
+  - `core/include/zlink.h`
+  - `core/src/services/spot/spot_auto_hwm_internal.hpp`
+  - `bindings/cpp/include/zlink.h`
+  - `bindings/go/include/zlink.h`
+  - `bindings/go/include/zlink_enum.h`
+  - `bindings/rust/include/zlink.h`
+  - `doc/draft/auto-hwm-context-memory-sizing.ko.md`
+  - `doc/draft/spot-topology-redesign.ko.md`
+  - `doc/spec/core/service/spot.ko.md`
+  - `doc/spec/core/service/spot.md`
+  - `doc/internals/spot-internals.ko.md`
+  - `doc/internals/spot-internals.md`
+  - `doc/site/docs/api/spot.ko.md`
+  - `doc/site/docs/api/spot.md`
+  - `doc/site/docs/internals/spot-internals.ko.md`
+  - `doc/site/docs/internals/spot-internals.md`
+- 실행 명령:
+  - `git status --short`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "test_ctx_options|test_monitor_socket_contract|test_monitor_enhanced|test_monitor_perf_contract|test_hwm_pubsub|test_router_mandatory_hwm|test_backpressure_matrix|test_backpressure_oneway_matrix|test_spot_service_introspection|test_spot_runtime_activation|test_spot_pubsub_scenario|test_spot_dispatch_event|test_spot_poller|unittest_ctx_runtime|unittest_socket_runtime|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|unittest_spot_subject_access"`
+  - `ctest --test-dir core/build --output-on-failure -R "test_spot_pubsub_scenario(_node_discovery_interop)?$"`
+  - `ctest --test-dir core/build --output-on-failure -R "^test_backpressure_matrix$"`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_SENDSEND --runs 1 --duration 2 --clients 100 --msg-sizes 64 --transports tcp --reuse-build --results-tag spot_sendsend_tcp64_spot_routed_cap128_final`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_REQREP --runs 1 --duration 2 --clients 100 --msg-sizes 64 --transports tcp --reuse-build --results-tag spot_reqrep_tcp64_routed_limit500_cap128`
+  - `rg -n "ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT" core/include bindings/cpp/include bindings/go/include bindings/rust/include`
+- 실패 원인:
+  - `MULTI_SPOT_REQREP`는 routed delivery target queue hard limit 기본값 `100`이 100 client burst와 맞물려 target queue를 닫아 0-result/FAIL로 수렴했다.
+  - `MULTI_SPOT_SENDSEND`는 balanced auto-HWM에서 SpotNode routed 내부 socket의 작은 메시지 cap `64`가 echo형 부하에 과도하게 보수적이었다.
+  - core 선별 테스트 1차에서는 discovery interop가 registry 준비 타임아웃으로 흔들렸고, 2차에서는 `test_backpressure_matrix`가 단독 assertion 뒤 teardown abort로 흔들렸다.
+- 해결 내용:
+  - routed delivery queue hard limit 기본값을 `100`에서 `500`으로 올려 100 client burst를 queue close로 처리하지 않게 했다.
+  - SpotNode 내부 routed socket은 `MsgUnit(B) <= 16 KiB`에서 `balanced`/`throughput` cap `128`, `low_latency` cap `64`를 쓰도록 보정했다. one-way publish/fanout socket의 `spot_data` cap은 유지했다.
+  - `SPOT_SENDSEND tcp 64B`는 실제 result row 5개와 함께 `239.628 Kops/s`로 complete였다.
+  - `SPOT_REQREP tcp 64B`는 실제 result row 5개와 함께 `227.891 Kops/s`로 complete였다.
+  - core 선별 테스트 묶음은 최종 재실행에서 32/32 성공했다.
+  - binding native header copy를 최신 core header 기준으로 동기화했다.
+
+### 2026-04-30 binding 전체 검증과 최종 문서 게이트
+
+- 수정 파일:
+  - `bindings/cpp/include/zlink.h`, `bindings/go/include/zlink.h`, `bindings/rust/include/zlink.h`
+  - `bindings/{cpp,dotnet,go,java,node,rust}/native/linux-x86_64/libzlink.so.5.3.4`
+  - `bindings/dotnet/runtimes/linux-x64/native/libzlink.so.5.3.4`
+  - `bindings/java/src/main/resources/native/linux-x86_64/libzlink.so.5.3.4`
+  - `bindings/python/src/zlink/native/linux-x86_64/libzlink.so.5.3.4`
+  - `doc/spec/bindings/{c,cpp,dotnet,go,java,node,python,rust}/README.md`
+  - `doc/draft/spot-topology-redesign.ko.md`
+- 실행 명령:
+  - `bindings/cpp/tests/run_tests.sh`
+  - `bindings/cpp/samples/run_samples.sh`
+  - `bindings/cpp/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_cpp_single`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_cpp_multi`
+  - `bindings/go/tests/run_tests.sh`
+  - `bindings/go/samples/run_samples.sh`
+  - `bash bindings/go/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_go_single`
+  - `bash bindings/go/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_go_multi`
+  - `bindings/python/tests/run_tests.sh`
+  - `bindings/python/samples/run_samples.sh`
+  - `bindings/python/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_python_single`
+  - `bindings/python/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_python_multi`
+  - `bindings/rust/tests/run_tests.sh`
+  - `bindings/rust/samples/run_samples.sh`
+  - `bindings/rust/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_rust_single`
+  - `bindings/rust/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_rust_multi`
+  - `bindings/node/tests/run_tests.sh`
+  - `bindings/node/samples/run_samples.sh`
+  - `bindings/node/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_node_single`
+  - `bindings/node/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_node_multi`
+  - `bindings/java/tests/run_tests.sh`
+  - `bindings/java/samples/run_samples.sh`
+  - `bindings/java/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_java_single`
+  - `bindings/java/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_java_multi`
+  - `bindings/dotnet/tests/run_tests.sh`
+  - `bindings/dotnet/samples/run_samples.sh`
+  - `bindings/dotnet/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_dotnet_single`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --results-tag auto_hwm_spot_routed_fix_dotnet_multi`
+  - `rg -n "ZERO_ON_FAILURE|ZERO_SMOKE|0-result|zero result|fake|가짜" bindings core doc/spec doc/guide doc/internals`
+- 실패 원인:
+  - Go perf runner는 실행 비트가 없어 직접 실행 시 `Permission denied`였다.
+  - Rust multi perf는 `MULTI_SPOT` 구간에서 출력이 늦게 나와 장시간 무출력처럼 보였다.
+  - 이전 실행에서 남은 Node `perf_multi_spot_client.js` 프로세스들이 CPU를 점유하고 있었다.
+  - draft topology 초안의 routed queue hard limit 설명에 예전 기본값 `100`이 남아 있었다.
+- 해결 내용:
+  - Go perf는 파일 권한을 바꾸지 않고 `bash`로 실행했다.
+  - Rust multi perf는 최종 완료까지 대기해 35/35 result row와 complete 상태를 확인했다.
+  - stale Node perf 프로세스는 현재 repo perf 경로에 한정해 정리했다.
+  - binding native header/library를 최신 core header/runtime 기준으로 동기화했다.
+  - binding별 spec README에 SPOT queue 기본값과 native sync 기준을 반영했다.
+  - C++ 테스트 8/8, 샘플 11/11, perf single 35/35, multi 35/35 complete.
+  - Go 테스트 통과, 샘플 11/11, perf single 35/35, multi 35/35 complete.
+  - Python 테스트 55 passed/10 skipped, 샘플 11/11, perf single 35/35, multi 35/35 complete.
+  - Rust 테스트 10/10, 샘플 11/11, perf single 35/35, multi 35/35 complete.
+  - Node 테스트 통과(2 skipped 포함), 샘플 11/11, perf single 35/35, multi 35/35 complete.
+  - Java 테스트와 integrationTest 통과, 샘플 11/11, perf single 30/30, multi 45/45 complete.
+  - Dotnet 테스트 136/136, 샘플 11/11, perf single 35/35, multi 35/35 complete.

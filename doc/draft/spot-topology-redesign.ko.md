@@ -568,7 +568,7 @@ runtime은 delivery plane만 끊고, 상위 상태는 faulted / disconnected로 
 초기 기본값은 아래처럼 둔다.
 
 - pub/sub per-target queue hard limit: `100`
-- routed per-target queue hard limit: `100`
+- routed per-target queue hard limit: `500`
 
 ### 6.3.6 HWM 계산과 수동 HWM 매핑
 
@@ -1268,7 +1268,8 @@ routed 전달은 각각 `mesh-*` 평면과 `external-router` 평면이 맡는다
   - 의미:
     routed local delivery plane의 per-target queue message count 상한
 
-기본값은 둘 다 `100`으로 고정한다.
+현재 공개 계약은 `core/include/zlink.h`를 따른다. 현 구현에서는 local subscribe
+delivery target 기본값이 `100`, routed delivery target 기본값이 `500`이다.
 
 이번 단계에서는 아래는 추가하지 않는다.
 

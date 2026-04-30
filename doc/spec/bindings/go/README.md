@@ -50,6 +50,10 @@ with the rules here, this section wins.
   `OnSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `Mandatory =
   true`, `Handover = false`, `NoDrop = true`.
+- SPOT queue defaults follow the core header: local subscribe delivery target
+  hard limit `100`, routed delivery target hard limit `500`. Binding native
+  headers and linux-x86_64 runtime libraries must be synchronized from
+  `core/include` and `core/build` before validation.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingID, advertiseEndpoint)`. Users do not configure this.

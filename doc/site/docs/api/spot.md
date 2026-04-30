@@ -79,7 +79,8 @@ floor `8`.
 `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` configure the maximum number of
 messages allowed in the internal delivery queues. Their defaults are
 `ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT` and
-`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`, both currently `100`. When a
+`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`, currently `100` and `500`
+respectively. When a
 target exceeds its limit, only that sub or routed delivery target is
 disconnected; the node and peer stay alive.
 

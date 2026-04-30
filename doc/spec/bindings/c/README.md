@@ -85,6 +85,12 @@ returns the active profile. Invalid profile values return
 `auto_hwm_profile`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`,
 `auto_hwm_size_cap`, and `auto_hwm_effective_publish_fanout`.
 
+SPOT queue defaults follow the current core header. Local subscribe delivery
+targets use `ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT` (`100`), while routed
+delivery targets use `ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT` (`500`).
+Binding verification must use native headers from `core/include` and the
+runtime library from `core/build`.
+
 ## Send Surface
 
 ```c

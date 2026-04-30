@@ -214,7 +214,7 @@ node.
 | option | default | target |
 |--------|---------|--------|
 | `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` | `100` | local subscribe delivery target |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` | `100` | routed delivery target |
+| `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` | `500` | routed delivery target |
 
 When a target exceeds its limit, only that target is marked disconnected. The
 status counters are:

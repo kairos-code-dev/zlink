@@ -79,7 +79,8 @@ subscribe ingress와 routed send/recv 경로가 `8`에서 시작한다.
 `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT`는 내부 delivery queue가 허용하는
 메시지 개수 상한을 설정한다. 기본값은 각각
 `ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT`,
-`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`이며 둘 다 `100`이다. 상한을 넘은
+`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`이며, 기본값은 각각 `100`과
+`500`이다. 상한을 넘은
 대상은 해당 sub 또는 routed delivery target만 끊기며, node 전체나 peer 전체를
 닫지 않는다.
 

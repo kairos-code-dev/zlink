@@ -178,12 +178,12 @@ typedef enum zlink_stream_option_t
 
 typedef enum zlink_spot_node_option_t
 {
-    ZLINK_SPOT_NODE_OPT_PUB_HWM = 0x3608,
-    ZLINK_SPOT_NODE_OPT_SUB_HWM = 0x3609,
-    ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM = 0x360A,
-    ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM = 0x360B,
-    ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT = 0x360C,
-    ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT = 0x360D
+    /* 0x3608..0x360D are reserved for removed direction-based HWM and queue
+       hard-limit options. Do not reuse them for new public meanings. */
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE = 0x360E,
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM = 0x360F,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE = 0x3610,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM = 0x3611
 } zlink_spot_node_option_t;
 
 typedef enum zlink_spot_option_t

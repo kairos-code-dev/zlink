@@ -41,6 +41,7 @@ int clamp_u64_to_int (uint64_t value_)
 zlink_auto_hwm_profile_t normalize_profile (zlink_auto_hwm_profile_t profile_)
 {
     switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
         case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
         case ZLINK_AUTO_HWM_PROFILE_BALANCED:
         case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
@@ -53,6 +54,8 @@ zlink_auto_hwm_profile_t normalize_profile (zlink_auto_hwm_profile_t profile_)
 profile_hwm_t profile_hwm (zlink_auto_hwm_profile_t profile_)
 {
     switch (normalize_profile (profile_)) {
+        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+            return profile_hwm_t{64, 8, 8, 256, 32};
         case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
             return profile_hwm_t{128, 16, 16, 512, 64};
         case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:

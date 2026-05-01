@@ -115,6 +115,7 @@ func (o *ContextOptions) RemoveThreadAffinity(cpu int) error
 type AutoHwmProfile int
 
 const (
+    AutoHwmProfileCompact    AutoHwmProfile = 0
     AutoHwmProfileLowLatency AutoHwmProfile = 1
     AutoHwmProfileBalanced   AutoHwmProfile = 2
     AutoHwmProfileThroughput AutoHwmProfile = 3

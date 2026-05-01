@@ -66,16 +66,16 @@ changes: `PAIR=control`, `DEALER=peer_queue`, `ROUTER=routed`,
 internal topic publishers use `spot_data`, peer/control sockets use `control`,
 and SPOT routers use `routed`.
 
-The context option `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects one of three
+The context option `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects one of four
 profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`, and auto-HWM is
 enabled by default. Set `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` to `0` when a context
 must keep the legacy fixed HWM default `1000`.
 
-| Socket group | `low_latency` | `balanced` | `throughput` |
-|---|---:|---:|---:|
-| non-STREAM data sockets | 128 | 256 | 512 |
-| STREAM | 16 | 64 | 256 |
-| control | 16 | 16 | 32 |
+| Socket group | `compact` | `low_latency` | `balanced` | `throughput` |
+|---|---:|---:|---:|---:|
+| non-STREAM data sockets | 64 | 128 | 256 | 512 |
+| STREAM | 8 | 16 | 64 | 256 |
+| control | 8 | 16 | 16 | 32 |
 
 The planner treats HWM as a per-connection queue depth. It does not divide a
 context memory budget by connection count. Instead, it keeps the profile's byte

@@ -36,6 +36,7 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 ```c
 typedef enum zlink_auto_hwm_profile_t
 {
+    ZLINK_AUTO_HWM_PROFILE_COMPACT = 0,
     ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
     ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
     ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3

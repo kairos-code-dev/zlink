@@ -59,6 +59,7 @@ enum class context_option : int
 
 enum class auto_hwm_profile : int
 {
+    compact = ZLINK_AUTO_HWM_PROFILE_COMPACT,
     low_latency = ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY,
     balanced = ZLINK_AUTO_HWM_PROFILE_BALANCED,
     throughput = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT

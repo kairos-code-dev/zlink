@@ -426,7 +426,8 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
 
         case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
             if (is_int
-                && (value == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
+                && (value == ZLINK_AUTO_HWM_PROFILE_COMPACT
+                    || value == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
                     || value == ZLINK_AUTO_HWM_PROFILE_BALANCED
                     || value == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT)) {
                 scoped_lock_t locker (_opt_sync);

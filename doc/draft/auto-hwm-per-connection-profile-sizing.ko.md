@@ -71,11 +71,12 @@ total_queue_memory ~= per_connection_memory * connection_count
 | context option enum | `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 제거. ABI 호환이 필요하면 deprecated no-op |
 | default macro | `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 제거 |
 | default macro | `ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT` | 제거 |
-| default macro | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | `0`으로 변경. 새 기본 동작은 HWM 1000 유지 |
+| default macro | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | `1` 유지. 새 기본 동작은 auto-HWM balanced 적용 |
 | context option enum | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 유지 |
 | context option enum | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 유지 |
 | context option enum | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 유지 |
 | profile enum | `zlink_auto_hwm_profile_t` | 유지 |
+| profile enum value | `ZLINK_AUTO_HWM_PROFILE_COMPACT` | 추가. 저사양 환경과 메모리 절약 우선 |
 | profile enum value | `ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY` | 유지 |
 | profile enum value | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 유지 |
 | profile enum value | `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | 유지 |
@@ -137,6 +138,7 @@ profile enum은 유지한다.
 ```c
 typedef enum zlink_auto_hwm_profile_t
 {
+    ZLINK_AUTO_HWM_PROFILE_COMPACT = 0,
     ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
     ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
     ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3
@@ -147,17 +149,21 @@ typedef enum zlink_auto_hwm_profile_t
 
 ### 3.6 기본 HWM
 
-자동 HWM을 사용하지 않는 경우 기본 HWM은 기존 기본값 `1000`이다.
+자동 HWM은 기본으로 켜져 있고, 기본 profile은 `balanced`이다. 따라서 사용자가
+context에서 auto-HWM을 끄거나 소켓별 수동 HWM을 설정하지 않으면 profile 기반
+값이 적용된다.
+
+자동 HWM을 명시적으로 끄는 경우 기본 HWM은 기존 기본값 `1000`이다.
 
 ```text
 default SNDHWM = 1000
 default RCVHWM = 1000
 ```
 
-자동 HWM은 명시적으로 켰을 때 profile 기반 값으로 HWM을 설정한다.
-`ZLINK_CTX_AUTO_HWM_ENABLE_DFLT`는 `0`으로 바꾼다. 즉 새 기본 동작은 "기존 HWM
-1000 유지"이고, auto-HWM은 사용자가 선택하는 정책이다. sample, perf, binding
-문서는 이 opt-in 의미를 같은 방식으로 설명해야 한다.
+`ZLINK_CTX_AUTO_HWM_ENABLE_DFLT`는 `1`이다. 즉 새 기본 동작은 "auto-HWM
+balanced 적용"이고, 기존 HWM `1000`을 유지해야 하는 애플리케이션은
+`ZLINK_CTX_OPT_AUTO_HWM_ENABLE`을 `0`으로 설정해야 한다. sample, perf, binding
+문서는 이 기본 활성 의미를 같은 방식으로 설명해야 한다.
 
 ## 4. 기준 message unit
 
@@ -213,9 +219,11 @@ profile_queue_envelope =
 
 | Socket group | Profile | Basis unit | SNDHWM | RCVHWM | 의도 |
 |---|---|---:|---:|---:|---|
+| non-STREAM | `compact` | 4096 B | 64 | 64 | 저사양 환경과 메모리 절약 우선 |
 | non-STREAM | `low_latency` | 4096 B | 128 | 128 | queue 체류 시간을 짧게 유지 |
 | non-STREAM | `balanced` | 4096 B | 256 | 256 | latency와 throughput 균형 |
 | non-STREAM | `throughput` | 4096 B | 512 | 512 | burst 흡수와 처리량 우선 |
+| STREAM | `compact` | 1024 B | 8 | 8 | 수천 client에서 메모리 사용을 더 낮게 유지 |
 | STREAM | `low_latency` | 1024 B | 16 | 16 | 수천 client에서 낮은 메모리와 짧은 queue 유지 |
 | STREAM | `balanced` | 1024 B | 64 | 64 | 일반적인 1:1 stream 처리 기준 |
 | STREAM | `throughput` | 1024 B | 256 | 256 | stream burst 흡수, 일반 소켓보다 낮은 envelope 유지 |
@@ -227,17 +235,17 @@ profile_queue_envelope =
 역할별로 같은 profile 안에서도 queue 깊이를 다르게 둘 수 있다. 초기 구현 기준은
 아래와 같다.
 
-| Policy class | non-STREAM low_latency | non-STREAM balanced | non-STREAM throughput |
-|---|---:|---:|---:|
-| `fanout` / `spot_data` | 128 | 256 | 512 |
-| `routed` | 128 | 256 | 512 |
-| `peer_queue` | 128 | 256 | 512 |
-| `recv_ingress` | 128 | 256 | 512 |
-| `control` | 16 | 16 | 32 |
+| Policy class | non-STREAM compact | non-STREAM low_latency | non-STREAM balanced | non-STREAM throughput |
+|---|---:|---:|---:|---:|
+| `fanout` / `spot_data` | 64 | 128 | 256 | 512 |
+| `routed` | 64 | 128 | 256 | 512 |
+| `peer_queue` | 64 | 128 | 256 | 512 |
+| `recv_ingress` | 64 | 128 | 256 | 512 |
+| `control` | 8 | 16 | 16 | 32 |
 
-| Policy class | STREAM low_latency | STREAM balanced | STREAM throughput |
-|---|---:|---:|---:|
-| `stream` | 16 | 64 | 256 |
+| Policy class | STREAM compact | STREAM low_latency | STREAM balanced | STREAM throughput |
+|---|---:|---:|---:|---:|
+| `stream` | 8 | 16 | 64 | 256 |
 
 STREAM은 일반 message socket보다 낮은 HWM을 사용한다. 이유는 STREAM이 fanout
 socket이 아니라 사용자 connection과 1:1로 붙는 경우가 많고, 기본 운영 규모가
@@ -264,9 +272,11 @@ scaled_hwm =
 
 | Socket group | Profile | Min HWM | Max HWM |
 |---|---|---:|---:|
+| non-STREAM | `compact` | 1 | 256 |
 | non-STREAM | `low_latency` | 1 | 512 |
 | non-STREAM | `balanced` | 1 | 1024 |
 | non-STREAM | `throughput` | 1 | 4096 |
+| STREAM | `compact` | 1 | 32 |
 | STREAM | `low_latency` | 1 | 64 |
 | STREAM | `balanced` | 1 | 128 |
 | STREAM | `throughput` | 1 | 512 |
@@ -638,19 +648,21 @@ stream_queue_memory =
 | deprecated memory budget option set/get | deprecated 선택 시 성공하더라도 HWM 계산에 영향 없음 |
 | removed bootstrap option set/get | 제거 시 `EINVAL` 또는 해당 binding의 config error 반환 |
 | deprecated bootstrap option set/get | deprecated 선택 시 성공하더라도 HWM 계산에 영향 없음 |
-| profile set/get | `low_latency`, `balanced`, `throughput` round-trip 성공 |
+| profile set/get | `compact`, `low_latency`, `balanced`, `throughput` round-trip 성공 |
 | invalid profile value | `EINVAL` 또는 binding별 config error |
-| auto-HWM disabled default | 기본 socket HWM이 `1000`으로 유지 |
-| auto-HWM enabled opt-in | profile table 값이 적용 |
+| auto-HWM enabled default | 기본 profile `balanced`의 profile table 값이 적용 |
+| auto-HWM explicitly disabled | 기본 socket HWM이 `1000`으로 유지 |
 
 ### 12.2 planner 공식
 
 | 테스트 | 기대 결과 |
 |---|---|
 | non-STREAM balanced 기본 | `4096 B` 기준 `SNDHWM=256`, `RCVHWM=256` |
+| non-STREAM compact 기본 | `4096 B` 기준 `64` |
 | non-STREAM low_latency 기본 | `4096 B` 기준 `128` |
 | non-STREAM throughput 기본 | `4096 B` 기준 `512` |
 | STREAM balanced 기본 | `1024 B` 기준 `64` |
+| STREAM compact 기본 | `1024 B` 기준 `8` |
 | STREAM low_latency 기본 | `1024 B` 기준 `16` |
 | STREAM throughput 기본 | `1024 B` 기준 `256` |
 | non-STREAM 64 KiB message unit | `ceil(256 * 4096 / 65536) = 16` |

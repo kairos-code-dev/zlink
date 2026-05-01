@@ -40,6 +40,7 @@ type ContextOptions struct {
 type AutoHwmProfile int
 
 const (
+	AutoHwmProfileCompact    AutoHwmProfile = AutoHwmProfile(C.ZLINK_AUTO_HWM_PROFILE_COMPACT)
 	AutoHwmProfileLowLatency AutoHwmProfile = AutoHwmProfile(C.ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY)
 	AutoHwmProfileBalanced   AutoHwmProfile = AutoHwmProfile(C.ZLINK_AUTO_HWM_PROFILE_BALANCED)
 	AutoHwmProfileThroughput AutoHwmProfile = AutoHwmProfile(C.ZLINK_AUTO_HWM_PROFILE_THROUGHPUT)

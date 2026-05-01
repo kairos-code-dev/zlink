@@ -9,11 +9,11 @@ use zlink::*;
 fn context_option_auto_hwm_profile() {
     let ctx = Context::new().unwrap();
     ctx.options()
-        .set_auto_hwm_profile(AutoHwmProfile::Throughput)
+        .set_auto_hwm_profile(AutoHwmProfile::Compact)
         .unwrap();
     assert_eq!(
         ctx.options().auto_hwm_profile().unwrap(),
-        AutoHwmProfile::Throughput
+        AutoHwmProfile::Compact
     );
 }
 

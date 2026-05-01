@@ -71,7 +71,8 @@ SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control로�
 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지다. 두 admission 채널의 기본 profile은
-balanced이며 HWM `16`으로 해석된다. low latency는 `8`, throughput은 `32`다.
+balanced이며 HWM `16`으로 해석된다. compact는 `4`, low latency는 `8`,
+throughput은 `32`다.
 양수 HWM을 직접 설정하면 해당 채널 profile 값보다 우선한다. 숫자 HWM에 `0`을
 설정하면 override를 지우고 profile 값으로 돌아간다. 음수와 알 수 없는 profile은
 `EINVAL`로 실패한다.

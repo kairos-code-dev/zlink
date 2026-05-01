@@ -236,7 +236,7 @@ Unsupported/changed:
 
 Defaults currently used by STREAM internals:
 - `ZLINK_OPT_BACKLOG`: `65536`
-- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: `1000`, or STREAM profile value when context auto-HWM is enabled
+- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: STREAM profile value from the default balanced auto-HWM policy, or `1000` when context auto-HWM is disabled
 - `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`: compatibility default `262144` when unset
 - STREAM batch size default: `4096`
 - STREAM read headroom default: `64`

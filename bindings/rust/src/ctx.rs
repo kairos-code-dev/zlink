@@ -12,6 +12,7 @@ use crate::socket::{
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AutoHwmProfile {
+    Compact,
     LowLatency,
     Balanced,
     Throughput,
@@ -20,6 +21,9 @@ pub enum AutoHwmProfile {
 impl AutoHwmProfile {
     pub(crate) fn to_raw(self) -> i32 {
         match self {
+            AutoHwmProfile::Compact => {
+                ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_COMPACT as i32
+            }
             AutoHwmProfile::LowLatency => {
                 ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY as i32
             }
@@ -34,6 +38,9 @@ impl AutoHwmProfile {
 
     fn from_raw(raw: i32) -> Result<Self, ConfigError> {
         match raw {
+            x if x == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_COMPACT as i32 => {
+                Ok(AutoHwmProfile::Compact)
+            }
             x if x == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY as i32 => {
                 Ok(AutoHwmProfile::LowLatency)
             }

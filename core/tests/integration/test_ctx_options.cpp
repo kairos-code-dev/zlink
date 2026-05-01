@@ -278,12 +278,12 @@ void test_ctx_option_auto_hwm_defaults ()
     size_t hwm_size = sizeof (hwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (128, hwm);
+    TEST_ASSERT_EQUAL_INT (256, hwm);
     hwm = -1;
     hwm_size = sizeof (hwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (128, hwm);
+    TEST_ASSERT_EQUAL_INT (256, hwm);
     test_context_socket_close (router);
 }
 
@@ -314,6 +314,13 @@ void test_ctx_option_auto_hwm_round_trip ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
       get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+      ZLINK_AUTO_HWM_PROFILE_COMPACT));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_AUTO_HWM_PROFILE_COMPACT,
+      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                     NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
+      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
       ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY));
     TEST_ASSERT_EQUAL_INT (
       ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY,
@@ -338,7 +345,7 @@ void test_ctx_option_auto_hwm_round_trip ()
                      NULL));
 }
 
-void test_ctx_option_auto_hwm_enabled_opt_in_applies_profile ()
+void test_ctx_option_auto_hwm_enabled_applies_profile ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
       get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
@@ -352,12 +359,12 @@ void test_ctx_option_auto_hwm_enabled_opt_in_applies_profile ()
     size_t hwm_size = sizeof (hwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (128, hwm);
+    TEST_ASSERT_EQUAL_INT (256, hwm);
     hwm = -1;
     hwm_size = sizeof (hwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (128, hwm);
+    TEST_ASSERT_EQUAL_INT (256, hwm);
 
     test_context_socket_close (router);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -513,7 +520,7 @@ int main (void)
     RUN_TEST (test_ctx_option_blocky);
     RUN_TEST (test_ctx_option_auto_hwm_defaults);
     RUN_TEST (test_ctx_option_auto_hwm_round_trip);
-    RUN_TEST (test_ctx_option_auto_hwm_enabled_opt_in_applies_profile);
+    RUN_TEST (test_ctx_option_auto_hwm_enabled_applies_profile);
     RUN_TEST (test_socket_option_auto_hwm_msg_unit_round_trip);
     RUN_TEST (test_socket_option_auto_hwm_stream_default_msg_unit);
     RUN_TEST (test_socket_option_auto_hwm_buffer_accounting);

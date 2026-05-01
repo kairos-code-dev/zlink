@@ -11,6 +11,7 @@ test('public flag and result enums stay frozen', () => {
     assert.equal(zlink.SubmitResult.NotSupported, 7);
     assert.equal(zlink.RequestResult.ProtocolError, 104);
     assert.equal(zlink.RecvResult.NoData, 201);
+    assert.equal(zlink.AutoHwmProfile.Compact, 0);
     assert.equal(zlink.AutoHwmProfile.LowLatency, 1);
     assert.equal(zlink.AutoHwmProfile.Balanced, 2);
     assert.equal(zlink.AutoHwmProfile.Throughput, 3);

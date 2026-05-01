@@ -60,8 +60,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | Setting | Default | Description |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | 1000 | Replaced by profile-based values only when context auto-HWM is enabled. Manual settings override it |
-| `ZLINK_OPT_RCVHWM` | 1000 | Replaced by profile-based values only when context auto-HWM is enabled. Manual settings override it |
+| `ZLINK_OPT_SNDHWM` | automatic | Chosen from the default balanced auto-HWM profile. Manual settings override it |
+| `ZLINK_OPT_RCVHWM` | automatic | Chosen from the default balanced auto-HWM profile. Manual settings override it |
 
 ### Backpressure Behavior
 
@@ -107,13 +107,15 @@ sequenceDiagram
 
 ### Practical HWM Recommendations
 
-The default context settings keep auto-HWM disabled, so sockets use HWM `1000`.
-Enable auto-HWM when you want profile-based per-connection queue depths.
+The default context settings enable auto-HWM with the balanced profile, so
+sockets use profile-based queue depths unless the application disables
+auto-HWM or sets manual HWM values.
 
 Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
 
 | Profile | Use case |
 |---|---|
+| `ZLINK_AUTO_HWM_PROFILE_COMPACT` | Resource-constrained deployments or lower memory use |
 | `ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY` | Short queues and faster backpressure |
 | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default production tuning |
 | `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | Larger queues for throughput-oriented tests or explicit tuning |
@@ -121,7 +123,7 @@ Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
 For balanced planning, a useful starting point for total queue memory is:
 
 ```text
-non_stream_connections * 128 * 4096
+non_stream_connections * 256 * 4096
 + stream_connections * 64 * 1024
 + control_connections * 16 * 4096
 ```

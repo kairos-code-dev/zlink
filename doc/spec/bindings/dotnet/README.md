@@ -163,6 +163,7 @@ typed properties for them.
 ```csharp
 public enum AutoHwmProfile
 {
+    Compact = 0,
     LowLatency = 1,
     Balanced = 2,
     Throughput = 3

@@ -88,6 +88,7 @@ const ContextOption = Object.freeze({
 } as const);
 
 export const AutoHwmProfile = Object.freeze({
+  Compact: 0,
   LowLatency: 1,
   Balanced: 2,
   Throughput: 3

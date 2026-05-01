@@ -1146,7 +1146,6 @@ core/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_MULTI_HWM` | debug 전용 공통 HWM override. allow flag가 켜진 경우에만 사용 | 비활성 |
 | `PERF_MULTI_SNDHWM` | debug 전용 송신 HWM override | 비활성 |
 | `PERF_MULTI_RCVHWM` | debug 전용 수신 HWM override | 비활성 |
-| `PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | context auto-HWM 전체 메모리 예산(MB). 미설정 시 core 기본값 사용 | core 기본값 |
 | `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |
 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
 | `PERF_MULTI_SERVICE_CLIENTS` | 서비스 클라이언트 수 상한 (0=제한 없음) | 0 |

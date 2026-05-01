@@ -182,6 +182,8 @@ void test_context_options ()
     zlink::context_options_t options = ctx.options ();
     options.blocky (false);
     assert (!options.blocky ());
+    options.autoHwmProfile (zlink::auto_hwm_profile::compact);
+    assert (options.autoHwmProfile () == zlink::auto_hwm_profile::compact);
     options.autoHwmProfile (zlink::auto_hwm_profile::throughput);
     assert (options.autoHwmProfile () == zlink::auto_hwm_profile::throughput);
 

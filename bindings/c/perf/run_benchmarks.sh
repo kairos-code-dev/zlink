@@ -130,7 +130,7 @@ Options:
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
-  --auto-hwm-profile NAME     Set auto-HWM profile: low_latency, balanced, throughput.
+  --auto-hwm-profile NAME     Set auto-HWM profile: compact, low_latency, balanced, throughput.
 
 Notes:
   - result is saved under results/single/report/ as
@@ -651,10 +651,10 @@ if [[ -n "${RESULTS_DIR}" ]]; then
 fi
 
 case "${CTX_AUTO_HWM_PROFILE}" in
-  ""|low_latency|low-latency|balanced|throughput)
+  ""|compact|low_latency|low-latency|balanced|throughput)
     ;;
   *)
-    echo "Error: --auto-hwm-profile must be low_latency, balanced, or throughput." >&2
+    echo "Error: --auto-hwm-profile must be compact, low_latency, balanced, or throughput." >&2
     exit 1
     ;;
 esac

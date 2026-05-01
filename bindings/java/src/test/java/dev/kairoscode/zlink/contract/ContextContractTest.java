@@ -39,8 +39,8 @@ public class ContextContractTest {
             assertDoesNotThrow(() -> options.blocky(false));
             assertFalse(options.blocky());
             assertDoesNotThrow(
-                () -> options.autoHwmProfile(AutoHwmProfile.THROUGHPUT));
-            assertEquals(AutoHwmProfile.THROUGHPUT, options.autoHwmProfile());
+                () -> options.autoHwmProfile(AutoHwmProfile.COMPACT));
+            assertEquals(AutoHwmProfile.COMPACT, options.autoHwmProfile());
             assertTrue(options.msgTSize() > 0);
         }
     }

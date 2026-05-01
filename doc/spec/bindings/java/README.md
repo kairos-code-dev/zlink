@@ -127,6 +127,7 @@ public final class ContextOptions {
 
 ```java
 public enum AutoHwmProfile {
+    COMPACT,
     LOW_LATENCY,
     BALANCED,
     THROUGHPUT

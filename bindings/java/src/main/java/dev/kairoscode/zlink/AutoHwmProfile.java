@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink;
 
 public enum AutoHwmProfile {
+    COMPACT(0),
     LOW_LATENCY(1),
     BALANCED(2),
     THROUGHPUT(3);

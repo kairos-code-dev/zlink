@@ -106,7 +106,7 @@ helper API를 호출하기 전까지는 인증서 경로와 CA 경로가 비어 
   auto-HWM에서 온다. context auto-HWM을 끄면 기존 고정값 `1000`을 사용한다.
   수동 설정이 있으면 자동값보다 우선한다.
 - `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 planner profile을 고른다. 공개 값은
-  `LOW_LATENCY`, `BALANCED`, `THROUGHPUT`이고 기본값은 `BALANCED`다.
+  `COMPACT`, `LOW_LATENCY`, `BALANCED`, `THROUGHPUT`이고 기본값은 `BALANCED`다.
 - deprecated context memory budget과 bootstrap context 옵션은 호환을 위해 남긴
   no-op 필드다. 이 옵션들은 소켓 기본값이나 HWM 계산에 영향을 주지 않는다.
 - `auto_hwm_effective_message_bytes`는 소켓별 값이다.

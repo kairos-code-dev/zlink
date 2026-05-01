@@ -34,6 +34,8 @@ inline int resolve_single_ctx_auto_hwm_profile()
     if (!value || !*value)
         return ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
 
+    if (std::strcmp(value, "compact") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_COMPACT;
     if (std::strcmp(value, "low_latency") == 0
         || std::strcmp(value, "low-latency") == 0)
         return ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY;

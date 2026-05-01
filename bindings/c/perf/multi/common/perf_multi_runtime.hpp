@@ -120,6 +120,8 @@ inline int bench_ctx_auto_hwm_profile()
     if (!value || !*value)
         return ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
 
+    if (std::strcmp(value, "compact") == 0)
+        return ZLINK_AUTO_HWM_PROFILE_COMPACT;
     if (std::strcmp(value, "low_latency") == 0
         || std::strcmp(value, "low-latency") == 0)
         return ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY;
@@ -166,6 +168,8 @@ inline const char *perf_auto_hwm_role_name(uint32_t role_)
 inline const char *perf_auto_hwm_profile_name(uint32_t profile_)
 {
     switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+            return "compact";
         case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
             return "low_latency";
         case ZLINK_AUTO_HWM_PROFILE_BALANCED:

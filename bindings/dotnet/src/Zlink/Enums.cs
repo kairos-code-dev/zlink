@@ -34,6 +34,7 @@ internal enum ContextOption
 
 public enum AutoHwmProfile
 {
+    Compact = 0,
     LowLatency = 1,
     Balanced = 2,
     Throughput = 3

@@ -119,6 +119,7 @@ auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 profile 기반 queue 
 
 | Profile | 용도 |
 |---|---|
+| `ZLINK_AUTO_HWM_PROFILE_COMPACT` | 저사양 환경이나 메모리 절약이 우선인 경우 |
 | `ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY` | 큐를 짧게 두고 backpressure를 빨리 건다 |
 | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 기본 운영 튜닝 |
 | `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | 처리량 중심 테스트나 명시적 튜닝 |
@@ -126,7 +127,7 @@ auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 profile 기반 queue 
 `balanced` 기준 전체 queue 메모리 시작점은 아래처럼 잡을 수 있다.
 
 ```text
-non_stream_connections * 128 * 4096
+non_stream_connections * 256 * 4096
 + stream_connections * 64 * 1024
 + control_connections * 16 * 4096
 ```

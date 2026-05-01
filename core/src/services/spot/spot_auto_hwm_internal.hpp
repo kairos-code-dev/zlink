@@ -18,6 +18,8 @@ inline uint32_t spot_routed_small_message_cap (
   zlink_auto_hwm_profile_t profile_)
 {
     switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+            return 32;
         case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
             return 64;
         case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:

@@ -414,7 +414,6 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
 | `PERF_SINGLE_SNDBUF` | debug 전용 `SNDBUF` override | 비활성 |
 | `PERF_SINGLE_RCVBUF` | debug 전용 `RCVBUF` override | 비활성 |
 | `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES` | single runner 의 수동 HWM/SNDBUF/RCVBUF override 허용 플래그 | 0 |
-| `PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | context auto-HWM 전체 메모리 예산(MB). 미설정 시 core 기본값 사용 | core 기본값 |
 | `PERF_SINGLE_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
 | `PERF_SINGLE_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_SINGLE_PUBSUB_RCVTIMEO_MS` | PUBSUB 수신 타임아웃(ms) | `PERF_SINGLE_RCVTIMEO_MS` |

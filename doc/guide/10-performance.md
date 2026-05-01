@@ -115,6 +115,7 @@ Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
 
 | Profile | Use case |
 |---|---|
+| `ZLINK_AUTO_HWM_PROFILE_COMPACT` | Resource-constrained deployments or lower memory use |
 | `ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY` | Short queues and faster backpressure |
 | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default production tuning |
 | `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | Larger queues for throughput-oriented tests or explicit tuning |
@@ -122,7 +123,7 @@ Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
 For balanced planning, a useful starting point for total queue memory is:
 
 ```text
-non_stream_connections * 128 * 4096
+non_stream_connections * 256 * 4096
 + stream_connections * 64 * 1024
 + control_connections * 16 * 4096
 ```

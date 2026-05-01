@@ -318,6 +318,16 @@ void test_auto_hwm_v2_profile_caps_and_unit_budgets ()
     TEST_ASSERT_EQUAL_INT (4, socket_plan.sndhwm);
 
     zlink::auto_hwm_context_plan_make (
+      true, ZLINK_AUTO_HWM_PROFILE_COMPACT, &context_plan);
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 100,
+      100, &socket_plan, 262144, -1, -1, false, false,
+      zlink::auto_hwm_scope_none, 1, true);
+    TEST_ASSERT_EQUAL_UINT64 (64u * 4096u, socket_plan.unit_budget_bytes);
+    TEST_ASSERT_EQUAL_UINT32 (256u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (1, socket_plan.sndhwm);
+
+    zlink::auto_hwm_context_plan_make (
       true, ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY, &context_plan);
     zlink::auto_hwm_socket_plan_for_role (
       context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 100,
@@ -342,12 +352,18 @@ void test_auto_hwm_v2_profile_caps_and_unit_budgets ()
 void test_auto_hwm_pc_profile_table_and_message_unit_scaling ()
 {
     TEST_ASSERT_EQUAL_INT (
+      64, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+                       ZLINK_AUTO_HWM_PROFILE_COMPACT, 0));
+    TEST_ASSERT_EQUAL_INT (
       256, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 0));
     TEST_ASSERT_EQUAL_INT (
       256, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096));
 
+    TEST_ASSERT_EQUAL_INT (
+      64, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
+                       ZLINK_AUTO_HWM_PROFILE_COMPACT, 0));
     TEST_ASSERT_EQUAL_INT (
       128, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
                        ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY, 0));
@@ -357,6 +373,9 @@ void test_auto_hwm_pc_profile_table_and_message_unit_scaling ()
     TEST_ASSERT_EQUAL_INT (
       512, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
                         ZLINK_AUTO_HWM_PROFILE_THROUGHPUT, 0));
+    TEST_ASSERT_EQUAL_INT (
+      8, planned_hwm (zlink::auto_hwm_role_stream, ZLINK_CORE_SOCKET_STREAM,
+                      ZLINK_AUTO_HWM_PROFILE_COMPACT, 0));
     TEST_ASSERT_EQUAL_INT (
       16, planned_hwm (zlink::auto_hwm_role_stream, ZLINK_CORE_SOCKET_STREAM,
                        ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY, 0));
@@ -535,7 +554,7 @@ void test_spot_node_hwm_options_round_trip_public_api ()
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
-    int router_profile = ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY;
+    int router_profile = ZLINK_AUTO_HWM_PROFILE_COMPACT;
     int pubsub_profile = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
     int router_hwm = 111;
     int pubsub_hwm = 222;
@@ -556,7 +575,7 @@ void test_spot_node_hwm_options_round_trip_public_api ()
     size_t value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
       node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY, value);
+    TEST_ASSERT_EQUAL_INT (ZLINK_AUTO_HWM_PROFILE_COMPACT, value);
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
       node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE, &value, &value_size));
@@ -576,7 +595,7 @@ void test_spot_node_hwm_options_round_trip_public_api ()
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
       node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (8, value);
+    TEST_ASSERT_EQUAL_INT (4, value);
 
     int invalid = -1;
     TEST_ASSERT_EQUAL_INT (

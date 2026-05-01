@@ -51,11 +51,11 @@ func TestCommonTypedOptions(t *testing.T) {
 	if got, err := opts.Blocky(); err != nil || got {
 		t.Fatalf("Blocky() = (%v, %v), want (false, nil)", got, err)
 	}
-	if err := opts.SetAutoHwmProfile(zlink.AutoHwmProfileThroughput); err != nil {
+	if err := opts.SetAutoHwmProfile(zlink.AutoHwmProfileCompact); err != nil {
 		t.Fatalf("SetAutoHwmProfile() error = %v", err)
 	}
-	if got, err := opts.AutoHwmProfile(); err != nil || got != zlink.AutoHwmProfileThroughput {
-		t.Fatalf("AutoHwmProfile() = (%v, %v), want (throughput, nil)", got, err)
+	if got, err := opts.AutoHwmProfile(); err != nil || got != zlink.AutoHwmProfileCompact {
+		t.Fatalf("AutoHwmProfile() = (%v, %v), want (compact, nil)", got, err)
 	}
 }
 

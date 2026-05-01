@@ -82,6 +82,8 @@ inline int spot_node_admission_hwm_for_profile (
   zlink_auto_hwm_profile_t profile_)
 {
     switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+            return 4;
         case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
             return 8;
         case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
@@ -94,7 +96,8 @@ inline int spot_node_admission_hwm_for_profile (
 
 inline bool spot_node_valid_hwm_profile (int profile_)
 {
-    return profile_ == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
+    return profile_ == ZLINK_AUTO_HWM_PROFILE_COMPACT
+           || profile_ == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
            || profile_ == ZLINK_AUTO_HWM_PROFILE_BALANCED
            || profile_ == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
 }

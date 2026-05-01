@@ -138,6 +138,7 @@ methods for them.
 
 ```rust
 pub enum AutoHwmProfile {
+    Compact,
     LowLatency,
     Balanced,
     Throughput,

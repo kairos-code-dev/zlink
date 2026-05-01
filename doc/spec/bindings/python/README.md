@@ -120,6 +120,7 @@ typed properties for them.
 
 ```python
 class AutoHwmProfile(IntEnum):
+    COMPACT = 0
     LOW_LATENCY = 1
     BALANCED = 2
     THROUGHPUT = 3

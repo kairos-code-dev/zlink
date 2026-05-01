@@ -107,8 +107,8 @@ The helper call itself supplies policy values such as
   context auto-HWM with the balanced profile. Disabling context auto-HWM uses
   the legacy fixed value `1000`. Manual settings override the automatic policy.
 - `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects the planner's profile. The public
-  values are `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT`; the default is
-  `BALANCED`.
+  values are `COMPACT`, `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT`; the
+  default is `BALANCED`.
 - The deprecated context memory-budget and bootstrap context options are
   no-op compatibility fields. They do not influence socket defaults or HWM.
 - `auto_hwm_effective_message_bytes` is socket-specific. It uses

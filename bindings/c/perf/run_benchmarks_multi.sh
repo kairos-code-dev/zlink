@@ -362,7 +362,7 @@ Options:
   --server-bind-port N
                          Override PERF_MULTI_SERVER_BIND_PORT (default: 0=auto).
   --auto-hwm-profile NAME
-                         Set auto-HWM profile: low_latency, balanced, throughput.
+                         Set auto-HWM profile: compact, low_latency, balanced, throughput.
 
 Environment:
   PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
@@ -900,10 +900,10 @@ if ! is_uint "${SERVER_BIND_PORT}" || (( SERVER_BIND_PORT > 65535 )); then
   exit 1
 fi
 case "${CTX_AUTO_HWM_PROFILE}" in
-  ""|low_latency|low-latency|balanced|throughput)
+  ""|compact|low_latency|low-latency|balanced|throughput)
     ;;
   *)
-    echo "Error: --auto-hwm-profile must be low_latency, balanced, or throughput." >&2
+    echo "Error: --auto-hwm-profile must be compact, low_latency, balanced, or throughput." >&2
     exit 1
     ;;
 esac

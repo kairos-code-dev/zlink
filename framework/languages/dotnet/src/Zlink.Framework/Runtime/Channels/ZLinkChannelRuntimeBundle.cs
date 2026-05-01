@@ -10,12 +10,17 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 {
     private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
 
-    public ZLinkChannelRuntimeBundle(IZLinkBackendSocket socket)
+    public ZLinkChannelRuntimeBundle(
+        IZLinkBackendSocket socket,
+        ZLinkAsyncSubmitter? submitter = null)
     {
         Socket = socket;
+        Submitter = submitter;
     }
 
     public IZLinkBackendSocket Socket { get; }
+
+    public ZLinkAsyncSubmitter? Submitter { get; }
 
     public IZLinkBackendDiscovery? Discovery { get; set; }
 
@@ -53,6 +58,11 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Submitter is not null)
+        {
+            await Submitter.DisposeAsync();
+        }
+
         if (Discovery is not null)
         {
             await Discovery.DisposeAsync();

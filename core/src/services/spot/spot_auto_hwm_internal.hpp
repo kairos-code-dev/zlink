@@ -73,11 +73,9 @@ inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
     const zlink_auto_hwm_profile_t profile =
       ctx_ ? ctx_->auto_hwm_profile () : ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
     auto_hwm_context_plan_t context_plan;
-    auto_hwm_context_plan_from_budget_mb (
-      ctx_ && ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0,
-      ctx_ ? ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB)
-           : ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT,
-      &context_plan, profile);
+    auto_hwm_context_plan_make (
+      ctx_ && ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0, profile,
+      &context_plan);
 
     auto_hwm_socket_plan_t socket_plan;
     const auto_hwm_scope_t scope =
@@ -89,15 +87,11 @@ inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
           std::max<size_t> (policy_.managed_connections,
                             policy_.active_connections),
           1u);
-    const uint32_t planning_bootstrap =
-      static_cast<uint32_t> (
-        ctx_ ? ctx_->auto_hwm_spot_bootstrap ()
-             : ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT);
     auto_hwm_socket_plan_for_role (
       context_plan, policy_.role, policy_.socket_type,
       policy_.managed_connections, policy_.active_connections, &socket_plan,
       policy_.message_unit_bytes, -1, -1, false, false, scope, scope_count,
-      true, planning_bootstrap);
+      true);
     spot_auto_hwm_internal::apply_spot_routed_latency_floor (&socket_plan,
                                                              profile);
     return socket_plan;

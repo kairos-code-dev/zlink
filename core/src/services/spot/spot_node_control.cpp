@@ -7,7 +7,7 @@
 #include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
-#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_mesh_pub_hwm.hpp"
 #include "services/spot/spot_node_control_policy.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"

@@ -48,13 +48,13 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
             null,
             null);
 
-        using var message = ZLinkEnvelopeCodec.Encode(header, _message, _message?.GetType());
-        if (!dealer.Send(message, SendFlags.None))
-        {
-            throw new InvalidOperationException("ZLink send submit failed.");
-        }
-
-        return ValueTask.CompletedTask;
+        var message = ZLinkEnvelopeCodec.Encode(header, _message, _message?.GetType());
+        return (bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
+            .SubmitAsync(
+                message,
+                pending => dealer.Send(pending, SendFlags.DontWait),
+                cancellationToken);
     }
 }
 
@@ -109,23 +109,53 @@ internal sealed class ZLinkRequestCall<TMessage> : IZLinkRequestCall
             null,
             null,
             null);
-        using var message = ZLinkEnvelopeCodec.Encode(header, _request, _request?.GetType() ?? typeof(TMessage));
-        var reply = await dealer.RequestAsync(message, timeout, cancellationToken).ConfigureAwait(false);
+        var message = ZLinkEnvelopeCodec.Encode(header, _request, _request?.GetType() ?? typeof(TMessage));
+        return await (bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+            .SubmitRequestAsync<TReply>(
+                message,
+                (pending, complete, fail) => dealer.Request(
+                    pending,
+                    (result, reply) => CompleteReply(result, reply, complete, fail),
+                    SendFlags.DontWait,
+                    timeout),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static void CompleteReply<TReply>(
+        RequestResult result,
+        IReadOnlyList<Message> reply,
+        Action<TReply> complete,
+        Action<Exception> fail)
+    {
         try
         {
+            if (result != RequestResult.Ok)
+            {
+                fail(new TimeoutException($"ZLink request failed with result '{result}'."));
+                return;
+            }
+
             if (reply.Count == 0)
             {
-                throw new InvalidOperationException("ZLink request reply is empty.");
+                fail(new InvalidOperationException("ZLink request reply is empty."));
+                return;
             }
 
             var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply[0]);
             if (replyHeader.Kind == ZLinkMessageKind.Error)
             {
-                throw new InvalidOperationException(replyHeader.ErrorMessage ?? "ZLink request failed.");
+                fail(new InvalidOperationException(replyHeader.ErrorMessage ?? "ZLink request failed."));
+                return;
             }
 
-            return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply[0], typeof(TReply))
-                ?? throw new InvalidOperationException("ZLink request reply body is null.");
+            complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply[0], typeof(TReply))
+                ?? throw new InvalidOperationException("ZLink request reply body is null."));
+        }
+        catch (Exception exception)
+        {
+            fail(exception);
         }
         finally
         {
@@ -179,12 +209,12 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
             _topic,
             null,
             null);
-        using var message = ZLinkEnvelopeCodec.Encode(header, _message, _message?.GetType());
-        if (!publisher.Publish(_topic, message, SendFlags.None))
-        {
-            throw new InvalidOperationException("ZLink publish submit failed.");
-        }
-
-        return ValueTask.CompletedTask;
+        var message = ZLinkEnvelopeCodec.Encode(header, _message, _message?.GetType());
+        return (bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))
+            .SubmitAsync(
+                message,
+                pending => publisher.Publish(_topic, pending, SendFlags.DontWait),
+                cancellationToken);
     }
 }

@@ -92,8 +92,8 @@ Key options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ZLINK_OPT_SNDHWM` | int | automatic | Chosen by the context auto-HWM policy from the socket role and connection count. Manual settings override it |
-| `ZLINK_OPT_RCVHWM` | int | automatic | Chosen by the context auto-HWM policy from the socket role and connection count. Manual settings override it |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | If context auto-HWM is enabled, chosen from profile, socket role, and message unit. Manual settings override it |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | If context auto-HWM is enabled, chosen from profile, socket role, and message unit. Manual settings override it |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on socket close (ms) |

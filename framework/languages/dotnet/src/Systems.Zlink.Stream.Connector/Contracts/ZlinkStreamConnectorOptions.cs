@@ -23,8 +23,6 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
-    public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(5);
-
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(10);

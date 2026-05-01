@@ -74,12 +74,6 @@ public sealed class ZlinkStreamJsonSendBuilder
         return this;
     }
 
-    public ZlinkStreamJsonSendBuilder WithTimeout(TimeSpan timeout)
-    {
-        _inner.WithTimeout(timeout);
-        return this;
-    }
-
     public ZlinkStreamJsonSendBuilder Compress()
     {
         _inner.Compress();

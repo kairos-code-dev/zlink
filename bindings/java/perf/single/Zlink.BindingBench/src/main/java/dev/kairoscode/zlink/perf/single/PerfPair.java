@@ -113,6 +113,7 @@ final class PerfPair {
             if (failure.get() != null) {
                 throw new IllegalStateException("pair sender failed", failure.get());
             }
+            ctx.shutdown();
             return metrics.finishSingle(config);
         }
     }

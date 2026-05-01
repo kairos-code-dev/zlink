@@ -6,7 +6,7 @@
 #include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
-#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_mesh_pub_hwm.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -27,6 +27,7 @@ namespace
 static const int spot_data_plane_hwm_default = 0;
 static const int spot_internal_ingress_rcvhwm_default = 0;
 static const int spot_internal_mesh_xsub_rcvhwm_default = 0;
+static const int spot_internal_peer_ctrl_sndhwm_default = 0;
 static const int spot_internal_peer_ctrl_rcvhwm_default = 0;
 static const int spot_internal_internal_router_rcvhwm_default = 0;
 static const int spot_internal_internal_router_sndhwm_default = 0;
@@ -233,6 +234,10 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
       ctx, auto_hwm_role_control, ZLINK_CORE_SOCKET_SUB, true,
       spot_internal_peer_ctrl_rcvhwm_default, connected_peer_count,
       active_peer_count);
+    int peer_ctrl_sndhwm = spot_internal_auto_hwm_default_hwm (
+      ctx, auto_hwm_role_control, ZLINK_CORE_SOCKET_PUB, false,
+      spot_internal_peer_ctrl_sndhwm_default, connected_peer_count,
+      active_peer_count);
     int internal_router_rcvhwm =
       routed_recv_hwm > 0 ? routed_recv_hwm
                           : spot_internal_auto_hwm_default_hwm (
@@ -273,6 +278,8 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                 mesh_pub_sndhwm, &mesh_pub_sndhwm);
     (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_PEER_CTRL_RCVHWM",
                                   peer_ctrl_rcvhwm, &peer_ctrl_rcvhwm);
+    (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_PEER_CTRL_SNDHWM",
+                                  peer_ctrl_sndhwm, &peer_ctrl_sndhwm);
     (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_NODE_ROUTER_RCVHWM",
                                   internal_router_rcvhwm, &internal_router_rcvhwm);
     (void) read_env_hwm_override ("ZLINK_SPOT_INTERNAL_NODE_ROUTER_SNDHWM",
@@ -375,9 +382,13 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
         state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                         sizeof (neg_one));
     }
-    if (state_->peer_ctrl_pub)
+    if (state_->peer_ctrl_pub) {
+        state_->peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                            &peer_ctrl_sndhwm,
+                                            sizeof (peer_ctrl_sndhwm));
         state_->peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
                                             &neg_one, sizeof (neg_one));
+    }
     if (state_->peer_ctrl_sub) {
         state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
                                             &peer_ctrl_rcvhwm,
@@ -410,7 +421,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
         state_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
                                               &neg_one, sizeof (neg_one));
     }
-    state_->mesh_pub_budget.current_sndhwm =
+    state_->mesh_pub_hwm.current_sndhwm =
       state_->mesh_pub
         && read_socket_int_option (state_->mesh_pub, ZLINK_INTERNAL_OPT_SNDHWM,
                                    &mesh_pub_sndhwm)
@@ -741,7 +752,7 @@ void spot_data_plane_t::teardown_runtime (
         runtime_->bound_endpoint.clear ();
     }
     (void) runtime_->clear_external_route_ids ();
-    spot_mesh_pub_budget_t::reset_runtime_state (runtime_);
+    spot_mesh_pub_hwm_t::reset_runtime_state (runtime_);
     spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (runtime_);
 }
 }

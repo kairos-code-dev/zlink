@@ -241,23 +241,13 @@ zlink::auto_hwm_socket_plan_t zlink::socket_base_t::prepare_auto_hwm_socket_plan
         }
     }
 
-    uint32_t planning_bootstrap = 1u;
-    if (options.type == ZLINK_CORE_SOCKET_STREAM) {
-        planning_bootstrap =
-          static_cast<uint32_t> (get_ctx ()->auto_hwm_stream_bootstrap ());
-    } else if (_auto_hwm_scope != auto_hwm_scope_none) {
-        planning_bootstrap =
-          static_cast<uint32_t> (get_ctx ()->auto_hwm_spot_bootstrap ());
-    }
-
     auto_hwm_socket_plan_t plan;
     auto_hwm_socket_plan_prepare (
       role, options.type, managed_connections, managed_connections, &plan,
       options.auto_hwm_msg_unit_bytes, options.sndbuf, options.rcvbuf,
       _manual_sndbuf, _manual_rcvbuf, _auto_hwm_scope, _auto_hwm_scope_count,
-      true, planning_bootstrap);
+      true);
     plan.pending_messages = pending_messages;
-    plan.context_total_planning_count = context_.total_planning_count;
     return plan;
 }
 
@@ -326,11 +316,8 @@ void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
     }
 
     const bool enabled = ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0;
-    const int total_memory_budget_mb =
-      ctx->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB);
-    auto_hwm_context_plan_from_budget_mb (enabled, total_memory_budget_mb,
-                                          &_auto_hwm_context_plan,
-                                          ctx->auto_hwm_profile ());
+    auto_hwm_context_plan_make (enabled, ctx->auto_hwm_profile (),
+                                &_auto_hwm_context_plan);
     _auto_hwm_socket_plan = prepare_auto_hwm_socket_plan (_auto_hwm_context_plan);
     auto_hwm_context_finalize (&_auto_hwm_context_plan, &_auto_hwm_socket_plan,
                                1);

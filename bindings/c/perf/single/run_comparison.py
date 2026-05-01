@@ -843,10 +843,6 @@ def build_single_option_items(
         ("sndtimeo_ms", str(sndtimeo_ms)),
         ("rcvtimeo_ms", str(rcvtimeo_ms)),
         ("ctx_auto_hwm_enable", env_get("PERF_CTX_AUTO_HWM_ENABLE") or "core-default"),
-        (
-            "ctx_auto_hwm_total_memory_budget_mb",
-            env_get("PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB") or "core-default",
-        ),
         ("patterns", ",".join(patterns)),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),

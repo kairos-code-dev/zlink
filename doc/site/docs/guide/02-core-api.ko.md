@@ -1,3 +1,4 @@
+[English](02-core-api.md) | [한국어](02-core-api.ko.md)
 
 # Core C API 상세 가이드
 
@@ -17,7 +18,9 @@ void *ctx = zlink_ctx_new();
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
 
 /* Query */
-int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
+/* 조회 (error_out 는 성공 시 ZLINK_CONFIG_OK) */
+zlink_config_result_t err;
+int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS, &err);
 
 /* Terminate */
 zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
@@ -33,7 +36,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 ## 2. Socket API
 
-공개 socket handle API는 기본적으로 thread-safe다. 여러 thread에서
+공개 socket handle API는 기본적으로 스레드 안전(thread-safe)하다. 여러 thread에서
 같은 socket handle을 공유하여 send/recv/bind/connect 등을 호출할 수 있다.
 
 > 세부 threading 규칙은 [Thread Safety 가이드](11-thread-safety.ko.md)를 참고.
@@ -41,7 +44,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 ### 2.1 Socket 생성 및 닫기
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* ... use ... */
 zlink_close(socket);
 ```
@@ -50,14 +53,14 @@ zlink_close(socket);
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_PAIR` | 0x1001 | 1:1 bidirectional pair 소켓 |
-| `ZLINK_PUB` | 0x1002 | Publisher 소켓 |
-| `ZLINK_SUB` | 0x1003 | Subscriber 소켓 |
-| `ZLINK_DEALER` | 0x1004 | Async dealer 소켓 |
-| `ZLINK_ROUTER` | 0x1005 | Router 소켓 |
-| `ZLINK_XPUB` | 0x1006 | Extended publisher 소켓 |
-| `ZLINK_XSUB` | 0x1007 | Extended subscriber 소켓 |
-| `ZLINK_STREAM` | 0x1008 | Raw 소켓 |
+| `ZLINK_SOCKET_PAIR` | 0x1001 | 1:1 bidirectional pair 소켓 |
+| `ZLINK_SOCKET_PUB` | 0x1002 | Publisher 소켓 |
+| `ZLINK_SOCKET_SUB` | 0x1003 | Subscriber 소켓 |
+| `ZLINK_SOCKET_DEALER` | 0x1004 | Async dealer 소켓 |
+| `ZLINK_SOCKET_ROUTER` | 0x1005 | Router 소켓 |
+| `ZLINK_SOCKET_XPUB` | 0x1006 | Extended publisher 소켓 |
+| `ZLINK_SOCKET_XSUB` | 0x1007 | Extended subscriber 소켓 |
+| `ZLINK_SOCKET_STREAM` | 0x1008 | Raw 소켓 |
 
 ### 2.3 연결 관리
 
@@ -90,8 +93,8 @@ zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 자동 | Context auto HWM 정책이 소켓 역할과 연결 수를 기준으로 정함. 수동 설정 시 그 값이 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 | Context auto HWM 정책이 소켓 역할과 연결 수를 기준으로 정함. 수동 설정 시 그 값이 우선 |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | context auto-HWM을 켜면 profile, 소켓 역할, message unit으로 정함. 수동 설정 시 그 값이 우선 |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | context auto-HWM을 켜면 profile, 소켓 역할, message unit으로 정함. 수동 설정 시 그 값이 우선 |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: 무제한) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Recv timeout (ms, -1: 무제한) |
 | `ZLINK_OPT_LINGER` | int | -1 | Socket close 시 linger (ms) |
@@ -104,20 +107,8 @@ Routing ID는 전용 함수로 설정/조회한다:
 runtime 중간에도 보통 사용한다. 반면 HWM, timeout, TLS 같은 대부분의
 tuning option은 초기 설정 단계에서 사용한다.
 
-### 2.5 Option 소유권 카테고리
-
-내부적으로 option은 세 카테고리로 분류되어 각 도메인 소유자가 validation/apply를
-담당한다. 공개 API surface(`zlink_set_option` / `zlink_get_option`)는 변경 없이
-유지되지만, 새 option 추가 시 아래 기준으로 소유권을 결정한다.
-
-| 카테고리 | 대표 option | 설명 |
-|----------|-------------|------|
-| **Core Socket** | `SNDHWM`, `RCVHWM`, `LINGER`, `ROUTING_ID` 등 | 소켓 핵심 동작 |
-| **Transport/Network** | `SNDBUF`, `RCVBUF`, `TOS`, `MULTICAST_*` 등 | 네트워크/transport 계층 정책 |
-| **Protocol/Metadata** | ZMP 프로토콜 메타데이터 관련 | 프로토콜 수준 메타데이터 |
-
-이 분류는 transport option 변경이 socket/service 코드에 영향을 주지 않게 하고,
-option 하나를 수정할 때 어떤 모듈이 owner인지 바로 파악할 수 있게 한다.
+상세 option 카테고리와 전체 option 레퍼런스는
+[소켓 옵션 가이드](12-socket-options.ko.md)를 참고.
 
 ## 3. Message Send/Recv
 
@@ -140,7 +131,8 @@ zlink_send(socket, parts, 2, 0);
 ```
 
 기본적으로 `zlink_send()`는 send queue가 가득 차면(HWM 도달) blocking한다.
-`ZLINK_DONTWAIT` flag를 사용하면 blocking 대신 즉시 `EAGAIN`을 반환한다.
+`ZLINK_DONTWAIT` flag 를 사용하면 blocking 대신 즉시
+`ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
 고급 backpressure pattern은
 [Performance 가이드](10-performance.ko.md)를 참고.
 
@@ -152,11 +144,14 @@ zlink_send(socket, parts, 2, 0);
 
 - **nonblocking**: one-shot 시도 후 실패 시 partial local state rollback
 - **blocking**: `sndtimeo` deadline까지 whole-message 단위 재시도
-- **재시도 대상**: `EAGAIN`, `EINTR`만 재시도, 그 외 오류는 즉시 실패
+- **재시도 대상**: `ZLINK_SUBMIT_BACKPRESSURED`, `EINTR` 만 재시도, 그 외 결과는 즉시 실패
 - **whole-message 보장**: 멀티파트 메시지는 전체가 성공하거나 전체가 실패한다
 
-이 설계는 `libzmq`의 `pipe/router/xpub/dist` lower layer가 제공하는
-complete-message 기준 accounting과 rollback 메커니즘을 기반으로 한다.
+이 보장 덕분에 멀티파트 메시지는 전체가 큐에 들어가거나 전체가 실패한다.
+부분만 큐에 들어가는 일은 발생하지 않는다.
+
+> Wire 수준 프레임 구조는
+> [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 
 ### 3.2 Recv
 
@@ -168,15 +163,16 @@ Handler를 부착하지 않으면 `zlink_recv()`로 직접 message를 받을 수
 Socket은 기본적으로 pull mode로 시작한다.
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_PAIR);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(socket, "tcp://*:5556");
 
 /* Blocking recv */
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(socket, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     for (size_t i = 0; i < part_count; i++) {
         printf("Frame %zu: %.*s\n", i,
                (int)zlink_msg_size(&parts[i]),
@@ -186,9 +182,10 @@ if (rc == 0) {
 }
 
 /* Non-blocking recv */
-rc = zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
-    /* No message available right now */
+rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+if (rc == ZLINK_RECV_NO_DATA) {
+    /* 수신할 메시지가 없음 */
 }
 ```
 
@@ -196,7 +193,8 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 
 Socket 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
 비동기로 호출된다. 한번 부착하면 socket 수명 동안 해제할 수 없다.
-Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한다.
+Handler 가 부착된 상태에서 `zlink_recv()` 호출 시 `ZLINK_RECV_BUSY` 를
+반환한다.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -211,7 +209,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 ```
 
@@ -222,7 +220,7 @@ zlink_recv_handler(socket, on_message, NULL);
 
 | Flag | 설명 |
 |--------|------|
-| `ZLINK_DONTWAIT` | Non-blocking mode (send/recv 불가 시 즉시 EAGAIN 반환) |
+| `ZLINK_DONTWAIT` | Non-blocking 모드 (send/recv 불가 시 즉시 `BACKPRESSURED` / `NO_DATA` 반환) |
 
 ## 4. Handler Type
 
@@ -230,85 +228,145 @@ zlink_recv_handler(socket, on_message, NULL);
 
 | Socket Type | 등록 호출 | Callback Signature |
 |---|---|---|
-| STREAM | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
-| spot, spot_node | `zlink_subscribe_handler()` | `fn(rid, topic, topic_len, parts, count, userdata)` |
+| STREAM (raw) | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
+| STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
+| ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 completion callback 으로 전달 |
+| SPOT (routed direct callback) | `zlink_spot_handler()` — 선택적, 여전히 지원 | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
+| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/channel reply/timer를 모두 한 콜백으로 통합 | `fn(spot, const zlink_spot_dispatch_info_t *info, userdata)` |
+| SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv 기반; `SUBSCRIBE_READABLE` 이벤트 후 drain |
+| SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv 기반; `ROUTED_READABLE` 이벤트 후 drain |
+| PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |
+| DEALER / ROUTER request | `zlink_dealer_request()` / `zlink_router_request()` 에 전달 | `fn(zlink_request_result_t result, parts, count, userdata)` |
+| Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
 
-상세 시그니처:
-
-- **STREAM**: `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)`
-- **spot/spot_node**: `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)`
+하나의 `spot` handle에는 `zlink_spot_handler()`와
+`zlink_spot_dispatch_event_handler()`를 동시에 설치할 수 없다. 먼저 attach한
+쪽이 이기고, 두 번째 attach는 `EBUSY`로 실패한다.
 
 Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업을 피해야 한다.
 느린 처리가 필요하면 user queue에 넣고 별도 thread에서 처리한다.
 
 ## 5. Error 처리
 
+zlink 공개 C API 는 **함수별 typed result enum** 을 사용한다. 각 함수는
+`zlink_<category>_result_t` 를 반환하며 `0` 은 항상 `OK` 이고 non-zero 값이
+구체 실패 모드를 식별한다. 전체 enum 정의는
+[core/errno-map.md](../spec/core/errno-map.ko.md) 를 참조한다.
+
+8 개 result enum 카테고리:
+
+| Enum | 적용 함수군 |
+|------|------------|
+| `zlink_submit_result_t` | send / publish / request submit / reply submit |
+| `zlink_request_result_t` | request completion (callback) |
+| `zlink_recv_result_t` | recv / subscribe / monitor recv / timer recv |
+| `zlink_handler_result_t` | handler 등록 (`zlink_*_handler()`) |
+| `zlink_close_result_t` | close / destroy |
+| `zlink_bind_result_t` | bind |
+| `zlink_connect_result_t` | connect / disconnect / unbind |
+| `zlink_config_result_t` | option 설정/조회, snapshot, poller 변경, message lifecycle, timer config |
+
 ```c
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc == -1) {
-    int err = zlink_errno();
-    printf("Error: %s\n", zlink_strerror(err));
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc != ZLINK_SUBMIT_OK) {
+    /* 대표 값: BACKPRESSURED, NOT_CONNECTED, NOT_FOUND, TERMINATED,
+       INVALID_HANDLE, INVALID_ARGUMENT, NOT_SUPPORTED, INVALID_STATE,
+       THREAD_VIOLATION, OUT_OF_MEMORY, INTERNAL_ERROR */
+    printf("send failed: %d\n", (int)rc);
+    if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
+        /* INTERNAL_ERROR 는 coarse bucket; zlink_errno() 로 상세 원인 조회 */
+        int internal = zlink_errno();
+        printf("  internal errno: %s\n", zlink_strerror(internal));
+    }
 }
 ```
 
-주요 error code:
+**`zlink_errno()` 는 `INTERNAL_ERROR` 상세 조회 전용이다.** 다른 result code
+는 자기 서술적이므로 `zlink_errno()` 조회가 불필요하다.
 
-| Error | 값 | 설명 |
-|-------|-----|------|
-| `EAGAIN` | POSIX | Non-blocking mode에서 즉시 완료 불가 |
-| `EINTR` | POSIX | Signal에 의해 interrupt됨 |
-| `ENOTSOCK` | `HAUSNUMERO + 9` | 유효하지 않은 socket |
-| `EHOSTUNREACH` | `HAUSNUMERO + 17` | Host 도달 불가 |
-| `EFSM` | `HAUSNUMERO + 51` | 현재 state에서 허용되지 않는 연산 |
-| `ETERM` | `HAUSNUMERO + 53` | Context terminated |
+언어 바인딩은 이 8 카테고리 구조를 typed exception/error 하위 타입으로
+노출한다. 자세한 계약은
+[bindings Per-Function Error Type Hierarchy](../spec/bindings/README.ko.md)
+참조.
 
-> `ZLINK_HAUSNUMERO` = 156384712. POSIX errno와 충돌하지 않는 zlink 전용 base 값이다.
+## 6. Timer API
 
-## 6. DEALER/ROUTER 예제
+Timer는 socket과 동일한 recv/callback/poller 모델을 지원하는 일급(first-class) 이벤트 소스다.
+
+### 6.1 일반 Timer
+
+```c
+void *timer = zlink_timer_new();
+
+/* Start: 100ms 간격, 무한 반복 (0 = infinite) */
+zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
+
+/* Pull 모드 */
+uint64_t fire_count;
+zlink_recv_result_t rc = zlink_timer_recv(timer, &fire_count);
+/* rc 값: ZLINK_RECV_OK, NO_DATA (큐에 fire 없음), TERMINATED,
+   INVALID_HANDLE, NOT_SUPPORTED */
+
+/* Callback 모드 */
+void on_fire(void *timer, uint64_t fire_count, void *userdata) {
+    /* timer 이벤트 처리 */
+}
+zlink_timer_handler(timer, on_fire, NULL);
+
+/* 정지 및 해제 */
+zlink_timer_stop(timer);
+zlink_timer_destroy(&timer);
+```
+
+### 6.2 SPOT Timer
+
+SPOT timer는 global scheduler 대신 SpotNode-local shared scheduler를 사용한다.
+
+```c
+void *spot_timer = zlink_spot_timer_new(spot);
+zlink_timer_start(spot_timer, 50000000ULL, 10);  /* 50ms, 10회 반복 */
+```
+
+### 6.3 Poller 통합
+
+Timer를 socket, file descriptor와 함께 poller에 등록할 수 있다.
+
+```c
+zlink_poller_add_timer(poller, timer, user_data);
+/* ... zlink_poller_wait()가 timer 이벤트를 반환 ... */
+zlink_poller_remove_timer(poller, timer);
+```
+
+### 핵심 규칙
+
+| 규칙 | 설명 |
+|------|------|
+| `repeat_count=0` | 무한 반복 |
+| `repeat_count=N` | 정확히 N회 fire 후 자동 정지 |
+| recv vs callback | 충돌 시 `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 반환 (socket 과 동일) |
+| 일반 timer | global shared scheduler 사용 |
+| SPOT timer | SpotNode-local shared scheduler 사용 |
+
+## 7. DEALER/ROUTER 예제
 
 ```c
 #include <zlink.h>
 #include <string.h>
 #include <stdio.h>
 
-void on_router_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    printf("Received from [%.*s]: %.*s\n",
-           (int)source_rid->size, source_rid->data,
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
-void on_dealer_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    printf("Reply: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
 int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* Receive with zlink_recv() */
+    void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    /* Receive with zlink_recv() */
+    void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
@@ -317,8 +375,10 @@ int main(void) {
     memcpy(zlink_msg_data(&req), "request", 7);
     zlink_send(dealer, &req, 1, 0);
 
-    /* Handler callbacks process messages asynchronously */
-    msleep(100);
+    /* Server loop: watch a poller for ZLINK_POLLIN on router, drain with
+       zlink_router_recv(), and reply with zlink_router_reply() or
+       zlink_send_rid(). Client drains replies with zlink_recv() in its
+       own poller loop. */
 
     zlink_close(dealer);
     zlink_close(router);

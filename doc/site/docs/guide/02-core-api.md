@@ -17,8 +17,9 @@ void *ctx = zlink_ctx_new();
 /* Configure — increase I/O threads for multi-connection servers */
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
 
-/* Query */
-int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
+/* Query (error_out receives ZLINK_CONFIG_OK on success) */
+zlink_config_result_t err;
+int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS, &err);
 
 /* Terminate */
 zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
@@ -42,7 +43,7 @@ can share the same socket handle to call send/recv/bind/connect, etc.
 ### 2.1 Socket Creation and Closing
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 /* ... use ... */
 zlink_close(socket);
 ```
@@ -51,14 +52,14 @@ zlink_close(socket);
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_PAIR` | 0x1001 | 1:1 Bidirectional |
-| `ZLINK_PUB` | 0x1002 | Publisher |
-| `ZLINK_SUB` | 0x1003 | Subscriber |
-| `ZLINK_DEALER` | 0x1004 | Asynchronous request |
-| `ZLINK_ROUTER` | 0x1005 | Routing |
-| `ZLINK_XPUB` | 0x1006 | Advanced publisher |
-| `ZLINK_XSUB` | 0x1007 | Advanced subscriber |
-| `ZLINK_STREAM` | 0x1008 | RAW communication |
+| `ZLINK_SOCKET_PAIR` | 0x1001 | 1:1 Bidirectional |
+| `ZLINK_SOCKET_PUB` | 0x1002 | Publisher |
+| `ZLINK_SOCKET_SUB` | 0x1003 | Subscriber |
+| `ZLINK_SOCKET_DEALER` | 0x1004 | Asynchronous request |
+| `ZLINK_SOCKET_ROUTER` | 0x1005 | Routing |
+| `ZLINK_SOCKET_XPUB` | 0x1006 | Advanced publisher |
+| `ZLINK_SOCKET_XSUB` | 0x1007 | Advanced subscriber |
+| `ZLINK_SOCKET_STREAM` | 0x1008 | RAW communication |
 
 ### 2.3 Connection Management
 
@@ -91,8 +92,8 @@ Key options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ZLINK_OPT_SNDHWM` | int | automatic | Chosen by the context auto-HWM policy from the socket role and connection count. Manual settings override it |
-| `ZLINK_OPT_RCVHWM` | int | automatic | Chosen by the context auto-HWM policy from the socket role and connection count. Manual settings override it |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | If context auto-HWM is enabled, chosen from profile, socket role, and message unit. Manual settings override it |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | If context auto-HWM is enabled, chosen from profile, socket role, and message unit. Manual settings override it |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on socket close (ms) |
@@ -106,22 +107,8 @@ Options and queries such as `ZLINK_OPT_EVENTS` and
 By contrast, most tuning knobs such as HWM, timeouts, and TLS settings
 are usually closer to initial configuration.
 
-### 2.5 Option Ownership Categories
-
-Internally, options are classified into three categories, each with its
-own domain owner responsible for validation/apply. The public API surface
-(`zlink_set_option` / `zlink_get_option`) remains unchanged, but when
-adding new options, ownership is determined by the following classification:
-
-| Category | Representative Options | Description |
-|----------|----------------------|-------------|
-| **Core Socket** | `SNDHWM`, `RCVHWM`, `LINGER`, `ROUTING_ID`, `SNDTIMEO`, `RCVTIMEO` | Core socket behavior |
-| **Transport/Network** | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY`, `MULTICAST_*` | Network/transport layer policies |
-| **Protocol/Metadata** | ZMP protocol metadata | Protocol-level metadata |
-
-This classification ensures transport option changes do not affect
-socket/service code and makes it immediately clear which module owns
-any given option.
+For detailed option categories and the full option reference, see
+[Socket Options Guide](12-socket-options.md).
 
 ## 3. Sending and Receiving Messages
 
@@ -144,7 +131,8 @@ zlink_send(socket, parts, 2, 0);
 ```
 
 By default `zlink_send()` blocks when the send queue is full (HWM reached).
-Pass `ZLINK_DONTWAIT` to return `EAGAIN` immediately instead of blocking.
+Pass `ZLINK_DONTWAIT` to return `ZLINK_SUBMIT_BACKPRESSURED` immediately
+instead of blocking.
 For advanced backpressure patterns, see
 [Performance Guide](10-performance.md).
 
@@ -157,11 +145,14 @@ following common guarantees:
 
 - **nonblocking**: one-shot attempt with partial local state rollback on failure
 - **blocking**: whole-message retry until the `sndtimeo` deadline
-- **retry targets**: only `EAGAIN` and `EINTR` are retried; other errors fail immediately
+- **retry targets**: only `ZLINK_SUBMIT_BACKPRESSURED` and `EINTR` are retried; other results fail immediately
 - **whole-message guarantee**: a multipart message either succeeds entirely or fails entirely
 
-This design is based on `libzmq`'s `pipe/router/xpub/dist` lower layer
-complete-message accounting and rollback mechanisms.
+This guarantees that a multipart message either succeeds entirely or
+fails entirely -- no partial messages are ever queued.
+
+> For wire-level frame structure, see
+> [ZMP Protocol](../internals/protocol-zmp.md).
 
 ### 3.2 Receiving
 
@@ -173,15 +164,16 @@ Without attaching a handler, call `zlink_recv()` to receive messages
 directly. Sockets start in pull mode by default.
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_PAIR);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(socket, "tcp://*:5556");
 
 /* Blocking recv */
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(socket, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     for (size_t i = 0; i < part_count; i++) {
         printf("Frame %zu: %.*s\n", i,
                (int)zlink_msg_size(&parts[i]),
@@ -191,8 +183,9 @@ if (rc == 0) {
 }
 
 /* Non-blocking recv */
-rc = zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+rc = zlink_recv(
+    socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+if (rc == ZLINK_RECV_NO_DATA) {
     /* No message available right now */
 }
 ```
@@ -202,7 +195,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 Attach a handler callback after socket creation. Messages are dispatched
 asynchronously on the I/O thread. Once attached, the handler cannot be
 removed for the lifetime of the socket. If a handler has been attached,
-`zlink_recv()` fails with `EBUSY`.
+`zlink_recv()` returns `ZLINK_RECV_BUSY`.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -217,7 +210,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 ```
 
@@ -228,7 +221,7 @@ zlink_recv_handler(socket, on_message, NULL);
 
 | Flag | Description |
 |------|-------------|
-| `ZLINK_DONTWAIT` | Non-blocking mode (returns EAGAIN immediately if cannot send/recv) |
+| `ZLINK_DONTWAIT` | Non-blocking mode (returns `BACKPRESSURED` / `NO_DATA` immediately if cannot send/recv) |
 
 ## 4. Handler Types
 
@@ -236,9 +229,21 @@ Each socket type uses a dedicated registration function:
 
 | Socket Type | Registration Call | Callback Signature |
 |---|---|---|
-| STREAM | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
-| spot, spot_node | `zlink_subscribe_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, const char *topic, size_t topic_len, zlink_msg_t *parts, size_t count, void *userdata)` |
+| STREAM (raw) | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
+| STREAM (packet) | `zlink_stream_packet_handler(socket, fn, userdata)` | `void fn(void *stream, const zlink_routing_id_t *source_rid, zlink_msg_t *header, zlink_msg_t *body, void *userdata)` |
+| ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` reply is delivered through a separate completion callback |
+| SPOT (routed direct callback) | `zlink_spot_handler(spot, fn, userdata)` — optional; still supported | `void fn(const zlink_routing_id_t *source_rid, const zlink_routing_id_t *spot_rid, uint64_t request_seq, zlink_msg_t *parts, size_t count, void *userdata)` |
+| SPOT (dispatch readable events) | `zlink_spot_dispatch_event_handler(spot, fn, userdata)` — unified readable-event callback for topic/routed/channel-reply/timer | `void fn(void *spot, const zlink_spot_dispatch_info_t *info, void *userdata)` |
+| SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv-driven; drained after a `SUBSCRIBE_READABLE` dispatch event |
+| SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv-driven; drained after a `ROUTED_READABLE` dispatch event |
+| PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` or `zlink_subscribe()` | N/A |
+| DEALER / ROUTER request | `zlink_reply_handler_fn` passed to `zlink_dealer_request()` / `zlink_router_request()` | `void fn(zlink_request_result_t result, zlink_msg_t *parts, size_t count, void *userdata)` |
+| Timer | `zlink_timer_handler(timer, fn, userdata)` | `void fn(void *timer, uint64_t fire_count, void *userdata)` |
 | PUB | N/A | Send-only socket |
+
+On a single `spot` handle, `zlink_spot_handler()` and
+`zlink_spot_dispatch_event_handler()` cannot both be installed; the first
+attach wins and the second returns `EBUSY`.
 
 Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
 If slow processing is needed, enqueue to a user queue and handle it on a
@@ -246,69 +251,126 @@ separate thread.
 
 ## 5. Error Handling
 
+zlink's public C API uses **function-specific typed result enums**. Each
+function returns a `zlink_<category>_result_t` enum where `0` is the
+`OK` value and non-zero values identify specific failure modes. The
+canonical enum values are defined in
+[core/errno-map.md](../spec/core/errno-map.md).
+
+The 8 result enum categories:
+
+| Enum | Applies to |
+|------|-----------|
+| `zlink_submit_result_t` | send / publish / request submit / reply submit |
+| `zlink_request_result_t` | request completion (callback) |
+| `zlink_recv_result_t` | recv / subscribe / monitor recv / timer recv |
+| `zlink_handler_result_t` | handler registration (`zlink_*_handler()`) |
+| `zlink_close_result_t` | close / destroy |
+| `zlink_bind_result_t` | bind |
+| `zlink_connect_result_t` | connect / disconnect / unbind |
+| `zlink_config_result_t` | option set/get, snapshot, poller mutation, message lifecycle, timer config |
+
 ```c
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc == -1) {
-    int err = zlink_errno();
-    printf("Error: %s\n", zlink_strerror(err));
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc != ZLINK_SUBMIT_OK) {
+    /* typical values: BACKPRESSURED, NOT_CONNECTED, NOT_FOUND,
+       TERMINATED, INVALID_HANDLE, INVALID_ARGUMENT, NOT_SUPPORTED,
+       INVALID_STATE, THREAD_VIOLATION, OUT_OF_MEMORY, INTERNAL_ERROR */
+    printf("send failed: %d\n", (int)rc);
+    if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
+        /* INTERNAL_ERROR aggregates rarer failures;
+           zlink_errno() surfaces the underlying reason */
+        int internal = zlink_errno();
+        printf("  internal errno: %s\n", zlink_strerror(internal));
+    }
 }
 ```
 
-Key error codes:
+**`zlink_errno()` is for `INTERNAL_ERROR` detail only.** Other result
+codes are self-descriptive and do not require `zlink_errno()` lookup.
 
-| Error | Description |
-|-------|-------------|
-| `EAGAIN` | Cannot complete immediately in non-blocking mode |
-| `ETERM` | Context has been terminated |
-| `ENOTSOCK` | Invalid socket |
-| `EINTR` | Interrupted by signal |
-| `EFSM` | Operation not allowed in current state |
-| `EHOSTUNREACH` | Host unreachable |
+Language bindings surface this 8-category structure as typed
+exception/error subclasses — see
+[bindings Per-Function Error Type Hierarchy](../spec/bindings/README.md).
 
-## 6. DEALER/ROUTER Example
+## 6. Timer API
+
+Timers are first-class event sources, like sockets. They support the same
+recv/callback/poller model.
+
+### 6.1 General Timer
+
+```c
+void *timer = zlink_timer_new();
+
+/* Start: 100ms interval, repeat indefinitely (0 = infinite) */
+zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
+
+/* Pull mode */
+uint64_t fire_count;
+zlink_recv_result_t rc = zlink_timer_recv(timer, &fire_count);
+/* rc values: ZLINK_RECV_OK, NO_DATA (no queued fire), TERMINATED,
+   INVALID_HANDLE, NOT_SUPPORTED */
+
+/* Callback mode */
+void on_fire(void *timer, uint64_t fire_count, void *userdata) {
+    /* handle timer event */
+}
+zlink_timer_handler(timer, on_fire, NULL);
+
+/* Stop and destroy */
+zlink_timer_stop(timer);
+zlink_timer_destroy(&timer);
+```
+
+### 6.2 SPOT Timer
+
+SPOT timers use the SpotNode-local shared scheduler instead of the global one.
+
+```c
+void *spot_timer = zlink_spot_timer_new(spot);
+zlink_timer_start(spot_timer, 50000000ULL, 10);  /* 50ms, 10 repetitions */
+```
+
+### 6.3 Poller Integration
+
+Timers can be added to a poller alongside sockets and file descriptors.
+
+```c
+zlink_poller_add_timer(poller, timer, user_data);
+/* ... zlink_poller_wait() returns timer events ... */
+zlink_poller_remove_timer(poller, timer);
+```
+
+### Key Rules
+
+| Rule | Description |
+|------|-------------|
+| `repeat_count=0` | Infinite repetition |
+| `repeat_count=N` | Fires exactly N times then stops |
+| recv vs callback | Conflicts return `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` (same as sockets) |
+| General timer | Uses global shared scheduler |
+| SPOT timer | Uses SpotNode-local shared scheduler |
+
+## 7. DEALER/ROUTER Example
 
 ```c
 #include <zlink.h>
 #include <string.h>
 #include <stdio.h>
 
-void on_router_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    printf("Received from [%.*s]: %.*s\n",
-           (int)source_rid->size, source_rid->data,
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
-void on_dealer_message(const zlink_routing_id_t *source_rid,
-                       zlink_msg_t *parts, size_t part_count,
-                       void *userdata)
-{
-    printf("Reply: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
 int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* ROUTER (server) */
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* Receive with zlink_recv() */
+    void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
-    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    /* Receive with zlink_recv() */
+    void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
@@ -317,8 +379,10 @@ int main(void) {
     memcpy(zlink_msg_data(&req), "request", 7);
     zlink_send(dealer, &req, 1, 0);
 
-    /* Handler callbacks process messages asynchronously */
-    msleep(100);
+    /* Server loop: watch a poller for ZLINK_POLLIN on router, drain with
+       zlink_router_recv(), and reply with zlink_router_reply() or
+       zlink_send_rid(). The client drains replies with zlink_recv() in
+       its own poller loop. */
 
     zlink_close(dealer);
     zlink_close(router);

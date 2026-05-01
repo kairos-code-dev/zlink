@@ -1093,7 +1093,7 @@ set(spot-sources
     src/services/spot/spot_data_plane_runtime.cpp
     src/services/spot/spot_data_plane_pending.cpp
     src/services/spot/spot_data_plane_protocol.cpp
-    src/services/spot/spot_mesh_pub_budget.cpp
+    src/services/spot/spot_mesh_pub_hwm.cpp
     src/services/spot/spot_subject_access.cpp
     src/services/spot/spot_subject_handler.cpp
     src/services/spot/spot_subject_option.cpp

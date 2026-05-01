@@ -22,8 +22,9 @@
 |---|---:|---|
 | `ZLINK_OPT_AFFINITY` | `0` | I/O 스레드 어피니티 미설정 |
 | `zlink_get_routing_id()` | 자동 | 소켓별 16바이트 랜덤 ID (`zlink_set_routing_id()`로 설정) |
-| `ZLINK_OPT_SNDHWM` | 자동 HWM floor | 기본은 역할별 floor (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
-| `ZLINK_OPT_RCVHWM` | 자동 HWM floor | 기본은 역할별 floor (`control=4`, `routed=8`, `fanout=16`, `recv_ingress=8`) |
+| `ZLINK_OPT_SNDHWM` | auto-HWM 비활성 시 `1000` | auto-HWM을 켜면 profile, policy class, message unit으로 계산. connection 수가 늘어도 per-connection HWM은 낮아지지 않음 |
+| `ZLINK_OPT_RCVHWM` | auto-HWM 비활성 시 `1000` | auto-HWM을 켜면 profile, policy class, message unit으로 계산. connection 수가 늘어도 per-connection HWM은 낮아지지 않음 |
+| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | `0` | raw `0`은 소켓 타입 기본값 사용. STREAM은 `1024`, 그 외 소켓은 `4096` |
 | `ZLINK_OPT_RATE` | `100` | 멀티캐스트 rate (kb/s) |
 | `ZLINK_OPT_RECOVERY_IVL` | `10000` | 멀티캐스트 recovery interval (ms) |
 | `ZLINK_OPT_SNDBUF` | `-1` | `SO_SNDBUF` 강제 설정 안 함 |
@@ -75,8 +76,8 @@
 | `ZLINK_SOCKET_SUB` | `ZLINK_OPT_LINGER` override | 강제로 `0` (XSUB 생성 경로 상속) |
 | `ZLINK_SOCKET_SUB` | 구독 집합 | 생성 시 빈 상태 |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | 기본은 auto HWM transport budget 계산값, auto HWM 비활성 + 미설정(` <0`)이면 `262144` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | 기본은 auto HWM transport budget 계산값, auto HWM 비활성 + 미설정(` <0`)이면 `262144` |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | 옵션이 미설정(` <0`)이면 `262144` |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | 옵션이 미설정(` <0`)이면 `262144` |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 미지원 (`EOPNOTSUPP`) |
 
 ## 3. 읽기 전용 옵션의 초기 상태값
@@ -101,8 +102,22 @@ helper API를 호출하기 전까지는 인증서 경로와 CA 경로가 비어 
 ## 5. 주의 사항
 
 - 기본 `ZLINK_OPT_LINGER` 값은 컨텍스트의 blocky 모드에서 온다.
-- 기본 `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`은 context auto HWM 정책이
-  계산한다. 수동 설정이 있으면 자동값을 덮어쓴다.
+- 기본 `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` 값은 `1000`이다. context
+  auto-HWM을 켜면 수동 HWM을 설정하지 않은 소켓에 profile 기반 값이 적용된다.
+  수동 설정이 있으면 자동값을 덮어쓴다.
+- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 planner profile을 고른다. 공개 값은
+  `LOW_LATENCY`, `BALANCED`, `THROUGHPUT`이고 기본값은 `BALANCED`다.
+- deprecated context memory budget과 bootstrap context 옵션은 호환을 위해 남긴
+  no-op 필드다. 이 옵션들은 소켓 기본값이나 HWM 계산에 영향을 주지 않는다.
+- `auto_hwm_effective_message_bytes`는 소켓별 값이다.
+  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`가 양수이면 그 값을 쓰고, 아니면
+  STREAM 기본 `1024` 또는 non-STREAM 기본 `4096`을 쓴다.
+- planner는 policy class(`fanout`, `spot_data`, `routed`, `peer_queue`,
+  `stream`, `recv_ingress`, `control`), profile별 per-connection 단위 예산,
+  메시지 크기별 cap을 고른다. 최종 HWM은 최소 `1`, 최대 해당 size cap으로
+  제한된다.
+- SPOT publish 계획은 전체 spot 수나 connection 수가 늘어도 per-connection HWM을
+  낮추지 않는다.
 - `ZLINK_OPT_CONFLATE`는 `ZLINK_SOCKET_DEALER`,
   `ZLINK_SOCKET_PUB`, `ZLINK_SOCKET_SUB`에서만 실질적으로 동작한다.
 - STREAM의 추가 런타임 튜닝 항목은 `stream-socket.ko.md`를 참고한다.

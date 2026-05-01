@@ -99,8 +99,6 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
-    public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(5);
-
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(30);
@@ -360,6 +358,10 @@ connector는 이 문서에서 정의한 helper header만 decode한다. 수신 pa
 connector 내부에서 비동기로 처리한다. 호출 시점에는 frame size, packet name,
 metadata size, connection 상태처럼 즉시 판단할 수 있는 validation 실패만 예외로
 보고한다. write 중 발생한 오류는 `ErrorReceived`로 전달한다.
+stream connector public option에는 `SendTimeout`을 두지 않는다. connector send는
+request/reply 대기와 다른 의미의 fire-and-forget submit이므로 timeout 옵션을
+노출하면 request timeout과 의미가 섞인다. connector에서 timeout이 필요한 공개
+옵션은 request reply 대기용 `RequestTimeout`이다.
 
 ## 9. Send / Request Builder API 초안
 
@@ -378,8 +380,6 @@ public sealed class ZlinkStreamSendBuilder
     public ZlinkStreamSendBuilder Metadata(string key, string value);
 
     public ZlinkStreamSendBuilder Metadata(ZlinkStreamMetadata metadata);
-
-    public ZlinkStreamSendBuilder WithTimeout(TimeSpan timeout);
 
     public ZlinkStreamSendBuilder Compress();
 

@@ -83,6 +83,7 @@ final class PerfSpot {
                 }
             }
 
+            ctx.shutdown();
             return metrics.finishSingle(config);
         }
     }

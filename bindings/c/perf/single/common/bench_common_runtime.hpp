@@ -81,13 +81,6 @@ inline void apply_ctx_options(void *ctx_)
                     auto_hwm_enable,
                     "ZLINK_CTX_OPT_AUTO_HWM_ENABLE");
 
-    const int auto_hwm_budget_mb = resolve_single_ctx_nonnegative_env (
-      "PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB",
-      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT);
-    set_ctx_opt_int(ctx_,
-                    ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
-                    auto_hwm_budget_mb,
-                    "ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB");
     set_ctx_opt_int(ctx_,
                     ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
                     resolve_single_ctx_auto_hwm_profile(),

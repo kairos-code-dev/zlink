@@ -235,13 +235,16 @@ def _run_pattern(args, env, pattern, transport, msg_size):
         "--msg-size",
         msg_size,
     ]
+    timeout_s = resolve_single_timeout_seconds(float(args.duration))
+    if pattern.startswith("SPOT"):
+        timeout_s = max(timeout_s, 180)
     result = subprocess.run(
         cmd,
         cwd=str(ROOT.parent.parent),
         env=env,
         capture_output=True,
         text=True,
-        timeout=resolve_single_timeout_seconds(float(args.duration)),
+        timeout=timeout_s,
     )
     stdout_text = result.stdout.strip() if result.stdout else ""
     stderr_text = result.stderr.strip() if result.stderr else ""

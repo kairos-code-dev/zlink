@@ -287,7 +287,8 @@ inline bool handle_packet_message(session_t *session,
           "server",
           session->transport,
           true,
-          body_payload_size);
+          body_payload_size,
+          session->auto_hwm_socket_type);
     }
 
     session->recv_count.fetch_add (1, std::memory_order_relaxed);

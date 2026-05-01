@@ -50,6 +50,25 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         configure(new ZLinkChannelBuilder(_registration.Channels[channelName]));
     }
 
+    public void AddRoutedChannel(
+        string routerChannelId,
+        Action<IZLinkRoutedChannelBuilder> configure)
+    {
+        if (string.IsNullOrWhiteSpace(routerChannelId))
+        {
+            throw new ZLinkConfigurationException("Routed channel id must not be empty.");
+        }
+
+        if (!_registration.RoutedChannels.TryAdd(
+                routerChannelId,
+                new ZLinkRoutedChannelRegistration { RouterChannelId = routerChannelId }))
+        {
+            throw new ZLinkConfigurationException($"Duplicate routed channel id '{routerChannelId}'.");
+        }
+
+        configure(new ZLinkRoutedChannelBuilder(_registration.RoutedChannels[routerChannelId]));
+    }
+
     public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
     {
         if (_registration.Discovery is not null)

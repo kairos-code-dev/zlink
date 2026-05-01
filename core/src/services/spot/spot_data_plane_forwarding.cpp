@@ -330,24 +330,24 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
     if (!runtime_ || !state_)
         return;
 
-    const int total_fanout_budget =
-      spot_data_plane_pending_t::resolve_fanout_budget_bytes (runtime_);
-    const size_t half_budget =
-      static_cast<size_t> (std::max (total_fanout_budget / 2,
+    const int fanout_hwm =
+      spot_data_plane_pending_t::resolve_fanout_hwm (runtime_);
+    const size_t pending_limit =
+      static_cast<size_t> (std::max (fanout_hwm / 2,
                                      static_cast<int> (pending_queue_bytes_floor)));
-    state_->local_fanout.pending_hard_limit = half_budget;
+    state_->local_fanout.pending_hard_limit = pending_limit;
     const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
     state_->local_fanout.pending_message_count_hard_limit =
       hwm.sub_queue_hard_limit_enabled
         ? static_cast<size_t> (hwm.sub_queue_hard_limit)
         : static_cast<size_t> (ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT);
-    state_->remote_mesh.pending_hard_limit = half_budget;
-    state_->local_fanout.pending_pause_threshold = half_budget;
+    state_->remote_mesh.pending_hard_limit = pending_limit;
+    state_->local_fanout.pending_pause_threshold = pending_limit;
     state_->local_fanout.pending_resume_threshold =
-      std::max (half_budget / 2, pending_queue_bytes_floor / 2);
-    state_->remote_mesh.pending_pause_threshold = half_budget;
+      std::max (pending_limit / 2, pending_queue_bytes_floor / 2);
+    state_->remote_mesh.pending_pause_threshold = pending_limit;
     state_->remote_mesh.pending_resume_threshold =
-      std::max (half_budget / 2, pending_queue_bytes_floor / 2);
+      std::max (pending_limit / 2, pending_queue_bytes_floor / 2);
 }
 
 void spot_data_plane_forwarder_t::refresh_poller_interest (

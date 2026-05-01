@@ -60,8 +60,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | Setting | Default | Description |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | automatic | Calculated by the context auto-HWM policy from the socket role and connection count |
-| `ZLINK_OPT_RCVHWM` | automatic | Calculated by the context auto-HWM policy from the socket role and connection count |
+| `ZLINK_OPT_SNDHWM` | 1000 | Replaced by profile-based values only when context auto-HWM is enabled. Manual settings override it |
+| `ZLINK_OPT_RCVHWM` | 1000 | Replaced by profile-based values only when context auto-HWM is enabled. Manual settings override it |
 
 ### Backpressure Behavior
 
@@ -107,9 +107,8 @@ sequenceDiagram
 
 ### Practical HWM Recommendations
 
-The default context settings are auto HWM enabled, a total memory budget of
-`128MB`, and the `balanced` profile. Treat that context budget as a queue
-memory envelope, not as a request to make every socket queue deeper.
+The default context settings keep auto-HWM disabled, so sockets use HWM `1000`.
+Enable auto-HWM when you want profile-based per-connection queue depths.
 
 Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
 
@@ -119,21 +118,18 @@ Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
 | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default production tuning |
 | `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | Larger queues for throughput-oriented tests or explicit tuning |
 
-For balanced planning, a useful starting point for context memory is:
+For balanced planning, a useful starting point for total queue memory is:
 
 ```text
-64 MiB
-+ pub_fanout_clients * 2 MiB
-+ spot_publish_fanout * 2 MiB
-+ spot_peers * 2 MiB
-+ routed_clients * 512 KiB
-+ stream_clients * 256 KiB
+non_stream_connections * 128 * 4096
++ stream_connections * 64 * 1024
++ control_connections * 16 * 4096
 ```
 
-Round the result up to a 64 MiB boundary and keep at least 128 MiB. SPOT uses
-`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` as the publish-fanout cap when the
-actual fanout is not yet known. If benchmarking or production tuning needs
-fixed queue depths, set `SNDHWM` / `RCVHWM` manually on the socket.
+This estimate is an application capacity-planning input. zlink does not divide
+a context memory budget across connections. If benchmarking or production
+tuning needs fixed queue depths, set `SNDHWM` / `RCVHWM` manually on the
+socket.
 
 ### HWM Behavior by Socket Type
 
@@ -146,9 +142,9 @@ fixed queue depths, set `SNDHWM` / `RCVHWM` manually on the socket.
 
 ### Memory Calculation
 
-Since HWM is per-connection, the manual memory estimate is HWM × message size ×
-connection count. Automatic HWM starts from the context budget and works
-backward to choose the HWM.
+Since HWM is per-connection, estimate total queue memory as HWM × message size
+× connection count. Automatic HWM selects the HWM from profile, socket role,
+and message unit; it does not work backward from a context memory budget.
 
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count

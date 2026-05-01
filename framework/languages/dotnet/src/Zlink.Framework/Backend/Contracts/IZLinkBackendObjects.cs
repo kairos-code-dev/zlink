@@ -58,19 +58,38 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
+    void OnSendReady(Action handler);
+
     bool Send(Message message, SendFlags flags);
 
-    ValueTask<IReadOnlyList<Message>> RequestAsync(
+    bool Request(
         Message message,
-        TimeSpan timeout,
-        CancellationToken cancellationToken);
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags,
+        TimeSpan? timeout);
 }
 
-internal interface IZLinkBackendRouterSocket : IZLinkBackendSocket
+internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
+    void OnSendReady(Action handler);
+
+    void SetRoutingId(RoutingId routingId);
+
     Received? Recv(RecvFlags flags = RecvFlags.None);
+
+    bool Send(
+        RoutingId routingId,
+        Message message,
+        SendFlags flags);
+
+    bool Request(
+        RoutingId routingId,
+        Message message,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags,
+        TimeSpan? timeout);
 
     void Reply(
         RoutingId routingId,
@@ -81,6 +100,8 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendSocket
 internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
+
+    void OnSendReady(Action handler);
 
     bool Publish(
         string topic,
@@ -190,13 +211,16 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
 
     void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler);
 
+    void OnSendReady(Action handler);
+
     void DrainChannelReplyFrom(IntPtr dealerSubject);
 
-    ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
+    bool RequestChannel(
         string channelName,
         Message message,
-        TimeSpan timeout,
-        CancellationToken cancellationToken);
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags,
+        TimeSpan? timeout);
 
     bool SendChannel(
         string channelName,

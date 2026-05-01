@@ -50,6 +50,8 @@ enum class context_option : int
     blocky = ZLINK_CTX_OPT_BLOCKY,
     spot_worker_threads = ZLINK_SPOT_WORKER_THREADS,
     auto_hwm_enable = ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
+    // Deprecated compatibility no-op. Set/get succeeds but returns 0 and does
+    // not affect HWM calculation.
     auto_hwm_total_memory_budget_mb =
       ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
     auto_hwm_profile = ZLINK_CTX_OPT_AUTO_HWM_PROFILE

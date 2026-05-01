@@ -62,8 +62,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | 자동 | context auto HWM 정책이 역할과 연결 수를 기준으로 계산 |
-| `ZLINK_OPT_RCVHWM` | 자동 | context auto HWM 정책이 역할과 연결 수를 기준으로 계산 |
+| `ZLINK_OPT_SNDHWM` | 1000 | context auto-HWM을 켰을 때만 profile 기반 값으로 바뀐다. 수동 설정이 우선 |
+| `ZLINK_OPT_RCVHWM` | 1000 | context auto-HWM을 켰을 때만 profile 기반 값으로 바뀐다. 수동 설정이 우선 |
 
 ### Backpressure 동작
 
@@ -112,9 +112,8 @@ sequenceDiagram
 
 ### 실전 HWM 권장값
 
-기본 context 설정은 auto HWM 활성, 총 메모리 예산 `128MB`, `balanced` profile이다.
-이 context 예산은 각 소켓 큐를 무조건 깊게 만들라는 값이 아니라 전체 큐 메모리
-상한으로 본다.
+기본 context 설정은 auto-HWM 비활성이다. 따라서 소켓은 HWM `1000`을 쓴다.
+profile 기반 per-connection queue depth가 필요할 때 auto-HWM을 명시적으로 켠다.
 
 기본 정책을 바꾸고 싶을 때는 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`을 설정한다.
 
@@ -124,21 +123,17 @@ sequenceDiagram
 | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 기본 운영 튜닝 |
 | `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | 처리량 중심 테스트나 명시적 튜닝 |
 
-`balanced` 기준 context 메모리 시작점은 아래처럼 잡을 수 있다.
+`balanced` 기준 전체 queue 메모리 시작점은 아래처럼 잡을 수 있다.
 
 ```text
-64 MiB
-+ pub_fanout_clients * 2 MiB
-+ spot_publish_fanout * 2 MiB
-+ spot_peers * 2 MiB
-+ routed_clients * 512 KiB
-+ stream_clients * 256 KiB
+non_stream_connections * 128 * 4096
++ stream_connections * 64 * 1024
++ control_connections * 16 * 4096
 ```
 
-계산 결과는 64 MiB 단위로 올리고 최소 128 MiB를 둔다. SPOT은 실제 fanout을
-아직 모를 때 `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`을 publish fanout cap으로
-쓴다. benchmark나 운영 튜닝에서 고정값이 필요하면 소켓별 `SNDHWM` /
-`RCVHWM`을 수동으로 주면 된다.
+이 값은 애플리케이션의 용량 산정 입력이다. zlink는 context memory budget을
+connection 수로 나누지 않는다. benchmark나 운영 튜닝에서 고정값이 필요하면
+소켓별 `SNDHWM` / `RCVHWM`을 수동으로 주면 된다.
 
 ### HWM 동작 패턴
 
@@ -151,8 +146,9 @@ sequenceDiagram
 
 ### 메모리 계산
 
-HWM은 연결별(per-connection)이므로, 수동 설정의 총 메모리는 HWM × 메시지 크기 ×
-연결 수로 추정할 수 있다. 자동 HWM은 반대로 context 예산에서 출발해 HWM을 고른다.
+HWM은 연결별(per-connection)이므로, 총 queue 메모리는 HWM × 메시지 크기 ×
+연결 수로 추정할 수 있다. 자동 HWM은 profile, 소켓 역할, message unit으로
+HWM을 고르며 context memory budget에서 역산하지 않는다.
 
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count

@@ -134,12 +134,6 @@ public sealed class ZlinkStreamAutoCodecSendBuilder
         return this;
     }
 
-    public ZlinkStreamAutoCodecSendBuilder WithTimeout(TimeSpan timeout)
-    {
-        _inner.WithTimeout(timeout);
-        return this;
-    }
-
     public ZlinkStreamAutoCodecSendBuilder Compress()
     {
         _inner.Compress();

@@ -14,6 +14,8 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkRoutedChannelRegistration> RoutedChannels { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<string, ZLinkStreamNodeRegistration> StreamNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkSpotNodeRegistration> SpotNodes { get; } = new(StringComparer.Ordinal);
@@ -86,6 +88,33 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public Type? HeaderSessionType { get; set; }
 }
+
+internal sealed class ZLinkRoutedChannelRegistration
+{
+    public required string RouterChannelId { get; init; }
+
+    public string? BindEndpoint { get; set; }
+
+    public ZLinkCommonSocketOptions SocketOptions { get; } = new();
+
+    public ZLinkRoutedPeerOptions RoutingOptions { get; } = new();
+
+    public List<string> ManualConnections { get; } = [];
+
+    public List<ZLinkRoutedHandlerRegistration> SendHandlers { get; } = [];
+
+    public List<ZLinkRoutedHandlerRegistration> RequestHandlers { get; } = [];
+
+    public bool SessionGatewayEnabled { get; set; }
+
+    public Type? SessionProxyHandlerType { get; set; }
+}
+
+internal sealed record ZLinkRoutedHandlerRegistration(
+    Type HandlerType,
+    Type MessageType,
+    Type? ReplyType,
+    string? PacketName);
 
 internal sealed class ZLinkSpotNodeRegistration
 {

@@ -37,7 +37,7 @@ struct spot_mesh_peer_state_t
 {
     spot_mesh_peer_state_t () :
         version (0),
-        budget_version (0),
+        hwm_version (0),
         mesh_pub_ready_peer_count (0),
         connected_ready_peer_count (0)
     {
@@ -45,7 +45,7 @@ struct spot_mesh_peer_state_t
 
     mutable mutex_t sync;
     std::atomic<uint64_t> version;
-    std::atomic<uint64_t> budget_version;
+    std::atomic<uint64_t> hwm_version;
     std::atomic<uint32_t> mesh_pub_ready_peer_count;
     std::atomic<uint32_t> connected_ready_peer_count;
     std::set<std::string> connected_endpoints;
@@ -213,25 +213,25 @@ inline uint64_t mesh_peer_version (const spot_mesh_peer_state_t *state_)
     return state_->version.load (std::memory_order_acquire);
 }
 
-inline uint64_t mesh_pub_budget_version (const spot_mesh_peer_state_t *state_)
+inline uint64_t mesh_pub_hwm_version (const spot_mesh_peer_state_t *state_)
 {
     if (!state_)
         return 0u;
 
-    return state_->budget_version.load (std::memory_order_acquire);
+    return state_->hwm_version.load (std::memory_order_acquire);
 }
 
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
 
-inline void reset_mesh_pub_budget_state (spot_mesh_peer_state_t *state_)
+inline void reset_mesh_pub_hwm_state (spot_mesh_peer_state_t *state_)
 {
     if (!state_)
         return;
 
     state_->mesh_pub_ready_peer_count.store (0, std::memory_order_release);
-    state_->budget_version.fetch_add (1, std::memory_order_acq_rel);
+    state_->hwm_version.fetch_add (1, std::memory_order_acq_rel);
 }
 
 struct spot_data_plane_runtime_state_t
@@ -300,16 +300,16 @@ struct spot_data_plane_runtime_state_t
         std::deque<uint64_t> pending_message_ids;
     };
 
-    struct mesh_pub_budget_state_t
+    struct mesh_pub_hwm_state_t
     {
-        mesh_pub_budget_state_t () :
+        mesh_pub_hwm_state_t () :
             current_sndhwm (0),
-            last_budget_version (UINT64_MAX)
+            last_hwm_version (UINT64_MAX)
         {
         }
 
         int current_sndhwm;
-        uint64_t last_budget_version;
+        uint64_t last_hwm_version;
         std::string last_bound_endpoint;
     };
 
@@ -403,7 +403,7 @@ struct spot_data_plane_runtime_state_t
     uint64_t next_pending_message_id;
     uint64_t last_attachment_version;
     bool runtime_sockets_nodelay_applied;
-    mesh_pub_budget_state_t mesh_pub_budget;
+    mesh_pub_hwm_state_t mesh_pub_hwm;
     poller_interest_state_t interest;
     local_fanout_state_t local_fanout;
     remote_mesh_state_t remote_mesh;
@@ -418,7 +418,7 @@ struct spot_data_plane_pending_t
                                 size_t message_bytes_);
     static int copy_msg_parts_to_owned (const spot_owned_msg_parts_t &src_,
                                         spot_owned_msg_parts_t *dst_);
-    static int resolve_fanout_budget_bytes (spot_runtime_t *runtime_);
+    static int resolve_fanout_hwm (spot_runtime_t *runtime_);
     static void release_local_pending_ref (
       spot_data_plane_runtime_state_t *state_, uint64_t message_id_);
     static void drop_local_target_state (

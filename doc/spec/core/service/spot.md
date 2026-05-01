@@ -71,11 +71,11 @@ policy. Manual `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_SUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`, and
 `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` settings override those automatic
-values. With the default context settings, SPOT uses the `balanced` automatic
-HWM profile. Topic publish sockets are planned as `spot_data`, topic ingress
+values. When context auto-HWM is enabled, SPOT uses the active automatic HWM
+profile. Topic publish sockets are planned as `spot_data`, topic ingress
 sockets as `recv_ingress`, routed sockets as `routed`, and control sockets as
-`control`. SPOT publish planning uses the effective publish fanout capped by
-`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`, not the total number of Spot handles.
+`control`. SPOT publish planning does not lower per-connection HWM based on
+the total number of Spot handles or peer connections.
 
 `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` and
 `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` configure the maximum number of

@@ -41,31 +41,35 @@ socket buffers.
 
 SPOT output uses `zlink_spot_node_internal_sockets_snapshot()` and prints only
 actual snapshot rows where `auto_hwm_visible == 1`. The default tables are
-`Auto-HWM spotnode` for node-owned sockets and `Auto-HWM spot` for per-spot
-sockets. Each row includes `Size(B)`, `MsgUnit(B)`, the internal socket name,
-the public socket type, role, connection counts, HWM, and effective buffers.
-If a SpotNode mode does not create a socket group, that group is absent from
-the perf output.
+`Auto-HWM spotnode` for node-owned sockets and `Auto-HWM spot handles` for
+per-spot handle sockets. Shared routers, mesh sockets, and peer-control sockets
+belong to the SpotNode table. A per-spot handle normally exposes only its
+handle-owned PUB/SUB data sockets, so router rows are not expected in
+`Auto-HWM spot handles`. Each row includes `Size(B)`, `MsgUnit(B)`, the internal
+socket name, the public socket type, role, HWM, and effective buffers. If a
+SpotNode mode does not create a socket group, that group is absent from the perf
+output.
 
-## Context Budget Tiers
+## Auto-HWM Profile Sweep
 
-Use `PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` for context memory sweeps.
+Use `PERF_CTX_AUTO_HWM_PROFILE` and benchmark message sizes to exercise the
+per-connection auto-HWM policy.
 The recommended sweep axes are:
 
 | Axis | Values |
 |------|--------|
-| context memory | `128`, `256`, `512`, `1024` MiB, plus `2048` MiB for the 100-client SPOT_SENDSEND 64 KiB edge case |
+| profile | `low_latency`, `balanced`, `throughput` |
 | message sizes | `64`, `1024`, `4096`, `65536` bytes |
 | patterns | `DEALER_ROUTER`, `PUBSUB`, `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` |
 
-Budget tier guidance after the auto-HWM message-unit change:
+Profile guidance after the auto-HWM message-unit change:
 
-| Tier | Recommended budget | Use case |
-|------|--------------------|----------|
-| small | `128` MiB | up to about 100 clients with mostly small payloads |
-| medium | `256` MiB | up to about 1000 clients with ordinary service messages |
-| large | `512` MiB or `1024` MiB | high client counts or a moderate share of large payloads |
-| xlarge | `2048` MiB | 100-client SPOT_SENDSEND with 64 KiB payloads; 1024 MiB leaves per-spot HWM below the target concurrency in the local sweep |
+| Profile | Use case |
+|---------|----------|
+| `low_latency` | lower per-connection queue depth for small latency-focused tests |
+| `balanced` | default profile for ordinary service messages |
+| `throughput` | larger per-connection queue depth for high throughput sweeps |
 
-If calculated HWM values are too small for the target concurrency, increase the
-context budget before lowering `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`.
+If calculated HWM values are too small for the target traffic shape, first
+select a larger profile. Use `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` only when the
+benchmark's effective message unit differs from the socket-type default.

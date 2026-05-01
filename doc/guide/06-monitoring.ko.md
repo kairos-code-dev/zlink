@@ -311,20 +311,18 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 | `auto_hwm_profile` / `auto_hwm_policy_class` | 활성 auto-HWM profile과 planner policy class |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | 현재 적용된 자동 HWM 값 |
 | `auto_hwm_unit_budget_bytes` / `auto_hwm_size_cap` | planner가 사용한 profile 단위 예산과 메시지 수 cap |
-| `auto_hwm_effective_publish_fanout` | 사용할 수 있으면 SPOT publish 계획에 쓴 fanout |
+| `auto_hwm_effective_publish_fanout` | 사용할 수 있으면 채우는 SPOT publish fanout 진단값 |
 | `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 transport buffer 값 |
-| `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | 자동 관리 buffer 비용과 사용자가 직접 설정한 buffer 진단값 |
-| `auto_hwm_effective_message_bytes` | queue share를 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |
-| `auto_hwm_observed_count` / `auto_hwm_planning_count` | 현재 관찰 연결 수와 정책이 계산에 쓴 계획 수 |
-| `auto_hwm_context_total_planning_count` | context 전체에 대해 합산한 계획 수 |
-| `auto_hwm_socket_queue_share_bytes` / `auto_hwm_socket_message_slots` | 현재 소켓에 배정된 queue share와 결과 슬롯 수 |
-| `auto_hwm_scope` / `auto_hwm_scope_count` | shared/per-spot을 포함한 HWM 계산 scope |
-| `auto_hwm_total_memory_budget_bytes` 등 budget 필드 | 현재 context 예산과 buffer 예약 상태 |
+| `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | 사용할 수 있을 때 채우는 buffer 진단값 |
+| `auto_hwm_effective_message_bytes` | profile envelope를 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |
+| `auto_hwm_observed_count` | 진단용 관찰 연결 수. auto-HWM은 이 값이 커져도 per-connection HWM을 낮추지 않음 |
+| `auto_hwm_socket_message_slots` | profile 단위 예산과 message unit으로 선택된 메시지 슬롯 수 |
+| deprecated planning과 budget 필드 | planning count, context budget, queue budget, queue share 같은 호환 필드는 `0`으로 채워지며 HWM 설명 근거로 쓰면 안 됨 |
 
 `snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
 이 값이 HWM에 근접하면 백프레셔가 발생하고 있다는 의미이다.
 자동 HWM을 쓰는 경우에는 같은 snapshot에서 "왜 이 HWM이 나왔는지"를
-budget 필드로 함께 확인할 수 있다.
+profile, unit budget, message unit, 적용 HWM 필드로 함께 확인할 수 있다.
 
 **주의 — pending 값이 HWM 설정보다 클 수 있는 경우:**
 

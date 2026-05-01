@@ -51,7 +51,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |---|---|
 | **What it does** | Limits the maximum number of messages in the pipe's outbound/inbound direction |
 | **Applied at** | `pipe_t::check_write()` — checks HWM when writing to pipe |
-| **Default** | Calculated by the automatic HWM policy from the context budget, socket role, and connection count |
+| **Default** | `1000`. If context auto-HWM is enabled, calculated from profile, socket role, and message unit. |
 | **0** | Unlimited |
 | **Effect** | When HWM is reached, `zlink_send()` blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
 
@@ -67,22 +67,26 @@ internal topic publishers use `spot_data`, peer/control sockets use `control`,
 and SPOT routers use `routed`.
 
 The context option `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects one of three
-profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`.
+profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`. Auto-HWM is
+opt-in: unless `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` is set to `1`, sockets keep the
+normal HWM default `1000`.
 
-| Policy class | `low_latency` | `balanced` | `throughput` |
+| Socket group | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|
-| `fanout` | 512 KiB | 2 MiB | 4 MiB |
-| `spot_data` | 512 KiB | 2 MiB | 4 MiB |
-| `routed` | 256 KiB | 512 KiB | 1 MiB |
-| `peer_queue` | 256 KiB | 512 KiB | 1 MiB |
-| `stream` | 128 KiB | 256 KiB | 512 KiB |
-| `recv_ingress` | 128 KiB | 256 KiB | 512 KiB |
-| `control` | 64 KiB | 64 KiB | 128 KiB |
+| non-STREAM data sockets | 64 | 128 | 256 |
+| STREAM | 16 | 64 | 256 |
+| control | 16 | 16 | 32 |
 
-The planner divides the context queue budget across active automatic-HWM
-sockets, then clamps the result with a profile/message-size cap. This keeps
-large one-way fanout queues short by default. The minimum automatic HWM floor
-is `1`.
+The planner treats HWM as a per-connection queue depth. It does not divide a
+context memory budget by connection count. Instead, it keeps the profile's byte
+envelope stable:
+
+```text
+scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
+```
+
+The minimum automatic HWM is `1`, and the result is capped by the profile's
+message-count cap.
 
 Manual `SNDHWM` / `RCVHWM` settings always override the automatic values.
 
@@ -338,10 +342,8 @@ When enabled, HWM settings are ignored. Multipart messages cannot be received in
 Independent of HWM. HWM limits message count in the zlink pipe; SNDBUF/RCVBUF limits byte size in the OS kernel socket buffer.
 
 **Per-socket-type:**
-- `STREAM`: calculated by the auto-HWM policy from the context budget and
-  planning connection count. If auto HWM is disabled and the application still
-  leaves the options unset, STREAM falls back to the compatibility default
-  `262144`
+- `STREAM`: if the application leaves the options unset, STREAM uses the
+  compatibility default `262144`.
 
 ---
 
@@ -477,8 +479,8 @@ Some socket types override common defaults at creation time:
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | Surface failures to unconnected peers instead of silently dropping |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
-| `STREAM` | `SNDBUF` | automatic (`262144` only when auto HWM is disabled and the option stays unset) | Transport buffer sizing from the context budget |
-| `STREAM` | `RCVBUF` | automatic (`262144` only when auto HWM is disabled and the option stays unset) | Transport buffer sizing from the context budget |
+| `STREAM` | `SNDBUF` | `262144` when unset | Compatibility default for stream sockets |
+| `STREAM` | `RCVBUF` | `262144` when unset | Compatibility default for stream sockets |
 
 > **Defaults and observable behavior:**
 >

@@ -55,13 +55,8 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             null,
             null,
             null);
-        using var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TMessage));
-        if (!activation.SendChannel(channelName, envelope, SendFlags.None))
-        {
-            throw new InvalidOperationException("SPOT channel send submit failed.");
-        }
-
-        return ValueTask.CompletedTask;
+        var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TMessage));
+        return activation.SendChannelAsync(channelName, envelope, cancellationToken);
     }
 }
 

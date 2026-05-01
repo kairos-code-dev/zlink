@@ -602,5 +602,255 @@ rg -n "ZLINK_CTX_OPT_AUTO_HWM|ZLINK_OPT_AUTO_HWM|zlink_auto_hwm|auto_hwm_" core/
   - auto-HWM 기본값, bootstrap option, monitor detail flag, role/policy snapshot
     처리 방침을 확정형으로 정리했다.
   - binding 구현 뒤 최종 문서/API 재대조 게이트를 추가했다.
+
+### 2026-04-30 core 공개 계약과 planner 반영
+
+- 수정 파일:
+  - `core/include/zlink.h`
+  - `core/include/zlink_enum.h`
+  - `core/src/core/auto_hwm_policy.hpp`
+  - `core/src/core/auto_hwm_policy.cpp`
+  - `core/src/core/ctx.hpp`
+  - `core/src/core/ctx.cpp`
+  - `core/src/sockets/socket_base.cpp`
+  - `core/src/sockets/socket_base_monitor.cpp`
+  - `core/tests/integration/test_ctx_options.cpp`
+  - `core/tests/integration/monitoring/test_monitor_socket_contract.cpp`
+  - `core/tests/unittest/unittest_spot_data_plane_budget.cpp`
+- 실행 명령:
+  - `git status --short`
+  - `rg -n "AUTO_HWM_TOTAL_MEMORY|TOTAL_MEMORY_BUDGET|auto_hwm_total_memory|queue_budget|socket_queue_share|planning_count|observed_count|SPOT_BOOTSTRAP|STREAM_BOOTSTRAP" core/include core/src core/tests bindings doc`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "test_ctx_options|unittest_ctx_runtime"`
+  - `ctest --test-dir core/build --output-on-failure -R "auto_hwm|hwm|ctx_options|monitor|unittest_spot_data_plane_budget"`
+- 실패 원인:
+  - 기존 테스트가 auto-HWM 기본 enabled와 context memory budget 기반 기대값을
+    전제로 삼고 있었다.
+- 해결 내용:
+  - auto-HWM 기본값을 disabled로 바꾸고 deprecated memory budget/bootstrap
+    option은 set/get 가능하지만 항상 0으로 동작하게 고정했다.
+  - planner를 profile, role, message unit 기준의 per-connection HWM 계산으로
+    바꿨다.
+  - connection 수, observed count, planning count로 HWM을 낮추는 내부 계산 경로를
+    제거했다.
+  - monitor snapshot의 오래된 budget/planning 필드는 ABI 유지용으로 0을 채우게
+    했다.
+
+### 2026-04-30 SpotNode 적용과 POSD 정리
+
+- 수정 파일:
+  - `core/CMakeLists.txt`
+  - `core/src/services/spot/spot_auto_hwm_internal.hpp`
+  - `core/src/services/spot/spot_data_plane_control.cpp`
+  - `core/src/services/spot/spot_data_plane_forwarding.cpp`
+  - `core/src/services/spot/spot_data_plane_internal.hpp`
+  - `core/src/services/spot/spot_data_plane_loop.cpp`
+  - `core/src/services/spot/spot_data_plane_pending.cpp`
+  - `core/src/services/spot/spot_data_plane_protocol.cpp`
+  - `core/src/services/spot/spot_data_plane_runtime.cpp`
+  - `core/src/services/spot/spot_mesh_pub_hwm.cpp`
+  - `core/src/services/spot/spot_mesh_pub_hwm.hpp`
+  - `core/src/services/spot/spot_node.hpp`
+  - `core/src/services/spot/spot_node_control.cpp`
+  - `core/src/services/spot/spot_node_control_ready.cpp`
+  - `core/src/services/spot/spot_node_handles.cpp`
+- 실행 명령:
+  - `rg -n "spot_mesh_pub_budget|mesh_pub_budget|last_budget_version|budget_version|publish_mesh_pub_budget" core/src core/tests core/CMakeLists.txt`
+  - `rg -n "budget|Budget|BUDGET" core/src/services/spot core/CMakeLists.txt`
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build --output-on-failure -R "auto_hwm|hwm|ctx_options|monitor|spot|Spot|unittest_spot"`
+  - `ctest --test-dir core/build --output-on-failure`
+- 실패 원인:
+  - Spot mesh 내부 이름이 과거 budget 설계를 계속 드러내고 있었다.
+  - `test_backpressure_matrix`가 전체 테스트 첫 실행에서 한 번 실패했지만 단독 재실행과
+    두 번째 전체 실행에서는 재현되지 않았다.
+- 해결 내용:
+  - SpotNode helper와 mesh publisher 이름을 HWM 기준으로 정리했다.
+  - budget 이름과 connection 수 기반 HWM 감소 의미가 core/src에 남지 않게
+    반복 검색했다.
+  - rename 이후 `cmake --build core/build`와 core 전체 테스트 100개 통과를 확인했다.
+
+### 2026-04-30 C perf 출력 정리
+
+- 수정 파일:
+  - `bindings/c/perf/run_benchmarks.sh`
+  - `bindings/c/perf/multi/common/perf_multi_runtime.hpp`
+  - `bindings/c/perf/single/common/bench_common_runtime.hpp`
+  - `bindings/c/perf/single/run_comparison.py`
+  - `bindings/c/perf/run_comparison.py`
+  - `bindings/c/perf/README.md`
+- 실행 명령:
+  - `rg -n "PERF_CTX_AUTO_HWM_TOTAL_MEMORY|ctx_auto_hwm_total_memory|queue_budget|socket_queue_share|planning_count|Auto-HWM budget|spot_budget" bindings/c/perf`
+  - `rg -n "0 result|no result|RESULT|result row|result_rows|expected_sizes|summary" bindings/c/perf/run_benchmarks.sh bindings/c/perf/run_benchmarks_multi.sh bindings/c/perf/run_comparison.py bindings/c/perf/single/run_comparison.py`
+- 실패 원인:
+  - perf runner가 deprecated memory budget env를 넘기고, 상세 표가 queue share와
+    planning count를 의미 있는 계산 근거처럼 출력했다.
+- 해결 내용:
+  - C perf runner에서 memory budget env 전달과 표시를 제거했다.
+  - auto-HWM 상세 표를 unit budget, message unit, message slots, applied HWM 중심으로
+    바꿨다.
+  - single/multi comparison 스크립트가 실제 result line 수가 부족하면 실패하는 것을
+    확인했다.
   - 금지 표현과 모호한 결정 표현을 다시 검색했고, 추가 수정이 필요한 항목이
     없음을 확인했다.
+
+### 2026-04-30 C sample/perf 검증
+
+- 수정 파일:
+  - `bindings/c/perf/README.md`
+- 실행 명령:
+  - `cmake --build bindings/c/build`
+  - `ctest --test-dir bindings/c/build --output-on-failure`
+  - `bindings/c/samples/run_samples.sh`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp --reuse-build --results-tag auto_hwm_pc_single_smoke`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp --reuse-build --results-tag auto_hwm_pc_multi_smoke`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_REQREP --runs 1 --duration 1 --clients 100 --msg-sizes 64 --transports tcp --reuse-build`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_SENDSEND --runs 1 --duration 1 --clients 100 --msg-sizes 64 --transports tcp --reuse-build`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT --runs 1 --duration 1 --clients 100 --msg-sizes 64,1024,65536,262144 --transports tcp --reuse-build`
+  - `PERF_DISABLE_RESOURCE_METRICS=1 bindings/c/perf/run_benchmarks_multi.sh --pattern STREAM --runs 1 --duration 1 --clients 1000 --msg-sizes 65536 --transports tcp --reuse-build`
+- 실패 원인:
+  - `ctest`는 등록된 테스트가 없어 `No tests were found!!!`만 출력했다. 이를
+    성공 smoke로 해석하지 않고 sample/perf 실제 결과로 검증했다.
+  - `bindings/c/perf/README.md`에 예전 context budget tier 설명이 남아 있었다.
+- 해결 내용:
+  - C sample 10/10 통과를 확인했다.
+  - single perf는 30/30, multi perf는 40/40 result line을 확인했다.
+  - targeted perf는 SPOT_REQREP 5/5, SPOT_SENDSEND 5/5, SPOT one-way 20/20,
+    STREAM 5/5 result line을 확인했다.
+  - C perf README를 profile/message-unit sweep 설명으로 바꿨다.
+
+### 2026-04-30 정식 문서와 site 반영
+
+- 수정 파일:
+  - `doc/spec/core/context.ko.md`
+  - `doc/spec/core/context.md`
+  - `doc/spec/core/monitoring.ko.md`
+  - `doc/spec/core/monitoring.md`
+  - `doc/spec/core/service/spot.ko.md`
+  - `doc/spec/core/service/spot.md`
+  - `doc/spec/core/socket/stream.ko.md`
+  - `doc/spec/core/socket/stream.md`
+  - `doc/guide/02-core-api.ko.md`
+  - `doc/guide/02-core-api.md`
+  - `doc/guide/03-5-stream.ko.md`
+  - `doc/guide/03-5-stream.md`
+  - `doc/guide/06-monitoring.ko.md`
+  - `doc/guide/06-monitoring.md`
+  - `doc/guide/10-performance.ko.md`
+  - `doc/guide/10-performance.md`
+  - `doc/guide/12-socket-options.ko.md`
+  - `doc/guide/12-socket-options.md`
+  - `doc/internals/socket-option-defaults.ko.md`
+  - `doc/internals/socket-option-defaults.md`
+  - `doc/internals/spot-internals.ko.md`
+  - `doc/internals/spot-internals.md`
+  - `doc/site/docs/api/*`
+  - `doc/site/docs/guide/*`
+  - `doc/site/docs/internals/*`
+- 실행 명령:
+  - `rg -n "AUTO_HWM|auto-HWM|auto_hwm|message unit|memory budget|bootstrap|profile" doc/spec doc/guide doc/internals doc/site/docs`
+  - `cp <updated-doc> <matching-site-doc>`
+- 실패 원인:
+  - 정식 문서 일부가 auto-HWM enabled 기본값, context memory budget, bootstrap
+    planning count, queue share 설명을 오래된 계약처럼 설명했다.
+- 해결 내용:
+  - spec은 공개 헤더 기준 계약만 남기고 deprecated option과 monitor zero-fill
+    의미를 명시했다.
+  - guide는 사용자가 볼 동작을 default HWM 1000, opt-in auto-HWM, profile,
+    message unit 중심으로 다시 설명했다.
+  - internals는 내부 HWM 계산이 context budget이나 connection 수로 나누지
+    않는 구조임을 반영했다.
+
+### 2026-04-30 binding native 동기화와 검증
+
+- 수정 파일:
+  - `bindings/cpp/include/zlink.h`
+  - `bindings/cpp/include/zlink/types.hpp`
+  - `bindings/go/include/zlink.h`
+  - `bindings/go/include/zlink_enum.h`
+  - `bindings/rust/include/zlink.h`
+  - `doc/spec/bindings/README.md`
+  - `doc/spec/bindings/cpp/README.md`
+  - `doc/spec/bindings/dotnet/README.md`
+  - `doc/spec/bindings/go/README.md`
+  - `doc/spec/bindings/python/README.md`
+  - `doc/spec/bindings/rust/README.md`
+  - `doc/site/docs/api/bindings.md`
+- 실행 명령:
+  - `cp core/include/zlink.h bindings/cpp/include/zlink.h`
+  - `cp core/include/zlink.h bindings/go/include/zlink.h`
+  - `cp core/include/zlink_enum.h bindings/go/include/zlink_enum.h`
+  - `cp core/include/zlink.h bindings/rust/include/zlink.h`
+  - `bindings/cpp/tests/run_tests.sh`
+  - `bindings/go/tests/run_tests.sh`
+  - `bindings/python/tests/run_tests.sh`
+  - `bindings/rust/tests/run_tests.sh`
+  - `bindings/node/tests/run_tests.sh`
+  - `bindings/java/tests/run_tests.sh`
+  - `bindings/dotnet/tests/run_tests.sh`
+  - 각 binding의 `samples/run_samples.sh`
+- 실패 원인:
+  - 일부 binding spec 문서가 실제 API에 없는 typed memory-budget/bootstrap
+    accessor를 설명했다.
+- 해결 내용:
+  - native header를 공개 header와 동기화했다.
+  - binding spec에서 deprecated memory-budget/bootstrap option은 raw enum 또는
+    native 호환 no-op으로만 남겼다.
+  - C++, Go, Python, Rust, Node, Java, .NET binding test와 sample을 모두 통과했다.
+
+### 2026-04-30 binding perf smoke와 runner 보정
+
+- 수정 파일:
+  - `bindings/python/perf/single/run_benchmarks.py`
+  - `bindings/java/perf/single/run_benchmarks.sh`
+  - `bindings/java/perf/multi/run_benchmarks.sh`
+  - `bindings/java/perf/single/Zlink.BindingBench/src/main/java/dev/kairoscode/zlink/perf/single/PerfPair.java`
+  - `bindings/java/perf/single/Zlink.BindingBench/src/main/java/dev/kairoscode/zlink/perf/single/PerfDealerDealer.java`
+  - `bindings/java/perf/single/Zlink.BindingBench/src/main/java/dev/kairoscode/zlink/perf/single/PerfPubSub.java`
+  - `bindings/java/perf/single/Zlink.BindingBench/src/main/java/dev/kairoscode/zlink/perf/single/PerfSpot.java`
+- 실행 명령:
+  - 각 binding의 `perf/run_benchmarks.sh --pattern ALL --runs 1 --duration 1 --msg-sizes 64 --transports tcp`
+  - 각 binding의 `perf/run_benchmarks_multi.sh --pattern ALL --runs 1 --duration 1 --clients 2 --msg-sizes 64 --transports tcp`
+- 실패 원인:
+  - C++ single PAIR가 한 번 `non_zero_exit_-6`로 실패했으나 같은 runner 경로 재실행에서
+    재현되지 않았다. 최종 비디버그 재실행은 35/35 result line으로 통과했다.
+  - Python single SPOT_REQREP는 result line을 출력한 뒤 정리 시간이 기본 timeout보다
+    길어 runner가 실패했다.
+  - Java single DEALER_DEALER는 context 종료 순서가 다른 패턴과 달라
+    `zlink_ctx_term`에서 멈췄다.
+  - Java single/multi `ALL` 목록에서 SPOT_REQREP가 빠져 있었고, Java multi STREAM은
+    명시한 `--msg-sizes 64`를 무시했다.
+- 해결 내용:
+  - Python single Spot 계열 timeout을 실제 정리 시간에 맞게 늘렸다.
+  - Java single PAIR, DEALER_DEALER, PUBSUB, SPOT에 명시적 `ctx.shutdown()`을
+    추가했다.
+  - Java single/multi `ALL` 목록에 SPOT_REQREP를 포함하고, Java multi STREAM이
+    명시된 msg size를 따르도록 고쳤다.
+  - C++, Go, Python, Rust, Node, Java, .NET single/multi perf smoke가 모두
+    complete 상태와 기대 result line 수로 통과했다.
+
+### 2026-04-30 최종 재대조
+
+- 수정 파일:
+  - `doc/plan/monitoring/auto-hwm-per-connection-profile-rollout-plan.ko.md`
+- 실행 명령:
+  - `rg -n "TOTAL_MEMORY_BUDGET|auto_hwm_total_memory|queue_budget|socket_queue_share|planning_count|observed_count|SPOT_BOOTSTRAP|STREAM_BOOTSTRAP|bootstrap|memory budget|connection count|queue share" core/include core/src core/tests bindings/c/include bindings/cpp/include bindings/go/include bindings/rust/include`
+  - `rg -n "AUTO_HWM|auto-HWM|auto_hwm|message unit|memory budget|bootstrap|profile|queue share|planning count|context budget" doc/spec doc/guide doc/internals doc/spec/bindings doc/site/docs`
+  - `rg -n "zlink_auto_hwm|AUTO_HWM|auto_hwm_|AutoHwm|autoHwm|memory_budget|total_memory" core/include/zlink.h core/include/zlink_enum.h bindings`
+  - `ctest --test-dir core/build --output-on-failure`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_zmp_request_reply$' --repeat until-pass:3`
+  - `ctest --test-dir core/build --output-on-failure -R '^unittest_service_mode_policy$' --repeat until-pass:5`
+  - `ctest --test-dir core/build --output-on-failure`
+  - `git diff --check`
+- 실패 원인:
+  - 최종 문서 검색에서 C perf README의 오래된 context budget 설명이 발견됐다.
+  - core full ctest 재확인 중 `test_zmp_request_reply`와
+    `unittest_service_mode_policy`가 각각 한 번씩 실패했지만, 두 테스트 모두
+    단독 반복에서는 즉시 통과했고 서로 다른 full run에서만 비재현으로 나타났다.
+- 해결 내용:
+  - C perf README를 profile sweep 설명으로 수정했다.
+  - core/src의 memory-budget/planning-count 검색 결과는 deprecated no-op 처리,
+    monitor zero-fill, 테스트 assertion, 또는 Discovery/Spot bootstrap 프로토콜
+    용어로만 남음을 확인했다.
+  - core full ctest를 다시 실행해 100/100 통과를 확인했다.
+  - `git diff --check` 통과를 확인했다.

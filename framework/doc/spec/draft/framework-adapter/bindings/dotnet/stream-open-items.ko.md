@@ -84,9 +84,10 @@ ValueTask WriteAsync(
     CancellationToken cancellationToken = default);
 ```
 
-- temporary backpressure는 `false` 반환값으로 노출하지 않는다. write 대기 한계는
-  stream 또는 socket의 send timeout 정책을 따르고, 그 밖의 submit 실패는 예외로
-  보는 쪽이 기본이다.
+- temporary backpressure는 `false` 반환값으로 노출하지 않는다. framework
+  session/socket write 대기 한계는 해당 socket/channel option의 `SendTimeout`을
+  따른다. 단, stream connector public option에는 별도 `SendTimeout`을 두지 않고,
+  connector request reply 대기에는 `RequestTimeout`만 사용한다.
 
 ## 4. Monitor Event -> Session Lifecycle
 

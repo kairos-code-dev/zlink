@@ -206,14 +206,11 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         ZlinkStreamEncodedBody body,
         ZlinkStreamMetadata metadata,
         bool compress,
-        TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         var frame = BuildOutboundFrame(kind, name, body, metadata, compress, null);
         ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
-        await SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, timeoutCts.Token).ConfigureAwait(false);
+        await SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, cancellationToken).ConfigureAwait(false);
     }
 
     internal async ValueTask<ZlinkStreamEncodedBody> RequestEncodedAsync(

@@ -49,7 +49,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |------|------|
 | **하는 일** | pipe의 최대 메시지 수를 제한 |
 | **적용 위치** | `pipe_t::check_write()` |
-| **기본값** | 자동 HWM 정책이 context 예산, 소켓 역할, 연결 수를 기준으로 계산 |
+| **기본값** | `1000`. context auto-HWM을 켜면 profile, 소켓 역할, message unit 기준으로 계산 |
 | **0** | 무제한 |
 | **영향** | HWM 도달 시 block 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환. LWM 이하로 drain되면 복구 |
 
@@ -64,22 +64,25 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 `spot_data`, peer/control 소켓은 `control`, SPOT router는 `routed`로 계산한다.
 
 Context 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 세 profile 중 하나를 고른다.
-기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`다.
+기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`다. auto-HWM은 opt-in이다.
+`ZLINK_CTX_OPT_AUTO_HWM_ENABLE`을 `1`로 설정하지 않으면 소켓은 일반 HWM
+기본값 `1000`을 유지한다.
 
-| Policy class | `low_latency` | `balanced` | `throughput` |
+| 소켓 그룹 | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|
-| `fanout` | 512 KiB | 2 MiB | 4 MiB |
-| `spot_data` | 512 KiB | 2 MiB | 4 MiB |
-| `routed` | 256 KiB | 512 KiB | 1 MiB |
-| `peer_queue` | 256 KiB | 512 KiB | 1 MiB |
-| `stream` | 128 KiB | 256 KiB | 512 KiB |
-| `recv_ingress` | 128 KiB | 256 KiB | 512 KiB |
-| `control` | 64 KiB | 64 KiB | 128 KiB |
+| non-STREAM data socket | 64 | 128 | 256 |
+| STREAM | 16 | 64 | 256 |
+| control | 16 | 16 | 32 |
 
-Planner는 context queue 예산을 자동 HWM 대상 socket 전체에 나눈 뒤,
-profile과 메시지 크기에서 정한 cap으로 결과를 제한한다. 그래서 큰 메시지
-one-way fanout 큐가 기본 정책에서 과하게 깊어지지 않는다. 자동 HWM의 최소
-floor는 `1`이다.
+Planner는 HWM을 connection 하나의 queue depth로 본다. context memory budget을
+connection 수로 나누지 않는다. 대신 profile의 byte envelope가 유지되도록 아래
+공식을 적용한다.
+
+```text
+scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
+```
+
+자동 HWM의 최소값은 `1`이고, 결과는 profile별 메시지 수 cap으로 제한된다.
 
 사용자가 `SNDHWM` / `RCVHWM`을 직접 설정하면 자동 HWM보다 그 값이 항상 우선한다.
 
@@ -344,9 +347,8 @@ HWM과 독립적이다. HWM은 zlink pipe 수준의 메시지 수 제한이고,
 SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기이다.
 
 **소켓 타입별 차이:**
-- `STREAM`: auto HWM 정책이 context 예산과 연결 계획 수를 기준으로 계산한다.
-  auto HWM을 끄고도 `SNDBUF` / `RCVBUF`를 주지 않으면 호환 기본값 `262144`
-  를 사용한다.
+- `STREAM`: 애플리케이션이 `SNDBUF` / `RCVBUF`를 주지 않으면 호환 기본값
+  `262144`를 사용한다.
 
 ---
 
@@ -485,8 +487,8 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | 미연결 peer 대상 전송 실패를 surface |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
-| `STREAM` | `SNDBUF` | 자동 (auto HWM 비활성 + 미설정이면 `262144`) | context 예산 기준 transport buffer 계산 |
-| `STREAM` | `RCVBUF` | 자동 (auto HWM 비활성 + 미설정이면 `262144`) | context 예산 기준 transport buffer 계산 |
+| `STREAM` | `SNDBUF` | 미설정이면 `262144` | stream 소켓 호환 기본값 |
+| `STREAM` | `RCVBUF` | 미설정이면 `262144` | stream 소켓 호환 기본값 |
 
 > **기본값과 관찰 가능한 동작:**
 >

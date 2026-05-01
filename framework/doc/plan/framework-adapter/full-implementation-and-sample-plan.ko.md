@@ -104,8 +104,10 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 
 1. `framework/doc/plan/framework-adapter/worklog/implementation-checklist.md`,
    `posd-review.md`, `sample-posd-review.md`를 먼저 읽는다.
-2. `pending` 항목이 있으면 가장 위에 있는 항목을 현재 작업으로 잡는다.
-3. `pending` 항목이 여러 개이면 아래 우선순위를 따른다.
+2. `Autonomous Resume Queue` 안에 `pending` 항목이 있으면 그 queue에서 가장 위에
+   있는 항목을 현재 작업으로 잡는다. Reference Documents 표의 일반 `pending`은
+   queue의 문서 대조 단계에서 해소하며, queue보다 먼저 잡지 않는다.
+3. queue 밖에서 새 `pending` 항목을 추가해야 하면 아래 우선순위를 따른다.
    - 공개 API와 draft spec 불일치
    - 실제 구현이 없는 smoke marker 또는 placeholder
    - sample 계약 불일치
@@ -127,6 +129,74 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 부분 smoke는 진행 상황을 확인하는 용도로만 사용하고, 계획의 완료 판정에는 실제
 기능 구현과 문서 대조 결과를 함께 요구한다.
 
+### 3.2 현재 재개 기준 작업 순서
+
+현재 저장소에서 이어서 작업할 때는 아래 순서를 반드시 따른다. 이 순서는 Phase
+번호보다 우선하는 재개 순서다.
+
+이 순서의 API 근거는 아래 draft 문서를 우선해서 확인한다.
+
+- send/publish call builder:
+  [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md),
+  [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md)
+- async submit 의미:
+  [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md),
+  [interaction-model.ko.md](../../spec/draft/framework-adapter/policy/interaction-model.ko.md),
+  [streaming-client.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/streaming-client.ko.md)
+- routed channel과 session gateway:
+  [session-gateway.ko.md](../../spec/draft/framework-adapter/policy/session-gateway.ko.md)
+- TicTacToe sample:
+  [tictactoe-game-sample.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md)
+
+1. 기존 TicTacToe sample을 보존한다.
+   - 경로: `framework/languages/dotnet/samples/TicTacToe`
+   - 유지 project: `Shared`, `Server`, `Client`, `TicTacToe.sln`
+   - 금지: 기존 sample을 `Direct/` project로 재구성하거나 파일을 gateway sample과
+     공유하지 않는다.
+   - 허용: framework public API 이름 변경에 필요한 최소 호출부 수정만 한다.
+2. 오래된 public submit API 이름과 draft 예시를 먼저 정리한다.
+   - `SendAsync(...)`를 framework public builder 실행 함수로 남기지 않는다.
+   - actor/session stream send/reply builder도 public 실행 함수는 `Async(...)`다.
+   - draft sample에 남은 `.SendAsync(...)` 예시는 `.Async(...)`로 맞춘다.
+   - `WebSocket.SendAsync(...)`처럼 외부 transport API 이름은 이 금지 대상이 아니다.
+3. framework `.NET` runtime의 공통 async submit runtime을 먼저 구현한다.
+   - 기존 channel send/publish/request와 SPOT send/publish/request가 이 runtime을
+     사용한다.
+   - routed channel은 아직 없더라도, runtime은 routed submit이 같은 경로를 재사용할
+     수 있게 socket submit, pending item, deadline, cleanup 정책을 숨긴다.
+   - public API는 `SendAsync(...)`라는 별도 메서드가 아니라
+     `Send(...).Async(...)` call builder 형태다.
+   - blocking send를 `Task.Run`으로 감싸지 않는다.
+   - framework `.NET` 구현은 ready 신호를 여러 경로에서 중복 감시하지 않는다.
+     pending queue drain은 framework가 소유한 socket의 `OnSendReady(...)` callback
+     한 곳에서 시작한다. 이 callback 아래에서 `.NET` binding이
+     `zlink_send_ready_handler`에 연결되고, core는 `ZLINK_POLLOUT` readiness를
+     사용한다.
+   - nonblocking submit, bounded pending queue, ready drain, timeout,
+     cancellation, runtime stop 처리를 framework 내부에 숨긴다.
+4. framework `.NET` runtime에 routed channel public API를 구현한다.
+   - `AddRoutedChannel(...)`
+   - `IZLinkRoutedClient`
+   - `IZLinkRoutedSendCall`
+   - `IZLinkRoutedRequestCall`
+   - routed handler registry와 dispatch
+   - request sequence 기준 reply matching
+   - routed send/request도 3번의 공통 async submit runtime을 사용한다.
+5. framework `.NET` runtime에 session gateway와 actor relay API를 구현한다.
+   - session server의 `actorId -> stream` binding
+   - actor relay
+   - session gateway
+   - reconnect 시 같은 `actorId`가 새 stream으로 교체되는 동작
+6. 위 framework API가 실제로 동작한 뒤에만 gateway sample을 만든다.
+   - 경로: `framework/languages/dotnet/samples/TicTacToe(session-gateway)`
+   - 기존 `TicTacToe/` sample과 project/file을 공유하지 않는다.
+   - sample 내부 `InMemoryRoutedChannel` 같은 대체 transport로 성공시키지 않는다.
+7. monitoring, registry, stage wrapper, Unity connector 범위를 문서와 코드로 대조한다.
+   구현 범위에 들어가면 구체 queue 항목으로 추가해서 구현하고, non-goal이면
+   `not-applicable` 이유를 worklog에 남긴다.
+8. 기존 sample build, gateway sample smoke, framework 전체 test를 다시 실행한다.
+9. 문서 대조 리뷰와 POSD 리뷰를 반복하고, 모든 worklog `pending`을 해소한다.
+
 ## 4. Phase 0: 기준선 수집
 
 ### 4.1 현재 코드 inventory
@@ -134,16 +204,19 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 아래 명령으로 현재 public surface와 오래된 API 이름을 찾는다.
 
 ```bash
-rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait" framework/languages/dotnet
+rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait|\\.SendAsync\\(|\\bpublic ValueTask SendAsync\\b" framework/languages/dotnet
 if [ -d framework/samples ]; then
-  rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait" framework/samples
+  rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait|\\.SendAsync\\(|\\bpublic ValueTask SendAsync\\b" framework/samples
 fi
-rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait" framework/doc/spec/draft/framework-adapter
+rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait|\\.SendAsync\\(|\\bpublic ValueTask SendAsync\\b" framework/doc/spec/draft/framework-adapter
 ```
 
 완료 조건:
 
 - 코드와 sample에서 오래된 public submit API가 모두 목록화되어 있다.
+- `WebSocket.SendAsync(...)`처럼 외부 transport API 호출은 금지 대상이 아니다.
+  framework public builder 실행 함수나 draft sample 호출부에 남은 `.SendAsync(...)`만
+  제거 대상으로 분류한다.
 - 각 항목이 framework, stream connector, sample 중 어느 소유인지 분류되어 있다.
 
 ### 4.2 프로젝트와 테스트 경로 확인
@@ -161,6 +234,9 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 - 실제 존재하는 framework solution과 test project 목록이 작업 로그에 정리되어 있다.
 - 계획에 적힌 sample project가 아직 없으면 sample spec에 맞춰 생성할 프로젝트 목록이
   정리되어 있다.
+- 기존 TicTacToe sample은 `framework/languages/dotnet/samples/TicTacToe`로 고정한다.
+- Session Gateway sample은
+  `framework/languages/dotnet/samples/TicTacToe(session-gateway)`로 고정한다.
 - `.NET` project는 별도 문서가 명시하지 않는 한 `net8.0`을 기준 target framework로
   맞춘다.
 - 필수 테스트 명령의 경로가 실제 경로와 다르면 실제 경로 기준으로 계획 문서를 먼저
@@ -192,13 +268,36 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 - `IZLinkSpotPublisherClient.Publish(...)`
 - actor context와 session context가 돌려주는 send call
 
+근거 draft:
+
+- [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md)
+- [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md)
+- [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md)
+
 반영 내용:
 
 - `WithDontWait()` 제거
 - `Sync()` 제거
 - `ValueTask Async(CancellationToken cancellationToken = default)` 추가
+- `SendAsync(...)`를 새 public method로 추가하지 않는다. draft의 비동기 submit
+  표면은 `Send(...).Async(...)`다.
 - send/publish에는 `WithTimeout(...)`을 추가하지 않음
 - send/publish backpressure 대기 한계는 channel 또는 socket의 `SendTimeout` 사용
+- framework async submit runtime은 core blocking send를 호출해서 timeout을
+  맡기지 않는다. socket/channel의 `SendTimeout` 값을 읽어 pending submit deadline으로
+  사용한다.
+- `SendTimeout` 값 해석은 현재 `.NET` binding/core option 의미와 맞춘다.
+  `.NET`에서 `null`은 core `-1`과 같은 무한 대기이고, `TimeSpan.Zero`는 no-wait
+  submit이다. 양수 값은 해당 시간까지만 pending submit을 유지한다. 음수
+  `TimeSpan`은 `.NET` option setter에서 허용하지 않는다.
+- framework channel/socket option의 기본 `SendTimeout`은
+  `TimeSpan.FromMilliseconds(200)`으로 설정한다. async submit runtime은 core socket
+  기본값을 직접 사용하거나 추정하지 않고, framework가 socket/channel option에
+  설정한 resolved `SendTimeout` 값을 읽어 사용한다. 사용자가 option에서
+  `SendTimeout = null`을 명시한 경우에만 core `-1`과 같은 무한 대기로 본다.
+- 이 규칙은 framework socket/channel submit에 적용한다. stream connector public
+  options에는 `SendTimeout`을 두지 않고, connector request reply 대기는
+  `RequestTimeout`만 사용한다.
 
 완료 조건:
 
@@ -223,6 +322,9 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 - request packet submit은 send와 같은 async submit 경로 사용
 - `WithTimeout(...)`은 reply 대기 시간만 의미
 - submit 단계 backpressure는 `SendTimeout` 정책 사용
+- 단, stream connector typed request는 connector public option의
+  `RequestTimeout`만 사용한다. stream connector options와 send builder에는
+  `SendTimeout`/send timeout `WithTimeout(...)`을 남기지 않는다.
 - submit 실패, cancellation, runtime stop 시 pending request 제거
 
 완료 조건:
@@ -276,8 +378,20 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 - 먼저 nonblocking send를 시도한다.
 - 바로 성공하면 completed `ValueTask`를 돌려준다.
 - would-block이면 bounded pending queue에 넣는다.
-- socket ready callback 또는 poller wakeup에서 queue를 batch drain한다.
+- framework `.NET` runtime은 pending queue drain을 socket `OnSendReady(...)`
+  callback 한 곳에 연결한다. `zlink_send_ready_handler`와 `ZLINK_POLLOUT`은 그
+  아래 native/core 계층의 구현 경로이며, framework가 별도로 세 경로를 모두
+  감시하지 않는다.
+- `OnSendReady(...)` callback에서 queue를 batch drain한다.
 - queue 한계는 high water mark, `SendTimeout`, cancellation, runtime stop으로 닫는다.
+- `SendTimeout`은 core blocking send timeout이 아니라 async pending deadline으로
+  재사용한다. `.NET` `SendTimeout = null`은 ready callback이 올 때까지 무한 대기,
+  `TimeSpan.Zero`는 HWM 발생 시 즉시 실패, 양수 값은 그 시간 안에 submit하지 못하면
+  실패로 처리한다.
+- framework channel/socket option에서 별도 설정이 없을 때는 framework가
+  `SendTimeout = TimeSpan.FromMilliseconds(200)`을 설정한다. async submit runtime은
+  이 resolved option 값을 읽는다. core socket 기본값인 `sndtimeo = -1`은 framework
+  기본 동작으로 의존하지 않는다.
 
 완료 조건:
 
@@ -314,13 +428,18 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 - `Exec()` 제거
 - `ExecAsync()` 제거
 - send builder는 `ValueTask Async(CancellationToken)` 사용
+- send builder에는 `WithTimeout(...)`을 두지 않는다.
 - request builder는 `ValueTask<TReply> Async<TReply>(CancellationToken)` 사용
+- stream connector public options에는 `SendTimeout`을 두지 않고, request reply 대기는
+  `RequestTimeout`만 사용한다.
 - callback request 실행 함수도 `Async(callback)` 또는 동등한 canonical 이름으로 통일
 - connector send도 blocking write를 `Task.Run`으로 감싸지 않고 transport async write를 사용
 
 완료 조건:
 
 - `framework/languages/dotnet/src/Systems.Zlink.Stream.Connector*`에서 `Exec` 이름이 없다.
+- stream connector public surface에 `ZlinkStreamConnectorOptions.SendTimeout`과 send
+  builder `WithTimeout(...)`이 없다.
 - `streaming-client.ko.md`의 API와 코드가 일치한다.
 - Unity adapter sample도 새 API를 사용한다.
 - JSON, MessagePack, Protobuf, Auto codec extension의 옵션 처리와 자동 선택 규칙이
@@ -378,13 +497,14 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 검증 명령:
 
 ```bash
-rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait" framework/languages/dotnet
+rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait|\\.SendAsync\\(|\\bpublic ValueTask SendAsync\\b" framework/languages/dotnet
 if [ -d framework/samples ]; then
-  rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait" framework/samples
+  rg -n "WithDontWait|\\.Sync\\(|\\bExec\\(|ExecAsync|dontWait|dont_wait|\\.SendAsync\\(|\\bpublic ValueTask SendAsync\\b" framework/samples
 fi
 ```
 
-검색 결과가 나오면 이 단계는 완료가 아니다.
+검색 결과가 framework public builder 실행 함수나 draft sample 호출부이면 이 단계는
+완료가 아니다. `WebSocket.SendAsync(...)`처럼 외부 transport API 호출은 허용한다.
 
 ## 10. Phase 6: Framework POSD 리팩토링 반복
 
@@ -396,7 +516,7 @@ fi
 - timeout, codec, routing, sequence 정책이 여러 모듈에 흩어져 있는가
 - send, publish, request submit queue 구현이 중복되어 있는가
 - request pending map과 sequence 관리가 여러 곳에서 중복되는가
-- sample 편의를 위해 framework core에 특수 코드가 들어갔는가
+- sample 편의를 위해 `Zlink.Framework` runtime에 특수 코드가 들어갔는가
 - public API가 내부 transport detail을 노출하는가
 
 ### 10.2 리팩토링 절차
@@ -421,17 +541,19 @@ fi
 
 ## 11. Phase 7: Sample 구현
 
-### 11.1 Direct TicTacToe sample
+### 11.1 기존 TicTacToe sample 보존
 
 구현 대상:
 
-- `samples/TicTacToe/Direct`
-- direct sample 안의 API, Play, Client, game room 책임
-- direct smoke test
+- `framework/languages/dotnet/samples/TicTacToe`
+- 기존 `Shared`, `Server`, `Client`, `TicTacToe.sln`
+- 기존 API server, Play server, stream client, game room 책임
 - file log
 
 반영 내용:
 
+- 기존 sample을 `Direct/` project로 바꾸지 않는다.
+- 기존 sample file을 session gateway sample과 공유하지 않는다.
 - API 서버와 Play 서버 분리
 - Play 서버는 stream client 인증 후 actorId로 actor 생성
 - actorId는 playerId와 동일
@@ -447,6 +569,7 @@ fi
 
 완료 조건:
 
+- 기존 `TicTacToe.sln`이 build된다.
 - 두 client가 같은 room에 join한다.
 - 상대 입장 알림을 받는다.
 - A/B가 번갈아 move request를 보내고 game state reply를 받는다.
@@ -456,7 +579,7 @@ fi
 
 구현 대상:
 
-- `samples/TicTacToe/SessionGateway`
+- `framework/languages/dotnet/samples/TicTacToe(session-gateway)`
 - session server
 - play server
 - api server
@@ -465,6 +588,15 @@ fi
 - location store in-memory 구현
 - routed channel
 - reconnect smoke
+
+선행 조건:
+
+- `Zlink.Framework` runtime에 `AddRoutedChannel(...)`, `IZLinkRoutedClient`,
+  routed handler registry가 실제 구현되어 있다.
+- `Zlink.Framework` runtime에 session gateway, actor relay, `actorId -> stream` binding API가
+  실제 구현되어 있다.
+- routed request/reply matching은 message name이 아니라 request sequence 기준으로
+  검증되어 있다.
 
 반영 내용:
 
@@ -475,6 +607,8 @@ fi
 - location store는 sample에서는 in-memory로 시작하고, Redis 구현 가능 지점을
   interface로 둔다.
 - file log로 message flow를 확인할 수 있어야 한다.
+- sample 내부 대체 transport로 routed channel을 흉내 내지 않는다. framework
+  routed channel API를 사용해야 한다.
 
 완료 조건:
 
@@ -482,6 +616,8 @@ fi
 - session server가 바뀌어도 play server actor와 다시 연결된다.
 - play server 이동 시 client TCP 연결을 유지하고 relay target만 바꿀 수 있다.
 - sample sequence diagram의 모든 메시지가 실제 log에 남는다.
+- 기존 `framework/languages/dotnet/samples/TicTacToe` sample과 project/file을
+  공유하지 않는다.
 
 ## 12. Phase 8: Sample 문서 반영 리뷰 반복
 
@@ -500,17 +636,17 @@ fi
 종료 조건:
 
 - sample 문서의 서버 구성, sequence, client scenario가 모두 코드에 존재한다.
-- TicTacToe README의 공통 규칙이 direct와 session gateway sample 양쪽에 반영되어
-  있다.
+- TicTacToe README의 공통 규칙이 기존 TicTacToe sample과 session gateway sample
+  양쪽에 반영되어 있다.
 - sample code에 `PlayHouse` 이름이 없다.
 - `SampleShared`에 client 전용 파일이 섞여 있지 않다.
-- sample smoke가 direct와 session gateway 양쪽 모두 성공한다.
+- sample smoke가 기존 TicTacToe sample과 session gateway sample 양쪽 모두 성공한다.
 
 ## 13. Phase 9: Sample POSD 리팩토링 반복
 
 리뷰 기준:
 
-- sample 전용 helper가 framework core에 들어가지 않았는가
+- sample 전용 helper가 `Zlink.Framework` runtime에 들어가지 않았는가
 - sample shared project가 packet 계약만 담고 있는가
 - server/client 책임이 디렉토리와 namespace로 분명히 분리되어 있는가
 - game rule, session auth, relay routing, file log가 서로 섞이지 않았는가
@@ -554,12 +690,23 @@ fi
 문서를 수정한다. framework adapter 기능을 검증하는 test project가 없으면 `net8.0`
 기준으로 생성한다.
 
-sample 명령은 sample project가 생긴 뒤 아래 이름으로 고정한다.
+기존 TicTacToe sample은 항상 아래 명령으로 검증한다.
 
 ```bash
-/home/hep7/.dotnet/dotnet test framework/languages/dotnet/samples/TicTacToe/TicTacToe.SmokeTests/TicTacToe.SmokeTests.csproj -c Release -f net8.0
-/home/hep7/.dotnet/dotnet run --project framework/languages/dotnet/samples/TicTacToe/Tools/TicTacToeSmoke/TicTacToeSmoke.csproj -- --mode direct
-/home/hep7/.dotnet/dotnet run --project framework/languages/dotnet/samples/TicTacToe/Tools/TicTacToeSmoke/TicTacToeSmoke.csproj -- --mode session-gateway
+/home/hep7/.dotnet/dotnet build framework/languages/dotnet/samples/TicTacToe/TicTacToe.sln -c Debug
+```
+
+Session Gateway sample 명령은
+`framework/languages/dotnet/samples/TicTacToe(session-gateway)` project를 만든 뒤
+그 실제 project 이름으로 worklog에 고정한다. 이 smoke는 framework routed channel과
+session gateway API를 사용해야 하며, sample 내부 대체 transport로 통과시키면 완료가
+아니다.
+
+위 smoke project를 만든 뒤에는 아래 형식의 명령을 실제 project 경로로 바꿔
+worklog에 고정한다. 이 예시 명령은 완료 근거로 사용할 수 없다.
+
+```bash
+/home/hep7/.dotnet/dotnet test "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.SmokeTests/TicTacToe.SessionGateway.SmokeTests.csproj" -c Release -f net8.0
 ```
 
 ### 14.2 완료 판정
@@ -576,7 +723,8 @@ sample 명령은 sample project가 생긴 뒤 아래 이름으로 고정한다.
 - sample 문서와 sample code가 일치한다.
 - sample POSD red flag가 없다.
 - 모든 필수 테스트와 smoke가 성공한다.
-- file log에서 direct와 session gateway sample message flow를 확인할 수 있다.
+- file log에서 기존 TicTacToe sample과 session gateway sample message flow를
+  확인할 수 있다.
 
 ## 15. 실패 시 원칙
 
@@ -587,7 +735,7 @@ sample 명령은 sample project가 생긴 뒤 아래 이름으로 고정한다.
 - 경로, project 이름, test project가 계획과 다르면 실제 repository 구조를 확인한 뒤
   계획 문서를 먼저 맞추고 계속 진행한다.
 - 구현이 복잡해지면 public API를 늘리기보다 내부 모듈을 깊게 만든다.
-- sample을 맞추기 위해 framework core에 특수 분기를 넣지 않는다.
+- sample을 맞추기 위해 `Zlink.Framework` runtime에 특수 분기를 넣지 않는다.
 - 한 번의 리뷰로 끝났다고 보지 않는다. 리뷰에서 이슈가 0개일 때까지 반복한다.
 - 시간이 오래 걸리거나 범위가 커 보여도 계획을 축소하지 않는다. 현재 턴에서 모두
   끝내기 어렵다면 worklog의 다음 `pending` 항목과 검증 명령을 구체적으로 남기고,

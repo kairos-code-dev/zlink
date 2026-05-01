@@ -72,12 +72,11 @@ auto HWM 정책에서 계산된다. 사용자가
 `ZLINK_SPOT_NODE_OPT_SUB_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`,
 `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`를 직접 설정하면 그 값이 자동값보다
-우선한다. 기본 context 설정은 `balanced` 자동 HWM profile을 사용한다.
+우선한다. context auto-HWM을 켜면 활성 자동 HWM profile을 사용한다.
 Topic publish socket은 `spot_data`, topic ingress socket은 `recv_ingress`,
 routed socket은 `routed`, control socket은 `control`로 계획한다. SPOT publish
-계획은 전체 Spot handle 수가 아니라
-`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`으로 상한을 둔 effective publish fanout을
-사용한다.
+계획은 전체 Spot handle 수나 peer connection 수를 기준으로 per-connection HWM을
+낮추지 않는다.
 
 `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT`와
 `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT`는 내부 delivery queue가 허용하는

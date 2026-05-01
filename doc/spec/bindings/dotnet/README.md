@@ -147,10 +147,6 @@ public sealed class ContextOptions
     /// <exception cref="ZlinkConfigException"/>
     bool Blocky { get; set; }
     /// <exception cref="ZlinkConfigException"/>
-    bool AutoHwmEnabled { get; set; }
-    /// <exception cref="ZlinkConfigException"/>
-    int AutoHwmTotalMemoryBudgetMb { get; set; }
-    /// <exception cref="ZlinkConfigException"/>
     AutoHwmProfile AutoHwmProfile { get; set; }
 
     /// <exception cref="ZlinkConfigException"/>
@@ -159,6 +155,10 @@ public sealed class ContextOptions
     void RemoveThreadAffinityCpu(int cpu);
 }
 ```
+
+The native context memory-budget and bootstrap auto-HWM options are
+deprecated no-op compatibility options. The .NET binding does not expose
+typed properties for them.
 
 ```csharp
 public enum AutoHwmProfile

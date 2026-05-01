@@ -114,6 +114,7 @@ final class PerfDealerDealer {
                 throw new IllegalStateException("dealer/dealer receiver failed",
                     failure.get());
             }
+            ctx.shutdown();
             return metrics.finishSingle(config);
         }
     }

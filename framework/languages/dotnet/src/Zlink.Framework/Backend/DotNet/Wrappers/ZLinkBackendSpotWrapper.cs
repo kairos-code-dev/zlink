@@ -32,22 +32,24 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         nativeSpot.OnDispatchEvent((_, info) => handler(info.ToFramework()));
     }
 
+    public void OnSendReady(Action handler)
+    {
+        nativeSpot.OnSendReady(handler);
+    }
+
     public void DrainChannelReplyFrom(IntPtr dealerSubject)
     {
         nativeSpot.DrainChannelReplyFrom(dealerSubject);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
+    public bool RequestChannel(
         string channelName,
         Message message,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags,
+        TimeSpan? timeout)
     {
-        return await nativeSpot.RequestChannelAsync(
-            channelName,
-            message,
-            timeout,
-            cancellationToken).ConfigureAwait(false);
+        return nativeSpot.RequestChannel(channelName, message, callback, flags, timeout);
     }
 
     public bool SendChannel(

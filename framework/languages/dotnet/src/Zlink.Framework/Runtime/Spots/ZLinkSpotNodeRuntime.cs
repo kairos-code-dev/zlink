@@ -13,6 +13,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly IZLinkBackendContext _context;
     private readonly IZLinkChannelBackendAdapter _channelAdapter;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly CancellationTokenSource _stopSource = new();
     private readonly object _connectionsGate = new();
     private readonly Dictionary<string, ZLinkSpotAttachedChannelBundle> _channelBundles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
@@ -141,7 +142,12 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
 
         var publisher = Node.CreateSpot();
-        var bundle = new ZLinkSpotPublisherBundle(publisher);
+        var bundle = new ZLinkSpotPublisherBundle(
+            publisher,
+            new ZLinkAsyncSubmitter(
+                publisher.OnSendReady,
+                attached.SocketOptions.SendTimeout,
+                _stopSource.Token));
 
         if (attached.ManualConnections.Count > 0)
         {
@@ -209,7 +215,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                         Node.RoutingId,
                         spotName,
                         _spotChannelName,
-                        _frameworkRegistration.DefaultTimeout);
+                        _frameworkRegistration.DefaultTimeout,
+                        _registration.Router?.SocketOptions.SendTimeout
+                            ?? TimeSpan.FromMilliseconds(200));
 
                     var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                         spotScope.ServiceProvider,
@@ -354,6 +362,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _stopSource.Cancel();
+
         foreach (var activation in _spots.Values.ToArray())
         {
             await activation.DisposeAsync();
@@ -370,6 +380,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
 
         await Node.DisposeAsync();
+        _stopSource.Dispose();
         _gate.Dispose();
     }
 

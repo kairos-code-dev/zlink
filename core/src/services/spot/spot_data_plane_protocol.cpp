@@ -5,7 +5,7 @@
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_data_plane_message_io_internal.hpp"
 #include "services/spot/spot_message_parts_internal.hpp"
-#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_mesh_pub_hwm.hpp"
 
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"

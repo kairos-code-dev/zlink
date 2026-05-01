@@ -150,7 +150,7 @@ for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS CONNECT_READY_TIMEOUT_MS TRANSPORT_TR
 done
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM"
+  PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM"
 fi
 
 detect_platform() {
@@ -168,7 +168,7 @@ trim_csv() {
 
 default_msg_sizes_for_pattern() {
   local pattern="$1"
-  if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+  if [[ "${pattern}" == "MULTI_STREAM" && "${explicit_msg_sizes}" -eq 0 ]]; then
     echo "${STREAM_DEFAULT_MSG_SIZES}"
   else
     echo "${MSG_SIZES}"

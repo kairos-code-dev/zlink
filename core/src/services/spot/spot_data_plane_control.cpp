@@ -4,7 +4,7 @@
 
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_data_plane_message_io_internal.hpp"
-#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_mesh_pub_hwm.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
@@ -268,7 +268,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         }
 
         const int mesh_pub_sndhwm =
-          spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (runtime_, arg);
+          spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (runtime_, arg);
 
         if ((mesh_pub_
              && (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
@@ -533,7 +533,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             }
         }
         runtime_->bound_endpoint.clear ();
-        spot_mesh_pub_budget_t::reset_runtime_state (runtime_);
+        spot_mesh_pub_hwm_t::reset_runtime_state (runtime_);
         if (mesh_pub_ && mesh_pub_->term_endpoint (arg.c_str ()) != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;

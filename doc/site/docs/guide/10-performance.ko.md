@@ -1,3 +1,4 @@
+[English](10-performance.md) | [한국어](10-performance.ko.md)
 
 # 성능 특성 및 튜닝 가이드
 
@@ -61,15 +62,15 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | 자동 | context auto HWM 정책이 역할과 연결 수를 기준으로 계산 |
-| `ZLINK_OPT_RCVHWM` | 자동 | context auto HWM 정책이 역할과 연결 수를 기준으로 계산 |
+| `ZLINK_OPT_SNDHWM` | 1000 | context auto-HWM을 켰을 때만 profile 기반 값으로 바뀐다. 수동 설정이 우선 |
+| `ZLINK_OPT_RCVHWM` | 1000 | context auto-HWM을 켰을 때만 profile 기반 값으로 바뀐다. 수동 설정이 우선 |
 
 ### Backpressure 동작
 
 HWM에 도달하면 소켓 타입과 송신 플래그에 따라 동작이 달라진다:
 
 - **블로킹 송신** (`flags=0`): `zlink_send()`가 전송 큐에 공간이 생길 때까지 블로킹한다. `ZLINK_OPT_SNDTIMEO`로 대기 시간을 제한할 수 있다.
-- **논블로킹 송신** (`ZLINK_DONTWAIT`): 즉시 `EAGAIN`을 반환한다. 애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
+- **논블로킹 송신** (`ZLINK_DONTWAIT`): 즉시 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
 
 > 상세한 흐름 제어 패턴(DONTWAIT + send-ready handler)은
 > 아래 [Send/Recv 흐름 제어](#4-sendrecv-흐름-제어) 섹션을 참고.
@@ -100,7 +101,7 @@ sequenceDiagram
     Sender->>Queue: Send messages
     Note over Queue: Queue fills toward 100
     Sender->>Queue: Queue reaches 100 (HWM)
-    Queue-->>Sender: Block / EAGAIN (non-writable)
+    Queue-->>Sender: Block / BACKPRESSURED (non-writable)
 
     Receiver->>Queue: Consume messages
     Note over Queue: Queue drains toward 50
@@ -111,26 +112,43 @@ sequenceDiagram
 
 ### 실전 HWM 권장값
 
-| 시나리오 | 권장 HWM | 근거 |
-|----------|----------|------|
-| 일반 소켓/서비스 | ~100 | 연결당 메모리 사용량을 제한하면서 버스트 흡수 |
-| control (`PAIR`, 내부 제어 소켓) | floor `4` | 작은 관리 메시지를 짧게 버퍼링 |
-| routed (`DEALER`, `ROUTER`, `STREAM`) | floor `8` | 요청/응답 경로의 기본 버스트 흡수 |
-| fanout (`PUB`, `XPUB`) | floor `16` | publish 분배 경로의 짧은 fan-out 버스트 흡수 |
-| recv_ingress (`SUB`, `XSUB`) | floor `8` | 수신 경로 backlog를 보수적으로 제한 |
+기본 context 설정은 auto-HWM 비활성이다. 따라서 소켓은 HWM `1000`을 쓴다.
+profile 기반 per-connection queue depth가 필요할 때 auto-HWM을 명시적으로 켠다.
+
+기본 정책을 바꾸고 싶을 때는 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`을 설정한다.
+
+| Profile | 용도 |
+|---|---|
+| `ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY` | 큐를 짧게 두고 backpressure를 빨리 건다 |
+| `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 기본 운영 튜닝 |
+| `ZLINK_AUTO_HWM_PROFILE_THROUGHPUT` | 처리량 중심 테스트나 명시적 튜닝 |
+
+`balanced` 기준 전체 queue 메모리 시작점은 아래처럼 잡을 수 있다.
+
+```text
+non_stream_connections * 128 * 4096
++ stream_connections * 64 * 1024
++ control_connections * 16 * 4096
+```
+
+이 값은 애플리케이션의 용량 산정 입력이다. zlink는 context memory budget을
+connection 수로 나누지 않는다. benchmark나 운영 튜닝에서 고정값이 필요하면
+소켓별 `SNDHWM` / `RCVHWM`을 수동으로 주면 된다.
 
 ### HWM 동작 패턴
 
 | 소켓 | HWM 초과 시 동작 |
 |------|-----------------|
 | PUB | 메시지 **드롭** (Slow Subscriber 보호) |
-| DEALER | **블록** (기본) 또는 `EAGAIN` (`ZLINK_DONTWAIT`) |
-| ROUTER | `ROUTER_MANDATORY` 시 `EHOSTUNREACH`, 아니면 드롭 |
-| PAIR | **블록** (기본) 또는 `EAGAIN` |
+| DEALER | **블록** (기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` (`ZLINK_DONTWAIT`) |
+| ROUTER | `ROUTER_MANDATORY` 시 `ZLINK_SUBMIT_NOT_CONNECTED`, 아니면 드롭 |
+| PAIR | **블록** (기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` |
 
 ### 메모리 계산
 
-HWM은 연결별(per-connection)이므로, 총 메모리는 HWM × 메시지 크기 × 연결 수이다.
+HWM은 연결별(per-connection)이므로, 총 queue 메모리는 HWM × 메시지 크기 ×
+연결 수로 추정할 수 있다. 자동 HWM은 profile, 소켓 역할, message unit으로
+HWM을 고르며 context memory budget에서 역산하지 않는다.
 
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count
@@ -141,6 +159,10 @@ Example 1: Regular service — HWM=100, message=1KB, connections=1000
 Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
            = 10 × 1KB × 10000 = ~100MB
 ```
+
+One-way `PUB/SUB`와 SPOT fanout에서는 큰 메시지가 큐에 오래 머물면 측정 latency가
+대부분 큐 체류 시간이 된다. 그래서 `balanced` profile은 큰 메시지 fanout 큐를
+작은 메시지 큐보다 더 강하게 cap한다.
 
 ## 4. Send/Recv 흐름 제어
 
@@ -158,8 +180,8 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
 | SNDTIMEO 값 | 동작 |
 |-------------|------|
 | -1 (기본) | 무한 블로킹 |
-| 0 | 즉시 `EAGAIN` 반환 (`ZLINK_DONTWAIT`와 동일) |
-| N (ms) | 최대 N밀리초 블로킹 후 `EAGAIN` |
+| 0 | 즉시 `ZLINK_SUBMIT_BACKPRESSURED` 반환 (`ZLINK_DONTWAIT`와 동일) |
+| N (ms) | 최대 N밀리초 블로킹 후 `ZLINK_SUBMIT_BACKPRESSURED` |
 
 ```c
 /* Block for at most 1 second */
@@ -169,8 +191,8 @@ zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* Timed out — queue is still full */
     zlink_msg_close(&part);
 }
@@ -178,15 +200,15 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 
 #### 논블로킹 송신 (DONTWAIT)
 
-`ZLINK_DONTWAIT`를 전달하면 HWM 도달 시 즉시 `EAGAIN`을 반환한다.
+`ZLINK_DONTWAIT`를 전달하면 HWM 도달 시 즉시 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
 애플리케이션이 재시도, 드롭, 외부 버퍼링을 결정한다.
 
 ```c
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM reached — handle backpressure */
     zlink_msg_close(&part);
 }
@@ -199,19 +221,19 @@ writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`�
 조합하면 반응형 흐름 제어가 가능하다:
 
 1. `ZLINK_DONTWAIT`로 전송.
-2. `EAGAIN` 시 전송 중단.
+2. `ZLINK_SUBMIT_BACKPRESSURED` 시 전송 중단.
 3. send-ready 콜백이 호출되면 전송 재개.
 
 이 API는 모든 send-capable handle(raw 소켓, SPOT)에서
 동일하게 동작한다. 기본적으로 송신 백프레셔는 poller `ZLINK_POLLOUT`으로
 감지하며, `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
-콜백 등록 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.
+콜백 등록 이후 data-plane `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
 **동작 규칙:**
 - 여러 번 호출하여 콜백을 교체할 수 있다 (이전 핸들러를 atomic으로 덮어씀).
 - `NULL` 전달은 `EINVAL` — 한번 등록하면 해제는 불가하고 다른 함수로 교체만 가능하다.
 - 자기 콜백 내에서 교체 불가 (`EDEADLK`). 콜백 밖에서는 자유롭게 교체 가능.
-- 등록 이후 data-plane poller `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.
+- 등록 이후 data-plane poller `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
 ```c
 typedef struct {
@@ -227,12 +249,12 @@ void on_send_ready(void *subject, void *userdata)
         zlink_msg_t part;
         zlink_msg_init_size(&part, state->pending_size);
         memcpy(zlink_msg_data(&part), state->pending_data, state->pending_size);
-        int rc = zlink_send(state->socket, &part, 1, ZLINK_DONTWAIT);
+        zlink_submit_result_t rc = zlink_send(state->socket, &part, 1, ZLINK_DONTWAIT);
         if (rc >= 0)
             state->pending_data = NULL;
         else
             zlink_msg_close(&part);
-        /* If still EAGAIN, callback will fire again on next transition */
+        /* If still BACKPRESSURED, callback will fire again on next transition */
     }
 }
 
@@ -244,8 +266,8 @@ zlink_send_ready_handler(socket, on_send_ready, &state);
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     zlink_msg_close(&part);
     /* Buffer for retry when send-ready fires */
     state.pending_data = data;
@@ -302,7 +324,7 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
 | 트리거 | 메시지 도착 시 자동 | `zlink_recv()` 호출 |
 | 실행 스레드 | I/O 스레드 | 애플리케이션 스레드 |
 | 전환 | 한방향 (영구) | 기본; handler attach 후 불가 |
-| DONTWAIT | N/A (항상 비동기) | 메시지 없으면 `EAGAIN` |
+| DONTWAIT | N/A (항상 비동기) | 메시지 없으면 `ZLINK_RECV_NO_DATA` |
 | Multipart | `parts[]` 배열로 한번에 | `parts_out` + `part_count_out`으로 전체 반환 |
 
 ### 4.5 완전한 Backpressure 예제
@@ -330,8 +352,8 @@ static void flush_queue(sender_t *s)
         zlink_msg_t part;
         zlink_msg_init_size(&part, s->sizes[s->head]);
         memcpy(zlink_msg_data(&part), s->queue[s->head], s->sizes[s->head]);
-        int rc = zlink_send(s->socket, &part, 1, ZLINK_DONTWAIT);
-        if (rc == -1) {
+        zlink_submit_result_t rc = zlink_send(s->socket, &part, 1, ZLINK_DONTWAIT);
+        if (rc != ZLINK_SUBMIT_OK) {
             zlink_msg_close(&part);
             break; /* Still full — wait for next send-ready */
         }
@@ -349,7 +371,7 @@ static void on_send_ready(void *subject, void *userdata)
 int main(void)
 {
     void *ctx = zlink_ctx_new();
-    void *socket = zlink_socket(ctx, ZLINK_DEALER);
+    void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
     sender_t sender = { .socket = socket };
@@ -362,8 +384,8 @@ int main(void)
         zlink_msg_t part;
         zlink_msg_init_size(&part, len);
         memcpy(zlink_msg_data(&part), msg, len);
-        int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-        if (rc == -1 && zlink_errno() == EAGAIN) {
+        zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+        if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
             zlink_msg_close(&part);
             /* Enqueue for later delivery */
             if (sender.count < MAX_PENDING) {
@@ -409,11 +431,11 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ### 타임아웃 설정
 
 ```c
-/* Send timeout: EAGAIN after 1 second */
+/* Send timeout: BACKPRESSURED after 1 second */
 int timeout = 1000;
 zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
-/* Receive timeout: EAGAIN after 500ms */
+/* Receive timeout: NO_DATA after 500ms */
 int timeout = 500;
 zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &timeout, sizeof(timeout));
 ```

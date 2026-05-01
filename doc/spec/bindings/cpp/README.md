@@ -1074,11 +1074,11 @@ struct monitor_snapshot_t {
     uint32_t auto_hwm_profile_value;          // selected auto-HWM profile
     uint32_t auto_hwm_role;                   // diagnostic role bucket
     uint32_t auto_hwm_policy_class;           // planner policy class
-    uint32_t auto_hwm_managed_connections;    // connection count used for HWM planning
-    uint32_t auto_hwm_active_hwm_connections; // connection count used to divide HWM slots
-    uint32_t auto_hwm_observed_count;         // observed connection count
-    uint32_t auto_hwm_planning_count;         // planning count used by the policy
-    uint32_t auto_hwm_context_total_planning_count; // total planning count across the context
+    uint32_t auto_hwm_managed_connections;    // diagnostic connection count
+    uint32_t auto_hwm_active_hwm_connections; // diagnostic active connection count
+    uint32_t auto_hwm_observed_count;         // diagnostic observed connection count
+    uint32_t auto_hwm_planning_count;         // deprecated zero-filled field
+    uint32_t auto_hwm_context_total_planning_count; // deprecated zero-filled field
     uint32_t auto_hwm_base_floor_per_connection;      // role floor
     uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
@@ -1093,7 +1093,7 @@ struct monitor_snapshot_t {
     uint64_t auto_hwm_queue_budget_bytes;
     uint64_t auto_hwm_transport_budget_bytes;
     uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_socket_queue_share_bytes;
+    uint64_t auto_hwm_socket_queue_share_bytes; // deprecated zero-filled field
     uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
     uint64_t auto_hwm_estimated_max_memory_bytes;
@@ -1139,7 +1139,7 @@ enum class context_option : int {
     thread_name_prefix,
     blocky,
     auto_hwm_enable,
-    auto_hwm_total_memory_budget_mb,
+    auto_hwm_total_memory_budget_mb, // deprecated no-op compatibility option
     auto_hwm_profile
 };
 

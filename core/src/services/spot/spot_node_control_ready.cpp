@@ -5,7 +5,7 @@
 #include "services/spot/spot_node.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
-#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_mesh_pub_hwm.hpp"
 #include "services/spot/spot_node_control_policy.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -34,13 +34,13 @@ uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
     return max_ready_count;
 }
 
-void spot_node_t::publish_mesh_pub_budget_hint_locked ()
+void spot_node_t::publish_mesh_pub_hwm_hint_locked ()
 {
     if (!_runtime)
         return;
 
     const uint32_t ready_count = max_pub_delivery_ready_count_locked ();
-    (void) spot_mesh_pub_budget_t::publish_ready_hint (_runtime, ready_count);
+    (void) spot_mesh_pub_hwm_t::publish_ready_hint (_runtime, ready_count);
 }
 
 void spot_node_t::schedule_subscription_ready_refresh ()
@@ -96,7 +96,7 @@ void spot_node_t::clear_peer_readiness_locked (
         }
     }
     _peer_state.pub_delivery_ready_sources.clear ();
-    publish_mesh_pub_budget_hint_locked ();
+    publish_mesh_pub_hwm_hint_locked ();
 }
 
 void spot_node_t::queue_all_subscription_ready_filters ()
@@ -296,7 +296,7 @@ void spot_node_t::notify_pub_delivery_ready_ack (
           static_cast<uint32_t> (ready_sources.size ()), active_peer_count,
           connected_ready_count);
 
-        publish_mesh_pub_budget_hint_locked ();
+        publish_mesh_pub_hwm_hint_locked ();
         if (!subscribe_) {
             _peer_state.pending_pub_delivery_ready_counts.erase (subject_);
             _peer_state.pub_delivery_ready_refresh_pending = false;

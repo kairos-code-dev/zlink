@@ -36,6 +36,37 @@ def tier1_metrics(value):
         (RC.LATENCY_P99_METRIC, value),
     )
 
+
+def reset_auto_hwm_detail_state():
+    RC._AUTO_HWM_DETAIL_SEEN.clear()
+    RC._AUTO_HWM_DETAIL_ROWS.clear()
+    RC._AUTO_HWM_DETAIL_TABLE_SEEN.clear()
+
+
+def auto_hwm_detail_line(pattern, transport, component, msg_size, **fields):
+    values = {
+        "pattern": pattern,
+        "transport": transport,
+        "component": component,
+        "socket_type": fields.pop("socket_type", "dealer"),
+        "msg_size": str(msg_size),
+        "source": fields.pop("source", "socket_snapshot"),
+        "role": fields.pop("role", "peer_queue"),
+        "unit_budget_bytes": fields.pop("unit_budget_bytes", "524288"),
+        "effective_message_bytes": fields.pop(
+            "effective_message_bytes", str(msg_size)
+        ),
+        "sndhwm": fields.pop("sndhwm", "512"),
+        "rcvhwm": fields.pop("rcvhwm", "512"),
+        "effective_sndbuf": fields.pop("effective_sndbuf", "262144"),
+        "effective_rcvbuf": fields.pop("effective_rcvbuf", "262144"),
+    }
+    values.update({key: str(value) for key, value in fields.items()})
+    return "AUTO_HWM_DETAIL," + ",".join(
+        f"{key}={value}" for key, value in values.items()
+    )
+
+
 class MultiRunComparisonPolicyTests(unittest.TestCase):
     def test_multi_required_result_metrics_are_tier1_only(self):
         self.assertEqual(RC.REQUIRED_RESULT_METRICS, tuple(name for name, _ in tier1_metrics(1.0)))
@@ -116,8 +147,8 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             self.assertEqual(RC.pattern_default_clients("DEALER_DEALER"), 100)
             self.assertEqual(RC.pattern_default_clients("SPOT_SENDSEND"), 32)
             self.assertEqual(RC.pattern_default_clients("STREAM"), 10000)
-            self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 100)
-            self.assertEqual(RC.pattern_default_hwm("STREAM"), 10)
+            self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 0)
+            self.assertEqual(RC.pattern_default_hwm("STREAM"), 0)
             self.assertEqual(RC.pattern_default_io_threads("DEALER_DEALER"), 4)
             self.assertEqual(RC.pattern_default_io_threads("STREAM"), 4)
         finally:
@@ -131,9 +162,10 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         calls = []
         try:
             RC.ALLOW_MULTI = True
+            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
-                           pattern_name, result_line_callback=None):
+                           pattern_name, result_line_callback=None, **kwargs):
                 calls.append(
                     (server_name, client_name, lib_name, transport,
                      list(sizes), pattern_name)
@@ -219,9 +251,10 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         sleeps = []
         try:
             RC.ALLOW_MULTI = True
+            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
-                           pattern_name, result_line_callback=None):
+                           pattern_name, result_line_callback=None, **kwargs):
                 calls.append(list(sizes))
                 return {
                     "status": "success",
@@ -264,9 +297,10 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         try:
             RC.ALLOW_MULTI = True
             os.environ["PERF_MULTI_SIZE_RETRIES"] = "1"
+            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
-                           pattern_name, result_line_callback=None):
+                           pattern_name, result_line_callback=None, **kwargs):
                 size = sizes[0]
                 calls.append(size)
                 if len(calls) == 1:
@@ -479,6 +513,158 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.run_sizes_test = old_run_sizes_test
             os.environ.clear()
             os.environ.update(old_env)
+
+    def test_auto_hwm_detail_collapses_transport_dimension(self):
+        reset_auto_hwm_detail_state()
+        try:
+            for transport in ("tcp", "tls", "ws", "wss"):
+                for component in ("client", "server"):
+                    RC.emit_auto_hwm_detail_line(
+                        auto_hwm_detail_line(
+                            "DEALER_DEALER",
+                            transport,
+                            component,
+                            64,
+                            sndhwm="512",
+                            rcvhwm="512",
+                        )
+                    )
+                    RC.emit_auto_hwm_detail_line(
+                        auto_hwm_detail_line(
+                            "DEALER_DEALER",
+                            transport,
+                            component,
+                            65536,
+                            effective_message_bytes="65536",
+                            sndhwm="8",
+                            rcvhwm="8",
+                        )
+                    )
+
+            lines = []
+            self.assertTrue(
+                RC.emit_auto_hwm_detail_table(lines.append, "DEALER_DEALER")
+            )
+            output = "\n".join(lines)
+            self.assertIn("| Size(B) | Component | Type", output)
+            self.assertNotIn("Transport", output)
+            self.assertEqual(output.count("| 64      |"), 2)
+            self.assertEqual(output.count("| 65536   |"), 2)
+            self.assertIn("| 64      | client", output)
+            self.assertIn("| 64      | server", output)
+            self.assertIn("| 65536   | client", output)
+            self.assertIn("| 65536   | server", output)
+            self.assertIn("| 8      | 8", output)
+        finally:
+            reset_auto_hwm_detail_state()
+
+    def test_spot_auto_hwm_detail_hides_inactive_sides_and_transport(self):
+        reset_auto_hwm_detail_state()
+        try:
+            for transport in ("tcp", "tls"):
+                RC.emit_auto_hwm_detail_line(
+                    auto_hwm_detail_line(
+                        "SPOT",
+                        transport,
+                        "server",
+                        64,
+                        source="spotnode_snapshot",
+                        owner="node",
+                        owner_id="1",
+                        socket="peer_ctrl_pub",
+                        socket_type="pub",
+                        role="control",
+                        effective_message_bytes="4096",
+                        unit_budget_bytes="65536",
+                        sndhwm="16",
+                        rcvhwm="1000",
+                    )
+                )
+                RC.emit_auto_hwm_detail_line(
+                    auto_hwm_detail_line(
+                        "SPOT",
+                        transport,
+                        "server",
+                        64,
+                        source="spotnode_snapshot",
+                        owner="node",
+                        owner_id="1",
+                        socket="peer_ctrl_sub",
+                        socket_type="sub",
+                        role="control",
+                        effective_message_bytes="4096",
+                        unit_budget_bytes="65536",
+                        sndhwm="1000",
+                        rcvhwm="16",
+                    )
+                )
+                RC.emit_auto_hwm_detail_line(
+                    auto_hwm_detail_line(
+                        "SPOT",
+                        transport,
+                        "server",
+                        64,
+                        source="spotnode_snapshot",
+                        owner="spot",
+                        owner_id="1",
+                        socket="pub",
+                        socket_type="pub",
+                        role="spot_data",
+                        effective_message_bytes="64",
+                        unit_budget_bytes="524288",
+                        sndhwm="512",
+                        rcvhwm="512",
+                    )
+                )
+
+            lines = []
+            self.assertTrue(RC.emit_auto_hwm_detail_table(lines.append, "SPOT"))
+            output = "\n".join(lines)
+            self.assertIn("Auto-HWM spotnode:", output)
+            self.assertIn("Auto-HWM spot handles:", output)
+            self.assertNotIn("Auto-HWM spot:", output)
+            self.assertNotIn("Transport=", output)
+            self.assertNotIn("| Transport |", output)
+            self.assertEqual(output.count("peer_ctrl_pub"), 1)
+            self.assertEqual(output.count("peer_ctrl_sub"), 1)
+            self.assertEqual(output.count("| pub    | pub  | spot_data"), 1)
+            self.assertIn("| peer_ctrl_pub | pub  | control | 16", output)
+            self.assertIn("| peer_ctrl_sub | sub  | control | -", output)
+            self.assertIn("| pub    | pub  | spot_data | 512", output)
+            self.assertIn("| -      | 16", output)
+        finally:
+            reset_auto_hwm_detail_state()
+
+    def test_stream_auto_hwm_detail_reports_stream_socket_type(self):
+        reset_auto_hwm_detail_state()
+        try:
+            for size, hwm in ((64, 128), (1024, 64), (65536, 1)):
+                RC.emit_auto_hwm_detail_line(
+                    auto_hwm_detail_line(
+                        "STREAM",
+                        "tcp",
+                        "server",
+                        size,
+                        socket_type="stream",
+                        role="stream",
+                        unit_budget_bytes="65536",
+                        effective_message_bytes=str(size),
+                        sndhwm=str(hwm),
+                        rcvhwm=str(hwm),
+                    )
+                )
+
+            lines = []
+            self.assertTrue(RC.emit_auto_hwm_detail_table(lines.append, "STREAM"))
+            output = "\n".join(lines)
+            self.assertIn("| Size(B) | Component | Type", output)
+            self.assertIn("| 64      | server    | stream", output)
+            self.assertIn("| 1024    | server    | stream", output)
+            self.assertIn("| 65536   | server    | stream", output)
+            self.assertNotIn("unknown", output)
+            self.assertNotIn("Transport", output)
+        finally:
+            reset_auto_hwm_detail_state()
 
 
 if __name__ == "__main__":

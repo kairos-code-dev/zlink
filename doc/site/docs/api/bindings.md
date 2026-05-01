@@ -218,6 +218,21 @@ public shape를 기준으로 고정한다.
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer plane 의
   canonical readable notification surface 이다.
+- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 은 모든 바인딩에서 typed context option 으로
+  노출해야 한다. 값은 low latency, balanced, throughput 세 profile 이며 기본값은
+  balanced 이다.
+- `MonitorSnapshot` 은 core `zlink_monitor_snapshot_t` 의 auto-HWM v2 진단 필드를
+  빠뜨리지 않고 노출해야 한다. profile, policy class, unit budget, size cap,
+  effective publish fanout 은 public snapshot 계약에 포함된다.
+- SPOT node option 이름은 core 공개 enum을 그대로 따른다. topic send/recv라는
+  이름은 더 이상 쓰지 않고, publish 축은 `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
+  subscribe 축은 `ZLINK_SPOT_NODE_OPT_SUB_HWM`으로 노출한다.
+- SPOT binding status object는 core의
+  `disconnected_sub_target_count`,
+  `disconnected_routed_target_count`를 언어 관례에 맞는 이름으로 노출해야 한다.
+- SPOT binding이 internal socket snapshot 이름을 노출하거나 문서화할 때는
+  `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`,
+  `external-router` 기준을 사용한다.
   `zlink_spot_handler()` 와 routed 축에서 mutually exclusive 다.
 - `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` 와
   `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` 은 메시지 개수 알림이 아니라
@@ -807,7 +822,7 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 | `detail_flags` | `uint32` | 세부 비트마스크 |
 | `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
 | `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
-| `auto_hwm_*` budget/buffer/diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t` 의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. 계획 수, context 전체 planning 합계, socket queue share, `MsgUnit(B)`, 자동/수동 buffer 비용, 최근 재계산 정보, deferred shrink, blocked ratio 를 포함한다 |
+| `auto_hwm_*` diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t`의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. profile, policy class, unit budget, message unit, 적용 HWM, buffer 진단값, 최근 재계산 정보, deferred shrink, blocked ratio를 포함한다. deprecated planning/budget/share 필드는 `0` 호환 필드다 |
 | `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
 
 #### 서비스 계층 엔트리 객체

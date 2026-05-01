@@ -20,6 +20,11 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(PubSocket nativeSocket)
         nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
     }
 
+    public void OnSendReady(Action handler)
+    {
+        nativeSocket.OnSendReady(handler);
+    }
+
     public bool Publish(
         string topic,
         Message message,

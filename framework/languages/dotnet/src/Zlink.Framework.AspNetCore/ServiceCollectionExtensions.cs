@@ -36,12 +36,14 @@ public static class ServiceCollectionExtensions
                 provider.GetRequiredService<ZLinkHandlerDispatcher>(),
                 provider.GetService<ZLinkRegistryRuntime>()));
         services.AddSingleton<IZLinkClient, ZLinkClient>();
+        services.AddSingleton<IZLinkRoutedClient, ZLinkRoutedClient>();
         services.AddSingleton<IZLinkEventPublisher, ZLinkEventPublisher>();
         services.AddSingleton<IZLinkChannelConnectionManager, ZLinkChannelConnectionManager>();
         services.AddSingleton<IZLinkSpotManager, ZLinkSpotManagerService>();
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
         services.AddSingleton<IZLinkSpotPublisherClient, ZLinkSpotPublisherClientService>();
         services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
+        services.AddSingleton<IZLinkSessionGateway, ZLinkSessionGatewayService>();
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, ZLinkFrameworkHostedService>();
 
         foreach (var filterType in registration.Filters)
@@ -59,6 +61,24 @@ public static class ServiceCollectionExtensions
             if (streamNode.HeaderSessionType is not null)
             {
                 services.AddScoped(streamNode.HeaderSessionType);
+            }
+        }
+
+        foreach (var routed in registration.RoutedChannels.Values)
+        {
+            foreach (var handler in routed.SendHandlers)
+            {
+                services.AddScoped(handler.HandlerType);
+            }
+
+            foreach (var handler in routed.RequestHandlers)
+            {
+                services.AddScoped(handler.HandlerType);
+            }
+
+            if (routed.SessionProxyHandlerType is not null)
+            {
+                services.AddScoped(routed.SessionProxyHandlerType);
             }
         }
 

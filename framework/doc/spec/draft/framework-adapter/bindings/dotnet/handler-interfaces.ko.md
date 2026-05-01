@@ -611,7 +611,7 @@ protobuf/json decode helper가 가능한 한 추가 메모리 할당 없이 동�
 
 #### 4.4.1 actor/session 상위 모델 메모
 
-actor join, actor factory, stream-attached actor 모델은 현재 draft framework core
+actor join, actor factory, stream-attached actor 모델은 현재 draft `Zlink.Framework`
 구현 범위에 포함한다. 공개 계약은 `IZLinkActor`, `IZLinkSpotClient.JoinActorAsync`,
 `IZLinkSpotContext.AddActorJoin<THandler, TActor, TRequest, TReply>()`, 그리고 stream session에서
 actor stream 연결/submit/disconnect를 이어 주는 `IZLinkSessionContext`까지를 기준으로
@@ -898,6 +898,11 @@ timeout은 request/send에서 다르게 다룬다.
   수신을 기다리지 않고, local publish transport에 submit될 때까지 기다린다.
 - send backpressure 대기 한계는 builder가 아니라 channel 또는 socket의
   `SendTimeout` 옵션을 따른다.
+- framework channel/socket option의 기본 `SendTimeout`은
+  `TimeSpan.FromMilliseconds(200)`으로 둔다. async submit runtime은 core socket
+  기본값을 직접 사용하지 않고, framework가 socket/channel option에 설정한
+  resolved `SendTimeout` 값을 읽는다. 사용자가 `SendTimeout = null`을 명시한
+  경우에만 core `-1`과 같은 무한 대기로 본다.
 - `Request(...).Async<TReply>(...)`도 request packet을 보내는 단계에서는
   `Send(...).Async(...)`와 같은 nonblocking submit 경로를 사용한다.
 - `Request(...).WithTimeout(...)`은 reply 대기 시간만 정한다.
@@ -925,6 +930,9 @@ timeout은 request/send에서 다르게 다룬다.
   `SendTimeout`이 담당한다.
 - payload encoding과 native `Message` 소유권은 submit 완료 또는 실패 시점에 한
   곳에서 정리한다. retry 중 같은 frame을 중복 전송하거나 중복 dispose하면 안 된다.
+- stream connector public options에는 `SendTimeout`을 두지 않는다. connector
+  send는 응답 없는 submit이고, connector request reply 대기에는 `RequestTimeout`만
+  사용한다.
 
 즉 public 호출 감각은 아래처럼 보는 편이 맞다.
 
@@ -1980,7 +1988,7 @@ server 역할을 한다는 뜻이다. handler class attribute보다 channel regi
 - `OnErrorAsync(...)`는 session으로 매핑 가능한 transport 오류만 받는다.
   application handler 내부 예외, bind/accept/close 같은 node 단위 오류, handshake
   이전 단계의 monitor 이벤트는 runtime monitoring 표면에만 남긴다.
-- framework core는 `IZLinkClient` 위에 channel별 typed wrapper를 공식 기본 표면으로
+- `Zlink.Framework` runtime은 `IZLinkClient` 위에 channel별 typed wrapper를 공식 기본 표면으로
   제공하지 않는다.
   typed wrapper가 필요하면 응용 또는 별도 확장 패키지가 `IZLinkClient` 위에 얹는
   편을 기본으로 본다.

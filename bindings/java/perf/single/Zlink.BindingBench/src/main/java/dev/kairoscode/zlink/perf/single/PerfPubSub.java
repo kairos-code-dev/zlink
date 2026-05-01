@@ -122,6 +122,10 @@ final class PerfPubSub {
             if (failure.get() != null) {
                 throw new IllegalStateException("pubsub receiver failed", failure.get());
             }
+            pubCtx.shutdown();
+            if (!sharedContext) {
+                subCtx.shutdown();
+            }
             return metrics.finishSingle(config);
         } finally {
             if (!sharedContext) {

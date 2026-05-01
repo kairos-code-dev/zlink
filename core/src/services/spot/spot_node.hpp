@@ -232,7 +232,7 @@ class spot_node_t : public discovery_observer_t
     std::string first_connected_peer_endpoint () const;
     void notify_subscription_forwarded (const std::string &raw_filter_);
     uint32_t max_pub_delivery_ready_count_locked () const;
-    void publish_mesh_pub_budget_hint_locked ();
+    void publish_mesh_pub_hwm_hint_locked ();
     void notify_pub_first_delivery_ready_settled (const std::string &subject_,
                                                   uint32_t ready_count_);
     int send_subscription_update (const std::string &raw_filter_,

@@ -84,11 +84,7 @@ zlink::ctx_t::ctx_t () :
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
     _spot_worker_thread_count (ZLINK_SPOT_WORKER_THREADS_DFLT),
     _auto_hwm_enabled (ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0),
-    _auto_hwm_total_memory_budget_mb (
-      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT),
     _auto_hwm_recalc_debounce_ms (ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT),
-    _auto_hwm_stream_bootstrap (ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT),
-    _auto_hwm_spot_bootstrap (ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT),
     _auto_hwm_profile (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT),
     _auto_hwm_recalc_pending (false),
     _auto_hwm_last_change_ms (0),
@@ -228,12 +224,10 @@ void zlink::ctx_t::schedule_auto_hwm_recalculate ()
 int zlink::ctx_t::auto_hwm_recalculate_now ()
 {
     bool enabled = false;
-    int total_memory_budget_mb = ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT;
     zlink_auto_hwm_profile_t profile = ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
     {
         scoped_lock_t locker (_opt_sync);
         enabled = _auto_hwm_enabled;
-        total_memory_budget_mb = _auto_hwm_total_memory_budget_mb;
         profile = _auto_hwm_profile;
     }
 
@@ -251,8 +245,7 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
         return 0;
 
     auto_hwm_context_plan_t context_plan;
-    auto_hwm_context_plan_from_budget_mb (
-      enabled, total_memory_budget_mb, &context_plan, profile);
+    auto_hwm_context_plan_make (enabled, profile, &context_plan);
 
     std::vector<auto_hwm_socket_plan_t> plans;
     plans.reserve (sockets.size ());
@@ -265,14 +258,8 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
 
         auto_hwm_socket_plan_t plan =
           socket->prepare_auto_hwm_socket_plan (context_plan);
-        if (!socket->auto_hwm_policy_enabled ()) {
-            plan.planning_count = 0;
-            plan.context_total_planning_count = 0;
-            plan.socket_queue_share_bytes = 0;
+        if (!socket->auto_hwm_policy_enabled ())
             plan.socket_message_slots = 0;
-            plan.auto_buffer_bytes = 0;
-            plan.buffer_connections = 0;
-        }
         plans.push_back (plan);
     }
 
@@ -301,18 +288,6 @@ void zlink::ctx_t::auto_hwm_recalc_task ()
 
     if (should_run)
         (void) auto_hwm_recalculate_now ();
-}
-
-int zlink::ctx_t::auto_hwm_stream_bootstrap () const
-{
-    scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
-    return _auto_hwm_stream_bootstrap;
-}
-
-int zlink::ctx_t::auto_hwm_spot_bootstrap () const
-{
-    scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
-    return _auto_hwm_spot_bootstrap;
 }
 
 zlink_auto_hwm_profile_t zlink::ctx_t::auto_hwm_profile () const
@@ -426,12 +401,8 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
-            if (is_int && value >= 1) {
-                scoped_lock_t locker (_opt_sync);
-                _auto_hwm_total_memory_budget_mb = value;
-                refresh_auto_hwm = true;
-                break;
-            }
+            if (is_int)
+                return 0;
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
@@ -444,21 +415,13 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
-            if (is_int && value >= 1) {
-                scoped_lock_t locker (_opt_sync);
-                _auto_hwm_stream_bootstrap = value;
-                refresh_auto_hwm = true;
-                break;
-            }
+            if (is_int)
+                return 0;
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
-            if (is_int && value >= 1) {
-                scoped_lock_t locker (_opt_sync);
-                _auto_hwm_spot_bootstrap = value;
-                refresh_auto_hwm = true;
-                break;
-            }
+            if (is_int)
+                return 0;
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
@@ -560,8 +523,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
 
         case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
             if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_total_memory_budget_mb;
+                *value = 0;
                 return 0;
             }
             break;
@@ -576,16 +538,14 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
 
         case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
             if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_stream_bootstrap;
+                *value = 0;
                 return 0;
             }
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
             if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_spot_bootstrap;
+                *value = 0;
                 return 0;
             }
             break;

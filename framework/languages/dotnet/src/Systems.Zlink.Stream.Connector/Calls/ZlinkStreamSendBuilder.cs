@@ -46,12 +46,6 @@ public sealed class ZlinkStreamSendBuilder
         return this;
     }
 
-    public ZlinkStreamSendBuilder WithTimeout(TimeSpan timeout)
-    {
-        _state.SetTimeout(timeout);
-        return this;
-    }
-
     public ZlinkStreamSendBuilder Compress()
     {
         _state.EnableCompression();
@@ -67,7 +61,6 @@ public sealed class ZlinkStreamSendBuilder
             _body,
             _state.Metadata,
             _state.Compress,
-            _state.Timeout ?? _connector.Options.SendTimeout,
             cancellationToken).ConfigureAwait(false);
     }
 }

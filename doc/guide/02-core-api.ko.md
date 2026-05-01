@@ -93,8 +93,8 @@ zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 자동 | Context auto HWM 정책이 소켓 역할과 연결 수를 기준으로 정함. 수동 설정 시 그 값이 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 | Context auto HWM 정책이 소켓 역할과 연결 수를 기준으로 정함. 수동 설정 시 그 값이 우선 |
+| `ZLINK_OPT_SNDHWM` | int | 1000 | context auto-HWM을 켜면 profile, 소켓 역할, message unit으로 정함. 수동 설정 시 그 값이 우선 |
+| `ZLINK_OPT_RCVHWM` | int | 1000 | context auto-HWM을 켜면 profile, 소켓 역할, message unit으로 정함. 수동 설정 시 그 값이 우선 |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: 무제한) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Recv timeout (ms, -1: 무제한) |
 | `ZLINK_OPT_LINGER` | int | -1 | Socket close 시 linger (ms) |

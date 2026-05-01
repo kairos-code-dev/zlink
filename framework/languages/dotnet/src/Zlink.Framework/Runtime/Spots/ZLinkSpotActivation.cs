@@ -27,6 +27,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
     private IZLinkSpot? _spot;
     private readonly List<IZLinkTimer> _timers = [];
     private readonly TimeSpan _defaultTimeout;
+    private readonly ZLinkAsyncSubmitter _submitter;
     private static readonly TimeSpan SubscriptionPollInterval = TimeSpan.FromMilliseconds(20);
     private Task? _subscriptionPump;
     private readonly Task _dispatchPump;
@@ -43,7 +44,8 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         RoutingId nodeRid,
         string spotName,
         string channelName,
-        TimeSpan defaultTimeout)
+        TimeSpan defaultTimeout,
+        TimeSpan? sendTimeout)
     {
         _runtime = runtime;
         _scope = scope;
@@ -52,6 +54,10 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         SpotName = spotName;
         ChannelName = channelName;
         _defaultTimeout = defaultTimeout;
+        _submitter = new ZLinkAsyncSubmitter(
+            NativeSpot.OnSendReady,
+            sendTimeout,
+            _stopSource.Token);
         _dispatchPump = Task.Run(RunQueuedDispatchAsync);
     }
 
@@ -289,27 +295,54 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await NativeSpot.RequestChannelAsync(
-            channelName,
+        var requestTimeout = timeout ?? _defaultTimeout;
+        return await _submitter
+            .SubmitRequestAsync<IReadOnlyList<Message>>(
+                message,
+                (pending, complete, fail) => NativeSpot.RequestChannel(
+                    channelName,
+                    pending,
+                    (result, reply) =>
+                    {
+                        if (result == RequestResult.Ok)
+                        {
+                            complete(reply);
+                            return;
+                        }
+
+                        foreach (var replyPart in reply)
+                        {
+                            replyPart.Dispose();
+                        }
+
+                        fail(new TimeoutException($"SPOT channel request failed with result '{result}'."));
+                    },
+                    SendFlags.DontWait,
+                    requestTimeout),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public ValueTask SendChannelAsync(
+        string channelName,
+        Message message,
+        CancellationToken cancellationToken)
+    {
+        return _submitter.SubmitAsync(
             message,
-            timeout ?? _defaultTimeout,
+            pending => NativeSpot.SendChannel(channelName, pending, SendFlags.DontWait),
             cancellationToken);
     }
 
-    public bool SendChannel(
-        string channelName,
-        Message message,
-        SendFlags flags)
-    {
-        return NativeSpot.SendChannel(channelName, message, flags);
-    }
-
-    public bool PublishCurrent(
+    public ValueTask PublishCurrentAsync(
         string topic,
         Message message,
-        SendFlags flags)
+        CancellationToken cancellationToken)
     {
-        return NativeSpot.Publish(ChannelName, topic, message, flags);
+        return _submitter.SubmitAsync(
+            message,
+            pending => NativeSpot.Publish(ChannelName, topic, pending, SendFlags.DontWait),
+            cancellationToken);
     }
 
     public bool SendToSpot(
@@ -484,6 +517,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
             await timer.DisposeAsync();
         }
 
+        await _submitter.DisposeAsync();
         await NativeSpot.DisposeAsync();
         _stopSource.Dispose();
         _executionGate.Dispose();

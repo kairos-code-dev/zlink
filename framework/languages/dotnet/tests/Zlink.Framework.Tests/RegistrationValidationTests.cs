@@ -52,6 +52,25 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_WhenRoutedChannelMixesDiscoveryAndManualConnections()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.AddRoutedChannel("backend", routed =>
+                {
+                    routed.Bind("tcp://127.0.0.1:7201");
+                    routed.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7202"));
+                });
+            }));
+
+        Assert.Contains("cannot mix discovery and manual connections", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath()
     {
         var services = new ServiceCollection();

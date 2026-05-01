@@ -215,6 +215,11 @@ send backpressure 대기 한계는 call builder가 아니라 channel 또는 sock
 `CancellationToken`은 호출자가 이 submit 대기를 취소할 때만 사용한다. 이 초안은
 별도 public no-wait 옵션을 제공하지 않는다. temporary backpressure는 public API의
 분기값이 아니라 framework 내부 queue와 ready notification으로 처리한다.
+framework routed channel의 기본 `SendTimeout`은 `TimeSpan.FromMilliseconds(200)`으로
+둔다. async submit runtime은 core socket 기본값을 직접 사용하지 않고, routed
+channel option에 설정된 resolved `SendTimeout` 값을 읽어 pending deadline으로
+사용한다. 사용자가 `SendTimeout = null`을 명시한 경우에만 core `-1`과 같은 무한
+대기로 본다.
 
 `RequestTo(...).Async<TReply>(...)`도 request packet을 보내는 단계에서는 같은
 nonblocking submit 경로를 사용한다. `WithTimeout(...)`은 reply 대기 시간만

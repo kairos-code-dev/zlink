@@ -47,13 +47,6 @@ struct auto_hwm_context_plan_t
 
     bool enabled;
     zlink_auto_hwm_profile_t profile;
-    int total_memory_budget_mb;
-    uint64_t total_memory_budget_bytes;
-    uint64_t queue_budget_bytes;
-    uint64_t transport_budget_bytes;
-    uint64_t total_auto_buffer_bytes;
-    uint64_t runtime_reserve_bytes;
-    uint32_t total_planning_count;
 };
 
 struct auto_hwm_socket_plan_t
@@ -64,21 +57,10 @@ struct auto_hwm_socket_plan_t
     auto_hwm_policy_class_t policy_class;
     auto_hwm_scope_t scope;
     uint32_t scope_count;
-    uint32_t observed_count;
-    uint32_t planning_count;
-    uint32_t context_total_planning_count;
-    uint64_t socket_queue_share_bytes;
     uint64_t socket_message_slots;
-    uint64_t auto_buffer_bytes;
-    uint64_t manual_buffer_bytes;
-    uint32_t buffer_connections;
     uint64_t effective_message_bytes;
-    uint32_t managed_connections;
-    uint32_t active_hwm_connections;
-    uint32_t base_floor_per_connection;
     uint64_t unit_budget_bytes;
     uint32_t size_cap;
-    uint32_t effective_publish_fanout;
     uint64_t pending_messages;
     int sndhwm;
     int rcvhwm;
@@ -92,11 +74,9 @@ auto_hwm_role_t auto_hwm_default_role_for_socket_type (int socket_type_);
 auto_hwm_policy_class_t auto_hwm_policy_class_for_role (
   auto_hwm_role_t role_,
   int socket_type_);
-void auto_hwm_context_plan_from_budget_mb (bool enabled_,
-                                           int total_memory_budget_mb_,
-                                           auto_hwm_context_plan_t *out_,
-                                           zlink_auto_hwm_profile_t profile_ =
-                                             ZLINK_AUTO_HWM_PROFILE_BALANCED);
+void auto_hwm_context_plan_make (bool enabled_,
+                                 zlink_auto_hwm_profile_t profile_,
+                                 auto_hwm_context_plan_t *out_);
 void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    int socket_type_,
                                    size_t managed_connections_,
@@ -110,8 +90,7 @@ void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    auto_hwm_scope_t scope_ =
                                      auto_hwm_scope_none,
                                    size_t scope_count_ = 1,
-                                   bool buffer_cost_enabled_ = true,
-                                   uint32_t planning_bootstrap_ = 0);
+                                   bool buffer_cost_enabled_ = true);
 void auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
                                 auto_hwm_socket_plan_t *plans_,
                                 size_t plan_count_);
@@ -129,8 +108,7 @@ void auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &context_,
                                     auto_hwm_scope_t scope_ =
                                       auto_hwm_scope_none,
                                     size_t scope_count_ = 1,
-                                    bool buffer_cost_enabled_ = true,
-                                    uint32_t planning_bootstrap_ = 0);
+                                    bool buffer_cost_enabled_ = true);
 }
 
 #endif

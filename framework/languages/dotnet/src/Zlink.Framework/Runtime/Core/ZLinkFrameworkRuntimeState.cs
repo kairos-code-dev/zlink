@@ -22,6 +22,8 @@ internal sealed class ZLinkFrameworkRuntimeState(
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> ClientBundles { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkRoutedChannelRuntime> RoutedChannels { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<string, ZLinkSpotNodeRuntime> SpotNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, IZLinkBackendDiscovery> SpotDiscoveries { get; } = new(StringComparer.Ordinal);
@@ -58,6 +60,11 @@ internal sealed class ZLinkFrameworkRuntimeState(
         foreach (var node in SpotNodes.Values)
         {
             await DisposeSafelyAsync(node);
+        }
+
+        foreach (var routed in RoutedChannels.Values)
+        {
+            await DisposeSafelyAsync(routed);
         }
 
         foreach (var stream in StreamNodes.Values)

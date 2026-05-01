@@ -822,7 +822,7 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 | `detail_flags` | `uint32` | 세부 비트마스크 |
 | `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
 | `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
-| `auto_hwm_*` budget/buffer/diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t` 의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. 계획 수, context 전체 planning 합계, socket queue share, `MsgUnit(B)`, 자동/수동 buffer 비용, 최근 재계산 정보, deferred shrink, blocked ratio 를 포함한다 |
+| `auto_hwm_*` diagnostic fields | number / bigint | C `zlink_monitor_snapshot_t`의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. profile, policy class, unit budget, message unit, 적용 HWM, buffer 진단값, 최근 재계산 정보, deferred shrink, blocked ratio를 포함한다. deprecated planning/budget/share 필드는 `0` 호환 필드다 |
 | `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
 
 #### 서비스 계층 엔트리 객체

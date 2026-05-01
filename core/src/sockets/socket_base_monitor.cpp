@@ -55,21 +55,16 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     out_->auto_hwm_role = static_cast<uint32_t> (_auto_hwm_socket_plan.role);
     out_->auto_hwm_policy_class =
       static_cast<uint32_t> (_auto_hwm_socket_plan.policy_class);
-    out_->auto_hwm_managed_connections =
-      _auto_hwm_socket_plan.managed_connections;
-    out_->auto_hwm_active_hwm_connections =
-      _auto_hwm_socket_plan.active_hwm_connections;
-    out_->auto_hwm_observed_count = _auto_hwm_socket_plan.observed_count;
-    out_->auto_hwm_planning_count = _auto_hwm_socket_plan.planning_count;
-    out_->auto_hwm_context_total_planning_count =
-      _auto_hwm_socket_plan.context_total_planning_count;
-    out_->auto_hwm_base_floor_per_connection =
-      _auto_hwm_socket_plan.base_floor_per_connection;
+    out_->auto_hwm_managed_connections = 0;
+    out_->auto_hwm_active_hwm_connections = 0;
+    out_->auto_hwm_observed_count = 0;
+    out_->auto_hwm_planning_count = 0;
+    out_->auto_hwm_context_total_planning_count = 0;
+    out_->auto_hwm_base_floor_per_connection = 0;
     out_->auto_hwm_unit_budget_bytes =
       _auto_hwm_socket_plan.unit_budget_bytes;
     out_->auto_hwm_size_cap = _auto_hwm_socket_plan.size_cap;
-    out_->auto_hwm_effective_publish_fanout =
-      _auto_hwm_socket_plan.effective_publish_fanout;
+    out_->auto_hwm_effective_publish_fanout = 0;
     out_->auto_hwm_applied_sndhwm = options.sndhwm;
     out_->auto_hwm_applied_rcvhwm = options.rcvhwm;
     out_->auto_hwm_requested_sndbuf =
@@ -78,38 +73,28 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
       _manual_rcvbuf ? options.rcvbuf : _auto_hwm_socket_plan.requested_rcvbuf;
     out_->auto_hwm_effective_sndbuf = options.sndbuf;
     out_->auto_hwm_effective_rcvbuf = options.rcvbuf;
-    out_->auto_hwm_total_memory_budget_bytes =
-      _auto_hwm_context_plan.total_memory_budget_bytes;
-    out_->auto_hwm_queue_budget_bytes =
-      _auto_hwm_context_plan.queue_budget_bytes;
-    out_->auto_hwm_transport_budget_bytes =
-      _auto_hwm_context_plan.transport_budget_bytes;
-    out_->auto_hwm_runtime_reserve_bytes =
-      _auto_hwm_context_plan.runtime_reserve_bytes;
-    out_->auto_hwm_socket_queue_share_bytes =
-      _auto_hwm_socket_plan.socket_queue_share_bytes;
+    out_->auto_hwm_total_memory_budget_bytes = 0;
+    out_->auto_hwm_queue_budget_bytes = 0;
+    out_->auto_hwm_transport_budget_bytes = 0;
+    out_->auto_hwm_runtime_reserve_bytes = 0;
+    out_->auto_hwm_socket_queue_share_bytes = 0;
     out_->auto_hwm_socket_message_slots =
       _auto_hwm_socket_plan.socket_message_slots;
     out_->auto_hwm_effective_message_bytes =
       _auto_hwm_socket_plan.effective_message_bytes;
-    out_->auto_hwm_estimated_max_memory_bytes =
-      _auto_hwm_context_plan.total_memory_budget_bytes;
+    out_->auto_hwm_estimated_max_memory_bytes = 0;
     out_->auto_hwm_last_recalc_ms = _auto_hwm_last_recalc_ms;
     out_->auto_hwm_last_recalc_reason = _auto_hwm_last_recalc_reason;
     out_->auto_hwm_send_blocked_ratio_ppm = compute_blocked_ratio_ppm_local (
       _auto_hwm_send_attempts.load (std::memory_order_relaxed),
       _auto_hwm_send_blocked_attempts.load (std::memory_order_relaxed));
-    out_->auto_hwm_scope =
-      static_cast<uint32_t> (_auto_hwm_socket_plan.scope);
-    out_->auto_hwm_scope_count = _auto_hwm_socket_plan.scope_count;
-    out_->auto_hwm_auto_buffer_bytes =
-      _auto_hwm_socket_plan.auto_buffer_bytes;
-    out_->auto_hwm_manual_buffer_bytes =
-      _auto_hwm_socket_plan.manual_buffer_bytes;
-    out_->auto_hwm_buffer_connections =
-      _auto_hwm_socket_plan.buffer_connections;
-    out_->auto_hwm_deferred_sndhwm = _auto_hwm_deferred_sndhwm;
-    out_->auto_hwm_deferred_rcvhwm = _auto_hwm_deferred_rcvhwm;
+    out_->auto_hwm_scope = 0;
+    out_->auto_hwm_scope_count = 0;
+    out_->auto_hwm_auto_buffer_bytes = 0;
+    out_->auto_hwm_manual_buffer_bytes = 0;
+    out_->auto_hwm_buffer_connections = 0;
+    out_->auto_hwm_deferred_sndhwm = -1;
+    out_->auto_hwm_deferred_rcvhwm = -1;
 
     return 0;
 }

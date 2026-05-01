@@ -5,7 +5,7 @@
 #include "services/spot/spot_data_plane_loop.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
-#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_mesh_pub_hwm.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
@@ -69,10 +69,10 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
             state_->fanout->set_all_pipes_nodelay ();
         state_->runtime_sockets_nodelay_applied = true;
     }
-    spot_mesh_pub_budget_t::refresh_live_socket (
-      runtime_, state_->mesh_pub, &state_->mesh_pub_budget.current_sndhwm,
-      &state_->mesh_pub_budget.last_budget_version,
-      &state_->mesh_pub_budget.last_bound_endpoint);
+    spot_mesh_pub_hwm_t::refresh_live_socket (
+      runtime_, state_->mesh_pub, &state_->mesh_pub_hwm.current_sndhwm,
+      &state_->mesh_pub_hwm.last_hwm_version,
+      &state_->mesh_pub_hwm.last_bound_endpoint);
     spot_data_plane_forwarder_t::update_pending_queue_limits (runtime_, state_);
     (void) spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_);
     (void) spot_data_plane_forwarder_t::flush_local_fanout_pending (runtime_,

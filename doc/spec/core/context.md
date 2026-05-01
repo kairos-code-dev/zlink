@@ -61,10 +61,10 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_OPT_BLOCKY` | 10 | Legacy option for blocking behavior on context termination (`int`; default 1) |
 | `ZLINK_SPOT_WORKER_THREADS` | 11 | Worker count for `zlink_spot_dispatch_event_handler()` callbacks (`0` = auto) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | Whether automatic HWM policy is enabled (`0` = disabled, `1` = enabled) |
-| `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | 13 | Total context memory budget in MB used by the automatic HWM policy (`>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | 13 | Deprecated compatibility no-op. `zlink_ctx_set()` accepts it, `zlink_ctx_get()` returns `0`, and it never affects HWM calculation. |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
-| `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP` | 15 | Bootstrap planning count used when a managed STREAM socket has not observed any live connection yet (`>= 1`) |
-| `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 16 | Bootstrap planning count used when a managed SPOT publisher/subscriber socket has not observed any live connection yet (`>= 1`) |
+| `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP` | 15 | Deprecated compatibility no-op. `zlink_ctx_set()` accepts it, `zlink_ctx_get()` returns `0`, and it never affects HWM calculation. |
+| `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 16 | Deprecated compatibility no-op. `zlink_ctx_set()` accepts it, `zlink_ctx_get()` returns `0`, and it never affects HWM calculation. |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | Automatic HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). Invalid values fail with `EINVAL`. |
 
 ## Default Values
@@ -75,11 +75,11 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
-#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
-#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 128
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  0
+#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
-#define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 5000
-#define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 500
+#define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 0
+#define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
 ```
 
@@ -90,11 +90,11 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | Default thread priority (OS default) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | Default scheduling policy (OS default) |
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | Default Spot worker count (`0` = auto) |
-| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | Automatic HWM policy enabled by default |
-| `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 128 | Default total context memory budget used by automatic HWM policy (MB) |
+| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 0 | Automatic HWM policy disabled by default. Socket HWM defaults remain `1000` unless the application opts in. |
+| `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 0 | Deprecated compatibility default for a no-op option |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | Default debounce window for automatic HWM recalculation (ms) |
-| `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 5000 | Default STREAM planning count before live connections are observed |
-| `ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT` | 500 | Default SPOT bootstrap count and publish-fanout limit |
+| `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 0 | Deprecated compatibility default for a no-op option |
+| `ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT` | 0 | Deprecated compatibility default for a no-op option |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default automatic HWM profile |
 
 ## Functions
@@ -188,17 +188,16 @@ means auto-select, which resolves to `min(visible logical cores, 8)` and falls
 back to `1` if the core count cannot be determined. Changing this option after
 runtime startup fails with `ZLINK_CONFIG_INVALID_ARGUMENT` (`errno=EINVAL`).
 Refer to the option constants table above for valid option names and their
-semantics. `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` and
-`ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` take effect on existing
-sockets immediately, but only for sockets that still use automatic
-`SNDHWM` / `RCVHWM` / `SNDBUF` / `RCVBUF` values rather than manual
-overrides. `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS`,
+semantics. `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` takes effect on existing sockets
+immediately, but only for sockets that still use automatic `SNDHWM` /
+`RCVHWM` / `SNDBUF` / `RCVBUF` values rather than manual overrides.
+`ZLINK_CTX_OPT_AUTO_HWM_PROFILE` updates the profile used by the next
+automatic HWM calculation and is safe to change while the context is live.
+The profile selects the per-connection unit budget and size cap used by the
+automatic HWM planner. `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB`,
 `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP`, and
-`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`, and
-`ZLINK_CTX_OPT_AUTO_HWM_PROFILE` update the planning policy used by the next
-recalculation and are safe to change while the context is live. The profile
-selects the per-connection unit budget and size cap used by the automatic HWM
-planner; it does not add a separate publish-fanout public option.
+`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` are deprecated no-op options kept for
+source and ABI compatibility. They do not affect automatic HWM.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -249,9 +248,9 @@ zlink_config_result_t zlink_ctx_auto_hwm_recalculate(void *context_);
 This function forces an immediate automatic HWM refresh for every socket in
 the context that still follows the automatic queue and buffer policy. Manual
 overrides remain manual, and disabled automatic HWM remains disabled. The call
-is useful when an application has just changed the context-wide memory budget
-or wants to apply a new planning baseline without waiting for the normal
-debounced refresh path.
+is useful after changing the automatic HWM profile or a socket message-unit
+option and applying the new per-connection sizing without waiting for the
+normal refresh path.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a
 `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal

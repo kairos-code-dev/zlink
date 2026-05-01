@@ -17,6 +17,11 @@ internal static class ZLinkFrameworkRegistrationValidator
             ValidateStreamNode(streamNode);
         }
 
+        foreach (var routed in registration.RoutedChannels.Values)
+        {
+            ValidateRoutedChannel(routed, registration.Discovery is not null);
+        }
+
         foreach (var spotNode in registration.SpotNodes.Values)
         {
             ValidateSpotNode(
@@ -72,6 +77,44 @@ internal static class ZLinkFrameworkRegistrationValidator
         {
             throw new ZLinkConfigurationException(
                 $"STREAM node '{streamNode.StreamNodeName}' must register a header stream session.");
+        }
+    }
+
+    private static void ValidateRoutedChannel(
+        ZLinkRoutedChannelRegistration routed,
+        bool discoveryConfigured)
+    {
+        if (string.IsNullOrWhiteSpace(routed.BindEndpoint))
+        {
+            throw new ZLinkConfigurationException(
+                $"Routed channel '{routed.RouterChannelId}' must define a bind endpoint.");
+        }
+
+        if (discoveryConfigured && routed.ManualConnections.Count > 0)
+        {
+            throw new ZLinkConfigurationException(
+                $"Routed channel '{routed.RouterChannelId}' cannot mix discovery and manual connections.");
+        }
+
+        var keys = new HashSet<(ZLinkMessageKind Kind, string PacketName)>();
+        foreach (var handler in routed.SendHandlers)
+        {
+            var packetName = handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
+            if (!keys.Add((ZLinkMessageKind.Command, packetName)))
+            {
+                throw new ZLinkConfigurationException(
+                    $"Duplicate routed send handler '{routed.RouterChannelId}:{packetName}'.");
+            }
+        }
+
+        foreach (var handler in routed.RequestHandlers)
+        {
+            var packetName = handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
+            if (!keys.Add((ZLinkMessageKind.Request, packetName)))
+            {
+                throw new ZLinkConfigurationException(
+                    $"Duplicate routed request handler '{routed.RouterChannelId}:{packetName}'.");
+            }
         }
     }
 

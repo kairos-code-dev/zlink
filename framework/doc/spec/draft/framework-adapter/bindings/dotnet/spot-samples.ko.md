@@ -1057,7 +1057,7 @@ public sealed class SampleActor : IZLinkActor
                 Y = Y
             })
             .WithPacketName("SampleActorSnapshot")
-            .SendAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     public ValueTask OnDisconnectedAsync(
@@ -1113,7 +1113,7 @@ public sealed class SampleMoveActorHandler
         {
             X = message.X,
             Y = message.Y
-        }).SendAsync(cancellationToken);
+        }).Async(cancellationToken);
     }
 }
 
@@ -1205,7 +1205,7 @@ public sealed class SampleSession
                     AccountId = auth.AccountId,
                     CurrentRoomId = (actor.Spot as SampleSpot)?.RoomId ?? string.Empty
                 })
-                .SendAsync(cancellationToken);
+                .Async(cancellationToken);
             return;
         }
 
@@ -1228,7 +1228,7 @@ public sealed class SampleSession
 
             await Context
                 .Reply(joinReply)
-                .SendAsync(cancellationToken);
+                .Async(cancellationToken);
             return;
         }
 

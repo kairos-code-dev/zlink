@@ -25,8 +25,7 @@ handle에서 이 세 모델 중 정확히 하나만 활성화할 수 있습니�
 
 STREAM은 context auto HWM 정책에서 `stream` policy class로 분류됩니다. 활성
 auto-HWM profile이 단위 예산과 메시지 크기 cap을 고르며, 기본 profile은
-`balanced`입니다. `SNDBUF` / `RCVBUF`는 같은 context 예산과 STREAM transport
-계획 연결 수를 기준으로 자동 계산됩니다. 자동 HWM을 끄고도 `SNDBUF` /
+`balanced`입니다. auto-HWM은 opt-in입니다. 애플리케이션이 `SNDBUF` /
 `RCVBUF`를 직접 주지 않으면 STREAM은 호환 기본값 `262144`를 사용합니다.
 
 ## Stream 옵션 (`zlink_stream_option_t`)

@@ -30,17 +30,23 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
         nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
     }
 
+    public void OnSendReady(Action handler)
+    {
+        nativeSocket.OnSendReady(handler);
+    }
+
     public bool Send(Message message, SendFlags flags)
     {
         return nativeSocket.Send(message, flags);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestAsync(
+    public bool Request(
         Message message,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags,
+        TimeSpan? timeout)
     {
-        return await nativeSocket.RequestAsync(message, timeout, cancellationToken).ConfigureAwait(false);
+        return nativeSocket.Request(message, callback, flags, timeout);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

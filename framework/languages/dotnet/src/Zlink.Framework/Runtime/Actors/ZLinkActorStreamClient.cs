@@ -57,7 +57,7 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
         return this;
     }
 
-    public ValueTask SendAsync(CancellationToken cancellationToken = default)
+    protected ValueTask ExecuteAsync(CancellationToken cancellationToken = default)
     {
         _ = cancellationToken;
 
@@ -123,7 +123,7 @@ internal sealed class ZLinkActorSendCall<TMessage>(
 
     public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        return SendAsync(cancellationToken);
+        return ExecuteAsync(cancellationToken);
     }
 
     protected override ZlinkStreamHeader CreateHeader(
@@ -157,7 +157,7 @@ internal sealed class ZLinkActorReplyCall<TMessage>(
 
     public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        return SendAsync(cancellationToken);
+        return ExecuteAsync(cancellationToken);
     }
 
     protected override ZlinkStreamHeader CreateHeader(

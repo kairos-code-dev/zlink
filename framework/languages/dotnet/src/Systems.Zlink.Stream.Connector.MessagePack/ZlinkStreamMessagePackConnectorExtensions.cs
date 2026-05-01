@@ -74,12 +74,6 @@ public sealed class ZlinkStreamMessagePackSendBuilder
         return this;
     }
 
-    public ZlinkStreamMessagePackSendBuilder WithTimeout(TimeSpan timeout)
-    {
-        _inner.WithTimeout(timeout);
-        return this;
-    }
-
     public ZlinkStreamMessagePackSendBuilder Compress()
     {
         _inner.Compress();

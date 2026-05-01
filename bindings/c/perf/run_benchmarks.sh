@@ -89,7 +89,6 @@ SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
 SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-}"
-CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB="${PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:-}"
 CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
@@ -697,9 +696,6 @@ fi
 if [[ -n "${CTX_AUTO_HWM_ENABLE}" ]]; then
   RUN_ENV+=(PERF_CTX_AUTO_HWM_ENABLE="${CTX_AUTO_HWM_ENABLE}")
 fi
-if [[ -n "${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}" ]]; then
-  RUN_ENV+=(PERF_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB="${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}")
-fi
 if [[ -n "${CTX_AUTO_HWM_PROFILE}" ]]; then
   RUN_ENV+=(PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
 fi
@@ -797,7 +793,6 @@ fi
 print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"
 print_effective_option "ctx_auto_hwm_enable" "$(value_or_default "${CTX_AUTO_HWM_ENABLE}" "core-default")"
-print_effective_option "ctx_auto_hwm_total_memory_budget_mb" "$(value_or_default "${CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB}" "core-default")"
 print_effective_option "ctx_auto_hwm_profile" "$(value_or_default "${CTX_AUTO_HWM_PROFILE}" "core-default")"
 print_effective_option "pin_cpu" "${PIN_CPU}"
 print_effective_option "io_threads" "${EFFECTIVE_IO_THREADS}"

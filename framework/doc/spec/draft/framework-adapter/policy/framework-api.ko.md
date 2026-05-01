@@ -170,6 +170,11 @@ public sealed class ProfileHandlers
 않고, 먼저 nonblocking send를 시도한 뒤 temporary backpressure가 발생하면 pending
 send queue와 ready notification으로 이어서 처리한다. send 대기 한계는 call
 builder가 아니라 channel 또는 socket의 `SendTimeout` 옵션을 따른다.
+framework는 core socket 기본값을 직접 사용하지 않고, channel/socket option에
+resolved된 `SendTimeout` 값을 async pending deadline으로 사용한다. 별도 설정이
+없으면 framework 기본값은 `TimeSpan.FromMilliseconds(200)`이다. 사용자가
+`.NET` option에서 `SendTimeout = null`을 명시한 경우에만 core `-1`과 같은
+무한 대기로 본다.
 publish도 send와 같은 submit 규칙을 따른다. subscriber 처리 완료를 기다리지 않고,
 local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다.
 

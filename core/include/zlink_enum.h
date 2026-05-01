@@ -20,9 +20,12 @@ typedef enum zlink_ctx_option_t
     ZLINK_CTX_OPT_BLOCKY = 10,
     ZLINK_SPOT_WORKER_THREADS = 11,
     ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
+    /* Deprecated compatibility no-op. */
     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB = 13,
     ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
+    /* Deprecated compatibility no-op. */
     ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP = 15,
+    /* Deprecated compatibility no-op. */
     ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP = 16,
     ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17
 } zlink_ctx_option_t;

@@ -51,7 +51,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |---|---|
 | **What it does** | Limits the maximum number of messages in the pipe's outbound/inbound direction |
 | **Applied at** | `pipe_t::check_write()` — checks HWM when writing to pipe |
-| **Default** | Calculated by the automatic HWM policy from the context budget, socket role, and connection count |
+| **Default** | `1000`. If context auto-HWM is enabled, calculated from profile, socket role, and message unit. |
 | **0** | Unlimited |
 | **Effect** | When HWM is reached, `zlink_send()` blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
 
@@ -60,7 +60,35 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 With HWM=100, LWM=50. Queue blocks at 100 and resumes only when drained to 50 or below.
 This gap is the hysteresis that prevents writable/non-writable oscillation.
 
-**Per-socket-type:** Applies identically to all sockets. Services (SPOT) fan-out to their internal sockets.
+**Per-socket-type:** The meaning stays the same, but the automatic policy class
+changes: `PAIR=control`, `DEALER=peer_queue`, `ROUTER=routed`,
+`STREAM=stream`, `PUB/XPUB=fanout`, and `SUB/XSUB=recv_ingress`. SPOT
+internal topic publishers use `spot_data`, peer/control sockets use `control`,
+and SPOT routers use `routed`.
+
+The context option `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects one of three
+profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`. Auto-HWM is
+opt-in: unless `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` is set to `1`, sockets keep the
+normal HWM default `1000`.
+
+| Socket group | `low_latency` | `balanced` | `throughput` |
+|---|---:|---:|---:|
+| non-STREAM data sockets | 64 | 128 | 256 |
+| STREAM | 16 | 64 | 256 |
+| control | 16 | 16 | 32 |
+
+The planner treats HWM as a per-connection queue depth. It does not divide a
+context memory budget by connection count. Instead, it keeps the profile's byte
+envelope stable:
+
+```text
+scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
+```
+
+The minimum automatic HWM is `1`, and the result is capped by the profile's
+message-count cap.
+
+Manual `SNDHWM` / `RCVHWM` settings always override the automatic values.
 
 ```c
 int sndhwm = 5000;
@@ -71,7 +99,39 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
 
 ---
 
-## 2. Shutdown Delay — LINGER
+## 2. Automatic HWM Message Unit
+
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` tells the automatic HWM policy how many
+bytes one planned queue slot should represent. It is not a maximum message
+size; `ZLINK_OPT_MAXMSGSIZE` is the inbound size limit.
+
+Use this option when the typical payload size for a socket is known and differs
+from the default planning size. Leave it at `0` when the socket-type default is
+a better description of the workload.
+
+| Socket type | Default message unit |
+|-------------|----------------------|
+| `STREAM` | `1024` bytes |
+| all other socket types | `4096` bytes |
+
+`zlink_get_option()` returns the raw configured value. A returned value of `0`
+means "use the socket-type default"; the actual value used by the current
+calculation is visible in monitor snapshots as
+`auto_hwm_effective_message_bytes`.
+
+```c
+int msg_unit = 8192;
+zlink_set_option(socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                 &msg_unit, sizeof(msg_unit));
+```
+
+Negative values fail with `EINVAL` and do not change the existing setting.
+When a fixed HWM is set manually with `ZLINK_OPT_SNDHWM` or
+`ZLINK_OPT_RCVHWM`, that manual HWM remains in force.
+
+---
+
+## 3. Shutdown Delay — LINGER
 
 | | |
 |---|---|
@@ -95,7 +155,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ---
 
-## 3. Timeouts — SNDTIMEO / RCVTIMEO
+## 4. Timeouts — SNDTIMEO / RCVTIMEO
 
 | | |
 |---|---|
@@ -117,7 +177,7 @@ zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
 
 ---
 
-## 4. Connection Timeout — CONNECT_TIMEOUT
+## 5. Connection Timeout — CONNECT_TIMEOUT
 
 | | |
 |---|---|
@@ -136,7 +196,7 @@ zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
 
 ---
 
-## 5. Reconnection — RECONNECT_IVL / RECONNECT_IVL_MAX
+## 6. Reconnection — RECONNECT_IVL / RECONNECT_IVL_MAX
 
 | | |
 |---|---|
@@ -161,7 +221,7 @@ zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max))
 
 ---
 
-## 6. TCP Keepalive — TCP_KEEPALIVE / TCP_KEEPALIVE_CNT / TCP_KEEPALIVE_IDLE / TCP_KEEPALIVE_INTVL
+## 7. TCP Keepalive — TCP_KEEPALIVE / TCP_KEEPALIVE_CNT / TCP_KEEPALIVE_IDLE / TCP_KEEPALIVE_INTVL
 
 | Option | What it does | Default |
 |--------|-------------|---------|
@@ -187,7 +247,7 @@ zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_CNT, &(int){3}, sizeof(int));
 
 ---
 
-## 7. TCP Retransmission — TCP_MAXRT
+## 8. TCP Retransmission — TCP_MAXRT
 
 | | |
 |---|---|
@@ -200,7 +260,7 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 
 ---
 
-## 8. Nagle's Algorithm — TCP_NODELAY
+## 9. Nagle's Algorithm — TCP_NODELAY
 
 | | |
 |---|---|
@@ -213,7 +273,7 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 
 ---
 
-## 9. ZMP Heartbeat — HEARTBEAT_IVL / HEARTBEAT_TTL / HEARTBEAT_TIMEOUT
+## 10. ZMP Heartbeat — HEARTBEAT_IVL / HEARTBEAT_TTL / HEARTBEAT_TIMEOUT
 
 | Option | What it does | Default |
 |--------|-------------|---------|
@@ -242,7 +302,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 ---
 
-## 10. Immediate Connect — IMMEDIATE
+## 11. Immediate Connect — IMMEDIATE
 
 | | |
 |---|---|
@@ -256,7 +316,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 ---
 
-## 11. Keep Latest Only — CONFLATE
+## 12. Keep Latest Only — CONFLATE
 
 | | |
 |---|---|
@@ -269,7 +329,7 @@ When enabled, HWM settings are ignored. Multipart messages cannot be received in
 
 ---
 
-## 12. OS Socket Buffers — SNDBUF / RCVBUF
+## 13. OS Socket Buffers — SNDBUF / RCVBUF
 
 | | |
 |---|---|
@@ -282,14 +342,12 @@ When enabled, HWM settings are ignored. Multipart messages cannot be received in
 Independent of HWM. HWM limits message count in the zlink pipe; SNDBUF/RCVBUF limits byte size in the OS kernel socket buffer.
 
 **Per-socket-type:**
-- `STREAM`: calculated by the auto-HWM policy from the context budget and
-  planning connection count. If auto HWM is disabled and the application still
-  leaves the options unset, STREAM falls back to the compatibility default
-  `262144`
+- `STREAM`: if the application leaves the options unset, STREAM uses the
+  compatibility default `262144`.
 
 ---
 
-## 13. IP Quality of Service — TOS
+## 14. IP Quality of Service — TOS
 
 | | |
 |---|---|
@@ -301,7 +359,7 @@ Used to set traffic priority in networks with QoS policies.
 
 ---
 
-## 14. Connection Queue — BACKLOG
+## 15. Connection Queue — BACKLOG
 
 | | |
 |---|---|
@@ -314,7 +372,7 @@ Used to set traffic priority in networks with QoS policies.
 
 ---
 
-## 15. I/O Thread Affinity — AFFINITY
+## 16. I/O Thread Affinity — AFFINITY
 
 | | |
 |---|---|
@@ -327,7 +385,7 @@ Bit N set to 1 means I/O thread N is available. `0` allows all threads. Useful f
 
 ---
 
-## 16. Maximum Message Size — MAXMSGSIZE
+## 17. Maximum Message Size — MAXMSGSIZE
 
 | | |
 |---|---|
@@ -340,7 +398,7 @@ Useful for preventing OOM attacks from untrusted peers.
 
 ---
 
-## 17. IPv6 — IPV6
+## 18. IPv6 — IPV6
 
 | | |
 |---|---|
@@ -352,7 +410,7 @@ Setting to `1` creates a dual-stack socket with `IPV6_V6ONLY=0`.
 
 ---
 
-## 18. Multicast — MULTICAST_HOPS / MULTICAST_MAXTPDU
+## 19. Multicast — MULTICAST_HOPS / MULTICAST_MAXTPDU
 
 | Option | What it does | Default |
 |--------|-------------|---------|
@@ -363,7 +421,7 @@ Only applies to PGM transport. PGM is currently disabled.
 
 ---
 
-## 19. Invert Subscription Matching — INVERT_MATCHING
+## 20. Invert Subscription Matching — INVERT_MATCHING
 
 | | |
 |---|---|
@@ -375,7 +433,7 @@ When set to `1`, messages for non-subscribed topics are delivered, and subscribe
 
 ---
 
-## 20. Network Interface Binding — BINDTODEVICE
+## 21. Network Interface Binding — BINDTODEVICE
 
 | | |
 |---|---|
@@ -387,7 +445,7 @@ Only works on Linux systems with `SO_BINDTODEVICE` support. Used to restrict tra
 
 ---
 
-## 21. Handshake Timeout — HANDSHAKE_IVL
+## 22. Handshake Timeout — HANDSHAKE_IVL
 
 | | |
 |---|---|
@@ -400,7 +458,7 @@ If the handshake is not completed within this time, the connection is closed.
 
 ---
 
-## 22. ZMP Metadata — ZMP_METADATA
+## 23. ZMP Metadata — ZMP_METADATA
 
 | | |
 |---|---|
@@ -421,8 +479,8 @@ Some socket types override common defaults at creation time:
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | Surface failures to unconnected peers instead of silently dropping |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
-| `STREAM` | `SNDBUF` | automatic (`262144` only when auto HWM is disabled and the option stays unset) | Transport buffer sizing from the context budget |
-| `STREAM` | `RCVBUF` | automatic (`262144` only when auto HWM is disabled and the option stays unset) | Transport buffer sizing from the context budget |
+| `STREAM` | `SNDBUF` | `262144` when unset | Compatibility default for stream sockets |
+| `STREAM` | `RCVBUF` | `262144` when unset | Compatibility default for stream sockets |
 
 > **Defaults and observable behavior:**
 >

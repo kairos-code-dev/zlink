@@ -71,6 +71,37 @@ public interface ISpotChannelClientCapabilityBuilder
     void UseManualConnections(Action<IChannelClientConnections> configure);
 }
 
+public interface IRoutedChannelConnections
+{
+    void Connect(string endpoint);
+
+    void Disconnect(string endpoint);
+
+    IReadOnlyList<string> ListConnections();
+}
+
+public interface IZLinkRoutedChannelBuilder
+{
+    void Bind(string endpoint);
+
+    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+
+    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+
+    void UseManualConnections(Action<IRoutedChannelConnections> configure);
+
+    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkRoutedSendHandler<TMessage>;
+
+    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRoutedRequestHandler<TRequest, TReply>;
+
+    void EnableSessionGateway();
+
+    void AddSessionProxyHandler<THandler>()
+        where THandler : class, IZLinkSessionProxyHandler;
+}
+
 public interface IZLinkStreamNodeBuilder
 {
     void Bind(string endpoint);
@@ -122,6 +153,10 @@ public interface IZLinkFrameworkOptions
     void AddChannel(
         string channelName,
         Action<IZLinkChannelBuilder> configure);
+
+    void AddRoutedChannel(
+        string routerChannelId,
+        Action<IZLinkRoutedChannelBuilder> configure);
 
     void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
 

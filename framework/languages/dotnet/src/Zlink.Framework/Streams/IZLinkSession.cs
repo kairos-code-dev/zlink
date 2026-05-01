@@ -42,6 +42,20 @@ public interface IZLinkSessionContext
 
     IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
 
+    ValueTask BindActorAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
+
+    ValueTask UnbindActorAsync(
+        CancellationToken cancellationToken = default);
+
+    IZLinkActorRelay OpenActorRelay(
+        string routerChannelId,
+        RoutingId targetPlayNodeRid,
+        string actorId);
+
+    IZLinkSessionRequestCall Request<TRequest>(TRequest request);
+
     ValueTask CloseAsync(
         CancellationToken cancellationToken = default);
 

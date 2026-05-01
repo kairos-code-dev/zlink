@@ -46,7 +46,7 @@ static void refresh_runtime_pub_hwm (spot_runtime_t *runtime_,
     if (runtime_->local_fanout_xpub)
         (void) runtime_->local_fanout_xpub->setsockopt (
           ZLINK_INTERNAL_OPT_SNDHWM, &value, sizeof (value));
-    runtime_->execution.data_plane_state.mesh_pub_budget.current_sndhwm = value;
+    runtime_->execution.data_plane_state.mesh_pub_hwm.current_sndhwm = value;
 }
 
 static void refresh_runtime_sub_hwm (spot_runtime_t *runtime_,
@@ -255,10 +255,9 @@ static int compute_default_node_hwm (ctx_t *ctx_,
         return 0;
 
     auto_hwm_context_plan_t context_plan;
-    auto_hwm_context_plan_from_budget_mb (
-      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0,
-      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB), &context_plan,
-      ctx_->auto_hwm_profile ());
+    auto_hwm_context_plan_make (
+      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0, ctx_->auto_hwm_profile (),
+      &context_plan);
 
     auto_hwm_role_t role = auto_hwm_role_none;
     int socket_type = ZLINK_CORE_SOCKET_PAIR;
@@ -306,13 +305,10 @@ static int compute_default_node_hwm (ctx_t *ctx_,
     }
 
     auto_hwm_socket_plan_t socket_plan;
-    const uint32_t planning_bootstrap =
-      static_cast<uint32_t> (ctx_->auto_hwm_spot_bootstrap ());
     auto_hwm_socket_plan_for_role (context_plan, role, socket_type,
                                    managed_connections, active_connections,
                                    &socket_plan, 0, -1, -1, false, false,
-                                   auto_hwm_scope_none, 1, true,
-                                   planning_bootstrap);
+                                   auto_hwm_scope_none, 1, true);
     return option_ == ZLINK_SPOT_NODE_OPT_SUB_HWM
              || option_ == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
              ? socket_plan.rcvhwm

@@ -122,15 +122,6 @@ impl<'a> ContextOptions<'a> {
     pub fn blocky(&self) -> Result<bool, ConfigError>;
     /// # Errors: ConfigError
     pub fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
-    pub fn auto_hwm_enabled(&self) -> Result<bool, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
-    pub fn auto_hwm_total_memory_budget_mb(&self) -> Result<i32, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn set_auto_hwm_total_memory_budget_mb(&self, value: i32) -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
     pub fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
     /// # Errors: ConfigError
     pub fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
@@ -140,6 +131,10 @@ impl<'a> ContextOptions<'a> {
     pub fn remove_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError>;
 }
 ```
+
+The native context memory-budget and bootstrap auto-HWM options are
+deprecated no-op compatibility options. The Rust binding does not expose typed
+methods for them.
 
 ```rust
 pub enum AutoHwmProfile {

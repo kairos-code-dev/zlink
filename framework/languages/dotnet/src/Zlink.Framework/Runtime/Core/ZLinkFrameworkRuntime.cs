@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Core;
@@ -11,6 +12,7 @@ internal sealed class ZLinkFrameworkRuntime
     private readonly ZLinkChannelMessagePump _channelMessagePump;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkActorSessionManager _actorSessionManager;
+    private readonly Dictionary<string, ZLinkSessionContext> _sessionActorStreams = new(StringComparer.Ordinal);
     private ZLinkFrameworkRuntimeState? _state;
 
     public ZLinkFrameworkRuntime(
@@ -34,6 +36,8 @@ internal sealed class ZLinkFrameworkRuntime
     public ZLinkFrameworkRegistration Registration => _registration;
 
     internal IServiceProvider Services => _services;
+
+    internal IZLinkRoutedClient RoutedClient => _services.GetRequiredService<IZLinkRoutedClient>();
 
     public bool IsStarted => _state is not null;
 
@@ -59,6 +63,7 @@ internal sealed class ZLinkFrameworkRuntime
             {
                 InitializeInboundChannels(state, channelAdapter);
                 InitializePublisherChannels(state, channelAdapter);
+                InitializeRoutedChannels(state, channelAdapter);
                 InitializeStreamNodes(state);
                 InitializeSpotNodes(state);
             }
@@ -128,7 +133,12 @@ internal sealed class ZLinkFrameworkRuntime
             var adapter = _backendAdapterFactory.CreateChannelAdapter();
             var dealer = adapter.CreateDealerSocket(state.Context);
             dealer.SetChannelName(channelName);
-            var bundle = new ZLinkChannelRuntimeBundle(dealer);
+            var bundle = new ZLinkChannelRuntimeBundle(
+                dealer,
+                new ZLinkAsyncSubmitter(
+                    dealer.OnSendReady,
+                    channel.Client.SocketOptions.SendTimeout,
+                    state.StopTokenSource.Token));
 
             try
             {
@@ -167,6 +177,14 @@ internal sealed class ZLinkFrameworkRuntime
     {
         var state = GetOrStartState();
         return GetOrCreatePublisherBundle(state, channelName);
+    }
+
+    internal ZLinkRoutedChannelRuntime GetRoutedChannel(string routerChannelId)
+    {
+        var state = GetOrStartState();
+        return state.RoutedChannels.TryGetValue(routerChannelId, out var routed)
+            ? routed
+            : throw new InvalidOperationException($"Routed channel '{routerChannelId}' is not registered.");
     }
 
     private ZLinkChannelRuntimeBundle GetOrCreatePublisherBundle(
@@ -316,6 +334,34 @@ internal sealed class ZLinkFrameworkRuntime
         Message body,
         CancellationToken cancellationToken = default)
         => await _actorSessionManager.SubmitActorAsync(actor, header, body, cancellationToken);
+
+    internal void BindSessionActor(string actorId, ZLinkSessionContext context)
+    {
+        lock (_sessionActorStreams)
+        {
+            _sessionActorStreams[actorId] = context;
+        }
+    }
+
+    internal void UnbindSessionActor(string actorId, ZLinkSessionContext context)
+    {
+        lock (_sessionActorStreams)
+        {
+            if (_sessionActorStreams.TryGetValue(actorId, out var existing)
+                && string.Equals(existing.SessionId, context.SessionId, StringComparison.Ordinal))
+            {
+                _sessionActorStreams.Remove(actorId);
+            }
+        }
+    }
+
+    internal bool TryGetSessionActorContext(string actorId, out ZLinkSessionContext context)
+    {
+        lock (_sessionActorStreams)
+        {
+            return _sessionActorStreams.TryGetValue(actorId, out context!);
+        }
+    }
 
     internal async ValueTask<IZLinkEndpointConnections> GetSpotRouterConnectionsAsync(
         string spotNodeName,
@@ -565,6 +611,51 @@ internal sealed class ZLinkFrameworkRuntime
         }
     }
 
+    private void InitializeRoutedChannels(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkChannelBackendAdapter adapter)
+    {
+        foreach (var registration in _registration.RoutedChannels.Values)
+        {
+            var router = adapter.CreateRouterSocket(state.Context);
+            router.SetChannelName(registration.RouterChannelId);
+            if (registration.RoutingOptions.RoutingId.Size > 0)
+            {
+                router.SetRoutingId(registration.RoutingOptions.RoutingId);
+            }
+
+            router.Bind(registration.BindEndpoint!);
+            IZLinkBackendDiscovery? discovery = null;
+            if (registration.ManualConnections.Count == 0
+                && _registration.Discovery?.Endpoints.Count > 0)
+            {
+                discovery = CreateDiscovery(
+                    adapter,
+                    state,
+                    registration.RouterChannelId,
+                    ZLinkBackendServiceType.Socket,
+                    _registration.Discovery.Endpoints);
+                router.AttachDiscovery(discovery);
+            }
+
+            var handlers = new ZLinkRoutedHandlerRegistry(CreateRoutedHandlerDescriptors(registration));
+            var runtime = new ZLinkRoutedChannelRuntime(
+                _services,
+                registration,
+                router,
+                discovery,
+                handlers,
+                state.StopTokenSource.Token);
+            foreach (var endpoint in registration.ManualConnections)
+            {
+                runtime.Connect(endpoint);
+            }
+
+            runtime.Start();
+            state.RoutedChannels.Add(registration.RouterChannelId, runtime);
+        }
+    }
+
     private void InitializeSpotNodes(ZLinkFrameworkRuntimeState state)
     {
         if (_registration.SpotNodes.Count == 0)
@@ -713,7 +804,12 @@ internal sealed class ZLinkFrameworkRuntime
         var publisher = adapter.CreatePublisherSocket(state.Context);
         publisher.SetChannelName(channelName);
         publisher.Bind(channel.Publisher!.BindEndpoint!);
-        var bundle = new ZLinkChannelRuntimeBundle(publisher);
+        var bundle = new ZLinkChannelRuntimeBundle(
+            publisher,
+            new ZLinkAsyncSubmitter(
+                publisher.OnSendReady,
+                channel.Publisher.SocketOptions.SendTimeout,
+                state.StopTokenSource.Token));
 
         if (_registration.Discovery is not null)
         {
@@ -744,6 +840,32 @@ internal sealed class ZLinkFrameworkRuntime
         }
 
         return discovery;
+    }
+
+    private static IEnumerable<ZLinkRoutedHandlerDescriptor> CreateRoutedHandlerDescriptors(
+        ZLinkRoutedChannelRegistration registration)
+    {
+        foreach (var handler in registration.SendHandlers)
+        {
+            yield return new ZLinkRoutedHandlerDescriptor(
+                ZLinkMessageKind.Command,
+                registration.RouterChannelId,
+                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
+                handler.HandlerType,
+                handler.MessageType,
+                null);
+        }
+
+        foreach (var handler in registration.RequestHandlers)
+        {
+            yield return new ZLinkRoutedHandlerDescriptor(
+                ZLinkMessageKind.Request,
+                registration.RouterChannelId,
+                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
+                handler.HandlerType,
+                handler.MessageType,
+                handler.ReplyType);
+        }
     }
 
     private static (string ChannelName, string Capability) ParseChannelCapabilitySource(string sourceName)

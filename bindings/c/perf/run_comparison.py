@@ -841,18 +841,15 @@ def emit_auto_hwm_detail_line(line):
         fields.get("active_connections", ""),
         fields.get("scope", ""),
         fields.get("scope_count", ""),
-        fields.get("planning_count", ""),
         fields.get("sndhwm", ""),
         fields.get("rcvhwm", ""),
         fields.get("effective_message_bytes", ""),
         fields.get("effective_sndbuf", ""),
         fields.get("effective_rcvbuf", ""),
-        fields.get("socket_queue_share_bytes", ""),
         fields.get("socket_message_slots", ""),
-        fields.get("queue_budget_bytes", ""),
         fields.get("auto_buffer_bytes", ""),
         fields.get("manual_buffer_bytes", ""),
-        fields.get("total_budget_bytes", ""),
+        fields.get("unit_budget_bytes", ""),
     )
     if dedup_key in _AUTO_HWM_DETAIL_SEEN:
         return
@@ -901,6 +898,28 @@ def _auto_hwm_spot_scope_and_socket(label):
     return "", raw or "socket"
 
 
+def _auto_hwm_active_hwm_fields(row):
+    socket_type = (row.get("socket_type") or row.get("type") or "").lower()
+    role = (row.get("role") or "").lower()
+    send_active = True
+    recv_active = True
+    if socket_type in ("pub", "xpub") and role in ("spot_data", "control"):
+        recv_active = False
+    if socket_type in ("sub", "xsub") and role in ("recv_ingress", "control"):
+        send_active = False
+    return send_active, recv_active
+
+
+def _auto_hwm_apply_active_hwm_display(row):
+    display = dict(row)
+    send_active, recv_active = _auto_hwm_active_hwm_fields(display)
+    if not send_active:
+        display["sndhwm"] = "-"
+    if not recv_active:
+        display["rcvhwm"] = "-"
+    return display
+
+
 def _auto_hwm_spot_display_rows(rows, scope):
     display_rows = []
     for fields in rows:
@@ -913,7 +932,7 @@ def _auto_hwm_spot_display_rows(rows, scope):
         display["socket"] = socket
         display["managed"] = fields.get("managed_connections", "")
         display["active"] = fields.get("active_connections", "")
-        display_rows.append(display)
+        display_rows.append(_auto_hwm_apply_active_hwm_display(display))
     return display_rows
 
 
@@ -929,8 +948,6 @@ def _auto_hwm_emit_spot_socket_table(emit, title, rows):
             "scope",
             "source",
             "role",
-            "managed",
-            "active",
             "sndhwm",
             "rcvhwm",
             "effective_sndbuf",
@@ -945,13 +962,10 @@ def _auto_hwm_emit_spot_socket_table(emit, title, rows):
         emit,
         "      ",
         (
-            ("Transport", "transport"),
             ("Socket", "socket"),
             ("Scope", "scope"),
             ("Source", "source"),
             ("Role", "role"),
-            ("Managed", "managed"),
-            ("Active", "active"),
             ("SNDHWM", "sndhwm"),
             ("RCVHWM", "rcvhwm"),
             ("SNDBUF", "effective_sndbuf"),
@@ -980,15 +994,13 @@ def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
         display["managed"] = row.get("managed_connections", "")
         display["active"] = row.get("active_connections", "")
         display["type"] = row.get("socket_type", "")
+        display = _auto_hwm_apply_active_hwm_display(display)
         key = tuple(display.get(name, "") for name in (
-            "transport",
             "msg_size",
             "effective_message_bytes",
             "socket",
             "type",
             "role",
-            "managed",
-            "active",
             "sndhwm",
             "rcvhwm",
             "effective_sndbuf",
@@ -1005,7 +1017,6 @@ def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
     group_order = []
     for row in display_rows:
         group_key = (
-            row.get("transport", ""),
             row.get("msg_size", ""),
             row.get("effective_message_bytes", ""),
         )
@@ -1015,11 +1026,8 @@ def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
         grouped_rows[group_key].append(row)
 
     for index, group_key in enumerate(group_order):
-        transport, msg_size, msg_unit = group_key
-        emit(
-            "      "
-            f"- Transport={transport}, Size(B)={msg_size}, MsgUnit(B)={msg_unit}"
-        )
+        msg_size, msg_unit = group_key
+        emit("      " f"- Size(B)={msg_size}, MsgUnit(B)={msg_unit}")
         _auto_hwm_emit_markdown_table(
             emit,
             "      ",
@@ -1027,8 +1035,6 @@ def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
                 ("Socket", "socket"),
                 ("Type", "type"),
                 ("Role", "role"),
-                ("Managed", "managed"),
-                ("Active", "active"),
                 ("SNDHWM", "sndhwm"),
                 ("RCVHWM", "rcvhwm"),
                 ("SNDBUF", "effective_sndbuf"),
@@ -1044,10 +1050,19 @@ def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
 def _auto_hwm_emit_spot_common_table(emit, rows):
     common_rows = []
     seen = set()
-    clients = _read_env_value("PERF_MULTI_CLIENTS", "PERF_CLIENTS") or ""
     for fields in rows:
-        transport = fields.get("transport", "")
-        key = transport
+        key = tuple(
+            fields.get(name, "")
+            for name in (
+                "unit_budget_bytes",
+                "auto_buffer_bytes",
+                "manual_buffer_bytes",
+                "buffer_connections",
+                "runtime_reserve_bytes",
+                "effective_message_bytes",
+                "enabled",
+            )
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -1055,15 +1070,12 @@ def _auto_hwm_emit_spot_common_table(emit, rows):
         policy = "auto-hwm" if enabled == "1" else "off"
         common_rows.append(
             {
-                "transport": transport,
-                "total_budget_bytes": fields.get("total_budget_bytes", ""),
-                "queue_budget_bytes": fields.get("queue_budget_bytes", ""),
+                "unit_budget_bytes": fields.get("unit_budget_bytes", ""),
                 "auto_buffer_bytes": fields.get("auto_buffer_bytes", ""),
                 "manual_buffer_bytes": fields.get("manual_buffer_bytes", ""),
                 "buffer_connections": fields.get("buffer_connections", ""),
                 "runtime_reserve_bytes": fields.get("runtime_reserve_bytes", ""),
                 "effective_message_bytes": fields.get("effective_message_bytes", ""),
-                "clients": clients,
                 "policy": policy,
             }
         )
@@ -1074,15 +1086,12 @@ def _auto_hwm_emit_spot_common_table(emit, rows):
         emit,
         "      ",
         (
-            ("Transport", "transport"),
-            ("Context(B)", "total_budget_bytes"),
-            ("Queue(B)", "queue_budget_bytes"),
+            ("UnitBudget(B)", "unit_budget_bytes"),
             ("AutoBuffer(B)", "auto_buffer_bytes"),
             ("ManualBuffer(B)", "manual_buffer_bytes"),
             ("BufferConn", "buffer_connections"),
             ("Runtime(B)", "runtime_reserve_bytes"),
             ("MsgUnit(B)", "effective_message_bytes"),
-            ("Clients", "clients"),
             ("Policy", "policy"),
         ),
         common_rows,
@@ -1090,8 +1099,8 @@ def _auto_hwm_emit_spot_common_table(emit, rows):
     return True
 
 
-def _auto_hwm_emit_spot_budget_table(emit, rows):
-    budget_rows = []
+def _auto_hwm_emit_spot_policy_table(emit, rows):
+    policy_rows = []
     seen = set()
     for fields in rows:
         scope, _socket = _auto_hwm_spot_scope_and_socket(fields.get("label", ""))
@@ -1103,57 +1112,55 @@ def _auto_hwm_emit_spot_budget_table(emit, rows):
             "scope": scope,
             "scope_count": fields.get("scope_count", ""),
             "role": fields.get("role", ""),
-            "planning_count": fields.get("planning_count", ""),
-            "total_planning": fields.get("context_total_planning_count", ""),
-            "socket_queue_share_bytes": fields.get("socket_queue_share_bytes", ""),
+            "unit_budget_bytes": fields.get("unit_budget_bytes", ""),
             "socket_message_slots": fields.get("socket_message_slots", ""),
             "effective_message_bytes": fields.get("effective_message_bytes", ""),
+            "sndhwm": fields.get("sndhwm", ""),
+            "rcvhwm": fields.get("rcvhwm", ""),
+            "size_cap": fields.get("size_cap", ""),
             "managed": fields.get("managed_connections", ""),
             "active": fields.get("active_connections", ""),
             "base": fields.get("base_floor_per_connection", ""),
             "reason": fields.get("last_recalc_reason", ""),
         }
+        row = _auto_hwm_apply_active_hwm_display(row)
         key = tuple(row.get(name, "") for name in (
-            "transport",
             "scope",
             "scope_count",
             "role",
-            "planning_count",
-            "total_planning",
-            "socket_queue_share_bytes",
+            "unit_budget_bytes",
             "socket_message_slots",
             "effective_message_bytes",
-            "managed",
-            "active",
+            "sndhwm",
+            "rcvhwm",
+            "size_cap",
             "base",
             "reason",
         ))
         if key in seen:
             continue
         seen.add(key)
-        budget_rows.append(row)
-    if not budget_rows:
+        policy_rows.append(row)
+    if not policy_rows:
         return False
-    emit("    Auto-HWM budget:")
+    emit("    Auto-HWM policy:")
     _auto_hwm_emit_markdown_table(
         emit,
         "      ",
         (
-            ("Transport", "transport"),
             ("Scope", "scope"),
             ("ScopeCount", "scope_count"),
             ("Role", "role"),
-            ("Planning", "planning_count"),
-            ("CtxPlanning", "total_planning"),
-            ("QueueShare(B)", "socket_queue_share_bytes"),
+            ("UnitBudget(B)", "unit_budget_bytes"),
             ("MsgUnit(B)", "effective_message_bytes"),
             ("MsgSlots", "socket_message_slots"),
-            ("Managed", "managed"),
-            ("Active", "active"),
+            ("SNDHWM", "sndhwm"),
+            ("RCVHWM", "rcvhwm"),
+            ("SizeCap", "size_cap"),
             ("Base", "base"),
             ("Reason", "reason"),
         ),
-        budget_rows,
+        policy_rows,
     )
     return True
 
@@ -1181,7 +1188,7 @@ def _auto_hwm_emit_spot_tables(emit, rows):
         )
         emitted = (
             _auto_hwm_emit_spot_snapshot_socket_table(
-                emit, "Auto-HWM spot", spot_rows
+                emit, "Auto-HWM spot handles", spot_rows
             )
             or emitted
         )
@@ -1206,11 +1213,13 @@ def _auto_hwm_emit_spot_tables(emit, rows):
     )
     emitted = (
         _auto_hwm_emit_spot_socket_table(
-            emit, "Auto-HWM spot", _auto_hwm_spot_display_rows(spot_rows, "per-spot")
+            emit,
+            "Auto-HWM spot handles",
+            _auto_hwm_spot_display_rows(spot_rows, "per-spot"),
         )
         or emitted
     )
-    emitted = _auto_hwm_emit_spot_budget_table(emit, spot_rows) or emitted
+    emitted = _auto_hwm_emit_spot_policy_table(emit, spot_rows) or emitted
     return emitted
 
 
@@ -1267,48 +1276,61 @@ def emit_auto_hwm_detail_table(emit, pattern_name):
     rows.sort(
         key=lambda fields: (
             _auto_hwm_parse_int(fields.get("msg_size", ""), 0),
-            fields.get("transport", ""),
             fields.get("component", ""),
             fields.get("socket_type", ""),
         )
     )
 
     emit("    Auto-HWM detail:")
+    display_rows = []
+    seen_display_rows = set()
     for fields in rows:
-        fields["connections"] = fields.get("active_connections", "")
-        fields["type"] = fields.get("socket_type", "")
+        display = dict(fields)
+        display["type"] = fields.get("socket_type", "")
         msg_size = fields.get("msg_size", "")
-        fields["msg_size_display"] = msg_size if msg_size and msg_size != "0" else "?"
-        fields["context_mb"] = _auto_hwm_bytes_to_mb_display(
-            fields.get("total_budget_bytes", "")
+        display["msg_size_display"] = msg_size if msg_size and msg_size != "0" else "?"
+        display["unit_budget_kb"] = _auto_hwm_bytes_to_kb_display(
+            fields.get("unit_budget_bytes", "")
         )
-        fields["queue_mb"] = _auto_hwm_bytes_to_mb_display(
-            fields.get("queue_budget_bytes", "")
-        )
-        fields["effective_sndbuf_kb"] = _auto_hwm_bytes_to_kb_display(
+        display["effective_sndbuf_kb"] = _auto_hwm_bytes_to_kb_display(
             fields.get("effective_sndbuf", "")
         )
-        fields["effective_rcvbuf_kb"] = _auto_hwm_bytes_to_kb_display(
+        display["effective_rcvbuf_kb"] = _auto_hwm_bytes_to_kb_display(
             fields.get("effective_rcvbuf", "")
         )
+        display_key = tuple(
+            display.get(name, "")
+            for name in (
+                "msg_size_display",
+                "component",
+                "type",
+                "unit_budget_kb",
+                "effective_message_bytes",
+                "sndhwm",
+                "rcvhwm",
+                "effective_sndbuf_kb",
+                "effective_rcvbuf_kb",
+            )
+        )
+        if display_key in seen_display_rows:
+            continue
+        seen_display_rows.add(display_key)
+        display_rows.append(display)
     _auto_hwm_emit_markdown_table(
         emit,
         "      ",
         (
-            ("Transport", "transport"),
             ("Size(B)", "msg_size_display"),
             ("Component", "component"),
             ("Type", "type"),
-            ("Conn", "connections"),
-            ("Context(MB)", "context_mb"),
-            ("Queue(MB)", "queue_mb"),
+            ("UnitBudget(KB)", "unit_budget_kb"),
             ("MsgUnit(B)", "effective_message_bytes"),
             ("SNDHWM", "sndhwm"),
             ("RCVHWM", "rcvhwm"),
             ("SNDBUF(KB)", "effective_sndbuf_kb"),
             ("RCVBUF(KB)", "effective_rcvbuf_kb"),
         ),
-        rows,
+        display_rows,
     )
     for fields in rows:
         _AUTO_HWM_DETAIL_TABLE_SEEN.add((pattern, fields.get("_dedup_key")))
@@ -3335,7 +3357,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     for sz in sizes:
                         emit_size_row(sz, "unsupported")
                 emit(f"    Testing {tr}: Done")
-                emit_auto_hwm_detail_table(emit, pattern_name)
                 maybe_transport_cooldown()
                 continue
 
@@ -3354,7 +3375,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     for sz in sizes:
                         emit_size_row(sz, "fail")
                 emit(f"    Testing {tr}: Done")
-                emit_auto_hwm_detail_table(emit, pattern_name)
                 maybe_transport_cooldown()
                 continue
 
@@ -3390,7 +3410,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     )
 
             emit(f"    Testing {tr}: Done")
-            emit_auto_hwm_detail_table(emit, pattern_name)
             maybe_transport_cooldown()
             continue
 
@@ -3584,6 +3603,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
 
         emit(f"    Testing {tr}: Done")
 
+    emit_auto_hwm_detail_table(emit, pattern_name)
     return final_stats, failures
 def format_throughput(pattern_name, throughput_per_sec):
     unit = "Kops/s" if is_echo_pattern(pattern_name) else "Kmsg/s"
@@ -3886,6 +3906,14 @@ def build_effective_option_items(args, selected_patterns):
                 ("rcvhwm", rcvhwm_display),
                 ("sndbuf", sndbuf or "auto-hwm"),
                 ("rcvbuf", rcvbuf or "auto-hwm"),
+                (
+                    "ctx_auto_hwm_enable",
+                    _read_env_value("PERF_CTX_AUTO_HWM_ENABLE") or "core-default",
+                ),
+                (
+                    "ctx_auto_hwm_profile",
+                    _read_env_value("PERF_CTX_AUTO_HWM_PROFILE") or "core-default",
+                ),
                 ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),

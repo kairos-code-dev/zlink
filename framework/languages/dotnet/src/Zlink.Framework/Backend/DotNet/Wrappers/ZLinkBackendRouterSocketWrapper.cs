@@ -20,9 +20,47 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
     }
 
+    public void Connect(string endpoint)
+    {
+        nativeSocket.Connect(endpoint);
+    }
+
+    public void Disconnect(string endpoint)
+    {
+        nativeSocket.Disconnect(endpoint);
+    }
+
+    public void OnSendReady(Action handler)
+    {
+        nativeSocket.OnSendReady(handler);
+    }
+
+    public void SetRoutingId(RoutingId routingId)
+    {
+        nativeSocket.RouterOptions.RoutingId = routingId;
+    }
+
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
         return nativeSocket.Recv(flags);
+    }
+
+    public bool Send(
+        RoutingId routingId,
+        Message message,
+        SendFlags flags)
+    {
+        return nativeSocket.Send(routingId, message, flags);
+    }
+
+    public bool Request(
+        RoutingId routingId,
+        Message message,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags,
+        TimeSpan? timeout)
+    {
+        return nativeSocket.Request(routingId, message, callback, flags, timeout);
     }
 
     public void Reply(

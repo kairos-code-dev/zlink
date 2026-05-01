@@ -105,10 +105,6 @@ func (o *ContextOptions) MaxMessageSize() (int, error)
 func (o *ContextOptions) MessageStructSize() (int, error)
 func (o *ContextOptions) SetBlocky(value bool) error
 func (o *ContextOptions) Blocky() (bool, error)
-func (o *ContextOptions) SetAutoHwmEnabled(value bool) error
-func (o *ContextOptions) AutoHwmEnabled() (bool, error)
-func (o *ContextOptions) SetAutoHwmTotalMemoryBudgetMb(value int) error
-func (o *ContextOptions) AutoHwmTotalMemoryBudgetMb() (int, error)
 func (o *ContextOptions) SetAutoHwmProfile(value AutoHwmProfile) error
 func (o *ContextOptions) AutoHwmProfile() (AutoHwmProfile, error)
 func (o *ContextOptions) AddThreadAffinity(cpu int) error
@@ -124,6 +120,10 @@ const (
     AutoHwmProfileThroughput AutoHwmProfile = 3
 )
 ```
+
+The native context memory-budget and bootstrap auto-HWM options are
+deprecated no-op compatibility options. The Go binding does not expose typed
+getters or setters for them.
 
 ### Version
 

@@ -116,6 +116,11 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             {
                 await EnsureConnectedAsync();
                 var decoded = _headerCodec.Decode(header.AsReadOnlyMemory());
+                if (_context.TryCompleteResponse(decoded, body))
+                {
+                    return;
+                }
+
                 _context.EnterDispatch(decoded);
                 try
                 {

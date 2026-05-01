@@ -71,6 +71,8 @@ public interface ISpotNodeSubscriberOptions
 
 internal sealed class ZLinkCommonSocketOptions : IZLinkCommonSocketOptions
 {
+    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(200);
+
     public long MaxMessageSize { get; set; }
 
     public int SendHighWaterMark { get; set; }
@@ -85,7 +87,15 @@ internal sealed class ZLinkCommonSocketOptions : IZLinkCommonSocketOptions
 
     public TimeSpan? ReceiveTimeout { get; set; }
 
-    public TimeSpan? SendTimeout { get; set; }
+    public TimeSpan? SendTimeout
+    {
+        get => _sendTimeout;
+        set
+        {
+            ValidateSendTimeout(value);
+            _sendTimeout = value;
+        }
+    }
 
     public TimeSpan? ConnectTimeout { get; set; }
 
@@ -96,6 +106,14 @@ internal sealed class ZLinkCommonSocketOptions : IZLinkCommonSocketOptions
     public bool TcpNoDelay { get; set; }
 
     public bool Immediate { get; set; }
+
+    internal static void ValidateSendTimeout(TimeSpan? value)
+    {
+        if (value is { } timeout && timeout < TimeSpan.Zero)
+        {
+            throw new ZLinkConfigurationException("SendTimeout must be null, zero, or a positive duration.");
+        }
+    }
 }
 
 internal sealed class ZLinkRoutedPeerOptions : IRoutedPeerOptions
@@ -120,9 +138,19 @@ internal sealed class ZLinkOutboundPeerOptions : IOutboundPeerOptions
 
 internal sealed class ZLinkSpotNodePublisherOptions : ISpotNodePublisherOptions
 {
+    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(200);
+
     public int SendHighWaterMark { private get; set; }
 
-    public TimeSpan? SendTimeout { private get; set; }
+    public TimeSpan? SendTimeout
+    {
+        private get => _sendTimeout;
+        set
+        {
+            ZLinkCommonSocketOptions.ValidateSendTimeout(value);
+            _sendTimeout = value;
+        }
+    }
 
     public TimeSpan? Linger { private get; set; }
 

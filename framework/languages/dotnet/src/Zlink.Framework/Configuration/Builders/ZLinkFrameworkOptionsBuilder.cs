@@ -17,8 +17,14 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
     public IZLinkCodecRegistryBuilder Codecs => _registration.Codecs;
 
+    public void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        configure(new ZLinkMetadataPolicyBuilder(_registration.MetadataPolicy));
+    }
+
     public void AddActorFactory<TFactory>(string actorType)
-        where TFactory : class
+        where TFactory : class, IZLinkActorFactory
     {
         if (string.IsNullOrWhiteSpace(actorType))
         {
@@ -29,6 +35,39 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         {
             throw new ZLinkConfigurationException($"Duplicate actor factory '{actorType}'.");
         }
+    }
+
+    public void AddActorPlayRouteResolver<TResolver>()
+        where TResolver : class, IZLinkActorPlayRouteResolver
+    {
+        if (_registration.ActorPlayRouteResolverType is not null)
+        {
+            throw new ZLinkConfigurationException("Actor play route resolver is already configured.");
+        }
+
+        _registration.ActorPlayRouteResolverType = typeof(TResolver);
+    }
+
+    public void AddActorSessionRouteResolver<TResolver>()
+        where TResolver : class, IZLinkActorSessionRouteResolver
+    {
+        if (_registration.ActorSessionRouteResolverType is not null)
+        {
+            throw new ZLinkConfigurationException("Actor session route resolver is already configured.");
+        }
+
+        _registration.ActorSessionRouteResolverType = typeof(TResolver);
+    }
+
+    public void AddActorSessionLocationWriter<TWriter>()
+        where TWriter : class, IZLinkActorSessionLocationWriter
+    {
+        if (_registration.ActorSessionLocationWriterType is not null)
+        {
+            throw new ZLinkConfigurationException("Actor session location writer is already configured.");
+        }
+
+        _registration.ActorSessionLocationWriterType = typeof(TWriter);
     }
 
     public void AddChannel(
@@ -151,5 +190,19 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         }
 
         configure(new ZLinkSpotNodeBuilder(_registration.SpotNodes[spotNodeName]));
+    }
+}
+
+internal sealed class ZLinkMetadataPolicyBuilder(ZLinkMetadataPolicyRegistration registration)
+    : IZLinkMetadataPolicyBuilder
+{
+    public void ForwardApplicationKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ZLinkConfigurationException("Metadata key must not be empty.");
+        }
+
+        registration.ForwardedApplicationKeys.Add(key);
     }
 }

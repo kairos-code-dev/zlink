@@ -89,7 +89,7 @@ Play 서버에서 API 서버로 보내는 인증 검증 request:
 ```csharp
 sealed record ValidatePlayerSession(
     string MatchId,
-    string PlayerId,
+    string ActorId,
     string PlayerToken);
 
 sealed record ValidatePlayerSessionReply(
@@ -102,18 +102,18 @@ sealed record ValidatePlayerSessionReply(
 ```csharp
 sealed record AuthenticateReq(
     string MatchId,
-    string PlayerId,
+    string ActorId,
     string PlayerToken);
 
 sealed record AuthenticateRes(
     string MatchId,
-    string PlayerId);
+    string ActorId);
 
-sealed record JoinMatch(string MatchId, string PlayerId);
+sealed record JoinMatch(string MatchId, string ActorId);
 
 sealed record JoinMatchRes(
     string MatchId,
-    string PlayerId,
+    string ActorId,
     char Mark,
     TicTacToeState State);
 
@@ -183,7 +183,7 @@ client stream과 player id를 소유하고, STREAM request를 room state 변경�
 3. Play 서버가 SPOT room을 만들고 room id, stream endpoint를 반환한다.
 4. API 서버는 client smoke가 사용할 `PlayerTokenA`, `PlayerTokenB`도 함께 반환한다.
 5. client A와 client B가 STREAM에 접속한다.
-6. A/B는 각각 `AuthenticateReq(roomId, playerId, playerToken)` request를 보낸다.
+6. A/B는 각각 `AuthenticateReq(roomId, actorId, playerToken)` request를 보낸다.
 7. Play 서버는 각 request마다 `Api` channel로 `ValidatePlayerSession` request를 보낸다.
 8. API 서버가 성공을 반환하면 Play 서버는 `AuthenticateRes`를 reply한다.
 9. A는 `JoinMatch(roomId, "player-a")`, B는 `JoinMatch(roomId, "player-b")` request를 보낸다.

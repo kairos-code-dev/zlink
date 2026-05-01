@@ -48,14 +48,4 @@ internal sealed class ZLinkRoutedChannelBuilder(ZLinkRoutedChannelRegistration r
             packetName));
     }
 
-    public void EnableSessionGateway()
-    {
-        registration.SessionGatewayEnabled = true;
-    }
-
-    public void AddSessionProxyHandler<THandler>()
-        where THandler : class, IZLinkSessionProxyHandler
-    {
-        registration.SessionProxyHandlerType = typeof(THandler);
-    }
 }

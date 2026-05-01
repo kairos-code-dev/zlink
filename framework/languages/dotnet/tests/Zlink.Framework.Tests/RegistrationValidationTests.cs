@@ -30,25 +30,22 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenClientMixesDiscoveryAndManualConnections()
+    public void AddZLinkFramework_AllowsChannelClientManualConnections_WhenDiscoveryIsConfigured()
     {
         var services = new ServiceCollection();
 
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
+        services.AddZLinkFramework(options =>
+        {
+            options.AddChannel("profile", channel =>
             {
-                options.AddChannel("profile", channel =>
+                channel.EnableClient(client =>
                 {
-                    channel.EnableClient(client =>
-                    {
-                        client.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7101"));
-                    });
+                    client.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7101"));
                 });
+            });
 
-                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
-            }));
-
-        Assert.Contains("cannot mix discovery and manual connections", exception.Message, StringComparison.Ordinal);
+            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+        });
     }
 
     [Fact]
@@ -344,5 +341,27 @@ public sealed class RegistrationValidationTests
         public IZLinkSpotContext Context { get; } = context;
     }
 
-    private sealed class TestActorFactory;
+    private sealed class TestActorFactory : IZLinkActorFactory
+    {
+        public ValueTask<IZLinkActor> CreateAsync(
+            string actorId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId));
+        }
+    }
+
+    private sealed class TestActor(string actorId) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context { get; set; } = default!;
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+    }
 }

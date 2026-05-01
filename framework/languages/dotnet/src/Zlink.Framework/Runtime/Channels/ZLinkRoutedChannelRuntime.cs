@@ -1,5 +1,5 @@
-using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
+using System.Reflection;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -9,7 +9,8 @@ internal sealed record ZLinkRoutedHandlerDescriptor(
     string PacketName,
     Type HandlerType,
     Type MessageType,
-    Type? ReplyType);
+    Type? ReplyType,
+    MethodInfo HandleMethod);
 
 internal sealed class ZLinkRoutedHandlerRegistry(IEnumerable<ZLinkRoutedHandlerDescriptor> descriptors)
 {
@@ -51,6 +52,8 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
     private readonly IZLinkBackendRouterSocket _router;
     private readonly ZLinkAsyncSubmitter _submitter;
     private readonly ZLinkRoutedHandlerRegistry _handlers;
+    private readonly ZLinkRoutedHandlerInvoker _handlerInvoker;
+    private readonly IZLinkRoutedInternalPacketDispatcher _internalPackets;
     private readonly CancellationTokenSource _stopSource;
     private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
     private readonly IZLinkBackendDiscovery? _discovery;
@@ -62,6 +65,7 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
         IZLinkBackendRouterSocket router,
         IZLinkBackendDiscovery? discovery,
         ZLinkRoutedHandlerRegistry handlers,
+        IZLinkRoutedInternalPacketDispatcher? internalPackets,
         CancellationToken stopToken)
     {
         _services = services;
@@ -69,6 +73,8 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
         _router = router;
         _discovery = discovery;
         _handlers = handlers;
+        _handlerInvoker = new ZLinkRoutedHandlerInvoker(services);
+        _internalPackets = internalPackets ?? ZLinkNoRoutedInternalPacketDispatcher.Instance;
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
         _submitter = new ZLinkAsyncSubmitter(
             router.OnSendReady,
@@ -245,39 +251,24 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        if (header.MessageName == "ZLink.ActorRelay"
-            && _registration.SessionProxyHandlerType is not null)
+        if (_internalPackets.CanHandleSend(header.MessageName))
         {
-            await DispatchActorRelaySendAsync(received, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        if (header.MessageName == "ZLink.SessionGateway"
-            && _registration.SessionGatewayEnabled)
-        {
-            await DispatchSessionGatewaySendAsync(received, cancellationToken).ConfigureAwait(false);
+            await _internalPackets.DispatchSendAsync(received, cancellationToken).ConfigureAwait(false);
             return;
         }
 
         var descriptor = _handlers.Get(RouterChannelId, ZLinkMessageKind.Command, header.MessageName);
-        var message = ZLinkEnvelopeCodec.DecodeBody(received[0], descriptor.MessageType);
         var sourceRid = received.RoutingId
             ?? throw new InvalidOperationException("Routed send requires a source routing id.");
 
-        await using var scope = _services.CreateAsyncScope();
-        var context = new ZLinkRoutedSendContext(
-            RouterChannelId,
-            sourceRid,
-            header.MessageName,
-            header.ContentType,
-            header.CorrelationId,
-            scope.ServiceProvider,
-            cancellationToken);
-        var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
-        var result = descriptor.HandlerType
-            .GetMethod(nameof(IZLinkRoutedSendHandler<object>.HandleAsync))!
-            .Invoke(handler, [message, context, cancellationToken]);
-        await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
+        await _handlerInvoker.InvokeSendAsync(
+                descriptor,
+                RouterChannelId,
+                sourceRid,
+                header,
+                received[0],
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask DispatchRequestAsync(
@@ -285,52 +276,31 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        if (header.MessageName == "ZLink.ActorRelay"
-            && _registration.SessionProxyHandlerType is not null)
+        if (_internalPackets.CanHandleRequest(header.MessageName))
         {
             await DispatchInternalRequestAsync(
                 received,
                 header,
                 cancellationToken,
-                (sourceRid, _, token) => DispatchActorRelayRequestAsync(received, sourceRid, token))
-                .ConfigureAwait(false);
-            return;
-        }
-
-        if (header.MessageName == "ZLink.SessionGateway"
-            && _registration.SessionGatewayEnabled)
-        {
-            await DispatchInternalRequestAsync(
-                received,
-                header,
-                cancellationToken,
-                (sourceRid, requestHeader, token) => DispatchSessionGatewayRequestAsync(received, sourceRid, requestHeader, token))
+                (_, requestHeader, token) => _internalPackets.DispatchRequestAsync(received, requestHeader, token))
                 .ConfigureAwait(false);
             return;
         }
 
         var descriptor = _handlers.Get(RouterChannelId, ZLinkMessageKind.Request, header.MessageName);
-        var message = ZLinkEnvelopeCodec.DecodeBody(received[0], descriptor.MessageType);
         var sourceRid = received.RoutingId
             ?? throw new InvalidOperationException("Routed request requires a source routing id.");
 
         try
         {
-            await using var scope = _services.CreateAsyncScope();
-            var context = new ZLinkRoutedRequestContext(
-                RouterChannelId,
-                sourceRid,
-                header.MessageName,
-                header.ContentType,
-                header.CorrelationId,
-                header.Deadline,
-                scope.ServiceProvider,
-                cancellationToken);
-            var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
-            var result = descriptor.HandlerType
-                .GetMethod(nameof(IZLinkRoutedRequestHandler<object, object>.HandleAsync))!
-                .Invoke(handler, [message, context, cancellationToken]);
-            var reply = await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
+            var reply = await _handlerInvoker.InvokeRequestAsync(
+                    descriptor,
+                    RouterChannelId,
+                    sourceRid,
+                    header,
+                    received[0],
+                    cancellationToken)
+                .ConfigureAwait(false);
             var replyHeader = new ZLinkEnvelopeHeader(
                 ZLinkMessageKind.Response,
                 RouterChannelId,
@@ -341,7 +311,7 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
                 null,
                 null,
                 null);
-            using var replyMessage = ZLinkEnvelopeCodec.Encode(replyHeader, reply, descriptor.ReplyType);
+            using var replyMessage = ZLinkEnvelopeCodec.Encode(replyHeader, reply.Message, reply.MessageType);
             _router.Reply(sourceRid, received.RequestSeq ?? 0UL, replyMessage);
         }
         catch (Exception ex)
@@ -359,94 +329,6 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
             using var replyMessage = ZLinkEnvelopeCodec.Encode(errorHeader, null, null);
             _router.Reply(sourceRid, received.RequestSeq ?? 0UL, replyMessage);
         }
-    }
-
-    private async ValueTask DispatchActorRelaySendAsync(
-        Received received,
-        CancellationToken cancellationToken)
-    {
-        var sourceRid = received.RoutingId
-            ?? throw new InvalidOperationException("Actor relay send requires a source routing id.");
-        var packet = (ZLinkActorRelayPacket?)ZLinkEnvelopeCodec.DecodeBody(received[0], typeof(ZLinkActorRelayPacket))
-            ?? throw new InvalidOperationException("Actor relay packet body is null.");
-        await using var scope = _services.CreateAsyncScope();
-        using var body = Message.FromBytes(packet.Body);
-        var envelope = packet.ToEnvelope();
-        var context = new ZLinkSessionProxyContext(
-            sourceRid,
-            scope.ServiceProvider.GetRequiredService<IZLinkSessionGateway>());
-        var handler = (IZLinkSessionProxyHandler)scope.ServiceProvider.GetRequiredService(
-            _registration.SessionProxyHandlerType!);
-        var reply = await handler.HandleAsync(
-            context,
-            new ZLinkActorRelayMessage(envelope, body),
-            cancellationToken).ConfigureAwait(false);
-        reply?.Dispose();
-    }
-
-    private async ValueTask<byte[]> DispatchActorRelayRequestAsync(
-        Received received,
-        RoutingId sourceRid,
-        CancellationToken cancellationToken)
-    {
-        var packet = (ZLinkActorRelayPacket?)ZLinkEnvelopeCodec.DecodeBody(received[0], typeof(ZLinkActorRelayPacket))
-            ?? throw new InvalidOperationException("Actor relay packet body is null.");
-        await using var scope = _services.CreateAsyncScope();
-        using var body = Message.FromBytes(packet.Body);
-        var envelope = packet.ToEnvelope();
-        var context = new ZLinkSessionProxyContext(
-            sourceRid,
-            scope.ServiceProvider.GetRequiredService<IZLinkSessionGateway>());
-        var handler = (IZLinkSessionProxyHandler)scope.ServiceProvider.GetRequiredService(
-            _registration.SessionProxyHandlerType!);
-        using var reply = await handler.HandleAsync(
-            context,
-            new ZLinkActorRelayMessage(envelope, body),
-            cancellationToken).ConfigureAwait(false);
-        return reply?.AsReadOnlyMemory().ToArray() ?? [];
-    }
-
-    private async ValueTask DispatchSessionGatewaySendAsync(
-        Received received,
-        CancellationToken cancellationToken)
-    {
-        var packet = (ZLinkSessionGatewayPacket?)ZLinkEnvelopeCodec.DecodeBody(received[0], typeof(ZLinkSessionGatewayPacket))
-            ?? throw new InvalidOperationException("Session gateway packet body is null.");
-        var runtime = _services.GetRequiredService<ZLinkFrameworkRuntime>();
-        if (!runtime.TryGetSessionActorContext(packet.Envelope.ActorId, out var sessionContext))
-        {
-            throw new InvalidOperationException($"No session is bound to actor '{packet.Envelope.ActorId}'.");
-        }
-
-        await sessionContext.SendRawAsync(
-            packet.Envelope.PacketName,
-            ZlinkStreamCodec.Json,
-            packet.Body,
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private async ValueTask<byte[]> DispatchSessionGatewayRequestAsync(
-        Received received,
-        RoutingId sourceRid,
-        ZLinkEnvelopeHeader routedHeader,
-        CancellationToken cancellationToken)
-    {
-        _ = sourceRid;
-        var packet = (ZLinkSessionGatewayPacket?)ZLinkEnvelopeCodec.DecodeBody(received[0], typeof(ZLinkSessionGatewayPacket))
-            ?? throw new InvalidOperationException("Session gateway packet body is null.");
-        var runtime = _services.GetRequiredService<ZLinkFrameworkRuntime>();
-        if (!runtime.TryGetSessionActorContext(packet.Envelope.ActorId, out var sessionContext))
-        {
-            throw new InvalidOperationException($"No session is bound to actor '{packet.Envelope.ActorId}'.");
-        }
-
-        using var reply = await sessionContext.RequestRawAsync(
-            packet.Envelope.PacketName,
-            ZlinkStreamCodec.Json,
-            packet.Body,
-            ResolveInternalTimeout(routedHeader),
-            cancellationToken).ConfigureAwait(false);
-        return reply.AsReadOnlyMemory().ToArray();
     }
 
     private async ValueTask DispatchInternalRequestAsync(
@@ -491,19 +373,6 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
         }
     }
 
-    private static TimeSpan ResolveInternalTimeout(ZLinkEnvelopeHeader header)
-    {
-        if (header.Deadline is not { } deadline)
-        {
-            return TimeSpan.FromSeconds(30);
-        }
-
-        var remaining = deadline - DateTimeOffset.UtcNow;
-        return remaining > TimeSpan.Zero
-            ? remaining
-            : TimeSpan.Zero;
-    }
-
     private static void CompleteReply<TReply>(
         RequestResult result,
         IReadOnlyList<Message> reply,
@@ -546,13 +415,4 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
             }
         }
     }
-}
-
-internal sealed class ZLinkSessionProxyContext(
-    RoutingId sourceSessionNodeRid,
-    IZLinkSessionGateway sessionGateway) : IZLinkSessionProxyContext
-{
-    public RoutingId SourceSessionNodeRid { get; } = sourceSessionNodeRid;
-
-    public IZLinkSessionGateway SessionGateway { get; } = sessionGateway;
 }

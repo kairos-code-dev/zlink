@@ -95,11 +95,6 @@ public interface IZLinkRoutedChannelBuilder
 
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRoutedRequestHandler<TRequest, TReply>;
-
-    void EnableSessionGateway();
-
-    void AddSessionProxyHandler<THandler>()
-        where THandler : class, IZLinkSessionProxyHandler;
 }
 
 public interface IZLinkStreamNodeBuilder
@@ -147,8 +142,19 @@ public interface IZLinkFrameworkOptions
 
     IZLinkCodecRegistryBuilder Codecs { get; }
 
+    void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure);
+
     void AddActorFactory<TFactory>(string actorType)
-        where TFactory : class;
+        where TFactory : class, IZLinkActorFactory;
+
+    void AddActorPlayRouteResolver<TResolver>()
+        where TResolver : class, IZLinkActorPlayRouteResolver;
+
+    void AddActorSessionRouteResolver<TResolver>()
+        where TResolver : class, IZLinkActorSessionRouteResolver;
+
+    void AddActorSessionLocationWriter<TWriter>()
+        where TWriter : class, IZLinkActorSessionLocationWriter;
 
     void AddChannel(
         string channelName,
@@ -176,4 +182,9 @@ public interface IZLinkFrameworkOptions
     void AddSpotNode(
         string spotNodeName,
         Action<IZLinkSpotNodeBuilder> configure);
+}
+
+public interface IZLinkMetadataPolicyBuilder
+{
+    void ForwardApplicationKey(string key);
 }

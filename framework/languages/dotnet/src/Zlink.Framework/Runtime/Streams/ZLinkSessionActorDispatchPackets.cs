@@ -1,25 +1,39 @@
 namespace Zlink.Framework.Runtime.Streams;
 
-internal sealed record ZLinkActorRelayPacket(
-    string ActorId,
-    ZLinkStreamHeaderSnapshot StreamHeader,
-    bool ExpectsReply,
-    byte[] Body)
+internal static class ZLinkInternalPacketNames
 {
-    public static ZLinkActorRelayPacket Create(ZLinkActorRelayEnvelope envelope, byte[] body)
-    {
-        return new ZLinkActorRelayPacket(
-            envelope.ActorId,
-            ZLinkStreamHeaderSnapshot.FromHeader(envelope.StreamHeader),
-            envelope.ExpectsReply,
-            body);
-    }
+    public const string ActorCreate = "ZLink.ActorCreate";
 
-    public ZLinkActorRelayEnvelope ToEnvelope()
-    {
-        return new ZLinkActorRelayEnvelope(ActorId, StreamHeader.ToHeader(), ExpectsReply);
-    }
+    public const string ActorDispatch = "ZLink.ActorDispatch";
+
+    public const string SessionProxy = "ZLink.SessionProxy";
 }
+
+internal sealed record ZLinkActorCreatePacket(
+    string ActorId,
+    string ActorType);
+
+internal sealed record ZLinkActorCreateResult(
+    string ActorId,
+    string ActorType);
+
+internal sealed record ZLinkActorDispatchPacket(
+    string ActorId,
+    string ActorType,
+    ZLinkStreamHeaderSnapshot StreamHeader,
+    byte[] Body);
+
+internal sealed record ZLinkSessionProxyPacket(
+    ZLinkSessionProxyEnvelope Envelope,
+    byte[] Body);
+
+internal sealed record ZLinkSessionProxyEnvelope(
+    string ActorId,
+    string SessionId,
+    string BindingToken,
+    string PacketName,
+    bool ExpectsReply,
+    Dictionary<string, string> Metadata);
 
 internal sealed record ZLinkStreamHeaderSnapshot(
     ZlinkStreamMessageKind Kind,
@@ -51,7 +65,3 @@ internal sealed record ZLinkStreamHeaderSnapshot(
             ZlinkStreamMetadata.Empty.WithMany(Metadata));
     }
 }
-
-internal sealed record ZLinkSessionGatewayPacket(
-    ZLinkSessionGatewayEnvelope Envelope,
-    byte[] Body);

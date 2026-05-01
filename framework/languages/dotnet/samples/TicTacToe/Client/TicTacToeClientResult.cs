@@ -17,8 +17,8 @@ public sealed record TicTacToeClientResult(
     public void WriteTo(TextWriter writer)
     {
         writer.WriteLine($"api: created game {Game.GameId} at {Game.PlayEndpoint}");
-        writer.WriteLine($"client-x: {nameof(AuthenticateRes)}|{XAuthentication.PlayerId}");
-        writer.WriteLine($"client-o: {nameof(AuthenticateRes)}|{OAuthentication.PlayerId}");
+        writer.WriteLine($"client-x: {nameof(AuthenticateRes)}|{XAuthentication.ActorId}");
+        writer.WriteLine($"client-o: {nameof(AuthenticateRes)}|{OAuthentication.ActorId}");
         writer.WriteLine($"client-x: {nameof(JoinGameRes)}|{XJoin.State.GameId}|X");
         writer.WriteLine($"client-o: {nameof(JoinGameRes)}|{OJoin.State.GameId}|O");
 
@@ -31,7 +31,7 @@ public sealed record TicTacToeClientResult(
         foreach (var notify in PlayerJoinedNotifications)
         {
             writer.WriteLine(
-                $"notify: {nameof(PlayerJoinedNotify)}|player={notify.PlayerId}|mark={notify.Mark}|game={notify.GameId}");
+                $"notify: {nameof(PlayerJoinedNotify)}|player={notify.ActorId}|mark={notify.Mark}|game={notify.GameId}");
         }
 
         writer.WriteLine($"notifications: {StateNotifications.Count} {nameof(GameStateNotify)} packets received");

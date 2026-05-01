@@ -18,7 +18,7 @@ room을 소유한다. Play 서버가 client에게 메시지를 보낼 때는 `Se
 
 - client는 Play 서버와 API 서버 주소를 알 필요가 없다.
 - client의 모든 request는 Session 서버 stream 연결 하나로 들어온다.
-- 인증 결과의 `playerId`를 `actorId`로 사용한다.
+- 인증 결과의 `actorId`를 `actorId`로 사용한다.
 - Session 서버는 `actorId -> client stream` binding을 관리한다.
 - application은 `actorId -> play node RoutingId` 위치를 관리한다.
 - Play 서버는 `SessionProxy`와 session route resolver를 사용해 client에게 Notify를 보낸다.
@@ -37,7 +37,7 @@ flowchart LR
     C -->|STREAM All Client Packets| S
     S -->|Channel Api / CreateMatchReq| API
     API -->|Channel Play / CreateMatchRoomReq| P
-    S -->|Channel Api / AuthenticatePlayerReq| API
+    S -->|Channel Api / AuthenticateActorReq| API
     S -->|Session actor dispatch| P
     P -->|SessionProxy| S
 ```
@@ -59,7 +59,7 @@ API 서버로 channel request를 보내고, gameplay packet은 actor dispatch he
 | `TicTacToeGateway.Play` | `Play` channel server | match room을 만들고 `matchId -> play node RoutingId` 위치를 기록한다. |
 | `TicTacToeGateway.Play` | routed channel node | Session 서버에서 relay된 actor packet을 받는다. |
 | `TicTacToeGateway.Play` | actor runtime | `actorId` 기준 actor를 만들고 packet handler를 실행한다. |
-| `TicTacToeGateway.Play` | spot/game room | board, turn, 승패 판정을 소유한다. |
+| `TicTacToeGateway.Play` | game room service | board, turn, 승패 판정을 소유한다. |
 | application store | location registry | `actorId -> play node RoutingId`, `actorId -> session node RoutingId`를 저장한다. |
 
 ## 4. Endpoint와 Channel
@@ -70,8 +70,9 @@ API 서버로 channel request를 보내고, gameplay packet은 actor dispatch he
 | `Api` channel | API server | Session -> API | access token 인증, match 생성 |
 | `Play` channel | Play server | API -> Play | match room 생성 |
 | `backend` routed channel | Session, Play | Session <-> Play | session actor dispatch와 `SessionProxy` |
-| `play-spot` | Play server | 내부 | match room 실행 context |
 
+`Api`와 `Play` service channel client도 `UseDiscovery(...)` 기반 자동 연결을 사용한다.
+각 server의 bind endpoint는 registry에 올라가고 client는 endpoint를 직접 알지 않는다.
 `backend`는 handler group 이름이 아니라 router 연결망 ID다. Session 서버와 Play 서버는
 같은 `backend` routed channel에 참여하고, 실제 대상은 `RoutingId`로 지정한다.
 
@@ -88,11 +89,13 @@ API 서버로 channel request를 보내고, gameplay packet은 actor dispatch he
 client stream과 server channel에서 사용하는 match 생성 메시지:
 
 ```csharp
-public sealed record CreateMatchReq(string? MatchName);
+public sealed record CreateMatchReq(
+    string? MatchName,
+    string? OwnerActorId = null);
 
 public sealed record CreateMatchRes(
     string MatchId,
-    string OwnerPlayerId);
+    string OwnerActorId);
 
 public sealed record CreateMatchRoomReq(string MatchName);
 
@@ -102,28 +105,26 @@ public sealed record CreateMatchRoomRes(string MatchId);
 API 인증 메시지:
 
 ```csharp
-public sealed record AuthenticatePlayerReq(string AccessToken);
+public sealed record AuthenticateActorReq(string ActorId);
 
-public sealed record AuthenticatePlayerRes(
+public sealed record AuthenticateActorRes(
     bool Accepted,
-    string? PlayerId,
+    string? ActorId,
     string? Reason);
 ```
 
 client stream request/response:
 
 ```csharp
-public sealed record AuthenticateReq(string AccessToken);
+public sealed record AuthenticateReq(string ActorId);
 
-public sealed record AuthenticateRes(
-    string PlayerId,
-    string ActorId);
+public sealed record AuthenticateRes(string ActorId);
 
 public sealed record JoinMatchReq(string MatchId);
 
 public sealed record JoinMatchRes(
     string MatchId,
-    string PlayerId,
+    string ActorId,
     string Mark,
     TicTacToeState State);
 
@@ -140,16 +141,18 @@ server push 메시지:
 ```csharp
 public sealed record OpponentJoinedNotify(
     string MatchId,
-    string OpponentPlayerId);
+    string OpponentActorId,
+    string Mark,
+    TicTacToeState State);
 
 public sealed record TurnChangedNotify(
     string MatchId,
-    string TurnPlayerId,
+    string TurnActorId,
     TicTacToeState State);
 
 public sealed record GameEndedNotify(
     string MatchId,
-    string? WinnerPlayerId,
+    string? WinnerActorId,
     bool Draw,
     TicTacToeState State);
 ```
@@ -160,9 +163,14 @@ public sealed record GameEndedNotify(
 public sealed record TicTacToeState(
     string MatchId,
     string Board,
-    string TurnPlayerId,
-    string? WinnerPlayerId,
-    bool Draw);
+    string Status,
+    string TurnActorId,
+    string? WinnerActorId,
+    bool Draw,
+    string? XActorId,
+    string? OActorId,
+    string? LastMoveActorId,
+    int? LastMoveCell);
 ```
 
 framework 내부 routed envelope는 public sample message로 노출하지 않는다. sample
@@ -229,14 +237,14 @@ sequenceDiagram
     participant STORE as Location Store
 
     C->>S: Stream AuthenticateReq
-    S->>API: AuthenticatePlayerReq
-    API-->>S: AuthenticatePlayerRes(playerId)
+    S->>API: AuthenticateActorReq
+    API-->>S: AuthenticateActorRes(actorId)
     S->>S: CreateRemoteActorAsync(actorNodeRid, actorId)
     S->>STORE: Save actorId -> session route
     S-->>C: AuthenticateRes
 ```
 
-인증이 성공하면 Session 서버는 `playerId`를 `actorId`로 사용한다. 이 시점에
+인증이 성공하면 Session 서버는 `actorId`를 `actorId`로 사용한다. 이 시점에
 application placement가 actor node를 고르고 `CreateRemoteActorAsync(...)`를 호출한다.
 framework는 현재 stream의 session binding metadata를 만들고 writer를 통해 전역 session
 route에 반영한다. 같은 actor가 다시 인증되면 새 binding token을 가진 route가 이전 route를
@@ -333,8 +341,8 @@ sequenceDiagram
     S1->>STORE: actor-a -> session-1
     C--xS1: Disconnect
     C->>S2: Stream AuthenticateReq
-    S2->>API: AuthenticatePlayerReq
-    API-->>S2: AuthenticatePlayerRes(actor-a)
+    S2->>API: AuthenticateActorReq
+    API-->>S2: AuthenticateActorRes(actor-a)
     S2->>S2: CreateRemoteActorAsync(actorNodeRid, actor-a)
     S2->>STORE: actor-a -> session-2 + binding token
     P->>STORE: Lookup actor-a session
@@ -392,16 +400,17 @@ request/reply를 맞추면 같은 메시지의 동시 요청에서 잘못된 cli
 
 ## 14. 완료 기준
 
-- API, Session, Play 서버 프로젝트가 분리되어 있다.
+- API, Session, Play 서버 host 구성이 역할별로 분리되어 있다.
 - client는 Session 서버 stream endpoint에만 연결한다.
 - Session 서버는 `AuthenticateReq`에서 API 서버로 인증 request를 보낸다.
-- 인증 응답의 `playerId`를 `actorId`로 사용하고 `CreateRemoteActorAsync(...)`를 호출한다.
+- 인증 응답의 `ActorId`를 actor identity로 사용하고 `CreateRemoteActorAsync(...)`를 호출한다.
 - client는 인증 후 같은 Session stream으로 `CreateMatchReq`를 보내고, Session 서버는
   API 서버에 channel request로 relay한다.
 - Session 서버는 `actorId -> stream` binding을 소유한다.
-- application store는 `actorId -> play node RoutingId`와 `actorId -> session node RoutingId`를 소유한다.
+- application store는 `matchId -> play node RoutingId`, `actorId -> play node RoutingId`,
+  `actorId -> session node RoutingId`를 소유한다.
 - `JoinMatchReq`와 `PlaceMarkReq`는 Session 서버에서 Play 서버로 actor dispatch된다.
-- Play 서버는 actor와 game room을 소유한다.
+- Play 서버는 actor와 game room service를 소유한다.
 - `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify`는 `SessionProxy`로 client에게 전달된다.
 - client request의 원본 sequence가 relay 응답과 오류 응답에 보존된다.
 - smoke test는 match 생성, 인증, join, move, Notify, 재접속 후 Notify 수신을 검증한다.

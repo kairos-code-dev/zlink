@@ -1,5 +1,27 @@
 # Sample POSD Review
 
+## 2026-05-01 Final Iteration
+
+상태: `verified`
+
+### Red Flags
+
+- `verified`: sample red flag 없음.
+
+### 확인 결과
+
+- Session code는 인증 뒤 `CreateRemoteActorAsync(...)`로 actor handle을 만들고
+  `DispatchToActorAsync(...)`로 client packet을 전달한다.
+- Play code는 typed actor request handler를 사용하며 raw relay envelope와 packet switch를
+  다루지 않는다.
+- Play에서 client로 보내는 notify는 `SessionProxy`만 사용한다.
+- session 위치 sample은 registry discovery metadata adapter를 통해 bind, resolve,
+  조건부 delete를 한 곳에 모은다. 위치 저장 방식은 sample infrastructure 내부에 있고,
+  resolver 입력으로 metadata를 받지 않는다.
+- sample metadata 전달은 resolver가 아니라 handler context에만 적용된다. 허용된
+  application key만 전달하는 framework 정책을 회귀 테스트로 확인했다.
+- sample 내부 fake transport, retry, warmup sleep, 별도 serializer helper는 없다.
+
 ## Current Direction Note
 
 상태: `implemented`

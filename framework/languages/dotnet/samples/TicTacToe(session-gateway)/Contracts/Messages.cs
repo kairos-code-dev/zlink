@@ -1,36 +1,65 @@
-namespace TicTacToe.SessionGateway.Contracts;
+namespace TicTacToe.SessionActorDispatch.Contracts;
 
-public sealed record AuthenticateReq(string PlayerId);
+public sealed record AuthenticateReq(string ActorId);
 
-public sealed record AuthenticateRes(string PlayerId);
+public sealed record AuthenticateRes(string ActorId);
 
-public sealed record CreateGameReq(string PreferredGameId);
+public sealed record AuthenticateActorReq(string ActorId);
 
-public sealed record CreateGameRes(string GameId);
+public sealed record AuthenticateActorRes(
+    bool Accepted,
+    string? ActorId,
+    string? Reason);
 
-public sealed record ResolveGameReq(string GameId);
+public sealed record CreateMatchReq(
+    string? MatchName,
+    string? OwnerActorId = null);
 
-public sealed record ResolveGameRes(string GameId, string PlayNodeRid);
+public sealed record CreateMatchRes(
+    string MatchId,
+    string OwnerActorId);
 
-public sealed record JoinGameReq(string GameId);
+public sealed record CreateMatchRoomReq(string MatchName);
 
-public sealed record JoinGameRes(GameState State);
+public sealed record CreateMatchRoomRes(string MatchId);
 
-public sealed record PlaceMarkReq(string GameId, int Cell);
+public sealed record JoinMatchReq(string MatchId);
 
-public sealed record PlaceMarkRes(GameState State);
+public sealed record JoinMatchRes(
+    string MatchId,
+    string ActorId,
+    string Mark,
+    TicTacToeState State);
 
-public sealed record PlayerJoinedNotify(string GameId, string PlayerId, string Mark, GameState State);
+public sealed record PlaceMarkReq(string MatchId, int Cell);
 
-public sealed record GameStateNotify(GameState State);
+public sealed record PlaceMarkRes(TicTacToeState State);
 
-public sealed record GameState(
-    string GameId,
+public sealed record OpponentJoinedNotify(
+    string MatchId,
+    string OpponentActorId,
+    string Mark,
+    TicTacToeState State);
+
+public sealed record TurnChangedNotify(
+    string MatchId,
+    string TurnActorId,
+    TicTacToeState State);
+
+public sealed record GameEndedNotify(
+    string MatchId,
+    string? WinnerActorId,
+    bool Draw,
+    TicTacToeState State);
+
+public sealed record TicTacToeState(
+    string MatchId,
     string Board,
     string Status,
-    string? Winner,
-    string NextTurn,
-    string? XPlayerId,
-    string? OPlayerId,
-    string? LastMovePlayerId,
+    string TurnActorId,
+    string? WinnerActorId,
+    bool Draw,
+    string? XActorId,
+    string? OActorId,
+    string? LastMoveActorId,
     int? LastMoveCell);

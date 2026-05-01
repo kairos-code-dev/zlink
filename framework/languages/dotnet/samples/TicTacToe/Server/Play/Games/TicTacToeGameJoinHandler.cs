@@ -13,11 +13,10 @@ sealed class TicTacToeGameJoinHandler(ILogger<TicTacToeGameJoinHandler> logger)
     {
         var reply = await spot.JoinPlayerAsync(player, request.GameId, cancellationToken);
         logger.LogInformation(
-            "TicTacToeGame: actor join accepted. actor={ActorId}, gameId={GameId}, player={PlayerId}, mark={Mark}",
+            "TicTacToeGame: actor join accepted. actor={ActorId}, gameId={GameId}, mark={Mark}",
             player.ActorId,
             request.GameId,
-            request.PlayerId,
-            reply.State.XPlayerId == player.PlayerId ? "X" : "O");
+            reply.State.XActorId == player.ActorId ? "X" : "O");
 
         return reply;
     }

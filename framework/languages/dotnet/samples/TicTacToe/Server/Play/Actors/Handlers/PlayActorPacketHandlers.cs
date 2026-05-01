@@ -11,10 +11,9 @@ internal sealed class PlayActorJoinGameHandler(
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
-            "actor: JoinGameReq received. actor={ActorId}, gameId={GameId}, player={PlayerId}",
+            "actor: JoinGameReq received. actor={ActorId}, gameId={GameId}",
             actor.ActorId,
-            message.GameId,
-            actor.PlayerId);
+            message.GameId);
 
         var reply = await games.JoinAsync(actor, message, cancellationToken);
         await actor.Context.Reply(reply)
@@ -23,7 +22,7 @@ internal sealed class PlayActorJoinGameHandler(
             "actor -> client: JoinGameRes sent. actor={ActorId}, gameId={GameId}, mark={Mark}",
             actor.ActorId,
             reply.State.GameId,
-            reply.State.XPlayerId == actor.PlayerId ? "X" : "O");
+            reply.State.XActorId == actor.ActorId ? "X" : "O");
     }
 }
 

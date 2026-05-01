@@ -8,15 +8,15 @@ internal static class TicTacToeClientArguments
         var defaults = TicTacToeClientOptions.CreateDefault();
         var apiUrl = ReadOption(args, "--api-url") ?? defaults.ApiUrl.ToString();
         var gameName = ReadOption(args, "--game-name") ?? defaults.GameName;
-        var xPlayerId = ReadOption(args, "--x-player-id") ?? defaults.XPlayerId;
-        var oPlayerId = ReadOption(args, "--o-player-id") ?? defaults.OPlayerId;
+        var xActorId = ReadOption(args, "--x-actor-id") ?? defaults.XActorId;
+        var oActorId = ReadOption(args, "--o-actor-id") ?? defaults.OActorId;
 
         return defaults with
         {
             ApiUrl = new Uri(apiUrl),
             GameName = gameName,
-            XPlayerId = xPlayerId,
-            OPlayerId = oPlayerId,
+            XActorId = xActorId,
+            OActorId = oActorId,
         };
     }
 

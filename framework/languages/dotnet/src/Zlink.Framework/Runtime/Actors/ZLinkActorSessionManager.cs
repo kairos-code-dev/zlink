@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorSessionManager(
@@ -5,6 +7,63 @@ internal sealed class ZLinkActorSessionManager(
     IServiceProvider services)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
+
+    public async ValueTask<CreateActorResult> CreateActorAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default)
+    {
+        if (!runtime.Registration.ActorFactories.TryGetValue(actorType, out var factoryType))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                $"Actor factory '{actorType}' is not registered.");
+        }
+
+        await using var scope = services.CreateAsyncScope();
+        var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
+        var actor = await factory.CreateAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+        if (actor is null)
+        {
+            throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
+        }
+
+        var state = _actorSessions.GetOrCreate(actor.ActorId);
+        EnsureActorContext(actor, state);
+        return new CreateActorResult(actor, true);
+    }
+
+    public async ValueTask SubmitActorByIdAsync(
+        string actorId,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default)
+    {
+        var state = _actorSessions.GetOrCreate(actorId);
+        var actor = state.Actor
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' is not active.");
+
+        await SubmitActorAsync(actor, header, body, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<byte[]> SubmitActorForReplyAsync(
+        string actorId,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default)
+    {
+        var state = _actorSessions.GetOrCreate(actorId);
+        var actor = state.Actor
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' is not active.");
+
+        return await SubmitActorForReplyAsync(actor, state, header, body, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     public async ValueTask JoinActorToSpotAsync(
         ZLinkSpotActivation activation,
@@ -15,18 +74,13 @@ internal sealed class ZLinkActorSessionManager(
         EnsureActorContext(actor, state);
         ZLinkSpotActivation? previousActivation;
 
-        await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        previousActivation = await state.ExecuteLockedAsync(
+            () => state.Activation,
+            cancellationToken).ConfigureAwait(false);
+
+        if (ReferenceEquals(previousActivation, activation))
         {
-            previousActivation = state.Activation;
-            if (ReferenceEquals(previousActivation, activation))
-            {
-                return;
-            }
-        }
-        finally
-        {
-            state.Gate.Release();
+            return;
         }
 
         if (previousActivation is not null && !previousActivation.IsDisposed)
@@ -34,15 +88,12 @@ internal sealed class ZLinkActorSessionManager(
             await previousActivation.LeaveActorAsync(actor, cancellationToken).ConfigureAwait(false);
         }
 
-        await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        await state.ExecuteLockedAsync(
+            () =>
         {
             state.Activation = activation;
-        }
-        finally
-        {
-            state.Gate.Release();
-        }
+        },
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask LeaveActorFromSpotAsync(
@@ -54,19 +105,18 @@ internal sealed class ZLinkActorSessionManager(
         EnsureActorContext(actor, state);
         var shouldPrune = false;
 
-        await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        shouldPrune = await state.ExecuteLockedAsync(
+            () =>
         {
             if (ReferenceEquals(state.Activation, activation))
             {
                 state.Activation = null;
-                shouldPrune = state.SessionId is null;
+                return state.SessionId is null;
             }
-        }
-        finally
-        {
-            state.Gate.Release();
-        }
+
+            return false;
+        },
+            cancellationToken).ConfigureAwait(false);
 
         if (shouldPrune)
         {
@@ -81,16 +131,13 @@ internal sealed class ZLinkActorSessionManager(
     {
         var state = _actorSessions.GetOrCreate(actor.ActorId);
         EnsureActorContext(actor, state);
-        await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        await state.ExecuteLockedAsync(
+            () =>
         {
             state.SessionId = stream.SessionId;
             state.Stream = stream;
-        }
-        finally
-        {
-            state.Gate.Release();
-        }
+        },
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisconnectActorAsync(
@@ -103,29 +150,34 @@ internal sealed class ZLinkActorSessionManager(
         EnsureActorContext(actor, state);
         ZLinkSpotActivation? activation = null;
 
-        await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        var disconnect = await state.ExecuteLockedAsync(
+            () =>
         {
             if (!string.Equals(state.SessionId, stream.SessionId, StringComparison.Ordinal))
             {
-                return;
+                return (ShouldDisconnect: false, Activation: (ZLinkSpotActivation?)null);
             }
 
             state.SessionId = null;
             state.Stream = null;
-            activation = state.Activation;
+            var currentActivation = state.Activation;
             state.Activation = null;
 
-            if (activation is not null && activation.IsDisposed)
+            if (currentActivation is not null && currentActivation.IsDisposed)
             {
-                activation = null;
+                return (ShouldDisconnect: true, Activation: (ZLinkSpotActivation?)null);
             }
-        }
-        finally
+
+            return (ShouldDisconnect: true, Activation: currentActivation);
+        },
+            cancellationToken).ConfigureAwait(false);
+
+        if (!disconnect.ShouldDisconnect)
         {
-            state.Gate.Release();
+            return;
         }
 
+        activation = disconnect.Activation;
         if (activation is not null)
         {
             await activation.DisconnectActorAsync(actor, cancellationToken).ConfigureAwait(false);
@@ -150,22 +202,22 @@ internal sealed class ZLinkActorSessionManager(
         var shouldPrune = false;
         EnsureActorContext(actor, state);
 
-        await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        (activation, shouldPrune) = await state.ExecuteLockedAsync(
+            () =>
         {
-            activation = state.Activation;
+            var currentActivation = state.Activation;
+            var prune = false;
 
-            if (activation is not null && activation.IsDisposed)
+            if (currentActivation is not null && currentActivation.IsDisposed)
             {
                 state.Activation = null;
-                activation = null;
-                shouldPrune = state.SessionId is null;
+                currentActivation = null;
+                prune = state.SessionId is null;
             }
-        }
-        finally
-        {
-            state.Gate.Release();
-        }
+
+            return (currentActivation, prune);
+        },
+            cancellationToken).ConfigureAwait(false);
 
         try
         {
@@ -195,6 +247,26 @@ internal sealed class ZLinkActorSessionManager(
             {
                 _actorSessions.TryRemove(actorId, state);
             }
+        }
+    }
+
+    private async ValueTask<byte[]> SubmitActorForReplyAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState state,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        var previousDispatch = state.CurrentDispatch;
+        state.CurrentDispatch = new ZLinkActorDispatchState(header);
+        try
+        {
+            return await state.DispatchForReplyAsync(services, actor, header, body, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            state.CurrentDispatch = previousDispatch;
         }
     }
 
@@ -245,4 +317,5 @@ internal sealed class ZLinkActorSessionManager(
 
         return context;
     }
+
 }

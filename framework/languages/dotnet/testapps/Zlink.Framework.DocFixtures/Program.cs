@@ -313,11 +313,20 @@ internal sealed record FixtureActorJoinRequest(string RoomId);
 
 internal sealed record FixtureActorJoinReply(string RoomId);
 
-internal sealed class FixtureActorFactory;
-
-internal sealed class FixtureActor : IZLinkActor
+internal sealed class FixtureActorFactory : IZLinkActorFactory
 {
-    public string ActorId => "fixture";
+    public ValueTask<IZLinkActor> CreateAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IZLinkActor>(new FixtureActor(actorId));
+    }
+}
+
+internal sealed class FixtureActor(string actorId = "fixture") : IZLinkActor
+{
+    public string ActorId { get; } = actorId;
 
     public FixtureActorSpot? Spot { get; private set; }
 
@@ -376,7 +385,7 @@ internal sealed class FixtureActorPacketSession(
 
     public async ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        await Context.AttachActorAsync(_actor, cancellationToken);
+        await ((IZLinkSessionActorAttachmentContext)Context).AttachActorAsync(_actor, cancellationToken);
         var created = await spotManager.CreateAsync("fixture-actor-stage", cancellationToken);
         _ = await _actor.Context
             .JoinSpot(created.SpotRid, new FixtureActorJoinRequest("fixture-room"))
@@ -385,7 +394,7 @@ internal sealed class FixtureActorPacketSession(
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        return Context.DisconnectActorAsync(cancellationToken);
+        return ((IZLinkSessionActorAttachmentContext)Context).DisconnectActorAsync(cancellationToken);
     }
 
     public ValueTask OnErrorAsync(

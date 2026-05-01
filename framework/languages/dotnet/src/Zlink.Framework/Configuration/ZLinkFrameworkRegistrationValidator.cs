@@ -44,7 +44,7 @@ internal static class ZLinkFrameworkRegistrationValidator
 
         if (channel.Client is not null)
         {
-            ValidateOutboundCapability(
+            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"channel '{channel.ChannelName}' client",
                 discoveryConfigured,
                 channel.Client.ManualConnections);
@@ -58,7 +58,7 @@ internal static class ZLinkFrameworkRegistrationValidator
 
         if (channel.Subscriber is not null)
         {
-            ValidateOutboundCapability(
+            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"channel '{channel.ChannelName}' subscriber",
                 discoveryConfigured,
                 channel.Subscriber.ManualConnections);
@@ -90,11 +90,10 @@ internal static class ZLinkFrameworkRegistrationValidator
                 $"Routed channel '{routed.RouterChannelId}' must define a bind endpoint.");
         }
 
-        if (discoveryConfigured && routed.ManualConnections.Count > 0)
-        {
-            throw new ZLinkConfigurationException(
-                $"Routed channel '{routed.RouterChannelId}' cannot mix discovery and manual connections.");
-        }
+        ZLinkPeerAcquisitionPolicy.RequireSinglePeerSource(
+            $"Routed channel '{routed.RouterChannelId}'",
+            discoveryConfigured,
+            routed.ManualConnections);
 
         var keys = new HashSet<(ZLinkMessageKind Kind, string PacketName)>();
         foreach (var handler in routed.SendHandlers)
@@ -132,7 +131,7 @@ internal static class ZLinkFrameworkRegistrationValidator
 
         foreach (var attachedChannelClient in spotNode.AttachedChannelClients.Values)
         {
-            ValidateOutboundCapability(
+            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"SPOT node '{spotNode.SpotNodeName}' attached channel client '{attachedChannelClient.ChannelName}'",
                 registration.Discovery is not null,
                 attachedChannelClient.ManualConnections);
@@ -157,23 +156,4 @@ internal static class ZLinkFrameworkRegistrationValidator
         }
     }
 
-    private static void ValidateOutboundCapability(
-        string capabilityName,
-        bool discoveryConfigured,
-        IReadOnlyCollection<string> manualConnections)
-    {
-        var hasManualConnections = manualConnections.Count > 0;
-
-        if (!discoveryConfigured && !hasManualConnections)
-        {
-            throw new ZLinkConfigurationException(
-                $"{capabilityName} requires discovery or manual connections.");
-        }
-
-        if (discoveryConfigured && hasManualConnections)
-        {
-            throw new ZLinkConfigurationException(
-                $"{capabilityName} cannot mix discovery and manual connections.");
-        }
-    }
 }

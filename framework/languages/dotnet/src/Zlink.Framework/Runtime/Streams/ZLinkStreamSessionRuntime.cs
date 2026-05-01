@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
-using System.Threading.Channels;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -9,17 +8,10 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly AsyncServiceScope _scope;
     private readonly IZLinkBackendStreamSocket _socket;
     private readonly Action<string> _removeSession;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Channel<Func<ValueTask>> _dispatchQueue =
-        Channel.CreateUnbounded<Func<ValueTask>>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            SingleWriter = false
-        });
+    private readonly ZLinkStreamSessionSerialExecutor _serial = new();
     private readonly IZLinkSession _handler;
     private readonly ZLinkSessionContext _context;
     private readonly ZlinkStreamHeaderCodec _headerCodec = new();
-    private readonly Task _dispatchPump;
     private int _connected;
     private int _disconnected;
 
@@ -41,7 +33,6 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             Stream,
             CloseAsync);
         _handler.Context = _context;
-        _dispatchPump = Task.Run(RunDispatchQueueAsync);
     }
 
     public ZLinkManagedStream Stream { get; }
@@ -87,21 +78,13 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
     private async ValueTask MarkConnectedAsync(string localAddr, string remoteAddr)
     {
-        await _gate.WaitAsync();
-        try
+        Stream.UpdateAddresses(localAddr, remoteAddr);
+        if (Interlocked.Exchange(ref _connected, 1) != 0)
         {
-            Stream.UpdateAddresses(localAddr, remoteAddr);
-            if (Interlocked.Exchange(ref _connected, 1) != 0)
-            {
-                return;
-            }
+            return;
+        }
 
-            await _handler.OnConnectedAsync(CancellationToken.None);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        await _handler.OnConnectedAsync(CancellationToken.None);
     }
 
     private async ValueTask DispatchPacketAsync(
@@ -111,93 +94,53 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         using (header)
         using (body)
         {
-            await _gate.WaitAsync();
+            await EnsureConnectedAsync();
+            var decoded = _headerCodec.Decode(header.AsReadOnlyMemory());
+            if (_context.TryCompleteResponse(decoded, body))
+            {
+                return;
+            }
+
+            _context.EnterDispatch(decoded);
             try
             {
-                await EnsureConnectedAsync();
-                var decoded = _headerCodec.Decode(header.AsReadOnlyMemory());
-                if (_context.TryCompleteResponse(decoded, body))
-                {
-                    return;
-                }
-
-                _context.EnterDispatch(decoded);
-                try
-                {
-                    await _handler.OnDispatchAsync(
-                        decoded,
-                        body.Move(),
-                        CancellationToken.None);
-                }
-                finally
-                {
-                    _context.ExitDispatch();
-                }
+                await _handler.OnDispatchAsync(
+                    decoded,
+                    body.Move(),
+                    CancellationToken.None);
             }
             finally
             {
-                _gate.Release();
+                _context.ExitDispatch();
             }
         }
     }
 
     private async ValueTask MarkDisconnectedAsync(ZLinkStreamError error)
     {
-        await _gate.WaitAsync();
-        try
-        {
-            await _handler.OnErrorAsync(error, CancellationToken.None);
-            await _handler.OnDisconnectedAsync(CancellationToken.None);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        await _handler.OnErrorAsync(error, CancellationToken.None);
+        await _handler.OnDisconnectedAsync(CancellationToken.None);
+        await _context.CleanupActorBindingsAsync(CancellationToken.None);
     }
 
     private async ValueTask MarkClosedAsync()
     {
-        await _gate.WaitAsync();
-        try
-        {
-            await _handler.OnDisconnectedAsync(CancellationToken.None);
-            _removeSession(Stream.SessionId);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        await _handler.OnDisconnectedAsync(CancellationToken.None);
+        await _context.CleanupActorBindingsAsync(CancellationToken.None);
+        _removeSession(Stream.SessionId);
     }
 
     public async ValueTask DisposeAsync()
     {
-        _dispatchQueue.Writer.TryComplete();
-
-        try
-        {
-            await _dispatchPump;
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-
+        await _serial.DisposeAsync();
         await _scope.DisposeAsync();
-        _gate.Dispose();
     }
 
     private void Enqueue(Func<ValueTask> work, Action? onRejected = null)
     {
-        if (!_dispatchQueue.Writer.TryWrite(work))
+        if (!_serial.Enqueue(work))
         {
             onRejected?.Invoke();
-        }
-    }
-
-    private async Task RunDispatchQueueAsync()
-    {
-        await foreach (var work in _dispatchQueue.Reader.ReadAllAsync().ConfigureAwait(false))
-        {
-            await work().ConfigureAwait(false);
         }
     }
 

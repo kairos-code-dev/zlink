@@ -19,6 +19,7 @@ global using Zlink.Framework.Runtime.Core;
 global using Zlink.Framework.Runtime.Channels;
 global using Zlink.Framework.Runtime.Actors;
 global using Zlink.Framework.Runtime.Registry;
+global using Zlink.Framework.Runtime.SessionActorDispatch;
 global using Zlink.Framework.Runtime.Spots;
 global using Zlink.Framework.Runtime.Streams;
 global using Zlink.Framework.Spots;

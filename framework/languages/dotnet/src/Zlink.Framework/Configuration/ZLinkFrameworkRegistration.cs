@@ -6,11 +6,19 @@ internal sealed class ZLinkFrameworkRegistration
 
     public ZLinkCodecRegistryBuilder Codecs { get; } = new();
 
+    public ZLinkMetadataPolicyRegistration MetadataPolicy { get; } = new();
+
     public ZLinkDispatchOptionsModel DispatchOptions { get; } = new();
 
     public List<Type> Filters { get; } = [];
 
     public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
+
+    public Type? ActorPlayRouteResolverType { get; set; }
+
+    public Type? ActorSessionRouteResolverType { get; set; }
+
+    public Type? ActorSessionLocationWriterType { get; set; }
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
@@ -28,6 +36,11 @@ internal sealed class ZLinkFrameworkRegistration
 internal class ZLinkDiscoveryRegistration
 {
     public List<string> Endpoints { get; } = [];
+}
+
+internal sealed class ZLinkMetadataPolicyRegistration
+{
+    public HashSet<string> ForwardedApplicationKeys { get; } = new(StringComparer.Ordinal);
 }
 
 internal sealed class ZLinkSpotDiscoveryRegistration : ZLinkDiscoveryRegistration
@@ -105,9 +118,6 @@ internal sealed class ZLinkRoutedChannelRegistration
 
     public List<ZLinkRoutedHandlerRegistration> RequestHandlers { get; } = [];
 
-    public bool SessionGatewayEnabled { get; set; }
-
-    public Type? SessionProxyHandlerType { get; set; }
 }
 
 internal sealed record ZLinkRoutedHandlerRegistration(

@@ -189,28 +189,36 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
-    public async Task SessionGateway_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence()
+    public async Task SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence()
     {
         var streamEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
         var playRouterEndpoint = GetFreeTcpEndpoint();
         var sessionRid = RoutingId.FromString("0101");
         var playRid = RoutingId.FromString("0202");
-        var proxyRecorder = new GatewayProxyRecorder();
+        var proxyRecorder = new ActorDispatchRecorder();
+        var sessionLocations = new ActorSessionLocationStore();
         using var callbackCapture = CallbackExceptionCapture.Start();
 
         var playHost = await CreateHostAsync(playRouterEndpoint, services =>
         {
             services.AddSingleton(proxyRecorder);
-            services.AddScoped<GatewayProxyHandler>();
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddScoped<GatewayActorHandler>();
             services.AddZLinkFramework(options =>
             {
+                options.ConfigureMetadata(metadata =>
+                {
+                    metadata.ForwardApplicationKey("trace-id");
+                });
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddActorSessionRouteResolver<ActorSessionLocationStore>();
                 options.AddRoutedChannel("gateway", routed =>
                 {
                     routed.Bind(playRouterEndpoint);
                     routed.ConfigureRouting(routing => routing.RoutingId = playRid);
                     routed.UseManualConnections(connections => connections.Connect(sessionRouterEndpoint));
-                    routed.AddSessionProxyHandler<GatewayProxyHandler>();
                 });
             });
         });
@@ -218,15 +226,16 @@ public sealed class StreamIntegrationTests
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
             services.AddSingleton(new GatewayRelaySettings(playRid));
+            services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
+                options.AddActorSessionLocationWriter<ActorSessionLocationStore>();
                 options.AddRoutedChannel("gateway", routed =>
                 {
                     routed.Bind(sessionRouterEndpoint);
                     routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
                     routed.UseManualConnections(connections => connections.Connect(playRouterEndpoint));
-                    routed.EnableSessionGateway();
                 });
                 options.AddStreamNode("client.stream", stream =>
                 {
@@ -249,7 +258,9 @@ public sealed class StreamIntegrationTests
                     ZlinkStreamHeaderFlags.HasRequestSeq,
                     new ZlinkStreamRequestSeq(101),
                     "relay.echo",
-                    ZlinkStreamMetadata.Empty),
+                    ZlinkStreamMetadata.Empty
+                        .With("trace-id", "trace-101")
+                        .With("tenant-id", "tenant-denied")),
                 JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("from-client"), JsonOptions)));
 
             var relayReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(101));
@@ -257,24 +268,11 @@ public sealed class StreamIntegrationTests
             Assert.Equal(ZlinkStreamMessageKind.Response, relayReply.Header.Kind);
             Assert.Equal("play:from-client", relayBody?.Value);
             Assert.Equal(101UL, relayBody?.RequestSeq);
-            Assert.Equal(101UL, proxyRecorder.LastRequestSeq);
+            Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
+            Assert.Equal("trace-101", proxyRecorder.LastTraceId);
+            Assert.False(proxyRecorder.ForwardedTenantId);
 
-            SendAll(network, BuildStreamPacketFrame(
-                new ZlinkStreamHeader(
-                    ZlinkStreamMessageKind.Request,
-                    ZlinkStreamCodec.Json,
-                    ZlinkStreamHeaderFlags.HasRequestSeq,
-                    new ZlinkStreamRequestSeq(102),
-                    "resolve.via.relay",
-                    ZlinkStreamMetadata.Empty),
-                JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("nested"), JsonOptions)));
-
-            var nestedReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(102));
-            var nestedBody = JsonSerializer.Deserialize<GatewayPong>(nestedReply.Body, JsonOptions);
-            Assert.Equal("play:nested", nestedBody?.Value);
-            Assert.Equal("api.resolve", proxyRecorder.LastPacketName);
-
-            var gateway = playHost.Services.GetRequiredService<IZLinkSessionGateway>();
+            var sessionProxy = playHost.Services.GetRequiredService<IZLinkSessionProxy>();
             var clientReplyTask = Task.Run(() =>
             {
                 var request = ReceiveFrame(network);
@@ -295,9 +293,7 @@ public sealed class StreamIntegrationTests
                         new GatewayPong("client:from-play", request.Header.RequestSeq!.Value.Value),
                         JsonOptions)));
             });
-            var gatewayReply = await gateway.RequestActor<GatewayPing>(
-                    "gateway",
-                    sessionRid,
+            var gatewayReply = await sessionProxy.Request(
                     "player-1",
                     new GatewayPing("from-play"))
                 .WithPacketName("client.echo")
@@ -613,25 +609,107 @@ public sealed class StreamIntegrationTests
 
     public sealed record GatewayRelaySettings(RoutingId PlayRid);
 
-    public sealed class GatewayProxyRecorder
+    public sealed class ActorDispatchRecorder
     {
-        public ulong? LastRequestSeq { get; set; }
-
         public string? LastPacketName { get; set; }
+
+        public string? LastTraceId { get; set; }
+
+        public bool ForwardedTenantId { get; set; }
     }
 
-    public sealed class GatewayRelaySession(GatewayRelaySettings settings) : IZLinkSession
+    public sealed class ActorSessionLocationStore
+        : IZLinkActorSessionLocationWriter,
+          IZLinkActorSessionRouteResolver
     {
-        public IZLinkSessionContext Context { get; set; } = default!;
+        private ZLinkActorSessionBinding? _binding;
 
-        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        public ValueTask BindSessionAsync(
+            ZLinkActorSessionBinding binding,
+            CancellationToken cancellationToken)
         {
-            return Context.BindActorAsync("player-1", cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            _binding = binding;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask UnbindSessionAsync(
+            ZLinkActorSessionUnbind binding,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_binding is { } current
+                && current.ActorId == binding.ActorId
+                && current.SessionId == binding.SessionId
+                && current.BindingToken == binding.BindingToken)
+            {
+                _binding = null;
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
+            string actorId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var binding = _binding
+                ?? throw new InvalidOperationException("No session binding exists.");
+            return ValueTask.FromResult(new ZLinkActorSessionRoute(
+                binding.RouterChannelId,
+                binding.SessionRouterId,
+                binding.SessionId,
+                binding.BindingToken));
+        }
+    }
+
+    public sealed class GatewayActor(string actorId) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context { get; set; } = default!;
+
+        public void Configure()
+        {
+            Context.AddPacket<GatewayActorHandler>("relay.echo");
         }
 
         public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
-            return Context.UnbindActorAsync(cancellationToken);
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class GatewayActorFactory : IZLinkActorFactory
+    {
+        public ValueTask<IZLinkActor> CreateAsync(
+            string actorId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IZLinkActor>(new GatewayActor(actorId));
+        }
+    }
+
+    public sealed class GatewayRelaySession(GatewayRelaySettings settings) : IZLinkSession
+    {
+        private IZLinkActorRef? _actor;
+
+        public IZLinkSessionContext Context { get; set; } = default!;
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            _actor = null;
+            return ValueTask.CompletedTask;
         }
 
         public ValueTask OnErrorAsync(
@@ -648,47 +726,38 @@ public sealed class StreamIntegrationTests
             Message payload,
             CancellationToken cancellationToken)
         {
-            if (header.Name == "resolve.via.relay")
-            {
-                var ping = JsonSerializer.Deserialize<GatewayPing>(payload.AsReadOnlySpan(), JsonOptions)
-                    ?? throw new InvalidOperationException("Nested relay request body is null.");
-                using var reply = await Context.OpenActorRelay("gateway", settings.PlayRid, "player-1")
-                    .Request(ping)
-                    .WithPacketName("api.resolve")
-                    .WithTimeout(TimeSpan.FromSeconds(3))
-                    .Async(cancellationToken)
-                    .ConfigureAwait(false);
-                var pong = JsonSerializer.Deserialize<GatewayPong>(reply.AsReadOnlySpan(), JsonOptions)
-                    ?? throw new InvalidOperationException("Nested relay reply body is null.");
-                await Context.Reply(pong)
-                    .Async(cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
+            _actor ??= await Context.CreateRemoteActorAsync(
+                settings.PlayRid,
+                "player-1",
+                "player",
+                cancellationToken);
 
-            await Context.OpenActorRelay("gateway", settings.PlayRid, "player-1")
-                .DispatchAsync(header, payload, cancellationToken)
+            await Context.DispatchToActorAsync(
+                    _actor ?? throw new InvalidOperationException("Actor was not created."),
+                    header,
+                    payload,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
     }
 
-    public sealed class GatewayProxyHandler(GatewayProxyRecorder recorder) : IZLinkSessionProxyHandler
+    public sealed class GatewayActorHandler(ActorDispatchRecorder recorder)
+        : IZLinkActorRequestHandler<GatewayPing, GatewayPong>
     {
-        public ValueTask<Message?> HandleAsync(
-            IZLinkSessionProxyContext context,
-            ZLinkActorRelayMessage message,
+        public ValueTask<GatewayPong> HandleAsync(
+            GatewayPing request,
+            ZLinkActorRequestContext context,
             CancellationToken cancellationToken)
         {
-            _ = context;
             cancellationToken.ThrowIfCancellationRequested();
-            var ping = JsonSerializer.Deserialize<GatewayPing>(message.Body.AsReadOnlySpan(), JsonOptions)
-                ?? throw new InvalidOperationException("Gateway proxy request body is null.");
-            recorder.LastRequestSeq = message.Envelope.StreamHeader.RequestSeq?.Value;
-            recorder.LastPacketName = message.Envelope.StreamHeader.Name;
-            return ValueTask.FromResult<Message?>(Message.FromBytes(
-                JsonSerializer.SerializeToUtf8Bytes(
-                    new GatewayPong($"play:{ping.Value}", message.Envelope.StreamHeader.RequestSeq?.Value ?? 0UL),
-                    JsonOptions)));
+            recorder.LastPacketName = context.PacketName;
+            if (context.Metadata.TryGetApplicationValue("trace-id", out var traceId))
+            {
+                recorder.LastTraceId = traceId;
+            }
+
+            recorder.ForwardedTenantId = context.Metadata.TryGetApplicationValue("tenant-id", out _);
+            return ValueTask.FromResult(new GatewayPong($"play:{request.Value}", 101));
         }
     }
 

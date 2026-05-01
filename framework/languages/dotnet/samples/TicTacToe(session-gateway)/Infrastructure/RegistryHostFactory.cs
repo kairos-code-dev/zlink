@@ -1,9 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionGateway.Configuration;
+using TicTacToe.SessionActorDispatch.Configuration;
 using Zlink.Framework.AspNetCore;
 
-namespace TicTacToe.SessionGateway.Infrastructure;
+namespace TicTacToe.SessionActorDispatch.Infrastructure;
 
 internal static class RegistryHostFactory
 {

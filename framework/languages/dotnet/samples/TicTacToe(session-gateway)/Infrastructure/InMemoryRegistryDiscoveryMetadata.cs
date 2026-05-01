@@ -1,0 +1,45 @@
+using System.Collections.Concurrent;
+
+namespace TicTacToe.SessionActorDispatch.Infrastructure;
+
+internal sealed class InMemoryRegistryDiscoveryMetadata : IRegistryDiscoveryMetadata
+{
+    private readonly ConcurrentDictionary<string, RegistryMetadataEntry> _entries = new(StringComparer.Ordinal);
+
+    public ValueTask PutAsync(
+        string key,
+        IReadOnlyDictionary<string, string> metadata,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _entries[key] = new RegistryMetadataEntry(metadata);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<IRegistryMetadataEntry> GetRequiredAsync(
+        string key,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_entries.TryGetValue(key, out var entry))
+        {
+            throw new InvalidOperationException($"Registry metadata '{key}' was not found.");
+        }
+
+        return ValueTask.FromResult<IRegistryMetadataEntry>(entry);
+    }
+
+    public ValueTask DeleteIfAsync(
+        string key,
+        IReadOnlyDictionary<string, string> expected,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_entries.TryGetValue(key, out var current) && current.ContainsAll(expected))
+        {
+            _entries.TryRemove(key, out _);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}

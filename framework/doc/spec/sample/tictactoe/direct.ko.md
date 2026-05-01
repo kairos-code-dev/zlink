@@ -16,8 +16,8 @@ client와 gameplay 서버가 직접 연결되는 모델을 보여 준다.
 
 - API 서버가 Play 서버에 channel request로 match 생성을 요청한다.
 - client가 Play 서버 stream에 직접 연결한다.
-- Play session이 API 서버에 인증 request를 보내고 `playerId`를 얻는다.
-- Play actor의 `ActorId`는 인증 결과의 `playerId`와 같다.
+- Play session이 API 서버에 인증 request를 보내고 `actorId`를 얻는다.
+- Play actor의 `ActorId`는 인증 결과의 `actorId`와 같다.
 - game room은 틱택토 board와 turn을 authoritative state로 관리한다.
 - 상대 입장, 턴 변경, 게임 종료는 `Notify` 메시지로 client에게 push한다.
 
@@ -31,7 +31,7 @@ flowchart LR
 
     C -->|HTTP CreateMatchReq| API
     API -->|Channel Play / CreateMatchReq| PLAY
-    PLAY -->|Channel Api / AuthenticatePlayerReq| API
+    PLAY -->|Channel Api / AuthenticateActorReq| API
     C -->|STREAM AuthenticateReq / Game Packets| PLAY
 ```
 
@@ -52,7 +52,7 @@ flowchart LR
 | `TicTacToe.Api` | `Play` channel client | Play 서버에 match 생성을 요청한다. |
 | `TicTacToe.Play` | `Play` channel server | match room을 만들고 stream endpoint를 반환한다. |
 | `TicTacToe.Play` | stream server | client 연결과 session dispatch를 처리한다. |
-| `TicTacToe.Play` | actor runtime | 인증된 player actor를 생성하고 room에 join한다. |
+| `TicTacToe.Play` | actor runtime | 인증된 actor를 생성하고 room에 join한다. |
 | `TicTacToe.Play` | spot/game room | board, turn, 승패 판정을 소유한다. |
 
 ## 4. Endpoint와 Channel
@@ -81,11 +81,11 @@ public sealed record CreateMatchRes(
     string PlayerAToken,
     string PlayerBToken);
 
-public sealed record AuthenticatePlayerReq(string AccessToken);
+public sealed record AuthenticateActorReq(string AccessToken);
 
-public sealed record AuthenticatePlayerRes(
+public sealed record AuthenticateActorRes(
     bool Accepted,
-    string? PlayerId,
+    string? ActorId,
     string? Reason);
 ```
 
@@ -94,15 +94,13 @@ client stream에서 사용하는 request/response:
 ```csharp
 public sealed record AuthenticateReq(string AccessToken);
 
-public sealed record AuthenticateRes(
-    string PlayerId,
-    string ActorId);
+public sealed record AuthenticateRes(string ActorId);
 
 public sealed record JoinMatchReq(string MatchId);
 
 public sealed record JoinMatchRes(
     string MatchId,
-    string PlayerId,
+    string ActorId,
     string Mark,
     TicTacToeState State);
 
@@ -119,16 +117,16 @@ server push 메시지:
 ```csharp
 public sealed record OpponentJoinedNotify(
     string MatchId,
-    string OpponentPlayerId);
+    string OpponentActorId);
 
 public sealed record TurnChangedNotify(
     string MatchId,
-    string TurnPlayerId,
+    string TurnActorId,
     TicTacToeState State);
 
 public sealed record GameEndedNotify(
     string MatchId,
-    string? WinnerPlayerId,
+    string? WinnerActorId,
     bool Draw,
     TicTacToeState State);
 ```
@@ -139,8 +137,8 @@ public sealed record GameEndedNotify(
 public sealed record TicTacToeState(
     string MatchId,
     string Board,
-    string TurnPlayerId,
-    string? WinnerPlayerId,
+    string TurnActorId,
+    string? WinnerActorId,
     bool Draw);
 ```
 
@@ -187,9 +185,9 @@ sequenceDiagram
     participant OC as Opponent Client
 
     C->>S: Stream AuthenticateReq
-    S->>API: AuthenticatePlayerReq
-    API-->>S: AuthenticatePlayerRes(playerId)
-    S->>ACT: Create actor(actorId=playerId)
+    S->>API: AuthenticateActorReq
+    API-->>S: AuthenticateActorRes(actorId)
+    S->>ACT: Create actor(actorId=actorId)
     S-->>C: AuthenticateRes
     C->>S: Stream JoinMatchReq
     S->>ACT: Dispatch JoinMatchReq
@@ -240,7 +238,7 @@ client에게 보낸다. 잘못된 turn, 이미 사용한 cell, 끝난 match에 �
 - API 서버와 Play 서버가 별도 프로젝트로 분리되어 있다.
 - client는 Play 서버 stream endpoint에 직접 연결한다.
 - Play session은 `AuthenticateReq`에서 API 서버로 인증 request를 보낸다.
-- 인증 응답의 `playerId`를 actor의 `ActorId`로 사용한다.
+- 인증 응답의 `actorId`를 actor의 `ActorId`로 사용한다.
 - `JoinMatchReq` 이후 actor가 game room에 join한다.
 - 두 player가 모두 join하면 `OpponentJoinedNotify`가 전달된다.
 - 정상 move마다 `PlaceMarkRes`와 `TurnChangedNotify`가 전달된다.

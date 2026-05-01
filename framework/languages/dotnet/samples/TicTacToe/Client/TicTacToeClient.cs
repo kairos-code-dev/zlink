@@ -48,10 +48,10 @@ public sealed class TicTacToeClient
         });
 
         var xAuthentication = await xConnector
-            .Request(new AuthenticateReq(options.XPlayerId))
+            .Request(new AuthenticateReq(options.XActorId))
             .Async<AuthenticateRes>(cancellationToken);
         var oAuthentication = await oConnector
-            .Request(new AuthenticateReq(options.OPlayerId))
+            .Request(new AuthenticateReq(options.OActorId))
             .Async<AuthenticateRes>(cancellationToken);
 
         var xJoin = await xConnector
@@ -71,7 +71,7 @@ public sealed class TicTacToeClient
         };
 
         if (!string.Equals(moves[^1].State.Status, "Won", StringComparison.Ordinal)
-            || !string.Equals(moves[^1].State.Winner, options.XPlayerId, StringComparison.Ordinal))
+            || !string.Equals(moves[^1].State.Winner, options.XActorId, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
                 $"Unexpected final game state: board={moves[^1].State.Board}, status={moves[^1].State.Status}, winner={moves[^1].State.Winner ?? "-"}");

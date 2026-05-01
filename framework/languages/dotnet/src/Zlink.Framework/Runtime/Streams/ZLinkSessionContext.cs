@@ -1,8 +1,6 @@
 using Systems.Zlink.Stream.Connector.Protocol;
 using Systems.Zlink.Stream.Connector.Protocol.Compression;
 using Systems.Zlink.Stream.Connector.Contracts;
-using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Streams;
@@ -12,16 +10,15 @@ internal sealed class ZLinkSessionContext(
     IZLinkClient client,
     IZLinkStream stream,
     Func<CancellationToken, ValueTask> closeAsync)
-    : IZLinkSessionContext
+    : IZLinkSessionContext, IZLinkSessionActorAttachmentContext
 {
     private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private IZLinkActor? _actor;
     private ZlinkStreamHeader? _currentDispatchHeader;
-    private readonly ConcurrentDictionary<ulong, PendingSessionRequest> _pendingRequests = new();
-    private long _nextRequestSeq;
-    private string? _boundActorId;
+    private readonly ZLinkSessionRequestTracker _requests = new();
+    private readonly ZLinkSessionActorBindingRegistry _actorBindings = new(runtime);
 
     public string SessionId => stream.SessionId;
 
@@ -55,39 +52,45 @@ internal sealed class ZLinkSessionContext(
         return new ZLinkSessionReplyCall<TMessage>(this, message);
     }
 
-    public ValueTask BindActorAsync(
+    public async ValueTask<IZLinkActorRef> CreateActorAsync(
         string actorId,
+        string actorType,
         CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(actorId))
-        {
-            throw new InvalidOperationException("Actor id must not be empty.");
-        }
-
-        runtime.BindSessionActor(actorId, this);
-        _boundActorId = actorId;
-        return ValueTask.CompletedTask;
+        var route = runtime.ResolveLocalActorRoute();
+        await runtime.CreateLocalActorAsync(actorId, actorType, cancellationToken)
+            .ConfigureAwait(false);
+        return await _actorBindings.BindAsync(
+            this,
+            SessionId,
+            actorId,
+            actorType,
+            route.RouterChannelId,
+            route.TargetNodeRid,
+            cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask UnbindActorAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
+        RoutingId actorNodeId,
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (_boundActorId is { } actorId)
-        {
-            runtime.UnbindSessionActor(actorId, this);
-            _boundActorId = null;
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
-    public IZLinkActorRelay OpenActorRelay(
-        string routerChannelId,
-        RoutingId targetPlayNodeRid,
-        string actorId)
-    {
-        return new ZLinkActorRelay(runtime.RoutedClient, routerChannelId, targetPlayNodeRid, actorId, this);
+        var routerChannelId = runtime.ResolveDefaultRouterChannelId();
+        var packet = new ZLinkActorCreatePacket(actorId, actorType);
+        _ = await runtime.RoutedClient.RequestTo(routerChannelId, actorNodeId, packet)
+            .WithPacketName(ZLinkInternalPacketNames.ActorCreate)
+            .WithTimeout(runtime.Registration.DefaultTimeout)
+            .Async<byte[]>(cancellationToken)
+            .ConfigureAwait(false);
+        return await _actorBindings.BindAsync(
+            this,
+            SessionId,
+            actorId,
+            actorType,
+            routerChannelId,
+            actorNodeId,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public IZLinkSessionRequestCall Request<TRequest>(TRequest request)
@@ -120,6 +123,47 @@ internal sealed class ZLinkSessionContext(
         return runtime.SubmitActorAsync(actor, header, body, cancellationToken);
     }
 
+    public async ValueTask DispatchToActorAsync(
+        IZLinkActorRef actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default)
+    {
+        if (actor is not ZLinkActorRef actorRef)
+        {
+            throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
+        }
+
+        using (body)
+        {
+            var packet = new ZLinkActorDispatchPacket(
+                actorRef.ActorId,
+                actorRef.ActorType,
+                ZLinkStreamHeaderSnapshot.FromHeader(header),
+                body.AsReadOnlyMemory().ToArray());
+
+            if (header.RequestSeq is not null)
+            {
+                var reply = await runtime.RoutedClient
+                    .RequestTo(actorRef.RouterChannelId, actorRef.TargetNodeRid, packet)
+                    .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
+                    .WithTimeout(runtime.Registration.DefaultTimeout)
+                    .Async<byte[]>(cancellationToken)
+                    .ConfigureAwait(false);
+
+                await ReplyRawAsync(header, header.Codec, reply, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await runtime.RoutedClient
+                .SendTo(actorRef.RouterChannelId, actorRef.TargetNodeRid, packet)
+                .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
+                .Async(cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
     public async ValueTask DisconnectActorAsync(
         CancellationToken cancellationToken = default)
     {
@@ -135,6 +179,11 @@ internal sealed class ZLinkSessionContext(
 
     internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatchHeader;
 
+    internal async ValueTask CleanupActorBindingsAsync(CancellationToken cancellationToken)
+    {
+        await _actorBindings.CleanupAsync(this, cancellationToken).ConfigureAwait(false);
+    }
+
     internal void EnterDispatch(ZlinkStreamHeader header)
     {
         _currentDispatchHeader = header;
@@ -149,15 +198,7 @@ internal sealed class ZLinkSessionContext(
         ZlinkStreamHeader header,
         Message body)
     {
-        if (header.Kind != ZlinkStreamMessageKind.Response
-            || header.RequestSeq is not { } requestSeq
-            || !_pendingRequests.TryRemove(requestSeq.Value, out var pending))
-        {
-            return false;
-        }
-
-        pending.Complete(body.Move());
-        return true;
+        return _requests.TryCompleteResponse(header, body);
     }
 
     internal bool Write(Message payload)
@@ -191,38 +232,26 @@ internal sealed class ZLinkSessionContext(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var requestSeq = NextRequestSeq();
-        var pending = new PendingSessionRequest(requestSeq);
-        if (!_pendingRequests.TryAdd(requestSeq.Value, pending))
-        {
-            throw new InvalidOperationException("Duplicate stream request sequence.");
-        }
+        using var pending = _requests.Start();
 
-        try
-        {
-            var header = new ZlinkStreamHeader(
-                ZlinkStreamMessageKind.Request,
-                codec,
-                ZlinkStreamHeaderFlags.HasRequestSeq,
-                requestSeq,
-                packetName,
-                ZlinkStreamMetadata.Empty);
-            WriteRawFrame(header, body.Span, "Client stream request send failed.");
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            codec,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            pending.RequestSeq,
+            packetName,
+            ZlinkStreamMetadata.Empty);
+        WriteRawFrame(header, body.Span, "Client stream request send failed.");
 
-            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutSource.CancelAfter(timeout);
-            using var registration = timeoutSource.Token.Register(static state =>
-            {
-                var item = (PendingSessionRequest)state!;
-                item.Cancel();
-            }, pending);
-
-            return await pending.Task.ConfigureAwait(false);
-        }
-        finally
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        using var registration = timeoutSource.Token.Register(static state =>
         {
-            _pendingRequests.TryRemove(requestSeq.Value, out _);
-        }
+            var item = (ZLinkPendingSessionRequest)state!;
+            item.Cancel();
+        }, pending);
+
+        return await pending.Task.ConfigureAwait(false);
     }
 
     internal ValueTask ReplyRawAsync(
@@ -255,58 +284,34 @@ internal sealed class ZLinkSessionContext(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var requestSeq = NextRequestSeq();
-        var pending = new PendingSessionRequest(requestSeq);
-        if (!_pendingRequests.TryAdd(requestSeq.Value, pending))
+        using var pending = _requests.Start();
+
+        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(request, JsonOptions);
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            pending.RequestSeq,
+            packetName,
+            ZlinkStreamMetadata.Empty);
+        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body.Span);
+        using var payloadMessage = Message.FromBytes(frame);
+        if (!Write(payloadMessage))
         {
-            throw new InvalidOperationException("Duplicate stream request sequence.");
+            throw new InvalidOperationException("Client stream request send failed.");
         }
 
-        try
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        using var registration = timeoutSource.Token.Register(static state =>
         {
-            ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(request, JsonOptions);
-            var header = new ZlinkStreamHeader(
-                ZlinkStreamMessageKind.Request,
-                ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.HasRequestSeq,
-                requestSeq,
-                packetName,
-                ZlinkStreamMetadata.Empty);
-            var frame = EncodeFrame(HeaderCodec.Encode(header).Span, body.Span);
-            using var payloadMessage = Message.FromBytes(frame);
-            if (!Write(payloadMessage))
-            {
-                throw new InvalidOperationException("Client stream request send failed.");
-            }
+            var item = (ZLinkPendingSessionRequest)state!;
+            item.Cancel();
+        }, pending);
 
-            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutSource.CancelAfter(timeout);
-            using var registration = timeoutSource.Token.Register(static state =>
-            {
-                var item = (PendingSessionRequest)state!;
-                item.Cancel();
-            }, pending);
-
-            using var reply = await pending.Task.ConfigureAwait(false);
-            return JsonSerializer.Deserialize<TReply>(reply.AsReadOnlySpan(), JsonOptions)
-                ?? throw new InvalidOperationException("Client stream request reply body is null.");
-        }
-        finally
-        {
-            _pendingRequests.TryRemove(requestSeq.Value, out _);
-        }
-    }
-
-    private ZlinkStreamRequestSeq NextRequestSeq()
-    {
-        while (true)
-        {
-            var value = unchecked((ulong)Interlocked.Increment(ref _nextRequestSeq));
-            if (value != 0)
-            {
-                return new ZlinkStreamRequestSeq(value);
-            }
-        }
+        using var reply = await pending.Task.ConfigureAwait(false);
+        return JsonSerializer.Deserialize<TReply>(reply.AsReadOnlySpan(), JsonOptions)
+            ?? throw new InvalidOperationException("Client stream request reply body is null.");
     }
 
     private void WriteRawFrame(
@@ -314,7 +319,7 @@ internal sealed class ZLinkSessionContext(
         ReadOnlySpan<byte> body,
         string failureMessage)
     {
-        var frame = EncodeFrame(HeaderCodec.Encode(header).Span, body);
+        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body);
         using var payloadMessage = Message.FromBytes(frame);
         if (!Write(payloadMessage))
         {
@@ -322,35 +327,6 @@ internal sealed class ZLinkSessionContext(
         }
     }
 
-    private static byte[] EncodeFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body)
-    {
-        var frame = new byte[6 + header.Length + body.Length];
-        BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
-        header.CopyTo(frame.AsSpan(6, header.Length));
-        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
-        return frame;
-    }
-
-    private sealed class PendingSessionRequest(ZlinkStreamRequestSeq requestSeq)
-    {
-        private readonly TaskCompletionSource<Message> _completion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ZlinkStreamRequestSeq RequestSeq { get; } = requestSeq;
-
-        public Task<Message> Task => _completion.Task;
-
-        public void Complete(Message body)
-        {
-            _completion.TrySetResult(body);
-        }
-
-        public void Cancel()
-        {
-            _completion.TrySetException(new TimeoutException("Client stream request timed out."));
-        }
-    }
 }
 
 internal abstract class ZLinkSessionStreamCallBase<TMessage>(
@@ -409,7 +385,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         }
 
         var header = CreateHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata, context.CurrentDispatchHeader);
-        var frame = EncodeFrame(HeaderCodec.Encode(header).Span, body.Span);
+        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body.Span);
         using var payloadMessage = Message.FromBytes(frame);
 
         if (!context.Write(payloadMessage))
@@ -427,15 +403,6 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         ZlinkStreamMetadata metadata,
         ZlinkStreamHeader? currentDispatchHeader);
 
-    private static byte[] EncodeFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body)
-    {
-        var frame = new byte[6 + header.Length + body.Length];
-        BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
-        header.CopyTo(frame.AsSpan(6, header.Length));
-        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
-        return frame;
-    }
 }
 
 internal sealed class ZLinkSessionSendCall<TMessage>(

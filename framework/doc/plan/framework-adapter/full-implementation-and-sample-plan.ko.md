@@ -462,7 +462,7 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 
 - routed send/request는 `routerChannelId + targetNodeRid`를 명시한다.
 - routed request reply matching은 request sequence 기준이다.
-- actorId는 playerId와 같은 domain key로 사용한다.
+- actorId는 actorId와 같은 domain key로 사용한다.
 - session gateway API에는 sessionId를 public routing key로 노출하지 않는다.
 - session server는 target session gateway 생성 또는 binding API를 제공한다.
 
@@ -556,7 +556,7 @@ fi
 - 기존 sample file을 session gateway sample과 공유하지 않는다.
 - API 서버와 Play 서버 분리
 - Play 서버는 stream client 인증 후 actorId로 actor 생성
-- actorId는 playerId와 동일
+- actorId는 actorId와 동일
 - TicTacToe game room은 SPOT 기반으로 동작
 - opponent joined와 game state push는 `Notify` 접미사 사용
 - request packet은 `Req`, response packet은 `Res` 접미사를 사용한다.

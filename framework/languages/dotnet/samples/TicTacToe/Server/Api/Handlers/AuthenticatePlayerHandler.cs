@@ -11,15 +11,15 @@ sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandler> logger
         _ = context;
         _ = cancellationToken;
 
-        var playerId = request.AccessToken.Trim();
-        if (string.IsNullOrWhiteSpace(playerId))
+        var actorId = request.AccessToken.Trim();
+        if (string.IsNullOrWhiteSpace(actorId))
         {
             throw new InvalidOperationException("Authentication token is empty.");
         }
 
         logger.LogInformation(
-            "play -> api: authenticate accepted. player={PlayerId}",
-            playerId);
-        return new AuthenticatePlayerRes(playerId);
+            "play -> api: authenticate accepted. player={ActorId}",
+            actorId);
+        return new AuthenticatePlayerRes(actorId);
     }
 }

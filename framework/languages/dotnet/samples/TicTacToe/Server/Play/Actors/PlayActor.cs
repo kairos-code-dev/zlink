@@ -15,8 +15,6 @@ internal sealed class PlayActor(
 
     public string Mark { get; private set; } = string.Empty;
 
-    public string PlayerId => ActorId;
-
     public void Configure()
     {
         Context.AddPacket<PlayActorJoinGameHandler>();
@@ -53,10 +51,9 @@ internal sealed class PlayActor(
     {
         _ = cancellationToken;
         logger.LogInformation(
-            "play actor: stream disconnected. actor={ActorId}, gameId={GameId}, player={PlayerId}",
+            "play actor: stream disconnected. actor={ActorId}, gameId={GameId}",
             ActorId,
-            GameId,
-            PlayerId);
+            GameId);
         return ValueTask.CompletedTask;
     }
 }

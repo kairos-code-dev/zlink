@@ -1,14 +1,14 @@
-using TicTacToe.SessionGateway;
+using TicTacToe.SessionActorDispatch;
 
-var result = await SessionGatewaySampleScenario.RunAsync();
+var result = await SessionActorDispatchSampleScenario.RunAsync();
 
 Console.WriteLine(
-    $"auth={result.XAuthentication.PlayerId},{result.OAuthentication.PlayerId}");
+    $"auth={result.XAuthentication.ActorId},{result.OAuthentication.ActorId}");
 Console.WriteLine(
-    $"created={result.CreatedGame.GameId}, reconnect={result.XReconnectAuthentication.PlayerId}");
+    $"created={result.CreatedMatch.MatchId}, reconnect={result.XReconnectAuthentication.ActorId}");
 Console.WriteLine(
-    $"players=X:{result.XJoin.State.XPlayerId}, O:{result.OJoin.State.OPlayerId}");
+    $"players=X:{result.XJoin.State.XActorId}, O:{result.OJoin.State.OActorId}");
 Console.WriteLine(
-    $"final={result.FinalState.Board}, status={result.FinalState.Status}, winner={result.FinalState.Winner}");
+    $"final={result.FinalState.Board}, status={result.FinalState.Status}, winner={result.FinalState.WinnerActorId}");
 Console.WriteLine(
-    $"notifications=state:{result.StateNotifications.Count}, joined:{result.PlayerJoinedNotifications.Count}");
+    $"notifications=turn:{result.TurnChangedNotifications.Count}, joined:{result.OpponentJoinedNotifications.Count}, ended:{result.GameEndedNotifications.Count}");

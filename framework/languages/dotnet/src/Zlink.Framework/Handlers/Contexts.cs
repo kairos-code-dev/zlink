@@ -12,8 +12,6 @@ public interface IZLinkHandlerContext
 
     DateTimeOffset? Deadline { get; }
 
-    IServiceProvider Services { get; }
-
     CancellationToken ConnectionAborted { get; }
 }
 
@@ -47,14 +45,14 @@ public abstract class ZLinkHandlerContext : IZLinkHandlerContext
 
     public DateTimeOffset? Deadline { get; }
 
-    public IServiceProvider Services { get; }
+    internal IServiceProvider Services { get; }
 
     public CancellationToken ConnectionAborted { get; }
 }
 
 public sealed class ZLinkRequestContext : ZLinkHandlerContext
 {
-    public ZLinkRequestContext(
+    internal ZLinkRequestContext(
         string? channelName,
         string? packetName,
         string? contentType,
@@ -69,7 +67,7 @@ public sealed class ZLinkRequestContext : ZLinkHandlerContext
 
 public sealed class ZLinkSendContext : ZLinkHandlerContext
 {
-    public ZLinkSendContext(
+    internal ZLinkSendContext(
         string? channelName,
         string? packetName,
         string? contentType,
@@ -84,7 +82,7 @@ public sealed class ZLinkSendContext : ZLinkHandlerContext
 
 public sealed class ZLinkEventContext : ZLinkHandlerContext
 {
-    public ZLinkEventContext(
+    internal ZLinkEventContext(
         string? channelName,
         string? packetName,
         string? contentType,

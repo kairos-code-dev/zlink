@@ -31,7 +31,7 @@ sealed class PlaySession(
             Context.SessionId,
             actorId ?? "(unauthenticated)");
 
-        return Context.DisconnectActorAsync(cancellationToken);
+        return ((IZLinkSessionActorAttachmentContext)Context).DisconnectActorAsync(cancellationToken);
     }
 
     public ValueTask OnErrorAsync(

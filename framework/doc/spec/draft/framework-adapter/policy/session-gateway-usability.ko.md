@@ -58,9 +58,9 @@ session actor dispatch sample의 핵심 흐름은 아래 네 가지다.
 ### 2.2 `RoutingId`가 domain 코드에 새어 나온다
 
 `RoutingId`는 zlink routed transport의 목적지다. 반면 game code가 자연스럽게
-다루는 값은 `gameId`, `actorId`, `playerId` 같은 domain key다.
+다루는 값은 `gameId`, `actorId`, `actorId` 같은 domain key다.
 
-현재 sample은 game 생성, join, move 흐름에서 play node 또는 session node
+현재 sample은 match 생성, join, move 흐름에서 play node 또는 session node
 `RoutingId`를 직접 찾고 전달한다. 이 때문에 domain service가 "어느 game을 찾을지"
 뿐 아니라 "어느 zlink node로 보낼지"까지 알아야 한다.
 
@@ -215,20 +215,10 @@ framework helper는 이 callback 안에서 선택된 dispatch의 transport 세�
 
 ### 8.1 현재 낮은 수준 actor relay 표면
 
-현재 낮은 수준 actor relay 표면은 아래 모양이다. 기존 구현 이름에 `SessionProxy`가
-들어가지만, 이것은 actor가 client session으로 보내는 `SessionProxy`가 아니다. session에서
-actor로 넘어온 relay envelope를 play side에서 직접 처리하는 raw handler다. 새 public
-surface에서는 이 이름을 유지하지 않는다.
-
-```csharp
-public interface IZLinkSessionProxyHandler
-{
-    ValueTask<Message?> HandleAsync(
-        IZLinkSessionProxyContext context,
-        ZLinkActorRelayMessage message,
-        CancellationToken cancellationToken);
-}
-```
+이전 초안은 session에서 actor로 넘어온 relay envelope를 play side에서 직접 처리하는
+raw handler를 public surface처럼 두었다. 기존 구현 이름에 `SessionProxy`가 들어가지만,
+이것은 actor가 client session으로 보내는 현재 `SessionProxy`가 아니다. 새 public
+surface에서는 이 raw handler 이름을 유지하지 않는다.
 
 이 표면은 framework internal envelope를 직접 다룰 수 있다는 장점이 있다. 하지만
 일반 handler에는 너무 넓다. typed handler가 필요한 사용자는 대부분 아래 세 가지를
@@ -464,7 +454,7 @@ public sealed class TicTacToeActor(
     public void Configure()
     {
         Context.AddPacket<CreateGameHandler>();
-        Context.AddPacket<JoinGameHandler>();
+        Context.AddPacket<JoinMatchHandler>();
         Context.AddPacket<MoveHandler>();
         Context.AddPacket<ClientDisconnectedHandler>();
     }
@@ -486,7 +476,7 @@ public sealed class TicTacToeGame : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddActorJoin<JoinGameHandler, TicTacToeActor, JoinGameReq, JoinGameRep>();
+        Context.AddActorJoin<JoinMatchHandler, TicTacToeActor, JoinMatchReq, JoinMatchRes>();
         Context.AddPacket<MoveHandler>();
     }
 }
@@ -801,7 +791,7 @@ public sealed class RegistryActorSessionLocationStore(
             new Dictionary<string, string>
             {
                 ["routerChannelId"] = binding.RouterChannelId,
-                ["sessionRouterId"] = binding.SessionRouterId.ToString(),
+                ["sessionRouterId"] = binding.SessionRouterId.ToHex(),
                 ["sessionId"] = binding.SessionId,
                 ["bindingToken"] = binding.BindingToken,
             },
@@ -832,7 +822,7 @@ public sealed class RegistryActorSessionLocationStore(
 
         return new ZLinkActorSessionRoute(
             RouterChannelId: entry.Require("routerChannelId"),
-            SessionRouterId: RoutingId.Parse(entry.Require("sessionRouterId")),
+            SessionRouterId: RoutingId.FromString(entry.Require("sessionRouterId")),
             SessionId: entry.Require("sessionId"),
             BindingToken: entry.Require("bindingToken"));
     }
@@ -1079,13 +1069,8 @@ actor, node, spot 실행 문맥에만 존재한다.
 play server에서 client로 보내는 호출은 `SessionProxy`가 맡는다. 이 이름은 actor/play
 코드가 remote client session을 대신 다룬다는 의미를 드러낸다.
 
-제거 대상인 기존 표면은 아래처럼 명시 target을 받았다.
-
-```csharp
-await sessionGateway
-    .SendToActor("backend", targetSessionNodeRid, actorId, message)
-    .Async(cancellationToken);
-```
+제거 대상인 기존 표면은 session node target을 호출자가 직접 넘겼다. 이 방식은 actor
+code가 session 위치를 알아야 하므로 reconnect 뒤 stale route를 만들기 쉽다.
 
 정식 application 표면의 목표는 `SessionProxy`가 `actorId`만 받고 session route
 resolver를 통해 target을 찾는 것이다.
@@ -1167,7 +1152,9 @@ server가 늘고 줄 수 있는 구조이므로, 수동 peer endpoint를 sample 
 
 - routed channel은 global discovery 설정이 있으면 discovery-attached router로
   참여한다.
-- 같은 routed channel에서 discovery와 수동 연결을 섞으면 startup에서 실패한다.
+- service channel client와 routed channel은 global discovery 설정이 있으면
+  discovery 기반으로 peer를 찾는다.
+- 같은 capability에서 discovery와 수동 연결을 섞으면 startup에서 실패한다.
 - sample은 discovery 연결 실패를 retry loop나 sleep으로 숨기지 않는다.
 - 바로 연결되지 않으면 registry/discovery/topology 상태를 먼저 확인할 수 있어야
   한다.
@@ -1337,8 +1324,8 @@ public sealed class PlayActorRelayHandler : IZLinkActorRelayHandler
 
         if (packetName == "game.create")
         {
-            CreateGameReq req = message.Body.Decode<CreateGameReq>();
-            CreateGameRep rep = await game.CreateAsync(
+            CreateMatchReq req = message.Body.Decode<CreateMatchReq>();
+            CreateMatchRes rep = await game.CreateAsync(
                 context.ActorId,
                 req,
                 cancellationToken);
@@ -1371,12 +1358,12 @@ domain message handler는 actor 실행 문맥에만 등록된다.
 
 ```csharp
 public sealed class CreateGameHandler
-    : IZLinkActorRequestHandler<CreateGameReq, CreateGameRep>
+    : IZLinkActorRequestHandler<CreateMatchReq, CreateMatchRes>
 {
     private readonly TicTacToeGameService game;
 
-    public ValueTask<CreateGameRep> HandleAsync(
-        CreateGameReq request,
+    public ValueTask<CreateMatchRes> HandleAsync(
+        CreateMatchReq request,
         ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -1428,7 +1415,7 @@ public sealed class TicTacToeActor(
     public void Configure()
     {
         Context.AddPacket<CreateGameHandler>();
-        Context.AddPacket<JoinGameHandler>();
+        Context.AddPacket<JoinMatchHandler>();
         Context.AddPacket<MoveHandler>();
     }
 }
@@ -1633,8 +1620,8 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 
 | 테스트 | 확인 내용 |
 |--------|-----------|
-| discovery routed channel | 수동 연결 없이 registry/discovery로 routed request가 통과한다. |
-| discovery/manual 혼합 실패 | 같은 routed channel에서 두 방식을 섞으면 startup에서 실패한다. |
+| discovery service/routed channel | 수동 연결 없이 registry/discovery로 service request와 routed request가 통과한다. |
+| discovery/manual 혼합 실패 | 같은 capability에서 두 방식을 섞으면 startup에서 실패한다. |
 | discovery failure를 retry로 숨기지 않음 | sample과 helper가 retry loop나 warmup sleep 없이 실패를 드러낸다. |
 | registry metadata writer sample | registry discovery metadata sample이 bind 후 resolver에서 같은 key로 route를 읽는다. |
 | registry conditional delete | sample writer의 unbind가 `sessionId + bindingToken` 조건이 맞을 때만 삭제한다. |
@@ -1645,12 +1632,14 @@ sample 검증도 필요하다.
 - 기존 `TicTacToe` sample은 그대로 유지한다.
 - session actor dispatch sample은 별도 project로 유지한다.
 - session actor dispatch sample은 fake transport를 사용하지 않는다.
-- session actor dispatch sample은 수동 연결을 사용하지 않는다.
+- session actor dispatch sample은 service channel과 routed channel 모두 수동 연결을
+  사용하지 않는다. server bind endpoint는 provider 등록용이고, client 연결은
+  `UseDiscovery(...)` 기반 자동 연결로만 표현한다.
 - session actor dispatch sample은 retry나 route warmup sleep을 사용하지 않는다.
 - session actor dispatch sample은 direct target send/request API를 사용하지 않는다.
   session -> actor 방향은 actor create/dispatch helper를 쓰고, actor -> client 방향은
   `SessionProxy` 이름을 사용한다.
-- 실행 결과는 두 player 인증, game 생성, 재연결, join, move, 승패 판정을 모두
+- 실행 결과는 두 actor 인증, match 생성, 재연결, join, move, 승패 판정을 모두
   보여야 한다.
 
 ## 20. 구현 순서
@@ -1694,7 +1683,7 @@ sample 검증도 필요하다.
   수행된다.
 - stale disconnect는 binding token 조건으로 새 session route를 지우지 못한다.
 - sample serializer helper가 없다.
-- discovery 연결은 `UseDiscovery(...)` 계열 선언으로만 표현된다.
+- routed discovery 연결은 `UseDiscovery(...)` 계열 선언으로만 표현된다.
 - 실패를 감추는 retry helper나 warmup sleep이 없다.
 - request/reply matching은 request sequence 기준으로 검증된다.
 - direct target send/request API는 public sample과 guide에 나오지 않는다.

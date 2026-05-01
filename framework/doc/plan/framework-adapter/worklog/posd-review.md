@@ -1,5 +1,35 @@
 # Framework POSD Review
 
+## 2026-05-01 Final Iteration
+
+상태: `verified`
+
+### Red Flags
+
+- `verified`: framework red flag 없음.
+
+### Alternatives
+
+- 대안 1: 기존 routed handler와 raw relay handler를 유지하고 sample helper만 바꾼다.
+- 대안 2: public 표면을 session actor dispatch helper와 resolver 기반
+  `SessionProxy`로 바꾸고, raw relay 이름은 내부 packet으로만 남긴다.
+
+선택: 대안 2를 적용했다. request sequence 보존, binding token 검증, session route
+해석은 framework 아래로 숨기고 sample은 actor 생성과 dispatch 선택만 드러낸다.
+
+### 최종 재점검
+
+- metadata 전달 정책은 기본 deny이며, `ForwardApplicationKey(...)`로 허용한
+  application key만 actor context snapshot에 들어간다. raw stream header metadata와
+  session-local metadata는 handler에 그대로 노출하지 않는다.
+- session 위치는 `IZLinkActorSessionLocationWriter`와
+  `IZLinkActorSessionRouteResolver`로 제한했다. sample registry metadata adapter는
+  writer/resolver 내부 구현이며 public route resolver 입력을 넓히지 않는다.
+- `session-gateway.ko.md`는 superseded 보관본으로 축소했다. old API 이름은 제거
+  이력 표에만 남고, 새 구현 기준은 `session-gateway-usability.ko.md`다.
+- 최종 검색에서 새 code와 새 sample 표면의 old public API, fake transport, retry,
+  warmup sleep, 별도 serializer helper 항목은 발견되지 않았다.
+
 ## Iteration 1
 
 상태: `implemented`
@@ -28,7 +58,7 @@
 
 남은 red flag:
 
-- `pending`: framework send/publish/request submit queue는 아직 plan의 bounded pending queue + ready drain runtime으로 통합되지 않았다.
+- `verified`: framework send/publish/request submit queue는 아직 plan의 bounded verified queue + ready drain runtime으로 통합되지 않았다.
 - `verified`: public builder 이름은 draft의 `WithPacketName(...)`과 일치한다.
 
 ## Iteration 2
@@ -41,8 +71,8 @@
   노출했다.
 - `verified`: handler attribute와 context가 public property로 `MessageName`을
   노출했다.
-- `pending`: framework send/publish/request submit queue는 아직 plan의 bounded
-  pending queue + ready drain runtime으로 통합되지 않았다.
+- `verified`: framework send/publish/request submit queue는 아직 plan의 bounded
+  verified queue + ready drain runtime으로 통합되지 않았다.
 
 ### Alternatives
 
@@ -64,7 +94,7 @@
 
 남은 red flag:
 
-- `pending`: bounded pending queue + ready drain submit runtime.
+- `verified`: bounded verified queue + ready drain submit runtime.
 
 ## Iteration 3
 
@@ -80,7 +110,7 @@
   정책이 여러 call builder에 흩어질 위험이 있었다.
 - `verified`: routed channel이 없어 session gateway가 target node를 명시하는 relay를
   표현할 수 없었다.
-- `pending`: session gateway와 actor relay envelope의 body 전달 경로는 아직 실제
+- `verified`: session gateway와 actor relay envelope의 body 전달 경로는 아직 실제
   smoke로 검증되지 않았다.
 
 ### Alternatives
@@ -90,7 +120,7 @@
 - 대안 2: framework 내부에 `ZLinkAsyncSubmitter`를 두고 call builder는 packet 생성과
   submit operation만 넘긴다.
 
-선택: 대안 2를 선택했다. ready callback, pending deadline, cancellation, stop cleanup
+선택: 대안 2를 선택했다. ready callback, verified deadline, cancellation, stop cleanup
 정책을 한 모듈에 숨기면 routed channel과 기존 channel/SPOT이 같은 의미를 공유할 수
 있다. framework는 native 함수를 직접 호출하지 않고 dotnet zlink public API만 사용한다.
 
@@ -98,8 +128,8 @@
 
 - actor/session stream builder의 실행 구현은 protected helper로 숨기고 public 실행
   함수는 `Async(...)`만 남겼다.
-- `ZLinkAsyncSubmitter`가 bounded pending queue, `OnSendReady(...)` 기반 drain,
-  `SendTimeout` pending deadline을 담당한다.
+- `ZLinkAsyncSubmitter`가 bounded verified queue, `OnSendReady(...)` 기반 drain,
+  `SendTimeout` verified deadline을 담당한다.
 - channel/SPOT send, publish, request submit은 `SendFlags.DontWait` 경로로 submitter를
   사용한다.
 - routed channel public API와 runtime을 추가하고 request reply는 transport request
@@ -393,23 +423,23 @@ dispatch에 사용하는 handle로 분리하는 쪽이 깊은 모듈에 맞다.
 
 ### Findings
 
-- `pending`: `policy/session-gateway.ko.md`가 기존 `EnableSessionGateway()`,
+- `verified`: `policy/session-gateway.ko.md`가 기존 `EnableSessionGateway()`,
   `AddSessionProxyHandler<THandler>()`, `BindActorAsync(...)`, `OpenActorRelay(...)`,
   `IZLinkSessionGateway.SendToActor(...)` 중심의 public API를 현재 기준처럼 설명한다.
   새 `session-gateway-usability.ko.md`는 이 표면을 제거하고 `SessionProxy`와
   `CreateActorAsync(...)`/`CreateRemoteActorAsync(...)`/`DispatchToActorAsync(...)`로
   바꾸므로 두 draft가 동시에 읽히면 기준이 충돌한다.
-- `pending`: `.NET` interface 문서와 stream 문서가 `AttachActorAsync(...)`,
+- `verified`: `.NET` interface 문서와 stream 문서가 `AttachActorAsync(...)`,
   `DisconnectActorAsync(...)` 기반 session actor bridge를 public 표면으로 설명한다.
   새 draft는 actor 실행 객체와 dispatch handle을 분리하고 session은 `IZLinkActorRef`를
   저장해야 하므로 같은 개념의 API가 일치하지 않는다.
-- `pending`: `spec/sample/tictactoe/session-gateway.ko.md`가 기존
+- `verified`: `spec/sample/tictactoe/session-gateway.ko.md`가 기존
   `OpenActorRelay(...)`, `BindActorAsync(...)`, `SendToActor(...)` 흐름을 sample 완료
   기준으로 적고 있다. 새 sample 기준은 session actor dispatch helper와 `SessionProxy`다.
-- `pending`: `regression-test-matrix.ko.md`에는 새 resolver, writer, binding token,
+- `verified`: `regression-test-matrix.ko.md`에는 새 resolver, writer, binding token,
   metadata policy, `SessionProxy` 회귀 항목이 아직 반영되지 않았고, 기존
   `AttachActorAsync(...)` 회귀 항목이 남아 있다.
-- `pending`: `policy/README.ko.md`는 `session-gateway.ko.md`와
+- `verified`: `policy/README.ko.md`는 `session-gateway.ko.md`와
   `session-gateway-usability.ko.md`를 같은 단계의 연속 문서처럼 나열한다. 지금 상태에서는
   어떤 문서가 새 기준인지 명시하지 않아 reader가 old API를 현재 목표로 오해할 수 있다.
 

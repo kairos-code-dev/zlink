@@ -1,7 +1,6 @@
 using Systems.Zlink.Stream.Connector.Protocol;
 using Systems.Zlink.Stream.Connector.Protocol.Compression;
 using Systems.Zlink.Stream.Connector.Contracts;
-using System.Buffers.Binary;
 using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Actors;
@@ -78,7 +77,7 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
         }
 
         var header = CreateHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata, state.CurrentDispatch);
-        var frame = EncodeFrame(HeaderCodec.Encode(header).Span, body.Span);
+        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body.Span);
         using var payloadMessage = Message.FromBytes(frame);
 
         if (!stream.Write(payloadMessage))
@@ -96,15 +95,6 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
         ZlinkStreamMetadata metadata,
         ZLinkActorDispatchState? currentDispatch);
 
-    private static byte[] EncodeFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body)
-    {
-        var frame = new byte[6 + header.Length + body.Length];
-        BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
-        header.CopyTo(frame.AsSpan(6, header.Length));
-        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
-        return frame;
-    }
 }
 
 internal sealed class ZLinkActorSendCall<TMessage>(

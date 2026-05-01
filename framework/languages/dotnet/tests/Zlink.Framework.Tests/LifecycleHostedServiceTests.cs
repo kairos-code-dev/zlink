@@ -9,12 +9,19 @@ public sealed class LifecycleHostedServiceTests
     [Fact]
     public async Task Host_Starts_And_Stops_FrameworkRuntimeContext()
     {
+        var pubPort = GetEphemeralPort();
+        var routerPort = GetEphemeralPort();
         var builder = Host.CreateApplicationBuilder();
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.UseDiscovery(discovery => discovery.Add($"tcp://127.0.0.1:{routerPort}"));
             options.AddChannel("profile", channel => channel.EnableClient());
+        });
+        builder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = $"tcp://127.0.0.1:{pubPort}";
+            options.RouterEndpoint = $"tcp://127.0.0.1:{routerPort}";
         });
 
         using var host = builder.Build();
@@ -43,7 +50,7 @@ public sealed class LifecycleHostedServiceTests
         {
             options.UseDiscovery(discovery =>
             {
-                discovery.Add($"tcp://127.0.0.1:{pubPort}");
+                discovery.Add($"tcp://127.0.0.1:{routerPort}");
             });
             options.AddChannel("profile", channel => channel.EnableClient());
         });

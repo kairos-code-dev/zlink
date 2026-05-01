@@ -1,7 +1,12 @@
 namespace TicTacToe.Server.Play.Actors;
 
-internal sealed class PlayActorFactory(ILogger<PlayActor> logger)
+internal sealed class PlayActorFactory(ILogger<PlayActor> logger) : IZLinkActorFactory
 {
-    public PlayActor Create(string actorId)
-        => new(actorId, logger);
+    public ValueTask<IZLinkActor> CreateAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IZLinkActor>(new PlayActor(actorId, logger));
+    }
 }

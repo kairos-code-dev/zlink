@@ -43,7 +43,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
         services.AddSingleton<IZLinkSpotPublisherClient, ZLinkSpotPublisherClientService>();
         services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
-        services.AddSingleton<IZLinkSessionGateway, ZLinkSessionGatewayService>();
+        services.AddSingleton<IZLinkSessionProxy, ZLinkSessionProxyService>();
+        services.AddSingleton<IZLinkActorClient, ZLinkActorClientService>();
+        services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, ZLinkFrameworkHostedService>();
 
         foreach (var filterType in registration.Filters)
@@ -54,6 +56,30 @@ public static class ServiceCollectionExtensions
         foreach (var actorFactoryType in registration.ActorFactories.Values)
         {
             services.AddScoped(actorFactoryType);
+        }
+
+        if (registration.ActorPlayRouteResolverType is not null)
+        {
+            services.TryAddSingleton(registration.ActorPlayRouteResolverType);
+            services.AddSingleton(
+                typeof(IZLinkActorPlayRouteResolver),
+                provider => provider.GetRequiredService(registration.ActorPlayRouteResolverType));
+        }
+
+        if (registration.ActorSessionRouteResolverType is not null)
+        {
+            services.TryAddSingleton(registration.ActorSessionRouteResolverType);
+            services.AddSingleton(
+                typeof(IZLinkActorSessionRouteResolver),
+                provider => provider.GetRequiredService(registration.ActorSessionRouteResolverType));
+        }
+
+        if (registration.ActorSessionLocationWriterType is not null)
+        {
+            services.TryAddSingleton(registration.ActorSessionLocationWriterType);
+            services.AddSingleton(
+                typeof(IZLinkActorSessionLocationWriter),
+                provider => provider.GetRequiredService(registration.ActorSessionLocationWriterType));
         }
 
         foreach (var streamNode in registration.StreamNodes.Values)
@@ -76,10 +102,6 @@ public static class ServiceCollectionExtensions
                 services.AddScoped(handler.HandlerType);
             }
 
-            if (routed.SessionProxyHandlerType is not null)
-            {
-                services.AddScoped(routed.SessionProxyHandlerType);
-            }
         }
 
         return services;

@@ -10,13 +10,13 @@ public sealed record CreateGameRes(string GameId, string PlayEndpoint, string Ga
 
 public sealed record AuthenticatePlayerReq(string AccessToken);
 
-public sealed record AuthenticatePlayerRes(string PlayerId);
+public sealed record AuthenticatePlayerRes(string ActorId);
 
 public sealed record AuthenticateReq(string AccessToken);
 
-public sealed record AuthenticateRes(string PlayerId);
+public sealed record AuthenticateRes(string ActorId);
 
-public sealed record TicTacToeGameJoinReq(string GameId, string PlayerId);
+public sealed record TicTacToeGameJoinReq(string GameId, string ActorId);
 
 public sealed record TicTacToeGameJoinRes(GameState State);
 
@@ -28,7 +28,7 @@ public sealed record PlaceMarkReq(int Cell);
 
 public sealed record PlaceMarkRes(GameState State);
 
-public sealed record PlayerJoinedNotify(string GameId, string PlayerId, string Mark, GameState State);
+public sealed record PlayerJoinedNotify(string GameId, string ActorId, string Mark, GameState State);
 
 public sealed record GameStateNotify(GameState State);
 
@@ -38,7 +38,7 @@ public sealed record GameState(
     string Status,
     string? Winner,
     string NextTurn,
-    string? XPlayerId,
-    string? OPlayerId,
-    string? LastMovePlayerId,
+    string? XActorId,
+    string? OActorId,
+    string? LastMoveActorId,
     int? LastMoveCell);

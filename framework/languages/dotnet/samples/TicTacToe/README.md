@@ -8,7 +8,7 @@ This sample maps a two-player tic-tac-toe flow onto `Zlink.Framework`:
 4. two clients connect to the play STREAM endpoint,
 5. each client sends `AuthenticateReq` to the play server,
 6. the play session asks the API server to authenticate over the `Api` channel,
-7. the API server returns `playerId`, and the play session creates a play actor whose `ActorId` is that `playerId`,
+7. the API server returns `actorId`, and the play session creates a play actor whose `ActorId` is that `actorId`,
 8. both actors join the same tic-tac-toe game,
 9. the actors send `PlaceMarkReq` packets until player X wins,
 10. the game pushes `PlayerJoinedNotify` to the waiting opponent when the second player joins,

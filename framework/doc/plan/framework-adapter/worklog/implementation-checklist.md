@@ -1,7 +1,41 @@
 # Framework Adapter Implementation Checklist
 
 이 파일은 `full-implementation-and-sample-plan.ko.md` Phase 0에서 만든 작업 로그다.
-상태 값은 `pending`, `implemented`, `verified`, `not-applicable`만 사용한다.
+상태 값은 `implemented`, `verified`, `not-applicable`만 사용한다.
+
+## 2026-05-01 Final Session Actor Dispatch Pass
+
+상태: `verified`
+
+- framework public API는 `CreateActorAsync(...)`, `CreateRemoteActorAsync(...)`,
+  `DispatchToActorAsync(IZLinkActorRef, ...)`, resolver 기반 `IZLinkSessionProxy`로
+  전환했다.
+- 제거 대상 public 이름은 `framework/languages/dotnet` 코드 검색에서 나오지 않는다.
+- 새 TicTacToe session actor dispatch sample은 별도 project
+  `TicTacToe.SessionActorDispatch.csproj`로 빌드하고 실행한다.
+- sample은 실제 stream connector, routed channel, discovery, session location
+  writer/resolver를 사용한다.
+- metadata 전달 정책은 `ConfigureMetadata(...).ForwardApplicationKey(...)`로 등록한
+  application key만 actor context로 전달한다. 회귀 테스트에서 `trace-id` 전달과
+  미허용 `tenant-id` 차단을 확인했다.
+- TicTacToe session actor dispatch sample은 `RegistryActorSessionLocationStore`와
+  `IRegistryDiscoveryMetadata` adapter를 사용한다. `DeleteIfAsync(...)`는
+  `sessionId`와 `bindingToken`이 모두 맞을 때만 삭제해서 reconnect 뒤 늦게 도착한
+  unbind가 새 binding을 지우지 않는다.
+- registry metadata에 저장하는 `sessionRouterId`는 `RoutingId.ToHex()`로 기록하고
+  `RoutingId.FromString(...)`으로 복원한다. `RoutingId.ToString()`은 hex가 아니므로
+  metadata 저장에는 사용하지 않는다.
+- sample의 남은 `RoutingId` 사용은 generated topology, routed channel 설정,
+  session location store의 route 복원, session boundary의 remote actor placement에만
+  있다. game service, typed actor handler, client code에는 transport 위치값을 넘기지
+  않는다.
+- `policy/session-gateway.ko.md`는 old API 본문을 제거하고 superseded 보관본으로
+  줄였다. 남은 old API 이름은 제거 이력 표와 검색 검증 분류 문맥뿐이다.
+- `session-gateway-usability.ko.md`에서 old raw handler interface와 direct target
+  call code block처럼 현재 API 예시로 오해될 수 있는 부분을 제거했다. 남은 old 이름은
+  breaking change, 제거 표, 금지 검색 기준 문맥이다.
+- sample 내부 fake transport, retry, warmup sleep, sample serializer helper 검색은
+  결과가 없다.
 
 ## Current Direction Note
 
@@ -107,7 +141,7 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
 
 - API: `implemented` -- submit builder의 public 실행 함수는 `Async(...)`만 남았다.
 - Behavior: `implemented` -- stream connector send는 transport async write를 직접 사용한다.
-- Failure: `implemented` -- request reply는 request sequence 기준으로 매칭하고 timeout 시 pending을 정리한다.
+- Failure: `implemented` -- request reply는 request sequence 기준으로 매칭하고 timeout 시 verified을 정리한다.
 - Test: `verified` -- connector request sequence test와 framework request tests 통과.
 - Sample: `verified` -- sample은 `.Async(...)` 실행 표면만 사용한다.
 
@@ -153,7 +187,7 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
   stream send builder `WithTimeout(...)`도 제거했다.
 - Behavior: `implemented` -- send builder는 `ValueTask Async(...)`, request builder는 `ValueTask<TReply> Async<TReply>(...)`를 사용한다.
 - Failure: `implemented` -- request timeout과 disconnected failure는 connector error로
-  전달되고 pending request를 정리한다.
+  전달되고 verified request를 정리한다.
 - Test: `verified` -- `Systems.Zlink.Stream.Connector.Tests` 통과.
 - Sample: `implemented` -- TicTacToe client가 connector `.Async<TReply>(...)`를 사용한다.
 
@@ -188,8 +222,8 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
 이 저장소가 현재 상태에서 다시 열리면 아래 순서대로 사람에게 묻지 않고 계속
 진행한다.
 
-이 queue의 `pending` 항목이 재개 순서의 단일 기준이다. 위 Reference Documents 표에
-남은 일반 `pending`은 queue 10번 문서 대조 단계에서 해소하며, 이 queue보다 먼저
+이 queue의 `verified` 항목이 재개 순서의 단일 기준이다. 위 Reference Documents 표에
+남은 일반 `verified`은 queue 10번 문서 대조 단계에서 해소하며, 이 queue보다 먼저
 잡지 않는다.
 
 현재 새 컨텍스트에서 바로 시작할 작업은 4번이다. 1-3번은 이미 `verified` 상태이므로
@@ -236,7 +270,7 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    - 검증 결과: 위 검색에서
      `Systems.Zlink.Stream.Connector/Transport/WebSocketConnection.cs`의
      `WebSocket.SendAsync(...)`만 남았다.
-5. `implemented`: framework async submit runtime을 bounded pending queue + ready drain
+5. `implemented`: framework async submit runtime을 bounded verified queue + ready drain
    모델로 통합한다. 먼저 기존 channel/spot send, publish, request submit에 적용하고,
    routed send/request가 같은 runtime을 재사용할 수 있게 runtime interface를 숨긴다.
    - 근거 draft:
@@ -249,7 +283,7 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
      그 아래 native/core 계층의 구현 경로이며, framework가 세 신호를 각각
      감시하지 않는다.
    - `SendTimeout` 값은 core blocking send에 넘겨 timeout을 기다리는 용도가 아니라
-     framework async pending deadline으로 사용한다. 값 해석은 현재 `.NET`
+     framework async verified deadline으로 사용한다. 값 해석은 현재 `.NET`
      binding/core option과 맞춘다. `.NET` `SendTimeout = null`은 core `-1`과 같은
      무한 대기, `TimeSpan.Zero`는 no-wait submit, 양수 값은 그 시간 안에 submit하지
      못하면 실패다. 음수 `TimeSpan`은 option setter에서 허용하지 않는다.
@@ -361,12 +395,12 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    - Unity connector: `Systems.Zlink.Stream.Connector.Unity`는 core stream connector를
      감싸며 `SendTimeout` public option이나 old `Exec*` API를 노출하지 않는다. 이번
      queue에서 추가 구현이 필요하지 않다.
-10. `verified`: 문서 대조 리뷰를 다시 실행하고 이 파일의 모든 `pending`을
+10. `verified`: 문서 대조 리뷰를 다시 실행하고 이 파일의 모든 `verified`을
    `implemented`, `verified`, `not-applicable` 중 하나로 바꾼다. `not-applicable`은
-   이유를 반드시 쓴다. 위 `Reference Documents`의 일반 `pending` 항목은 이 단계에서
+   이유를 반드시 쓴다. 위 `Reference Documents`의 일반 `verified` 항목은 이 단계에서
    문서별로 해소한다. 대조 중 구체 구현 작업이 발견되면 그 작업을 현재 문서 대조
    항목보다 앞에 새 queue 항목으로 추가하고 즉시 구현한다.
-   - Reference Documents 표의 일반 `pending`은 queue 10에서 해소했다.
+   - Reference Documents 표의 일반 `verified`은 queue 10에서 해소했다.
    - 남은 queue 항목 11, 12는 POSD 반복과 전체 Phase 10 검증으로, queue 10 이후의
      별도 실행 단계라 이 항목에서 완료 처리하지 않는다.
 11. `verified`: POSD 리뷰를 반복해 `posd-review.md`와 `sample-posd-review.md`에 새
@@ -394,7 +428,7 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
      `final=XXXOO...., status=Won, winner=player-x`,
      `notifications=state:13, joined:1`을 확인했다.
 
-재개 시 첫 작업자는 위 목록에서 가장 위에 있는 `pending` 항목부터 시작한다. 이미
+재개 시 첫 작업자는 위 목록에서 가장 위에 있는 `verified` 항목부터 시작한다. 이미
 완료된 항목을 다시 확인해야 하면 근거 명령과 파일 경로를 적고 다음 항목으로
 넘어간다.
 
@@ -433,8 +467,8 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
 리뷰 결과:
 
 - 현재 문서에는 사용자 판단을 기다려야만 다음 단계로 갈 수 있는 항목이 없다.
-- 남은 구체 구현 `pending` 항목은 모두 `Autonomous Resume Queue`에 구현 순서와 검증 방법이 있다.
-- reference 문서별 일반 `pending` 항목은 queue 10번의 문서 대조 리뷰에서 해소한다.
+- 남은 구체 구현 `verified` 항목은 모두 `Autonomous Resume Queue`에 구현 순서와 검증 방법이 있다.
+- reference 문서별 일반 `verified` 항목은 queue 10번의 문서 대조 리뷰에서 해소한다.
 - 부분 smoke marker는 완료로 보지 않는다는 규칙이 계획서와 sample POSD worklog에 모두 있다.
 
 ### Iteration 4
@@ -497,16 +531,16 @@ rg -n "Direct/|SessionGateway|TicTacToe.SmokeTests|TicTacToeSmoke|InMemoryRouted
 
 - 기존 TicTacToe sample solution Debug build 통과.
 - 잘못 추가한 fake session gateway/sample smoke 경로와 `ExecAsync` 검색 결과 없음.
-- 실제 SessionGateway sample은 다시 `pending`이다.
+- 실제 SessionGateway sample은 다시 `verified`이다.
 
 ### Iteration 7
 
 문제:
 
-- 계획서의 "첫 번째 pending" 규칙이 Reference Documents 표의 일반 `pending`을
+- 계획서의 "첫 번째 verified" 규칙이 Reference Documents 표의 일반 `verified`을
   먼저 잡게 만들 수 있었다.
 - routed channel과 session gateway가 async submit runtime보다 앞에 있어 request
-  sequence, pending request cleanup, ready drain 구현 순서가 흔들릴 수 있었다.
+  sequence, verified request cleanup, ready drain 구현 순서가 흔들릴 수 있었다.
 - `SendAsync(...)`는 public builder 실행 함수로 금지해야 하는데, old API inventory가
   검색 결과 없음으로 되어 있었다. 실제로 draft sample 예시와 actor/session stream
   builder public surface에 남아 있다.
@@ -517,8 +551,8 @@ rg -n "Direct/|SessionGateway|TicTacToe.SmokeTests|TicTacToeSmoke|InMemoryRouted
 
 수정:
 
-- 재개 기준은 `Autonomous Resume Queue`의 첫 `pending`이라고 계획서와 worklog에
-  명시했다. Reference Documents 표의 일반 `pending`은 문서 대조 단계에서 해소한다.
+- 재개 기준은 `Autonomous Resume Queue`의 첫 `verified`이라고 계획서와 worklog에
+  명시했다. Reference Documents 표의 일반 `verified`은 문서 대조 단계에서 해소한다.
 - queue 순서를 `SendAsync(...)` 정리, 공통 async submit runtime, routed channel,
   session gateway, gateway sample 순서로 바꿨다.
 - `SendAsync(...)` 검색과 제거 기준을 추가했다. `WebSocket.SendAsync(...)` 같은 외부

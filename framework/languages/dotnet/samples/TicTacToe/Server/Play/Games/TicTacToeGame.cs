@@ -14,7 +14,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
     private string _nextTurn = "X";
     private string _status = "WaitingForPlayers";
     private string? _winner;
-    private string? _lastMovePlayerId;
+    private string? _lastMoveActorId;
     private int? _lastMoveCell;
     private DateTimeOffset? _turnDeadline;
     private IZLinkTimer? _gameTick;
@@ -67,7 +67,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         int cell,
         CancellationToken cancellationToken)
     {
-        if (!_players.TryGetValue(actor.PlayerId, out var slot))
+        if (!_players.TryGetValue(actor.ActorId, out var slot))
         {
             throw new InvalidOperationException("Player has not joined this game.");
         }
@@ -93,7 +93,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         }
 
         _board[cell] = slot.Mark[0];
-        _lastMovePlayerId = actor.PlayerId;
+        _lastMoveActorId = actor.ActorId;
         _lastMoveCell = cell;
         AdvanceAfterMove(slot);
 
@@ -115,9 +115,9 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         var winner = _players.Values.FirstOrDefault(player => player.Mark != _nextTurn);
 
         _status = "TurnTimedOut";
-        _winner = winner?.Actor.PlayerId;
+        _winner = winner?.Actor.ActorId;
         _nextTurn = string.Empty;
-        _lastMovePlayerId = timedOut?.Actor.PlayerId;
+        _lastMoveActorId = timedOut?.Actor.ActorId;
         _lastMoveCell = null;
         _turnDeadline = null;
 
@@ -126,7 +126,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
 
     private (PlayerSlot Slot, bool IsNewPlayer) GetOrAddPlayer(PlayActor actor)
     {
-        if (_players.TryGetValue(actor.PlayerId, out var existing))
+        if (_players.TryGetValue(actor.ActorId, out var existing))
         {
             existing.Actor = actor;
             return (existing, false);
@@ -140,7 +140,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         };
 
         var slot = new PlayerSlot(actor, mark);
-        _players.Add(actor.PlayerId, slot);
+        _players.Add(actor.ActorId, slot);
         return (slot, true);
     }
 
@@ -158,7 +158,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         if (HasWon(slot.Mark[0]))
         {
             _status = "Won";
-            _winner = slot.Actor.PlayerId;
+            _winner = slot.Actor.ActorId;
             _nextTurn = string.Empty;
             _turnDeadline = null;
             return;
@@ -219,9 +219,9 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
             _status,
             _winner,
             _nextTurn,
-            x?.Actor.PlayerId,
-            o?.Actor.PlayerId,
-            _lastMovePlayerId,
+            x?.Actor.ActorId,
+            o?.Actor.ActorId,
+            _lastMoveActorId,
             _lastMoveCell);
     }
 
@@ -242,13 +242,13 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
     {
         var message = new PlayerJoinedNotify(
             state.GameId,
-            joinedActor.PlayerId,
+            joinedActor.ActorId,
             joinedSlot.Mark,
             state);
 
         foreach (var player in _players.Values)
         {
-            if (string.Equals(player.Actor.PlayerId, joinedActor.PlayerId, StringComparison.Ordinal))
+            if (string.Equals(player.Actor.ActorId, joinedActor.ActorId, StringComparison.Ordinal))
             {
                 continue;
             }

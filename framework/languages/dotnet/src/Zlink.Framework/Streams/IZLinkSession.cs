@@ -20,7 +20,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionContext
+public interface IZLinkSessionIdentityContext
 {
     string SessionId { get; }
 
@@ -29,7 +29,10 @@ public interface IZLinkSessionContext
     string? LocalAddr { get; }
 
     string? RemoteAddr { get; }
+}
 
+public interface IZLinkSessionChannelClient
+{
     IZLinkRequestCall RequestChannel<TRequest>(
         string channelName,
         TRequest request);
@@ -37,40 +40,64 @@ public interface IZLinkSessionContext
     IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);
+}
 
+public interface IZLinkSessionClientStream
+{
     IZLinkSessionSendCall Send<TMessage>(TMessage message);
 
     IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
+}
 
-    ValueTask BindActorAsync(
+public interface IZLinkSessionActorDispatchContext
+{
+    ValueTask<IZLinkActorRef> CreateActorAsync(
         string actorId,
+        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask UnbindActorAsync(
+    ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
+        RoutingId actorNodeId,
+        string actorId,
+        string actorType,
         CancellationToken cancellationToken = default);
-
-    IZLinkActorRelay OpenActorRelay(
-        string routerChannelId,
-        RoutingId targetPlayNodeRid,
-        string actorId);
 
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
-
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
-
-    ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 
+    ValueTask DispatchToActorAsync(
+        IZLinkActorRef actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionLifecycle
+{
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionActorAttachmentContext
+{
+    ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
     ValueTask DisconnectActorAsync(
         CancellationToken cancellationToken = default);
 }
+
+public interface IZLinkSessionContext :
+    IZLinkSessionIdentityContext,
+    IZLinkSessionChannelClient,
+    IZLinkSessionClientStream,
+    IZLinkSessionActorDispatchContext,
+    IZLinkSessionLifecycle;
 
 public interface IZLinkSessionSendCall
 {

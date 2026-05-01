@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace TicTacToe.SessionGateway.Infrastructure;
+namespace TicTacToe.SessionActorDispatch.Infrastructure;
 
 internal static class EphemeralTcpEndpoint
 {

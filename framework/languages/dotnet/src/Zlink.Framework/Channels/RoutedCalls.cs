@@ -47,7 +47,7 @@ public interface IZLinkRoutedRequestHandler<in TRequest, TReply>
 
 public sealed class ZLinkRoutedSendContext : ZLinkHandlerContext
 {
-    public ZLinkRoutedSendContext(
+    internal ZLinkRoutedSendContext(
         string routerChannelId,
         RoutingId sourceNodeRid,
         string? packetName,
@@ -68,7 +68,7 @@ public sealed class ZLinkRoutedSendContext : ZLinkHandlerContext
 
 public sealed class ZLinkRoutedRequestContext : ZLinkHandlerContext
 {
-    public ZLinkRoutedRequestContext(
+    internal ZLinkRoutedRequestContext(
         string routerChannelId,
         RoutingId sourceNodeRid,
         string? packetName,

@@ -1021,7 +1021,16 @@ public sealed class SpotIntegrationTests
         }
     }
 
-    public sealed class TestActorFactory;
+    public sealed class TestActorFactory(ActorIntegrationRecorder recorder) : IZLinkActorFactory
+    {
+        public ValueTask<IZLinkActor> CreateAsync(
+            string actorId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId, recorder));
+        }
+    }
 
     public sealed class ActorIntegrationRecorder
     {

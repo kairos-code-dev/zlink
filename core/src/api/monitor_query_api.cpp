@@ -9,6 +9,7 @@
 
 #include <cstring>
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 
 int socket_monitor_snapshot_provider (void *subject_,
@@ -93,14 +94,7 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
         zlink_msg_close (&msg);
         return -1;
     }
-    const size_t routing_id_size = zlink_msg_size (&msg);
-    const size_t copy_size =
-      routing_id_size > sizeof (event_->routing_id.data)
-        ? sizeof (event_->routing_id.data)
-        : routing_id_size;
-    event_->routing_id.size = static_cast<uint8_t> (copy_size);
-    if (copy_size > 0)
-        memcpy (event_->routing_id.data, zlink_msg_data (&msg), copy_size);
+    zlink::copy_routing_id_from_msg (msg, &event_->routing_id);
     zlink_msg_close (&msg);
 
     zlink_msg_init (&msg);
@@ -109,14 +103,9 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
         zlink_msg_close (&msg);
         return -1;
     }
-    const size_t local_size = zlink_msg_size (&msg);
-    const size_t local_copy =
-      local_size >= sizeof (event_->local_addr)
-        ? sizeof (event_->local_addr) - 1
-        : local_size;
-    if (local_copy > 0)
-        memcpy (event_->local_addr, zlink_msg_data (&msg), local_copy);
-    event_->local_addr[local_copy] = '\0';
+    zlink::copy_fixed_c_string_from_bytes (
+      event_->local_addr, sizeof (event_->local_addr), zlink_msg_data (&msg),
+      zlink_msg_size (&msg));
     zlink_msg_close (&msg);
 
     zlink_msg_init (&msg);
@@ -125,14 +114,9 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
         zlink_msg_close (&msg);
         return -1;
     }
-    const size_t remote_size = zlink_msg_size (&msg);
-    const size_t remote_copy =
-      remote_size >= sizeof (event_->remote_addr)
-        ? sizeof (event_->remote_addr) - 1
-        : remote_size;
-    if (remote_copy > 0)
-        memcpy (event_->remote_addr, zlink_msg_data (&msg), remote_copy);
-    event_->remote_addr[remote_copy] = '\0';
+    zlink::copy_fixed_c_string_from_bytes (
+      event_->remote_addr, sizeof (event_->remote_addr), zlink_msg_data (&msg),
+      zlink_msg_size (&msg));
     zlink_msg_close (&msg);
 
     return 0;

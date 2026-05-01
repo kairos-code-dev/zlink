@@ -558,6 +558,53 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         finally:
             reset_auto_hwm_detail_state()
 
+    def test_auto_hwm_detail_prefers_expected_hwm_when_transport_samples_conflict(self):
+        reset_auto_hwm_detail_state()
+        try:
+            RC.emit_auto_hwm_detail_line(
+                auto_hwm_detail_line(
+                    "DEALER_ROUTER",
+                    "tcp",
+                    "server",
+                    131072,
+                    socket_type="router",
+                    effective_message_bytes="131072",
+                    size_cap="512",
+                    sndhwm="128",
+                    rcvhwm="128",
+                    effective_sndbuf="524288",
+                    effective_rcvbuf="524288",
+                )
+            )
+            RC.emit_auto_hwm_detail_line(
+                auto_hwm_detail_line(
+                    "DEALER_ROUTER",
+                    "tls",
+                    "server",
+                    131072,
+                    socket_type="router",
+                    effective_message_bytes="131072",
+                    size_cap="512",
+                    sndhwm="4",
+                    rcvhwm="4",
+                    effective_sndbuf="524288",
+                    effective_rcvbuf="524288",
+                )
+            )
+
+            lines = []
+            self.assertTrue(
+                RC.emit_auto_hwm_detail_table(lines.append, "DEALER_ROUTER")
+            )
+            output = "\n".join(lines)
+            self.assertEqual(output.count("| 131072  | server"), 1)
+            self.assertIn("| 131072  | server    | router", output)
+            self.assertIn("| 4      | 4", output)
+            self.assertNotIn("| 128    | 128", output)
+            self.assertNotIn("Transport", output)
+        finally:
+            reset_auto_hwm_detail_state()
+
     def test_spot_auto_hwm_detail_hides_inactive_sides_and_transport(self):
         reset_auto_hwm_detail_state()
         try:

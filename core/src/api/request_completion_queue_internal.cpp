@@ -14,16 +14,6 @@ namespace
 {
 thread_local void *g_current_request_completion_owner = NULL;
 
-void close_completion_parts (std::vector<zlink_msg_t> *parts_)
-{
-    if (!parts_)
-        return;
-
-    for (size_t i = 0; i < parts_->size (); ++i)
-        zlink_msg_close (&(*parts_)[i]);
-    parts_->clear ();
-}
-
 int move_completion_parts (std::vector<zlink_msg_t> *dest_,
                            zlink_msg_t *parts_,
                            size_t part_count_)
@@ -43,7 +33,7 @@ int move_completion_parts (std::vector<zlink_msg_t> *dest_,
         zlink_msg_init (&moved);
         if (zlink_msg_move (&moved, &parts_[i]) != 0) {
             zlink_msg_close (&moved);
-            close_completion_parts (dest_);
+            zlink::close_msg_frames (dest_);
             errno = EFAULT;
             return -1;
         }
@@ -97,7 +87,7 @@ zlink::request_completion::queued_completion_t::queued_completion_t () :
 
 zlink::request_completion::queued_completion_t::~queued_completion_t ()
 {
-    close_completion_parts (&parts);
+    zlink::close_msg_frames (&parts);
 }
 
 zlink::request_completion::queued_completion_t::queued_completion_t (
@@ -119,7 +109,7 @@ zlink::request_completion::queued_completion_t::operator= (
     if (this == &other_)
         return *this;
 
-    close_completion_parts (&parts);
+    zlink::close_msg_frames (&parts);
     handler = other_.handler;
     userdata = other_.userdata;
     errnum = other_.errnum;

@@ -13,19 +13,6 @@
 
 namespace
 {
-void copy_option_setting (zlink::spot_node_t::option_setting_t *dst_,
-                          const void *optval_,
-                          size_t optvallen_)
-{
-    if (!dst_)
-        return;
-
-    dst_->enabled = true;
-    dst_->value = 0;
-    dst_->size = optvallen_;
-    memcpy (&dst_->value, optval_, optvallen_);
-}
-
 void store_pending_pub_option (spot_handle_t *spot_,
                                int option_,
                                const void *optval_,
@@ -34,39 +21,8 @@ void store_pending_pub_option (spot_handle_t *spot_,
     if (!spot_)
         return;
 
-    switch (option_) {
-        case ZLINK_SPOT_PUB_OPT_SNDHWM:
-            copy_option_setting (&spot_->pending_pub_defaults.sndhwm, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_SNDTIMEO:
-            copy_option_setting (&spot_->pending_pub_defaults.sndtimeo, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_LINGER:
-            copy_option_setting (&spot_->pending_pub_defaults.linger, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_NODROP:
-            copy_option_setting (&spot_->pending_pub_defaults.nodrop, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_SNDBUF:
-            copy_option_setting (&spot_->pending_pub_defaults.sndbuf, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_RCVBUF:
-            copy_option_setting (&spot_->pending_pub_defaults.rcvbuf, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            copy_option_setting (
-              &spot_->pending_pub_defaults.auto_hwm_msg_unit_bytes, optval_,
-              optvallen_);
-            return;
-        default:
-            return;
-    }
+    (void) zlink::store_spot_pub_default (&spot_->pending_pub_defaults, option_,
+                                          optval_, optvallen_);
 }
 
 void store_pending_sub_option (spot_handle_t *spot_,
@@ -77,35 +33,8 @@ void store_pending_sub_option (spot_handle_t *spot_,
     if (!spot_)
         return;
 
-    switch (option_) {
-        case ZLINK_SPOT_SUB_OPT_RCVHWM:
-            copy_option_setting (&spot_->pending_sub_defaults.rcvhwm, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_LINGER:
-            copy_option_setting (&spot_->pending_sub_defaults.linger, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_SNDBUF:
-            copy_option_setting (&spot_->pending_sub_defaults.sndbuf, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_RCVBUF:
-            copy_option_setting (&spot_->pending_sub_defaults.rcvbuf, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
-            copy_option_setting (&spot_->pending_sub_defaults.rcvtimeo, optval_,
-                                 optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            copy_option_setting (
-              &spot_->pending_sub_defaults.auto_hwm_msg_unit_bytes, optval_,
-              optvallen_);
-            return;
-        default:
-            return;
-    }
+    (void) zlink::store_spot_sub_default (&spot_->pending_sub_defaults, option_,
+                                          optval_, optvallen_);
 }
 
 int map_common_to_spot_pub_option (zlink_option_t option_)

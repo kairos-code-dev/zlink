@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, configureTlsClient, configureTlsServer, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle } = require('./perf_single_common');
+const { applyContextPolicy, applySpotNodeAdmission, applySocketPolicy, benchmarkEndpoint, configureTlsClient, configureTlsServer, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle } = require('./perf_single_common');
 const NODE_RID = zlink.RoutingId.fromBytes(Buffer.from('perf-spot-reqrep-node', 'ascii'));
 const SPOT_RID = zlink.RoutingId.fromBytes(Buffer.from('perf-spot-reqrep-spot', 'ascii'));
 const REQUESTER_RID = zlink.RoutingId.fromBytes(Buffer.from('perf-spot-reqrep-requester', 'ascii'));
@@ -75,13 +75,14 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     applyContextPolicy(ctx);
     const requester = new zlink.RouterSocket(ctx);
     const replierNode = new zlink.SpotNode(ctx);
+    applySpotNodeAdmission(replierNode, options);
     const replier = replierNode.createSpot();
     const endpoint = await benchmarkEndpoint(options.transport, `spot-reqrep-${msgSize}`);
     let stopResponder = false;
     let responderLoop = null;
     try {
         applySocketPolicy(requester, options);
-        applySocketPolicy(replier, options);
+        replier.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
         configureTlsServer(replierNode, options.transport);
         configureTlsClient(requester, options.transport);
         requester.setRoutingId(REQUESTER_RID);

@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "services/discovery/socket_discovery_attachment.hpp"
 
 #include "services/discovery/discovery.hpp"
@@ -84,10 +85,11 @@ void socket_discovery_attachment_t::report_topology (
     entry.routing_id = routing_id;
     entry.service_kind = ZLINK_SERVICE_KIND_SOCKET;
     entry.service_role = static_cast<zlink_service_role_t> (local_role_);
-    strncpy (entry.service_name, discovery_->service_name ().c_str (),
-             sizeof (entry.service_name) - 1);
-    strncpy (entry.endpoint, advertise_endpoint_.c_str (),
-             sizeof (entry.endpoint) - 1);
+    copy_fixed_c_string_from_cstr (entry.service_name,
+                                   sizeof (entry.service_name),
+                                   discovery_->service_name ().c_str ());
+    copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
+                                   advertise_endpoint_.c_str ());
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
     entry.state = static_cast<zlink_topology_state_t> (state_);
     entry.desired_count = desired_count_;

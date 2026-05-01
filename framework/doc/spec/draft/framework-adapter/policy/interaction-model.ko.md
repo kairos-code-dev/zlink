@@ -49,9 +49,9 @@
   설명한다.
 - outbound `DEALER(client)`가 받은 메시지는 기본적으로 reply 매칭 대상으로 보고,
   일반 handler dispatch 경로에 넣지 않는다.
-- `SPOT` 쪽은 고급 표면으로 direct routed `RequestTo(...)` 같은 호출도 둘 수 있다.
-  자세한 topology 방향은 [channel-topology.ko.md](./channel-topology.ko.md)와
-  각 binding의 `SPOT` 문서를 참고한다.
+- `SPOT` 쪽 public request도 기본 application 표면에서는 resolver가 target을 숨기는
+  형태를 우선한다. resolved route를 받는 transport helper가 필요하면 runtime/internal
+  표면으로 둔다.
 
 ### 3.2 command
 
@@ -68,8 +68,9 @@
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
   `SendChannel(...).Async(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
-- 그렇더라도 caller가 `targetRid`와 `spotRid`를 이미 알고 있는 경우에는,
-  advanced direct routed `SendTo(...)` 표면을 둘 수 있다.
+- caller가 `targetRid`와 `spotRid`를 이미 알고 있더라도, 기본 application public
+  surface에서는 direct target send를 먼저 보여 주지 않는다. 위치값은 resolver 구현체와
+  runtime transport helper 안에 가둔다.
 - command send는 기본 async submit을 뜻한다. framework는 blocking send를 task로
   감싸지 않고 nonblocking send와 ready notification을 이용해서 backpressure를
   내부에서 처리한다.
@@ -185,6 +186,6 @@ actor 또는 `Spot` callback 안에서 task 기반 request를 `await`하면 현�
 | cache invalidation / config refresh | `publish-subscribe` |
 | stage state sync | `publish-subscribe` |
 | real-time notification fanout | `publish-subscribe` |
-| connection/session gateway | `stream` |
+| session actor dispatch | `stream` + actor create/dispatch + session proxy |
 | scatter-gather query | `scatter-gather` |
 | workflow orchestration | `request-response` + `publish-subscribe` 조합 |

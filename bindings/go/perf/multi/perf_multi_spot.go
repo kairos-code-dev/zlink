@@ -30,11 +30,11 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	publisherDiscovery, err := ctx.Discovery(zlink.ServiceTypeSpot, multiSpotServiceName)
 	perfcommon.Must(err)
 	defer publisherDiscovery.Close()
+	perfcommon.ApplyMultiSpotNodeAdmission(publisherNode, cfg.pattern)
 	publisher, err := publisherNode.Spot()
 	perfcommon.Must(err)
 	defer publisher.Close()
 	perfcommon.Must(publisher.SetNoDrop(true))
-	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(publisher, cfg.transport)
 
 	registryPubEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-registry-pub")
@@ -55,6 +55,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	for i := 0; i < cfg.clients; i++ {
 		node, err := ctx.SpotNode()
 		perfcommon.Must(err)
+		perfcommon.ApplyMultiSpotNodeAdmission(node, cfg.pattern)
 		spot, err := node.Spot()
 		perfcommon.Must(err)
 		discovery, err := ctx.Discovery(zlink.ServiceTypeSpot, multiSpotServiceName)
@@ -64,7 +65,6 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(node.AttachDiscovery(discovery))
 		subscriberEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sub")
 		perfcommon.Must(node.Bind(subscriberEndpoint))
-		perfcommon.ApplyMultiHWM(spot, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(spot, cfg.transport)
 		perfcommon.Must(spot.SetSubscription("bench."))
 		poller := perfcommon.NewSocketPoller(spot, perfcommon.ZLinkPollIn)

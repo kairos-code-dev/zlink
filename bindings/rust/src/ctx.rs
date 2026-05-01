@@ -2,8 +2,7 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use crate::error::{
-    CloseError, ConfigError, ConfigResult, check_close_rc, check_config_rc,
-    config_validation_error,
+    CloseError, ConfigError, ConfigResult, check_close_rc, check_config_rc, config_validation_error,
 };
 use crate::ffi;
 use crate::socket::{
@@ -19,7 +18,7 @@ pub enum AutoHwmProfile {
 }
 
 impl AutoHwmProfile {
-    fn to_raw(self) -> i32 {
+    pub(crate) fn to_raw(self) -> i32 {
         match self {
             AutoHwmProfile::LowLatency => {
                 ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY as i32
@@ -35,9 +34,7 @@ impl AutoHwmProfile {
 
     fn from_raw(raw: i32) -> Result<Self, ConfigError> {
         match raw {
-            x if x
-                == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY as i32 =>
-            {
+            x if x == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY as i32 => {
                 Ok(AutoHwmProfile::LowLatency)
             }
             x if x == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_BALANCED as i32 => {

@@ -13,15 +13,6 @@
 
 namespace zlink
 {
-namespace
-{
-bool registry_frame_has_more (const zlink_msg_t &frame_)
-{
-    return (reinterpret_cast<const msg_t *> (&frame_)->flags () & msg_t::more)
-           != 0;
-}
-}
-
 void registry_t::handle_peer (void *sub_)
 {
     std::vector<zlink_msg_t> frames;
@@ -33,7 +24,7 @@ void registry_t::handle_peer (void *sub_)
             break;
         }
         frames.push_back (frame);
-        if (!registry_frame_has_more (frame))
+        if (!msg_frame_has_more (frame))
             break;
     }
 
@@ -47,21 +38,18 @@ void registry_t::handle_peer (void *sub_)
         memcpy (&req, zlink_msg_data (&frames[0]), sizeof (req));
         msg_id = req.msg_id;
     } else if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
-        for (size_t i = 0; i < frames.size (); ++i)
-            zlink_msg_close (&frames[i]);
+        close_msg_frames (&frames);
         return;
     }
 
     if (msg_id != discovery_protocol::msg_service_list
         && msg_id != discovery_protocol::msg_registry_sync) {
-        for (size_t i = 0; i < frames.size (); ++i)
-            zlink_msg_close (&frames[i]);
+        close_msg_frames (&frames);
         return;
     }
 
     if (frames.size () < 4) {
-        for (size_t i = 0; i < frames.size (); ++i)
-            zlink_msg_close (&frames[i]);
+        close_msg_frames (&frames);
         return;
     }
 
@@ -71,8 +59,7 @@ void registry_t::handle_peer (void *sub_)
     if (!discovery_protocol::read_u32 (frames[1], &peer_registry_id)
         || !discovery_protocol::read_u64 (frames[2], &list_seq)
         || !discovery_protocol::read_u32 (frames[3], &service_count)) {
-        for (size_t i = 0; i < frames.size (); ++i)
-            zlink_msg_close (&frames[i]);
+        close_msg_frames (&frames);
         return;
     }
 
@@ -87,8 +74,7 @@ void registry_t::handle_peer (void *sub_)
             local_registry_id = 1;
 
         if (peer_registry_id == local_registry_id) {
-            for (size_t i = 0; i < frames.size (); ++i)
-                zlink_msg_close (&frames[i]);
+            close_msg_frames (&frames);
             return;
         }
 
@@ -96,8 +82,7 @@ void registry_t::handle_peer (void *sub_)
         std::map<uint32_t, uint64_t>::iterator it =
           _peer_seq.find (peer_registry_id);
         if (it != _peer_seq.end () && list_seq <= it->second) {
-            for (size_t i = 0; i < frames.size (); ++i)
-                zlink_msg_close (&frames[i]);
+            close_msg_frames (&frames);
             return;
         }
     }
@@ -167,8 +152,7 @@ void registry_t::handle_peer (void *sub_)
           _peer_seq.find (peer_registry_id);
         if (peer_registry_id == local_registry_id
             || (it != _peer_seq.end () && list_seq <= it->second)) {
-            for (size_t i = 0; i < frames.size (); ++i)
-                zlink_msg_close (&frames[i]);
+            close_msg_frames (&frames);
             return;
         }
 
@@ -241,8 +225,7 @@ void registry_t::handle_peer (void *sub_)
 
         if (!changed) {
             _peer_seq[peer_registry_id] = list_seq;
-            for (size_t i = 0; i < frames.size (); ++i)
-                zlink_msg_close (&frames[i]);
+            close_msg_frames (&frames);
             return;
         }
 
@@ -285,8 +268,7 @@ void registry_t::handle_peer (void *sub_)
         _list_seq++;
     }
 
-    for (size_t i = 0; i < frames.size (); ++i)
-        zlink_msg_close (&frames[i]);
+    close_msg_frames (&frames);
 }
 
 void registry_t::handle_register (void *router_,

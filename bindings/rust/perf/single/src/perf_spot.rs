@@ -109,6 +109,8 @@ fn main() {
     let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
     let publisher_node = SpotNode::new(&ctx).expect("publisher node");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node");
+    common::apply_single_spot_node_admission(&publisher_node);
+    common::apply_single_spot_node_admission(&subscriber_node);
 
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");

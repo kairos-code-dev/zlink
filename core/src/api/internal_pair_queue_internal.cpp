@@ -4,7 +4,6 @@
 
 #include "api/internal_pair_queue_internal.hpp"
 #include "core/recv_internal.hpp"
-#include "core/recv_tls_view.hpp"
 #include "utils/random.hpp"
 
 namespace
@@ -185,63 +184,5 @@ int zlink::internal_pair_queue::recv_followup_with_retry (
   zlink_msg_t *msg_,
   int flags_)
 {
-    if (!socket_ || !msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    while (socket_->recv (reinterpret_cast<zlink::msg_t *> (msg_), flags_) != 0) {
-        const int saved_errno = errno;
-        if ((flags_ & ZLINK_DONTWAIT) != 0 || saved_errno != EAGAIN) {
-            errno = saved_errno;
-            return -1;
-        }
-        if (zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, -1)
-            <= 0) {
-            errno = saved_errno;
-            return -1;
-        }
-    }
-    return 0;
-}
-
-bool zlink::internal_pair_queue::frame_has_more (const zlink_msg_t &msg_)
-{
-    return (reinterpret_cast<const zlink::msg_t *> (&msg_)->flags ()
-            & zlink::msg_t::more)
-           != 0;
-}
-
-int zlink::internal_pair_queue::export_followup_sequence_from_reserved_first (
-  zlink::socket_base_t *socket_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_)
-{
-    if (!socket_ || !parts_out_ || !part_count_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    while (true) {
-        zlink::recv_tls_view::storage_t &tls = zlink::recv_tls_view::storage ();
-        const bool more = frame_has_more (tls.parts[tls.count - 1]);
-        if (!more)
-            return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
-
-        zlink_msg_t next;
-        zlink_msg_init (&next);
-        if (zlink::recv_followup_msg_socket (socket_, &next) < 0) {
-            zlink_msg_close (&next);
-            zlink::recv_tls_view::abort ();
-            return -1;
-        }
-
-        if (zlink::recv_tls_view::push (&next) != 0) {
-            const int saved_errno = errno;
-            zlink_msg_close (&next);
-            zlink::recv_tls_view::abort ();
-            errno = saved_errno;
-            return -1;
-        }
-    }
+    return zlink::recv_followup_msg_socket_wait (socket_, msg_, flags_);
 }

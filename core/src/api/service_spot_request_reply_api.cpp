@@ -233,7 +233,7 @@ int recv_combined_plain_message (zlink::socket_base_t *socket_,
     }
 
     out_->push_back (first);
-    while (zlink::internal_pair_queue::frame_has_more (out_->back ())) {
+    while (zlink::msg_frame_has_more (out_->back ())) {
         zlink_msg_t next;
         zlink_msg_init (&next);
         if (zlink::internal_pair_queue::recv_followup_with_retry (

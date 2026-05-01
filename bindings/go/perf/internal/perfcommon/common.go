@@ -190,6 +190,11 @@ type hwmSocket interface {
 	SetRecvHWM(int) error
 }
 
+type spotNodeAdmission interface {
+	SetPubSubHWM(int) error
+	SetRouterHWM(int) error
+}
+
 type benchmarkSocket interface {
 	SetLinger(time.Duration) error
 	SetSendTimeout(time.Duration) error
@@ -206,6 +211,14 @@ func ApplySingleHWM(socket hwmSocket) {
 	Must(socket.SetRecvHWM(rcvhwm))
 }
 
+func ApplySingleSpotNodeAdmission(node spotNodeAdmission) {
+	if node == nil {
+		return
+	}
+	Must(node.SetPubSubHWM(resolveSingleSocketHWM(true)))
+	Must(node.SetRouterHWM(resolveSingleSocketHWM(false)))
+}
+
 func ApplyMultiHWM(socket hwmSocket, pattern string) {
 	if socket == nil {
 		return
@@ -214,6 +227,14 @@ func ApplyMultiHWM(socket hwmSocket, pattern string) {
 	rcvhwm := resolveMultiSocketHWM(pattern, false)
 	Must(socket.SetSendHWM(sndhwm))
 	Must(socket.SetRecvHWM(rcvhwm))
+}
+
+func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {
+	if node == nil {
+		return
+	}
+	Must(node.SetPubSubHWM(resolveMultiSocketHWM(pattern, true)))
+	Must(node.SetRouterHWM(resolveMultiSocketHWM(pattern, false)))
 }
 
 func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string) {

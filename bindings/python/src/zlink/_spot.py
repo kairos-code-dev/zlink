@@ -17,9 +17,11 @@ from ._socket_base import (
 )
 from ._request_reply import _ensure_reply_flags_supported
 from ._enums import (
+    AutoHwmProfile,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
     SpotNodeMode,
+    SpotNodeOption,
     SpotNodeSocketOwner,
     SpotNodeState,
     SpotPeerSource,
@@ -80,6 +82,7 @@ from ._core import (
     _validated_c_string_bytes,
     _validated_c_string_text,
     _validated_c_string_value,
+    _validated_int32,
     _validated_routing_id_bytes,
 )
 from ._monitor import MonitorSnapshot, _monitor_snapshot_from_native
@@ -627,6 +630,58 @@ class SpotNode:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
+    def _set_spot_node_option(self, option: int | SpotNodeOption, value):
+        view = _as_bytes_view(value)
+        opt = int(option)
+        if view.nbytes == 0:
+            rc = lib().zlink_set_spot_node_option(self._handle, opt, None, 0)
+        elif view.readonly:
+            raw = view.tobytes()
+            rc = lib().zlink_set_spot_node_option(
+                self._handle, opt, ctypes.c_char_p(raw), len(raw)
+            )
+        else:
+            rc = lib().zlink_set_spot_node_option(
+                self._handle,
+                opt,
+                ctypes.c_void_p(
+                    ctypes.addressof(
+                        (ctypes.c_ubyte * view.nbytes).from_buffer(view)
+                    )
+                ),
+                view.nbytes,
+            )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def set_router_hwm(self, value: int):
+        native = ctypes.c_int32(_validated_int32(value))
+        self._set_spot_node_option(
+            SpotNodeOption.ROUTER_HWM,
+            ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
+        )
+
+    def set_pubsub_hwm(self, value: int):
+        native = ctypes.c_int32(_validated_int32(value))
+        self._set_spot_node_option(
+            SpotNodeOption.PUBSUB_HWM,
+            ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
+        )
+
+    def set_router_hwm_profile(self, value: int | AutoHwmProfile):
+        native = ctypes.c_int32(_validated_int32(int(value)))
+        self._set_spot_node_option(
+            SpotNodeOption.ROUTER_HWM_PROFILE,
+            ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
+        )
+
+    def set_pubsub_hwm_profile(self, value: int | AutoHwmProfile):
+        native = ctypes.c_int32(_validated_int32(int(value)))
+        self._set_spot_node_option(
+            SpotNodeOption.PUBSUB_HWM_PROFILE,
+            ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
+        )
+
     def create_spot(self):
         return Spot._create(self)
 
@@ -640,27 +695,7 @@ class SpotNode:
         if int(option) == 5:
             self.set_routing_id(value)
             return
-        view = _as_bytes_view(value)
-        if view.nbytes == 0:
-            rc = lib().zlink_set_option(self._handle, int(option), None, 0)
-        elif view.readonly:
-            raw = view.tobytes()
-            rc = lib().zlink_set_option(
-                self._handle, int(option), ctypes.c_char_p(raw), len(raw)
-            )
-        else:
-            rc = lib().zlink_set_option(
-                self._handle,
-                int(option),
-                ctypes.c_void_p(
-                    ctypes.addressof(
-                        (ctypes.c_ubyte * view.nbytes).from_buffer(view)
-                    )
-                ),
-                view.nbytes,
-            )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._set_spot_node_option(option, value)
 
     def set_routing_id(self, routing_id):
         raw = _validated_routing_id_bytes(routing_id)

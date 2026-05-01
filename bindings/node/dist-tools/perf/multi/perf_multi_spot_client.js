@@ -7,7 +7,7 @@ const { configureTlsClient } = require('../common/perf_tls');
 const { runSpotBenchmark } = require('../single/perf_spot');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, createSocketEventWaiter, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
@@ -128,6 +128,7 @@ async function main() {
         configureTlsClient(sharedNode, options.transport);
         sharedDiscovery.connectRegistry(options.endpoint);
         sharedNode.attachDiscovery(sharedDiscovery);
+        applySpotNodeAdmission(sharedNode);
         const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-client-${process.pid}`);
         trace(`shared-node endpoint=${dataEndpoint}`);
         sharedNode.bind(dataEndpoint);
@@ -136,7 +137,7 @@ async function main() {
         for (let i = 0; i < spotCount; i += 1) {
             trace(`slot-${i} create-spot`);
             const spot = sharedNode.createSpot();
-            applySocketPolicy(spot);
+            spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
             spot.setSubscription(TOPIC);
             slots.push({ spot });
         }

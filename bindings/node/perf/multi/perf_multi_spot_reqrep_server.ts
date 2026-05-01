@@ -11,6 +11,7 @@ const {
   POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
+  applySpotNodeAdmission,
   createSocketEventWaiter,
   subscribeNoWait,
   trySocketPublish,
@@ -70,8 +71,9 @@ async function main() {
   let responderLoop = null;
 
   try {
+    applySpotNodeAdmission(node);
     spot = node.createSpot();
-    applySocketPolicy(spot);
+    spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
     node.setRoutingId(SERVER_NODE_ROUTING_ID);
     spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
     node.bind(options.peerEndpoint);

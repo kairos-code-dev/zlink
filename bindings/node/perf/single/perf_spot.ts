@@ -12,7 +12,7 @@ import {
 } from '../common/perf_metrics';
 import {
   applyContextPolicy,
-  applySocketPolicy,
+  applySpotNodeAdmission,
   parseSingleBinaryArgs,
   resolveSingleIdleDrainMs,
   waitForPostReadySettle
@@ -101,13 +101,15 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     discovery.connectRegistry(registryRouter);
     publisherNode.attachDiscovery(discovery);
     subscriberNode.attachDiscovery(discovery);
+    applySpotNodeAdmission(publisherNode, options);
+    applySpotNodeAdmission(subscriberNode, options);
     publisherNode.bind(publisherEndpoint);
     subscriberNode.bind(subscriberEndpoint);
 
     publisher = publisherNode.createSpot();
     subscriber = subscriberNode.createSpot();
-    applySocketPolicy(publisher, options);
-    applySocketPolicy(subscriber, options);
+    publisher.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
+    subscriber.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
     subscriber.setSubscription(TOPIC);
 
     const runId = createRunId(options.runId ?? 1);

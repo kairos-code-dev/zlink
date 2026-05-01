@@ -5,6 +5,7 @@
 #include "core/recv_internal.hpp"
 
 #include "core/msg.hpp"
+#include "core/recv_tls_view.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/sleep.hpp"
@@ -149,6 +150,208 @@ int zlink::recv_followup_msg_internal (void *socket_, zlink_msg_t *msg_)
         return -1;
     }
     return recv_followup_msg_socket (socket, msg_);
+}
+
+int zlink::recv_followup_msg_socket_wait (socket_base_t *socket_,
+                                          zlink_msg_t *msg_,
+                                          int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    while (socket_->recv (reinterpret_cast<msg_t *> (msg_), flags_) != 0) {
+        const int saved_errno = errno;
+        if ((flags_ & ZLINK_DONTWAIT) != 0
+            || (saved_errno != EAGAIN && saved_errno != EINTR)) {
+            errno = saved_errno;
+            return -1;
+        }
+        if (wait_socket_events_internal (socket_, ZLINK_POLLIN, -1) <= 0) {
+            errno = saved_errno;
+            return -1;
+        }
+    }
+
+    errno = 0;
+    return 0;
+}
+
+bool zlink::msg_frame_has_more (const zlink_msg_t &msg_)
+{
+    return (reinterpret_cast<const msg_t *> (&msg_)->flags () & msg_t::more)
+           != 0;
+}
+
+void zlink::close_msg_frames (std::vector<zlink_msg_t> *frames_)
+{
+    if (!frames_)
+        return;
+
+    for (size_t i = 0; i < frames_->size (); ++i)
+        zlink_msg_close (&(*frames_)[i]);
+    frames_->clear ();
+}
+
+bool zlink::recv_msg_sequence_socket_wait (socket_base_t *socket_,
+                                           std::vector<zlink_msg_t> *frames_,
+                                           long followup_timeout_ms_)
+{
+    if (!socket_ || !frames_) {
+        errno = EFAULT;
+        return false;
+    }
+
+    frames_->clear ();
+    while (true) {
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
+        if (socket_->recv (reinterpret_cast<msg_t *> (&frame), 0) != 0) {
+            zlink_msg_close (&frame);
+            close_msg_frames (frames_);
+            return false;
+        }
+
+        frames_->push_back (frame);
+        if (!msg_frame_has_more (frame))
+            return !frames_->empty ();
+
+        if (wait_socket_events_internal (socket_, ZLINK_POLLIN,
+                                         followup_timeout_ms_)
+            <= 0) {
+            errno = EAGAIN;
+            close_msg_frames (frames_);
+            return false;
+        }
+    }
+}
+
+int zlink::drain_followup_msg_sequence (socket_base_t *socket_,
+                                        zlink_msg_t *frame_,
+                                        bool wait_for_input_)
+{
+    if (!socket_ || !frame_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    bool more = msg_frame_has_more (*frame_);
+    zlink_msg_close (frame_);
+    while (more) {
+        zlink_msg_t next;
+        zlink_msg_init (&next);
+        const int rc =
+          wait_for_input_ ? recv_followup_msg_socket_wait (socket_, &next, 0)
+                          : recv_followup_msg_socket (socket_, &next);
+        if (rc < 0) {
+            zlink_msg_close (&next);
+            return -1;
+        }
+        more = msg_frame_has_more (next);
+        zlink_msg_close (&next);
+    }
+
+    errno = 0;
+    return 0;
+}
+
+int zlink::export_payload_msg_sequence (socket_base_t *socket_,
+                                        zlink_msg_t *first_payload_,
+                                        zlink_msg_t **parts_out_,
+                                        size_t *part_count_out_,
+                                        bool allow_single_)
+{
+    if (!socket_ || !first_payload_ || !parts_out_ || !part_count_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (allow_single_ && !msg_frame_has_more (*first_payload_))
+        return recv_tls_view::export_single (first_payload_, parts_out_,
+                                             part_count_out_);
+
+    zlink_msg_t current;
+    zlink_msg_init (&current);
+    if (zlink_msg_move (&current, first_payload_) != 0) {
+        zlink_msg_close (&current);
+        errno = EFAULT;
+        return -1;
+    }
+
+    while (true) {
+        const bool more = msg_frame_has_more (current);
+        if (recv_tls_view::push (&current) != 0) {
+            const int saved_errno = errno;
+            (void) drain_followup_msg_sequence (socket_, &current, true);
+            recv_tls_view::abort ();
+            errno = saved_errno;
+            return -1;
+        }
+
+        if (!more)
+            return recv_tls_view::commit (parts_out_, part_count_out_);
+
+        zlink_msg_t next;
+        zlink_msg_init (&next);
+        if (recv_followup_msg_socket_wait (socket_, &next, 0) < 0) {
+            zlink_msg_close (&next);
+            recv_tls_view::abort ();
+            return -1;
+        }
+        if (zlink_msg_move (&current, &next) != 0) {
+            zlink_msg_close (&next);
+            recv_tls_view::abort ();
+            errno = EFAULT;
+            return -1;
+        }
+    }
+}
+
+int zlink::export_reserved_followup_msg_sequence (socket_base_t *socket_,
+                                                  zlink_msg_t **parts_out_,
+                                                  size_t *part_count_out_,
+                                                  bool wait_for_input_)
+{
+    if (!socket_ || !parts_out_ || !part_count_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (recv_tls_view::storage ().count == 0
+        && recv_tls_view::reserve_first_slot () != 0) {
+        return -1;
+    }
+
+    while (true) {
+        recv_tls_view::storage_t &tls = recv_tls_view::storage ();
+        const bool more = msg_frame_has_more (tls.parts[tls.count - 1]);
+        if (!more)
+            return recv_tls_view::commit (parts_out_, part_count_out_);
+
+        zlink_msg_t next;
+        zlink_msg_init (&next);
+        const int rc =
+          wait_for_input_
+            ? recv_followup_msg_socket_wait (socket_, &next, 0)
+            : recv_followup_msg_socket (socket_, &next);
+        if (rc < 0) {
+            zlink_msg_close (&next);
+            recv_tls_view::abort ();
+            return -1;
+        }
+
+        if (recv_tls_view::push (&next) != 0) {
+            const int saved_errno = errno;
+            if (wait_for_input_)
+                zlink_msg_close (&next);
+            else
+                (void) drain_followup_msg_sequence (socket_, &next, false);
+            recv_tls_view::abort ();
+            errno = saved_errno;
+            return -1;
+        }
+    }
 }
 
 int zlink::recv_buffer_internal (void *socket_,

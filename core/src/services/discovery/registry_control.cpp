@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "core/send_internal.hpp"
 #include "services/discovery/registry.hpp"
@@ -15,12 +16,6 @@ namespace zlink
 {
 namespace
 {
-bool registry_frame_has_more (const zlink_msg_t &frame_)
-{
-    return (reinterpret_cast<const msg_t *> (&frame_)->flags () & msg_t::more)
-           != 0;
-}
-
 void registry_debug (const char *msg_)
 {
     if (std::getenv ("ZLINK_REGISTRY_DEBUG"))
@@ -62,13 +57,12 @@ void registry_t::handle_router (void *router_)
             break;
         }
         frames.push_back (frame);
-        if (!registry_frame_has_more (frame))
+        if (!msg_frame_has_more (frame))
             break;
     }
 
     if (frames.empty ()) {
-        for (size_t i = 0; i < frames.size (); ++i)
-            zlink_msg_close (&frames[i]);
+        close_msg_frames (&frames);
         return;
     }
 
@@ -79,8 +73,7 @@ void registry_t::handle_router (void *router_)
         memcpy (&req, zlink_msg_data (&frames[0]), sizeof (req));
         msg_id = req.msg_id;
     } else if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
-        for (size_t i = 0; i < frames.size (); ++i)
-            zlink_msg_close (&frames[i]);
+        close_msg_frames (&frames);
         return;
     }
 
@@ -116,8 +109,7 @@ void registry_t::handle_router (void *router_)
             break;
     }
 
-    for (size_t i = 0; i < frames.size (); ++i)
-        zlink_msg_close (&frames[i]);
+    close_msg_frames (&frames);
 }
 
 void registry_t::handle_bootstrap (void *router_,
@@ -257,10 +249,11 @@ void registry_t::send_bootstrap_reply (void *router_,
     rep.msg_id = discovery_protocol::msg_bootstrap_rep;
     rep.heartbeat_interval_ms = heartbeat_interval_ms;
     rep.registry_id = registry_id;
-    strncpy (rep.pub_endpoint, pub_endpoint.c_str (),
-             sizeof (rep.pub_endpoint) - 1);
-    strncpy (rep.uplink_endpoint, uplink_endpoint.c_str (),
-             sizeof (rep.uplink_endpoint) - 1);
+    copy_fixed_c_string_from_cstr (rep.pub_endpoint, sizeof (rep.pub_endpoint),
+                                   pub_endpoint.c_str ());
+    copy_fixed_c_string_from_cstr (rep.uplink_endpoint,
+                                   sizeof (rep.uplink_endpoint),
+                                   uplink_endpoint.c_str ());
     const int rc_rep =
       discovery_protocol::send_frame (router_, &rep, sizeof (rep), 0);
     if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {

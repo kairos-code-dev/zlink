@@ -509,6 +509,13 @@ impl MultiSettings {
     }
 }
 
+pub fn apply_multi_spot_node_admission(node: &zlink::SpotNode, settings: &MultiSettings) {
+    node.set_pubsub_hwm(settings.send_hwm)
+        .expect("spot node pubsub hwm");
+    node.set_router_hwm(settings.recv_hwm)
+        .expect("spot node router hwm");
+}
+
 pub fn resolve_multi_connect_ready_timeout() -> Duration {
     Duration::from_millis(env_or("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5_000) as u64)
 }

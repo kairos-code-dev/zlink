@@ -202,19 +202,6 @@ int bench_pid ()
 #endif
 }
 
-void ensure_multi_spot_mesh_pub_budget_default ()
-{
-    const char *existing = std::getenv ("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM");
-    if (existing && *existing)
-        return;
-
-#if defined(_WIN32)
-    _putenv_s ("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", "100");
-#else
-    setenv ("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", "100", 1);
-#endif
-}
-
 int resolve_spot_start_timeout_ms (const perf::multi::multi_bench_settings_t &settings_)
 {
     return std::max (settings_.connect_ready_timeout_ms,
@@ -403,7 +390,6 @@ bool perf_spot_server (const std::string &lib_name,
                        size_t msg_size_)
 {
     perf::multi::set_perf_pattern_env ("SPOT");
-    ensure_multi_spot_mesh_pub_budget_default ();
 
     if (!perf::multi::validate_multi_perf_pattern (k_pattern))
         return false;
@@ -434,6 +420,14 @@ bool perf_spot_server (const std::string &lib_name,
     if (!perf::multi::configure_spot_control_tls (control_node, transport_))
         return false;
 
+    const int control_hwm =
+      std::max (1024, static_cast<int> (settings.clients * 8));
+    if (!perf::multi::apply_spot_node_admission_hwm (
+          node, settings.sndhwm, settings.rcvhwm)
+        || !perf::multi::apply_spot_node_admission_hwm (
+          control_node, control_hwm, control_hwm))
+        return false;
+
     zlink::service::spot_t spot = node.create_spot ();
     if (!spot.valid ())
         return false;
@@ -454,20 +448,15 @@ bool perf_spot_server (const std::string &lib_name,
     if (control_endpoint.empty ())
         return false;
 
-    spot.options ().send_hwm (settings.sndhwm);
     spot.options ().send_timeout (settings.sndtimeo_ms);
     spot.publisher_options ().no_drop (
       perf::multi::parse_positive_env ("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0);
     const int control_timeout_ms =
       std::max (1000, settings.connect_ready_timeout_ms);
-    const int control_hwm =
-      std::max (1024, static_cast<int> (settings.clients * 8));
     control_pub.options ().linger (0);
-    control_pub.options ().send_hwm (control_hwm);
     control_pub.options ().send_timeout (control_timeout_ms);
     control_pub.publisher_options ().no_drop (true);
     control_sub.options ().linger (0);
-    control_sub.options ().recv_hwm (control_hwm);
     control_sub.options ().recv_timeout (control_timeout_ms);
     control_sub.set_subscription (k_control_topic);
 

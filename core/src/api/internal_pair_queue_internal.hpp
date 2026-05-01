@@ -35,13 +35,6 @@ int send_buffer_frame (zlink::socket_base_t *socket_,
 int recv_followup_with_retry (zlink::socket_base_t *socket_,
                               zlink_msg_t *msg_,
                               int flags_);
-
-bool frame_has_more (const zlink_msg_t &msg_);
-
-int export_followup_sequence_from_reserved_first (
-  zlink::socket_base_t *socket_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_);
 }
 }
 

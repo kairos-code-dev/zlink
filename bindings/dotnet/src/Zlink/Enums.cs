@@ -362,15 +362,10 @@ internal enum SpotNodeSocketRole
 
 internal enum SpotNodeOption
 {
-    PubMode = 1,
-    PubQueueHwm = 2,
-    PubQueueFullPolicy = 3,
-    PubHwm = 0x3608,
-    SubHwm = 0x3609,
-    RoutedSendHwm = 0x360A,
-    RoutedRecvHwm = 0x360B,
-    SubQueueHardLimit = 0x360C,
-    RoutedQueueHardLimit = 0x360D
+    RouterHwmProfile = 0x360E,
+    RouterHwm = 0x360F,
+    PubSubHwmProfile = 0x3610,
+    PubSubHwm = 0x3611
 }
 
 internal enum MessageType : byte
@@ -378,18 +373,6 @@ internal enum MessageType : byte
     Data = 0,
     Request = 1,
     Reply = 2
-}
-
-internal enum SpotNodePubMode
-{
-    Sync = 0,
-    Async = 1
-}
-
-internal enum SpotNodePubQueueFullPolicy
-{
-    Eagain = 0,
-    Drop = 1
 }
 
 internal enum SpotSocketRole

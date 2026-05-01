@@ -103,6 +103,7 @@ fn main() {
     let ctx = common::perf_context();
     let requester = ctx.router_socket().expect("requester");
     let replier_node = SpotNode::new(&ctx).expect("replier node");
+    common::apply_single_spot_node_admission(&replier_node);
     requester
         .set_routing_id(&RoutingId::from_bytes(REQUESTER_RID))
         .expect("requester routing id");

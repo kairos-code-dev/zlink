@@ -36,14 +36,6 @@ spot_node_handler_registry_t &spot_node_handler_registry ()
     return registry;
 }
 
-void close_spot_parts (zlink_msg_t *parts_, size_t part_count_)
-{
-    if (!parts_)
-        return;
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-}
-
 void spot_node_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
                                     const char *topic_,
                                     size_t topic_len_,
@@ -53,7 +45,7 @@ void spot_node_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
 {
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (userdata_);
     if (!node || !node->check_tag ()) {
-        close_spot_parts (parts_, part_count_);
+        zlink_multipart_close (parts_, part_count_);
         return;
     }
 
@@ -71,7 +63,7 @@ void spot_node_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
     }
 
     if (!handler) {
-        close_spot_parts (parts_, part_count_);
+        zlink_multipart_close (parts_, part_count_);
         return;
     }
 
@@ -91,7 +83,7 @@ void spot_subject_composite_sub_handler_adapter (
 {
     spot_handle_t *spot = static_cast<spot_handle_t *> (userdata_);
     if (!spot || !spot->check_tag () || !spot->handler) {
-        close_spot_parts (parts_, part_count_);
+        zlink_multipart_close (parts_, part_count_);
         return;
     }
 
@@ -110,7 +102,7 @@ void spot_sub_dispatch_event_handler_adapter (
 {
     spot_handle_t *spot = static_cast<spot_handle_t *> (userdata_);
     if (!spot || !spot->check_tag ()) {
-        close_spot_parts (parts_, part_count_);
+        zlink_multipart_close (parts_, part_count_);
         return;
     }
 
@@ -118,7 +110,7 @@ void spot_sub_dispatch_event_handler_adapter (
                                                topic_len_, parts_,
                                                part_count_)
         != 0) {
-        close_spot_parts (parts_, part_count_);
+        zlink_multipart_close (parts_, part_count_);
     }
 }
 

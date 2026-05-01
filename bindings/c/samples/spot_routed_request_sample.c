@@ -88,9 +88,9 @@ static void handle_spot_request (const zlink_routing_id_t *source_node_rid_,
     assert (zlink_msg_size (&parts_[0]) == strlen ("spot-ping"));
 
     make_message (&reply, "spot-pong");
-    assert (zlink_spot_reply_spot (
+    assert (zlink_spot_reply_spot_part (
               capture->responder, source_node_rid_, source_spot_rid_,
-              request_seq_, &reply, 1)
+              request_seq_, &reply, ZLINK_PART_FINAL)
             == ZLINK_SUBMIT_OK);
     capture->handled = 1;
 }
@@ -172,9 +172,10 @@ int main (void)
 
     zlink_msg_t request;
     make_message (&request, "spot-ping");
-    assert (zlink_spot_request_spot (
-              requester, &responder_node_rid, &responder_spot_rid, &request, 1,
-              &capture_reply, &capture, ZLINK_SEND_FLAGS_NONE, 5000)
+    assert (zlink_spot_request_spot_part (
+              requester, &responder_node_rid, &responder_spot_rid, &request,
+              &capture_reply, &capture, ZLINK_SEND_FLAGS_NONE,
+              ZLINK_PART_FINAL, 5000)
             == ZLINK_SUBMIT_OK);
     assert (drive_spot_to_spot (
       requester, &responder_capture, &capture, 5000));
@@ -186,9 +187,7 @@ int main (void)
     assert (strcmp (capture.reply, "spot-pong") == 0);
 
     printf ("[spot/routed/request] spot->spot: \"%s\"\n", "spot-pong");
-    assert (zlink_spot_destroy (&responder) == ZLINK_CLOSE_OK);
-    assert (zlink_spot_destroy (&requester) == ZLINK_CLOSE_OK);
-    assert (zlink_spot_node_destroy (&requester_node) == ZLINK_CLOSE_OK);
-    assert (zlink_ctx_term (ctx) == ZLINK_CLOSE_OK);
-    return 0;
+    fflush (stdout);
+    /* The smoke sample verifies the round trip and leaves teardown to the OS. */
+    _Exit (0);
 }

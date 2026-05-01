@@ -8,6 +8,7 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
+    apply_multi_spot_node_admission,
     benchmark_endpoint,
     benchmark_run_id,
     configure_multi_tls_server,
@@ -118,6 +119,7 @@ def main(argv=None):
         registry.bind(registry_pub_endpoint, registry_router_endpoint)
         discovery.connect_registry(registry_router_endpoint)
         data_node.attach_discovery(discovery)
+        apply_multi_spot_node_admission(data_node)
         data_node.bind(data_bind_endpoint)
         data_spot = data_node.create_spot()
 

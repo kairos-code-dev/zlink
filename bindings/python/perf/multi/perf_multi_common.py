@@ -154,6 +154,14 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
         sock.options.receive_timeout_ms = recv_timeout_ms
 
 
+def apply_multi_spot_node_admission(*nodes):
+    send_hwm = resolve_multi_send_hwm()
+    recv_hwm = resolve_multi_recv_hwm()
+    for node in nodes:
+        node.set_pubsub_hwm(send_hwm)
+        node.set_router_hwm(recv_hwm)
+
+
 def recv_nonblocking(sock, *, method="recv"):
     zlink_mod = _require_zlink()
     recv_method = getattr(sock, method)

@@ -234,15 +234,18 @@ Frame 4~N: Service entries (repeated service_count times)
   로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
 
 ### 5.4.1 SpotNode HWM 경계
-- unified `Spot` handle HWM 과 SpotNode internal HWM 은 다른 계층이다.
-- `Spot` handle HWM 은 public facade pub/sub 소켓을 제어한다.
-- `SpotNode` HWM 은 internal data-plane budget 이며 방향별로 적용된다.
-  - `SNDHWM` → `fanout`, `mesh_pub`
-  - `RCVHWM` → `ingress`, `mesh_xsub`
-- SpotNode internal data-plane HWM 기본값은 고정 `1000`이 아니라
-  context auto HWM 정책에서 나온 role별 값이다. 기본 context에서는
-  `topic send=16`, `topic recv=8`, `routed send=8`, `routed recv=8`로 시작한다.
-- `peer_ctrl` 는 control-plane 소켓이므로 SpotNode data-plane HWM 묶음에
+- unified `Spot` handle HWM 과 SpotNode admission HWM 은 다른 계층이다.
+- `Spot` handle 은 common `SNDHWM` 또는 `RCVHWM` 옵션을 받지 않는다.
+- `SpotNode` HWM 은 relay나 delivery queue 예산이 아니라 admission 예산이다.
+  - pubsub admission은 local publish 입력을 제어한다.
+  - router admission은 local routed 입력을 제어한다.
+- SpotNode admission 기본 profile은 balanced다. 두 admission 채널은 양수 숫자
+  override가 없으면 `16`에서 시작한다.
+- admission 숫자 option에 `0`을 설정하면 override를 지우고 선택된 profile 값으로
+  돌아간다.
+- relay와 delivery socket은 HWM `0`을 사용한다. 제거된 queue hard-limit 동작은 더
+  이상 delivery target을 끊지 않는다.
+- `peer_ctrl` 는 control-plane 소켓이므로 SpotNode admission HWM 묶음에
   포함하지 않는다.
 
 ### 5.5 Raw 소켓 정책

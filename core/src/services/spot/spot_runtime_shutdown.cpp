@@ -61,7 +61,7 @@ int spot_runtime_t::close_control_sockets ()
         }
     }
 
-    if (spot_shutdown_debug_enabled_local ()) {
+    if (spot_shutdown_debug_enabled ()) {
         std::fprintf (
           stderr,
           "[spot-close] ctrl_front=%d ctrl_back=%d mesh_pub=%d mesh_xsub=%d peer_ctrl_pub=%d peer_ctrl_sub=%d external_router=%d internal_router=%d internal_router_tx=%d ingress=%d fanout=%d\n",
@@ -97,15 +97,15 @@ int spot_runtime_t::close_control_sockets ()
             if (!sockets[i])
                 continue;
             if (close_directly[i]) {
-                close_socket_ptr_local (&sockets[i]);
+                close_socket_ptr (&sockets[i]);
                 continue;
             }
-            preserve_first_error_local (
+            preserve_first_error (
               close_runtime_socket_async (sockets[i], 2000), &first_error);
         }
     } else {
         for (size_t i = 0; i < slot_count; ++i)
-            close_socket_ptr_local (&sockets[i]);
+            close_socket_ptr (&sockets[i]);
     }
 
     if (first_error != 0) {
@@ -162,7 +162,7 @@ int spot_runtime_t::stop_and_join ()
     begin_shutdown ();
     if (data_ctrl_front) {
         scoped_lock_t lock (ctrl_sync);
-        if (send_ascii_frame_local (data_ctrl_front, "terminate", 0) != 0) {
+        if (send_ascii_frame (data_ctrl_front, "terminate", 0) != 0) {
             const int err = errno != 0 ? errno : EIO;
             if (err != EAGAIN && err != ETIMEDOUT && err != EFSM && err != ETERM
                 && err != EPIPE && err != ENOTSOCK) {
@@ -200,7 +200,7 @@ int spot_runtime_t::stop_and_join ()
         if (!socket)
             continue;
         socket->set_all_pipes_nodelay ();
-        preserve_first_error_local (close_runtime_socket (socket, 1000), NULL);
+        preserve_first_error (close_runtime_socket (socket, 1000), NULL);
     }
     advance_shutdown_phase (spot_shutdown_phase_close_transports);
     advance_shutdown_phase (spot_shutdown_phase_drain_state);
@@ -344,20 +344,20 @@ int spot_runtime_t::abortive_stop ()
             (void) close_runtime_socket (socket, 1000);
         }
     } else {
-        close_socket_ptr_local (&ctrl_front);
-        close_socket_ptr_local (&ctrl_back);
-        close_socket_ptr_local (&mesh_pub_local);
-        close_socket_ptr_local (&mesh_xsub_local);
-        close_socket_ptr_local (&peer_ctrl_pub_local);
-        close_socket_ptr_local (&peer_ctrl_sub_local);
-        close_socket_ptr_local (&external_router_local);
-        close_socket_ptr_local (&internal_router_local);
-        close_socket_ptr_local (&internal_router_tx_local);
-        close_socket_ptr_local (&ingress);
-        close_socket_ptr_local (&fanout);
+        close_socket_ptr (&ctrl_front);
+        close_socket_ptr (&ctrl_back);
+        close_socket_ptr (&mesh_pub_local);
+        close_socket_ptr (&mesh_xsub_local);
+        close_socket_ptr (&peer_ctrl_pub_local);
+        close_socket_ptr (&peer_ctrl_sub_local);
+        close_socket_ptr (&external_router_local);
+        close_socket_ptr (&internal_router_local);
+        close_socket_ptr (&internal_router_tx_local);
+        close_socket_ptr (&ingress);
+        close_socket_ptr (&fanout);
         for (size_t i = 0; i < attachment_sockets.size (); ++i) {
             socket_base_t *socket = attachment_sockets[i];
-            close_socket_ptr_local (&socket);
+            close_socket_ptr (&socket);
         }
     }
 

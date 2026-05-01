@@ -8,19 +8,13 @@
 #include "services/discovery/discovery_owned_service.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_runtime_internal.hpp"
 #include "services/spot/spot_sub.hpp"
 
 namespace zlink
 {
 namespace
 {
-static void preserve_first_error_local (int rc_, int *first_error_)
-{
-    if (rc_ == 0 || !first_error_ || *first_error_ != 0)
-        return;
-    *first_error_ = errno != 0 ? errno : EIO;
-}
-
 static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
 {
     if (!always_ && !std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
@@ -182,34 +176,34 @@ int spot_node_t::destroy ()
     close_attachment_monitors (&monitors);
 
     if (discovery)
-        preserve_first_error_local (discovery->remove_observer (this),
+        preserve_first_error (discovery->remove_observer (this),
                                     &first_error);
     for (std::map<std::string, discovery_t *>::iterator it =
            service_discoveries.begin ();
          it != service_discoveries.end (); ++it) {
         if (it->second)
-            preserve_first_error_local (it->second->remove_observer (this),
+            preserve_first_error (it->second->remove_observer (this),
                                         &first_error);
     }
     for (std::map<std::string, discovery_t *>::iterator it =
            channel_dealer_discoveries.begin ();
          it != channel_dealer_discoveries.end (); ++it) {
         if (it->second)
-            preserve_first_error_local (it->second->remove_observer (this),
+            preserve_first_error (it->second->remove_observer (this),
                                         &first_error);
     }
     spot_shutdown_logf_local (false, "step=observer_removed node=%p",
                               static_cast<void *> (this));
 
     if (_runtime)
-        preserve_first_error_local (_runtime->stop_and_join (), &first_error);
+        preserve_first_error (_runtime->stop_and_join (), &first_error);
     spot_shutdown_logf_local (false,
                               "step=data_plane_stopped node=%p error=%d",
                               static_cast<void *> (this), first_error);
-    preserve_first_error_local (destroy_handles (), &first_error);
-    preserve_first_error_local (destroy_internal_receiver (), &first_error);
+    preserve_first_error (destroy_handles (), &first_error);
+    preserve_first_error (destroy_internal_receiver (), &first_error);
     if (_runtime)
-        preserve_first_error_local (_runtime->close_control_sockets (),
+        preserve_first_error (_runtime->close_control_sockets (),
                                     &first_error);
     spot_shutdown_logf_local (false,
                               "step=handles_destroyed node=%p error=%d tracked=%zu",
@@ -223,7 +217,7 @@ int spot_node_t::destroy ()
           static_cast<void *> (this), _lifecycle.owned_socket_count ());
         _lifecycle.clear_tracked_sockets ();
     }
-    preserve_first_error_local (wait_owned_socket_removals (10000),
+    preserve_first_error (wait_owned_socket_removals (10000),
                                 &first_error);
     graceful_error = first_error;
     final_error = graceful_error;
@@ -249,9 +243,9 @@ int spot_node_t::destroy ()
           static_cast<void *> (this), abort_reason, live_slots,
           live_attachments, tracked_sockets);
         _runtime->abortive_stop ();
-        preserve_first_error_local (_lifecycle.force_wait_remaining (5000),
+        preserve_first_error (_lifecycle.force_wait_remaining (5000),
                                     &final_error);
-        preserve_first_error_local (wait_owned_socket_removals (5000),
+        preserve_first_error (wait_owned_socket_removals (5000),
                                     &final_error);
         if (_runtime->live_socket_slot_count () == 0
             && _runtime->attachment_count () == 0) {

@@ -94,6 +94,13 @@ export const AutoHwmProfile = Object.freeze({
 } as const);
 export type AutoHwmProfileValue = typeof AutoHwmProfile[keyof typeof AutoHwmProfile];
 
+const SpotNodeOption = Object.freeze({
+  ROUTER_HWM_PROFILE: 0x360E,
+  ROUTER_HWM: 0x360F,
+  PUBSUB_HWM_PROFILE: 0x3610,
+  PUBSUB_HWM: 0x3611
+} as const);
+
 const MonitorSourceKind = Object.freeze({ SOCKET: 1, SPOT_PUB: 3, SPOT_SUB: 4 } as const);
 const MonitorState = Object.freeze({
   READY: 1 << 0, BOUND_READY: 1 << 1, CLOSED: 1 << 3
@@ -1762,6 +1769,18 @@ export class SpotNode extends NativeHandle {
   }
   setTlsServer(cert: string, key: string, requireClient = 0): void { requireNative().spotNodeSetTlsServer(this._native, validateCString(cert, 'cert', Number.MAX_SAFE_INTEGER), validateCString(key, 'key', Number.MAX_SAFE_INTEGER), requireClient | 0); }
   setTlsClient(ca: string, host: string, trust = 0): void { requireNative().spotNodeSetTlsClient(this._native, validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER), validateCString(host, 'host', Number.MAX_SAFE_INTEGER), trust | 0); }
+  setRouterHighWaterMark(value: number): void {
+    requireNative().spotNodeSetOption(this._native, SpotNodeOption.ROUTER_HWM, int32Buffer(value, 'value'));
+  }
+  setPubSubHighWaterMark(value: number): void {
+    requireNative().spotNodeSetOption(this._native, SpotNodeOption.PUBSUB_HWM, int32Buffer(value, 'value'));
+  }
+  setRouterHighWaterMarkProfile(value: AutoHwmProfileValue): void {
+    requireNative().spotNodeSetOption(this._native, SpotNodeOption.ROUTER_HWM_PROFILE, int32Buffer(value, 'value'));
+  }
+  setPubSubHighWaterMarkProfile(value: AutoHwmProfileValue): void {
+    requireNative().spotNodeSetOption(this._native, SpotNodeOption.PUBSUB_HWM_PROFILE, int32Buffer(value, 'value'));
+  }
   createSpot(): Spot {
     const spot = Spot.create(this);
     this._spots.add(spot);

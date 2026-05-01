@@ -471,12 +471,13 @@ class spot_client_bench_t
         if (!perf::multi::configure_spot_control_tls (*_control_node, _transport))
             return false;
 
-        _control_pub.reset (new zlink::service::spot_t (_control_node->create_spot ()));
-        _control_sub.reset (new zlink::service::spot_t (_control_node->create_spot ()));
-        if (!_control_pub || !_control_sub || !_control_pub->valid ()
-            || !_control_sub->valid ()) {
+        const int control_timeout_ms =
+          std::max (1000, _settings.connect_ready_timeout_ms);
+        const int control_hwm =
+          std::max (1024, static_cast<int> (_settings.clients * 8));
+        if (!perf::multi::apply_spot_node_admission_hwm (
+              *_control_node, control_hwm, control_hwm))
             return false;
-        }
 
         const int base_port =
           45500 + static_cast<int> (perf_metric::now_ns () % 1000) * 4;
@@ -492,16 +493,17 @@ class spot_client_bench_t
             return false;
         }
 
-        const int control_timeout_ms =
-          std::max (1000, _settings.connect_ready_timeout_ms);
-        const int control_hwm =
-          std::max (1024, static_cast<int> (_settings.clients * 8));
+        _control_pub.reset (new zlink::service::spot_t (_control_node->create_spot ()));
+        _control_sub.reset (new zlink::service::spot_t (_control_node->create_spot ()));
+        if (!_control_pub || !_control_sub || !_control_pub->valid ()
+            || !_control_sub->valid ()) {
+            return false;
+        }
+
         _control_pub->options ().linger (0);
-        _control_pub->options ().send_hwm (control_hwm);
         _control_pub->options ().send_timeout (control_timeout_ms);
         _control_pub->publisher_options ().no_drop (true);
         _control_sub->options ().linger (0);
-        _control_sub->options ().recv_hwm (control_hwm);
         _control_sub->options ().recv_timeout (control_timeout_ms);
         _control_sub->set_subscription (k_control_topic);
 

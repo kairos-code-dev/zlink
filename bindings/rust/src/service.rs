@@ -4,6 +4,7 @@ use std::ptr;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use crate::ctx::AutoHwmProfile;
 use crate::domain::{Received, SubscriptionEvent, TopicMessage};
 use crate::error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
@@ -1063,6 +1064,49 @@ impl SpotNode {
         check_config_rc(unsafe {
             ffi::zlink_spot_node_attach_pub_ingress(self.handle, pub_sock.inner.handle)
         })
+    }
+
+    fn set_option_i32(
+        &self,
+        option: ffi::zlink_spot_node_option_t,
+        value: i32,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_set_spot_node_option(
+                self.handle,
+                option,
+                (&value as *const i32).cast(),
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub fn set_router_hwm(&self, value: i32) -> Result<(), ConfigError> {
+        self.set_option_i32(
+            ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_ROUTER_HWM,
+            value,
+        )
+    }
+
+    pub fn set_pubsub_hwm(&self, value: i32) -> Result<(), ConfigError> {
+        self.set_option_i32(
+            ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
+            value,
+        )
+    }
+
+    pub fn set_router_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError> {
+        self.set_option_i32(
+            ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE,
+            profile.to_raw(),
+        )
+    }
+
+    pub fn set_pubsub_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError> {
+        self.set_option_i32(
+            ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE,
+            profile.to_raw(),
+        )
     }
 
     pub fn set_tls_server(

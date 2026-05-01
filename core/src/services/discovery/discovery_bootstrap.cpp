@@ -20,12 +20,6 @@ namespace zlink
 {
 namespace
 {
-static bool discovery_frame_has_more (const zlink_msg_t &frame_)
-{
-    return (reinterpret_cast<const msg_t *> (&frame_)->flags () & msg_t::more)
-           != 0;
-}
-
 static void discovery_sleep_1ms ()
 {
 #if defined _WIN32
@@ -63,46 +57,6 @@ static void discovery_debugf (const char *fmt_, ...)
     va_end (args);
 }
 
-static void close_frames (std::vector<zlink_msg_t> *frames_)
-{
-    if (!frames_)
-        return;
-    for (size_t i = 0; i < frames_->size (); ++i)
-        zlink_msg_close (&(*frames_)[i]);
-    frames_->clear ();
-}
-
-static bool wait_socket_event (void *socket_, short events_, long timeout_ms_)
-{
-    return zlink::wait_socket_events_internal (socket_, events_, timeout_ms_) > 0;
-}
-
-static bool recv_dealer_frames (socket_base_t *socket_,
-                                std::vector<zlink_msg_t> *frames_)
-{
-    if (!socket_ || !frames_)
-        return false;
-    frames_->clear ();
-    while (true) {
-        zlink_msg_t frame;
-        zlink_msg_init (&frame);
-        if (socket_->recv (reinterpret_cast<msg_t *> (&frame), 0) != 0) {
-            zlink_msg_close (&frame);
-            close_frames (frames_);
-            return false;
-        }
-        frames_->push_back (frame);
-        if (!discovery_frame_has_more (frame))
-            break;
-        if (!wait_socket_event (static_cast<void *> (socket_), ZLINK_POLLIN,
-                                500)) {
-            errno = EAGAIN;
-            close_frames (frames_);
-            return false;
-        }
-    }
-    return !frames_->empty ();
-}
 }
 
 discovery_bootstrap_runtime_t::bootstrap_state_t::bootstrap_state_t () :
@@ -522,7 +476,9 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
     }
 
     if (!state->request_sent) {
-        if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 0))
+        if (wait_socket_events_internal (static_cast<void *> (dealer),
+                                         ZLINK_POLLOUT, 0)
+            <= 0)
             return 1;
         discovery_protocol::bootstrap_req_t req;
         memset (&req, 0, sizeof (req));
@@ -541,7 +497,9 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
         return 1;
     }
 
-    if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLIN, 0)) {
+    if (wait_socket_events_internal (static_cast<void *> (dealer), ZLINK_POLLIN,
+                                     0)
+        <= 0) {
         const uint64_t now_ms = zlink::clock_t ().now_ms ();
         (void) reset_bootstrap_request_if_timed_out (owner_, registry_endpoint_,
                                                      now_ms);
@@ -549,7 +507,7 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
     }
 
     std::vector<zlink_msg_t> frames;
-    if (!recv_dealer_frames (dealer, &frames)) {
+    if (!recv_msg_sequence_socket_wait (dealer, &frames, 500)) {
         if (errno == EAGAIN)
             return 1;
         discovery_debugf ("bootstrap recv failed errno=%d", errno);
@@ -576,7 +534,7 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
         uplink_endpoint = rep.uplink_endpoint;
         ok = msg_id == discovery_protocol::msg_bootstrap_rep;
     }
-    close_frames (&frames);
+    close_msg_frames (&frames);
     (void) registry_id;
     (void) feature_flags;
 

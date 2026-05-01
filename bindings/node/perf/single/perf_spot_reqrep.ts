@@ -15,6 +15,7 @@ const {
 } = require('../common/perf_metrics');
 const {
   applyContextPolicy,
+  applySpotNodeAdmission,
   applySocketPolicy,
   benchmarkEndpoint,
   configureTlsClient,
@@ -102,6 +103,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
   applyContextPolicy(ctx);
   const requester = new zlink.RouterSocket(ctx);
   const replierNode = new zlink.SpotNode(ctx);
+  applySpotNodeAdmission(replierNode, options);
   const replier = replierNode.createSpot();
   const endpoint = await benchmarkEndpoint(options.transport, `spot-reqrep-${msgSize}`);
   let stopResponder = false;
@@ -109,7 +111,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
 
   try {
     applySocketPolicy(requester, options);
-    applySocketPolicy(replier, options);
+    replier.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
     configureTlsServer(replierNode, options.transport);
     configureTlsClient(requester, options.transport);
     requester.setRoutingId(REQUESTER_RID);

@@ -299,25 +299,10 @@ class SpotNodeSocketOwner(IntEnum):
 
 
 class SpotNodeOption(IntEnum):
-    PUB_MODE = 1
-    PUB_QUEUE_HWM = 2
-    PUB_QUEUE_FULL_POLICY = 3
-    PUB_HWM = 0x3608
-    SUB_HWM = 0x3609
-    ROUTED_SEND_HWM = 0x360A
-    ROUTED_RECV_HWM = 0x360B
-    SUB_QUEUE_HARD_LIMIT = 0x360C
-    ROUTED_QUEUE_HARD_LIMIT = 0x360D
-
-
-class SpotNodePubMode(IntEnum):
-    SYNC = 0
-    ASYNC = 1
-
-
-class SpotNodePubQueueFullPolicy(IntEnum):
-    EAGAIN = 0
-    DROP = 1
+    ROUTER_HWM_PROFILE = 0x360E
+    ROUTER_HWM = 0x360F
+    PUBSUB_HWM_PROFILE = 0x3610
+    PUBSUB_HWM = 0x3611
 
 
 class SpotNodeState(IntEnum):

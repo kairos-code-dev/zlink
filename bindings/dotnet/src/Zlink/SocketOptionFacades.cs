@@ -332,8 +332,7 @@ public sealed class SpotNodePublisherOptions
 
     public int SendHighWaterMark
     {
-        set => _node.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndHwm,
-            value);
+        set => _node.SetPubSubHighWaterMark(value);
     }
 
     public TimeSpan? SendTimeout
@@ -366,8 +365,7 @@ public sealed class SpotNodeSubscriberOptions
 
     public int ReceiveHighWaterMark
     {
-        set => _node.SetOption(SpotNodeSocketRole.Sub, SocketOptions.RcvHwm,
-            value);
+        set => _node.SetPubSubHighWaterMark(value);
     }
 
     public TimeSpan? ReceiveTimeout

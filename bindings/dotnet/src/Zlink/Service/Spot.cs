@@ -301,6 +301,38 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
+    internal void SetAdmissionOption(SpotNodeOption option, int value)
+    {
+        EnsureNotDisposed();
+        unsafe
+        {
+            int local = value;
+            int rc = NativeMethods.zlink_set_spot_node_option(_handle, option,
+                new IntPtr(&local), (nuint)sizeof(int));
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+    }
+
+    public void SetRouterHighWaterMark(int value)
+    {
+        SetAdmissionOption(SpotNodeOption.RouterHwm, value);
+    }
+
+    public void SetPubSubHighWaterMark(int value)
+    {
+        SetAdmissionOption(SpotNodeOption.PubSubHwm, value);
+    }
+
+    public void SetRouterHighWaterMarkProfile(AutoHwmProfile profile)
+    {
+        SetAdmissionOption(SpotNodeOption.RouterHwmProfile, (int)profile);
+    }
+
+    public void SetPubSubHighWaterMarkProfile(AutoHwmProfile profile)
+    {
+        SetAdmissionOption(SpotNodeOption.PubSubHwmProfile, (int)profile);
+    }
+
     public void SetTlsServer(string certPath, string keyPath,
         bool requireClientCert = false)
     {

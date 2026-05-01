@@ -51,7 +51,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |---|---|
 | **What it does** | Limits the maximum number of messages in the pipe's outbound/inbound direction |
 | **Applied at** | `pipe_t::check_write()` — checks HWM when writing to pipe |
-| **Default** | `1000`. If context auto-HWM is enabled, calculated from profile, socket role, and message unit. |
+| **Default** | Automatic HWM with the balanced profile. If context auto-HWM is disabled, the socket uses `1000`. |
 | **0** | Unlimited |
 | **Effect** | When HWM is reached, `zlink_send()` blocks or returns `ZLINK_SUBMIT_BACKPRESSURED`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
 
@@ -67,9 +67,9 @@ internal topic publishers use `spot_data`, peer/control sockets use `control`,
 and SPOT routers use `routed`.
 
 The context option `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects one of three
-profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`. Auto-HWM is
-opt-in: unless `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` is set to `1`, sockets keep the
-normal HWM default `1000`.
+profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`, and auto-HWM is
+enabled by default. Set `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` to `0` when a context
+must keep the legacy fixed HWM default `1000`.
 
 | Socket group | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|

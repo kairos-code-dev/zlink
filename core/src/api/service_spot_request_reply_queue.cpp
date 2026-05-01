@@ -7,6 +7,7 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/service_spot_request_reply_utils_internal.hpp"
+#include "core/c_api_copy_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
@@ -77,26 +78,6 @@ int copy_topic_to_output_local (const char *topic_data_,
         memcpy (topic_id_out_, topic_data_, topic_size_);
     *topic_id_len_out_ = topic_size_;
     errno = 0;
-    return 0;
-}
-
-int copy_routing_id_frame_local (const zlink_msg_t &frame_,
-                                 zlink_routing_id_t *source_rid_out_)
-{
-    if (!source_rid_out_)
-        return 0;
-
-    const size_t routing_id_size = zlink_msg_size (&frame_);
-    const size_t routing_id_copy =
-      routing_id_size > sizeof (source_rid_out_->data)
-        ? sizeof (source_rid_out_->data)
-        : routing_id_size;
-    source_rid_out_->size = static_cast<uint8_t> (routing_id_copy);
-    if (routing_id_copy > 0) {
-        memcpy (source_rid_out_->data,
-                zlink_msg_data (&const_cast<zlink_msg_t &> (frame_)),
-                routing_id_copy);
-    }
     return 0;
 }
 
@@ -332,11 +313,11 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         zlink_msg_close (&request_seq_msg);
         return -1;
     }
-    if (!zlink::internal_pair_queue::frame_has_more (source_rid_msg)
+    if (!zlink::msg_frame_has_more (source_rid_msg)
         || zlink::internal_pair_queue::recv_followup_with_retry (
              state_->recv.routed_recv_socket, &spot_rid_msg, flags_)
              != 0
-        || !zlink::internal_pair_queue::frame_has_more (spot_rid_msg)
+        || !zlink::msg_frame_has_more (spot_rid_msg)
         || zlink::internal_pair_queue::recv_followup_with_retry (
              state_->recv.routed_recv_socket, &request_seq_msg, flags_)
              != 0) {
@@ -361,7 +342,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         return -1;
     }
 
-    bool more = zlink::internal_pair_queue::frame_has_more (request_seq_msg);
+    bool more = zlink::msg_frame_has_more (request_seq_msg);
     while (more) {
         zlink_msg_t payload_part;
         zlink_msg_init (&payload_part);
@@ -377,7 +358,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
             errno = saved_errno;
             return -1;
         }
-        more = zlink::internal_pair_queue::frame_has_more (payload_part);
+        more = zlink::msg_frame_has_more (payload_part);
         if (zlink::recv_tls_view::push (&payload_part) != 0) {
             const int saved_errno = errno;
             zlink_msg_close (&payload_part);
@@ -392,16 +373,8 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
 
     g_spot_recv_source_rid.size = 0;
     g_spot_recv_spot_rid.size = 0;
-    if (copy_routing_id_frame_local (source_rid_msg, &g_spot_recv_source_rid)
-        != 0
-        || copy_routing_id_frame_local (spot_rid_msg, &g_spot_recv_spot_rid)
-             != 0) {
-        zlink::recv_tls_view::abort ();
-        zlink_msg_close (&source_rid_msg);
-        zlink_msg_close (&spot_rid_msg);
-        zlink_msg_close (&request_seq_msg);
-        return -1;
-    }
+    zlink::copy_routing_id_from_msg (source_rid_msg, &g_spot_recv_source_rid);
+    zlink::copy_routing_id_from_msg (spot_rid_msg, &g_spot_recv_spot_rid);
 
     *request_seq_out_ = zlink::request_reply::decode_u64_be (
       static_cast<const unsigned char *> (zlink_msg_data (&request_seq_msg)));

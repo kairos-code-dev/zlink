@@ -423,10 +423,11 @@ routed channel builder는 transport mesh 설정만 가진다. handler 등록을 
 아래에 두면 transport 설정과 domain dispatch 설정이 섞인다.
 
 ```csharp
+options.UseDiscovery(discovery => discovery.Add(registryEndpoint));
+
 options.AddRoutedChannel("backend", routed =>
 {
     routed.Bind(playEndpoint);
-    routed.UseDiscovery();
 });
 ```
 
@@ -435,29 +436,29 @@ host 설정은 actor factory와 routed channel capability만 등록하고, packe
 객체가 `Configure()`에서 등록한다.
 
 ```csharp
+options.UseDiscovery(discovery => discovery.Add(registryEndpoint));
+
 options.AddRoutedChannel("backend", routed =>
 {
     routed.Bind(playEndpoint);
-    routed.UseDiscovery();
 });
 
 options.AddActorFactory<TicTacToeActorFactory>("player");
 
-public sealed class TicTacToeActor(
-    string actorId,
-    IZLinkActorContext context)
+public sealed class TicTacToeActor(string actorId)
     : IZLinkActor
 {
     public string ActorId { get; } = actorId;
-    private IZLinkActorContext Context { get; } = context;
+    public IZLinkActorContext Context { get; set; } = default!;
 
     public void Configure()
     {
-        Context.AddPacket<CreateGameHandler>();
         Context.AddPacket<JoinMatchHandler>();
-        Context.AddPacket<MoveHandler>();
-        Context.AddPacket<ClientDisconnectedHandler>();
+        Context.AddPacket<PlaceMarkHandler>();
     }
+
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 }
 ```
 
@@ -997,8 +998,7 @@ binding token 검증에 실패하고 명확한 error를 돌려준다.
 callback 안에서 작성하는 정책 code의 형태다.
 
 ```csharp
-public async ValueTask OnPacketAsync(
-    IZLinkSessionContext session,
+public async ValueTask OnDispatchAsync(
     ZlinkStreamHeader header,
     Message body,
     CancellationToken cancellationToken)
@@ -1012,7 +1012,7 @@ public async ValueTask OnPacketAsync(
             request.ActorType,
             cancellationToken);
 
-        IZLinkActorRef actor = await session.CreateRemoteActorAsync(
+        IZLinkActorRef actor = await Context.CreateRemoteActorAsync(
             actorNodeId,
             request.ActorId,
             request.ActorType,
@@ -1020,13 +1020,14 @@ public async ValueTask OnPacketAsync(
 
         authenticatedActors.Remember(request.ActorId, actor);
 
-        await session.ReplyAsync(header, new AuthRep(ok: true), cancellationToken);
+        await Context.Reply(new AuthRep(ok: true))
+            .Async(cancellationToken);
         return;
     }
 
     if (authenticatedActors.TryGet(header, out IZLinkActorRef actor))
     {
-        await session.DispatchToActorAsync(
+        await Context.DispatchToActorAsync(
             actor,
             header,
             body,
@@ -1034,10 +1035,9 @@ public async ValueTask OnPacketAsync(
         return;
     }
 
-    await session.ReplyErrorAsync(
-        header,
-        "actor_not_bound",
-        cancellationToken);
+    throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorNotAuthenticated,
+        "Actor is not bound to this session.");
 }
 ```
 
@@ -1357,34 +1357,34 @@ public sealed class PlayActorRelayHandler : IZLinkActorRelayHandler
 domain message handler는 actor 실행 문맥에만 등록된다.
 
 ```csharp
-public sealed class CreateGameHandler
-    : IZLinkActorRequestHandler<CreateMatchReq, CreateMatchRes>
+public sealed class JoinMatchHandler
+    : IZLinkActorRequestHandler<JoinMatchReq, JoinMatchRes>
 {
     private readonly TicTacToeGameService game;
 
-    public ValueTask<CreateMatchRes> HandleAsync(
-        CreateMatchReq request,
+    public ValueTask<JoinMatchRes> HandleAsync(
+        JoinMatchReq request,
         ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
-        return game.CreateAsync(
+        return game.JoinAsync(
             context.ActorId,
             request,
             cancellationToken);
     }
 }
 
-public sealed class MoveHandler
-    : IZLinkActorRequestHandler<MoveReq, MoveRep>
+public sealed class PlaceMarkHandler
+    : IZLinkActorRequestHandler<PlaceMarkReq, PlaceMarkRes>
 {
     private readonly TicTacToeGameService game;
 
-    public ValueTask<MoveRep> HandleAsync(
-        MoveReq request,
+    public ValueTask<PlaceMarkRes> HandleAsync(
+        PlaceMarkReq request,
         ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
-        return game.MoveAsync(
+        return game.PlaceMarkAsync(
             context.ActorId,
             request,
             cancellationToken);
@@ -1396,28 +1396,29 @@ transport와 actor factory 등록은 host 설정에 남고, actor packet handler
 객체 안에 둔다.
 
 ```csharp
+options.UseDiscovery(discovery => discovery.Add(registryEndpoint));
+
 options.AddRoutedChannel("backend", routed =>
 {
     routed.Bind(playEndpoint);
-    routed.UseDiscovery();
 });
 
 options.AddActorFactory<TicTacToeActorFactory>("player");
 
-public sealed class TicTacToeActor(
-    string actorId,
-    IZLinkActorContext context)
+public sealed class TicTacToeActor(string actorId)
     : IZLinkActor
 {
     public string ActorId { get; } = actorId;
-    private IZLinkActorContext Context { get; } = context;
+    public IZLinkActorContext Context { get; set; } = default!;
 
     public void Configure()
     {
-        Context.AddPacket<CreateGameHandler>();
         Context.AddPacket<JoinMatchHandler>();
-        Context.AddPacket<MoveHandler>();
+        Context.AddPacket<PlaceMarkHandler>();
     }
+
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 }
 ```
 
@@ -1427,16 +1428,17 @@ session server는 기존 session callback을 유지한다. session은 message ha
 dispatch를 직접 선택한다.
 
 ```csharp
-options.AddStream("client", stream =>
+options.AddStreamNode("client", stream =>
 {
     stream.Bind(sessionEndpoint);
-    stream.UseSession<TicTacToeSession>();
+    stream.AddHeaderSession<TicTacToeSession>();
 });
 
-public sealed class TicTacToeSession : IZLinkStreamSessionHandler
+public sealed class TicTacToeSession : IZLinkSession
 {
-    public async ValueTask OnPacketAsync(
-        IZLinkSessionContext session,
+    public IZLinkSessionContext Context { get; set; } = default!;
+
+    public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
@@ -1450,7 +1452,7 @@ public sealed class TicTacToeSession : IZLinkStreamSessionHandler
                 request.ActorType,
                 cancellationToken);
 
-            IZLinkActorRef actor = await session.CreateRemoteActorAsync(
+            IZLinkActorRef actor = await Context.CreateRemoteActorAsync(
                 actorNodeId,
                 request.ActorId,
                 request.ActorType,
@@ -1458,16 +1460,14 @@ public sealed class TicTacToeSession : IZLinkStreamSessionHandler
 
             authenticatedActors.Remember(request.ActorId, actor);
 
-            await session.ReplyAsync(
-                header,
-                new AuthRep(ok: true),
-                cancellationToken);
+            await Context.Reply(new AuthRep(ok: true))
+                .Async(cancellationToken);
             return;
         }
 
         if (authenticatedActors.TryGet(header, out IZLinkActorRef actor))
         {
-            await session.DispatchToActorAsync(
+            await Context.DispatchToActorAsync(
                 actor,
                 header,
                 body,
@@ -1475,11 +1475,21 @@ public sealed class TicTacToeSession : IZLinkStreamSessionHandler
             return;
         }
 
-        await session.ReplyErrorAsync(
-            header,
-            "actor_not_bound",
-            cancellationToken);
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorNotAuthenticated,
+            "Actor is not bound to this session.");
     }
+
+    public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
+
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
+
+    public ValueTask OnErrorAsync(
+        ZLinkStreamError error,
+        CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 }
 ```
 

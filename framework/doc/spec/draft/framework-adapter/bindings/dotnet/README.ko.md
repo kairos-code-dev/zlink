@@ -86,6 +86,10 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 - 현재 framework core 문서에서는 `targetRid + spotRid` direct routed public 호출은
   두지 않는다. 반면 actor join, actor factory 등록, stream-to-actor bridge는 현재
   draft 구현 범위에 포함하므로 공용 계약과 샘플 문서에 함께 반영한다.
+- session actor dispatch는 `SessionGateway` feature switch가 아니라
+  `AddStreamNode(...).AddHeaderSession<TSession>()`, actor factory, actor route
+  resolver, session route resolver, session location writer, `IZLinkSessionProxy`
+  조합으로 설명한다.
 
 ## 2. 문서 구조와 역할 분담
 
@@ -138,6 +142,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 | [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, channel send/request, publish를 한 번에 보는 샘플 |
 | [stream-samples.ko.md](./stream-samples.ko.md) | STREAM packet/raw/header session과 등록 코드를 한 번에 보는 샘플 |
+| [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | TicTacToe direct 샘플과 session actor dispatch 샘플의 contract 방향 |
 | [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor를 함께 쓰는 틱택토 게임 샘플 초안 |
 
 ### 2.5 범위 원칙

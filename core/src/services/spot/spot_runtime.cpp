@@ -34,14 +34,14 @@ static uint32_t resolve_spot_data_runtime_interval_ms ()
 }
 }
 
-void preserve_first_error_local (int rc_, int *first_error_)
+void preserve_first_error (int rc_, int *first_error_)
 {
     if (rc_ == 0 || !first_error_ || *first_error_ != 0)
         return;
     *first_error_ = errno != 0 ? errno : EIO;
 }
 
-int send_ascii_frame_local (socket_base_t *socket_,
+int send_ascii_frame (socket_base_t *socket_,
                             const std::string &value_,
                             int flags_)
 {
@@ -55,7 +55,7 @@ int send_ascii_frame_local (socket_base_t *socket_,
     return rc;
 }
 
-void close_socket_ptr_local (socket_base_t **socket_p_)
+void close_socket_ptr (socket_base_t **socket_p_)
 {
     if (socket_p_ && *socket_p_) {
         socket_base_t *socket = *socket_p_;
@@ -65,7 +65,7 @@ void close_socket_ptr_local (socket_base_t **socket_p_)
     }
 }
 
-bool spot_shutdown_debug_enabled_local ()
+bool spot_shutdown_debug_enabled ()
 {
     return std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN") != NULL;
 }
@@ -230,7 +230,7 @@ int spot_runtime_t::start ()
     data_ctrl_front = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
     if (!data_ctrl_front
         || data_ctrl_front->bind (data_ctrl_endpoint.c_str ()) != 0) {
-        close_socket_ptr_local (&data_ctrl_front);
+        close_socket_ptr (&data_ctrl_front);
         return -1;
     }
     data_ctrl_front->set_auto_hwm_policy_enabled (false);
@@ -271,7 +271,7 @@ int spot_runtime_t::start ()
           &execution.data_plane_protocol_state);
         if (owner)
             owner->untrack_owned_socket (data_ctrl_front);
-        close_socket_ptr_local (&data_ctrl_front);
+        close_socket_ptr (&data_ctrl_front);
         return -1;
     }
 
@@ -322,11 +322,11 @@ int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
     }
 
     scoped_lock_t lock (const_cast<mutex_t &> (ctrl_sync));
-    if (send_ascii_frame_local (data_ctrl_front, verb_,
+    if (send_ascii_frame (data_ctrl_front, verb_,
                                 arg_ ? ZLINK_SNDMORE : 0)
         != 0)
         return -1;
-    if (arg_ && send_ascii_frame_local (data_ctrl_front, arg_, 0) != 0)
+    if (arg_ && send_ascii_frame (data_ctrl_front, arg_, 0) != 0)
         return -1;
 
     if (data_plane_runtime && execution.data_plane_task_id_value != 0)

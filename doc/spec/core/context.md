@@ -75,7 +75,7 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
-#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  0
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 0
@@ -90,7 +90,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | Default thread priority (OS default) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | Default scheduling policy (OS default) |
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | Default Spot worker count (`0` = auto) |
-| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 0 | Automatic HWM policy disabled by default. Socket HWM defaults remain `1000` unless the application opts in. |
+| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | Automatic HWM policy enabled by default. Sockets use the balanced profile unless the application disables auto-HWM or sets manual HWM values. |
 | `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 0 | Deprecated compatibility default for a no-op option |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | Default debounce window for automatic HWM recalculation (ms) |
 | `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 0 | Deprecated compatibility default for a no-op option |

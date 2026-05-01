@@ -9,6 +9,7 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
+    apply_multi_spot_node_admission,
     benchmark_endpoint,
     benchmark_run_id,
     configure_multi_tls_client,
@@ -181,6 +182,7 @@ def main(argv=None):
             discovery = zlink.Discovery(ctx, zlink.ServiceType.SPOT, SERVICE_NAME)
             discovery.connect_registry(registry_router_endpoint)
             node.attach_discovery(discovery)
+            apply_multi_spot_node_admission(node)
             node.bind(benchmark_endpoint(args.transport, f"multi-spot-client-{index}"))
             spot = node.create_spot()
             spot.set_subscription(TOPIC)

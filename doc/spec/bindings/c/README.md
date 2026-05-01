@@ -85,11 +85,11 @@ returns the active profile. Invalid profile values return
 `auto_hwm_profile`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`,
 `auto_hwm_size_cap`, and `auto_hwm_effective_publish_fanout`.
 
-SPOT queue defaults follow the current core header. Local subscribe delivery
-targets use `ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT` (`100`), while routed
-delivery targets use `ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT` (`500`).
-Binding verification must use native headers from `core/include` and the
-runtime library from `core/build`.
+SPOT admission HWM defaults follow the current core header. SpotNode exposes
+router and pubsub admission profile/numeric options; relay and delivery HWM are
+fixed to `0`, and delivery queue hard-limit options are not part of the current
+contract. Binding verification must use native headers from `core/include` and
+the runtime library from `core/build`.
 
 ## Send Surface
 
@@ -462,14 +462,17 @@ identical surface syntax across languages.
 ## SPOT Option and Status Alignment
 
 The C binding follows `core/include/zlink.h` and `core/include/zlink_enum.h`
-directly. SPOT node HWM options use `ZLINK_SPOT_NODE_OPT_PUB_HWM` and
-`ZLINK_SPOT_NODE_OPT_SUB_HWM`; the old topic send/recv option names are not
-part of the current contract.
+directly. SPOT node HWM options use the router/pubsub admission options:
+`ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`, `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`, and
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`. Old direction-based HWM options are reserved,
+not binding surface.
 
 `zlink_spot_node_status_t` includes
 `disconnected_sub_target_count` and
-`disconnected_routed_target_count` for delivery targets disconnected by queue
-hard limits or equivalent delivery guards.
+`disconnected_routed_target_count` as ABI compatibility fields. The current
+core does not disconnect delivery targets because an internal delivery queue
+grew, so these counters report `0`.
 
 ## Peer Disconnect by Routing ID
 

@@ -3,6 +3,7 @@
 #ifndef __ZLINK_SERVICES_COMMON_MONITOR_DECODE_HPP_INCLUDED__
 #define __ZLINK_SERVICES_COMMON_MONITOR_DECODE_HPP_INCLUDED__
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 
 #include <zlink.h>
@@ -13,9 +14,7 @@ namespace zlink
 {
 static inline bool monitor_part_has_more (const zlink_msg_t *part_)
 {
-    return part_
-           && (reinterpret_cast<const msg_t *> (part_)->flags () & msg_t::more)
-                != 0;
+    return part_ && msg_frame_has_more (*part_);
 }
 
 static inline bool read_monitor_u64_part (const zlink_msg_t *part_,
@@ -97,38 +96,18 @@ static inline int recv_socket_monitor_event (void *monitor_socket_,
     }
 
     const size_t routing_id_index = static_cast<size_t> (value_count) + 2;
-    const size_t routing_id_size = zlink_msg_size (&parts[routing_id_index]);
-    const size_t routing_id_copy =
-      routing_id_size > sizeof (event_->routing_id.data)
-        ? sizeof (event_->routing_id.data)
-        : routing_id_size;
-    event_->routing_id.size = static_cast<uint8_t> (routing_id_copy);
-    if (routing_id_copy > 0) {
-        memcpy (event_->routing_id.data,
-                zlink_msg_data (&parts[routing_id_index]), routing_id_copy);
-    }
+    copy_routing_id_from_msg (parts[routing_id_index], &event_->routing_id);
 
     const size_t local_index = routing_id_index + 1;
-    const size_t local_size = zlink_msg_size (&parts[local_index]);
-    const size_t local_copy =
-      local_size >= sizeof (event_->local_addr)
-        ? sizeof (event_->local_addr) - 1
-        : local_size;
-    if (local_copy > 0)
-        memcpy (event_->local_addr, zlink_msg_data (&parts[local_index]),
-                local_copy);
-    event_->local_addr[local_copy] = '\0';
+    copy_fixed_c_string_from_bytes (
+      event_->local_addr, sizeof (event_->local_addr),
+      zlink_msg_data (&parts[local_index]), zlink_msg_size (&parts[local_index]));
 
     const size_t remote_index = local_index + 1;
-    const size_t remote_size = zlink_msg_size (&parts[remote_index]);
-    const size_t remote_copy =
-      remote_size >= sizeof (event_->remote_addr)
-        ? sizeof (event_->remote_addr) - 1
-        : remote_size;
-    if (remote_copy > 0)
-        memcpy (event_->remote_addr, zlink_msg_data (&parts[remote_index]),
-                remote_copy);
-    event_->remote_addr[remote_copy] = '\0';
+    copy_fixed_c_string_from_bytes (
+      event_->remote_addr, sizeof (event_->remote_addr),
+      zlink_msg_data (&parts[remote_index]),
+      zlink_msg_size (&parts[remote_index]));
 
     for (size_t i = 0; i < part_count; ++i)
         zlink_msg_close (&parts[i]);

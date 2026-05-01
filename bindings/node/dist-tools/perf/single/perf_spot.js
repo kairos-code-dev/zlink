@@ -85,12 +85,14 @@ async function runSpotBenchmark(msgSize, options) {
         discovery.connectRegistry(registryRouter);
         publisherNode.attachDiscovery(discovery);
         subscriberNode.attachDiscovery(discovery);
+        (0, perf_single_common_1.applySpotNodeAdmission)(publisherNode, options);
+        (0, perf_single_common_1.applySpotNodeAdmission)(subscriberNode, options);
         publisherNode.bind(publisherEndpoint);
         subscriberNode.bind(subscriberEndpoint);
         publisher = publisherNode.createSpot();
         subscriber = subscriberNode.createSpot();
-        (0, perf_single_common_1.applySocketPolicy)(publisher, options);
-        (0, perf_single_common_1.applySocketPolicy)(subscriber, options);
+        publisher.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
+        subscriber.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
         subscriber.setSubscription(TOPIC);
         const runId = (0, perf_metrics_1.createRunId)(options.runId ?? 1);
         const payload = (0, perf_metrics_1.createPayload)(msgSize);

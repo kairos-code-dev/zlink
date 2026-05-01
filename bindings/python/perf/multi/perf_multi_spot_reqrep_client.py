@@ -7,6 +7,7 @@ import time
 import zlink
 
 from perf_multi_common import (
+    apply_multi_spot_node_admission,
     benchmark_endpoint,
     HEADER_SIZE,
     benchmark_run_id,
@@ -144,6 +145,7 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         node = zlink.SpotNode(ctx)
+        apply_multi_spot_node_admission(node)
         node.set_routing_id(b"spot-req-client-node")
         node.bind(benchmark_endpoint(args.transport, "multi-spot-reqrep-client"))
         data_endpoint_local = node.last_endpoint()

@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
@@ -28,53 +29,11 @@ static void discovery_debugf_local (const char *fmt_, ...)
     va_end (args);
 }
 
-static bool discovery_frame_has_more_local (const zlink_msg_t &frame_)
-{
-    return (reinterpret_cast<const msg_t *> (&frame_)->flags () & msg_t::more)
-           != 0;
-}
-
-static void close_frames_local (std::vector<zlink_msg_t> *frames_)
-{
-    if (!frames_)
-        return;
-    for (size_t i = 0; i < frames_->size (); ++i)
-        zlink_msg_close (&(*frames_)[i]);
-    frames_->clear ();
-}
-
 static bool wait_socket_event_local (void *socket_,
                                      short events_,
                                      long timeout_ms_)
 {
     return zlink::wait_socket_events_internal (socket_, events_, timeout_ms_) > 0;
-}
-
-static bool recv_dealer_frames_local (socket_base_t *socket_,
-                                      std::vector<zlink_msg_t> *frames_)
-{
-    if (!socket_ || !frames_)
-        return false;
-    frames_->clear ();
-    while (true) {
-        zlink_msg_t frame;
-        zlink_msg_init (&frame);
-        if (socket_->recv (reinterpret_cast<msg_t *> (&frame), 0) != 0) {
-            zlink_msg_close (&frame);
-            close_frames_local (frames_);
-            return false;
-        }
-        frames_->push_back (frame);
-        if (!discovery_frame_has_more_local (frame))
-            break;
-        if (!wait_socket_event_local (static_cast<void *> (socket_),
-                                      ZLINK_POLLIN, 500)) {
-            errno = EAGAIN;
-            close_frames_local (frames_);
-            return false;
-        }
-    }
-    return !frames_->empty ();
 }
 
 static int recv_status_ack_local (socket_base_t *socket_,
@@ -101,7 +60,7 @@ static int recv_status_ack_local (socket_base_t *socket_,
             continue;
 
         std::vector<zlink_msg_t> frames;
-        if (!recv_dealer_frames_local (socket_, &frames)) {
+        if (!recv_msg_sequence_socket_wait (socket_, &frames, 500)) {
             if (errno == EAGAIN)
                 continue;
             return -1;
@@ -130,11 +89,11 @@ static int recv_status_ack_local (socket_base_t *socket_,
                     *error_out_ = discovery_protocol::read_string (frames[2]);
                 }
             }
-            close_frames_local (&frames);
+            close_msg_frames (&frames);
             return 0;
         }
 
-        close_frames_local (&frames);
+        close_msg_frames (&frames);
     }
 
     errno = EAGAIN;
@@ -240,27 +199,27 @@ static int recv_topology_reply_entries_local (
 
     entries_out_->clear ();
     std::vector<zlink_msg_t> frames;
-    if (!recv_dealer_frames_local (socket_, &frames))
+    if (!recv_msg_sequence_socket_wait (socket_, &frames, 500))
         return -1;
 
     uint16_t msg_id = 0;
     if (frames.size () < 2
         || !discovery_protocol::read_u16 (frames[0], &msg_id)
         || msg_id != discovery_protocol::msg_topology_reply) {
-        close_frames_local (&frames);
+        close_msg_frames (&frames);
         errno = EPROTO;
         return -1;
     }
 
     uint32_t count = 0;
     if (!discovery_protocol::read_u32 (frames[1], &count)) {
-        close_frames_local (&frames);
+        close_msg_frames (&frames);
         errno = EPROTO;
         return -1;
     }
 
     if (frames.size () != static_cast<size_t> (count) + 2) {
-        close_frames_local (&frames);
+        close_msg_frames (&frames);
         errno = EPROTO;
         return -1;
     }
@@ -270,7 +229,7 @@ static int recv_topology_reply_entries_local (
         zlink_registry_topology_entry_t entry;
         memset (&entry, 0, sizeof (entry));
         if (zlink_msg_size (&frames[i + 2]) != sizeof (entry)) {
-            close_frames_local (&frames);
+            close_msg_frames (&frames);
             errno = EPROTO;
             return -1;
         }
@@ -278,7 +237,7 @@ static int recv_topology_reply_entries_local (
         entries_out_->push_back (entry);
     }
 
-    close_frames_local (&frames);
+    close_msg_frames (&frames);
     return 0;
 }
 }
@@ -410,8 +369,9 @@ int discovery_t::query_spot_owner_entries_from_registry (
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
     filter.service_role = ZLINK_SERVICE_ROLE_SPOT;
     filter.routing_id = *spot_rid_;
-    strncpy (filter.service_name, _service_name.c_str (),
-             sizeof (filter.service_name) - 1);
+    copy_fixed_c_string_from_cstr (filter.service_name,
+                                   sizeof (filter.service_name),
+                                   _service_name.c_str ());
 
     int rc = 0;
     if (discovery_protocol::send_u16 (static_cast<void *> (dealer),

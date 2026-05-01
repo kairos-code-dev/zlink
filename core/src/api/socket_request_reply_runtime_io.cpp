@@ -8,6 +8,7 @@
 
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
+#include "core/c_api_copy_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
@@ -25,9 +26,7 @@ void assign_routing_id_compact (zlink_routing_id_t *dest_,
     if (!dest_)
         return;
 
-    dest_->size = src_.size;
-    if (src_.size > 0)
-        memcpy (dest_->data, src_.data, src_.size);
+    zlink::copy_routing_id_from_bytes (src_.data, src_.size, dest_);
 }
 
 struct router_mandatory_scope_t
@@ -146,15 +145,6 @@ int recv_router_followup_frame (zlink::socket_base_t *socket_,
         return -1;
 
     return 0;
-}
-
-void close_router_raw_parts (std::vector<zlink_msg_t> *parts_)
-{
-    if (!parts_)
-        return;
-
-    for (size_t i = 0; i < parts_->size (); ++i)
-        zlink_msg_close (&(*parts_)[i]);
 }
 
 bool router_raw_part_has_more (const zlink_msg_t *part_)
@@ -352,22 +342,10 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
         return -1;
     }
 
-    g_router_recv_source_rid.size =
-      static_cast<uint8_t> (std::min (zlink_msg_size (&source_node_frame),
-                                      sizeof (g_router_recv_source_rid.data)));
-    if (g_router_recv_source_rid.size > 0) {
-        memcpy (g_router_recv_source_rid.data,
-                zlink_msg_data (&source_node_frame),
-                g_router_recv_source_rid.size);
-    }
-    g_router_recv_source_spot_rid.size = static_cast<uint8_t> (
-      std::min (zlink_msg_size (&source_spot_frame),
-                sizeof (g_router_recv_source_spot_rid.data)));
-    if (g_router_recv_source_spot_rid.size > 0) {
-        memcpy (g_router_recv_source_spot_rid.data,
-                zlink_msg_data (&source_spot_frame),
-                g_router_recv_source_spot_rid.size);
-    }
+    zlink::copy_routing_id_from_msg (source_node_frame,
+                                     &g_router_recv_source_rid);
+    zlink::copy_routing_id_from_msg (source_spot_frame,
+                                     &g_router_recv_source_spot_rid);
     *source_node_rid_out_ = &g_router_recv_source_rid;
     *source_spot_rid_out_ = &g_router_recv_source_spot_rid;
     *request_seq_out_ = zlink::request_reply::decode_u64_be (
@@ -376,9 +354,7 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
     zlink_msg_close (&source_spot_frame);
     zlink_msg_close (&seq_frame);
 
-    if ((reinterpret_cast<const zlink::msg_t *> (first_payload)->flags ()
-         & zlink::msg_t::more)
-        == 0)
+    if (!zlink::msg_frame_has_more (*first_payload))
         return zlink::recv_tls_view::commit_reserved_single (parts_out_,
                                                              part_count_out_);
 
@@ -387,8 +363,8 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
         errno = EMSGSIZE;
         return -1;
     }
-    return zlink::internal_pair_queue::export_followup_sequence_from_reserved_first (
-      queue_->rx, parts_out_, part_count_out_);
+    return zlink::export_reserved_followup_msg_sequence (
+      queue_->rx, parts_out_, part_count_out_, true);
 }
 
 int recv_router_message_direct (socket_handle_t handle_,
@@ -451,7 +427,7 @@ int recv_router_message_direct (socket_handle_t handle_,
         if (reinterpret_cast<zlink::msg_t *> (&raw_parts.back ())
               ->move (current)
             != 0) {
-            close_router_raw_parts (&raw_parts);
+            zlink::close_msg_frames (&raw_parts);
             const int close_rc = current.close ();
             errno_assert (close_rc == 0);
             errno = EFAULT;
@@ -465,19 +441,19 @@ int recv_router_message_direct (socket_handle_t handle_,
         zlink_msg_init (&next);
         if (recv_router_followup_frame (handle_.socket, &next) != 0) {
             zlink_msg_close (&next);
-            close_router_raw_parts (&raw_parts);
+            zlink::close_msg_frames (&raw_parts);
             return -1;
         }
         if (current.move (*reinterpret_cast<zlink::msg_t *> (&next)) != 0) {
             zlink_msg_close (&next);
-            close_router_raw_parts (&raw_parts);
+            zlink::close_msg_frames (&raw_parts);
             errno = EFAULT;
             return -1;
         }
     }
 
     if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0) {
-        close_router_raw_parts (&raw_parts);
+        zlink::close_msg_frames (&raw_parts);
         return -1;
     }
 

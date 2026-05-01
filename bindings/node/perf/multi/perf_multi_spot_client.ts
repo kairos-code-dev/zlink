@@ -25,6 +25,7 @@ const {
   POLLOUT,
   applySocketPolicy,
   applyContextPolicy,
+  applySpotNodeAdmission,
   createSocketEventWaiter,
   resolveMultiLatencySampleCap,
   subscribeNoWait,
@@ -165,6 +166,7 @@ async function main() {
     configureTlsClient(sharedNode, options.transport);
     sharedDiscovery.connectRegistry(options.endpoint);
     sharedNode.attachDiscovery(sharedDiscovery);
+    applySpotNodeAdmission(sharedNode);
     const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-client-${process.pid}`);
     trace(`shared-node endpoint=${dataEndpoint}`);
     sharedNode.bind(dataEndpoint);
@@ -173,7 +175,7 @@ async function main() {
     for (let i = 0; i < spotCount; i += 1) {
       trace(`slot-${i} create-spot`);
       const spot = sharedNode.createSpot();
-      applySocketPolicy(spot);
+      spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
       spot.setSubscription(TOPIC);
       slots.push({ spot });
     }

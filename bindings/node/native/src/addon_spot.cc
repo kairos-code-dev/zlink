@@ -2324,6 +2324,40 @@ napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_setsockopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 3) {
+        napi_throw_type_error(env, NULL, "spotNodeSetOption expects node, option, value");
+        return NULL;
+    }
+
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    int32_t opt = 0;
+    if (napi_get_value_int32(env, argv[1], &opt) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option must be an integer");
+        return NULL;
+    }
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "value must be Buffer");
+        return NULL;
+    }
+
+    int rc = zlink_set_spot_node_option(
+      node, static_cast<zlink_spot_node_option_t>(opt), data, len);
+    if (rc != 0)
+        return throw_last_error(env, "spotNodeSetOption failed");
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];

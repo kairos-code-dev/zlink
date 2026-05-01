@@ -931,6 +931,11 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_set_spot_node_option",
+            [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_spot_node_status_snapshot",
             [ctypes.c_void_p, ctypes.POINTER(ZlinkSpotNodeStatus)],
             ctypes.c_int,

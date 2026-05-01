@@ -113,6 +113,7 @@ fn main() {
     let registry = Registry::new(&ctx).expect("registry");
     let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
     let node = SpotNode::new(&ctx).expect("spot node");
+    common::apply_multi_spot_node_admission(&node, &settings);
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         let pem = common::load_tls_pem(&tls);

@@ -7,6 +7,7 @@ import socket
 import zlink
 
 from perf_multi_common import (
+    apply_multi_spot_node_admission,
     benchmark_endpoint,
     parse_server_args,
     resolve_multi_connect_ready_timeout_ms,
@@ -32,6 +33,7 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as data_node:
+            apply_multi_spot_node_admission(data_node)
             data_node.set_routing_id(SERVER_NODE_RID)
             data_node.bind(benchmark_endpoint(args.transport, "multi-spot-reqrep"))
             data_endpoint = data_node.last_endpoint()

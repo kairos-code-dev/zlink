@@ -117,6 +117,7 @@ fn main() {
 
     for _ in 0..settings.clients {
         let node = SpotNode::new(&ctx).expect("spot node");
+        common::apply_multi_spot_node_admission(&node, &settings);
         let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
         discovery
             .connect_registry(registry_router_endpoint)

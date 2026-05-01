@@ -66,26 +66,21 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 ## SpotNode 계약
 
-SpotNode와 Spot의 내부 raw 소켓 기본 HWM은 고정 숫자가 아니라 context
-auto HWM 정책에서 계산된다. 사용자가
-`ZLINK_SPOT_NODE_OPT_PUB_HWM`,
-`ZLINK_SPOT_NODE_OPT_SUB_HWM`,
-`ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`,
-`ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM`를 직접 설정하면 그 값이 자동값보다
-우선한다. context auto-HWM을 켜면 활성 자동 HWM profile을 사용한다.
-Topic publish socket은 `spot_data`, topic ingress socket은 `recv_ingress`,
-routed socket은 `routed`, control socket은 `control`로 계획한다. SPOT publish
-계획은 전체 Spot handle 수나 peer connection 수를 기준으로 per-connection HWM을
-낮추지 않는다.
+SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control로만 공개한다.
+공개 옵션은 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
+`ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지다. 두 admission 채널의 기본 profile은
+balanced이며 HWM `16`으로 해석된다. low latency는 `8`, throughput은 `32`다.
+양수 HWM을 직접 설정하면 해당 채널 profile 값보다 우선한다. 숫자 HWM에 `0`을
+설정하면 override를 지우고 profile 값으로 돌아간다. 음수와 알 수 없는 profile은
+`EINVAL`로 실패한다.
 
-`ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT`와
-`ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT`는 내부 delivery queue가 허용하는
-메시지 개수 상한을 설정한다. 기본값은 각각
-`ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT`,
-`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`이며, 기본값은 각각 `100`과
-`500`이다. 상한을 넘은
-대상은 해당 sub 또는 routed delivery target만 끊기며, node 전체나 peer 전체를
-닫지 않는다.
+`Spot` handle은 common `ZLINK_OPT_SNDHWM` 또는 `ZLINK_OPT_RCVHWM` 설정을 받지
+않는다. `Spot`은 생성 시점의 SpotNode admission HWM을 캡처하며, 이후 SpotNode HWM
+변경은 나중에 생성되는 `Spot`에만 적용된다. SpotNode 내부 relay와 delivery socket은
+HWM `0`을 사용한다. 제거된 방향별 SpotNode HWM option과 queue hard limit option은
+공개 계약에 없으며, 기존 enum 숫자는 예약 상태다.
 
 SpotNode와 Spot에는 public weight 설정 옵션이 없습니다. peer weight는 raw
 ROUTER와 DEALER 소켓에서만 설정합니다. Spot peer snapshot에 남아 있는
@@ -605,10 +600,10 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
 - snapshot/query API를 사용해 상태를 관찰한다.
 - `zlink_spot_node_status_t`와 peer/subject entry 구조체의 `service_name`
   필드는 현재 공개 이름을 유지한다.
-- `zlink_spot_node_status_t.disconnected_sub_target_count`는 queue hard limit 등으로
-  끊긴 local subscribe delivery target 수를 나타낸다.
-- `zlink_spot_node_status_t.disconnected_routed_target_count`는 queue hard limit 등으로
-  끊긴 routed delivery target 수를 나타낸다.
+- `zlink_spot_node_status_t.disconnected_sub_target_count`와
+  `zlink_spot_node_status_t.disconnected_routed_target_count`는 ABI 호환을 위해 남아
+  있다. 현재 HWM 정책은 delivery queue가 깊어졌다는 이유로 local subscribe 또는
+  routed target을 끊지 않는다.
 
 ## 제약 요약
 

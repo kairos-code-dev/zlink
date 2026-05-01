@@ -16,6 +16,23 @@
 namespace perf {
 namespace multi {
 
+template<typename SpotNode>
+inline bool apply_spot_node_admission_hwm (SpotNode &node_,
+                                           int pubsub_hwm_,
+                                           int router_hwm_)
+{
+    const int pubsub = pubsub_hwm_ > 0 ? pubsub_hwm_ : 1;
+    const int router = router_hwm_ > 0 ? router_hwm_ : 1;
+    return zlink_set_spot_node_option (
+             node_.handle (), ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &pubsub,
+             sizeof (pubsub))
+             == ZLINK_CONFIG_OK
+           && zlink_set_spot_node_option (
+                node_.handle (), ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &router,
+                sizeof (router))
+                == ZLINK_CONFIG_OK;
+}
+
 struct control_connect_gate_t
 {
     control_connect_gate_t () : requested (false), stopped (false), endpoint () {}
@@ -431,11 +448,6 @@ inline bool initialize_client_control_session (
         return false;
     control_node->attach_discovery (*control_discovery);
 
-    std::unique_ptr<SpotHandle> control_spot (
-      new SpotHandle (control_node->create_spot ()));
-    if (!control_spot->valid ())
-        return false;
-
     if (!configure_spot_control_tls (*control_node, transport_))
         return false;
 
@@ -452,8 +464,15 @@ inline bool initialize_client_control_session (
         return false;
     }
 
-    control_spot->options ().send_hwm (settings_.sndhwm);
-    control_spot->options ().recv_hwm (settings_.rcvhwm);
+    if (!apply_spot_node_admission_hwm (
+          *control_node, settings_.sndhwm, settings_.rcvhwm))
+        return false;
+
+    std::unique_ptr<SpotHandle> control_spot (
+      new SpotHandle (control_node->create_spot ()));
+    if (!control_spot->valid ())
+        return false;
+
     control_spot->options ().send_timeout (settings_.sndtimeo_ms);
     control_spot->options ().recv_timeout (settings_.rcvtimeo_ms);
     control_spot->set_subscription (control_topic_.c_str ());
@@ -483,6 +502,10 @@ inline bool initialize_client_slot (
     if (!slot_->node->valid ())
         return false;
 
+    if (!apply_spot_node_admission_hwm (
+          *slot_->node, settings_.sndhwm, settings_.rcvhwm))
+        return false;
+
     slot_->spot.reset (new SpotHandle (slot_->node->create_spot ()));
     if (!slot_->spot->valid ())
         return false;
@@ -496,7 +519,6 @@ inline bool initialize_client_slot (
         return false;
     }
 
-    slot_->spot->options ().recv_hwm (settings_.rcvhwm);
     slot_->spot->options ().recv_timeout (settings_.rcvtimeo_ms);
     slot_->spot->set_subscription (topic_);
 

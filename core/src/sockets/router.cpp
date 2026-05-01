@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
+#include "core/c_api_copy_internal.hpp"
 #include "utils/macros.hpp"
 #include "sockets/router.hpp"
 #include "sockets/socket_dispatch_loop_internal.hpp"
@@ -52,11 +53,8 @@ void format_blob_routing_id_debug (const zlink::blob_t &routing_id_,
                                    size_t buf_size_)
 {
     zlink_routing_id_t rid;
-    rid.size = static_cast<uint8_t> (
-      routing_id_.size () < sizeof (rid.data) ? routing_id_.size ()
-                                              : sizeof (rid.data));
-    if (rid.size > 0)
-        memcpy (rid.data, routing_id_.data (), rid.size);
+    zlink::copy_routing_id_from_bytes (routing_id_.data (),
+                                       routing_id_.size (), &rid);
     format_routing_id_debug (&rid, buf_, buf_size_);
 }
 
@@ -83,20 +81,6 @@ void store_dispatch_source_rid (zlink_routing_id_t *rid_,
     *valid_ = true;
 }
 
-void copy_source_rid_from_blob (const zlink::blob_t &routing_id_,
-                                zlink_routing_id_t *out_)
-{
-    if (!out_)
-        return;
-
-    const size_t size = routing_id_.size () < sizeof (out_->data)
-                          ? routing_id_.size ()
-                          : sizeof (out_->data);
-    out_->size = static_cast<uint8_t> (size);
-    if (size > 0)
-        memcpy (out_->data, routing_id_.data (), size);
-}
-
 void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
                                   zlink_routing_id_t *out_)
 {
@@ -110,7 +94,8 @@ void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
 
     const zlink::blob_t &routing_id = pipe_->get_routing_id ();
     if (routing_id.size () > 0) {
-        copy_source_rid_from_blob (routing_id, out_);
+        zlink::copy_routing_id_from_bytes (routing_id.data (),
+                                           routing_id.size (), out_);
         return;
     }
 
@@ -118,7 +103,9 @@ void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
     if (!peer)
         return;
 
-    copy_source_rid_from_blob (peer->get_routing_id (), out_);
+    const zlink::blob_t &peer_routing_id = peer->get_routing_id ();
+    zlink::copy_routing_id_from_bytes (peer_routing_id.data (),
+                                       peer_routing_id.size (), out_);
 }
 }
 

@@ -64,12 +64,13 @@
   있는 별도 monitoring surface도 둘 수 있어야 한다.
 - 이 outbound client는 framework 전용 메시지 handler 안뿐 아니라, 기존 HTTP
   handler나 controller 안에서도 그대로 쓸 수 있어야 한다.
-- caller가 `targetRid`와 `spotRid`를 이미 알고 있는 경우에는, channel name이
-  아니라 direct routed 호출을 여는 별도 표면도 둘 수 있어야 한다.
+- caller가 transport 위치값을 직접 넘기는 direct routed 호출은 기본 application
+  표면으로 두지 않는다. actor나 spot으로 보내는 public send/request는 resolver가
+  target `RoutingId`를 숨기는 형태를 우선한다.
 - session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
-  공개 키로 사용하고, router 연결망은 `routerChannelId`로 구분하며, 실제 전달
-  대상은 `RoutingId`로 명시하는 session gateway 표면을 둘 수 있어야 한다. 자세한 초안은
-  [session-gateway.ko.md](./session-gateway.ko.md)를 기준으로 한다.
+  공개 키로 사용한다. session -> actor 방향은 actor create/dispatch helper로,
+  actor -> client 방향은 `IZLinkSessionProxy`로 나눈다. 자세한 초안은
+  [session-gateway-usability.ko.md](./session-gateway-usability.ko.md)를 기준으로 한다.
 
 ### 2.3 transport 통합 축
 

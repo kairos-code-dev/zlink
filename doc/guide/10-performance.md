@@ -60,8 +60,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | Setting | Default | Description |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | 1000 | Replaced by profile-based values only when context auto-HWM is enabled. Manual settings override it |
-| `ZLINK_OPT_RCVHWM` | 1000 | Replaced by profile-based values only when context auto-HWM is enabled. Manual settings override it |
+| `ZLINK_OPT_SNDHWM` | automatic | Chosen from the default balanced auto-HWM profile. Manual settings override it |
+| `ZLINK_OPT_RCVHWM` | automatic | Chosen from the default balanced auto-HWM profile. Manual settings override it |
 
 ### Backpressure Behavior
 
@@ -107,8 +107,9 @@ sequenceDiagram
 
 ### Practical HWM Recommendations
 
-The default context settings keep auto-HWM disabled, so sockets use HWM `1000`.
-Enable auto-HWM when you want profile-based per-connection queue depths.
+The default context settings enable auto-HWM with the balanced profile, so
+sockets use profile-based queue depths unless the application disables
+auto-HWM or sets manual HWM values.
 
 Use `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` when you want a different default policy:
 

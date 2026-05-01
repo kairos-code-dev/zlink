@@ -22,8 +22,8 @@
 |---|---:|---|
 | `ZLINK_OPT_AFFINITY` | `0` | I/O 스레드 어피니티 미설정 |
 | `zlink_get_routing_id()` | 자동 | 소켓별 16바이트 랜덤 ID (`zlink_set_routing_id()`로 설정) |
-| `ZLINK_OPT_SNDHWM` | auto-HWM 비활성 시 `1000` | auto-HWM을 켜면 profile, policy class, message unit으로 계산. connection 수가 늘어도 per-connection HWM은 낮아지지 않음 |
-| `ZLINK_OPT_RCVHWM` | auto-HWM 비활성 시 `1000` | auto-HWM을 켜면 profile, policy class, message unit으로 계산. connection 수가 늘어도 per-connection HWM은 낮아지지 않음 |
+| `ZLINK_OPT_SNDHWM` | auto-HWM balanced 값 | profile, policy class, message unit으로 계산. context auto-HWM을 끄면 기존 고정 기본값 `1000` 사용 |
+| `ZLINK_OPT_RCVHWM` | auto-HWM balanced 값 | profile, policy class, message unit으로 계산. context auto-HWM을 끄면 기존 고정 기본값 `1000` 사용 |
 | `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | `0` | raw `0`은 소켓 타입 기본값 사용. STREAM은 `1024`, 그 외 소켓은 `4096` |
 | `ZLINK_OPT_RATE` | `100` | 멀티캐스트 rate (kb/s) |
 | `ZLINK_OPT_RECOVERY_IVL` | `10000` | 멀티캐스트 recovery interval (ms) |
@@ -102,9 +102,9 @@ helper API를 호출하기 전까지는 인증서 경로와 CA 경로가 비어 
 ## 5. 주의 사항
 
 - 기본 `ZLINK_OPT_LINGER` 값은 컨텍스트의 blocky 모드에서 온다.
-- 기본 `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` 값은 `1000`이다. context
-  auto-HWM을 켜면 수동 HWM을 설정하지 않은 소켓에 profile 기반 값이 적용된다.
-  수동 설정이 있으면 자동값을 덮어쓴다.
+- 기본 `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` 값은 balanced profile의 context
+  auto-HWM에서 온다. context auto-HWM을 끄면 기존 고정값 `1000`을 사용한다.
+  수동 설정이 있으면 자동값보다 우선한다.
 - `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 planner profile을 고른다. 공개 값은
   `LOW_LATENCY`, `BALANCED`, `THROUGHPUT`이고 기본값은 `BALANCED`다.
 - deprecated context memory budget과 bootstrap context 옵션은 호환을 위해 남긴

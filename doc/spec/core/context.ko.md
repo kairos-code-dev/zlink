@@ -71,7 +71,7 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
-#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  0
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 0
@@ -86,7 +86,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | 기본 Spot worker 수 (`0` = 자동) |
-| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 0 | 자동 HWM 정책 기본 비활성. 애플리케이션이 명시적으로 켜지 않으면 소켓 HWM 기본값 `1000`이 유지됨 |
+| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책 기본 활성. 애플리케이션이 auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 balanced profile을 사용함 |
 | `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 0 | deprecated no-op 옵션의 호환 기본값 |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | 자동 HWM 재계산 기본 디바운스 시간 (ms) |
 | `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 0 | deprecated no-op 옵션의 호환 기본값 |

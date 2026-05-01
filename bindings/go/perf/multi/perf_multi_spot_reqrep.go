@@ -27,12 +27,12 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 	replierNode, err := replierCtx.SpotNode()
 	perfcommon.Must(err)
 	defer replierNode.Close()
+	perfcommon.ApplyMultiSpotNodeAdmission(replierNode, cfg.pattern)
 	replier, err := replierNode.Spot()
 	perfcommon.Must(err)
 	defer replier.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(replierNode, cfg.transport))
-	perfcommon.ApplyMultiHWM(replier, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(replier, cfg.transport)
 	perfcommon.Must(replierNode.SetRoutingID(multiSpotReqRepNodeRID))
 	perfcommon.Must(replier.SetRoutingID(multiSpotReqRepSpotRID))

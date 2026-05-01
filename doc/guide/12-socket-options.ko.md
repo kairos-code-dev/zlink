@@ -49,7 +49,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |------|------|
 | **하는 일** | pipe의 최대 메시지 수를 제한 |
 | **적용 위치** | `pipe_t::check_write()` |
-| **기본값** | `1000`. context auto-HWM을 켜면 profile, 소켓 역할, message unit 기준으로 계산 |
+| **기본값** | balanced profile을 쓰는 자동 HWM. context auto-HWM을 끄면 `1000` 사용 |
 | **0** | 무제한 |
 | **영향** | HWM 도달 시 block 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환. LWM 이하로 drain되면 복구 |
 
@@ -64,9 +64,9 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 `spot_data`, peer/control 소켓은 `control`, SPOT router는 `routed`로 계산한다.
 
 Context 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 세 profile 중 하나를 고른다.
-기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`다. auto-HWM은 opt-in이다.
-`ZLINK_CTX_OPT_AUTO_HWM_ENABLE`을 `1`로 설정하지 않으면 소켓은 일반 HWM
-기본값 `1000`을 유지한다.
+기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`이며 auto-HWM은 기본으로 켜져 있다.
+context에서 기존 고정 HWM 기본값 `1000`을 유지해야 할 때만
+`ZLINK_CTX_OPT_AUTO_HWM_ENABLE`을 `0`으로 설정한다.
 
 | 소켓 그룹 | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|

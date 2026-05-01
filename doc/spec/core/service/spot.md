@@ -65,26 +65,22 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 ## SpotNode contract
 
-The default HWM values used by SpotNode and Spot internal raw sockets are
-not fixed constants anymore. They come from the context automatic HWM
-policy. Manual `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
-`ZLINK_SPOT_NODE_OPT_SUB_HWM`,
-`ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`, and
-`ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` settings override those automatic
-values. When context auto-HWM is enabled, SPOT uses the active automatic HWM
-profile. Topic publish sockets are planned as `spot_data`, topic ingress
-sockets as `recv_ingress`, routed sockets as `routed`, and control sockets as
-`control`. SPOT publish planning does not lower per-connection HWM based on
-the total number of Spot handles or peer connections.
+SpotNode exposes HWM only as admission control from `Spot` into `SpotNode`.
+The public options are `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
+`ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`, and
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`. Both admission channels default to the
+balanced profile, which maps to HWM `16`; low latency maps to `8`, and
+throughput maps to `32`. A positive numeric HWM overrides the profile for that
+channel. Setting the numeric HWM to `0` clears the override and returns to the
+profile value. Negative values and unknown profiles fail with `EINVAL`.
 
-`ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` and
-`ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` configure the maximum number of
-messages allowed in the internal delivery queues. Their defaults are
-`ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT` and
-`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`, currently `100` and `500`
-respectively. When a
-target exceeds its limit, only that sub or routed delivery target is
-disconnected; the node and peer stay alive.
+`Spot` handles do not accept common `ZLINK_OPT_SNDHWM` or
+`ZLINK_OPT_RCVHWM` settings. A `Spot` captures the current SpotNode admission
+HWM when it is created; later SpotNode HWM changes apply only to later
+`Spot` handles. Relay and delivery sockets inside SpotNode use HWM `0`.
+The removed direction-based SpotNode HWM options and queue hard-limit options
+are not part of the public contract, and their old enum numbers are reserved.
 
 SpotNode and Spot do not expose a public weight setting. Peer weight can be
 configured only on raw ROUTER and DEALER sockets. Spot peer snapshots may still
@@ -546,11 +542,10 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
 There is no dedicated public SPOT-node monitor recv API. Use the
 snapshot/query functions.
 
-`zlink_spot_node_status_t.disconnected_sub_target_count` reports local
-subscribe delivery targets disconnected by queue hard limits or equivalent
-delivery guards.
-`zlink_spot_node_status_t.disconnected_routed_target_count` reports routed
-delivery targets disconnected by those guards.
+`zlink_spot_node_status_t.disconnected_sub_target_count` and
+`zlink_spot_node_status_t.disconnected_routed_target_count` remain in the
+status structure for ABI compatibility. The current HWM policy does not
+disconnect local subscribe or routed targets because a delivery queue grew.
 
 ## Relationship to Poller
 

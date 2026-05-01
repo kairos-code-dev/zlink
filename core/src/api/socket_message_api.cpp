@@ -8,6 +8,7 @@
 #include "api/part_helper_internal.hpp"
 #include "api/recv_result_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 
 namespace
@@ -20,9 +21,7 @@ void assign_routing_id_compact (zlink_routing_id_t *dest_,
     if (!dest_)
         return;
 
-    dest_->size = src_.size;
-    if (src_.size > 0)
-        memcpy (dest_->data, src_.data, src_.size);
+    zlink::copy_routing_id_from_bytes (src_.data, src_.size, dest_);
 }
 
 void drain_socket_reply_completions_for_recv (
@@ -58,24 +57,6 @@ zlink_recv_result_t zlink_recv_part (void *s_,
     std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
       request_state = zlink::socket_reqrep_internal::find_request_reply_state (
         handle);
-
-    auto copy_routing_id_frame_local = [] (const zlink_msg_t &frame_,
-                                           zlink_routing_id_t *source_rid_out_) {
-        if (!source_rid_out_)
-            return 0;
-        const size_t routing_id_size = zlink_msg_size (&frame_);
-        const size_t routing_id_copy =
-          routing_id_size > sizeof (source_rid_out_->data)
-            ? sizeof (source_rid_out_->data)
-            : routing_id_size;
-        source_rid_out_->size = static_cast<uint8_t> (routing_id_copy);
-        if (routing_id_copy > 0) {
-            memcpy (source_rid_out_->data,
-                    zlink_msg_data (&const_cast<zlink_msg_t &> (frame_)),
-                    routing_id_copy);
-        }
-        return 0;
-    };
 
     const int type = socket_type (handle);
     const bool expose_source_rid = type == ZLINK_CORE_SOCKET_STREAM;

@@ -242,7 +242,7 @@ recv(fd, body, body_len, MSG_WAITALL);
 
 현재 STREAM 내부 기본값:
 - `ZLINK_OPT_BACKLOG`: `65536`
-- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: 기본 `1000`, context auto-HWM을 켜면 STREAM profile 값 사용
+- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: 기본 balanced auto-HWM 정책의 STREAM profile 값. context auto-HWM을 끄면 `1000` 사용
 - `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`: 미설정이면 호환 기본값 `262144`
 - STREAM 배치 크기 기본값: `4096`
 - STREAM 읽기 여유 공간 기본값: `64`

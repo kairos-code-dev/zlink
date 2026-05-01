@@ -98,14 +98,14 @@ flowchart LR
     remote_topic --> peer_ctrl_sub
 ```
 
-| socket | type | role | HWM option axis |
-|--------|------|------|-----------------|
-| `ingress-sub` | `SUB` | receives local publish input | `ZLINK_SPOT_NODE_OPT_SUB_HWM` |
-| `local-pub` | `PUB` | fans out to subscribers in this node | `ZLINK_SPOT_NODE_OPT_PUB_HWM` |
-| `mesh-pub` | `PUB` | forwards topic publish to remote nodes | `ZLINK_SPOT_NODE_OPT_PUB_HWM` |
-| `mesh-xsub` | `XSUB` | receives topic publish from remote nodes | `ZLINK_SPOT_NODE_OPT_SUB_HWM` |
-| `internal-router` | `ROUTER` | delivers routed messages to target Spots in this node | routed send/recv HWM |
-| `external-router` | `ROUTER` | exchanges routed frames with peer nodes | routed send/recv HWM |
+| socket | type | role | HWM policy |
+|--------|------|------|------------|
+| `ingress-sub` | `SUB` | receives local publish input | pubsub admission RCVHWM |
+| `local-pub` | `PUB` | fans out to subscribers in this node | relay SNDHWM 0 |
+| `mesh-pub` | `PUB` | forwards topic publish to remote nodes | relay SNDHWM 0 |
+| `mesh-xsub` | `XSUB` | receives topic publish from remote nodes | relay RCVHWM 0 |
+| `internal-router` | `ROUTER` | delivers routed messages to target Spots in this node | router admission RCVHWM, delivery SNDHWM 0 |
+| `external-router` | `ROUTER` | exchanges routed frames with peer nodes | relay HWM 0 |
 | `peer_ctrl_pub` | `PUB` | sends peer control messages | control defaults |
 | `peer_ctrl_sub` | `SUB` | receives peer control messages | control defaults |
 
@@ -181,8 +181,10 @@ sequenceDiagram
     Target->>Target: zlink_spot_recv()
 ```
 
-If the target `Spot` queue exceeds its hard limit, only that routed target is
-marked disconnected. The node and peer connection stay alive.
+Local routed delivery does not disconnect a target because an internal delivery
+queue grew. Backpressure is expressed by the admission HWM on the internal
+router receive side and by the normal receive API returning no data when the
+application has drained the queue.
 
 ### 4.2 Remote Routed Delivery
 
@@ -206,53 +208,47 @@ Remote routed delivery uses an external route id map per peer. Only
 `spot_runtime_t` methods update that map, so callers do not need to know the
 map structure or locking rules.
 
-## 5. Queue Hard Limits
+## 5. Admission HWM
 
-SPOT uses delivery-target hard limits so a slow consumer cannot stall the whole
-node.
+SpotNode exposes only admission HWM knobs. These knobs cap how much local input
+enters the node before the data plane owns it.
 
-| option | default | target |
-|--------|---------|--------|
-| `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` | `100` | local subscribe delivery target |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` | `500` | routed delivery target |
+| option | admission path | default profile value |
+|--------|----------------|-----------------------|
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | topic publish admission | balanced = 16 |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | topic publish admission numeric override | positive value, `0` resets |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced = 16 |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission numeric override | positive value, `0` resets |
 
-When a target exceeds its limit, only that target is marked disconnected. The
-status counters are:
+The shared relay and delivery sockets use HWM `0`. This prevents hidden
+per-peer or per-target queue caps inside SPOT from deciding message loss or
+disconnect behavior. Queue growth is then controlled at the explicit admission
+boundary and by application drain rate.
 
-- `disconnected_sub_target_count`
-- `disconnected_routed_target_count`
+`Spot` facades capture the current admission values when they are created.
+Later `SpotNode` option changes apply to later `Spot` instances, not to handles
+that already exist.
 
-## 6. Auto-HWM
-
-SPOT topic sockets split the HWM axis by pub/sub role.
-
-| option | sockets |
-|--------|---------|
-| `ZLINK_SPOT_NODE_OPT_PUB_HWM` | `local-pub`, `mesh-pub` |
-| `ZLINK_SPOT_NODE_OPT_SUB_HWM` | `ingress-sub`, `mesh-xsub` |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM` | send side of `internal-router`, `external-router` |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` | recv side of `internal-router`, `external-router` |
-
-Without manual options, the context auto-HWM policy calculates values from the
-socket policy class, message unit, and active profile.
-`local-pub` and `mesh-pub` use `spot_data`; `ingress-sub` and `mesh-xsub` use
-`recv_ingress`; `internal-router` and `external-router` use `routed`; and
-`peer_ctrl_pub/sub` use `control`.
-
-SPOT publish queue planning keeps per-connection HWM independent of fanout.
-Fanout is still useful as a diagnostic count, but it is not an input that
-reduces HWM:
+SPOT publish queue planning keeps per-connection admission independent of
+fanout. Fanout is still useful as a diagnostic count, but it is not an input
+that reduces HWM:
 
 ```text
 effective_publish_fanout =
   max(local_sub_spot_count, active_peer_count, observed_scope_count)
 ```
 
-The total spot count is metadata pressure, not the fanout queue count. The perf
-runner uses the `core/build` runtime and must print the resolved `libzlink`
-path before running.
+The total spot count is metadata pressure, not the fanout queue count. Removed
+directional SpotNode HWM options and queue hard-limit options are not part of
+the public contract. Status fields that used to report disconnected delivery
+targets remain ABI fields and report zero.
 
-## 7. Control Plane
+The perf runner uses the `core/build` runtime and must print the resolved
+`libzlink` path before running. Its `Auto-HWM spotnode` detail should show
+admission HWM only on topic ingress and routed ingress sockets; relay and
+delivery sockets should report HWM `0`.
+
+## 6. Control Plane
 
 The peer control plane is separated from data traffic. It carries:
 

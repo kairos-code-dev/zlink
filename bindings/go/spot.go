@@ -77,6 +77,15 @@ const (
 	SpotNodeSocketOwnerSpot SpotNodeSocketOwner = SpotNodeSocketOwner(C.ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT)
 )
 
+type SpotNodeOption int
+
+const (
+	SpotNodeOptionRouterHWMProfile SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE)
+	SpotNodeOptionRouterHWM        SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
+	SpotNodeOptionPubSubHWMProfile SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE)
+	SpotNodeOptionPubSubHWM        SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
+)
+
 type SpotNodeOptions struct {
 	Mode SpotNodeMode
 }
@@ -198,6 +207,72 @@ func (n *SpotNode) AttachPubIngress(pub *PubSocket) error {
 		return err
 	}
 	return configErrorFromResult(C.zlink_spot_node_attach_pub_ingress(handle, pubHandle))
+}
+
+func (n *SpotNode) SetOption(option SpotNodeOption, value int) error {
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
+	}
+	raw := C.int(value)
+	return configErrorFromResult(C.zlink_set_spot_node_option(
+		handle,
+		C.zlink_spot_node_option_t(option),
+		unsafe.Pointer(&raw),
+		C.size_t(C.sizeof_int),
+	))
+}
+
+func (n *SpotNode) Option(option SpotNodeOption) (int, error) {
+	handle, err := n.handleOrError()
+	if err != nil {
+		return 0, err
+	}
+	var raw C.int
+	size := C.size_t(C.sizeof_int)
+	if err := configErrorFromResult(C.zlink_get_spot_node_option(
+		handle,
+		C.zlink_spot_node_option_t(option),
+		unsafe.Pointer(&raw),
+		&size,
+	)); err != nil {
+		return 0, err
+	}
+	return int(raw), nil
+}
+
+func (n *SpotNode) SetRouterHWM(value int) error {
+	return n.SetOption(SpotNodeOptionRouterHWM, value)
+}
+
+func (n *SpotNode) RouterHWM() (int, error) {
+	return n.Option(SpotNodeOptionRouterHWM)
+}
+
+func (n *SpotNode) SetPubSubHWM(value int) error {
+	return n.SetOption(SpotNodeOptionPubSubHWM, value)
+}
+
+func (n *SpotNode) PubSubHWM() (int, error) {
+	return n.Option(SpotNodeOptionPubSubHWM)
+}
+
+func (n *SpotNode) SetRouterHWMProfile(value AutoHwmProfile) error {
+	return n.SetOption(SpotNodeOptionRouterHWMProfile, int(value))
+}
+
+func (n *SpotNode) RouterHWMProfile() (AutoHwmProfile, error) {
+	value, err := n.Option(SpotNodeOptionRouterHWMProfile)
+	return AutoHwmProfile(value), err
+}
+
+func (n *SpotNode) SetPubSubHWMProfile(value AutoHwmProfile) error {
+	return n.SetOption(SpotNodeOptionPubSubHWMProfile, int(value))
+}
+
+func (n *SpotNode) PubSubHWMProfile() (AutoHwmProfile, error) {
+	value, err := n.Option(SpotNodeOptionPubSubHWMProfile)
+	return AutoHwmProfile(value), err
 }
 
 func (n *SpotNode) SetRoutingID(id RoutingID) error {

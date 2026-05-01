@@ -57,6 +57,7 @@ fn trace_enabled() -> bool {
 
 fn main() {
     let args = common::MultiArgs::parse();
+    let settings = common::MultiSettings::from_env();
     let stop = Arc::new(AtomicBool::new(false));
     let (event_tx, event_rx) = mpsc::channel::<ServerEvent>();
 
@@ -132,6 +133,7 @@ fn main() {
 
     let ctx = common::perf_server_context();
     let node = SpotNode::new(&ctx).expect("spot node");
+    common::apply_multi_spot_node_admission(&node, &settings);
     node.set_routing_id(&RoutingId::from_bytes(SERVER_NODE_RID))
         .expect("node routing id");
     if matches!(args.transport.as_str(), "tls" | "wss") {

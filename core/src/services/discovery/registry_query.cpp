@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/send_internal.hpp"
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
@@ -317,8 +318,9 @@ int zlink::registry_t::service_summary_snapshot (
                 memset (&entry, 0, sizeof (entry));
                 entry.service_kind = row.service_kind;
                 entry.service_role = row.service_role;
-                strncpy (entry.service_name, row.service_name,
-                         sizeof (entry.service_name) - 1);
+                copy_fixed_c_string_from_cstr (entry.service_name,
+                                               sizeof (entry.service_name),
+                                               row.service_name);
             }
             entry.total_count++;
             if (row.last_reported_ms > entry.last_reported_ms)
@@ -388,10 +390,12 @@ int zlink::registry_t::member_peers (zlink_service_type_t service_type_,
                 memset (&entry, 0, sizeof (entry));
                 entry.service_type = public_service_type_local (service_type_);
                 entry.service_role = pit->second.service_role;
-                strncpy (entry.service_name, service_name_,
-                         sizeof (entry.service_name) - 1);
-                strncpy (entry.endpoint, pit->second.endpoint.c_str (),
-                         sizeof (entry.endpoint) - 1);
+                copy_fixed_c_string_from_cstr (entry.service_name,
+                                               sizeof (entry.service_name),
+                                               service_name_);
+                copy_fixed_c_string_from_cstr (entry.endpoint,
+                                               sizeof (entry.endpoint),
+                                               pit->second.endpoint.c_str ());
                 entry.routing_id = pit->second.routing_id;
                 entry.weight = pit->second.weight;
                 entry.value = pit->second.value;

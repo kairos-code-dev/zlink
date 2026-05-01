@@ -17,6 +17,7 @@ const {
   POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
+  applySpotNodeAdmission,
   createSocketEventWaiter,
   subscribeNoWait,
   trySocketPublish,
@@ -88,11 +89,10 @@ async function main() {
     registry.bind(registryPubEndpoint, registryRouterEndpoint);
     discovery.connectRegistry(registryRouterEndpoint);
     node.attachDiscovery(discovery);
+    applySpotNodeAdmission(node);
     node.bind(dataBindEndpoint);
     spot = node.createSpot();
-    applySocketPolicy(spot, {
-      noDrop: Number(process.env.PERF_MULTI_SPOT_XPUB_NODROP ?? 1) !== 0
-    });
+    spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
     controlPub.bind(options.controlEndpoint);

@@ -40,6 +40,17 @@ function applySocketPolicy(socket, options = {}) {
         socket.setNoDrop(Boolean(options.noDrop));
     }
 }
+function applySpotNodeAdmission(node) {
+    const hwm = integerEnv('PERF_MULTI_HWM', 1000);
+    const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
+    const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
+    if (typeof node.setPubSubHighWaterMark === 'function') {
+        node.setPubSubHighWaterMark(sendHwm);
+    }
+    if (typeof node.setRouterHighWaterMark === 'function') {
+        node.setRouterHighWaterMark(recvHwm);
+    }
+}
 function resolveMultiIoThreads(role, pattern) {
     const normalizedRole = String(role || '').trim().toLowerCase();
     const roleKey = normalizedRole === 'server' ? 'SERVER' : 'CLIENT';
@@ -260,6 +271,7 @@ module.exports = {
     POLLIN,
     POLLOUT,
     applyContextPolicy,
+    applySpotNodeAdmission,
     applySocketPolicy,
     createSocketEventWaiter,
     drainRecvSocket,

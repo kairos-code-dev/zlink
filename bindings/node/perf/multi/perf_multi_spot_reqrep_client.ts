@@ -25,6 +25,7 @@ const {
   POLLOUT,
   applySocketPolicy,
   applyContextPolicy,
+  applySpotNodeAdmission,
   createSocketEventWaiter,
   resolveMultiLatencySampleCap,
   subscribeNoWait,
@@ -136,6 +137,7 @@ async function main() {
   const payloads = [];
   const poller = new zlink.Poller();
   const replierNode = new zlink.SpotNode(ctx);
+  applySpotNodeAdmission(replierNode);
   const replier = replierNode.createSpot();
   let rl = null;
   let stopResponder = false;
@@ -151,7 +153,7 @@ async function main() {
     console.log(`CONTROL_CONNECTED,${options.serverControlEndpoint}`);
     trace('control-connected');
 
-    applySocketPolicy(replier);
+    replier.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
     replierNode.setRoutingId(SERVER_NODE_ROUTING_ID);
     replier.setRoutingId(SERVER_SPOT_ROUTING_ID);
     const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-reqrep-client-${process.pid}`);

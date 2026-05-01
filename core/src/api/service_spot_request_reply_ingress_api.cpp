@@ -160,7 +160,7 @@ int recv_combined_external_router_message (zlink::socket_base_t *socket_,
 
     out_->push_back (first);
     while (!out_->empty ()
-           && zlink::internal_pair_queue::frame_has_more (out_->back ())) {
+           && zlink::msg_frame_has_more (out_->back ())) {
         zlink_msg_t next;
         zlink_msg_init (&next);
         if (zlink::internal_pair_queue::recv_followup_with_retry (

@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "services/discovery/registry.hpp"
 #include "sockets/socket_base.hpp"
 
@@ -237,8 +238,9 @@ int registry_t::status_snapshot (zlink_registry_status_t *out_)
     scoped_lock_t lock (_sync);
     out_->registry_id = _registry_id;
     if (!_router_endpoint.empty ()) {
-        strncpy (out_->bind_endpoint, _router_endpoint.c_str (),
-                 sizeof (out_->bind_endpoint) - 1);
+        copy_fixed_c_string_from_cstr (out_->bind_endpoint,
+                                       sizeof (out_->bind_endpoint),
+                                       _router_endpoint.c_str ());
     }
     out_->topology_entry_count = static_cast<uint32_t> (_topology.size ());
     out_->peer_registry_count = static_cast<uint32_t> (_peer_pubs.size ());

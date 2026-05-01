@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/ctx.hpp"
 #include "core/send_internal.hpp"
 #include "services/control/service_control_runtime.hpp"
@@ -492,26 +493,14 @@ bool zlink::socket_base_t::dispatch_monitor_event (
         wire_event.value = record_.values[0];
     wire_event.routing_id = record_.routing_id;
 
-    const size_t local_copy =
-      record_.endpoint_uri_pair.local.size () < sizeof (wire_event.local_addr) - 1
-        ? record_.endpoint_uri_pair.local.size ()
-        : sizeof (wire_event.local_addr) - 1;
-    if (local_copy > 0) {
-        memcpy (wire_event.local_addr, record_.endpoint_uri_pair.local.data (),
-                local_copy);
-        wire_event.local_addr[local_copy] = '\0';
-    }
-
-    const size_t remote_copy =
-      record_.endpoint_uri_pair.remote.size ()
-        < sizeof (wire_event.remote_addr) - 1
-        ? record_.endpoint_uri_pair.remote.size ()
-        : sizeof (wire_event.remote_addr) - 1;
-    if (remote_copy > 0) {
-        memcpy (wire_event.remote_addr, record_.endpoint_uri_pair.remote.data (),
-                remote_copy);
-        wire_event.remote_addr[remote_copy] = '\0';
-    }
+    zlink::copy_fixed_c_string_from_bytes (
+      wire_event.local_addr, sizeof (wire_event.local_addr),
+      record_.endpoint_uri_pair.local.data (),
+      record_.endpoint_uri_pair.local.size ());
+    zlink::copy_fixed_c_string_from_bytes (
+      wire_event.remote_addr, sizeof (wire_event.remote_addr),
+      record_.endpoint_uri_pair.remote.data (),
+      record_.endpoint_uri_pair.remote.size ());
 
     zlink_msg_t msg;
     zlink_msg_init_size (&msg, sizeof (wire_event));

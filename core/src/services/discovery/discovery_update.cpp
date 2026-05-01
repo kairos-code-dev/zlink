@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
@@ -26,21 +27,6 @@ static void discovery_debugf_local (const char *fmt_, ...)
     std::vfprintf (stderr, fmt_, args);
     std::fprintf (stderr, "\n");
     va_end (args);
-}
-
-static bool discovery_frame_has_more_local (const zlink_msg_t &frame_)
-{
-    return (reinterpret_cast<const msg_t *> (&frame_)->flags () & msg_t::more)
-           != 0;
-}
-
-static void close_frames_local (std::vector<zlink_msg_t> *frames_)
-{
-    if (!frames_)
-        return;
-    for (size_t i = 0; i < frames_->size (); ++i)
-        zlink_msg_close (&(*frames_)[i]);
-    frames_->clear ();
 }
 
 static bool wait_socket_event_local (void *socket_,
@@ -102,10 +88,12 @@ static void append_peer_admission_events_local (
           ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
           | ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT
           | ZLINK_SERVICE_EVENT_DETAIL_PEER_RID);
-        strncpy (event.service_name, service_name_.c_str (),
-                 sizeof (event.service_name) - 1);
-        strncpy (event.endpoint, provider.endpoint.c_str (),
-                 sizeof (event.endpoint) - 1);
+        copy_fixed_c_string_from_cstr (event.service_name,
+                                       sizeof (event.service_name),
+                                       service_name_.c_str ());
+        copy_fixed_c_string_from_cstr (event.endpoint,
+                                       sizeof (event.endpoint),
+                                       provider.endpoint.c_str ());
         event.routing_id = provider.routing_id;
         events_out_->push_back (event);
     }
@@ -162,12 +150,12 @@ void discovery_t::tick ()
                 break;
             }
             frames.push_back (frame);
-            if (!discovery_frame_has_more_local (frame))
+            if (!msg_frame_has_more (frame))
                 break;
         }
         if (!frames.empty ())
             handle_service_list (frames);
-        close_frames_local (&frames);
+        close_msg_frames (&frames);
     }
 
     refresh_registered_service_heartbeats (clock_t ().now_ms ());
@@ -312,8 +300,9 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             entry.routing_id = _bootstrap_runtime->routing_id_value ();
             entry.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
             entry.service_role = ZLINK_SERVICE_ROLE_INVALID;
-            strncpy (entry.service_name, events[i].service_name,
-                     sizeof (entry.service_name) - 1);
+            copy_fixed_c_string_from_cstr (entry.service_name,
+                                           sizeof (entry.service_name),
+                                           events[i].service_name);
             entry.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
             entry.state = static_cast<zlink_topology_state_t> (state);
             entry.desired_count = 1;

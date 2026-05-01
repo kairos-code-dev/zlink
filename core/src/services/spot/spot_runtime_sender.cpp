@@ -45,7 +45,7 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
     }
 
     if (slot) {
-        close_socket_ptr_local (&slot);
+        close_socket_ptr (&slot);
         connected_endpoint.clear ();
     }
 
@@ -78,7 +78,7 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     if (socket->connect (target_endpoint.c_str ()) != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;
-        close_socket_ptr_local (&socket);
+        close_socket_ptr (&socket);
         errno = saved_errno;
         return -1;
     }
@@ -115,14 +115,14 @@ int spot_runtime_t::close_sender_cache (spot_runtime_sender_kind_t kind_,
         return 0;
     LIBZLINK_UNUSED (endpoint);
     LIBZLINK_UNUSED (timeout_ms_);
-    close_socket_ptr_local (&socket);
+    close_socket_ptr (&socket);
     return 0;
 }
 
 int spot_runtime_t::close_sender_caches (int timeout_ms_)
 {
     int first_error = 0;
-    preserve_first_error_local (
+    preserve_first_error (
       close_sender_cache (spot_runtime_sender_internal_router, timeout_ms_),
       &first_error);
     if (first_error != 0) {

@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
@@ -53,18 +54,6 @@ static bool provider_less_local (const provider_info_t &lhs_,
     return lhs_.endpoint < rhs_.endpoint;
 }
 
-static void copy_text_field_local (char *dst_,
-                                   size_t dst_size_,
-                                   const std::string &src_)
-{
-    if (!dst_ || dst_size_ == 0)
-        return;
-    dst_[0] = '\0';
-    if (src_.empty ())
-        return;
-    strncpy (dst_, src_.c_str (), dst_size_ - 1);
-    dst_[dst_size_ - 1] = '\0';
-}
 }
 
 discovery_service_change_t::discovery_service_change_t () : changed (false)
@@ -166,10 +155,13 @@ void discovery_service_state_t::snapshot_member_peers (
         memset (&entry, 0, sizeof (entry));
         entry.service_type = public_service_type_;
         entry.service_role = provider.service_role;
-        copy_text_field_local (entry.service_name, sizeof (entry.service_name),
-                               provider.service_name);
-        copy_text_field_local (entry.endpoint, sizeof (entry.endpoint),
-                               provider.endpoint);
+        copy_fixed_c_string_from_bytes (entry.service_name,
+                                        sizeof (entry.service_name),
+                                        provider.service_name.data (),
+                                        provider.service_name.size ());
+        copy_fixed_c_string_from_bytes (entry.endpoint, sizeof (entry.endpoint),
+                                        provider.endpoint.data (),
+                                        provider.endpoint.size ());
         entry.routing_id = provider.routing_id;
         entry.weight = provider.weight;
         entry.value = provider.value;
@@ -252,8 +244,9 @@ void discovery_service_state_t::apply_provider_snapshot (
     change_out_->event.detail_flags =
       ZLINK_EVENT_DETAIL_SERVICE_NAME | ZLINK_EVENT_DETAIL_SUBJECT_RID;
     change_out_->event.routing_id = routing_id_;
-    strncpy (change_out_->event.service_name, service_name_.c_str (),
-             sizeof (change_out_->event.service_name) - 1);
+    copy_fixed_c_string_from_cstr (change_out_->event.service_name,
+                                   sizeof (change_out_->event.service_name),
+                                   service_name_.c_str ());
     change_out_->event.value = static_cast<uint32_t> (_providers.size ());
     if (!had_providers)
         change_out_->event.event_type = ZLINK_DISCOVERY_SERVICE_UP;

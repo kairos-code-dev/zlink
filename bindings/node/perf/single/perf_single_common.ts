@@ -99,6 +99,25 @@ function applySocketPolicy(socket, options = {}) {
   }
 }
 
+function applySpotNodeAdmission(node, options = {}) {
+  const hwm = Number.isFinite(options.hwm)
+    ? options.hwm
+    : integerEnv('PERF_SINGLE_HWM', 1000);
+  const sendHwm = Number.isFinite(options.sendHwm)
+    ? options.sendHwm
+    : integerEnv('PERF_SINGLE_SNDHWM', hwm);
+  const recvHwm = Number.isFinite(options.recvHwm)
+    ? options.recvHwm
+    : integerEnv('PERF_SINGLE_RCVHWM', hwm);
+
+  if (typeof node.setPubSubHighWaterMark === 'function') {
+    node.setPubSubHighWaterMark(sendHwm);
+  }
+  if (typeof node.setRouterHighWaterMark === 'function') {
+    node.setRouterHighWaterMark(recvHwm);
+  }
+}
+
 function applyContextPolicy(ctx) {
   const ioThreads = integerEnv('PERF_IO_THREADS', 0);
   if (ioThreads > 0) {
@@ -382,6 +401,7 @@ async function closeSenderWorker(worker) {
 
 module.exports = {
   applyContextPolicy,
+  applySpotNodeAdmission,
   applySocketPolicy,
   configureTlsClient,
   configureTlsServer,

@@ -47,6 +47,25 @@
 | handler | `IZLinkSpotTimerHandler<TSpot>` | SPOT lifecycle timer handler | 4.3.1 |
 | handler | `IZLinkSession` | stream session lifecycle + header/body callback | 4.4 |
 | context | `IZLinkSessionContext` | stream session의 send, channel request, actor 연결 표면 | 4.4 |
+| context | `IZLinkSessionIdentityContext` | stream session identity 조회 | 4.4 |
+| context | `IZLinkSessionChannelClient` | session 안에서 channel request/send 호출 | 4.4 |
+| context | `IZLinkSessionClientStream` | session에서 client stream으로 send/reply | 4.4 |
+| context | `IZLinkSessionActorDispatchContext` | session에서 actor 생성과 dispatch 수행 | 4.4 |
+| context | `IZLinkSessionLifecycle` | session close 제어 | 4.4 |
+| context | `IZLinkSessionActorAttachmentContext` | actor와 session stream 연결/해제 | 4.4 |
+| value | `IZLinkActorRef` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
+| handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
+| context | `IZLinkActorContext` | actor packet 등록, spot join, channel/client stream 호출 | 4.4.1 |
+| handler | `IZLinkActorSendHandler<TMessage>` | session actor dispatch one-way handler | 4.4.2 |
+| handler | `IZLinkActorRequestHandler<TRequest, TReply>` | session actor dispatch request-response handler | 4.4.2 |
+| value | `ZLinkMessageMetadata` | actor/session proxy call에 전달되는 application/codec metadata snapshot | 4.4.2 |
+| policy | `IZLinkMessageMetadataPolicy` | application metadata forwarding 허용 여부 | 4.4.2 |
+| factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
+| client | `IZLinkActorClient` | actor id 기반 actor runtime 호출 | 5.5 |
+| client | `IZLinkSessionProxy` | actor id 기반 actor -> client session 호출 | 5.6 |
+| resolver | `IZLinkActorPlayRouteResolver` | actor id에서 play/runtime route 조회 | 5.7 |
+| resolver | `IZLinkActorSessionRouteResolver` | actor id에서 현재 session route 조회 | 5.7 |
+| writer | `IZLinkActorSessionLocationWriter` | session binding/unbind를 application route store에 반영 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `IZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
@@ -479,6 +498,9 @@ public interface IZLinkStream
         Message header,
         Message body,
         SendFlags flags = SendFlags.None);
+
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public enum ZLinkStreamSessionError
@@ -516,7 +538,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionContext
+public interface IZLinkSessionIdentityContext
 {
     string SessionId { get; }
 
@@ -525,7 +547,10 @@ public interface IZLinkSessionContext
     string? LocalAddr { get; }
 
     string? RemoteAddr { get; }
+}
 
+public interface IZLinkSessionChannelClient
+{
     IZLinkRequestCall RequestChannel<TRequest>(
         string channelName,
         TRequest request);
@@ -533,14 +558,17 @@ public interface IZLinkSessionContext
     IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);
+}
 
+public interface IZLinkSessionClientStream
+{
     IZLinkSessionSendCall Send<TMessage>(TMessage message);
 
     IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
+}
 
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
-
+public interface IZLinkSessionActorDispatchContext
+{
     ValueTask<IZLinkActorRef> CreateActorAsync(
         string actorId,
         string actorType,
@@ -552,11 +580,70 @@ public interface IZLinkSessionContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    IZLinkSessionRequestCall Request<TRequest>(TRequest request);
+
+    ValueTask DispatchToActorAsync(
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default);
+
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionLifecycle
+{
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionActorAttachmentContext
+{
+    ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DisconnectActorAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionContext :
+    IZLinkSessionIdentityContext,
+    IZLinkSessionChannelClient,
+    IZLinkSessionClientStream,
+    IZLinkSessionActorDispatchContext,
+    IZLinkSessionLifecycle;
+
+public interface IZLinkSessionSendCall
+{
+    IZLinkSessionSendCall WithMetadata(string key, string value);
+
+    IZLinkSessionSendCall WithPacketName(string messageName);
+
+    IZLinkSessionSendCall Compress();
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionReplyCall
+{
+    IZLinkSessionReplyCall WithMetadata(string key, string value);
+
+    IZLinkSessionReplyCall Compress();
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionRequestCall
+{
+    IZLinkSessionRequestCall WithPacketName(string packetName);
+
+    IZLinkSessionRequestCall WithTimeout(TimeSpan timeout);
+
+    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -642,8 +729,8 @@ actor packet 실행 계약은 아래와 같이 둔다.
 
 actor 실행 객체와 session dispatch handle은 분리한다. session은 `IZLinkActorRef`를
 저장하고 dispatch에 사용한다. `IZLinkActor`는 actor node에서 생성되는 application
-객체이며, `IZLinkActorContext`는 constructor 주입으로 받는다. callback signature는
-context 인자를 반복해서 받지 않는다.
+객체이며, framework가 `Context`를 설정한 뒤 `Configure()`를 한 번 호출한다.
+callback signature는 context 인자를 반복해서 받지 않는다.
 
 ```csharp
 public interface IZLinkActorRef
@@ -656,6 +743,8 @@ public interface IZLinkActor
 {
     string ActorId { get; }
 
+    IZLinkActorContext Context { get; set; }
+
     void Configure()
     {
     }
@@ -666,6 +755,7 @@ public interface IZLinkActor
 public interface IZLinkActorContext
 {
     string ActorId { get; }
+    string? SessionId { get; }
     RoutingId? SpotRid { get; }
     bool IsJoined { get; }
 
@@ -695,6 +785,52 @@ public interface IZLinkActorContext
     IZLinkActorSendCall Send<TMessage>(TMessage message);
 
     IZLinkActorReplyCall Reply<TMessage>(TMessage message);
+
+    ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
+        RoutingId spotRid,
+        TRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorJoinSpotCall
+{
+    IZLinkActorJoinSpotCall WithTimeout(TimeSpan timeout);
+
+    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorStreamClient
+{
+    IZLinkActorSendCall Send<TMessage>(TMessage message);
+
+    IZLinkActorReplyCall Reply<TMessage>(TMessage message);
+}
+
+public interface IZLinkActorSendCall
+{
+    IZLinkActorSendCall WithMetadata(string key, string value);
+
+    IZLinkActorSendCall WithPacketName(string messageName);
+
+    IZLinkActorSendCall Compress();
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorReplyCall
+{
+    IZLinkActorReplyCall WithMetadata(string key, string value);
+
+    IZLinkActorReplyCall Compress();
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorFactory
+{
+    ValueTask<IZLinkActor> CreateAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorPacketHandler<in TActor, in TMessage>
@@ -718,10 +854,10 @@ public interface IZLinkSpotContext
 }
 ```
 
-actor context는 현재 client session의 `SessionId`, session router id, binding token을
-노출하지 않는다. 그 값들은 actor -> client send/request를 위한 runtime 내부 metadata와
-session route resolver/writer의 책임이다. actor가 session 위치를 직접 저장하면 재접속
-시 stale 상태가 되기 쉽기 때문이다.
+actor context는 현재 client session의 `SessionId`만 조회값으로 노출한다. session router
+id와 binding token은 actor -> client send/request를 위한 runtime 내부 metadata와 session
+route resolver/writer의 책임이며 actor context에 노출하지 않는다. actor가 session 위치를
+직접 저장하면 재접속 시 stale 상태가 되기 쉽기 때문이다.
 
 framework runtime은 actor context를 먼저 주입한 뒤 `Configure()`를 한 번 호출한다.
 actor packet handler 등록은 이 단계에서 `Context.AddPacket<THandler>(...)`로 한다.
@@ -744,6 +880,68 @@ task 기반 request를 actor 또는 `Spot` callback 안에서 `await`하면 thre
 점유하지는 않지만, 현재 callback task는 응답 또는 timeout 전까지 끝나지 않는다.
 따라서 같은 `Spot`의 다음 작업은 그 뒤에 실행된다. 명시 timeout이 없으면 framework
 default timeout을 사용한다.
+
+#### 4.4.2 session actor dispatch handler
+
+session actor dispatch는 actor 객체 callback을 직접 호출하지 않고, actor 실행 문맥에
+등록된 typed handler를 호출한다. handler는 raw routed envelope, stream sequence,
+session router id를 직접 보지 않는다.
+
+```csharp
+public interface IZLinkActorSendHandler<in TMessage>
+{
+    ValueTask HandleAsync(
+        TMessage message,
+        ZLinkActorSendContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorRequestHandler<in TRequest, TReply>
+{
+    ValueTask<TReply> HandleAsync(
+        TRequest request,
+        ZLinkActorRequestContext context,
+        CancellationToken cancellationToken);
+}
+
+public sealed class ZLinkActorSendContext : ZLinkHandlerContext
+{
+    public string ActorId { get; }
+    public string RouterChannelId { get; }
+    public ZLinkMessageMetadata Metadata { get; }
+    public IZLinkSessionProxy SessionProxy { get; }
+}
+
+public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
+{
+    public string ActorId { get; }
+    public string RouterChannelId { get; }
+    public ZLinkMessageMetadata Metadata { get; }
+    public IZLinkSessionProxy SessionProxy { get; }
+    public DateTimeOffset? Deadline { get; }
+}
+
+public sealed class ZLinkMessageMetadata
+{
+    public static ZLinkMessageMetadata Empty { get; }
+
+    public IReadOnlyDictionary<string, string> Application { get; }
+    public IReadOnlyDictionary<string, string> Codec { get; }
+
+    public bool TryGetApplicationValue(
+        string key,
+        out string? value);
+
+    public bool TryGetCodecValue(
+        string key,
+        out string? value);
+}
+
+public interface IZLinkMessageMetadataPolicy
+{
+    bool CanForwardApplicationKey(string key);
+}
+```
 
 #### 4.4.3 dispatch mode
 
@@ -1093,6 +1291,147 @@ payload frame을 한 번 만들고, 하부 publish socket submit 경로가 backp
 처리하게 한다. `NoDrop` 같은 publish socket 정책이 켜져 있으면 drop 대신
 `SendTimeout`까지 backpressure를 기다리고, timeout이 지나면 예외로 실패한다.
 
+### 5.5 IZLinkActorClient
+
+actor id만 알고 actor runtime으로 packet을 보내는 client다. route 결정은
+`IZLinkActorPlayRouteResolver`가 맡고, 호출자는 play node `RoutingId`를 넘기지 않는다.
+
+```csharp
+public interface IZLinkActorClient
+{
+    IZLinkActorClientSendCall Send<TMessage>(
+        string actorId,
+        TMessage message);
+
+    IZLinkActorClientRequestCall Request<TRequest>(
+        string actorId,
+        TRequest request);
+}
+
+public interface IZLinkActorClientSendCall
+{
+    IZLinkActorClientSendCall WithPacketName(string packetName);
+
+    IZLinkActorClientSendCall WithMetadata(
+        string key,
+        string value);
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorClientRequestCall
+{
+    IZLinkActorClientRequestCall WithPacketName(string packetName);
+
+    IZLinkActorClientRequestCall WithMetadata(
+        string key,
+        string value);
+
+    IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
+
+    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+}
+```
+
+### 5.6 IZLinkSessionProxy
+
+actor handler가 client session으로 push 또는 request를 보낼 때 쓰는 client다.
+session server `RoutingId`, stream `SessionId`, binding token은 resolver와 runtime
+metadata 안에 머물고 application handler는 actor id만 넘긴다.
+
+```csharp
+public interface IZLinkSessionProxy
+{
+    IZLinkSessionProxySendCall Send<TMessage>(
+        string actorId,
+        TMessage message);
+
+    IZLinkSessionProxyRequestCall Request<TRequest>(
+        string actorId,
+        TRequest request);
+}
+
+public interface IZLinkSessionProxySendCall
+{
+    IZLinkSessionProxySendCall WithPacketName(string packetName);
+
+    IZLinkSessionProxySendCall WithMetadata(
+        string key,
+        string value);
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionProxyRequestCall
+{
+    IZLinkSessionProxyRequestCall WithPacketName(string packetName);
+
+    IZLinkSessionProxyRequestCall WithMetadata(
+        string key,
+        string value);
+
+    IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
+
+    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+}
+```
+
+### 5.7 actor route resolver와 session location writer
+
+resolver와 writer는 framework 등록 루트에 한 번씩 등록한다. `IZLinkActorClient`는
+play route resolver를 사용하고, `IZLinkSessionProxy`는 session route resolver를 사용한다.
+session에서 actor를 만들거나 remote actor 생성을 요청하면 session location writer가
+현재 session binding을 application route store에 반영한다.
+
+```csharp
+public interface IZLinkActorPlayRouteResolver
+{
+    ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+        string actorId,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorSessionRouteResolver
+{
+    ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
+        string actorId,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorSessionLocationWriter
+{
+    ValueTask BindSessionAsync(
+        ZLinkActorSessionBinding binding,
+        CancellationToken cancellationToken);
+
+    ValueTask UnbindSessionAsync(
+        ZLinkActorSessionUnbind binding,
+        CancellationToken cancellationToken);
+}
+
+public readonly record struct ZLinkActorRoute(
+    string RouterChannelId,
+    RoutingId TargetNodeRid);
+
+public readonly record struct ZLinkActorSessionRoute(
+    string RouterChannelId,
+    RoutingId SessionRouterId,
+    string SessionId,
+    string BindingToken);
+
+public readonly record struct ZLinkActorSessionBinding(
+    string ActorId,
+    string RouterChannelId,
+    RoutingId SessionRouterId,
+    string SessionId,
+    string BindingToken);
+
+public readonly record struct ZLinkActorSessionUnbind(
+    string ActorId,
+    string SessionId,
+    string BindingToken);
+```
+
 ## 6. 등록과 관리 인터페이스
 
 ### 6.1 framework 등록 루트
@@ -1129,6 +1468,11 @@ public interface IChannelSubscriberConnections
 public interface IZLinkDiscoveryBuilder
 {
     void Add(string endpoint);
+}
+
+public interface IZLinkMetadataPolicyBuilder
+{
+    void ForwardApplicationKey(string key);
 }
 
 public interface IChannelServerCapabilityBuilder
@@ -1171,6 +1515,32 @@ public interface IChannelSubscriberCapabilityBuilder
         Action<IChannelSubscriberConnections> configure);
 }
 
+public interface IRoutedChannelConnections
+{
+    void Connect(string endpoint);
+
+    void Disconnect(string endpoint);
+
+    IReadOnlyList<string> ListConnections();
+}
+
+public interface IZLinkRoutedChannelBuilder
+{
+    void Bind(string endpoint);
+
+    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+
+    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+
+    void UseManualConnections(Action<IRoutedChannelConnections> configure);
+
+    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkRoutedSendHandler<TMessage>;
+
+    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRoutedRequestHandler<TRequest, TReply>;
+}
+
 public interface IZLinkStreamNodeBuilder
 {
     void Bind(string endpoint);
@@ -1200,9 +1570,27 @@ public interface IZLinkFrameworkOptions
 
     IZLinkCodecRegistryBuilder Codecs { get; }
 
+    void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure);
+
+    void AddActorFactory<TFactory>(string actorType)
+        where TFactory : class, IZLinkActorFactory;
+
+    void AddActorPlayRouteResolver<TResolver>()
+        where TResolver : class, IZLinkActorPlayRouteResolver;
+
+    void AddActorSessionRouteResolver<TResolver>()
+        where TResolver : class, IZLinkActorSessionRouteResolver;
+
+    void AddActorSessionLocationWriter<TWriter>()
+        where TWriter : class, IZLinkActorSessionLocationWriter;
+
     void AddChannel(
         string channelName,
         Action<IZLinkChannelBuilder> configure);
+
+    void AddRoutedChannel(
+        string routerChannelId,
+        Action<IZLinkRoutedChannelBuilder> configure);
 
     void UseDiscovery(
         Action<IZLinkDiscoveryBuilder> configure);
@@ -1234,9 +1622,24 @@ public interface IZLinkFrameworkOptions
 - `Codecs`
   - protobuf/json/messagepack 같은 codec provider를 framework registry에 등록하는
     진입점이다.
-
+- `ConfigureMetadata(...)`
+  - session actor dispatch와 session proxy 경로에서 전달할 application metadata key를
+    등록한다.
+- `AddActorFactory(...)`
+  - actor type 문자열에 대응하는 actor factory를 등록한다.
+- `AddActorPlayRouteResolver(...)`
+  - `IZLinkActorClient`가 actor id로 play/runtime route를 찾을 때 사용할 resolver를
+    등록한다.
+- `AddActorSessionRouteResolver(...)`
+  - `IZLinkSessionProxy`가 actor id로 현재 client session route를 찾을 때 사용할 resolver를
+    등록한다.
+- `AddActorSessionLocationWriter(...)`
+  - session actor create/bind와 disconnect/unbind를 application route store에 반영할
+    writer를 등록한다.
 - `AddChannel(...)`
   - logical channel 하나의 capability 구성을 등록한다.
+- `AddRoutedChannel(...)`
+  - session actor dispatch와 직접 routed handler가 사용할 routed channel mesh를 등록한다.
 - `UseDiscovery(...)`
   - 일반 channel capability들이 공유할 registry endpoint 집합을 등록한다.
   - `client.UseDiscovery(...)`처럼 capability 아래에 다시 두지 않는다.

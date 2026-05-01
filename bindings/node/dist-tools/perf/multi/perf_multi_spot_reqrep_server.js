@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../dist/canonical');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, createSocketEventWaiter, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
@@ -52,8 +52,9 @@ async function main() {
     let rl = null;
     let responderLoop = null;
     try {
+        applySpotNodeAdmission(node);
         spot = node.createSpot();
-        applySocketPolicy(spot);
+        spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
         node.setRoutingId(SERVER_NODE_ROUTING_ID);
         spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
         node.bind(options.peerEndpoint);

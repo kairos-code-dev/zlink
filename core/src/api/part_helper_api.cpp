@@ -10,6 +10,7 @@
 
 #include "api/part_helper_internal.hpp"
 #include "api/socket_api_internal.hpp"
+#include "core/c_api_copy_internal.hpp"
 #include "core/msg.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
@@ -170,13 +171,12 @@ void zlink::part_helper_internal::copy_routing_id (
     if (!dest_)
         return;
 
-    memset (dest_, 0, sizeof (*dest_));
-    if (!src_)
+    if (!src_) {
+        memset (dest_, 0, sizeof (*dest_));
         return;
+    }
 
-    dest_->size = src_->size;
-    if (src_->size > 0)
-        memcpy (dest_->data, src_->data, src_->size);
+    zlink::copy_routing_id_from_bytes (src_->data, src_->size, dest_);
 }
 
 void zlink::part_helper_internal::consume_send_part (zlink_msg_t *part_)

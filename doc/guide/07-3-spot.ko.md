@@ -487,13 +487,11 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 
 좀 더 자세한 상태 변화가 필요하면 연속된 snapshot/query 결과를 비교한다.
 `status.disconnected_sub_target_count`와
-`status.disconnected_routed_target_count`는 내부 delivery queue 상한 때문에
-끊긴 대상 수를 확인할 때 사용한다. 이 값이 늘어나면 해당 소비자가 메시지를
-충분히 빨리 drain하지 못했는지 먼저 점검한다.
+`status.disconnected_routed_target_count`는 ABI 호환을 위해 남은 필드다. 현재
+SPOT delivery 경로는 내부 delivery queue가 커졌다는 이유로 target을 끊지 않기
+때문에 이 값은 `0`을 보고한다.
 
-HWM 진단은 내부 socket snapshot과 monitor snapshot 필드를 함께 본다. SPOT topic
-publish socket은 `spot_data` auto-HWM policy class, topic ingress socket은
-`recv_ingress`, router는 `routed`, control socket은 `control`로 계산된다. 큰
-메시지 publish latency는 큐 체류 시간이 대부분일 수 있으므로, 기본 `balanced`
-profile은 전체 Spot 수가 아니라 effective publish fanout 기준으로 SPOT fanout
-큐를 제한한다.
+HWM 진단은 내부 socket snapshot과 monitor snapshot 필드를 함께 본다. SpotNode
+HWM 옵션은 topic publish admission과 routed admission에만 적용된다. relay와
+delivery socket은 HWM `0`을 사용하므로, 큰 메시지 publish latency는 숨은 relay
+상한보다 admission 경계 뒤의 큐 체류 시간으로 보는 편이 맞다.

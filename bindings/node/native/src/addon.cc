@@ -128,6 +128,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotNodeAttachPubIngress", 0, spot_node_attach_pub_ingress, 0, 0, 0, napi_default, 0},
         {"spotNodeSetTlsServer", 0, spot_node_set_tls_server, 0, 0, 0, napi_default, 0},
         {"spotNodeSetTlsClient", 0, spot_node_set_tls_client, 0, 0, 0, napi_default, 0},
+        {"spotNodeSetOption", 0, spot_node_setsockopt, 0, 0, 0, napi_default, 0},
         {"spotNodeStatusSnapshot", 0, spot_node_status_snapshot, 0, 0, 0, napi_default, 0},
         {"spotNodePeersSnapshot", 0, spot_node_peers_snapshot, 0, 0, 0, napi_default, 0},
         {"spotNodePeersQuery", 0, spot_node_peers_query, 0, 0, 0, napi_default, 0},

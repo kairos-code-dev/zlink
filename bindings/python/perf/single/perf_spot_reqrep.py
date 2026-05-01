@@ -7,6 +7,7 @@ import zlink
 
 from perf_common import (
     HEADER_MAGIC,
+    apply_single_spot_node_admission,
     benchmark_run_id,
     configure_single_tls_client,
     configure_single_tls_server,
@@ -101,8 +102,10 @@ def main(argv=None):
     with zlink.Context() as ctx:
         ctx.options.blocky = False
         with zlink.SpotNode(ctx) as requester_node:
+            apply_single_spot_node_admission(requester_node)
             with requester_node.create_spot() as requester:
                 with zlink.SpotNode(ctx) as replier_node:
+                    apply_single_spot_node_admission(replier_node)
                     with replier_node.create_spot() as replier:
                         endpoint = resolve_single_endpoint(args.transport, "spot-reqrep")
                         requester_endpoint = resolve_single_endpoint(

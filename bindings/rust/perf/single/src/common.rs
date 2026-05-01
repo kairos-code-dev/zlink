@@ -657,6 +657,13 @@ pub fn resolve_single_recv_hwm() -> i32 {
     env_or_i32("PERF_SINGLE_RCVHWM", env_or_i32("PERF_SINGLE_HWM", 1000))
 }
 
+pub fn apply_single_spot_node_admission(node: &zlink::SpotNode) {
+    node.set_pubsub_hwm(resolve_single_send_hwm())
+        .expect("spot node pubsub hwm");
+    node.set_router_hwm(resolve_single_recv_hwm())
+        .expect("spot node router hwm");
+}
+
 pub fn resolve_single_idle_drain_ms() -> u64 {
     env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200)
 }

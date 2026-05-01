@@ -397,6 +397,29 @@ bool run_pattern_spot (const std::string &transport,
         sub_discovery.connect_registry (registry_router_endpoint);
         pub_node.attach_discovery (pub_discovery);
         sub_node.attach_discovery (sub_discovery);
+        const int pubsub_hwm =
+          perf::single::resolve_single_socket_hwm (true);
+        const int router_hwm =
+          perf::single::resolve_single_socket_hwm (false);
+        if (zlink_set_spot_node_option (
+              pub_node.handle (), ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &pubsub_hwm,
+              sizeof (pubsub_hwm))
+            != ZLINK_CONFIG_OK
+            || zlink_set_spot_node_option (
+              sub_node.handle (), ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &pubsub_hwm,
+              sizeof (pubsub_hwm))
+              != ZLINK_CONFIG_OK
+            || zlink_set_spot_node_option (
+              pub_node.handle (), ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &router_hwm,
+              sizeof (router_hwm))
+              != ZLINK_CONFIG_OK
+            || zlink_set_spot_node_option (
+              sub_node.handle (), ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &router_hwm,
+              sizeof (router_hwm))
+              != ZLINK_CONFIG_OK) {
+            perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
+            return false;
+        }
         pub_node.bind (publisher_endpoint);
         sub_node.bind (subscriber_endpoint);
     }
@@ -412,10 +435,6 @@ bool run_pattern_spot (const std::string &transport,
         return false;
     }
 
-    pub_spot.options ().send_hwm (
-      perf::single::resolve_single_socket_hwm (true));
-    sub_spot.options ().recv_hwm (
-      perf::single::resolve_single_socket_hwm (false));
     pub_spot.options ().send_timeout (
       perf::single::resolve_single_send_timeout_ms ());
     sub_spot.options ().recv_timeout (

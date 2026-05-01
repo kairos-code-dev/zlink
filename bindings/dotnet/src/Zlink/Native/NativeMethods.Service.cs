@@ -198,6 +198,10 @@ internal static partial class NativeMethods
         IntPtr node, IntPtr pub);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_set_spot_node_option(IntPtr node,
+        SpotNodeOption option, IntPtr value, nuint valueSize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_status_snapshot(IntPtr node,
         out ZlinkSpotNodeStatus status);
 

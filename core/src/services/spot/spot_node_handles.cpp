@@ -6,6 +6,7 @@
 #include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_runtime_internal.hpp"
 #include "services/spot/spot_sub.hpp"
 #include "core/auto_hwm_policy.hpp"
 
@@ -13,13 +14,6 @@ namespace zlink
 {
 namespace
 {
-static void preserve_first_error_local (int rc_, int *first_error_)
-{
-    if (rc_ == 0 || !first_error_ || *first_error_ != 0)
-        return;
-    *first_error_ = errno != 0 ? errno : EIO;
-}
-
 static void copy_int_option_value (const void *optval_,
                                    size_t optvallen_,
                                    int *out_)
@@ -150,6 +144,34 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
                                       0, 0, true, true,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
+
+    const int zero = 0;
+    const int pubsub_hwm = spot_node_pubsub_admission_hwm (hwm);
+    const int router_hwm = spot_node_router_admission_hwm (hwm);
+    if (runtime_->mesh_pub)
+        (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                               &zero, sizeof (zero));
+    if (runtime_->local_fanout_xpub)
+        (void) runtime_->local_fanout_xpub->setsockopt (
+          ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
+    if (runtime_->mesh_xsub)
+        (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                                &zero, sizeof (zero));
+    if (runtime_->external_router) {
+        (void) runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
+        (void) runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
+    }
+    if (runtime_->local_pub_ingress_sub)
+        (void) runtime_->local_pub_ingress_sub->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &pubsub_hwm, sizeof (pubsub_hwm));
+    if (runtime_->internal_router) {
+        (void) runtime_->internal_router->setsockopt (
+          ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
+        (void) runtime_->internal_router->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm, sizeof (router_hwm));
+    }
 }
 
 static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
@@ -238,19 +260,10 @@ int spot_node_default_handles_t::validate_pub_option (int option_,
         return -1;
     }
 
-    switch (option_) {
-        case ZLINK_SPOT_PUB_OPT_SNDHWM:
-        case ZLINK_SPOT_PUB_OPT_SNDTIMEO:
-        case ZLINK_SPOT_PUB_OPT_LINGER:
-        case ZLINK_SPOT_PUB_OPT_NODROP:
-        case ZLINK_SPOT_PUB_OPT_SNDBUF:
-        case ZLINK_SPOT_PUB_OPT_RCVBUF:
-        case ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            return 0;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    if (zlink::is_spot_pub_default_option (option_))
+        return 0;
+    errno = EINVAL;
+    return -1;
 }
 
 int spot_node_default_handles_t::validate_sub_option (int option_,
@@ -262,92 +275,33 @@ int spot_node_default_handles_t::validate_sub_option (int option_,
         return -1;
     }
 
-    switch (option_) {
-        case ZLINK_SPOT_SUB_OPT_RCVHWM:
-        case ZLINK_SPOT_SUB_OPT_LINGER:
-        case ZLINK_SPOT_SUB_OPT_SNDBUF:
-        case ZLINK_SPOT_SUB_OPT_RCVBUF:
-        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
-        case ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            return 0;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
+    if (zlink::is_spot_sub_default_option (option_))
+        return 0;
+    errno = EINVAL;
+    return -1;
 }
 
 void spot_node_default_handles_t::copy_option_setting (option_setting_t *dst_,
                                                        const void *optval_,
                                                        size_t optvallen_)
 {
-    if (!dst_)
-        return;
-
-    dst_->enabled = true;
-    dst_->value = 0;
-    dst_->size = optvallen_;
-    memcpy (&dst_->value, optval_, optvallen_);
+    zlink::copy_spot_option_setting (dst_, optval_, optvallen_);
 }
 
 void spot_node_default_handles_t::store_pub_option (int option_,
                                                     const void *optval_,
                                                     size_t optvallen_)
 {
-    switch (option_) {
-        case ZLINK_SPOT_PUB_OPT_SNDHWM:
-            copy_option_setting (&_pub_defaults.sndhwm, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_SNDTIMEO:
-            copy_option_setting (&_pub_defaults.sndtimeo, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_LINGER:
-            copy_option_setting (&_pub_defaults.linger, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_NODROP:
-            copy_option_setting (&_pub_defaults.nodrop, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_SNDBUF:
-            copy_option_setting (&_pub_defaults.sndbuf, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_RCVBUF:
-            copy_option_setting (&_pub_defaults.rcvbuf, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            copy_option_setting (&_pub_defaults.auto_hwm_msg_unit_bytes,
-                                 optval_, optvallen_);
-            return;
-        default:
-            return;
-    }
+    (void) zlink::store_spot_pub_default (&_pub_defaults, option_, optval_,
+                                          optvallen_);
 }
 
 void spot_node_default_handles_t::store_sub_option (int option_,
                                                     const void *optval_,
                                                     size_t optvallen_)
 {
-    switch (option_) {
-        case ZLINK_SPOT_SUB_OPT_RCVHWM:
-            copy_option_setting (&_sub_defaults.rcvhwm, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_LINGER:
-            copy_option_setting (&_sub_defaults.linger, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_SNDBUF:
-            copy_option_setting (&_sub_defaults.sndbuf, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_RCVBUF:
-            copy_option_setting (&_sub_defaults.rcvbuf, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_RCVTIMEO:
-            copy_option_setting (&_sub_defaults.rcvtimeo, optval_, optvallen_);
-            return;
-        case ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            copy_option_setting (&_sub_defaults.auto_hwm_msg_unit_bytes,
-                                 optval_, optvallen_);
-            return;
-        default:
-            return;
-    }
+    (void) zlink::store_spot_sub_default (&_sub_defaults, option_, optval_,
+                                          optvallen_);
 }
 
 int spot_node_default_handles_t::set_pub_option (int option_,
@@ -726,11 +680,11 @@ int spot_node_t::destroy_handles ()
     }
 
     for (size_t i = 0; i < pubs.size (); ++i) {
-        preserve_first_error_local (pubs[i]->destroy_from_node (), &first_error);
+        preserve_first_error (pubs[i]->destroy_from_node (), &first_error);
         delete pubs[i];
     }
     for (size_t i = 0; i < subs.size (); ++i) {
-        preserve_first_error_local (subs[i]->destroy_from_node (), &first_error);
+        preserve_first_error (subs[i]->destroy_from_node (), &first_error);
         delete subs[i];
     }
     if (first_error != 0) {

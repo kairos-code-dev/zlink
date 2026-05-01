@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "sockets/socket_base.hpp"
 #include "sockets/socket_dispatch_context.hpp"
 #include "utils/err.hpp"
@@ -12,13 +13,8 @@ namespace
 static void copy_routing_id (zlink_routing_id_t *out_,
                              const zlink::blob_t &routing_id_)
 {
-    if (!out_)
-        return;
-    const size_t copy_size =
-      std::min (routing_id_.size (), sizeof (out_->data));
-    out_->size = static_cast<uint8_t> (copy_size);
-    if (copy_size > 0)
-        memcpy (out_->data, routing_id_.data (), copy_size);
+    zlink::copy_routing_id_from_bytes (routing_id_.data (),
+                                       routing_id_.size (), out_);
 }
 }
 

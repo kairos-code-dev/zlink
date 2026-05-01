@@ -61,6 +61,23 @@
 | 같은 node에 stream session을 둘 이상 등록 | 비허용 | startup validation 오류 |
 | bind endpoint 없음 | 비허용 | startup validation 오류 |
 
+## 5.1 Session Actor Dispatch Matrix
+
+| 조합 | 허용 여부 | 기대 동작 |
+|------|-----------|-----------|
+| `AddRoutedChannel(...)` + 전역 `UseDiscovery(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
+| `AddRoutedChannel(...)` + `UseManualConnections(...)` 있음 | 허용 | manual routed channel node를 만든다 |
+| `AddRoutedChannel(...)` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
+| 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
+| 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점 오류 |
+| actor play route resolver 중복 등록 | 비허용 | builder 등록 시점 오류 |
+| actor session route resolver 중복 등록 | 비허용 | builder 등록 시점 오류 |
+| actor session location writer 중복 등록 | 비허용 | builder 등록 시점 오류 |
+| `IZLinkActorClient` 사용 + play route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
+| `IZLinkSessionProxy` 사용 + session route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
+| session actor create 사용 + session location writer 없음 | 비허용 | create 호출에서 명확한 오류 |
+
 ## 6. Monitoring Registration Matrix
 
 | 조합 | 허용 여부 | 기대 동작 |
@@ -93,5 +110,9 @@
 - 존재하지 않는 source를 monitoring에 등록
 - 같은 stream node에 session 중복 등록
 - bind endpoint가 없는 stream node
+- routed channel bind endpoint 없음
+- 같은 routed channel의 같은 `kind + packetName` handler 중복
 
 이 오류들은 런타임에 늦게 드러내지 않고 startup 단계에서 막는 편을 기본으로 본다.
+다만 resolver나 writer 누락처럼 실제 service 사용 여부가 있어야 드러나는 항목은
+해당 service 생성 또는 첫 호출에서 같은 error family로 명확하게 실패시킨다.

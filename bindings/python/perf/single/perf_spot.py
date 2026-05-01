@@ -7,6 +7,7 @@ import zlink
 from perf_common import (
     HEADER_MAGIC,
     benchmark_run_id,
+    apply_single_spot_node_admission,
     configure_single_tls_client,
     configure_single_tls_server,
     decode_header,
@@ -47,6 +48,9 @@ def main(argv=None):
             ) as discovery:
                 with zlink.SpotNode(ctx) as publisher_node:
                     with zlink.SpotNode(ctx) as subscriber_node:
+                        apply_single_spot_node_admission(
+                            publisher_node, subscriber_node
+                        )
                         with publisher_node.create_spot() as publisher:
                             with subscriber_node.create_spot() as subscriber:
                                 registry_pub_endpoint = resolve_single_endpoint(

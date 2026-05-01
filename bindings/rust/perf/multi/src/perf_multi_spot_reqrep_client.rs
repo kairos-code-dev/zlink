@@ -134,6 +134,7 @@ fn main() {
     let mut payloads = Vec::with_capacity(settings.clients);
     let mut seqs = vec![1u64; settings.clients];
     let node = SpotNode::new(&ctx).expect("spot node");
+    common::apply_multi_spot_node_admission(&node, &settings);
     node.set_routing_id(&RoutingId::from_bytes(b"spot-req-client-node"))
         .expect("node rid");
     if matches!(args.transport.as_str(), "tls" | "wss") {

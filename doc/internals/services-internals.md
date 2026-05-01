@@ -225,20 +225,19 @@ Frame 4~N: Service entries (repeated service_count times)
 - Remote receive (SUB) → local spot_sub distribution only (no re-publishing, loop prevention)
 
 ### 5.4.1 SpotNode HWM Boundaries
-- Unified `Spot` handle HWM and SpotNode internal HWM are different layers.
-- `Spot` handle HWM controls the public facade pub/sub sockets.
-- `SpotNode` HWM is the internal data-plane budget and is applied by direction:
-  - `SNDHWM` → `fanout`, `mesh_pub`
-  - `RCVHWM` → `ingress`, `mesh_xsub`
-- The default SpotNode internal data-plane HWM is no longer a fixed `1000`.
-  It comes from the context auto-HWM role buckets and the current scope.
-  SpotNode shared sockets divide slots by shared targets, while per-spot
-  endpoint sockets first divide the role budget by spot count.
-- Role floors are not forced past the scoped budget. With the default context
-  settings and enough budget, topic send uses fanout floor `16`, while topic
-  recv and routed send/recv use floor `8`.
+- Unified `Spot` handle HWM and SpotNode admission HWM are different layers.
+- `Spot` handles do not accept common `SNDHWM` or `RCVHWM` options.
+- `SpotNode` HWM is an admission budget, not a relay or delivery queue budget:
+  - pubsub admission controls local publish input.
+  - router admission controls local routed input.
+- The default SpotNode admission profile is balanced. Both admission channels
+  start at `16` unless a positive numeric override is set.
+- Setting an admission numeric option to `0` clears the override and returns to
+  the selected profile.
+- Relay and delivery sockets use HWM `0`; removed queue hard-limit behavior no
+  longer disconnects delivery targets.
 - `peer_ctrl` is a control-plane socket and is not grouped into the SpotNode
-  data-plane HWM family.
+  admission HWM family.
 
 ### 5.5 Raw Socket Policy
 - `spot_pub_t`: Does not expose raw PUB socket (prevents thread-safety bypass)

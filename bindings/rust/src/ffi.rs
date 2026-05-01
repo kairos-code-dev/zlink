@@ -141,6 +141,15 @@ pub enum zlink_spot_node_socket_owner_t {
     ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT = 2,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_spot_node_option_t {
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE = 0x360E,
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM = 0x360F,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE = 0x3610,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM = 0x3611,
+}
+
 // ---------------------------------------------------------------------------
 // Socket options
 // ---------------------------------------------------------------------------
@@ -1156,6 +1165,12 @@ unsafe extern "C" {
         dealer: *mut c_void,
     ) -> c_int;
     pub fn zlink_spot_node_attach_pub_ingress(node: *mut c_void, pub_socket: *mut c_void) -> c_int;
+    pub fn zlink_set_spot_node_option(
+        node: *mut c_void,
+        option: zlink_spot_node_option_t,
+        value: *const c_void,
+        value_size: usize,
+    ) -> c_int;
     pub fn zlink_spot_node_internal_sockets_snapshot(
         node: *mut c_void,
         filter: *const zlink_spot_node_socket_snapshot_filter_t,

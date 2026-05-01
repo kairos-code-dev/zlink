@@ -62,8 +62,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_OPT_SNDHWM` | 1000 | context auto-HWM을 켰을 때만 profile 기반 값으로 바뀐다. 수동 설정이 우선 |
-| `ZLINK_OPT_RCVHWM` | 1000 | context auto-HWM을 켰을 때만 profile 기반 값으로 바뀐다. 수동 설정이 우선 |
+| `ZLINK_OPT_SNDHWM` | 자동 | 기본 balanced auto-HWM profile에서 정한다. 수동 설정이 우선 |
+| `ZLINK_OPT_RCVHWM` | 자동 | 기본 balanced auto-HWM profile에서 정한다. 수동 설정이 우선 |
 
 ### Backpressure 동작
 
@@ -112,8 +112,8 @@ sequenceDiagram
 
 ### 실전 HWM 권장값
 
-기본 context 설정은 auto-HWM 비활성이다. 따라서 소켓은 HWM `1000`을 쓴다.
-profile 기반 per-connection queue depth가 필요할 때 auto-HWM을 명시적으로 켠다.
+기본 context 설정은 balanced profile의 auto-HWM을 사용한다. 애플리케이션이
+auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 profile 기반 queue depth가 적용된다.
 
 기본 정책을 바꾸고 싶을 때는 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`을 설정한다.
 

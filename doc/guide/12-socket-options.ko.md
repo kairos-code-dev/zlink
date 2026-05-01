@@ -70,7 +70,7 @@ context에서 기존 고정 HWM 기본값 `1000`을 유지해야 할 때만
 
 | 소켓 그룹 | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|
-| non-STREAM data socket | 64 | 128 | 256 |
+| non-STREAM data socket | 128 | 256 | 512 |
 | STREAM | 16 | 64 | 256 |
 | control | 16 | 16 | 32 |
 

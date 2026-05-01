@@ -206,16 +206,16 @@ profile_queue_envelope =
   basis_hwm * basis_message_unit
 ```
 
-예를 들어 non-STREAM `balanced`는 `128 @ 4096 B`이므로 connection 하나의 한
-방향 queue envelope가 `512 KiB`이다.
+예를 들어 non-STREAM `balanced`는 `256 @ 4096 B`이므로 connection 하나의 한
+방향 queue envelope가 `1024 KiB`이다.
 
 ### 5.1 기본 테이블
 
 | Socket group | Profile | Basis unit | SNDHWM | RCVHWM | 의도 |
 |---|---|---:|---:|---:|---|
-| non-STREAM | `low_latency` | 4096 B | 64 | 64 | queue 체류 시간을 짧게 유지 |
-| non-STREAM | `balanced` | 4096 B | 128 | 128 | latency와 throughput 균형 |
-| non-STREAM | `throughput` | 4096 B | 256 | 256 | burst 흡수와 처리량 우선 |
+| non-STREAM | `low_latency` | 4096 B | 128 | 128 | queue 체류 시간을 짧게 유지 |
+| non-STREAM | `balanced` | 4096 B | 256 | 256 | latency와 throughput 균형 |
+| non-STREAM | `throughput` | 4096 B | 512 | 512 | burst 흡수와 처리량 우선 |
 | STREAM | `low_latency` | 1024 B | 16 | 16 | 수천 client에서 낮은 메모리와 짧은 queue 유지 |
 | STREAM | `balanced` | 1024 B | 64 | 64 | 일반적인 1:1 stream 처리 기준 |
 | STREAM | `throughput` | 1024 B | 256 | 256 | stream burst 흡수, 일반 소켓보다 낮은 envelope 유지 |
@@ -229,10 +229,10 @@ profile_queue_envelope =
 
 | Policy class | non-STREAM low_latency | non-STREAM balanced | non-STREAM throughput |
 |---|---:|---:|---:|
-| `fanout` / `spot_data` | 64 | 128 | 256 |
-| `routed` | 64 | 128 | 256 |
-| `peer_queue` | 64 | 128 | 256 |
-| `recv_ingress` | 64 | 128 | 256 |
+| `fanout` / `spot_data` | 128 | 256 | 512 |
+| `routed` | 128 | 256 | 512 |
+| `peer_queue` | 128 | 256 | 512 |
+| `recv_ingress` | 128 | 256 | 512 |
 | `control` | 16 | 16 | 32 |
 
 | Policy class | STREAM low_latency | STREAM balanced | STREAM throughput |
@@ -247,7 +247,7 @@ socket이 아니라 사용자 connection과 1:1로 붙는 경우가 많고, 기�
 
 `control`은 데이터 plane이 아니므로 깊은 queue가 필요하지 않다. `routed`는
 request/reply와 send/send echo 계열에서 100 client 이상 burst를 받아야 하므로
-`balanced` 기준 128을 유지한다.
+`balanced` 기준 256을 사용한다.
 
 ### 5.3 message unit scaling
 
@@ -264,33 +264,33 @@ scaled_hwm =
 
 | Socket group | Profile | Min HWM | Max HWM |
 |---|---|---:|---:|
-| non-STREAM | `low_latency` | 1 | 256 |
-| non-STREAM | `balanced` | 1 | 512 |
-| non-STREAM | `throughput` | 1 | 1024 |
+| non-STREAM | `low_latency` | 1 | 512 |
+| non-STREAM | `balanced` | 1 | 1024 |
+| non-STREAM | `throughput` | 1 | 4096 |
 | STREAM | `low_latency` | 1 | 64 |
 | STREAM | `balanced` | 1 | 128 |
 | STREAM | `throughput` | 1 | 512 |
 
-예를 들어 non-STREAM `balanced`에서 기준값은 `128 @ 4096 B`이다.
+예를 들어 non-STREAM `balanced`에서 기준값은 `256 @ 4096 B`이다.
 
 ```text
-profile_queue_envelope = 128 * 4096 = 524288 B
+profile_queue_envelope = 256 * 4096 = 1048576 B
 ```
 
 사용자가 effective message unit을 64 KiB로 명시하면 같은 envelope 안에 들어갈 수
-있는 메시지 개수는 8개다.
+있는 메시지 개수는 16개다.
 
 ```text
 effective_message_unit = 65536 B
-scaled_hwm = ceil(128 * 4096 / 65536) = 8
+scaled_hwm = ceil(256 * 4096 / 65536) = 16
 ```
 
 즉 큰 메시지에서는 queue depth가 줄어든다. 반대로 effective message unit을 1 KiB로
-명시하면 계산값은 512가 된다.
+명시하면 계산값은 1024가 된다.
 
 ```text
 effective_message_unit = 1024 B
-scaled_hwm = ceil(128 * 4096 / 1024) = 512
+scaled_hwm = ceil(256 * 4096 / 1024) = 1024
 ```
 
 이때 profile cap이 계산값을 제한한다. cap은 아주 작은 message unit이 들어왔을 때
@@ -517,51 +517,51 @@ unit 기준으로 다시 적용한다"이다.
 ### 9.1 non-STREAM balanced 기본
 
 ```text
-basis_hwm = 128
+basis_hwm = 256
 basis_message_unit = 4096 B
-unit_budget = 128 * 4096 = 524288 B
+unit_budget = 256 * 4096 = 1048576 B
 ```
 
-connection 하나의 한 방향 queue envelope는 약 512 KiB이다.
+connection 하나의 한 방향 queue envelope는 약 1024 KiB이다.
 
 양방향 소켓에서 send/recv 모두 같은 기준을 쓰면:
 
 ```text
 per_connection_queue_bytes =
-  128 * 4096 + 128 * 4096
-  = 1048576 B
+  256 * 4096 + 256 * 4096
+  = 2097152 B
 ```
 
-overhead factor 1.5를 적용하면 connection 하나당 약 1.5 MiB를 잡는다.
+overhead factor 1.5를 적용하면 connection 하나당 약 3 MiB를 잡는다.
 
 ### 9.2 ROUTER 100 clients
 
 ```text
 peer_count = 100
-sndhwm = 128
-rcvhwm = 128
+sndhwm = 256
+rcvhwm = 256
 message_unit = 4096 B
 overhead_factor = 1.5
 
 socket_queue_memory =
-  100 * (128 * 4096 + 128 * 4096) * 1.5
-  = 약 150 MiB
+  100 * (256 * 4096 + 256 * 4096) * 1.5
+  = 약 300 MiB
 ```
 
-clients가 1000개가 되면 HWM은 그대로 128이고, 필요 메모리는 약 1.5 GiB로
+clients가 1000개가 되면 HWM은 그대로 256이고, 필요 메모리는 약 3 GiB로
 증가한다.
 
 ### 9.3 256 KiB message
 
 ```text
 effective_message_unit = 262144 B
-balanced non-STREAM basis = 128 @ 4096 B
+balanced non-STREAM basis = 256 @ 4096 B
 
-scaled_hwm = ceil(128 * 4096 / 262144) = 2
+scaled_hwm = ceil(256 * 4096 / 262144) = 4
 ```
 
-256 KiB payload에서는 connection 하나당 queue depth가 2로 줄어든다. connection
-수가 늘어도 2는 바뀌지 않는다.
+256 KiB payload에서는 connection 하나당 queue depth가 4로 줄어든다. connection
+수가 늘어도 4는 바뀌지 않는다.
 
 ### 9.4 STREAM balanced
 
@@ -647,13 +647,13 @@ stream_queue_memory =
 
 | 테스트 | 기대 결과 |
 |---|---|
-| non-STREAM balanced 기본 | `4096 B` 기준 `SNDHWM=128`, `RCVHWM=128` |
-| non-STREAM low_latency 기본 | `4096 B` 기준 `64` |
-| non-STREAM throughput 기본 | `4096 B` 기준 `256` |
+| non-STREAM balanced 기본 | `4096 B` 기준 `SNDHWM=256`, `RCVHWM=256` |
+| non-STREAM low_latency 기본 | `4096 B` 기준 `128` |
+| non-STREAM throughput 기본 | `4096 B` 기준 `512` |
 | STREAM balanced 기본 | `1024 B` 기준 `64` |
 | STREAM low_latency 기본 | `1024 B` 기준 `16` |
 | STREAM throughput 기본 | `1024 B` 기준 `256` |
-| non-STREAM 64 KiB message unit | `ceil(128 * 4096 / 65536) = 8` |
+| non-STREAM 64 KiB message unit | `ceil(256 * 4096 / 65536) = 16` |
 | STREAM 64 KiB message unit | `ceil(64 * 1024 / 65536) = 1` |
 | small message unit cap | profile별 max cap을 넘지 않음 |
 | huge message unit floor | 최소 HWM `1` 유지 |

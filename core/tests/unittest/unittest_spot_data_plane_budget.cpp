@@ -312,10 +312,10 @@ void test_auto_hwm_v2_profile_caps_and_unit_budgets ()
       zlink::auto_hwm_scope_none, 1, true);
     TEST_ASSERT_EQUAL_UINT32 (zlink::auto_hwm_policy_fanout,
                               socket_plan.policy_class);
-    TEST_ASSERT_EQUAL_UINT64 (128u * 4096u,
+    TEST_ASSERT_EQUAL_UINT64 (256u * 4096u,
                               socket_plan.unit_budget_bytes);
-    TEST_ASSERT_EQUAL_UINT32 (512u, socket_plan.size_cap);
-    TEST_ASSERT_EQUAL_INT (2, socket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_UINT32 (1024u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (4, socket_plan.sndhwm);
 
     zlink::auto_hwm_context_plan_make (
       true, ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY, &context_plan);
@@ -323,9 +323,9 @@ void test_auto_hwm_v2_profile_caps_and_unit_budgets ()
       context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 100,
       100, &socket_plan, 262144, -1, -1, false, false,
       zlink::auto_hwm_scope_none, 1, true);
-    TEST_ASSERT_EQUAL_UINT64 (64u * 4096u, socket_plan.unit_budget_bytes);
-    TEST_ASSERT_EQUAL_UINT32 (256u, socket_plan.size_cap);
-    TEST_ASSERT_EQUAL_INT (1, socket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_UINT64 (128u * 4096u, socket_plan.unit_budget_bytes);
+    TEST_ASSERT_EQUAL_UINT32 (512u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (2, socket_plan.sndhwm);
 
     zlink::auto_hwm_context_plan_make (
       true, ZLINK_AUTO_HWM_PROFILE_THROUGHPUT, &context_plan);
@@ -333,29 +333,29 @@ void test_auto_hwm_v2_profile_caps_and_unit_budgets ()
       context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 100,
       100, &socket_plan, 262144, -1, -1, false, false,
       zlink::auto_hwm_scope_none, 1, true);
-    TEST_ASSERT_EQUAL_UINT64 (256u * 4096u,
+    TEST_ASSERT_EQUAL_UINT64 (512u * 4096u,
                               socket_plan.unit_budget_bytes);
-    TEST_ASSERT_EQUAL_UINT32 (1024u, socket_plan.size_cap);
-    TEST_ASSERT_EQUAL_INT (4, socket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_UINT32 (4096u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (8, socket_plan.sndhwm);
 }
 
 void test_auto_hwm_pc_profile_table_and_message_unit_scaling ()
 {
     TEST_ASSERT_EQUAL_INT (
-      128, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      256, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 0));
     TEST_ASSERT_EQUAL_INT (
-      128, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      256, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096));
 
     TEST_ASSERT_EQUAL_INT (
-      64, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
+      128, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
                        ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY, 0));
     TEST_ASSERT_EQUAL_INT (
-      128, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
+      256, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 0));
     TEST_ASSERT_EQUAL_INT (
-      256, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
+      512, planned_hwm (zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB,
                         ZLINK_AUTO_HWM_PROFILE_THROUGHPUT, 0));
     TEST_ASSERT_EQUAL_INT (
       16, planned_hwm (zlink::auto_hwm_role_stream, ZLINK_CORE_SOCKET_STREAM,
@@ -368,22 +368,22 @@ void test_auto_hwm_pc_profile_table_and_message_unit_scaling ()
                         ZLINK_AUTO_HWM_PROFILE_THROUGHPUT, 0));
 
     TEST_ASSERT_EQUAL_INT (
-      512, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      1024, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 64));
     TEST_ASSERT_EQUAL_INT (
-      512, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      1024, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 256));
     TEST_ASSERT_EQUAL_INT (
-      512, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      1024, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                         ZLINK_AUTO_HWM_PROFILE_BALANCED, 1024));
     TEST_ASSERT_EQUAL_INT (
-      8, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      16, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                       ZLINK_AUTO_HWM_PROFILE_BALANCED, 65536));
     TEST_ASSERT_EQUAL_INT (
-      4, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      8, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                       ZLINK_AUTO_HWM_PROFILE_BALANCED, 131072));
     TEST_ASSERT_EQUAL_INT (
-      2, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+      4, planned_hwm (zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                       ZLINK_AUTO_HWM_PROFILE_BALANCED, 262144));
 
     TEST_ASSERT_EQUAL_INT (
@@ -421,8 +421,8 @@ void test_auto_hwm_v2_policy_class_mapping_and_spot_fanout_limit ()
       zlink::auto_hwm_scope_shared, 10000, true);
     TEST_ASSERT_EQUAL_UINT32 (zlink::auto_hwm_policy_spot_data,
                               socket_plan.policy_class);
-    TEST_ASSERT_EQUAL_UINT32 (512u, socket_plan.size_cap);
-    TEST_ASSERT_EQUAL_INT (512, socket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_UINT32 (1024u, socket_plan.size_cap);
+    TEST_ASSERT_EQUAL_INT (1024, socket_plan.sndhwm);
 }
 
 void test_auto_hwm_v2_hwm_is_independent_from_observed_count ()
@@ -437,28 +437,28 @@ void test_auto_hwm_v2_hwm_is_independent_from_observed_count ()
       1, 1, &socket_plan, 131072, -1, -1, false, false,
       zlink::auto_hwm_scope_per_spot, 1, true);
 
-    TEST_ASSERT_EQUAL_INT (4, socket_plan.rcvhwm);
+    TEST_ASSERT_EQUAL_INT (8, socket_plan.rcvhwm);
 
     zlink::auto_hwm_socket_plan_for_role (
       context_plan, zlink::auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_SUB,
       10000, 10000, &socket_plan, 131072, -1, -1, false, false,
       zlink::auto_hwm_scope_per_spot, 1, true);
 
-    TEST_ASSERT_EQUAL_INT (4, socket_plan.rcvhwm);
+    TEST_ASSERT_EQUAL_INT (8, socket_plan.rcvhwm);
 
     zlink::auto_hwm_socket_plan_for_role (
       context_plan, zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER, 1, 1,
       &socket_plan, 64, -1, -1, false, false, zlink::auto_hwm_scope_shared, 1,
       true);
 
-    TEST_ASSERT_EQUAL_INT (512, socket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_INT (1024, socket_plan.sndhwm);
 
     zlink::auto_hwm_socket_plan_for_role (
       context_plan, zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
       10000, 10000, &socket_plan, 64, -1, -1, false, false,
       zlink::auto_hwm_scope_shared, 1, true);
 
-    TEST_ASSERT_EQUAL_INT (512, socket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_INT (1024, socket_plan.sndhwm);
 }
 
 void test_mesh_pub_hwm_hint_updates_private_runtime_owner ()

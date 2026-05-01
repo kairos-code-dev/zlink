@@ -73,7 +73,7 @@ normal HWM default `1000`.
 
 | Socket group | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|
-| non-STREAM data sockets | 64 | 128 | 256 |
+| non-STREAM data sockets | 128 | 256 | 512 |
 | STREAM | 16 | 64 | 256 |
 | control | 16 | 16 | 32 |
 

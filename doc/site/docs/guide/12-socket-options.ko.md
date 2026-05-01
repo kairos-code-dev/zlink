@@ -70,7 +70,7 @@ Context 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 세 profile 중 하나를 고
 
 | 소켓 그룹 | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|
-| non-STREAM data socket | 64 | 128 | 256 |
+| non-STREAM data socket | 128 | 256 | 512 |
 | STREAM | 16 | 64 | 256 |
 | control | 16 | 16 | 32 |
 

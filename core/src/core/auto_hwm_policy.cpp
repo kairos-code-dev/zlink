@@ -54,12 +54,12 @@ profile_hwm_t profile_hwm (zlink_auto_hwm_profile_t profile_)
 {
     switch (normalize_profile (profile_)) {
         case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
-            return profile_hwm_t{64, 16, 16, 256, 64};
+            return profile_hwm_t{128, 16, 16, 512, 64};
         case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
-            return profile_hwm_t{256, 256, 32, 1024, 512};
+            return profile_hwm_t{512, 256, 32, 4096, 512};
         case ZLINK_AUTO_HWM_PROFILE_BALANCED:
         default:
-            return profile_hwm_t{128, 64, 16, 512, 128};
+            return profile_hwm_t{256, 64, 16, 1024, 128};
     }
 }
 

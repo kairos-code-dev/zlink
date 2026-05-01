@@ -47,6 +47,8 @@ void run_dealer_dealer (const std::string &transport,
         return;
     }
 
+    apply_single_auto_hwm_msg_unit (receiver.get (), msg_size);
+    apply_single_auto_hwm_msg_unit (sender.get (), msg_size);
     if (!setup_connected_pair (
           receiver.get (), sender.get (), transport,
           lib_name + "_dealer_dealer")) {
